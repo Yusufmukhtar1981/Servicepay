@@ -7,7 +7,7 @@ exports.initializePayment = async (req, res) => {
     if (!email || !amount) {
       return res.status(400).json({
         success: false,
-        message: "Email da amount suna da buƙata.",
+        message: "Email da amount suna da bukata.",
       });
     }
 
@@ -25,13 +25,14 @@ exports.initializePayment = async (req, res) => {
       }
     );
 
-    res.json(response.data);
+    return res.json(response.data);
   } catch (error) {
+    console.log("PAYSTACK ERROR:");
     console.log(error.response?.data || error.message);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "An kasa fara biyan kuɗi.",
+      error: error.response?.data || error.message,
     });
   }
 };

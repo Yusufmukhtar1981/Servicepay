@@ -3,7 +3,13 @@ const cors = require("cors");
 const helmet = require("helmet");
 require("dotenv").config();
 
+const connectDB = require("./config/db");
+
 const paystackRoutes = require("./routes/paystack.routes");
+const clubkonnectRoutes = require("./routes/clubkonnect.routes");
+const authRoutes = require("./routes/auth.routes");
+const transferRoutes = require("./routes/transfer.routes");
+connectDB();
 
 const app = express();
 
@@ -19,7 +25,9 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/paystack", paystackRoutes);
-
+app.use("/api/clubkonnect", clubkonnectRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/transfer", transferRoutes);
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
