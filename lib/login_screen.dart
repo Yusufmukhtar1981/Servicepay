@@ -126,6 +126,8 @@ class _LoginScreenState extends State<LoginScreen> {
           'password': passwordController.text,
         }),
       );
+      print("Status Code: ${response.statusCode}");
+print("Response Body: ${response.body}");
 
       final dynamic decodedResponse = jsonDecode(response.body);
 

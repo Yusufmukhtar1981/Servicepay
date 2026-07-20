@@ -3,8 +3,14 @@ const router = express.Router();
 
 const {
   initializePayment,
+  verifyPayment,
 } = require("../controllers/paystack.controller");
 
-router.post("/initialize", initializePayment);
+const {
+  protect,
+} = require("../middleware/auth.middleware");
+
+router.post("/initialize", protect, initializePayment);
+router.post("/verify", protect, verifyPayment);
 
 module.exports = router;

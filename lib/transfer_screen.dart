@@ -88,8 +88,11 @@ class _TransferScreenState extends State<TransferScreen> {
       final result = decoded;
 
       if (response.statusCode == 200 && result['success'] == true) {
-        final walletBalance =
-            num.tryParse(result['walletBalance']?.toString() ?? '0') ?? 0;
+        final data = result['data'];
+        final sender = data is Map<String, dynamic> ? data['sender'] : null;
+        final walletBalance = sender is Map<String, dynamic>
+            ? (num.tryParse(sender['walletBalance']?.toString() ?? '0') ?? 0)
+            : 0;
 
         await prefs.setDouble(
           'wallet_balance',

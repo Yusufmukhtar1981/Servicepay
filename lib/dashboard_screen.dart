@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'airtime_screen.dart';
@@ -6,6 +9,7 @@ import 'cable_screen.dart';
 import 'data_screen.dart';
 import 'electricity_screen.dart';
 import 'exam_pin_screen.dart';
+import 'id_verification_screen.dart';
 import 'transfer_screen.dart';
 import 'wallet_screen.dart';
 import 'widgets.dart';
@@ -18,6 +22,8 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  static const String baseUrl =
+      'https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api';
   String name = 'Mai amfani';
   double balance = 0;
   bool isLoading = true;
@@ -30,19 +36,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> loadUserDetails() async {
     final prefs = await SharedPreferences.getInstance();
-
-    final savedName =
-        prefs.getString('user_name') ??
+    final savedName = prefs.getString('user_name') ??
         prefs.getString('full_name') ??
         prefs.getString('name');
+    double newBalance = prefs.getDouble('wallet_balance') ?? 0;
 
-    final savedBalance = prefs.getDouble('wallet_balance');
+    final token = prefs.getString('auth_token');
+    if (token != null && token.isNotEmpty) {
+      try {
+        final response = await http.get(
+          Uri.parse('$baseUrl/wallet'),
+          headers: {'Authorization': 'Bearer $token'},
+        );
+        final result = jsonDecode(response.body);
+        if (response.statusCode == 200 && result['success'] == true) {
+          newBalance =
+              (num.tryParse(result['data']?['walletBalance']?.toString() ?? '0') ?? 0)
+                  .toDouble();
+          await prefs.setDouble('wallet_balance', newBalance);
+        }
+      } catch (_) {
+        // Keep the last locally saved balance when the server is unavailable.
+      }
+    }
 
     if (!mounted) return;
-
     setState(() {
       name = savedName?.isNotEmpty == true ? savedName! : 'Mai amfani';
-      balance = savedBalance ?? 0;
+      balance = newBalance;
       isLoading = false;
     });
   }
@@ -259,6 +280,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             );
                           },
                         ),
+                        serviceCard(
+  icon: Icons.verified_user_outlined,
+  title: 'ID Verification',
+  onTap: () {
+    openPage(
+      context,
+      const IdVerificationScreen(),
+    );
+  },
+),
                       ],
                     ),
                     const SizedBox(height: 28),

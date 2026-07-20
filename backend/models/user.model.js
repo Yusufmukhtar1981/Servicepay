@@ -85,6 +85,33 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
 
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    totalEarnings: {
+      type: Number,
+      default: 0,
+    },
+
+    totalTransactions: {
+      type: Number,
+      default: 0,
+    },
+
+    kycVerified: {
+      type: Boolean,
+      default: false,
+    },
+
     status: {
       type: String,
       enum: ["ACTIVE", "SUSPENDED", "BLOCKED"],

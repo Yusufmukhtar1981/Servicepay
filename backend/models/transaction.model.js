@@ -42,6 +42,8 @@ const transactionSchema = new mongoose.Schema(
         "ELECTRICITY",
         "EXAM_PIN",
         "WALLET_FUNDING",
+        "TRANSFER",
+"BANK_TRANSFER",
       ],
       required: true,
     },
