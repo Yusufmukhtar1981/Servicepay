@@ -9,7 +9,6 @@ const paystackRoutes = require("./routes/paystack.routes");
 const clubkonnectRoutes = require("./routes/clubkonnect.routes");
 const authRoutes = require("./routes/auth.routes");
 const transferRoutes = require("./routes/transfer.routes");
-const walletRoutes = require("./routes/wallet.routes");
 
 connectDB();
 
@@ -30,7 +29,6 @@ app.use("/api/paystack", paystackRoutes);
 app.use("/api/clubkonnect", clubkonnectRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/transfer", transferRoutes);
-app.use("/api/wallet", walletRoutes);
 
 const PORT = process.env.PORT || 3000;
 
