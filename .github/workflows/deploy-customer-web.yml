@@ -11,47 +11,45 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          cache: true
 
-      - name: Install dependencies
+      - name: Enable Web
+        run: flutter config --enable-web
+
+      - name: Install Packages
         run: flutter pub get
 
-      - name: Build Customer Web
-        run: flutter build web --release --base-href "/"
+      - name: Build Web
+        run: flutter build web --release
 
-      - name: Setup GitHub Pages
+      - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Customer Web
+      - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
 
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
-    runs-on: ubuntu-latest
-    needs: build
-
     steps:
-      - name: Deploy Customer Web
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
