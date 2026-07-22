@@ -1,27 +1,20 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
-import 'firebase_options.dart';
-import 'login_screen.dart';
+import '../login_screen.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  runApp(const ServicepayApp());
+  runApp(const ServicePayAdminApp());
 }
 
-class ServicepayApp extends StatelessWidget {
-  const ServicepayApp({super.key});
+class ServicePayAdminApp extends StatelessWidget {
+  const ServicePayAdminApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'ServicePay Admin',
       debugShowCheckedModeBanner: false,
-      title: 'Servicepay',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.green,

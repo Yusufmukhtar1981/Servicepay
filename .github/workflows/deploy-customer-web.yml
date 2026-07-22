@@ -1,4 +1,4 @@
-name: Deploy ServicePay Customer Web
+name: Deploy ServicePay Web
 
 on:
   workflow_dispatch:
@@ -11,35 +11,56 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: servicepay-pages
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
-      - name: Enable Web
+      - name: Enable Flutter Web
         run: flutter config --enable-web
 
       - name: Install Packages
         run: flutter pub get
 
-      - name: Build Web
-        run: flutter build web --release
+      - name: Build Customer Website
+        run: flutter build web --release --target lib/main.dart --base-href /
 
-      - name: Configure Pages
+      - name: Save Customer Website
+        run: |
+          mkdir -p pages_output
+          cp -R build/web/. pages_output/
+
+      - name: Build Admin Website
+        run: flutter build web --release --target lib/admin/main.dart --base-href /admin/
+
+      - name: Add Admin Website
+        run: |
+          mkdir -p pages_output/admin
+          cp -R build/web/. pages_output/admin/
+
+      - name: Add Custom Domain
+        run: echo "servicepay.ng" > pages_output/CNAME
+
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Artifact
+      - name: Upload Website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/web
+          path: pages_output
 
   deploy:
     needs: build
@@ -50,6 +71,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Deploy
+      - name: Deploy Website
         id: deployment
         uses: actions/deploy-pages@v4
