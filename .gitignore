@@ -3,3 +3,4 @@ backend/node_modules/
 .dart_tool/
 build/
 .env
+*.zip

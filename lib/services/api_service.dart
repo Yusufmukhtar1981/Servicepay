@@ -2,8 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl =
-      "https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api";
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static Future<Map<String, dynamic>> buyAirtime({
     required String network,

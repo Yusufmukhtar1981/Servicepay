@@ -1,7 +1,4 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'airtime_screen.dart';
@@ -22,8 +19,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  static const String baseUrl =
-      'https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api';
   String name = 'Mai amfani';
   double balance = 0;
   bool isLoading = true;
@@ -36,34 +31,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> loadUserDetails() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedName = prefs.getString('user_name') ??
+
+    final savedName =
+        prefs.getString('user_name') ??
         prefs.getString('full_name') ??
         prefs.getString('name');
-    double newBalance = prefs.getDouble('wallet_balance') ?? 0;
 
-    final token = prefs.getString('auth_token');
-    if (token != null && token.isNotEmpty) {
-      try {
-        final response = await http.get(
-          Uri.parse('$baseUrl/wallet'),
-          headers: {'Authorization': 'Bearer $token'},
-        );
-        final result = jsonDecode(response.body);
-        if (response.statusCode == 200 && result['success'] == true) {
-          newBalance =
-              (num.tryParse(result['data']?['walletBalance']?.toString() ?? '0') ?? 0)
-                  .toDouble();
-          await prefs.setDouble('wallet_balance', newBalance);
-        }
-      } catch (_) {
-        // Keep the last locally saved balance when the server is unavailable.
-      }
-    }
+    final savedBalance = prefs.getDouble('wallet_balance');
 
     if (!mounted) return;
+
     setState(() {
       name = savedName?.isNotEmpty == true ? savedName! : 'Mai amfani';
-      balance = newBalance;
+      balance = savedBalance ?? 0;
       isLoading = false;
     });
   }

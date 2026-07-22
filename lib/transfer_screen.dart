@@ -12,8 +12,7 @@ class TransferScreen extends StatefulWidget {
 }
 
 class _TransferScreenState extends State<TransferScreen> {
-  static const String baseUrl =
-      'https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   final phoneController = TextEditingController();
   final amountController = TextEditingController();
@@ -88,11 +87,8 @@ class _TransferScreenState extends State<TransferScreen> {
       final result = decoded;
 
       if (response.statusCode == 200 && result['success'] == true) {
-        final data = result['data'];
-        final sender = data is Map<String, dynamic> ? data['sender'] : null;
-        final walletBalance = sender is Map<String, dynamic>
-            ? (num.tryParse(sender['walletBalance']?.toString() ?? '0') ?? 0)
-            : 0;
+        final walletBalance =
+            num.tryParse(result['walletBalance']?.toString() ?? '0') ?? 0;
 
         await prefs.setDouble(
           'wallet_balance',
@@ -103,13 +99,11 @@ class _TransferScreenState extends State<TransferScreen> {
         amountController.clear();
 
         showMessage(
-          result['message']?.toString() ??
-              'An tura kuɗi cikin nasara.',
+          result['message']?.toString() ?? 'An tura kuɗi cikin nasara.',
         );
       } else {
         showMessage(
-          result['message']?.toString() ??
-              'Transfer bai yi nasara ba.',
+          result['message']?.toString() ?? 'Transfer bai yi nasara ba.',
         );
       }
     } on FormatException {

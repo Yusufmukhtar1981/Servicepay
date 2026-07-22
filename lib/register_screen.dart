@@ -11,8 +11,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  static const String baseUrl =
-      'https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   final fullNameController = TextEditingController();
   final phoneController = TextEditingController();
@@ -116,8 +115,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (response.statusCode == 201 && result['success'] == true) {
         showMessage(
-          result['message']?.toString() ??
-              'Account created successfully.',
+          result['message']?.toString() ?? 'Account created successfully.',
         );
 
         if (!mounted) return;
@@ -125,8 +123,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         Navigator.pop(context);
       } else {
         showMessage(
-          result['message']?.toString() ??
-              'Unable to create account.',
+          result['message']?.toString() ?? 'Unable to create account.',
         );
       }
     } on FormatException {
@@ -143,6 +140,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
     }
   }
+
   InputDecoration buildInputDecoration({
     required String label,
     required IconData icon,
@@ -299,8 +297,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                             onPressed: () {
                               setState(() {
-                                hideConfirmPassword =
-                                    !hideConfirmPassword;
+                                hideConfirmPassword = !hideConfirmPassword;
                               });
                             },
                           ),
@@ -310,8 +307,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       SizedBox(
                         height: 52,
                         child: ElevatedButton(
-                          onPressed:
-                              isLoading ? null : registerCustomer,
+                          onPressed: isLoading ? null : registerCustomer,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.white,

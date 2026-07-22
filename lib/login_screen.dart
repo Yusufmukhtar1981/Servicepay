@@ -15,8 +15,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  static const String baseUrl =
-      'https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
@@ -127,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }),
       );
       print("Status Code: ${response.statusCode}");
-print("Response Body: ${response.body}");
+      print("Response Body: ${response.body}");
 
       final dynamic decodedResponse = jsonDecode(response.body);
 
@@ -155,8 +154,7 @@ print("Response Body: ${response.body}");
         );
       } else {
         showMessage(
-          result['message']?.toString() ??
-              'Incorrect email or password.',
+          result['message']?.toString() ?? 'Incorrect email or password.',
         );
       }
     } on FormatException {
@@ -346,8 +344,7 @@ print("Response Body: ${response.body}");
                     SizedBox(
                       height: 52,
                       child: OutlinedButton(
-                        onPressed:
-                            isLoading ? null : openRegisterScreen,
+                        onPressed: isLoading ? null : openRegisterScreen,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.green,
                           side: const BorderSide(

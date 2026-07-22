@@ -19,6 +19,7 @@ dependencies:
   cloud_firestore: ^6.7.1
   paystack_flutter_sdk: ^0.0.1-alpha.2
   url_launcher: ^6.3.2
+url_launcher: ^6.3.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

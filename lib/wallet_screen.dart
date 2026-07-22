@@ -13,27 +13,34 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  static const String baseUrl =
-      'https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   final amountController = TextEditingController();
 
   bool isLoading = false;
-  bool isRefreshing = true;
-
   double walletBalance = 0;
-  List<Map<String, dynamic>> transactions = [];
 
   @override
   void initState() {
     super.initState();
-    refreshWallet();
+    loadWalletBalance();
   }
 
   @override
   void dispose() {
     amountController.dispose();
     super.dispose();
+  }
+
+  Future<void> loadWalletBalance() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedBalance = prefs.getDouble('wallet_balance') ?? 0;
+
+    if (!mounted) return;
+
+    setState(() {
+      walletBalance = savedBalance;
+    });
   }
 
   void showMessage(String message) {
@@ -47,185 +54,19 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Future<void> refreshWallet() async {
-    if (mounted) {
-      setState(() => isRefreshing = true);
-    }
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token == null || token.isEmpty) {
-        showMessage('Please login again.');
-        return;
-      }
-
-      final responses = await Future.wait([
-        http.get(
-          Uri.parse('$baseUrl/wallet'),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-          },
-        ),
-        http.get(
-          Uri.parse('$baseUrl/wallet/history?limit=30'),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-          },
-        ),
-      ]);
-
-      final walletBody = responses[0].body.trim();
-      final historyBody = responses[1].body.trim();
-
-      if (walletBody.isEmpty || walletBody.startsWith('<')) {
-        throw Exception('Wallet server returned an invalid response.');
-      }
-
-      if (historyBody.isEmpty || historyBody.startsWith('<')) {
-        throw Exception('Wallet history returned an invalid response.');
-      }
-
-      final walletResult = jsonDecode(walletBody);
-      final historyResult = jsonDecode(historyBody);
-
-      if (responses[0].statusCode == 200 &&
-          walletResult['success'] == true) {
-        final data = walletResult['data'];
-
-        final newBalance =
-            num.tryParse(data?['walletBalance']?.toString() ?? '0') ?? 0;
-
-        await prefs.setDouble(
-          'wallet_balance',
-          newBalance.toDouble(),
-        );
-
-        if (mounted) {
-          setState(() {
-            walletBalance = newBalance.toDouble();
-          });
-        }
-      } else {
-        throw Exception(
-          walletResult['message']?.toString() ??
-              'Unable to load wallet.',
-        );
-      }
-
-      if (responses[1].statusCode == 200 &&
-          historyResult['success'] == true) {
-        final data = historyResult['data'];
-
-        if (mounted) {
-          setState(() {
-            transactions = data is List
-                ? data
-                    .whereType<Map>()
-                    .map(
-                      (item) => Map<String, dynamic>.from(item),
-                    )
-                    .toList()
-                : [];
-          });
-        }
-      }
-    } catch (error) {
-      final prefs = await SharedPreferences.getInstance();
-      final savedBalance =
-          prefs.getDouble('wallet_balance') ?? 0;
-
-      if (mounted) {
-        setState(() {
-          walletBalance = savedBalance;
-        });
-      }
-
-      showMessage(
-        error.toString().replaceFirst('Exception: ', ''),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => isRefreshing = false);
-      }
-    }
-  }
-
-  Future<void> verifyPayment(String reference) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token == null || token.isEmpty) {
-        showMessage('Please login again.');
-        return;
-      }
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/paystack/verify/$reference'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
-      );
-
-      final responseBody = response.body.trim();
-
-      if (responseBody.isEmpty || responseBody.startsWith('<')) {
-        showMessage(
-          'Payment verification returned an invalid response.',
-        );
-        return;
-      }
-
-      final result = jsonDecode(responseBody);
-
-      if (response.statusCode == 200 &&
-          result['success'] == true) {
-        amountController.clear();
-
-        showMessage(
-          result['message']?.toString() ??
-              'Wallet funded successfully.',
-        );
-
-        await refreshWallet();
-      } else {
-        showMessage(
-          result['message']?.toString() ??
-              'Payment verification failed.',
-        );
-      }
-    } on FormatException {
-      showMessage(
-        'Server returned an invalid verification response.',
-      );
-    } on http.ClientException {
-      showMessage(
-        'Unable to connect to ServicePay server.',
-      );
-    } catch (error) {
-      showMessage(
-        error.toString().replaceFirst('Exception: ', ''),
-      );
-    }
-  }
-
   Future<void> fundWallet() async {
-    final amount =
-        double.tryParse(amountController.text.trim());
+    final amount = double.tryParse(
+      amountController.text.trim(),
+    );
 
     if (amount == null || amount < 100) {
       showMessage('Minimum wallet funding is ₦100.');
       return;
     }
 
-    if (mounted) {
-      setState(() => isLoading = true);
-    }
+    setState(() {
+      isLoading = true;
+    });
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -233,11 +74,13 @@ class _WalletScreenState extends State<WalletScreen> {
       final token = prefs.getString('auth_token');
       final email = prefs.getString('user_email');
 
-      if (token == null ||
-          token.isEmpty ||
-          email == null ||
-          email.isEmpty) {
+      if (token == null || token.isEmpty) {
         showMessage('Please login again.');
+        return;
+      }
+
+      if (email == null || email.isEmpty) {
+        showMessage('User email was not found. Please login again.');
         return;
       }
 
@@ -246,7 +89,6 @@ class _WalletScreenState extends State<WalletScreen> {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
         },
         body: jsonEncode({
           'email': email,
@@ -254,125 +96,68 @@ class _WalletScreenState extends State<WalletScreen> {
         }),
       );
 
-      final responseBody = response.body.trim();
+      print('PAYSTACK STATUS CODE: ${response.statusCode}');
+      print('PAYSTACK RESPONSE BODY: ${response.body}');
 
-      if (responseBody.isEmpty || responseBody.startsWith('<')) {
+      Map<String, dynamic>? result;
+
+      try {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map<String, dynamic>) {
+          result = decoded;
+        }
+      } catch (_) {
         showMessage(
-          'Server returned an invalid payment response.',
+          'Server returned an invalid response. Status: ${response.statusCode}',
         );
         return;
       }
 
-      final result = jsonDecode(responseBody);
-
       final serverMessage =
-          result['message']?.toString() ??
-              'Unable to initialize payment.';
+          result?['message']?.toString() ?? 'Unable to initialize payment.';
 
-      if (response.statusCode == 200 &&
-          result['success'] == true) {
-        final authorizationUrl =
-            result['authorizationUrl']?.toString() ??
-                result['data']?['authorization_url']
-                    ?.toString() ??
-                '';
+      if (response.statusCode == 200 && result?['success'] == true) {
+        final reference = result?['reference']?.toString() ?? '';
 
-        final reference =
-            result['reference']?.toString() ??
-                result['data']?['reference']?.toString() ??
-                '';
+        final authorizationUrl = result?['authorizationUrl']?.toString() ?? '';
 
-        if (authorizationUrl.isEmpty) {
-          showMessage('Payment link was not returned.');
-          return;
-        }
+        print('PAYSTACK REFERENCE: $reference');
+        print('PAYSTACK AUTHORIZATION URL: $authorizationUrl');
 
-        if (reference.isEmpty) {
-          showMessage(
-            'Payment reference was not returned.',
-          );
-          return;
-        }
-
-        final opened = await launchUrl(
-          Uri.parse(authorizationUrl),
-          mode: LaunchMode.platformDefault,
+        showMessage(
+          'Payment initialized successfully. Reference: $reference',
         );
-
-        if (!opened) {
-          showMessage(
-            'Unable to open Paystack payment page.',
+        if (authorizationUrl.isNotEmpty) {
+          await launchUrl(
+            Uri.parse(authorizationUrl),
+            mode: LaunchMode.platformDefault,
           );
-          return;
-        }
-
-        if (!mounted) return;
-
-        final shouldVerify = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) {
-            return AlertDialog(
-              title: const Text('Complete Payment'),
-              content: const Text(
-                'After Paystack shows Payment Successful, return to ServicePay and press Verify Payment.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext, false);
-                  },
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext, true);
-                  },
-                  child: const Text('Verify Payment'),
-                ),
-              ],
-            );
-          },
-        );
-
-        if (shouldVerify == true) {
-          await verifyPayment(reference);
         }
       } else {
-        showMessage(serverMessage);
+        showMessage(
+          '$serverMessage Status: ${response.statusCode}',
+        );
       }
-    } on FormatException {
+    } on http.ClientException catch (error) {
+      print('HTTP CLIENT ERROR: $error');
+
       showMessage(
-        'Server returned an invalid response.',
-      );
-    } on http.ClientException {
-      showMessage(
-        'Unable to connect to ServicePay server.',
+        'Unable to connect to Servicepay server.',
       );
     } catch (error) {
+      print('WALLET FUNDING ERROR: $error');
+
       showMessage(
         error.toString().replaceFirst('Exception: ', ''),
       );
     } finally {
       if (mounted) {
-        setState(() => isLoading = false);
+        setState(() {
+          isLoading = false;
+        });
       }
     }
-  }
-
-  String formatDate(dynamic value) {
-    final date =
-        DateTime.tryParse(value?.toString() ?? '')
-            ?.toLocal();
-
-    if (date == null) return '';
-
-    String two(int number) {
-      return number.toString().padLeft(2, '0');
-    }
-
-    return '${two(date.day)}/${two(date.month)}/${date.year} '
-        '${two(date.hour)}:${two(date.minute)}';
   }
 
   @override
@@ -383,27 +168,17 @@ class _WalletScreenState extends State<WalletScreen> {
         title: const Text('Wallet'),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            onPressed: refreshWallet,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
       ),
-      body: RefreshIndicator(
-        onRefresh: refreshWallet,
-        child: ListView(
-          physics:
-              const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
           children: [
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: Colors.green,
-                borderRadius:
-                    BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
                 children: [
@@ -415,31 +190,21 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  isRefreshing
-                      ? const Padding(
-                          padding: EdgeInsets.all(8),
-                          child:
-                              CircularProgressIndicator(
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          '₦${walletBalance.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
+                  Text(
+                    '₦${walletBalance.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 30),
             TextField(
               controller: amountController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(
+              keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               decoration: InputDecoration(
@@ -448,31 +213,28 @@ class _WalletScreenState extends State<WalletScreen> {
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             SizedBox(
+              width: double.infinity,
               height: 52,
               child: ElevatedButton(
-                onPressed:
-                    isLoading ? null : fundWallet,
+                onPressed: isLoading ? null : fundWallet,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 child: isLoading
                     ? const SizedBox(
                         width: 24,
                         height: 24,
-                        child:
-                            CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                           strokeWidth: 2.5,
                           color: Colors.white,
                         ),
@@ -481,83 +243,11 @@ class _WalletScreenState extends State<WalletScreen> {
                         'Fund Wallet',
                         style: TextStyle(
                           fontSize: 17,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
               ),
             ),
-            const SizedBox(height: 28),
-            const Text(
-              'Recent Transactions',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (!isRefreshing &&
-                transactions.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(
-                    child:
-                        Text('No transactions yet'),
-                  ),
-                ),
-              ),
-            ...transactions.map((item) {
-              final isCredit =
-                  item['direction'] == 'CREDIT';
-
-              final amount = num.tryParse(
-                    item['amount']?.toString() ?? '0',
-                  ) ??
-                  0;
-
-              return Card(
-                margin:
-                    const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: isCredit
-                        ? Colors.green.shade50
-                        : Colors.red.shade50,
-                    child: Icon(
-                      isCredit
-                          ? Icons.south_west
-                          : Icons.north_east,
-                      color: isCredit
-                          ? Colors.green
-                          : Colors.red,
-                    ),
-                  ),
-                  title: Text(
-                    item['title']?.toString() ??
-                        'Transaction',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    '${item['description'] ?? ''}\n'
-                    '${formatDate(item['createdAt'])}',
-                  ),
-                  isThreeLine: true,
-                  trailing: Text(
-                    '${isCredit ? '+' : '-'}'
-                    '₦${amount.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isCredit
-                          ? Colors.green
-                          : Colors.red,
-                    ),
-                  ),
-                ),
-              );
-            }),
           ],
         ),
       ),
