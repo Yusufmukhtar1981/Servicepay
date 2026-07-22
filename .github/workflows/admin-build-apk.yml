@@ -2,9 +2,6 @@ name: Build ServicePay Admin APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
@@ -20,19 +17,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Flutter
+      - name: Set up latest stable Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          channel: stable
+          cache: false
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Clean project
+        run: flutter clean
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build Admin APK
         run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload Admin APK
         uses: actions/upload-artifact@v4
         with:
           name: ServicePay-Admin-APK
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
