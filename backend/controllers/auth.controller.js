@@ -32,10 +32,16 @@ exports.registerUser = async (req, res) => {
       });
     }
 
+    const normalizedEmail = email
+      ? email.trim().toLowerCase()
+      : undefined;
+
+    const normalizedPhone = phone.trim();
+
     const existingUser = await User.findOne({
       $or: [
-        { phone },
-        ...(email ? [{ email: email.toLowerCase() }] : []),
+        { phone: normalizedPhone },
+        ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
       ],
     });
 
@@ -46,6 +52,8 @@ exports.registerUser = async (req, res) => {
       });
     }
 
+    // Mutanen da suke yin register da kansu CUSTOMER kawai za su zama.
+    // Admin da sauran managers sai admin ya kirkire su.
     const allowedPublicRoles = ["CUSTOMER"];
 
     const safeRole = allowedPublicRoles.includes(role)
@@ -53,9 +61,9 @@ exports.registerUser = async (req, res) => {
       : "CUSTOMER";
 
     const user = await User.create({
-      fullName,
-      phone,
-      email,
+      fullName: fullName.trim(),
+      phone: normalizedPhone,
+      email: normalizedEmail,
       password,
       role: safeRole,
       zone,
@@ -81,7 +89,7 @@ exports.registerUser = async (req, res) => {
         state: user.state,
         lga: user.lga,
         walletBalance: user.walletBalance,
-        commissionBalance: user.commissionBalance,
+        commissionBalance: user.commissionBalance || 0,
         status: user.status,
       },
     });
@@ -98,7 +106,6 @@ exports.registerUser = async (req, res) => {
 
 exports.loginUser = async (req, res) => {
   try {
-    
     const { phone, email, password } = req.body;
 
     if ((!phone && !email) || !password) {
@@ -108,11 +115,12 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    const user = await User.findOne(
-      phone
-        ? { phone }
-        : { email: email.toLowerCase() }
-    );
+    const query = phone
+      ? { phone: phone.trim() }
+      : { email: email.trim().toLowerCase() };
+
+    // Ana amfani da +password idan password field yana da select: false.
+    const user = await User.findOne(query).select("+password");
 
     if (!user) {
       return res.status(401).json({
@@ -151,7 +159,7 @@ exports.loginUser = async (req, res) => {
         state: user.state,
         lga: user.lga,
         walletBalance: user.walletBalance,
-        commissionBalance: user.commissionBalance,
+        commissionBalance: user.commissionBalance || 0,
         status: user.status,
       },
     });
