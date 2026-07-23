@@ -9,6 +9,20 @@ const generateToken = (userId) => {
   );
 };
 
+const formatUser = (user) => ({
+  id: user._id,
+  fullName: user.fullName,
+  phone: user.phone,
+  email: user.email,
+  role: user.role,
+  zone: user.zone,
+  state: user.state,
+  lga: user.lga,
+  walletBalance: user.walletBalance,
+  commissionBalance: user.commissionBalance,
+  status: user.status,
+});
+
 exports.registerUser = async (req, res) => {
   try {
     const {
@@ -32,16 +46,13 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    const normalizedEmail = email
-      ? email.trim().toLowerCase()
-      : undefined;
-
-    const normalizedPhone = phone.trim();
+    const cleanPhone = phone.trim();
+    const cleanEmail = email ? email.trim().toLowerCase() : undefined;
 
     const existingUser = await User.findOne({
       $or: [
-        { phone: normalizedPhone },
-        ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+        { phone: cleanPhone },
+        ...(cleanEmail ? [{ email: cleanEmail }] : []),
       ],
     });
 
@@ -52,18 +63,13 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    // Mutanen da suke yin register da kansu CUSTOMER kawai za su zama.
-    // Admin da sauran managers sai admin ya kirkire su.
-    const allowedPublicRoles = ["CUSTOMER"];
-
-    const safeRole = allowedPublicRoles.includes(role)
-      ? role
-      : "CUSTOMER";
+    // Mutane ba za su iya yi wa kansu register a matsayin admin ba.
+    const safeRole = role === "CUSTOMER" ? role : "CUSTOMER";
 
     const user = await User.create({
       fullName: fullName.trim(),
-      phone: normalizedPhone,
-      email: normalizedEmail,
+      phone: cleanPhone,
+      email: cleanEmail,
       password,
       role: safeRole,
       zone,
@@ -72,26 +78,15 @@ exports.registerUser = async (req, res) => {
       zonalManagerId,
       stateManagerId,
       agentId,
-      walletBalance: 10000,
+      walletBalance: 0,
+      status: "ACTIVE",
     });
 
     return res.status(201).json({
       success: true,
       message: "An yi register cikin nasara.",
       token: generateToken(user._id),
-      user: {
-        id: user._id,
-        fullName: user.fullName,
-        phone: user.phone,
-        email: user.email,
-        role: user.role,
-        zone: user.zone,
-        state: user.state,
-        lga: user.lga,
-        walletBalance: user.walletBalance,
-        commissionBalance: user.commissionBalance || 0,
-        status: user.status,
-      },
+      user: formatUser(user),
     });
   } catch (error) {
     console.error("Register error:", error);
@@ -115,12 +110,17 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    const query = phone
-      ? { phone: phone.trim() }
-      : { email: email.trim().toLowerCase() };
+    const loginValue = email || phone;
 
-    // Ana amfani da +password idan password field yana da select: false.
-    const user = await User.findOne(query).select("+password");
+    const cleanLoginValue = loginValue.trim().toLowerCase();
+
+    // Zai karɓi email ko phone a wajen login.
+    const user = await User.findOne({
+      $or: [
+        { email: cleanLoginValue },
+        { phone: loginValue.trim() },
+      ],
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -149,19 +149,7 @@ exports.loginUser = async (req, res) => {
       success: true,
       message: "An shiga account cikin nasara.",
       token: generateToken(user._id),
-      user: {
-        id: user._id,
-        fullName: user.fullName,
-        phone: user.phone,
-        email: user.email,
-        role: user.role,
-        zone: user.zone,
-        state: user.state,
-        lga: user.lga,
-        walletBalance: user.walletBalance,
-        commissionBalance: user.commissionBalance || 0,
-        status: user.status,
-      },
+      user: formatUser(user),
     });
   } catch (error) {
     console.error("Login error:", error);
