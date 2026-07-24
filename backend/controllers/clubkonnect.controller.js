@@ -72,7 +72,7 @@ exports.buyData = async (req, res) => {
     }
 
     const response = await axios.get(
-      "https://www.nellobytesystems.com/APIBundleV1.asp",
+      "https://www.nellobytesystems.com/APIDatabundleV1.asp"
       {
         params: {
           UserID: process.env.CLUBKONNECT_USER_ID,
@@ -80,7 +80,7 @@ exports.buyData = async (req, res) => {
           MobileNetwork: network,
           DataPlan: planCode,
           MobileNumber: phone,
-          Amount: amount,
+        
         },
         timeout: 45000,
         validateStatus: () => true,
