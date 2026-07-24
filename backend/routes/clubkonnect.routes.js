@@ -6,9 +6,7 @@ const {
   buyData,
 } = require("../controllers/clubkonnect.controller");
 
-const { protect } = require("../middleware/auth.middleware");
-
-router.post("/airtime", protect, buyAirtime);
-router.post("/data", protect, buyData);
+router.post("/airtime", buyAirtime);
+router.post("/data", buyData);
 
 module.exports = router;
