@@ -18,8 +18,11 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
+  final TextEditingController emailController =
+      TextEditingController();
+
+  final TextEditingController passwordController =
+      TextEditingController();
 
   bool hidePassword = true;
   bool isLoading = false;
@@ -31,18 +34,24 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void showMessage(String message) {
+  void showMessage(
+    String message, {
+    bool isError = true,
+  }) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          backgroundColor: isError
+              ? Colors.red.shade700
+              : Colors.green.shade700,
+        ),
+      );
   }
 
   bool validateFields() {
@@ -50,11 +59,13 @@ class _LoginScreenState extends State<LoginScreen> {
     final String password = passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      showMessage('Please enter your email and password.');
+      showMessage(
+        'Please enter your email address and password.',
+      );
       return false;
     }
 
-    final emailPattern = RegExp(
+    final RegExp emailPattern = RegExp(
       r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
     );
 
@@ -64,7 +75,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (password.length < 6) {
-      showMessage('Password must be at least 6 characters.');
+      showMessage(
+        'Password must be at least 6 characters.',
+      );
       return false;
     }
 
@@ -75,16 +88,22 @@ class _LoginScreenState extends State<LoginScreen> {
     Map<String, dynamic> result,
     Map<String, dynamic> user,
   ) async {
-    final String token = result['token']?.toString() ?? '';
+    final String token =
+        result['token']?.toString().trim() ?? '';
 
     if (token.isEmpty) {
-      throw Exception('Login token was not received.');
+      throw Exception(
+        'Login token was not received.',
+      );
     }
 
     final SharedPreferences prefs =
         await SharedPreferences.getInstance();
 
-    await prefs.setString('auth_token', token);
+    await prefs.setString(
+      'auth_token',
+      token,
+    );
 
     await prefs.setString(
       'user_id',
@@ -112,14 +131,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await prefs.setString(
       'user_role',
-      user['role']?.toString() ?? '',
+      user['role']?.toString() ?? 'CUSTOMER',
     );
 
-    final double walletBalance =
-        double.tryParse(
+    final double walletBalance = double.tryParse(
           user['walletBalance']?.toString() ?? '0',
         ) ??
-        0;
+        0.0;
 
     await prefs.setDouble(
       'wallet_balance',
@@ -145,31 +163,45 @@ class _LoginScreenState extends State<LoginScreen> {
               'Accept': 'application/json',
             },
             body: jsonEncode({
-              'email': emailController.text.trim().toLowerCase(),
+              'email':
+                  emailController.text.trim().toLowerCase(),
               'password': passwordController.text,
             }),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(
+            const Duration(seconds: 30),
+          );
 
-      debugPrint('Login status: ${response.statusCode}');
-      debugPrint('Login response: ${response.body}');
+      debugPrint(
+        'Customer login status: ${response.statusCode}',
+      );
+
+      debugPrint(
+        'Customer login response: ${response.body}',
+      );
 
       if (response.body.trim().isEmpty) {
         showMessage(
           'The server returned an empty response. '
-          'Status code: ${response.statusCode}',
+          'Please try again.',
         );
         return;
       }
 
-      final dynamic decodedResponse = jsonDecode(response.body);
+      final dynamic decodedResponse =
+          jsonDecode(response.body);
 
-      if (decodedResponse is! Map<String, dynamic>) {
-        showMessage('The server returned an invalid response.');
+      if (decodedResponse is! Map) {
+        showMessage(
+          'The server returned an invalid response.',
+        );
         return;
       }
 
-      final Map<String, dynamic> result = decodedResponse;
+      final Map<String, dynamic> result =
+          Map<String, dynamic>.from(
+        decodedResponse,
+      );
 
       if (response.statusCode < 200 ||
           response.statusCode >= 300) {
@@ -180,7 +212,9 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final String token = result['token']?.toString() ?? '';
+      final String token =
+          result['token']?.toString().trim() ?? '';
+
       final dynamic userData = result['user'];
 
       if (token.isEmpty) {
@@ -191,31 +225,41 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      if (userData is! Map<String, dynamic>) {
-        showMessage('User information was not received.');
+      if (userData is! Map) {
+        showMessage(
+          'User information was not received.',
+        );
         return;
       }
 
-      final Map<String, dynamic> user = userData;
+      final Map<String, dynamic> user =
+          Map<String, dynamic>.from(
+        userData,
+      );
 
-      final String role =
-          user['role']?.toString().trim().toUpperCase() ?? '';
+      final String role = user['role']
+              ?.toString()
+              .trim()
+              .toUpperCase() ??
+          'CUSTOMER';
 
-      final String status =
-          user['status']?.toString().trim().toUpperCase() ??
-              'ACTIVE';
+      final String status = user['status']
+              ?.toString()
+              .trim()
+              .toUpperCase() ??
+          'ACTIVE';
 
-      const Set<String> allowedAdminRoles = {
+      const Set<String> adminRoles = {
         'ADMIN',
         'SUPER_ADMIN',
         'HEAD_OFFICE',
         'HEAD_OFFICE_ADMIN',
       };
 
-      if (!allowedAdminRoles.contains(role)) {
+      if (adminRoles.contains(role)) {
         showMessage(
-          'This account is not authorized to access '
-          'the Admin Dashboard.',
+          'Admin accounts must sign in through '
+          'admin.servicepay.ng.',
         );
         return;
       }
@@ -228,19 +272,24 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      await saveLoginData(result, user);
+      await saveLoginData(
+        result,
+        user,
+      );
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
           builder: (_) => const MainNavigation(),
         ),
+        (route) => false,
       );
     } on TimeoutException {
       showMessage(
-        'The server took too long to respond. Please try again.',
+        'The server took too long to respond. '
+        'Please try again.',
       );
     } on FormatException {
       showMessage(
@@ -251,12 +300,15 @@ class _LoginScreenState extends State<LoginScreen> {
         'Unable to connect to the Servicepay server.',
       );
     } catch (error) {
-      debugPrint('Login error: $error');
+      debugPrint(
+        'Customer login error: $error',
+      );
 
       showMessage(
-        error
-            .toString()
-            .replaceFirst('Exception: ', ''),
+        error.toString().replaceFirst(
+              'Exception: ',
+              '',
+            ),
       );
     } finally {
       if (mounted) {
@@ -291,9 +343,10 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Card(
                 elevation: 8,
                 shadowColor: Colors.black12,
-                color: const Color(0xFFFCFFF7),
+                color: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius:
+                      BorderRadius.circular(24),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(28),
@@ -307,7 +360,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: 86,
                             height: 86,
                             decoration: BoxDecoration(
-                              color: Colors.green.withValues(
+                              color: const Color(0xFF159447)
+                                  .withValues(
                                 alpha: 0.12,
                               ),
                               shape: BoxShape.circle,
@@ -315,19 +369,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: const Icon(
                               Icons
                                   .account_balance_wallet_rounded,
-                              color: Colors.green,
+                              color: Color(0xFF159447),
                               size: 48,
                             ),
                           ),
                         ),
                         const SizedBox(height: 18),
                         const Text(
-                          'Servicepay Admin',
+                          'Servicepay',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.bold,
-                            color: Colors.green,
+                            color: Color(0xFF159447),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -337,12 +391,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w700,
+                            color: Color(0xFF1F2937),
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Sign in to continue to the '
-                          'Admin Dashboard.',
+                          'Sign in to continue to your '
+                          'Servicepay account.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
@@ -363,7 +418,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           enabled: !isLoading,
                           decoration: InputDecoration(
                             labelText: 'Email address',
-                            hintText: 'admin@servicepay.ng',
+                            hintText:
+                                'customer@example.com',
                             prefixIcon: const Icon(
                               Icons.email_outlined,
                             ),
@@ -380,8 +436,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   BorderRadius.circular(14),
                               borderSide:
                                   const BorderSide(
-                                color:
-                                    Color(0xFFE2E8F0),
+                                color: Color(0xFFE2E8F0),
                               ),
                             ),
                             focusedBorder:
@@ -390,7 +445,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   BorderRadius.circular(14),
                               borderSide:
                                   const BorderSide(
-                                color: Colors.green,
+                                color: Color(0xFF159447),
                                 width: 2,
                               ),
                             ),
@@ -429,8 +484,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   BorderRadius.circular(14),
                               borderSide:
                                   const BorderSide(
-                                color:
-                                    Color(0xFFE2E8F0),
+                                color: Color(0xFFE2E8F0),
                               ),
                             ),
                             focusedBorder:
@@ -439,18 +493,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   BorderRadius.circular(14),
                               borderSide:
                                   const BorderSide(
-                                color: Colors.green,
+                                color: Color(0xFF159447),
                                 width: 2,
                               ),
                             ),
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                hidePassword
-                                    ? Icons
-                                        .visibility_off_outlined
-                                    : Icons
-                                        .visibility_outlined,
-                              ),
                               onPressed: isLoading
                                   ? null
                                   : () {
@@ -459,6 +506,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                             !hidePassword;
                                       });
                                     },
+                              icon: Icon(
+                                hidePassword
+                                    ? Icons
+                                        .visibility_off_outlined
+                                    : Icons
+                                        .visibility_outlined,
+                              ),
                             ),
                           ),
                         ),
@@ -470,11 +524,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 isLoading ? null : login,
                             style: ElevatedButton.styleFrom(
                               backgroundColor:
-                                  Colors.green,
+                                  const Color(0xFF159447),
                               foregroundColor:
                                   Colors.white,
                               disabledBackgroundColor:
-                                  Colors.green.shade200,
+                                  const Color(0xFF159447)
+                                      .withValues(
+                                alpha: 0.45,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius:
                                     BorderRadius.circular(14),
@@ -510,9 +567,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             style:
                                 OutlinedButton.styleFrom(
                               foregroundColor:
-                                  Colors.green,
+                                  const Color(0xFF159447),
                               side: const BorderSide(
-                                color: Colors.green,
+                                color: Color(0xFF159447),
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius:
@@ -527,6 +584,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                     FontWeight.bold,
                               ),
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'Servicepay-to-Servicepay transfer '
+                          'is available.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.black54,
                           ),
                         ),
                       ],
