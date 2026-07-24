@@ -1,10 +1,16 @@
-name: Deploy ServicePay Web
+name: Deploy ServicePay Customer Web
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+    paths:
+      - "lib/**"
+      - "web/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/deploy-customer-web.yml"
 
 permissions:
   contents: read
@@ -12,7 +18,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: servicepay-pages
+  group: servicepay-customer-pages
   cancel-in-progress: true
 
 jobs:
@@ -38,29 +44,16 @@ jobs:
       - name: Build Customer Website
         run: flutter build web --release --target lib/main.dart --base-href /
 
-      - name: Save Customer Website
-        run: |
-          mkdir -p pages_output
-          cp -R build/web/. pages_output/
-
-      - name: Build Admin Website
-        run: flutter build web --release --target lib/admin/main.dart --base-href /admin/
-
-      - name: Add Admin Website
-        run: |
-          mkdir -p pages_output/admin
-          cp -R build/web/. pages_output/admin/
-
       - name: Add Custom Domain
-        run: echo "servicepay.ng" > pages_output/CNAME
+        run: echo "servicepay.ng" > build/web/CNAME
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Website
+      - name: Upload Customer Website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: pages_output
+          path: build/web
 
   deploy:
     needs: build
@@ -71,6 +64,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Deploy Website
+      - name: Deploy Customer Website
         id: deployment
         uses: actions/deploy-pages@v4
