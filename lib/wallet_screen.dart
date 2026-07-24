@@ -31,24 +31,33 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Future<void> _loadWallet() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final SharedPreferences prefs =
+          await SharedPreferences.getInstance();
 
-      final savedBalance = prefs.getDouble('wallet_balance') ?? 0.0;
-      final savedName = prefs.getString('user_name') ?? '';
-      final savedPhone = prefs.getString('user_phone') ?? '';
+      final double savedBalance =
+          prefs.getDouble('wallet_balance') ?? 0.0;
+
+      final String savedName =
+          prefs.getString('user_name') ?? '';
+
+      final String savedPhone =
+          prefs.getString('user_phone') ?? '';
 
       if (!mounted) return;
 
       setState(() {
         walletBalance = savedBalance;
-        userName =
-            savedName.trim().isEmpty ? 'Servicepay Customer' : savedName;
+        userName = savedName.trim().isEmpty
+            ? 'Servicepay Customer'
+            : savedName;
         userPhone = savedPhone;
         isLoading = false;
       });
 
       await _refreshWallet(showMessage: false);
-    } catch (_) {
+    } catch (error) {
+      debugPrint('Load wallet error: $error');
+
       if (!mounted) return;
 
       setState(() {
@@ -57,7 +66,9 @@ class _WalletScreenState extends State<WalletScreen> {
     }
   }
 
-  Future<void> _refreshWallet({bool showMessage = true}) async {
+  Future<void> _refreshWallet({
+    bool showMessage = true,
+  }) async {
     if (isRefreshing) return;
 
     if (mounted) {
@@ -67,8 +78,11 @@ class _WalletScreenState extends State<WalletScreen> {
     }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
+      final SharedPreferences prefs =
+          await SharedPreferences.getInstance();
+
+      final String? token =
+          prefs.getString('auth_token');
 
       if (token == null || token.trim().isEmpty) {
         if (showMessage) {
@@ -80,7 +94,8 @@ class _WalletScreenState extends State<WalletScreen> {
         return;
       }
 
-      final result = await _requestWalletBalance(token);
+      final Map<String, dynamic>? result =
+          await _requestWalletBalance(token);
 
       if (result == null) {
         if (showMessage) {
@@ -92,10 +107,12 @@ class _WalletScreenState extends State<WalletScreen> {
         return;
       }
 
-      final newBalance = _extractWalletBalance(result);
+      final double? newBalance =
+          _extractWalletBalance(result);
 
       if (newBalance == null) {
-        final message = result['message']?.toString();
+        final String? message =
+            result['message']?.toString();
 
         if (showMessage) {
           _showMessage(
@@ -108,31 +125,38 @@ class _WalletScreenState extends State<WalletScreen> {
         return;
       }
 
-      await prefs.setDouble('wallet_balance', newBalance);
+      await prefs.setDouble(
+        'wallet_balance',
+        newBalance,
+      );
 
-      final userData = result['user'];
+      final dynamic userData = result['user'];
 
       if (userData is Map) {
-        final name = userData['fullName']?.toString() ??
-            userData['name']?.toString();
+        final String? name =
+            userData['fullName']?.toString() ??
+                userData['name']?.toString();
 
-        final phone =
+        final String? phone =
             userData['phone']?.toString();
 
         if (name != null && name.trim().isNotEmpty) {
-          await prefs.setString('user_name', name);
+          await prefs.setString(
+            'user_name',
+            name,
+          );
 
-          if (mounted) {
-            userName = name;
-          }
+          userName = name;
         }
 
-        if (phone != null && phone.trim().isNotEmpty) {
-          await prefs.setString('user_phone', phone);
+        if (phone != null &&
+            phone.trim().isNotEmpty) {
+          await prefs.setString(
+            'user_phone',
+            phone,
+          );
 
-          if (mounted) {
-            userPhone = phone;
-          }
+          userPhone = phone;
         }
       }
 
@@ -143,9 +167,13 @@ class _WalletScreenState extends State<WalletScreen> {
       });
 
       if (showMessage) {
-        _showMessage('Wallet balance refreshed successfully.');
+        _showMessage(
+          'Wallet balance refreshed successfully.',
+        );
       }
-    } catch (_) {
+    } catch (error) {
+      debugPrint('Refresh wallet error: $error');
+
       if (showMessage) {
         _showMessage(
           'Unable to connect to the Servicepay server.',
@@ -165,16 +193,16 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<Map<String, dynamic>?> _requestWalletBalance(
     String token,
   ) async {
-    final endpoints = <String>[
+    final List<String> endpoints = [
       '$baseUrl/wallet/balance',
       '$baseUrl/auth/me',
       '$baseUrl/users/me',
       '$baseUrl/profile',
     ];
 
-    for (final endpoint in endpoints) {
+    for (final String endpoint in endpoints) {
       try {
-        final response = await http
+        final http.Response response = await http
             .get(
               Uri.parse(endpoint),
               headers: {
@@ -183,17 +211,25 @@ class _WalletScreenState extends State<WalletScreen> {
                 'Authorization': 'Bearer $token',
               },
             )
-            .timeout(const Duration(seconds: 20));
+            .timeout(
+              const Duration(seconds: 20),
+            );
+
+        if (response.body.trim().isEmpty) {
+          continue;
+        }
 
         Map<String, dynamic>? body;
 
         try {
-          final decoded = jsonDecode(response.body);
+          final dynamic decoded =
+              jsonDecode(response.body);
 
           if (decoded is Map<String, dynamic>) {
             body = decoded;
           } else if (decoded is Map) {
-            body = Map<String, dynamic>.from(decoded);
+            body =
+                Map<String, dynamic>.from(decoded);
           }
         } catch (_) {
           body = null;
@@ -214,46 +250,41 @@ class _WalletScreenState extends State<WalletScreen> {
                     'Your login session has expired. Please log in again.',
               };
         }
-      } catch (_) {
-        continue;
+      } catch (error) {
+        debugPrint(
+          'Wallet endpoint failed: $endpoint, $error',
+        );
       }
     }
 
     return null;
   }
 
-  double? _extractWalletBalance(Map<String, dynamic> result) {
-    final possibleValues = <dynamic>[
+  double? _extractWalletBalance(
+    Map<String, dynamic> result,
+  ) {
+    final dynamic data = result['data'];
+    final dynamic user = result['user'];
+
+    final List<dynamic> possibleValues = [
       result['walletBalance'],
       result['wallet_balance'],
       result['balance'],
-      result['data'] is Map
-          ? (result['data'] as Map)['walletBalance']
-          : null,
-      result['data'] is Map
-          ? (result['data'] as Map)['wallet_balance']
-          : null,
-      result['data'] is Map
-          ? (result['data'] as Map)['balance']
-          : null,
-      result['user'] is Map
-          ? (result['user'] as Map)['walletBalance']
-          : null,
-      result['user'] is Map
-          ? (result['user'] as Map)['wallet_balance']
-          : null,
-      result['user'] is Map
-          ? (result['user'] as Map)['balance']
-          : null,
+      data is Map ? data['walletBalance'] : null,
+      data is Map ? data['wallet_balance'] : null,
+      data is Map ? data['balance'] : null,
+      user is Map ? user['walletBalance'] : null,
+      user is Map ? user['wallet_balance'] : null,
+      user is Map ? user['balance'] : null,
     ];
 
-    for (final value in possibleValues) {
+    for (final dynamic value in possibleValues) {
       if (value is num) {
         return value.toDouble();
       }
 
       if (value is String) {
-        final parsed = double.tryParse(
+        final double? parsed = double.tryParse(
           value.replaceAll(',', '').trim(),
         );
 
@@ -267,7 +298,8 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _openTransferScreen() async {
-    await Navigator.push(
+    final bool? transferCompleted =
+        await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => const TransferScreen(),
@@ -276,19 +308,40 @@ class _WalletScreenState extends State<WalletScreen> {
 
     if (!mounted) return;
 
-    await _refreshWallet(showMessage: false);
+    if (transferCompleted == true) {
+      final SharedPreferences prefs =
+          await SharedPreferences.getInstance();
+
+      final double savedBalance =
+          prefs.getDouble('wallet_balance') ?? 0.0;
+
+      setState(() {
+        walletBalance = savedBalance;
+      });
+
+      await _refreshWallet(
+        showMessage: false,
+      );
+    }
   }
 
   String _formatAmount(double amount) {
-    final amountText = amount.toStringAsFixed(2);
-    final parts = amountText.split('.');
+    final String amountText =
+        amount.toStringAsFixed(2);
 
-    final wholeNumber = parts[0];
-    final decimalPart = parts.length > 1 ? parts[1] : '00';
+    final List<String> parts =
+        amountText.split('.');
 
-    final buffer = StringBuffer();
+    final String wholeNumber = parts[0];
+    final String decimalPart =
+        parts.length > 1 ? parts[1] : '00';
 
-    for (int index = 0; index < wholeNumber.length; index++) {
+    final StringBuffer buffer =
+        StringBuffer();
+
+    for (int index = 0;
+        index < wholeNumber.length;
+        index++) {
       if (index > 0 &&
           (wholeNumber.length - index) % 3 == 0) {
         buffer.write(',');
@@ -311,8 +364,9 @@ class _WalletScreenState extends State<WalletScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor:
-              isError ? Colors.red.shade700 : Colors.green.shade700,
+          backgroundColor: isError
+              ? Colors.red.shade700
+              : Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -334,14 +388,17 @@ class _WalletScreenState extends State<WalletScreen> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
+            color: Colors.black.withValues(
+              alpha: 0.12,
+            ),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -356,14 +413,18 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
               ),
               IconButton(
-                onPressed:
-                    isRefreshing ? null : () => _refreshWallet(),
+                onPressed: isRefreshing
+                    ? null
+                    : () {
+                        _refreshWallet();
+                      },
                 tooltip: 'Refresh balance',
                 icon: isRefreshing
                     ? const SizedBox(
                         width: 21,
                         height: 21,
-                        child: CircularProgressIndicator(
+                        child:
+                            CircularProgressIndicator(
                           strokeWidth: 2.3,
                           color: Colors.white,
                         ),
@@ -431,8 +492,11 @@ class _WalletScreenState extends State<WalletScreen> {
                 height: 54,
                 decoration: BoxDecoration(
                   color: const Color(0xFF128C7E)
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
+                      .withValues(
+                    alpha: 0.12,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(16),
                 ),
                 child: const Icon(
                   Icons.swap_horiz_rounded,
@@ -443,7 +507,8 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(width: 15),
               const Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Servicepay Transfer',
@@ -489,7 +554,8 @@ class _WalletScreenState extends State<WalletScreen> {
         ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.info_outline_rounded,
@@ -515,7 +581,8 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
+      backgroundColor:
+          const Color(0xFFF5F7F9),
       appBar: AppBar(
         title: const Text(
           'My Wallet',
@@ -526,13 +593,19 @@ class _WalletScreenState extends State<WalletScreen> {
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF222222),
+        foregroundColor:
+            const Color(0xFF222222),
         actions: [
           IconButton(
-            onPressed:
-                isRefreshing ? null : () => _refreshWallet(),
+            onPressed: isRefreshing
+                ? null
+                : () {
+                    _refreshWallet();
+                  },
             tooltip: 'Refresh wallet',
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
           ),
         ],
       ),
@@ -544,11 +617,14 @@ class _WalletScreenState extends State<WalletScreen> {
             )
           : RefreshIndicator(
               color: const Color(0xFF075E54),
-              onRefresh: () => _refreshWallet(
-                showMessage: false,
-              ),
+              onRefresh: () {
+                return _refreshWallet(
+                  showMessage: false,
+                );
+              },
               child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
+                physics:
+                    const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(
                   16,
                   18,
