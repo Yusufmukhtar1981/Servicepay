@@ -18,7 +18,7 @@ exports.buyAirtime = async (req, res) => {
           UserID: process.env.CLUBKONNECT_USER_ID,
           APIKey: process.env.CLUBKONNECT_API_KEY,
           MobileNetwork: network,
-          Amount: amount,
+          
           MobileNumber: phone,
         },
         timeout: 45000,
