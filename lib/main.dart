@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
 
-import '../login_screen.dart';
+import 'login_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ServicePayAdminApp());
+  runApp(const ServicePayApp());
 }
 
-class ServicePayAdminApp extends StatelessWidget {
-  const ServicePayAdminApp({super.key});
+class ServicePayApp extends StatelessWidget {
+  const ServicePayApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ServicePay Admin',
+      title: 'Servicepay',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.green,
+          seedColor: const Color(0xFF159447),
         ),
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF7F9F8),
       ),
       home: const LoginScreen(),
     );
