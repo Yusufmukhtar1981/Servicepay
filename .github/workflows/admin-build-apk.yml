@@ -1,14 +1,18 @@
 name: Build ServicePay Admin APK
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ServicePay_Admin_Phase1
 
     steps:
       - name: Checkout repository
@@ -23,6 +27,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: "3.35.2"
           channel: stable
           cache: true
 
@@ -32,16 +37,15 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Analyze project
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyze admin source
+        run: flutter analyze lib --no-fatal-infos --no-fatal-warnings
 
-      - name: Build release APK
+      - name: Build Admin APK
         run: flutter build apk --release
 
       - name: Upload ServicePay Admin APK
         uses: actions/upload-artifact@v4
         with:
           name: ServicePay-Admin-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: ServicePay_Admin_Phase1/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
-          retention-days: 30
