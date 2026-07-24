@@ -6,35 +6,54 @@ exports.getWallet = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
 
-    const user = await User.findById(userId).select(
-      "fullName phone email walletBalance commissionBalance"
-    );
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Login session ba ta aiki. Ka sake shiga account.",
+      });
+    }
+
+    const user = await User.findById(userId)
+      .select("_id fullName phone email role status walletBalance")
+      .lean();
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "Ba a samu user ba.",
+        message: "Ba a samu account din mai amfani ba.",
       });
     }
 
+    if (String(user.status || "ACTIVE").toUpperCase() !== "ACTIVE") {
+      return res.status(403).json({
+        success: false,
+        message: "An dakatar da wannan account.",
+      });
+    }
+
+    const walletBalance = Number(user.walletBalance || 0);
+
     return res.status(200).json({
       success: true,
-      data: {
-        walletBalance: Number(user.walletBalance || 0),
-        commissionBalance: Number(user.commissionBalance || 0),
-        user: {
-          id: user._id,
-          fullName: user.fullName,
-          phone: user.phone,
-          email: user.email,
-        },
+      walletBalance,
+      balance: walletBalance,
+      user: {
+        id: user._id,
+        _id: user._id,
+        fullName: user.fullName,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        walletBalance,
       },
     });
   } catch (error) {
-    console.log("GET WALLET ERROR:", error);
+    console.error("GET WALLET ERROR:", error);
+
     return res.status(500).json({
       success: false,
-      message: "An samu matsala wajen ɗauko wallet.",
+      message: "An samu matsala wajen dauko wallet.",
     });
   }
 };
