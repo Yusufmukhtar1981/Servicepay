@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'airtime_screen.dart';
@@ -19,7 +22,9 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  String name = 'User';
+  static const String baseUrl =
+      'https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api';
+  String name = 'Customer';
   double balance = 0;
   bool isLoading = true;
 
@@ -31,22 +36,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> loadUserDetails() async {
     final prefs = await SharedPreferences.getInstance();
-
-    final savedName =
-        prefs.getString('user_name') ??
+    final savedName = prefs.getString('user_name') ??
         prefs.getString('full_name') ??
         prefs.getString('name');
+    double newBalance = prefs.getDouble('wallet_balance') ?? 0;
 
-    final savedBalance = prefs.getDouble('wallet_balance');
+    final token = prefs.getString('auth_token');
+    if (token != null && token.isNotEmpty) {
+      try {
+        final response = await http.get(
+          Uri.parse('$baseUrl/wallet'),
+          headers: {'Authorization': 'Bearer $token'},
+        );
+        final result = jsonDecode(response.body);
+        if (response.statusCode == 200 && result['success'] == true) {
+          newBalance =
+              (num.tryParse(result['data']?['walletBalance']?.toString() ?? '0') ?? 0)
+                  .toDouble();
+          await prefs.setDouble('wallet_balance', newBalance);
+        }
+      } catch (_) {
+        // Keep the last locally saved balance when the server is unavailable.
+      }
+    }
 
     if (!mounted) return;
-
     setState(() {
-      name = savedName?.trim().isNotEmpty == true
-          ? savedName!.trim()
-          : 'User';
-
-      balance = savedBalance ?? 0;
+      name = savedName?.isNotEmpty == true ? savedName! : 'Customer';
+      balance = newBalance;
       isLoading = false;
     });
   }
@@ -72,7 +89,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$serviceName is coming soon.'),
-        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -84,7 +100,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
-        elevation: 0,
         title: const Text(
           'Servicepay',
           style: TextStyle(
@@ -93,17 +108,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Refresh',
             onPressed: loadUserDetails,
             icon: const Icon(Icons.refresh),
           ),
           IconButton(
-            tooltip: 'Notifications',
             onPressed: () {
-              showComingSoon(
-                context,
-                'Notifications',
-              );
+              showComingSoon(context, 'Notifications');
             },
             icon: const Icon(
               Icons.notifications_outlined,
@@ -124,7 +134,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Welcome Back',
+                      'Welcome',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.grey,
@@ -139,21 +149,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-
-                    // Wallet balance card
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(22),
                       decoration: BoxDecoration(
                         color: Colors.green,
                         borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,9 +193,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 28),
-
                     const Text(
                       'Services',
                       style: TextStyle(
@@ -202,9 +201,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
                     GridView.count(
                       crossAxisCount: 3,
                       shrinkWrap: true,
@@ -275,7 +272,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         serviceCard(
                           icon: Icons.send_rounded,
-                          title: 'Servicepay Transfer',
+                          title: 'Transfer',
                           onTap: () {
                             openPage(
                               context,
@@ -284,20 +281,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         serviceCard(
-                          icon: Icons.verified_user_outlined,
-                          title: 'ID Verification',
-                          onTap: () {
-                            openPage(
-                              context,
-                              const IdVerificationScreen(),
-                            );
-                          },
-                        ),
+  icon: Icons.verified_user_outlined,
+  title: 'ID Verification',
+  onTap: () {
+    openPage(
+      context,
+      const IdVerificationScreen(),
+    );
+  },
+),
                       ],
                     ),
-
                     const SizedBox(height: 28),
-
                     const Text(
                       'Recent Transactions',
                       style: TextStyle(
@@ -305,9 +300,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-
                     const SizedBox(height: 15),
-
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(24),

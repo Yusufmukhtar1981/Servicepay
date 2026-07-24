@@ -1,0 +1,43 @@
+name: Build Servicepay APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - apk-build
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download project
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Check Flutter
+        run: flutter doctor -v
+
+      - name: Download Flutter packages
+        run: flutter pub get
+
+      - name: Build test APK
+        run: flutter build apk --debug
+
+      - name: Upload Servicepay APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Servicepay-Test-APK
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
