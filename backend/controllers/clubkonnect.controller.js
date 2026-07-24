@@ -80,7 +80,7 @@ exports.buyData = async (req, res) => {
           MobileNetwork: network,
           DataPlan: planCode,
           MobileNumber: phone,
-        Amount: amount,
+        
         },
         timeout: 45000,
         validateStatus: () => true,
