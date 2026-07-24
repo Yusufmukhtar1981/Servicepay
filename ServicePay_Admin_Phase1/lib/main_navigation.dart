@@ -13,31 +13,32 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<Widget> pages = const [
     DashboardScreen(),
+
     Center(
       child: Text(
-        'Transactions',
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-        ),
+        "Users",
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
       ),
     ),
+
     Center(
       child: Text(
-        'Wallet',
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-        ),
+        "Transactions",
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
       ),
     ),
+
     Center(
       child: Text(
-        'Profile',
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-        ),
+        "Reports",
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+      ),
+    ),
+
+    Center(
+      child: Text(
+        "Settings",
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
       ),
     ),
   ];
@@ -58,24 +59,29 @@ class _MainNavigationState extends State<MainNavigation> {
         },
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
+            icon: Icon(Icons.dashboard_outlined),
+            activeIcon: Icon(Icons.dashboard),
+            label: "Dashboard",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_outline),
+            activeIcon: Icon(Icons.people),
+            label: "Users",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long_outlined),
             activeIcon: Icon(Icons.receipt_long),
-            label: 'Transactions',
+            label: "Transactions",
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            activeIcon: Icon(Icons.account_balance_wallet),
-            label: 'Wallet',
+            icon: Icon(Icons.bar_chart_outlined),
+            activeIcon: Icon(Icons.bar_chart),
+            label: "Reports",
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
+            icon: Icon(Icons.settings_outlined),
+            activeIcon: Icon(Icons.settings),
+            label: "Settings",
           ),
         ],
       ),
