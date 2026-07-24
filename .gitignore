@@ -4,3 +4,5 @@ backend/node_modules/
 build/
 .env
 *.zip
+backend/.env
+.env
