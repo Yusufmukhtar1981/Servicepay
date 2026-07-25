@@ -38,7 +38,9 @@ class _LoginScreenState extends State<LoginScreen> {
     String message, {
     bool isError = true,
   }) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -70,7 +72,9 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (!emailPattern.hasMatch(email)) {
-      showMessage('Please enter a valid email address.');
+      showMessage(
+        'Please enter a valid email address.',
+      );
       return false;
     }
 
@@ -84,14 +88,105 @@ class _LoginScreenState extends State<LoginScreen> {
     return true;
   }
 
-  Future<void> saveLoginData(
+  Map<String, dynamic> mapFromDynamic(dynamic value) {
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  String extractToken(
     Map<String, dynamic> result,
+  ) {
+    final Map<String, dynamic> data =
+        mapFromDynamic(result['data']);
+
+    final Map<String, dynamic> authentication =
+        mapFromDynamic(result['authentication']);
+
+    final Map<String, dynamic> auth =
+        mapFromDynamic(result['auth']);
+
+    final dynamic tokenValue =
+        result['token'] ??
+        result['accessToken'] ??
+        result['access_token'] ??
+        result['jwt'] ??
+        data['token'] ??
+        data['accessToken'] ??
+        data['access_token'] ??
+        data['jwt'] ??
+        authentication['token'] ??
+        authentication['accessToken'] ??
+        auth['token'] ??
+        auth['accessToken'];
+
+    String token = tokenValue?.toString().trim() ?? '';
+
+    if (token.toLowerCase().startsWith('bearer ')) {
+      token = token.substring(7).trim();
+    }
+
+    return token;
+  }
+
+  Map<String, dynamic> extractUser(
+    Map<String, dynamic> result,
+  ) {
+    final Map<String, dynamic> directUser =
+        mapFromDynamic(result['user']);
+
+    if (directUser.isNotEmpty) {
+      return directUser;
+    }
+
+    final Map<String, dynamic> data =
+        mapFromDynamic(result['data']);
+
+    final Map<String, dynamic> nestedUser =
+        mapFromDynamic(data['user']);
+
+    if (nestedUser.isNotEmpty) {
+      return nestedUser;
+    }
+
+    final bool dataLooksLikeUser =
+        data.containsKey('_id') ||
+        data.containsKey('id') ||
+        data.containsKey('email') ||
+        data.containsKey('phone') ||
+        data.containsKey('fullName');
+
+    if (dataLooksLikeUser) {
+      return data;
+    }
+
+    return <String, dynamic>{};
+  }
+
+  Future<void> clearOldLoginData(
+    SharedPreferences prefs,
+  ) async {
+    const List<String> oldTokenKeys = [
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
+
+    for (final String key in oldTokenKeys) {
+      await prefs.remove(key);
+    }
+  }
+
+  Future<void> saveLoginData(
+    String token,
     Map<String, dynamic> user,
   ) async {
-    final String token =
-        result['token']?.toString().trim() ?? '';
-
-    if (token.isEmpty) {
+    if (token.trim().isEmpty) {
       throw Exception(
         'Login token was not received.',
       );
@@ -100,10 +195,18 @@ class _LoginScreenState extends State<LoginScreen> {
     final SharedPreferences prefs =
         await SharedPreferences.getInstance();
 
-    await prefs.setString(
+    await clearOldLoginData(prefs);
+
+    final bool tokenSaved = await prefs.setString(
       'auth_token',
-      token,
+      token.trim(),
     );
+
+    if (!tokenSaved) {
+      throw Exception(
+        'Unable to save the login session.',
+      );
+    }
 
     await prefs.setString(
       'user_id',
@@ -115,13 +218,16 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString(
       'user_name',
       user['fullName']?.toString() ??
+          user['full_name']?.toString() ??
           user['name']?.toString() ??
           '',
     );
 
     await prefs.setString(
       'user_phone',
-      user['phone']?.toString() ?? '',
+      user['phone']?.toString() ??
+          user['phoneNumber']?.toString() ??
+          '',
     );
 
     await prefs.setString(
@@ -134,8 +240,18 @@ class _LoginScreenState extends State<LoginScreen> {
       user['role']?.toString() ?? 'CUSTOMER',
     );
 
+    await prefs.setString(
+      'user_status',
+      user['status']?.toString() ?? 'ACTIVE',
+    );
+
+    final dynamic balanceValue =
+        user['walletBalance'] ??
+        user['wallet_balance'] ??
+        user['balance'];
+
     final double walletBalance = double.tryParse(
-          user['walletBalance']?.toString() ?? '0',
+          balanceValue?.toString() ?? '0',
         ) ??
         0.0;
 
@@ -143,10 +259,26 @@ class _LoginScreenState extends State<LoginScreen> {
       'wallet_balance',
       walletBalance,
     );
+
+    final String? savedToken =
+        prefs.getString('auth_token');
+
+    if (savedToken == null ||
+        savedToken.trim().isEmpty) {
+      throw Exception(
+        'The login session could not be saved.',
+      );
+    }
+
+    debugPrint(
+      'Authentication token saved successfully.',
+    );
   }
 
   Future<void> login() async {
-    if (!validateFields()) return;
+    if (!validateFields()) {
+      return;
+    }
 
     FocusScope.of(context).unfocus();
 
@@ -155,9 +287,12 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      final Uri endpoint =
+          Uri.parse('$baseUrl/auth/login');
+
       final http.Response response = await http
           .post(
-            Uri.parse('$baseUrl/auth/login'),
+            endpoint,
             headers: const {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
@@ -180,7 +315,10 @@ class _LoginScreenState extends State<LoginScreen> {
         'Customer login response: ${response.body}',
       );
 
-      if (response.body.trim().isEmpty) {
+      final String responseBody =
+          response.body.trim();
+
+      if (responseBody.isEmpty) {
         showMessage(
           'The server returned an empty response. '
           'Please try again.',
@@ -189,7 +327,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final dynamic decodedResponse =
-          jsonDecode(response.body);
+          jsonDecode(responseBody);
 
       if (decodedResponse is! Map) {
         showMessage(
@@ -206,36 +344,51 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode < 200 ||
           response.statusCode >= 300) {
         showMessage(
+          result['message']?.toString().trim().isNotEmpty ==
+                  true
+              ? result['message'].toString()
+              : 'Incorrect email address or password.',
+        );
+        return;
+      }
+
+      final bool successValue =
+          result['success'] == true ||
+          result['success'] == null;
+
+      if (!successValue) {
+        showMessage(
           result['message']?.toString() ??
-              'Incorrect email address or password.',
+              'Login was not successful.',
         );
         return;
       }
 
       final String token =
-          result['token']?.toString().trim() ?? '';
-
-      final dynamic userData = result['user'];
+          extractToken(result);
 
       if (token.isEmpty) {
         showMessage(
-          result['message']?.toString() ??
-              'Login token was not received.',
+          'Login was successful, but the server '
+          'did not return an authentication token.',
         );
+
+        debugPrint(
+          'No token found in login response.',
+        );
+
         return;
       }
 
-      if (userData is! Map) {
+      final Map<String, dynamic> user =
+          extractUser(result);
+
+      if (user.isEmpty) {
         showMessage(
           'User information was not received.',
         );
         return;
       }
-
-      final Map<String, dynamic> user =
-          Map<String, dynamic>.from(
-        userData,
-      );
 
       final String role = user['role']
               ?.toString()
@@ -273,18 +426,25 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       await saveLoginData(
-        result,
+        token,
         user,
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
+      showMessage(
+        'Login successful.',
+        isError: false,
+      );
 
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
           builder: (_) => const MainNavigation(),
         ),
-        (route) => false,
+        (Route<dynamic> route) => false,
       );
     } on TimeoutException {
       showMessage(

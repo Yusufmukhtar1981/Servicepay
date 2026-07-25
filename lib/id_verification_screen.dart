@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -18,16 +19,7 @@ class IdVerificationScreen extends StatefulWidget {
 }
 
 class _IdVerificationScreenState extends State<IdVerificationScreen> {
-  // Production backend
   static const String baseUrl = 'https://api.servicepay.ng/api';
-
-  /*
-   * Don gwajin Codespaces kawai, za ka iya maye gurbin baseUrl da:
-   *
-   * https://silver-space-orbit-wxw9x9rjrqx2ggr4-3000.app.github.dev/api
-   *
-   * Bayan gwaji, mayar da api.servicepay.ng.
-   */
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -91,6 +83,12 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
         : 'NIN';
   }
 
+  @override
+  void dispose() {
+    idNumberController.dispose();
+    super.dispose();
+  }
+
   double get selectedFee {
     return (idTypes[selectedIdType]?['fee'] as num?)?.toDouble() ?? 0;
   }
@@ -113,10 +111,41 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
     return selectedIdType == 'NIN' || selectedIdType == 'BVN';
   }
 
-  @override
-  void dispose() {
-    idNumberController.dispose();
-    super.dispose();
+  Future<String?> getSavedAuthToken(
+    SharedPreferences preferences,
+  ) async {
+    const List<String> possibleTokenKeys = [
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
+
+    for (final String key in possibleTokenKeys) {
+      final String? savedValue = preferences.getString(key);
+
+      if (savedValue == null || savedValue.trim().isEmpty) {
+        continue;
+      }
+
+      String token = savedValue.trim();
+
+      if (token.toLowerCase().startsWith('bearer ')) {
+        token = token.substring(7).trim();
+      }
+
+      if (token.isEmpty) {
+        continue;
+      }
+
+      await preferences.setString('auth_token', token);
+
+      return token;
+    }
+
+    return null;
   }
 
   String? validateIdNumber(String? value) {
@@ -151,8 +180,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   Future<void> verifyId() async {
     FocusScope.of(context).unfocus();
 
-    final bool valid =
-        formKey.currentState?.validate() ?? false;
+    final bool valid = formKey.currentState?.validate() ?? false;
 
     if (!valid) {
       return;
@@ -179,13 +207,16 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
           await SharedPreferences.getInstance();
 
       final String? token =
-          preferences.getString('auth_token');
+          await getSavedAuthToken(preferences);
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       if (token == null || token.trim().isEmpty) {
         showMessage(
-          'Your login session has expired. Please log in again.',
+          'Your login session has expired. '
+          'Please log out and log in again.',
           isError: true,
         );
         return;
@@ -213,7 +244,27 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
       final Map<String, dynamic> responseData =
           decodeServerResponse(response);
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
+      if (response.statusCode == 401) {
+        await preferences.remove('auth_token');
+
+        if (!mounted) {
+          return;
+        }
+
+        showMessage(
+          responseData['message']?.toString().trim().isNotEmpty == true
+              ? responseData['message'].toString()
+              : 'Your login session is invalid. '
+                  'Please log out and log in again.',
+          isError: true,
+        );
+
+        return;
+      }
 
       final bool successful =
           response.statusCode >= 200 &&
@@ -236,8 +287,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
       }
 
       final dynamic verificationValue =
-          responseData['verification'] ??
-          responseData['data'];
+          responseData['verification'] ?? responseData['data'];
 
       final Map<String, dynamic> verification =
           verificationValue is Map
@@ -250,7 +300,9 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
         verification,
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       await showVerificationResult(
         verification,
@@ -258,22 +310,37 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
             'ID verified successfully.',
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       idNumberController.clear();
 
       setState(() {
         hasConsent = false;
       });
+    } on TimeoutException {
+      if (!mounted) {
+        return;
+      }
+
+      showMessage(
+        'The verification request timed out. Please try again.',
+        isError: true,
+      );
     } on http.ClientException {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       showMessage(
         'Unable to connect to the verification server.',
         isError: true,
       );
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       showMessage(
         'Unable to complete verification. Please try again.',
@@ -296,8 +363,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
     if (body.isEmpty) {
       return {
         'success': false,
-        'message':
-            'The server returned an empty response. '
+        'message': 'The server returned an empty response. '
             'Status: ${response.statusCode}.',
       };
     }
@@ -322,8 +388,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
 
       return {
         'success': false,
-        'message':
-            'The server did not return valid JSON. '
+        'message': 'The server did not return valid JSON. '
             'Status: ${response.statusCode}. '
             '$shortBody',
       };
@@ -361,7 +426,9 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
     String message, {
     required bool isError,
   }) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -509,8 +576,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
 
       final String text = value.toString().trim();
 
-      if (text.isNotEmpty &&
-          text.toLowerCase() != 'null') {
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
         return text;
       }
     }
@@ -559,11 +625,9 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   }
 
   Widget buildIdTypeCard(String idType) {
-    final Map<String, dynamic> details =
-        idTypes[idType]!;
+    final Map<String, dynamic> details = idTypes[idType]!;
 
-    final bool isSelected =
-        selectedIdType == idType;
+    final bool isSelected = selectedIdType == idType;
 
     final ColorScheme colorScheme =
         Theme.of(context).colorScheme;
@@ -596,8 +660,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
           ),
         ),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
               details['icon'] as IconData,
@@ -736,16 +799,13 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                     TextCapitalization.characters,
                 validator: validateIdNumber,
                 decoration: InputDecoration(
-                  labelText:
-                      '$selectedShortTitle Number',
+                  labelText: '$selectedShortTitle Number',
                   hintText: usesNumericKeyboard
                       ? 'Enter 11-digit number'
                       : 'Enter ID number',
-                  prefixIcon:
-                      const Icon(Icons.numbers),
+                  prefixIcon: const Icon(Icons.numbers),
                   border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
               ),
@@ -754,8 +814,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.orange.shade50,
-                  borderRadius:
-                      BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: Colors.orange.shade200,
                   ),
@@ -809,14 +868,12 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
               SizedBox(
                 height: 54,
                 child: FilledButton.icon(
-                  onPressed:
-                      isLoading ? null : verifyId,
+                  onPressed: isLoading ? null : verifyId,
                   icon: isLoading
                       ? const SizedBox(
                           width: 21,
                           height: 21,
-                          child:
-                              CircularProgressIndicator(
+                          child: CircularProgressIndicator(
                             strokeWidth: 2.5,
                             color: Colors.white,
                           ),
@@ -838,8 +895,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
               ),
               const SizedBox(height: 18),
               const Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
                     Icons.lock_outline,
