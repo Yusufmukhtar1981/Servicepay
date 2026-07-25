@@ -8,6 +8,7 @@ import 'electricity_screen.dart';
 import 'exam_pin_screen.dart';
 import 'id_verification_screen.dart';
 import 'logistics_screen.dart';
+import 'notifications_screen.dart';
 import 'transfer_screen.dart';
 import 'wallet_screen.dart';
 import 'widgets.dart';
@@ -66,18 +67,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await loadUserDetails();
   }
 
-  void showComingSoon(
-    BuildContext context,
-    String serviceName,
-  ) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$serviceName is coming soon.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -101,9 +90,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             tooltip: 'Notifications',
             onPressed: () {
-              showComingSoon(
+              openPage(
                 context,
-                'Notifications',
+                const NotificationsScreen(),
               );
             },
             icon: const Icon(
@@ -149,7 +138,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         borderRadius: BorderRadius.circular(18),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
+                            color: Colors.black.withValues(
+                              alpha: 0.08,
+                            ),
                             blurRadius: 12,
                             offset: const Offset(0, 6),
                           ),
@@ -208,7 +199,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     GridView.count(
                       crossAxisCount: 3,
                       shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
+                      physics:
+                          const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 16,
                       crossAxisSpacing: 16,
                       childAspectRatio: 1.05,
@@ -264,7 +256,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         serviceCard(
-                          icon: Icons.account_balance_wallet_outlined,
+                          icon:
+                              Icons.account_balance_wallet_outlined,
                           title: 'Wallet',
                           onTap: () {
                             openPage(
