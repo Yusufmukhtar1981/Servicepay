@@ -7,6 +7,7 @@ import 'data_screen.dart';
 import 'electricity_screen.dart';
 import 'exam_pin_screen.dart';
 import 'id_verification_screen.dart';
+import 'logistics_screen.dart';
 import 'transfer_screen.dart';
 import 'wallet_screen.dart';
 import 'widgets.dart';
@@ -140,7 +141,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Wallet balance card
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(22),
@@ -290,6 +290,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             openPage(
                               context,
                               const IdVerificationScreen(),
+                            );
+                          },
+                        ),
+                        serviceCard(
+                          icon: Icons.local_shipping_outlined,
+                          title: 'Logistics',
+                          onTap: () {
+                            openPage(
+                              context,
+                              const LogisticsScreen(),
                             );
                           },
                         ),
