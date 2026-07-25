@@ -12,7 +12,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ServicePay_Admin_Phase1
+        working-directory: .
 
     steps:
       - name: Checkout repository
@@ -37,7 +37,7 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Analyze admin source
+      - name: Analyze source
         run: flutter analyze lib --no-fatal-infos --no-fatal-warnings
 
       - name: Build Admin APK
@@ -47,5 +47,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ServicePay-Admin-APK
-          path: ServicePay_Admin_Phase1/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
