@@ -12,6 +12,7 @@ const transferRoutes = require("./routes/transfer.routes");
 const idVerificationRoutes = require("./routes/idVerification.routes");
 connectDB();
 const deliveryRoutes = require("./routes/delivery.routes");
+const notificationRoutes = require("./routes/notification.routes");
 const app = express();
 
 app.use(helmet());
