@@ -17,7 +17,7 @@ const verificationFees = {
 const supportedIdTypes = Object.keys(verificationFees);
 
 const maskIdNumber = (idNumber) => {
-  const value = String(idNumber || "");
+  const value = String(idNumber || "").trim();
 
   if (value.length <= 4) {
     return "****";
@@ -36,29 +36,89 @@ const getPremblyRequest = (idType, idNumber) => {
         },
       };
 
-    /*
-     * BVN, DRIVER_LICENSE, PASSPORT and VOTER_CARD
-     * will be added after confirming the exact Prembly products
-     * enabled on your account.
-     */
     default:
       return null;
   }
+};
+
+const getProviderMessage = (providerData) => {
+  return (
+    providerData?.detail ||
+    providerData?.message ||
+    providerData?.error ||
+    providerData?.response_message ||
+    providerData?.responseMessage ||
+    "ID verification failed."
+  );
+};
+
+const getResultData = (providerData) => {
+  if (
+    providerData?.data &&
+    typeof providerData.data === "object"
+  ) {
+    return providerData.data;
+  }
+
+  if (
+    providerData?.verification &&
+    typeof providerData.verification === "object"
+  ) {
+    return providerData.verification;
+  }
+
+  return {};
+};
+
+const verificationWasSuccessful = (
+  statusCode,
+  providerData
+) => {
+  if (statusCode < 200 || statusCode >= 300) {
+    return false;
+  }
+
+  if (
+    providerData?.status === false ||
+    providerData?.success === false
+  ) {
+    return false;
+  }
+
+  const responseCode =
+    providerData?.response_code ||
+    providerData?.responseCode ||
+    providerData?.code;
+
+  if (
+    responseCode &&
+    !["00", "200", 200].includes(responseCode)
+  ) {
+    return false;
+  }
+
+  return Boolean(
+    providerData?.status === true ||
+      providerData?.success === true ||
+      providerData?.data ||
+      providerData?.verification
+  );
 };
 
 exports.verifyId = async (req, res) => {
   let verificationRecord = null;
 
   try {
-    const idType = String(req.body.idType || "")
+    const idType = String(req.body?.idType || "")
       .trim()
       .toUpperCase();
 
-    const idNumber = String(req.body.idNumber || "").trim();
+    const idNumber = String(req.body?.idNumber || "")
+      .trim();
 
     const consent =
-      req.body.consent === true ||
-      req.body.consent === "true";
+      req.body?.consent === true ||
+      req.body?.consent === "true";
 
     if (!idType || !idNumber) {
       return res.status(400).json({
@@ -77,7 +137,8 @@ exports.verifyId = async (req, res) => {
     if (!consent) {
       return res.status(400).json({
         success: false,
-        message: "Consent is required before verification.",
+        message:
+          "Consent is required before verification.",
       });
     }
 
@@ -91,18 +152,26 @@ exports.verifyId = async (req, res) => {
       });
     }
 
-    if (
-      !process.env.PREMBLY_SECRET_KEY ||
-      !process.env.PREMBLY_PUBLIC_KEY
-    ) {
+    if (!process.env.PREMBLY_SECRET_KEY) {
       return res.status(503).json({
         success: false,
         message:
-          "Prembly credentials are not configured on the server.",
+          "Prembly Secret Key is not configured on the server.",
       });
     }
 
-    const userId = req.user?.id || req.user?._id;
+    const userId =
+      req.user?.id ||
+      req.user?._id ||
+      req.user;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Authentication failed. Please log in again.",
+      });
+    }
 
     const user = await User.findById(userId);
 
@@ -122,7 +191,10 @@ exports.verifyId = async (req, res) => {
       });
     }
 
-    const premblyRequest = getPremblyRequest(idType, idNumber);
+    const premblyRequest = getPremblyRequest(
+      idType,
+      idNumber
+    );
 
     if (!premblyRequest) {
       return res.status(503).json({
@@ -140,8 +212,10 @@ exports.verifyId = async (req, res) => {
       consent: true,
       status: "PENDING",
       provider: "PREMBLY",
+      providerReference: "",
       verificationData: {},
       providerResponse: {},
+      errorMessage: "",
     });
 
     const premblyResponse = await axios.post(
@@ -151,8 +225,8 @@ exports.verifyId = async (req, res) => {
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          "x-api-key": process.env.PREMBLY_SECRET_KEY,
-          "app-id": process.env.PREMBLY_PUBLIC_KEY,
+          "x-api-key":
+            process.env.PREMBLY_SECRET_KEY,
         },
         timeout: 60000,
         validateStatus: () => true,
@@ -160,49 +234,45 @@ exports.verifyId = async (req, res) => {
     );
 
     const providerData =
-      typeof premblyResponse.data === "object" &&
-      premblyResponse.data !== null
+      premblyResponse.data &&
+      typeof premblyResponse.data === "object"
         ? premblyResponse.data
         : {
-            rawResponse: String(premblyResponse.data || ""),
+            rawResponse: String(
+              premblyResponse.data || ""
+            ),
           };
 
-    const verificationSucceeded =
-      premblyResponse.status >= 200 &&
-      premblyResponse.status < 300 &&
-      providerData.status === true &&
-      (
-        providerData.response_code === "00" ||
-        providerData.responseCode === "00" ||
-        providerData.data
-      );
+    const successful = verificationWasSuccessful(
+      premblyResponse.status,
+      providerData
+    );
 
-    if (!verificationSucceeded) {
+    if (!successful) {
+      const failureMessage =
+        getProviderMessage(providerData);
+
       verificationRecord.status = "FAILED";
-      verificationRecord.providerResponse = providerData;
+      verificationRecord.providerResponse =
+        providerData;
       verificationRecord.errorMessage =
-        providerData.detail ||
-        providerData.message ||
-        "Prembly verification failed.";
+        failureMessage;
 
       await verificationRecord.save();
 
-      return res.status(400).json({
+      return res.status(
+        premblyResponse.status >= 400 &&
+          premblyResponse.status < 500
+          ? premblyResponse.status
+          : 400
+      ).json({
         success: false,
         message:
-          providerData.detail ||
-          providerData.message ||
-          "ID verification failed. No money was deducted.",
+          `${failureMessage} No money was deducted.`,
       });
     }
 
-    /*
-     * Only deduct money after Prembly confirms success.
-     */
-    user.walletBalance = Number(user.walletBalance || 0) - fee;
-    await user.save();
-
-    const resultData = providerData.data || {};
+    const resultData = getResultData(providerData);
 
     const firstName =
       resultData.firstName ||
@@ -225,41 +295,66 @@ exports.verifyId = async (req, res) => {
     const fullName =
       resultData.fullName ||
       resultData.full_name ||
+      resultData.name ||
       [firstName, middleName, lastName]
         .filter(Boolean)
         .join(" ") ||
       "Verified identity";
 
+    const dateOfBirth =
+      resultData.dateOfBirth ||
+      resultData.date_of_birth ||
+      resultData.birthdate ||
+      resultData.dob ||
+      "";
+
+    const gender =
+      resultData.gender || "";
+
+    const phone =
+      resultData.phoneNumber ||
+      resultData.phone_number ||
+      resultData.phone ||
+      "";
+
+    const photo =
+      resultData.photo ||
+      resultData.image ||
+      resultData.base64Image ||
+      resultData.photo_base64 ||
+      "";
+
+    const providerReference =
+      providerData?.verification?.reference ||
+      providerData?.reference ||
+      providerData?.transaction_reference ||
+      providerData?.transactionReference ||
+      "";
+
+    user.walletBalance =
+      Number(user.walletBalance || 0) - fee;
+
+    await user.save();
+
     verificationRecord.status = "SUCCESS";
     verificationRecord.amountCharged = fee;
     verificationRecord.providerReference =
-      providerData.verification?.reference ||
-      providerData.reference ||
-      "";
+      providerReference;
 
     verificationRecord.verificationData = {
       fullName,
-      dateOfBirth:
-        resultData.dateOfBirth ||
-        resultData.date_of_birth ||
-        resultData.dob ||
-        "",
-      gender: resultData.gender || "",
-      phone:
-        resultData.phoneNumber ||
-        resultData.phone_number ||
-        resultData.phone ||
-        "",
-      photo:
-        resultData.photo ||
-        resultData.image ||
-        resultData.base64Image ||
-        "",
+      dateOfBirth,
+      gender,
+      phone,
+      photo,
       maskedIdNumber: maskIdNumber(idNumber),
       status: "Verified",
     };
 
-    verificationRecord.providerResponse = providerData;
+    verificationRecord.providerResponse =
+      providerData;
+
+    verificationRecord.errorMessage = "";
 
     await verificationRecord.save();
 
@@ -270,17 +365,17 @@ exports.verifyId = async (req, res) => {
         id: verificationRecord._id,
         idType,
         fullName,
-        dateOfBirth:
-          verificationRecord.verificationData.dateOfBirth,
-        gender: verificationRecord.verificationData.gender,
-        phone: verificationRecord.verificationData.phone,
-        photo: verificationRecord.verificationData.photo,
+        dateOfBirth,
+        gender,
+        phone,
+        photo,
         maskedIdNumber:
-          verificationRecord.verificationData.maskedIdNumber,
+          verificationRecord.verificationData
+            .maskedIdNumber,
         status: "Verified",
         amountCharged: fee,
         walletBalance: user.walletBalance,
-        reference: verificationRecord.providerReference,
+        reference: providerReference,
         createdAt: verificationRecord.createdAt,
       },
     });
@@ -300,7 +395,9 @@ exports.verifyId = async (req, res) => {
       verificationRecord.providerResponse =
         error.response?.data || {};
 
-      await verificationRecord.save().catch(() => {});
+      await verificationRecord
+        .save()
+        .catch(() => {});
     }
 
     return res.status(500).json({
