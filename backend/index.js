@@ -11,7 +11,7 @@ const authRoutes = require("./routes/auth.routes");
 const transferRoutes = require("./routes/transfer.routes");
 const idVerificationRoutes = require("./routes/idVerification.routes");
 connectDB();
-
+const deliveryRoutes = require("./routes/delivery.routes");
 const app = express();
 
 app.use(helmet());
@@ -30,6 +30,7 @@ app.use("/api/clubkonnect", clubkonnectRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/transfer", transferRoutes);
 app.use("/api/id-verification", idVerificationRoutes);
+app.use("/api/delivery", deliveryRoutes);
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
