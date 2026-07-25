@@ -9,7 +9,7 @@ const paystackRoutes = require("./routes/paystack.routes");
 const clubkonnectRoutes = require("./routes/clubkonnect.routes");
 const authRoutes = require("./routes/auth.routes");
 const transferRoutes = require("./routes/transfer.routes");
-
+const idVerificationRoutes = require("./routes/idVerification.routes");
 connectDB();
 
 const app = express();
@@ -29,7 +29,7 @@ app.use("/api/paystack", paystackRoutes);
 app.use("/api/clubkonnect", clubkonnectRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/transfer", transferRoutes);
-
+app.use("/api/id-verification", idVerificationRoutes);
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
