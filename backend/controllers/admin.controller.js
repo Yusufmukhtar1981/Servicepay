@@ -234,7 +234,185 @@ const getAdminDashboard = async (req, res) => {
     });
   }
 };
+const getUsers = async (req, res) => {
+  try {
+    const {
+      search = "",
+      role,
+      status,
+      page = 1,
+      limit = 20,
+    } = req.query;
 
+    const filter = {};
+
+    if (search.trim()) {
+      filter.$or = [
+        {
+          fullName: {
+            $regex: search.trim(),
+            $options: "i",
+          },
+        },
+        {
+          phone: {
+            $regex: search.trim(),
+            $options: "i",
+          },
+        },
+        {
+          email: {
+            $regex: search.trim(),
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    if (role) {
+      filter.role = role;
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const pageLimit = Math.min(
+      Math.max(Number(limit) || 20, 1),
+      100
+    );
+
+    const skip = (currentPage - 1) * pageLimit;
+
+    const [users, totalUsers] = await Promise.all([
+      User.find(filter)
+        .select("-password")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(pageLimit),
+
+      User.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        users,
+        pagination: {
+          page: currentPage,
+          limit: pageLimit,
+          totalUsers,
+          totalPages: Math.ceil(totalUsers / pageLimit),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get users error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load users.",
+    });
+  }
+};
+
+const getUserById = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId)
+      .select("-password")
+      .populate(
+        "zonalManagerId stateManagerId agentId referredBy",
+        "fullName phone email role"
+      );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        user,
+      },
+    });
+  } catch (error) {
+    console.error("Get user error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load user.",
+    });
+  }
+};
+
+const updateUserStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    const allowedStatuses = [
+      "ACTIVE",
+      "SUSPENDED",
+      "BLOCKED",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Status must be ACTIVE, SUSPENDED, or BLOCKED.",
+      });
+    }
+
+    const user = await User.findById(req.params.userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    if (
+      user._id.toString() === req.user._id.toString() &&
+      status !== "ACTIVE"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You cannot suspend or block your own admin account.",
+      });
+    }
+
+    user.status = status;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `User status changed to ${status}.`,
+      data: {
+        user: {
+          id: user._id,
+          fullName: user.fullName,
+          phone: user.phone,
+          email: user.email,
+          role: user.role,
+          status: user.status,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Update user status error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update user status.",
+    });
+  }
+};
 module.exports = {
   getAdminDashboard,
 };
