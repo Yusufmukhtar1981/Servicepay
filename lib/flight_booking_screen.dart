@@ -8,141 +8,336 @@ class FlightBookingScreen extends StatefulWidget {
       _FlightBookingScreenState();
 }
 
-class _FlightBookingScreenState
-    extends State<FlightBookingScreen> {
-  final fromController = TextEditingController();
-  final toController = TextEditingController();
+class _FlightBookingScreenState extends State<FlightBookingScreen> {
+  final formKey = GlobalKey<FormState>();
 
-  bool isRoundTrip = false;
-  DateTime? departureDate;
-  DateTime? returnDate;
+  final List<String> airports = const [
+    'Abuja (ABV)',
+    'Lagos (LOS)',
+    'Kano (KAN)',
+    'Port Harcourt (PHC)',
+    'Enugu (ENU)',
+    'Kaduna (KAD)',
+    'Owerri (QOW)',
+    'Asaba (ABB)',
+    'Ilorin (ILR)',
+    'Maiduguri (MIU)',
+    'Yola (YOL)',
+    'Sokoto (SKO)',
+  ];
 
-  int passengers = 1;
-  String cabinClass = 'Economy';
-
-  final List<String> cabinClasses = [
+  final List<String> cabinClasses = const [
     'Economy',
     'Premium Economy',
     'Business',
     'First Class',
   ];
 
-  @override
-  void dispose() {
-    fromController.dispose();
-    toController.dispose();
-    super.dispose();
+  bool isRoundTrip = false;
+  bool isSearching = false;
+
+  String? departureAirport;
+  String? arrivalAirport;
+  String selectedCabinClass = 'Economy';
+
+  DateTime departureDate =
+      DateTime.now().add(const Duration(days: 1));
+
+  DateTime? returnDate;
+
+  int adults = 1;
+  int children = 0;
+  int infants = 0;
+
+  int get totalPassengers => adults + children + infants;
+
+  String formatDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
   Future<void> selectDepartureDate() async {
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate:
-          departureDate ??
-          DateTime.now().add(
-            const Duration(days: 1),
-          ),
+      initialDate: departureDate,
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(
-        const Duration(days: 730),
+        const Duration(days: 365),
       ),
+      helpText: 'Select departure date',
     );
 
-    if (selectedDate == null || !mounted) return;
+    if (selectedDate == null) return;
 
     setState(() {
       departureDate = selectedDate;
 
       if (returnDate != null &&
-          returnDate!.isBefore(selectedDate)) {
+          returnDate!.isBefore(departureDate)) {
         returnDate = null;
       }
     });
   }
 
   Future<void> selectReturnDate() async {
-    final minimumDate =
-        departureDate ??
-        DateTime.now().add(
-          const Duration(days: 1),
-        );
+    final initialReturnDate =
+        returnDate ??
+        departureDate.add(const Duration(days: 1));
 
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate:
-          returnDate ??
-          minimumDate.add(
-            const Duration(days: 1),
-          ),
-      firstDate: minimumDate,
+      initialDate: initialReturnDate,
+      firstDate: departureDate,
       lastDate: DateTime.now().add(
-        const Duration(days: 730),
+        const Duration(days: 365),
       ),
+      helpText: 'Select return date',
     );
 
-    if (selectedDate == null || !mounted) return;
+    if (selectedDate == null) return;
 
     setState(() {
       returnDate = selectedDate;
     });
   }
 
-  String formatDate(DateTime? date) {
-    if (date == null) {
-      return 'Select date';
-    }
-
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-
-    return '$day/$month/${date.year}';
-  }
-
-  void swapLocations() {
-    final currentFrom = fromController.text;
-    fromController.text = toController.text;
-    toController.text = currentFrom;
-  }
-
-  void increasePassengers() {
-    if (passengers >= 9) return;
-
+  void swapAirports() {
     setState(() {
-      passengers++;
+      final currentDeparture = departureAirport;
+      departureAirport = arrivalAirport;
+      arrivalAirport = currentDeparture;
     });
   }
 
-  void decreasePassengers() {
-    if (passengers <= 1) return;
+  void showPassengerSelector() {
+    int temporaryAdults = adults;
+    int temporaryChildren = children;
+    int temporaryInfants = infants;
 
-    setState(() {
-      passengers--;
-    });
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (bottomSheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom + 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Passengers',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Choose the number of passengers.',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    passengerCounter(
+                      title: 'Adults',
+                      subtitle: '12 years and above',
+                      value: temporaryAdults,
+                      minimum: 1,
+                      onChanged: (value) {
+                        setModalState(() {
+                          temporaryAdults = value;
+                        });
+                      },
+                    ),
+                    const Divider(height: 28),
+                    passengerCounter(
+                      title: 'Children',
+                      subtitle: '2 to 11 years',
+                      value: temporaryChildren,
+                      minimum: 0,
+                      onChanged: (value) {
+                        setModalState(() {
+                          temporaryChildren = value;
+                        });
+                      },
+                    ),
+                    const Divider(height: 28),
+                    passengerCounter(
+                      title: 'Infants',
+                      subtitle: 'Below 2 years',
+                      value: temporaryInfants,
+                      minimum: 0,
+                      onChanged: (value) {
+                        setModalState(() {
+                          temporaryInfants = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: FilledButton(
+                        onPressed: () {
+                          setState(() {
+                            adults = temporaryAdults;
+                            children = temporaryChildren;
+                            infants = temporaryInfants;
+                          });
+
+                          Navigator.pop(bottomSheetContext);
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              const Color(0xFF2E8B3C),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          'Confirm Passengers',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
-  void searchFlights() {
-    final from = fromController.text.trim();
-    final to = toController.text.trim();
+  Widget passengerCounter({
+    required String title,
+    required String subtitle,
+    required int value,
+    required int minimum,
+    required ValueChanged<int> onChanged,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        counterButton(
+          icon: Icons.remove,
+          enabled: value > minimum,
+          onPressed: () {
+            if (value > minimum) {
+              onChanged(value - 1);
+            }
+          },
+        ),
+        SizedBox(
+          width: 45,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        counterButton(
+          icon: Icons.add,
+          enabled: value < 9,
+          onPressed: () {
+            if (value < 9) {
+              onChanged(value + 1);
+            }
+          },
+        ),
+      ],
+    );
+  }
 
-    if (from.isEmpty || to.isEmpty) {
-      showMessage(
-        'Please enter your departure and destination.',
-        isError: true,
-      );
+  Widget counterButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: enabled
+          ? const Color(0xFFE8F5EA)
+          : Colors.grey.shade100,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: enabled ? onPressed : null,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(
+            icon,
+            color: enabled
+                ? const Color(0xFF2E8B3C)
+                : Colors.grey.shade400,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> searchFlights() async {
+    FocusScope.of(context).unfocus();
+
+    if (!formKey.currentState!.validate()) {
       return;
     }
 
-    if (from.toLowerCase() == to.toLowerCase()) {
+    if (departureAirport == arrivalAirport) {
       showMessage(
-        'Departure and destination cannot be the same.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (departureDate == null) {
-      showMessage(
-        'Please select your departure date.',
+        'Departure and destination airports cannot be the same.',
         isError: true,
       );
       return;
@@ -150,132 +345,404 @@ class _FlightBookingScreenState
 
     if (isRoundTrip && returnDate == null) {
       showMessage(
-        'Please select your return date.',
+        'Please select a return date.',
         isError: true,
       );
       return;
     }
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) {
-        return FlightSearchSummary(
-          tripType:
-              isRoundTrip ? 'Round Trip' : 'One Way',
-          from: from,
-          to: to,
-          departureDate: formatDate(
-            departureDate,
-          ),
-          returnDate:
-              isRoundTrip
-                  ? formatDate(returnDate)
-                  : null,
-          passengers: passengers,
-          cabinClass: cabinClass,
-        );
-      },
+    setState(() {
+      isSearching = true;
+    });
+
+    await Future<void>.delayed(
+      const Duration(milliseconds: 900),
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      isSearching = false;
+    });
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FlightResultsScreen(
+          departureAirport: departureAirport!,
+          arrivalAirport: arrivalAirport!,
+          departureDate: departureDate,
+          returnDate: isRoundTrip ? returnDate : null,
+          cabinClass: selectedCabinClass,
+          passengers: totalPassengers,
+        ),
+      ),
     );
   }
 
   void showMessage(
     String message, {
-    required bool isError,
+    bool isError = false,
   }) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor:
-            isError ? Colors.red : Colors.green,
+        backgroundColor: isError
+            ? Colors.red.shade700
+            : const Color(0xFF2E8B3C),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  Widget buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 10,
-      ),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
+  @override
+  Widget build(BuildContext context) {
+    const primaryColor = Color(0xFF2E8B3C);
 
-  Widget buildLocationField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-  }) {
-    return TextFormField(
-      controller: controller,
-      textCapitalization: TextCapitalization.words,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(
-          icon,
-          color: Colors.green,
-        ),
-        filled: true,
-        fillColor: const Color(0xFFF7F9FB),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: Color(0xFFE5E7EB),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: Colors.green,
-            width: 1.5,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9F7),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        title: const Text(
+          'Flight Booking',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final contentWidth =
+              constraints.maxWidth > 720 ? 680.0 : double.infinity;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(18),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: contentWidth,
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      flightHeader(),
+                      const SizedBox(height: 18),
+                      tripTypeSelector(),
+                      const SizedBox(height: 18),
+                      airportSection(),
+                      const SizedBox(height: 16),
+                      dateSection(),
+                      const SizedBox(height: 16),
+                      passengerAndClassSection(),
+                      const SizedBox(height: 22),
+                      searchButton(),
+                      const SizedBox(height: 18),
+                      bookingBenefits(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
-  Widget buildDateCard({
+  Widget flightHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF237A32),
+            Color(0xFF48A84F),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2E8B3C).withValues(
+              alpha: 0.22,
+            ),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: const Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Book your next trip',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 7),
+                Text(
+                  'Search and compare available flights easily.',
+                  style: TextStyle(
+                    color: Color(0xFFE9F7EA),
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: 14),
+          CircleAvatar(
+            radius: 35,
+            backgroundColor: Color(0x33FFFFFF),
+            child: Icon(
+              Icons.flight_takeoff_rounded,
+              color: Colors.white,
+              size: 36,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget tripTypeSelector() {
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      child: Row(
+        children: [
+          expandedTripButton(
+            label: 'One Way',
+            selected: !isRoundTrip,
+            onTap: () {
+              setState(() {
+                isRoundTrip = false;
+              });
+            },
+          ),
+          expandedTripButton(
+            label: 'Round Trip',
+            selected: isRoundTrip,
+            onTap: () {
+              setState(() {
+                isRoundTrip = true;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget expandedTripButton({
     required String label,
-    required String date,
+    required bool selected,
     required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF2E8B3C)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              vertical: 13,
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: selected
+                    ? Colors.white
+                    : Colors.grey.shade700,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget airportSection() {
+    return sectionCard(
+      title: 'Route',
+      icon: Icons.route_rounded,
+      child: Stack(
+        alignment: Alignment.centerRight,
+        children: [
+          Column(
+            children: [
+              airportDropdown(
+                label: 'From',
+                icon: Icons.flight_takeoff_rounded,
+                value: departureAirport,
+                validatorMessage:
+                    'Please select departure airport.',
+                onChanged: (value) {
+                  setState(() {
+                    departureAirport = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 14),
+              airportDropdown(
+                label: 'To',
+                icon: Icons.flight_land_rounded,
+                value: arrivalAirport,
+                validatorMessage:
+                    'Please select destination airport.',
+                onChanged: (value) {
+                  setState(() {
+                    arrivalAirport = value;
+                  });
+                },
+              ),
+            ],
+          ),
+          Positioned(
+            right: 14,
+            child: Material(
+              color: const Color(0xFF2E8B3C),
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: InkWell(
+                onTap: swapAirports,
+                customBorder: const CircleBorder(),
+                child: const SizedBox(
+                  width: 46,
+                  height: 46,
+                  child: Icon(
+                    Icons.swap_vert_rounded,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget airportDropdown({
+    required String label,
     required IconData icon,
+    required String? value,
+    required String validatorMessage,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      isExpanded: true,
+      decoration: inputDecoration(
+        label: label,
+        icon: icon,
+      ),
+      items: airports.map((airport) {
+        return DropdownMenuItem<String>(
+          value: airport,
+          child: Text(
+            airport,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }).toList(),
+      onChanged: onChanged,
+      validator: (selectedValue) {
+        if (selectedValue == null ||
+            selectedValue.isEmpty) {
+          return validatorMessage;
+        }
+
+        return null;
+      },
+    );
+  }
+
+  Widget dateSection() {
+    return sectionCard(
+      title: 'Travel Date',
+      icon: Icons.calendar_month_rounded,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: dateTile(
+              label: 'Departure',
+              value: formatDate(departureDate),
+              icon: Icons.event_available_rounded,
+              onTap: selectDepartureDate,
+            ),
+          ),
+          if (isRoundTrip) ...[
+            const SizedBox(width: 12),
+            Expanded(
+              child: dateTile(
+                label: 'Return',
+                value: returnDate == null
+                    ? 'Select date'
+                    : formatDate(returnDate!),
+                icon: Icons.event_repeat_rounded,
+                onTap: selectReturnDate,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget dateTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    required VoidCallback onTap,
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(15),
       child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFF7F9FB),
-          borderRadius: BorderRadius.circular(14),
+          color: const Color(0xFFF8FAF8),
+          borderRadius: BorderRadius.circular(15),
           border: Border.all(
-            color: const Color(0xFFE5E7EB),
+            color: Colors.grey.shade200,
           ),
         ),
         child: Row(
           children: [
             Icon(
               icon,
-              color: Colors.green,
+              color: const Color(0xFF2E8B3C),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment:
@@ -283,25 +750,22 @@ class _FlightBookingScreenState
                 children: [
                   Text(
                     label,
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      fontSize: 13,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    date,
+                    value,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
               ),
-            ),
-            const Icon(
-              Icons.keyboard_arrow_down,
-              color: Colors.grey,
             ),
           ],
         ),
@@ -309,564 +773,370 @@ class _FlightBookingScreenState
     );
   }
 
-  Widget buildPassengerSelector() {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 10,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F9FB),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFE5E7EB),
-        ),
-      ),
-      child: Row(
+  Widget passengerAndClassSection() {
+    return sectionCard(
+      title: 'Travel Details',
+      icon: Icons.person_outline_rounded,
+      child: Column(
         children: [
-          const Icon(
-            Icons.people_outline,
-            color: Colors.green,
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Passengers',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+          InkWell(
+            onTap: showPassengerSelector,
+            borderRadius: BorderRadius.circular(15),
+            child: Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAF8),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(
+                  color: Colors.grey.shade200,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.groups_2_outlined,
+                    color: Color(0xFF2E8B3C),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '$totalPassengers Passenger'
+                      '${totalPassengers > 1 ? 's' : ''}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                  ),
+                ],
               ),
             ),
           ),
-          IconButton(
-            onPressed: decreasePassengers,
-            icon: const Icon(
-              Icons.remove_circle_outline,
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            initialValue: selectedCabinClass,
+            isExpanded: true,
+            decoration: inputDecoration(
+              label: 'Cabin Class',
+              icon: Icons.airline_seat_recline_extra_rounded,
             ),
-          ),
-          Container(
-            width: 38,
-            alignment: Alignment.center,
-            child: Text(
-              passengers.toString(),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          IconButton(
-            onPressed: increasePassengers,
-            icon: const Icon(
-              Icons.add_circle_outline,
-              color: Colors.green,
-            ),
+            items: cabinClasses.map((cabinClass) {
+              return DropdownMenuItem<String>(
+                value: cabinClass,
+                child: Text(cabinClass),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                selectedCabinClass = value;
+              });
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget buildCabinClassSelector() {
-    return DropdownButtonFormField<String>(
-      initialValue: cabinClass,
-      decoration: InputDecoration(
-        labelText: 'Cabin Class',
-        prefixIcon: const Icon(
-          Icons.airline_seat_recline_extra,
-          color: Colors.green,
+  Widget sectionCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(21),
+        border: Border.all(
+          color: Colors.grey.shade200,
         ),
-        filled: true,
-        fillColor: const Color(0xFFF7F9FB),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: Color(0xFFE5E7EB),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: Colors.green,
-            width: 1.5,
-          ),
-        ),
+        ],
       ),
-      items:
-          cabinClasses.map((value) {
-            return DropdownMenuItem(
-              value: value,
-              child: Text(value),
-            );
-          }).toList(),
-      onChanged: (value) {
-        if (value == null) return;
-
-        setState(() {
-          cabinClass = value;
-        });
-      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: 21,
+                color: const Color(0xFF2E8B3C),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          child,
+        ],
+      ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Flight Booking',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
+  InputDecoration inputDecoration({
+    required String label,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(
+        icon,
+        color: const Color(0xFF2E8B3C),
+      ),
+      filled: true,
+      fillColor: const Color(0xFFF8FAF8),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(
+          color: Color(0xFF2E8B3C),
+          width: 1.6,
+        ),
+      ),
+    );
+  }
+
+  Widget searchButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 58,
+      child: FilledButton.icon(
+        onPressed: isSearching ? null : searchFlights,
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFF2E8B3C),
+          disabledBackgroundColor:
+              const Color(0xFF2E8B3C).withValues(alpha: 0.6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(17),
+          ),
+        ),
+        icon: isSearching
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.search_rounded),
+        label: Text(
+          isSearching ? 'Searching...' : 'Search Flights',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Colors.green,
-                    Color(0xFF0B8F44),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Book your next flight',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 23,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Search local and international flights through Servicepay.',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Icon(
-                    Icons.flight_takeoff,
-                    color: Colors.white,
-                    size: 58,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 22),
+    );
+  }
 
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  buildSectionTitle('Trip Type'),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const SizedBox(
-                            width: double.infinity,
-                            child: Text(
-                              'One Way',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          selected: !isRoundTrip,
-                          selectedColor:
-                              Colors.green.withValues(
-                                alpha: 0.15,
-                              ),
-                          labelStyle: TextStyle(
-                            color:
-                                !isRoundTrip
-                                    ? Colors.green
-                                    : Colors.black87,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          onSelected: (_) {
-                            setState(() {
-                              isRoundTrip = false;
-                              returnDate = null;
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const SizedBox(
-                            width: double.infinity,
-                            child: Text(
-                              'Round Trip',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          selected: isRoundTrip,
-                          selectedColor:
-                              Colors.green.withValues(
-                                alpha: 0.15,
-                              ),
-                          labelStyle: TextStyle(
-                            color:
-                                isRoundTrip
-                                    ? Colors.green
-                                    : Colors.black87,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          onSelected: (_) {
-                            setState(() {
-                              isRoundTrip = true;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 22),
-                  buildSectionTitle('Route'),
-
-                  buildLocationField(
-                    controller: fromController,
-                    label: 'From',
-                    hint: 'City or airport',
-                    icon: Icons.flight_takeoff,
-                  ),
-
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                    ),
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: IconButton.filled(
-                        onPressed: swapLocations,
-                        style: IconButton.styleFrom(
-                          backgroundColor:
-                              Colors.green.withValues(
-                                alpha: 0.12,
-                              ),
-                          foregroundColor: Colors.green,
-                        ),
-                        icon: const Icon(
-                          Icons.swap_vert,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  buildLocationField(
-                    controller: toController,
-                    label: 'To',
-                    hint: 'City or airport',
-                    icon: Icons.flight_land,
-                  ),
-
-                  const SizedBox(height: 22),
-                  buildSectionTitle('Travel Date'),
-
-                  buildDateCard(
-                    label: 'Departure Date',
-                    date: formatDate(departureDate),
-                    onTap: selectDepartureDate,
-                    icon: Icons.calendar_month_outlined,
-                  ),
-
-                  if (isRoundTrip) ...[
-                    const SizedBox(height: 12),
-                    buildDateCard(
-                      label: 'Return Date',
-                      date: formatDate(returnDate),
-                      onTap: selectReturnDate,
-                      icon:
-                          Icons.event_repeat_outlined,
-                    ),
-                  ],
-
-                  const SizedBox(height: 22),
-                  buildSectionTitle('Travellers'),
-
-                  buildPassengerSelector(),
-
-                  const SizedBox(height: 14),
-
-                  buildCabinClassSelector(),
-
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: ElevatedButton.icon(
-                      onPressed: searchFlights,
-                      icon: const Icon(
-                        Icons.search,
-                      ),
-                      label: const Text(
-                        'Search Flights',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 18),
-
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.orange.withValues(
-                  alpha: 0.1,
-                ),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: Colors.orange,
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Live flight search, payment and ticket issuance will be connected in the next stage.',
-                      style: TextStyle(
-                        color: Colors.black87,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+  Widget bookingBenefits() {
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E6),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFFFFE29A),
         ),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.verified_user_outlined,
+            color: Color(0xFFE89B00),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Secure booking, transparent prices and easy payment through Servicepay.',
+              style: TextStyle(
+                color: Color(0xFF69511B),
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class FlightSearchSummary extends StatelessWidget {
-  final String tripType;
-  final String from;
-  final String to;
-  final String departureDate;
-  final String? returnDate;
-  final int passengers;
-  final String cabinClass;
-
-  const FlightSearchSummary({
+class FlightResultsScreen extends StatelessWidget {
+  const FlightResultsScreen({
     super.key,
-    required this.tripType,
-    required this.from,
-    required this.to,
+    required this.departureAirport,
+    required this.arrivalAirport,
     required this.departureDate,
     required this.returnDate,
-    required this.passengers,
     required this.cabinClass,
+    required this.passengers,
   });
 
-  Widget buildSummaryRow({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 16,
-      ),
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            color: Colors.green,
+  final String departureAirport;
+  final String arrivalAirport;
+  final DateTime departureDate;
+  final DateTime? returnDate;
+  final String cabinClass;
+  final int passengers;
+
+  String formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9F7),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF2E8B3C),
+        foregroundColor: Colors.white,
+        title: const Text(
+          'Available Flights',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
           ),
-          const SizedBox(width: 12),
-          Expanded(
+        ),
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Container(
+            constraints: const BoxConstraints(
+              maxWidth: 620,
+            ),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.grey.shade200,
+              ),
+            ),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 13,
+                const CircleAvatar(
+                  radius: 38,
+                  backgroundColor: Color(0xFFE8F5EA),
+                  child: Icon(
+                    Icons.flight_rounded,
+                    size: 38,
+                    color: Color(0xFF2E8B3C),
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 18),
+                const Text(
+                  'Flight Search Ready',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Text(
-                  value,
+                  '$departureAirport → $arrivalAirport',
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 15),
+                resultRow(
+                  'Departure',
+                  formatDate(departureDate),
+                ),
+                if (returnDate != null)
+                  resultRow(
+                    'Return',
+                    formatDate(returnDate!),
+                  ),
+                resultRow(
+                  'Passengers',
+                  '$passengers',
+                ),
+                resultRow(
+                  'Cabin Class',
+                  cabinClass,
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E6),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: const Text(
+                    'Real airline results will appear here after we connect the flight booking API.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF69511B),
+                      height: 1.45,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(
-          22,
-          14,
-          22,
-          26,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(24),
+  Widget resultRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 7,
+      ),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 45,
-              height: 5,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius:
-                    BorderRadius.circular(10),
+          const Spacer(),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 18),
-            const Text(
-              'Flight Search Summary',
-              style: TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 22),
-
-            buildSummaryRow(
-              icon: Icons.flight,
-              label: 'Route',
-              value: '$from → $to',
-            ),
-            buildSummaryRow(
-              icon: Icons.route_outlined,
-              label: 'Trip Type',
-              value: tripType,
-            ),
-            buildSummaryRow(
-              icon:
-                  Icons.calendar_month_outlined,
-              label: 'Departure',
-              value: departureDate,
-            ),
-
-            if (returnDate != null)
-              buildSummaryRow(
-                icon: Icons.event_repeat_outlined,
-                label: 'Return',
-                value: returnDate!,
-              ),
-
-            buildSummaryRow(
-              icon: Icons.people_outline,
-              label: 'Passengers',
-              value: passengers.toString(),
-            ),
-            buildSummaryRow(
-              icon:
-                  Icons.airline_seat_recline_extra,
-              label: 'Cabin Class',
-              value: cabinClass,
-            ),
-
-            const SizedBox(height: 4),
-
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
-                  ),
-                ),
-                child: const Text(
-                  'Done',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

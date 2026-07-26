@@ -8,30 +8,27 @@ const protect = async (req, res, next) => {
     if (!authorization || !authorization.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
-        message: "Ba a ba da izinin shiga ba.",
+        message: "Authentication required.",
       });
     }
 
     const token = authorization.split(" ")[1];
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findById(decoded.id).select("-password");
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Ba a sami account ɗin mai amfani ba.",
+        message: "User not found.",
       });
     }
 
     if (user.status !== "ACTIVE") {
       return res.status(403).json({
         success: false,
-        message: "Wannan account ɗin ba ya aiki.",
+        message: "This account is not active.",
       });
     }
 
@@ -40,9 +37,32 @@ const protect = async (req, res, next) => {
   } catch (error) {
     return res.status(401).json({
       success: false,
-      message: "Token ba ya aiki ko ya ƙare.",
+      message: "Invalid or expired token.",
     });
   }
 };
 
-module.exports = { protect };
+const adminOnly = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
+
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied.",
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = {
+  protect,
+  adminOnly,
+};

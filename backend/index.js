@@ -10,17 +10,22 @@ const clubkonnectRoutes = require("./routes/clubkonnect.routes");
 const authRoutes = require("./routes/auth.routes");
 const transferRoutes = require("./routes/transfer.routes");
 const idVerificationRoutes = require("./routes/idVerification.routes");
-connectDB();
 const deliveryRoutes = require("./routes/delivery.routes");
 const notificationRoutes = require("./routes/notification.routes");
+const adminRoutes = require("./routes/admin.routes");
+
 const app = express();
+
+connectDB();
 
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-  res.json({
+  res.status(200).json({
+    success: true,
     status: "OK",
     message: "Servicepay Backend is running",
   });
@@ -32,6 +37,25 @@ app.use("/api/auth", authRoutes);
 app.use("/api/transfer", transferRoutes);
 app.use("/api/id-verification", idVerificationRoutes);
 app.use("/api/delivery", deliveryRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/admin", adminRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
+app.use((error, req, res, next) => {
+  console.error("Server error:", error);
+
+  res.status(error.status || 500).json({
+    success: false,
+    message: error.message || "Internal server error.",
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
