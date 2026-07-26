@@ -6,6 +6,7 @@ import 'cable_screen.dart';
 import 'data_screen.dart';
 import 'electricity_screen.dart';
 import 'exam_pin_screen.dart';
+import 'flight_booking_screen.dart';
 import 'id_verification_screen.dart';
 import 'logistics_screen.dart';
 import 'notifications_screen.dart';
@@ -64,22 +65,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
 
+    if (!mounted) return;
     await loadUserDetails();
-  }
-
-  void openComingSoon({
-    required String title,
-    required IconData icon,
-    required String description,
-  }) {
-    openPage(
-      context,
-      ComingSoonScreen(
-        title: title,
-        icon: icon,
-        description: description,
-      ),
-    );
   }
 
   Widget sectionTitle(String title) {
@@ -175,7 +162,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Wallet balance card
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(22),
@@ -232,7 +218,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                     const SizedBox(height: 26),
 
-                    // Payments section
                     sectionTitle('Payments'),
 
                     serviceGrid(
@@ -291,11 +276,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.account_balance_outlined,
                           title: 'School Fees',
                           onTap: () {
-                            openComingSoon(
-                              title: 'School Fees',
-                              icon: Icons.account_balance_outlined,
-                              description:
-                                  'Pay school fees securely through Servicepay.',
+                            openPage(
+                              context,
+                              const ServiceFeatureScreen(
+                                title: 'School Fees',
+                                icon: Icons.account_balance_outlined,
+                                description:
+                                    'Select a school, enter the student details and pay school fees securely through Servicepay.',
+                              ),
                             );
                           },
                         ),
@@ -304,7 +292,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                     const SizedBox(height: 26),
 
-                    // Travel section
                     sectionTitle('Travel & Transport'),
 
                     serviceGrid(
@@ -313,11 +300,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.flight_takeoff,
                           title: 'Flights',
                           onTap: () {
-                            openComingSoon(
-                              title: 'Flight Booking',
-                              icon: Icons.flight_takeoff,
-                              description:
-                                  'Search and book local and international flights.',
+                            openPage(
+                              context,
+                              const FlightBookingScreen(),
                             );
                           },
                         ),
@@ -325,11 +310,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.hotel_outlined,
                           title: 'Hotels',
                           onTap: () {
-                            openComingSoon(
-                              title: 'Hotel Booking',
-                              icon: Icons.hotel_outlined,
-                              description:
-                                  'Find and reserve hotels through Servicepay.',
+                            openPage(
+                              context,
+                              const ServiceFeatureScreen(
+                                title: 'Hotel Booking',
+                                icon: Icons.hotel_outlined,
+                                description:
+                                    'Search for hotels, select rooms and make reservations through Servicepay.',
+                              ),
                             );
                           },
                         ),
@@ -337,11 +325,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.local_taxi_outlined,
                           title: 'Taxi',
                           onTap: () {
-                            openComingSoon(
-                              title: 'Taxi Booking',
-                              icon: Icons.local_taxi_outlined,
-                              description:
-                                  'Request a taxi and travel safely to your destination.',
+                            openPage(
+                              context,
+                              const ServiceFeatureScreen(
+                                title: 'Taxi Booking',
+                                icon: Icons.local_taxi_outlined,
+                                description:
+                                    'Enter your pickup location and destination to request a taxi.',
+                              ),
                             );
                           },
                         ),
@@ -349,11 +340,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.electric_rickshaw_outlined,
                           title: 'Keke Napep',
                           onTap: () {
-                            openComingSoon(
-                              title: 'Keke Napep Booking',
-                              icon: Icons.electric_rickshaw_outlined,
-                              description:
-                                  'Request a nearby Keke Napep for short and affordable trips.',
+                            openPage(
+                              context,
+                              const ServiceFeatureScreen(
+                                title: 'Keke Napep Booking',
+                                icon:
+                                    Icons.electric_rickshaw_outlined,
+                                description:
+                                    'Request a nearby Keke Napep for convenient and affordable local trips.',
+                              ),
                             );
                           },
                         ),
@@ -372,7 +367,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                     const SizedBox(height: 26),
 
-                    // Food and marketplace section
                     sectionTitle('Food & Marketplace'),
 
                     serviceGrid(
@@ -381,11 +375,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.restaurant_outlined,
                           title: 'Food Order',
                           onTap: () {
-                            openComingSoon(
-                              title: 'Restaurant Food Order',
-                              icon: Icons.restaurant_outlined,
-                              description:
-                                  'Order food from restaurants near you.',
+                            openPage(
+                              context,
+                              const ServiceFeatureScreen(
+                                title: 'Restaurant Food Order',
+                                icon: Icons.restaurant_outlined,
+                                description:
+                                    'Browse nearby restaurants, select meals and place your order.',
+                              ),
                             );
                           },
                         ),
@@ -393,11 +390,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.handyman_outlined,
                           title: 'Professionals',
                           onTap: () {
-                            openComingSoon(
-                              title: 'Hire a Professional',
-                              icon: Icons.handyman_outlined,
-                              description:
-                                  'Find plumbers, electricians, mechanics, cleaners and other professionals.',
+                            openPage(
+                              context,
+                              const ServiceFeatureScreen(
+                                title: 'Hire a Professional',
+                                icon: Icons.handyman_outlined,
+                                description:
+                                    'Find plumbers, electricians, mechanics, cleaners and other trusted professionals.',
+                              ),
                             );
                           },
                         ),
@@ -405,11 +405,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.storefront_outlined,
                           title: 'Buy & Sell',
                           onTap: () {
-                            openComingSoon(
-                              title: 'Buy & Sell Marketplace',
-                              icon: Icons.storefront_outlined,
-                              description:
-                                  'Buy and sell products safely through Servicepay.',
+                            openPage(
+                              context,
+                              const ServiceFeatureScreen(
+                                title: 'Buy & Sell Marketplace',
+                                icon: Icons.storefront_outlined,
+                                description:
+                                    'Browse products, create listings and buy or sell safely through Servicepay.',
+                              ),
                             );
                           },
                         ),
@@ -418,7 +421,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                     const SizedBox(height: 26),
 
-                    // Account services section
                     sectionTitle('Account Services'),
 
                     serviceGrid(
@@ -457,11 +459,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: Icons.sim_card_outlined,
                           title: 'SIM Services',
                           onTap: () {
-                            openComingSoon(
-                              title: 'SIM Registration Service',
-                              icon: Icons.sim_card_outlined,
-                              description:
-                                  'Access SIM registration and related services.',
+                            openPage(
+                              context,
+                              const ServiceFeatureScreen(
+                                title: 'SIM Registration Service',
+                                icon: Icons.sim_card_outlined,
+                                description:
+                                    'Start SIM registration and access other supported SIM-related services.',
+                              ),
                             );
                           },
                         ),
@@ -514,12 +519,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class ComingSoonScreen extends StatelessWidget {
+class ServiceFeatureScreen extends StatelessWidget {
   final String title;
   final IconData icon;
   final String description;
 
-  const ComingSoonScreen({
+  const ServiceFeatureScreen({
     super.key,
     required this.title,
     required this.icon,
@@ -533,91 +538,125 @@ class ComingSoonScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
-        title: Text(title),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(
-              maxWidth: 500,
-            ),
-            padding: const EdgeInsets.all(30),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(
-                    alpha: 0.07,
-                  ),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(
-                      alpha: 0.12,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: 0.18,
+                      ),
+                      shape: BoxShape.circle,
                     ),
-                    shape: BoxShape.circle,
+                    child: Icon(
+                      icon,
+                      size: 48,
+                      color: Colors.white,
+                    ),
                   ),
-                  child: Icon(
+                  const SizedBox(height: 18),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    description,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 15,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 22),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                children: [
+                  Icon(
                     icon,
-                    size: 52,
+                    size: 55,
                     color: Colors.green,
                   ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  description,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withValues(
-                      alpha: 0.12,
-                    ),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: const Text(
-                    'Coming Soon',
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Service Setup',
                     style: TextStyle(
-                      color: Colors.orange,
+                      fontSize: 21,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  const Text(
+                    'The booking form and service provider connection will be added during the next development stage.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 15,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text(
+                        'Back to Dashboard',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
