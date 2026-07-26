@@ -14,14 +14,17 @@ const protect = async (req, res, next) => {
 
     const token = authorization.split(" ")[1];
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    );
 
     const user = await User.findById(decoded.id).select("-password");
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "User not found.",
+        message: "User account not found.",
       });
     }
 
@@ -42,7 +45,7 @@ const protect = async (req, res, next) => {
   }
 };
 
-const adminOnly = (...roles) => {
+const adminOnly = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -51,7 +54,7 @@ const adminOnly = (...roles) => {
       });
     }
 
-    if (!roles.includes(req.user.role)) {
+    if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         message: "Access denied.",
