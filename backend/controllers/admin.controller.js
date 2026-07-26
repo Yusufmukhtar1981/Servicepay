@@ -415,4 +415,7 @@ const updateUserStatus = async (req, res) => {
 };
 module.exports = {
   getAdminDashboard,
+  getUsers,
+  getUserById,
+  updateUserStatus,
 };
