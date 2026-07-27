@@ -15,7 +15,7 @@ const notificationRoutes = require("./routes/notification.routes");
 const adminRoutes = require("./routes/admin.routes");
 const walletRoutes = require("./routes/wallet.routes");
 const manualFundingRoutes = require(
-  "./routes/manualFunding.routes"
+  "./routes/manualfunding.routes"
 );
 
 const app = express();
