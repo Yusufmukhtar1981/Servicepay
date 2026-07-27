@@ -21,9 +21,11 @@ const getSecretKey = () => {
 };
 
 const getUserId = (req) => {
-  return req.user?._id?.toString() ||
+  return (
+    req.user?._id?.toString() ||
     req.user?.id?.toString() ||
-    "";
+    ""
+  );
 };
 
 exports.initializePayment = async (req, res) => {
@@ -75,35 +77,43 @@ exports.initializePayment = async (req, res) => {
     if (amount < 100) {
       return res.status(400).json({
         success: false,
-        message: "The minimum wallet funding amount is ₦100.",
+        message:
+          "The minimum wallet funding amount is ₦100.",
       });
     }
 
     const amountInKobo = Math.round(amount * 100);
-
     const secretKey = getSecretKey();
+
+    /*
+     * Paystack zai mayar da customer zuwa wannan URL
+     * bayan payment ya kammala.
+     *
+     * Idan PAYSTACK_CALLBACK_URL yana Render,
+     * za a yi amfani da shi.
+     *
+     * Idan babu shi, zai koma ServicePay homepage
+     * maimakon nuna 404.
+     */
+    const callbackUrl = String(
+      process.env.PAYSTACK_CALLBACK_URL ||
+        "https://servicepay.ng/"
+    ).trim();
 
     const requestBody = {
       email: user.email.trim().toLowerCase(),
       amount: amountInKobo,
       currency: "NGN",
+      callback_url: callbackUrl,
 
       metadata: {
         userId,
         purpose: "WALLET_FUNDING",
-        customerName: user.fullName,
-        customerPhone: user.phone,
+        customerName: user.fullName || "",
+        customerPhone: user.phone || "",
         expectedAmount: amount,
       },
     };
-
-    const callbackUrl = String(
-      process.env.PAYSTACK_CALLBACK_URL || ""
-    ).trim();
-
-    if (callbackUrl) {
-      requestBody.callback_url = callbackUrl;
-    }
 
     const paystackResponse = await axios.post(
       `${PAYSTACK_BASE_URL}/transaction/initialize`,
@@ -137,6 +147,7 @@ exports.initializePayment = async (req, res) => {
       accessCode: paymentData.access_code,
       reference: paymentData.reference,
       amount,
+      callbackUrl,
     });
   } catch (error) {
     console.error(
@@ -144,13 +155,15 @@ exports.initializePayment = async (req, res) => {
       error.response?.data || error.message
     );
 
-    return res.status(error.response?.status || 500).json({
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Unable to initialize wallet funding.",
-    });
+    return res
+      .status(error.response?.status || 500)
+      .json({
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Unable to initialize wallet funding.",
+      });
   }
 };
 
@@ -168,7 +181,9 @@ exports.verifyPayment = async (req, res) => {
     }
 
     const reference = String(
-      req.body.reference || req.query.reference || ""
+      req.body.reference ||
+        req.query.reference ||
+        ""
     ).trim();
 
     if (!reference) {
@@ -186,16 +201,17 @@ exports.verifyPayment = async (req, res) => {
       });
 
     if (previouslyProcessed) {
-      const existingUser = await User.findById(userId).select(
-        "walletBalance"
-      );
+      const existingUser = await User.findById(
+        userId
+      ).select("walletBalance");
 
       return res.status(200).json({
         success: true,
         alreadyProcessed: true,
         message:
           "This wallet funding payment has already been processed.",
-        walletBalance: existingUser?.walletBalance || 0,
+        walletBalance:
+          existingUser?.walletBalance || 0,
         amount: previouslyProcessed.amount,
         reference,
       });
@@ -204,7 +220,9 @@ exports.verifyPayment = async (req, res) => {
     const secretKey = getSecretKey();
 
     const paystackResponse = await axios.get(
-      `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(reference)}`,
+      `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(
+        reference
+      )}`,
       {
         headers: {
           Authorization: `Bearer ${secretKey}`,
@@ -237,10 +255,14 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    const paymentUserId =
-      payment.metadata?.userId?.toString() || "";
+    const paymentUserId = String(
+      payment.metadata?.userId || ""
+    );
 
-    if (!paymentUserId || paymentUserId !== userId) {
+    if (
+      !paymentUserId ||
+      paymentUserId !== userId
+    ) {
       return res.status(403).json({
         success: false,
         message:
@@ -250,7 +272,8 @@ exports.verifyPayment = async (req, res) => {
 
     if (
       payment.metadata?.purpose &&
-      payment.metadata.purpose !== "WALLET_FUNDING"
+      payment.metadata.purpose !==
+        "WALLET_FUNDING"
     ) {
       return res.status(400).json({
         success: false,
@@ -259,7 +282,8 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    const amountPaid = Number(payment.amount) / 100;
+    const amountPaid =
+      Number(payment.amount) / 100;
 
     if (
       !Number.isFinite(amountPaid) ||
@@ -277,7 +301,9 @@ exports.verifyPayment = async (req, res) => {
 
     if (
       Number.isFinite(expectedAmount) &&
-      Math.abs(expectedAmount - amountPaid) > 0.01
+      Math.abs(
+        expectedAmount - amountPaid
+      ) > 0.01
     ) {
       return res.status(400).json({
         success: false,
@@ -308,22 +334,23 @@ exports.verifyPayment = async (req, res) => {
         throw duplicateError;
       }
 
-      updatedUser = await User.findOneAndUpdate(
-        {
-          _id: userId,
-          status: "ACTIVE",
-        },
-        {
-          $inc: {
-            walletBalance: amountPaid,
-            totalTransactions: 1,
+      updatedUser =
+        await User.findOneAndUpdate(
+          {
+            _id: userId,
+            status: "ACTIVE",
           },
-        },
-        {
-          new: true,
-          session,
-        }
-      );
+          {
+            $inc: {
+              walletBalance: amountPaid,
+              totalTransactions: 1,
+            },
+          },
+          {
+            new: true,
+            session,
+          }
+        );
 
       if (!updatedUser) {
         throw new Error(
@@ -336,11 +363,14 @@ exports.verifyPayment = async (req, res) => {
           {
             reference,
             customerId: userId,
-            agentId: updatedUser.agentId || null,
+            agentId:
+              updatedUser.agentId || null,
             stateManagerId:
-              updatedUser.stateManagerId || null,
+              updatedUser.stateManagerId ||
+              null,
             zonalManagerId:
-              updatedUser.zonalManagerId || null,
+              updatedUser.zonalManagerId ||
+              null,
             serviceType: "WALLET_FUNDING",
             provider: "PAYSTACK",
             amount: amountPaid,
@@ -366,43 +396,51 @@ exports.verifyPayment = async (req, res) => {
     return res.status(200).json({
       success: true,
       alreadyProcessed: false,
-      message: `₦${amountPaid.toFixed(2)} was added to your wallet.`,
-      walletBalance: updatedUser.walletBalance,
+      message: `₦${amountPaid.toFixed(
+        2
+      )} was added to your wallet.`,
+      walletBalance:
+        updatedUser.walletBalance,
       amount: amountPaid,
       reference,
     });
   } catch (error) {
     if (
-      error.code === "PAYMENT_ALREADY_PROCESSED" ||
+      error.code ===
+        "PAYMENT_ALREADY_PROCESSED" ||
       error.code === 11000
     ) {
       const userId = getUserId(req);
 
-      const user = await User.findById(userId).select(
-        "walletBalance"
-      );
+      const user = await User.findById(
+        userId
+      ).select("walletBalance");
 
       return res.status(200).json({
         success: true,
         alreadyProcessed: true,
         message:
           "This wallet funding payment has already been processed.",
-        walletBalance: user?.walletBalance || 0,
+        walletBalance:
+          user?.walletBalance || 0,
       });
     }
 
     console.error(
       "Paystack verification error:",
-      error.response?.data || error.message
+      error.response?.data ||
+        error.message
     );
 
-    return res.status(error.response?.status || 500).json({
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Unable to verify the payment.",
-    });
+    return res
+      .status(error.response?.status || 500)
+      .json({
+        success: false,
+        message:
+          error.response?.data?.message ||
+          error.message ||
+          "Unable to verify the payment.",
+      });
   } finally {
     if (session) {
       await session.endSession();
