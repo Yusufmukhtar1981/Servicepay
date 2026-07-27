@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const ManualFunding = require(
-  "../models/manualFunding.model"
+  "../models/manualfunding.model"
 );
 
 const User = require("../models/user.model");
