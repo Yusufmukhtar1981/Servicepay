@@ -294,10 +294,50 @@ const collectPlanObjects = (
     return output;
   }
 
+  /*
+   * ClubKonnect returns network containers like:
+   *
+   * {
+   *   ID: "01",
+   *   PRODUCT: [...]
+   * }
+   *
+   * ID here is the network ID, not a data-plan ID.
+   */
+  const objectId = readObjectField(value, [
+    "networkId",
+    "network_id",
+    "mobileNetwork",
+    "mobile_network",
+    "ID",
+  ]);
+
+  const objectNetwork =
+    normalizeNetwork(objectId) ||
+    inheritedNetwork;
+
+  const productList = readObjectField(value, [
+    "PRODUCT",
+    "PRODUCTS",
+    "product",
+    "products",
+  ]);
+
+  if (Array.isArray(productList)) {
+    collectPlanObjects(
+      productList,
+      objectNetwork,
+      null,
+      output
+    );
+
+    return output;
+  }
+
   if (looksLikePlanObject(value)) {
     output.push({
       ...value,
-      __inheritedNetwork: inheritedNetwork,
+      __inheritedNetwork: objectNetwork,
       __inheritedId: inheritedId,
     });
 
@@ -306,7 +346,8 @@ const collectPlanObjects = (
 
   for (const [key, child] of Object.entries(value)) {
     const networkFromKey =
-      normalizeNetwork(key) || inheritedNetwork;
+      normalizeNetwork(key) ||
+      objectNetwork;
 
     const idFromKey =
       /^\d+(\.\d+)?$/.test(String(key).trim())
