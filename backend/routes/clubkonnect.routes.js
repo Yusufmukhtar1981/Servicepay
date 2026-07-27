@@ -1,10 +1,11 @@
 const express = require("express");
-const router = express.Router();
 
 const {
   buyAirtime,
   buyData,
 } = require("../controllers/clubkonnect.controller");
+
+const router = express.Router();
 
 router.post("/airtime", buyAirtime);
 router.post("/data", buyData);
