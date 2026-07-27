@@ -15,8 +15,7 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -28,1177 +27,517 @@ class _WalletScreenState extends State<WalletScreen> {
   String userName = 'Servicepay Customer';
   String userPhone = '';
 
+  List<dynamic> transactions = [];
+
   @override
   void initState() {
     super.initState();
     _loadWallet();
   }
 
-  Future<void> _loadWallet() async {
+  Future<void> _loadWallet({
+    bool showRefreshLoader = false,
+  }) async {
+    if (showRefreshLoader) {
+      setState(() {
+        isRefreshing = true;
+      });
+    } else {
+      setState(() {
+        isLoading = true;
+      });
+    }
+
     try {
       final SharedPreferences prefs =
           await SharedPreferences.getInstance();
+
+      final String? token = prefs.getString('auth_token');
+
+      final String savedName =
+          prefs.getString('user_name') ??
+          prefs.getString('full_name') ??
+          prefs.getString('name') ??
+          'Servicepay Customer';
+
+      final String savedPhone =
+          prefs.getString('user_phone') ??
+          prefs.getString('phone') ??
+          '';
 
       final double savedBalance =
           prefs.getDouble('wallet_balance') ?? 0.0;
 
-      final String savedName =
-          prefs.getString('user_name') ?? '';
-
-      final String savedPhone =
-          prefs.getString('user_phone') ?? '';
-
-      if (!mounted) return;
-
-      setState(() {
-        walletBalance = savedBalance;
-
-        userName = savedName.trim().isEmpty
-            ? 'Servicepay Customer'
-            : savedName.trim();
-
-        userPhone = savedPhone.trim();
-
-        isLoading = false;
-      });
-
-      await _refreshWallet(
-        showMessage: false,
-      );
-    } catch (error) {
-      debugPrint('Load wallet error: $error');
-
-      if (!mounted) return;
-
-      setState(() {
-        isLoading = false;
-      });
-    }
-  }
-
-  Future<String?> _getToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
-
-    final String? token =
-        prefs.getString('auth_token');
-
-    if (token == null ||
-        token.trim().isEmpty) {
-      return null;
-    }
-
-    return token.trim();
-  }
-
-  Map<String, dynamic>? _decodeResponse(
-    http.Response response,
-  ) {
-    if (response.body.trim().isEmpty) {
-      return null;
-    }
-
-    try {
-      final dynamic decoded =
-          jsonDecode(response.body);
-
-      if (decoded is Map<String, dynamic>) {
-        return decoded;
-      }
-
-      if (decoded is Map) {
-        return Map<String, dynamic>.from(
-          decoded,
-        );
-      }
-    } catch (error) {
-      debugPrint(
-        'Response decode error: $error',
-      );
-    }
-
-    return null;
-  }
-
-  Future<void> _refreshWallet({
-    bool showMessage = true,
-  }) async {
-    if (isRefreshing) return;
-
-    if (mounted) {
-      setState(() {
-        isRefreshing = true;
-      });
-    }
-
-    try {
-      final String? token =
-          await _getToken();
-
-      if (token == null) {
-        if (showMessage) {
-          _showMessage(
-            'Your login session has expired. Please log in again.',
-            isError: true,
-          );
-        }
-
-        return;
-      }
-
-      final Map<String, dynamic>? result =
-          await _requestWalletBalance(
-        token,
-      );
-
-      if (result == null) {
-        if (showMessage) {
-          _showMessage(
-            'Unable to refresh wallet balance.',
-            isError: true,
-          );
-        }
-
-        return;
-      }
-
-      final double? newBalance =
-          _extractWalletBalance(
-        result,
-      );
-
-      if (newBalance == null) {
-        final String message =
-            result['message']?.toString() ??
-                'Wallet balance was not found.';
-
-        if (showMessage) {
-          _showMessage(
-            message,
-            isError: true,
-          );
-        }
-
-        return;
-      }
-
-      final SharedPreferences prefs =
-          await SharedPreferences.getInstance();
-
-      await prefs.setDouble(
-        'wallet_balance',
-        newBalance,
-      );
-
-      final dynamic userData =
-          result['user'] ??
-              result['data']?['user'];
-
-      if (userData is Map) {
-        final String? name =
-            userData['fullName']?.toString() ??
-                userData['name']?.toString();
-
-        final String? phone =
-            userData['phone']?.toString();
-
-        if (name != null &&
-            name.trim().isNotEmpty) {
-          await prefs.setString(
-            'user_name',
-            name.trim(),
-          );
-
-          userName = name.trim();
-        }
-
-        if (phone != null &&
-            phone.trim().isNotEmpty) {
-          await prefs.setString(
-            'user_phone',
-            phone.trim(),
-          );
-
-          userPhone = phone.trim();
-        }
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        walletBalance = newBalance;
-      });
-
-      if (showMessage) {
-        _showMessage(
-          'Wallet balance refreshed successfully.',
-        );
-      }
-    } catch (error) {
-      debugPrint(
-        'Refresh wallet error: $error',
-      );
-
-      if (showMessage) {
-        _showMessage(
-          'Unable to connect to the Servicepay server.',
-          isError: true,
-        );
-      }
-    } finally {
       if (mounted) {
         setState(() {
-          isRefreshing = false;
-          isLoading = false;
+          userName = savedName;
+          userPhone = savedPhone;
+          walletBalance = savedBalance;
         });
       }
-    }
-  }
 
-  Future<Map<String, dynamic>?>
-      _requestWalletBalance(
-    String token,
-  ) async {
-    final List<String> endpoints = [
-      '$baseUrl/wallet/balance',
-      '$baseUrl/auth/me',
-      '$baseUrl/users/me',
-      '$baseUrl/profile',
-    ];
-
-    for (final String endpoint
-        in endpoints) {
-      try {
-        final http.Response response =
-            await http
-                .get(
-                  Uri.parse(endpoint),
-                  headers: {
-                    'Accept':
-                        'application/json',
-                    'Content-Type':
-                        'application/json',
-                    'Authorization':
-                        'Bearer $token',
-                  },
-                )
-                .timeout(
-                  const Duration(
-                    seconds: 20,
-                  ),
-                );
-
-        final Map<String, dynamic>? body =
-            _decodeResponse(response);
-
-        if (response.statusCode >= 200 &&
-            response.statusCode < 300 &&
-            body != null) {
-          return body;
-        }
-
-        if (response.statusCode == 401 ||
-            response.statusCode == 403) {
-          return body ??
-              {
-                'success': false,
-                'message':
-                    'Your login session has expired. Please log in again.',
-              };
-        }
-      } catch (error) {
-        debugPrint(
-          'Wallet endpoint failed: '
-          '$endpoint, $error',
-        );
-      }
-    }
-
-    return null;
-  }
-
-  double? _extractWalletBalance(
-    Map<String, dynamic> result,
-  ) {
-    final dynamic data = result['data'];
-    final dynamic user = result['user'];
-
-    final List<dynamic> possibleValues = [
-      result['walletBalance'],
-      result['wallet_balance'],
-      result['balance'],
-      data is Map
-          ? data['walletBalance']
-          : null,
-      data is Map
-          ? data['wallet_balance']
-          : null,
-      data is Map
-          ? data['balance']
-          : null,
-      user is Map
-          ? user['walletBalance']
-          : null,
-      user is Map
-          ? user['wallet_balance']
-          : null,
-      user is Map
-          ? user['balance']
-          : null,
-    ];
-
-    for (final dynamic value
-        in possibleValues) {
-      if (value is num) {
-        return value.toDouble();
-      }
-
-      if (value is String) {
-        final double? parsed =
-            double.tryParse(
-          value
-              .replaceAll(',', '')
-              .trim(),
-        );
-
-        if (parsed != null) {
-          return parsed;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  Future<void> _showFundingSheet() async {
-    if (isFunding) return;
-
-    final TextEditingController
-        amountController =
-        TextEditingController();
-
-    final double? amount =
-        await showModalBottomSheet<double>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (
-        BuildContext sheetContext,
-      ) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(
-              sheetContext,
-            ).viewInsets.bottom,
-          ),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(
-              20,
-              14,
-              20,
-              28,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(26),
-              ),
-            ),
-            child: StatefulBuilder(
-              builder: (
-                BuildContext context,
-                void Function(
-                  void Function(),
-                ) setSheetState,
-              ) {
-                String? amountError;
-
-                return Column(
-                  mainAxisSize:
-                      MainAxisSize.min,
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 45,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color:
-                              Colors.grey.shade300,
-                          borderRadius:
-                              BorderRadius.circular(
-                            10,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    const Text(
-                      'Fund Wallet',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight:
-                            FontWeight.bold,
-                        color:
-                            Color(0xFF17202A),
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    const Text(
-                      'Enter the amount you want to add to your Servicepay wallet.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        height: 1.45,
-                        color: Colors.black54,
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    TextField(
-                      controller:
-                          amountController,
-                      keyboardType:
-                          const TextInputType
-                              .numberWithOptions(
-                        decimal: true,
-                      ),
-                      autofocus: true,
-                      decoration:
-                          InputDecoration(
-                        labelText: 'Amount',
-                        hintText: 'Minimum ₦100',
-                        prefixText: '₦ ',
-                        errorText: amountError,
-                        prefixIcon: const Icon(
-                          Icons
-                              .account_balance_wallet_outlined,
-                        ),
-                        border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(
-                            15,
-                          ),
-                        ),
-                        focusedBorder:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(
-                            15,
-                          ),
-                          borderSide:
-                              const BorderSide(
-                            color:
-                                Color(0xFF075E54),
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons
-                              .verified_user_outlined,
-                          color:
-                              Color(0xFF075E54),
-                          size: 18,
-                        ),
-                        SizedBox(width: 7),
-                        Expanded(
-                          child: Text(
-                            'Secure payment powered by Paystack.',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color:
-                                  Colors.black54,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 22),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: FilledButton(
-                        onPressed: () {
-                          final String rawAmount =
-                              amountController
-                                  .text
-                                  .replaceAll(
-                                    ',',
-                                    '',
-                                  )
-                                  .trim();
-
-                          final double? value =
-                              double.tryParse(
-                            rawAmount,
-                          );
-
-                          if (value == null) {
-                            setSheetState(() {
-                              amountError =
-                                  'Enter a valid amount.';
-                            });
-
-                            return;
-                          }
-
-                          if (value < 100) {
-                            setSheetState(() {
-                              amountError =
-                                  'The minimum funding amount is ₦100.';
-                            });
-
-                            return;
-                          }
-
-                          Navigator.pop(
-                            sheetContext,
-                            value,
-                          );
-                        },
-                        style:
-                            FilledButton.styleFrom(
-                          backgroundColor:
-                              const Color(
-                            0xFF075E54,
-                          ),
-                          shape:
-                              RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              15,
-                            ),
-                          ),
-                        ),
-                        child: const Text(
-                          'Continue to Payment',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-
-    amountController.dispose();
-
-    if (amount == null || !mounted) {
-      return;
-    }
-
-    await _initializeFunding(amount);
-  }
-
-  Future<void> _initializeFunding(
-    double amount,
-  ) async {
-    if (isFunding) return;
-
-    setState(() {
-      isFunding = true;
-    });
-
-    try {
-      final String? token =
-          await _getToken();
-
-      if (token == null) {
+      if (token == null || token.trim().isEmpty) {
         _showMessage(
-          'Your login session has expired. Please log in again.',
+          'Your login session has expired. Please sign in again.',
           isError: true,
         );
-
         return;
       }
 
-      final http.Response response =
-          await http
-              .post(
-                Uri.parse(
-                  '$baseUrl/paystack/initialize',
-                ),
-                headers: {
-                  'Accept':
-                      'application/json',
-                  'Content-Type':
-                      'application/json',
-                  'Authorization':
-                      'Bearer $token',
-                },
-                body: jsonEncode({
-                  'amount': amount,
-                }),
-              )
-              .timeout(
-                const Duration(
-                  seconds: 30,
-                ),
-              );
-
-      final Map<String, dynamic>? body =
-          _decodeResponse(response);
-
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300 ||
-          body?['success'] != true) {
-        _showMessage(
-          body?['message']?.toString() ??
-              'Unable to initialize payment.',
-          isError: true,
-        );
-
-        return;
-      }
-
-      final String authorizationUrl =
-          body?['authorizationUrl']
-                  ?.toString() ??
-              body?['authorization_url']
-                  ?.toString() ??
-              '';
-
-      final String reference =
-          body?['reference']?.toString() ??
-              '';
-
-      if (authorizationUrl.isEmpty ||
-          reference.isEmpty) {
-        _showMessage(
-          'Invalid payment information was received.',
-          isError: true,
-        );
-
-        return;
-      }
-
-      final Uri paymentUri =
-          Uri.parse(authorizationUrl);
-
-      final bool opened =
-          await launchUrl(
-        paymentUri,
-        mode: LaunchMode.externalApplication,
+      final http.Response response = await http.get(
+        Uri.parse('$baseUrl/wallet'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
       );
 
-      if (!opened) {
-        _showMessage(
-          'Unable to open the Paystack payment page.',
-          isError: true,
-        );
+      final dynamic decoded = _decodeResponse(response.body);
 
-        return;
-      }
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        final double newBalance =
+            _extractBalance(decoded) ?? savedBalance;
 
-      if (!mounted) return;
-
-      await _showPaymentConfirmationDialog(
-        reference: reference,
-        amount: amount,
-      );
-    } catch (error) {
-      debugPrint(
-        'Initialize funding error: $error',
-      );
-
-      _showMessage(
-        'Unable to connect to the payment server.',
-        isError: true,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          isFunding = false;
-        });
-      }
-    }
-  }
-
-  Future<void>
-      _showPaymentConfirmationDialog({
-    required String reference,
-    required double amount,
-  }) async {
-    if (!mounted) return;
-
-    final bool? shouldVerify =
-        await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (
-        BuildContext dialogContext,
-      ) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(20),
-          ),
-          icon: const CircleAvatar(
-            radius: 28,
-            backgroundColor:
-                Color(0xFFE7F5F1),
-            child: Icon(
-              Icons.open_in_browser_rounded,
-              color: Color(0xFF075E54),
-              size: 29,
-            ),
-          ),
-          title: const Text(
-            'Complete Your Payment',
-            textAlign: TextAlign.center,
-          ),
-          content: Text(
-            'Paystack has opened in your browser.\n\n'
-            'After paying ₦${_formatAmount(amount)}, return here and tap Verify Payment.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              height: 1.5,
-            ),
-          ),
-          actionsAlignment:
-              MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
-              child: const Text(
-                'Cancel',
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    const Color(
-                  0xFF075E54,
-                ),
-              ),
-              icon: const Icon(
-                Icons
-                    .verified_rounded,
-              ),
-              label: const Text(
-                'Verify Payment',
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldVerify == true) {
-      await _verifyFunding(
-        reference,
-      );
-    }
-  }
-
-  Future<void> _verifyFunding(
-    String reference,
-  ) async {
-    if (!mounted) return;
-
-    setState(() {
-      isFunding = true;
-    });
-
-    _showLoadingDialog(
-      'Verifying your payment...',
-    );
-
-    try {
-      final String? token =
-          await _getToken();
-
-      if (token == null) {
-        if (mounted) {
-          Navigator.of(
-            context,
-            rootNavigator: true,
-          ).pop();
-        }
-
-        _showMessage(
-          'Your login session has expired. Please log in again.',
-          isError: true,
-        );
-
-        return;
-      }
-
-      final http.Response response =
-          await http
-              .post(
-                Uri.parse(
-                  '$baseUrl/paystack/verify',
-                ),
-                headers: {
-                  'Accept':
-                      'application/json',
-                  'Content-Type':
-                      'application/json',
-                  'Authorization':
-                      'Bearer $token',
-                },
-                body: jsonEncode({
-                  'reference': reference,
-                }),
-              )
-              .timeout(
-                const Duration(
-                  seconds: 35,
-                ),
-              );
-
-      final Map<String, dynamic>? body =
-          _decodeResponse(response);
-
-      if (mounted) {
-        Navigator.of(
-          context,
-          rootNavigator: true,
-        ).pop();
-      }
-
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300 ||
-          body?['success'] != true) {
-        _showMessage(
-          body?['message']?.toString() ??
-              'Payment verification failed.',
-          isError: true,
-        );
-
-        return;
-      }
-
-      final double? newBalance =
-          _toDouble(
-        body?['walletBalance'],
-      );
-
-      final double? fundedAmount =
-          _toDouble(
-        body?['amount'],
-      );
-
-      if (newBalance != null) {
-        final SharedPreferences prefs =
-            await SharedPreferences
-                .getInstance();
+        final List<dynamic> newTransactions =
+            _extractTransactions(decoded);
 
         await prefs.setDouble(
           'wallet_balance',
           newBalance,
         );
 
-        if (mounted) {
-          setState(() {
-            walletBalance = newBalance;
-          });
-        }
+        if (!mounted) return;
+
+        setState(() {
+          walletBalance = newBalance;
+          transactions = newTransactions;
+        });
       } else {
-        await _refreshWallet(
-          showMessage: false,
+        final String message = _extractMessage(
+          decoded,
+          fallback: 'Unable to load wallet.',
+        );
+
+        _showMessage(
+          message,
+          isError: true,
         );
       }
-
-      if (!mounted) return;
-
-      await _showFundingSuccessDialog(
-        fundedAmount: fundedAmount,
-        reference: reference,
-        alreadyProcessed:
-            body?['alreadyProcessed'] ==
-                true,
-      );
     } catch (error) {
-      debugPrint(
-        'Verify funding error: $error',
-      );
-
-      if (mounted) {
-        Navigator.of(
-          context,
-          rootNavigator: true,
-        ).pop();
-      }
-
       _showMessage(
-        'Unable to verify the payment. Please refresh your wallet and try again.',
+        'Unable to connect to Servicepay. Please check your internet connection.',
         isError: true,
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          isFunding = false;
-        });
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+        isRefreshing = false;
+      });
+    }
+  }
+
+  dynamic _decodeResponse(String body) {
+    if (body.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  double? _extractBalance(dynamic data) {
+    if (data is! Map) {
+      return null;
+    }
+
+    final List<dynamic> possibleValues = [
+      data['walletBalance'],
+      data['wallet_balance'],
+      data['balance'],
+      data['availableBalance'],
+      data['available_balance'],
+      data['data'] is Map
+          ? data['data']['walletBalance']
+          : null,
+      data['data'] is Map
+          ? data['data']['wallet_balance']
+          : null,
+      data['data'] is Map
+          ? data['data']['balance']
+          : null,
+      data['wallet'] is Map
+          ? data['wallet']['balance']
+          : null,
+      data['user'] is Map
+          ? data['user']['walletBalance']
+          : null,
+      data['user'] is Map
+          ? data['user']['balance']
+          : null,
+    ];
+
+    for (final dynamic value in possibleValues) {
+      final double? parsed = _toDouble(value);
+
+      if (parsed != null) {
+        return parsed;
       }
-    }
-  }
-
-  void _showLoadingDialog(
-    String message,
-  ) {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (
-        BuildContext dialogContext,
-      ) {
-        return PopScope(
-          canPop: false,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(18),
-            ),
-            content: Row(
-              children: [
-                const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child:
-                      CircularProgressIndicator(
-                    strokeWidth: 3,
-                    color:
-                        Color(0xFF075E54),
-                  ),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Text(
-                    message,
-                    style: const TextStyle(
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void>
-      _showFundingSuccessDialog({
-    required double? fundedAmount,
-    required String reference,
-    required bool alreadyProcessed,
-  }) async {
-    if (!mounted) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (
-        BuildContext dialogContext,
-      ) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(22),
-          ),
-          icon: const CircleAvatar(
-            radius: 33,
-            backgroundColor:
-                Color(0xFFE7F5F1),
-            child: Icon(
-              Icons.check_circle_rounded,
-              size: 43,
-              color: Color(0xFF128C7E),
-            ),
-          ),
-          title: Text(
-            alreadyProcessed
-                ? 'Payment Already Verified'
-                : 'Wallet Funded Successfully',
-            textAlign: TextAlign.center,
-          ),
-          content: Column(
-            mainAxisSize:
-                MainAxisSize.min,
-            children: [
-              if (fundedAmount != null)
-                Text(
-                  '₦${_formatAmount(fundedAmount)}',
-                  style: const TextStyle(
-                    fontSize: 27,
-                    fontWeight:
-                        FontWeight.bold,
-                    color:
-                        Color(0xFF075E54),
-                  ),
-                ),
-              const SizedBox(height: 10),
-              Text(
-                alreadyProcessed
-                    ? 'This payment was already added to your wallet.'
-                    : 'The payment has been added to your Servicepay wallet.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  height: 1.45,
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 13),
-              Text(
-                'Reference: $reference',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  color: Colors.black45,
-                ),
-              ),
-            ],
-          ),
-          actionsAlignment:
-              MainAxisAlignment.center,
-          actions: [
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                );
-              },
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    const Color(
-                  0xFF075E54,
-                ),
-              ),
-              child: const Text(
-                'Done',
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  double? _toDouble(
-    dynamic value,
-  ) {
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    if (value is String) {
-      return double.tryParse(
-        value
-            .replaceAll(',', '')
-            .trim(),
-      );
     }
 
     return null;
   }
 
-  Future<void>
-      _openTransferScreen() async {
-    final bool? transferCompleted =
-        await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            const TransferScreen(),
-      ),
+  List<dynamic> _extractTransactions(dynamic data) {
+    if (data is! Map) {
+      return [];
+    }
+
+    final dynamic directTransactions =
+        data['transactions'];
+
+    if (directTransactions is List) {
+      return directTransactions;
+    }
+
+    final dynamic responseData = data['data'];
+
+    if (responseData is Map) {
+      final dynamic nestedTransactions =
+          responseData['transactions'];
+
+      if (nestedTransactions is List) {
+        return nestedTransactions;
+      }
+    }
+
+    if (responseData is List) {
+      return responseData;
+    }
+
+    return [];
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+      value.toString().replaceAll(',', '').trim(),
     );
+  }
 
-    if (!mounted) return;
+  String _extractMessage(
+    dynamic data, {
+    required String fallback,
+  }) {
+    if (data is Map) {
+      final dynamic message =
+          data['message'] ??
+          data['error'] ??
+          data['detail'];
 
-    if (transferCompleted == true) {
+      if (message != null &&
+          message.toString().trim().isNotEmpty) {
+        return message.toString();
+      }
+    }
+
+    return fallback;
+  }
+
+  Future<void> _fundWallet() async {
+    if (isFunding) return;
+
+    setState(() {
+      isFunding = true;
+    });
+
+    try {
       final SharedPreferences prefs =
-          await SharedPreferences
-              .getInstance();
+          await SharedPreferences.getInstance();
 
-      final double savedBalance =
-          prefs.getDouble(
-                'wallet_balance',
-              ) ??
-              0.0;
+      final String? token = prefs.getString('auth_token');
+
+      if (token == null || token.trim().isEmpty) {
+        _showMessage(
+          'Your login session has expired. Please sign in again.',
+          isError: true,
+        );
+        return;
+      }
+
+      final double? amount = await _showAmountDialog();
+
+      if (amount == null) {
+        return;
+      }
+
+      if (amount < 100) {
+        _showMessage(
+          'Minimum wallet funding amount is ₦100.',
+          isError: true,
+        );
+        return;
+      }
+
+      final http.Response response = await http.post(
+        Uri.parse('$baseUrl/paystack/initialize'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'amount': amount,
+        }),
+      ).timeout(
+        const Duration(seconds: 30),
+      );
+
+      final dynamic decoded = _decodeResponse(response.body);
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        final String? paymentUrl =
+            _extractPaymentUrl(decoded);
+
+        if (paymentUrl == null ||
+            paymentUrl.trim().isEmpty) {
+          _showMessage(
+            'Payment link was not returned by the server.',
+            isError: true,
+          );
+          return;
+        }
+
+        final Uri paymentUri = Uri.parse(paymentUrl);
+
+        final bool opened = await launchUrl(
+          paymentUri,
+          mode: LaunchMode.externalApplication,
+        );
+
+        if (!opened) {
+          _showMessage(
+            'Unable to open the payment page.',
+            isError: true,
+          );
+          return;
+        }
+
+        _showMessage(
+          'Complete your payment, then return and refresh your wallet.',
+          isError: false,
+        );
+      } else {
+        final String message = _extractMessage(
+          decoded,
+          fallback:
+              'Unable to initialize wallet funding.',
+        );
+
+        _showMessage(
+          message,
+          isError: true,
+        );
+      }
+    } catch (error) {
+      _showMessage(
+        'Unable to start wallet funding. Please try again.',
+        isError: true,
+      );
+    } finally {
+      if (!mounted) return;
 
       setState(() {
-        walletBalance = savedBalance;
+        isFunding = false;
       });
-
-      await _refreshWallet(
-        showMessage: false,
-      );
     }
   }
 
-  String _formatAmount(
-    double amount,
-  ) {
-    final String amountText =
-        amount.toStringAsFixed(2);
-
-    final List<String> parts =
-        amountText.split('.');
-
-    final String wholeNumber =
-        parts[0];
-
-    final String decimalPart =
-        parts.length > 1
-            ? parts[1]
-            : '00';
-
-    final StringBuffer buffer =
-        StringBuffer();
-
-    for (
-      int index = 0;
-      index < wholeNumber.length;
-      index++
-    ) {
-      if (index > 0 &&
-          (wholeNumber.length -
-                      index) %
-                  3 ==
-              0) {
-        buffer.write(',');
-      }
-
-      buffer.write(
-        wholeNumber[index],
-      );
+  String? _extractPaymentUrl(dynamic data) {
+    if (data is! Map) {
+      return null;
     }
 
-    return '${buffer.toString()}.$decimalPart';
+    final List<dynamic> possibleUrls = [
+      data['authorization_url'],
+      data['authorizationUrl'],
+      data['paymentUrl'],
+      data['payment_url'],
+      data['url'],
+      data['data'] is Map
+          ? data['data']['authorization_url']
+          : null,
+      data['data'] is Map
+          ? data['data']['authorizationUrl']
+          : null,
+      data['data'] is Map
+          ? data['data']['paymentUrl']
+          : null,
+      data['data'] is Map
+          ? data['data']['url']
+          : null,
+    ];
+
+    for (final dynamic value in possibleUrls) {
+      if (value != null &&
+          value.toString().trim().isNotEmpty) {
+        return value.toString();
+      }
+    }
+
+    return null;
+  }
+
+  Future<double?> _showAmountDialog() async {
+    final TextEditingController amountController =
+        TextEditingController();
+
+    final double? result = await showDialog<double>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Fund Wallet',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter the amount you want to add to your Servicepay wallet.',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: amountController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Amount',
+                  hintText: 'Minimum ₦100',
+                  prefixText: '₦ ',
+                  border: OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(14),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF0F766E),
+                      width: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final String cleanedAmount =
+                    amountController.text
+                        .replaceAll(',', '')
+                        .replaceAll('₦', '')
+                        .trim();
+
+                final double? amount =
+                    double.tryParse(cleanedAmount);
+
+                if (amount == null || amount <= 0) {
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Enter a valid amount.',
+                        ),
+                        backgroundColor:
+                            Color(0xFFDC2626),
+                      ),
+                    );
+                  return;
+                }
+
+                Navigator.pop(
+                  dialogContext,
+                  amount,
+                );
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    const Color(0xFF0F766E),
+              ),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
+
+    amountController.dispose();
+
+    return result;
+  }
+
+  Future<void> _openTransferScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const TransferScreen(),
+      ),
+    );
+
+    await _loadWallet(
+      showRefreshLoader: true,
+    );
   }
 
   void _showMessage(
     String message, {
-    bool isError = false,
+    required bool isError,
   }) {
     if (!mounted) return;
 
@@ -1207,158 +546,458 @@ class _WalletScreenState extends State<WalletScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor:
-              isError
-                  ? Colors.red.shade700
-                  : Colors.green.shade700,
-          behavior:
-              SnackBarBehavior.floating,
+          backgroundColor: isError
+              ? const Color(0xFFDC2626)
+              : const Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
         ),
       );
   }
 
-  Widget _buildBalanceCard() {
+  String _formatMoney(double amount) {
+    final String fixed =
+        amount.toStringAsFixed(2);
+
+    final List<String> parts = fixed.split('.');
+    final String whole = parts.first;
+    final String decimal = parts.last;
+
+    final StringBuffer formatted =
+        StringBuffer();
+
+    for (int index = 0;
+        index < whole.length;
+        index++) {
+      formatted.write(whole[index]);
+
+      final int remaining =
+          whole.length - index - 1;
+
+      if (remaining > 0 &&
+          remaining % 3 == 0) {
+        formatted.write(',');
+      }
+    }
+
+    return '${formatted.toString()}.$decimal';
+  }
+
+  String _formatDate(dynamic value) {
+    if (value == null) {
+      return 'Recently';
+    }
+
+    try {
+      final DateTime date =
+          DateTime.parse(value.toString()).toLocal();
+
+      final String day =
+          date.day.toString().padLeft(2, '0');
+
+      final String month =
+          date.month.toString().padLeft(2, '0');
+
+      final String year =
+          date.year.toString();
+
+      final String hour =
+          date.hour.toString().padLeft(2, '0');
+
+      final String minute =
+          date.minute.toString().padLeft(2, '0');
+
+      return '$day/$month/$year, $hour:$minute';
+    } catch (_) {
+      return value.toString();
+    }
+  }
+
+  String _transactionTitle(dynamic transaction) {
+    if (transaction is! Map) {
+      return 'Wallet Transaction';
+    }
+
+    final dynamic title =
+        transaction['title'] ??
+        transaction['description'] ??
+        transaction['serviceType'] ??
+        transaction['type'];
+
+    if (title == null ||
+        title.toString().trim().isEmpty) {
+      return 'Wallet Transaction';
+    }
+
+    return title
+        .toString()
+        .replaceAll('_', ' ')
+        .toLowerCase()
+        .split(' ')
+        .map(
+          (word) => word.isEmpty
+              ? ''
+              : '${word[0].toUpperCase()}${word.substring(1)}',
+        )
+        .join(' ');
+  }
+
+  double _transactionAmount(dynamic transaction) {
+    if (transaction is! Map) {
+      return 0.0;
+    }
+
+    return _toDouble(
+          transaction['amount'] ??
+              transaction['value'],
+        ) ??
+        0.0;
+  }
+
+  bool _isCreditTransaction(dynamic transaction) {
+    if (transaction is! Map) {
+      return false;
+    }
+
+    final String type = (
+      transaction['transactionType'] ??
+      transaction['type'] ??
+      transaction['direction'] ??
+      ''
+    ).toString().toUpperCase();
+
+    final String serviceType = (
+      transaction['serviceType'] ??
+      ''
+    ).toString().toUpperCase();
+
+    return type.contains('CREDIT') ||
+        type.contains('INCOMING') ||
+        type.contains('RECEIVED') ||
+        serviceType.contains('FUNDING') ||
+        serviceType.contains('DEPOSIT');
+  }
+
+  String _transactionStatus(dynamic transaction) {
+    if (transaction is! Map) {
+      return '';
+    }
+
+    return (
+      transaction['status'] ??
+      ''
+    ).toString().toUpperCase();
+  }
+
+  IconData _transactionIcon(
+    dynamic transaction,
+  ) {
+    if (_isCreditTransaction(transaction)) {
+      return Icons.south_west_rounded;
+    }
+
+    return Icons.north_east_rounded;
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'SUCCESS':
+      case 'SUCCESSFUL':
+      case 'COMPLETED':
+        return const Color(0xFF059669);
+
+      case 'FAILED':
+      case 'CANCELLED':
+      case 'REVERSED':
+        return const Color(0xFFDC2626);
+
+      case 'PENDING':
+      case 'PROCESSING':
+        return const Color(0xFFD97706);
+
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor:
+          const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        backgroundColor:
+            const Color(0xFFF5F7FA),
+        surfaceTintColor:
+            Colors.transparent,
+        elevation: 0,
+        titleSpacing: 20,
+        title: const Text(
+          'Wallet',
+          style: TextStyle(
+            color: Color(0xFF0F172A),
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh wallet',
+            onPressed: isRefreshing
+                ? null
+                : () {
+                    _loadWallet(
+                      showRefreshLoader: true,
+                    );
+                  },
+            icon: isRefreshing
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child:
+                        CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                    ),
+                  )
+                : const Icon(
+                    Icons.refresh_rounded,
+                    color: Color(0xFF0F172A),
+                  ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF0F766E),
+              ),
+            )
+          : RefreshIndicator(
+              color: const Color(0xFF0F766E),
+              onRefresh: () => _loadWallet(
+                showRefreshLoader: true,
+              ),
+              child: LayoutBuilder(
+                builder: (
+                  BuildContext context,
+                  BoxConstraints constraints,
+                ) {
+                  final double horizontalPadding =
+                      constraints.maxWidth >= 700
+                          ? 32
+                          : 16;
+
+                  final double contentWidth =
+                      constraints.maxWidth >= 900
+                          ? 850
+                          : constraints.maxWidth;
+
+                  return SingleChildScrollView(
+                    physics:
+                        const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      8,
+                      horizontalPadding,
+                      30,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: contentWidth,
+                        ),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            _buildWalletCard(),
+                            const SizedBox(height: 18),
+                            _buildQuickActions(),
+                            const SizedBox(height: 26),
+                            _buildTransactionsSection(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+    );
+  }
+
+  Widget _buildWalletCard() {
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient:
-            const LinearGradient(
+        gradient: const LinearGradient(
           colors: [
-            Color(0xFF075E54),
-            Color(0xFF128C7E),
+            Color(0xFF0F766E),
+            Color(0xFF115E59),
+            Color(0xFF134E4A),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius:
-            BorderRadius.circular(22),
+            BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withValues(
-              alpha: 0.12,
-            ),
-            blurRadius: 15,
-            offset:
-                const Offset(0, 8),
+            color: const Color(0xFF0F766E)
+                .withOpacity(0.25),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Row(
+          Positioned(
+            right: -35,
+            top: -55,
+            child: Container(
+              width: 150,
+              height: 150,
+              decoration: BoxDecoration(
+                color: Colors.white
+                    .withOpacity(0.06),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Positioned(
+            left: -45,
+            bottom: -80,
+            child: Container(
+              width: 170,
+              height: 170,
+              decoration: BoxDecoration(
+                color: Colors.white
+                    .withOpacity(0.04),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Available Balance',
-                  style: TextStyle(
-                    color:
-                        Colors.white70,
-                    fontSize: 15,
-                    fontWeight:
-                        FontWeight.w500,
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: Colors.white
+                          .withOpacity(0.15),
+                      borderRadius:
+                          BorderRadius.circular(15),
+                    ),
+                    child: const Icon(
+                      Icons.account_balance_wallet_rounded,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    hideBalance =
-                        !hideBalance;
-                  });
-                },
-                tooltip: hideBalance
-                    ? 'Show balance'
-                    : 'Hide balance',
-                icon: Icon(
-                  hideBalance
-                      ? Icons
-                          .visibility_off_outlined
-                      : Icons
-                          .visibility_outlined,
-                  color: Colors.white,
-                ),
-              ),
-              IconButton(
-                onPressed: isRefreshing
-                    ? null
-                    : () {
-                        _refreshWallet();
-                      },
-                tooltip:
-                    'Refresh balance',
-                icon: isRefreshing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child:
-                            CircularProgressIndicator(
-                          strokeWidth:
-                              2.2,
-                          color:
-                              Colors.white,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          userName,
+                          maxLines: 1,
+                          overflow:
+                              TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight:
+                                FontWeight.w700,
+                          ),
                         ),
-                      )
-                    : const Icon(
-                        Icons
-                            .refresh_rounded,
-                        color:
-                            Colors.white,
-                      ),
+                        if (userPhone.isNotEmpty)
+                          Text(
+                            userPhone,
+                            style: TextStyle(
+                              color: Colors.white
+                                  .withOpacity(0.72),
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: hideBalance
+                        ? 'Show balance'
+                        : 'Hide balance',
+                    onPressed: () {
+                      setState(() {
+                        hideBalance =
+                            !hideBalance;
+                      });
+                    },
+                    icon: Icon(
+                      hideBalance
+                          ? Icons.visibility_off_rounded
+                          : Icons.visibility_rounded,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          AnimatedSwitcher(
-            duration:
-                const Duration(
-              milliseconds: 220,
-            ),
-            child: Text(
-              hideBalance
-                  ? '₦ ••••••'
-                  : '₦${_formatAmount(walletBalance)}',
-              key: ValueKey(
-                hideBalance,
+              const SizedBox(height: 28),
+              Text(
+                'Available Balance',
+                style: TextStyle(
+                  color:
+                      Colors.white.withOpacity(0.75),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 33,
-                fontWeight:
-                    FontWeight.bold,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ),
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              const Icon(
-                Icons
-                    .account_circle_outlined,
-                color: Colors.white70,
-                size: 19,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
+              const SizedBox(height: 5),
+              AnimatedSwitcher(
+                duration:
+                    const Duration(milliseconds: 250),
                 child: Text(
-                  userPhone.isEmpty
-                      ? userName
-                      : '$userName • $userPhone',
-                  maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.white70,
-                    fontSize: 13,
+                  hideBalance
+                      ? '₦ ••••••••'
+                      : '₦${_formatMoney(walletBalance)}',
+                  key: ValueKey(hideBalance),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 31,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.6,
                   ),
                 ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: _walletButton(
+                      icon: Icons.add_rounded,
+                      label: isFunding
+                          ? 'Please wait'
+                          : 'Fund Wallet',
+                      onTap:
+                          isFunding ? null : _fundWallet,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _walletButton(
+                      icon:
+                          Icons.swap_horiz_rounded,
+                      label: 'Transfer',
+                      onTap: _openTransferScreen,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1367,234 +1006,305 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Widget _buildWalletActions() {
-    return Row(
+  Widget _walletButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Colors.white.withOpacity(0.14),
+      borderRadius:
+          BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius:
+            BorderRadius.circular(14),
+        child: Container(
+          height: 48,
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment:
+                MainAxisAlignment.center,
+            children: [
+              if (isFunding &&
+                  label == 'Please wait')
+                const SizedBox(
+                  width: 17,
+                  height: 17,
+                  child:
+                      CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              else
+                Icon(
+                  icon,
+                  color: Colors.white,
+                  size: 21,
+                ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActions() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        vertical: 18,
+        horizontal: 14,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFFE8EDF3),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black
+                .withOpacity(0.035),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _quickActionItem(
+              icon:
+                  Icons.account_balance_wallet_outlined,
+              label: 'Add Money',
+              background:
+                  const Color(0xFFDCFCE7),
+              iconColor:
+                  const Color(0xFF15803D),
+              onTap: _fundWallet,
+            ),
+          ),
+          Expanded(
+            child: _quickActionItem(
+              icon: Icons.send_rounded,
+              label: 'Send Money',
+              background:
+                  const Color(0xFFDBEAFE),
+              iconColor:
+                  const Color(0xFF1D4ED8),
+              onTap: _openTransferScreen,
+            ),
+          ),
+          Expanded(
+            child: _quickActionItem(
+              icon:
+                  Icons.refresh_rounded,
+              label: 'Refresh',
+              background:
+                  const Color(0xFFFEF3C7),
+              iconColor:
+                  const Color(0xFFB45309),
+              onTap: () {
+                _loadWallet(
+                  showRefreshLoader: true,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quickActionItem({
+    required IconData icon,
+    required String label,
+    required Color background,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius:
+          BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: 5,
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 47,
+              height: 47,
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius:
+                    BorderRadius.circular(15),
+              ),
+              child: Icon(
+                icon,
+                color: iconColor,
+                size: 23,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 1,
+              overflow:
+                  TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF334155),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionsSection() {
+    return Column(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: _buildActionButton(
-            title: 'Fund Wallet',
-            icon:
-                Icons.add_card_rounded,
-            onTap: isFunding
-                ? null
-                : _showFundingSheet,
-            isPrimary: true,
-          ),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Recent Transactions',
+                style: TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                _loadWallet(
+                  showRefreshLoader: true,
+                );
+              },
+              child: const Text(
+                'Refresh',
+                style: TextStyle(
+                  color: Color(0xFF0F766E),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildActionButton(
-            title: 'Transfer',
-            icon:
-                Icons.send_rounded,
-            onTap: isFunding
-                ? null
-                : _openTransferScreen,
-            isPrimary: false,
+        const SizedBox(height: 10),
+        if (transactions.isEmpty)
+          _buildEmptyTransactions()
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  BorderRadius.circular(22),
+              border: Border.all(
+                color:
+                    const Color(0xFFE8EDF3),
+              ),
+            ),
+            child: ListView.separated(
+              itemCount: transactions.length > 10
+                  ? 10
+                  : transactions.length,
+              shrinkWrap: true,
+              physics:
+                  const NeverScrollableScrollPhysics(),
+              separatorBuilder: (_, __) =>
+                  const Divider(
+                height: 1,
+                indent: 76,
+                color: Color(0xFFEEF2F6),
+              ),
+              itemBuilder: (
+                BuildContext context,
+                int index,
+              ) {
+                return _buildTransactionTile(
+                  transactions[index],
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
 
-  Widget _buildActionButton({
-    required String title,
-    required IconData icon,
-    required VoidCallback? onTap,
-    required bool isPrimary,
-  }) {
-    return SizedBox(
-      height: 58,
-      child: isPrimary
-          ? FilledButton.icon(
-              onPressed: onTap,
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    const Color(
-                  0xFF075E54,
-                ),
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                    15,
-                  ),
-                ),
-              ),
-              icon: isFunding
-                  ? const SizedBox(
-                      width: 19,
-                      height: 19,
-                      child:
-                          CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color:
-                            Colors.white,
-                      ),
-                    )
-                  : Icon(icon),
-              label: Text(
-                isFunding
-                    ? 'Please wait'
-                    : title,
-                style: const TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-            )
-          : OutlinedButton.icon(
-              onPressed: onTap,
-              style:
-                  OutlinedButton.styleFrom(
-                foregroundColor:
-                    const Color(
-                  0xFF075E54,
-                ),
-                side:
-                    const BorderSide(
-                  color:
-                      Color(0xFF075E54),
-                ),
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                    15,
-                  ),
-                ),
-              ),
-              icon: Icon(icon),
-              label: Text(
-                title,
-                style: const TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _buildTransferCard() {
-    return Material(
-      color: Colors.white,
-      borderRadius:
-          BorderRadius.circular(18),
-      elevation: 1.5,
-      child: InkWell(
-        borderRadius:
-            BorderRadius.circular(18),
-        onTap: isFunding
-            ? null
-            : _openTransferScreen,
-        child: Padding(
-          padding:
-              const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color:
-                      const Color(
-                    0xFF128C7E,
-                  ).withValues(
-                    alpha: 0.12,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    16,
-                  ),
-                ),
-                child: const Icon(
-                  Icons
-                      .swap_horiz_rounded,
-                  color:
-                      Color(0xFF075E54),
-                  size: 30,
-                ),
-              ),
-              const SizedBox(width: 15),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
-                  children: [
-                    Text(
-                      'Servicepay Transfer',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight:
-                            FontWeight.bold,
-                        color:
-                            Color(0xFF222222),
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Text(
-                      'Send money instantly to another Servicepay customer.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.4,
-                        color:
-                            Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons
-                    .arrow_forward_ios_rounded,
-                size: 18,
-                color: Colors.black38,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInformationCard() {
+  Widget _buildEmptyTransactions() {
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(17),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 24,
+        vertical: 40,
+      ),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
+        color: Colors.white,
         borderRadius:
-            BorderRadius.circular(16),
+            BorderRadius.circular(22),
         border: Border.all(
-          color:
-              Colors.blue.shade100,
+          color: const Color(0xFFE8EDF3),
         ),
       ),
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+      child: Column(
         children: [
-          Icon(
-            Icons
-                .security_rounded,
-            color:
-                Colors.blue.shade700,
+          Container(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
+              color:
+                  const Color(0xFFE6FFFB),
+              borderRadius:
+                  BorderRadius.circular(22),
+            ),
+            child: const Icon(
+              Icons.receipt_long_rounded,
+              color: Color(0xFF0F766E),
+              size: 32,
+            ),
           ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Wallet funding is processed securely through Paystack. '
-              'Always confirm that your payment is successful before verifying it.',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.5,
-                color:
-                    Color(0xFF334155),
-              ),
+          const SizedBox(height: 15),
+          const Text(
+            'No transactions yet',
+            style: TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Your wallet transactions will appear here.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 13,
+              height: 1.4,
             ),
           ),
         ],
@@ -1602,100 +1312,113 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  @override
-  Widget build(
-    BuildContext context,
+  Widget _buildTransactionTile(
+    dynamic transaction,
   ) {
-    return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7F9),
-      appBar: AppBar(
-        title: const Text(
-          'My Wallet',
-          style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
-          ),
-        ),
-        centerTitle: false,
-        elevation: 0,
-        backgroundColor:
-            Colors.white,
-        foregroundColor:
-            const Color(0xFF222222),
-        actions: [
-          IconButton(
-            onPressed: isRefreshing
-                ? null
-                : () {
-                    _refreshWallet();
-                  },
-            tooltip:
-                'Refresh wallet',
-            icon: const Icon(
-              Icons.refresh_rounded,
-            ),
-          ),
-        ],
+    final bool isCredit =
+        _isCreditTransaction(transaction);
+
+    final double amount =
+        _transactionAmount(transaction);
+
+    final String status =
+        _transactionStatus(transaction);
+
+    final dynamic dateValue =
+        transaction is Map
+            ? transaction['createdAt'] ??
+                transaction['date'] ??
+                transaction['updatedAt']
+            : null;
+
+    final Color transactionColor = isCredit
+        ? const Color(0xFF059669)
+        : const Color(0xFFDC2626);
+
+    return ListTile(
+      contentPadding:
+          const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 9,
       ),
-      body: isLoading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(
-                color:
-                    Color(0xFF075E54),
-              ),
-            )
-          : RefreshIndicator(
-              color:
-                  const Color(
-                0xFF075E54,
-              ),
-              onRefresh: () {
-                return _refreshWallet(
-                  showMessage: false,
-                );
-              },
-              child: ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
-                padding:
-                    const EdgeInsets.fromLTRB(
-                  16,
-                  18,
-                  16,
-                  30,
+      leading: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: transactionColor
+              .withOpacity(0.10),
+          borderRadius:
+              BorderRadius.circular(15),
+        ),
+        child: Icon(
+          _transactionIcon(transaction),
+          color: transactionColor,
+          size: 22,
+        ),
+      ),
+      title: Text(
+        _transactionTitle(transaction),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Color(0xFF0F172A),
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: Padding(
+        padding:
+            const EdgeInsets.only(top: 5),
+        child: Row(
+          children: [
+            Flexible(
+              child: Text(
+                _formatDate(dateValue),
+                overflow:
+                    TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 11,
                 ),
-                children: [
-                  _buildBalanceCard(),
-                  const SizedBox(
-                    height: 17,
-                  ),
-                  _buildWalletActions(),
-                  const SizedBox(
-                    height: 24,
-                  ),
-                  const Text(
-                    'Wallet Services',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight:
-                          FontWeight.bold,
-                      color:
-                          Color(0xFF222222),
-                    ),
-                  ),
-                  const SizedBox(
-                    height: 12,
-                  ),
-                  _buildTransferCard(),
-                  const SizedBox(
-                    height: 18,
-                  ),
-                  _buildInformationCard(),
-                ],
               ),
             ),
+            if (status.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: _statusColor(status)
+                      .withOpacity(0.10),
+                  borderRadius:
+                      BorderRadius.circular(20),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    color:
+                        _statusColor(status),
+                    fontSize: 9,
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      trailing: Text(
+        '${isCredit ? '+' : '-'}₦${_formatMoney(amount)}',
+        style: TextStyle(
+          color: transactionColor,
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
     );
   }
 }
