@@ -1,4 +1,8 @@
 const axios = require("axios");
+const crypto = require("crypto");
+
+const User = require("../models/user.model");
+const Transaction = require("../models/transaction.model");
 
 const AIRTIME_URL =
   "https://www.nellobytesystems.com/APIAirtimeV1.asp";
@@ -17,6 +21,13 @@ const NETWORK_CODES = {
   "02": "02",
   "03": "03",
   "04": "04",
+};
+
+const generateReference = (prefix) => {
+  return `${prefix}-${Date.now()}-${crypto
+    .randomBytes(4)
+    .toString("hex")
+    .toUpperCase()}`;
 };
 
 const normalizeNetwork = (network) => {
@@ -38,70 +49,59 @@ const normalizePhone = (phone) => {
   return value;
 };
 
-const getProviderStatus = (providerData) => {
-  if (providerData === null || providerData === undefined) {
-    return "";
+const parseProviderResponse = (data) => {
+  if (data === null || data === undefined) {
+    return {};
   }
 
-  if (typeof providerData === "string") {
-    const trimmed = providerData.trim();
-
-    try {
-      const parsed = JSON.parse(trimmed);
-
-      return String(
-        parsed.status ||
-          parsed.Status ||
-          parsed.response_description ||
-          parsed.message ||
-          ""
-      )
-        .trim()
-        .toUpperCase();
-    } catch (_) {
-      return trimmed.toUpperCase();
-    }
+  if (typeof data === "object") {
+    return data;
   }
 
-  if (typeof providerData === "object") {
-    return String(
-      providerData.status ||
-        providerData.Status ||
-        providerData.response_description ||
-        providerData.ResponseDescription ||
-        providerData.message ||
-        providerData.Message ||
-        ""
-    )
-      .trim()
-      .toUpperCase();
-  }
+  const text = String(data).trim();
 
-  return String(providerData).trim().toUpperCase();
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return {
+      message: text,
+      raw: text,
+    };
+  }
 };
 
-const getProviderMessage = (providerData) => {
-  if (!providerData) {
-    return "No response was received from the service provider.";
-  }
+const getProviderStatus = (data) => {
+  const parsed = parseProviderResponse(data);
 
-  if (typeof providerData === "string") {
-    return providerData;
-  }
-
-  return (
-    providerData.message ||
-    providerData.Message ||
-    providerData.response_description ||
-    providerData.ResponseDescription ||
-    providerData.status ||
-    providerData.Status ||
-    "The service provider rejected the request."
-  );
+  return String(
+    parsed.status ||
+      parsed.Status ||
+      parsed.response_description ||
+      parsed.ResponseDescription ||
+      parsed.message ||
+      parsed.Message ||
+      ""
+  )
+    .trim()
+    .toUpperCase();
 };
 
-const isSuccessfulProviderResponse = (providerData) => {
-  const status = getProviderStatus(providerData);
+const getProviderMessage = (data) => {
+  const parsed = parseProviderResponse(data);
+
+  return String(
+    parsed.message ||
+      parsed.Message ||
+      parsed.response_description ||
+      parsed.ResponseDescription ||
+      parsed.status ||
+      parsed.Status ||
+      "The provider rejected this request."
+  ).trim();
+};
+
+const isProviderSuccessful = (data) => {
+  const status = getProviderStatus(data);
 
   if (!status) {
     return false;
@@ -116,15 +116,13 @@ const isSuccessfulProviderResponse = (providerData) => {
     "INSUFFICIENT",
     "DECLINED",
     "REJECTED",
-    "NOT_FOUND",
     "UNAUTHORIZED",
-    "DUPLICATE",
+    "NOT_FOUND",
+    "CANCELLED",
   ];
 
   if (
-    failureWords.some((failureWord) =>
-      status.includes(failureWord)
-    )
+    failureWords.some((word) => status.includes(word))
   ) {
     return false;
   }
@@ -134,17 +132,17 @@ const isSuccessfulProviderResponse = (providerData) => {
     "SUCCESSFUL",
     "COMPLETED",
     "ORDER_RECEIVED",
-    "ORDER_COMPLETED",
+    "ORDER COMPLETED",
     "PROCESSING",
     "PENDING",
   ];
 
-  return successWords.some((successWord) =>
-    status.includes(successWord)
+  return successWords.some((word) =>
+    status.includes(word)
   );
 };
 
-const checkCredentials = () => {
+const getCredentials = () => {
   const userId = String(
     process.env.CLUBKONNECT_USER_ID || ""
   ).trim();
@@ -153,26 +151,48 @@ const checkCredentials = () => {
     process.env.CLUBKONNECT_API_KEY || ""
   ).trim();
 
-  if (!userId || !apiKey) {
-    return {
-      valid: false,
-      userId: "",
-      apiKey: "",
-    };
-  }
-
   return {
-    valid: true,
     userId,
     apiKey,
+    valid: Boolean(userId && apiKey),
   };
 };
 
-exports.buyAirtime = async (req, res) => {
-  try {
-    const { network, phone, amount } = req.body;
+const refundCustomer = async ({
+  customerId,
+  amount,
+  transactionId,
+  providerResponse,
+}) => {
+  const updatedCustomer = await User.findOneAndUpdate(
+    {
+      _id: customerId,
+    },
+    {
+      $inc: {
+        walletBalance: amount,
+      },
+    },
+    {
+      new: true,
+    }
+  );
 
-    const credentials = checkCredentials();
+  await Transaction.findByIdAndUpdate(transactionId, {
+    status: "REFUNDED",
+    providerResponse,
+  });
+
+  return updatedCustomer;
+};
+
+exports.buyAirtime = async (req, res) => {
+  let transaction = null;
+  let customer = null;
+  let walletDebited = false;
+
+  try {
+    const credentials = getCredentials();
 
     if (!credentials.valid) {
       return res.status(503).json({
@@ -182,6 +202,8 @@ exports.buyAirtime = async (req, res) => {
       });
     }
 
+    const { network, phone, amount } = req.body;
+
     const networkCode = normalizeNetwork(network);
     const mobileNumber = normalizePhone(phone);
     const airtimeAmount = Number(amount);
@@ -190,7 +212,7 @@ exports.buyAirtime = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Select a valid network: MTN, GLO, Airtel or 9mobile.",
+          "Select MTN, GLO, Airtel or 9mobile.",
       });
     }
 
@@ -201,7 +223,7 @@ exports.buyAirtime = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Enter a valid Nigerian phone number with 11 digits.",
+          "Enter a valid Nigerian phone number.",
       });
     }
 
@@ -216,6 +238,67 @@ exports.buyAirtime = async (req, res) => {
       });
     }
 
+    customer = await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        status: "ACTIVE",
+        walletBalance: {
+          $gte: airtimeAmount,
+        },
+      },
+      {
+        $inc: {
+          walletBalance: -airtimeAmount,
+          totalTransactions: 1,
+        },
+      },
+      {
+        new: true,
+      }
+    );
+
+    if (!customer) {
+      const existingCustomer = await User.findById(
+        req.user._id
+      );
+
+      if (!existingCustomer) {
+        return res.status(404).json({
+          success: false,
+          message: "Customer account was not found.",
+        });
+      }
+
+      if (existingCustomer.status !== "ACTIVE") {
+        return res.status(403).json({
+          success: false,
+          message: "This account is not active.",
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient wallet balance.",
+        walletBalance:
+          existingCustomer.walletBalance || 0,
+      });
+    }
+
+    walletDebited = true;
+
+    transaction = await Transaction.create({
+      reference: generateReference("AIR"),
+      customerId: customer._id,
+      agentId: customer.agentId,
+      stateManagerId: customer.stateManagerId,
+      zonalManagerId: customer.zonalManagerId,
+      serviceType: "AIRTIME",
+      provider: "CLUBKONNECT",
+      phone: mobileNumber,
+      amount: airtimeAmount,
+      status: "PENDING",
+    });
+
     const response = await axios.get(AIRTIME_URL, {
       params: {
         UserID: credentials.userId,
@@ -228,86 +311,116 @@ exports.buyAirtime = async (req, res) => {
       validateStatus: () => true,
     });
 
+    const providerResponse =
+      parseProviderResponse(response.data);
+
     console.log("CLUBKONNECT AIRTIME RESPONSE:", {
       httpStatus: response.status,
-      providerStatus: getProviderStatus(response.data),
-      data: response.data,
+      transactionReference: transaction.reference,
+      providerResponse,
     });
 
     if (
       response.status < 200 ||
-      response.status >= 300
+      response.status >= 300 ||
+      !isProviderSuccessful(providerResponse)
     ) {
-      return res.status(502).json({
+      const refundedCustomer = await refundCustomer({
+        customerId: customer._id,
+        amount: airtimeAmount,
+        transactionId: transaction._id,
+        providerResponse,
+      });
+
+      walletDebited = false;
+
+      return res.status(400).json({
         success: false,
-        message:
-          "The airtime provider could not process the request.",
-        providerResponse: response.data,
+        message: getProviderMessage(providerResponse),
+        reference: transaction.reference,
+        status: "REFUNDED",
+        walletBalance:
+          refundedCustomer?.walletBalance || 0,
+        providerResponse,
       });
     }
 
-    if (!isSuccessfulProviderResponse(response.data)) {
-      return res.status(400).json({
-        success: false,
-        message: getProviderMessage(response.data),
-        providerResponse: response.data,
-      });
-    }
+    transaction.status = "SUCCESSFUL";
+    transaction.providerResponse = providerResponse;
+
+    await transaction.save();
 
     return res.status(200).json({
       success: true,
-      message:
-        "Airtime purchase request was submitted successfully.",
+      message: "Airtime purchase was successful.",
+      reference: transaction.reference,
+      status: transaction.status,
+      walletBalance: customer.walletBalance,
       transaction: {
-        service: "AIRTIME",
+        serviceType: transaction.serviceType,
         network: networkCode,
         phone: mobileNumber,
         amount: airtimeAmount,
-        providerStatus: getProviderStatus(response.data),
       },
-      providerResponse: response.data,
+      providerResponse,
     });
   } catch (error) {
-    console.error("CLUBKONNECT AIRTIME ERROR:", {
+    console.error("AIRTIME PURCHASE ERROR:", {
       message: error.message,
       status: error.response?.status,
       data: error.response?.data,
-      url: error.config?.url,
     });
 
     if (
-      error.code === "ECONNABORTED" ||
-      error.code === "ETIMEDOUT"
+      walletDebited &&
+      customer &&
+      transaction
     ) {
-      return res.status(504).json({
-        success: false,
-        message:
-          "The airtime provider took too long to respond. Please check the transaction status before trying again.",
-      });
+      try {
+        const refundedCustomer =
+          await refundCustomer({
+            customerId: customer._id,
+            amount: transaction.amount,
+            transactionId: transaction._id,
+            providerResponse:
+              error.response?.data || {
+                message: error.message,
+              },
+          });
+
+        return res.status(500).json({
+          success: false,
+          message:
+            "Airtime purchase failed. Your wallet has been refunded.",
+          reference: transaction.reference,
+          status: "REFUNDED",
+          walletBalance:
+            refundedCustomer?.walletBalance || 0,
+        });
+      } catch (refundError) {
+        console.error(
+          "AIRTIME REFUND ERROR:",
+          refundError
+        );
+      }
     }
 
     return res.status(500).json({
       success: false,
       message:
         "Airtime purchase could not be completed.",
-      error:
-        error.response?.data ||
-        error.message ||
-        "Unknown server error.",
+      error: error.message,
     });
   }
 };
 
 exports.buyData = async (req, res) => {
-  try {
-    const {
-      network,
-      phone,
-      planCode,
-      dataPlan,
-    } = req.body;
+  let transaction = null;
+  let customer = null;
+  let walletDebited = false;
 
-    const credentials = checkCredentials();
+  try {
+    const credentials = getCredentials();
 
     if (!credentials.valid) {
       return res.status(503).json({
@@ -317,6 +430,14 @@ exports.buyData = async (req, res) => {
       });
     }
 
+    const {
+      network,
+      phone,
+      planCode,
+      dataPlan,
+      amount,
+    } = req.body;
+
     const networkCode = normalizeNetwork(network);
     const mobileNumber = normalizePhone(phone);
 
@@ -324,11 +445,13 @@ exports.buyData = async (req, res) => {
       planCode || dataPlan || ""
     ).trim();
 
+    const dataAmount = Number(amount);
+
     if (!networkCode) {
       return res.status(400).json({
         success: false,
         message:
-          "Select a valid network: MTN, GLO, Airtel or 9mobile.",
+          "Select MTN, GLO, Airtel or 9mobile.",
       });
     }
 
@@ -339,7 +462,7 @@ exports.buyData = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Enter a valid Nigerian phone number with 11 digits.",
+          "Enter a valid Nigerian phone number.",
       });
     }
 
@@ -349,6 +472,82 @@ exports.buyData = async (req, res) => {
         message: "Select a valid data plan.",
       });
     }
+
+    if (
+      !Number.isFinite(dataAmount) ||
+      dataAmount <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "A valid data plan amount is required.",
+      });
+    }
+
+    customer = await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        status: "ACTIVE",
+        walletBalance: {
+          $gte: dataAmount,
+        },
+      },
+      {
+        $inc: {
+          walletBalance: -dataAmount,
+          totalTransactions: 1,
+        },
+      },
+      {
+        new: true,
+      }
+    );
+
+    if (!customer) {
+      const existingCustomer = await User.findById(
+        req.user._id
+      );
+
+      if (!existingCustomer) {
+        return res.status(404).json({
+          success: false,
+          message: "Customer account was not found.",
+        });
+      }
+
+      if (existingCustomer.status !== "ACTIVE") {
+        return res.status(403).json({
+          success: false,
+          message: "This account is not active.",
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient wallet balance.",
+        walletBalance:
+          existingCustomer.walletBalance || 0,
+      });
+    }
+
+    walletDebited = true;
+
+    transaction = await Transaction.create({
+      reference: generateReference("DATA"),
+      customerId: customer._id,
+      agentId: customer.agentId,
+      stateManagerId: customer.stateManagerId,
+      zonalManagerId: customer.zonalManagerId,
+      serviceType: "DATA",
+      provider: "CLUBKONNECT",
+      phone: mobileNumber,
+      amount: dataAmount,
+      status: "PENDING",
+      providerResponse: {
+        network: networkCode,
+        planCode: selectedPlan,
+      },
+    });
 
     const response = await axios.get(DATA_URL, {
       params: {
@@ -362,72 +561,109 @@ exports.buyData = async (req, res) => {
       validateStatus: () => true,
     });
 
+    const providerResponse =
+      parseProviderResponse(response.data);
+
     console.log("CLUBKONNECT DATA RESPONSE:", {
       httpStatus: response.status,
-      providerStatus: getProviderStatus(response.data),
-      data: response.data,
+      transactionReference: transaction.reference,
+      providerResponse,
     });
 
     if (
       response.status < 200 ||
-      response.status >= 300
+      response.status >= 300 ||
+      !isProviderSuccessful(providerResponse)
     ) {
-      return res.status(502).json({
+      const refundedCustomer = await refundCustomer({
+        customerId: customer._id,
+        amount: dataAmount,
+        transactionId: transaction._id,
+        providerResponse,
+      });
+
+      walletDebited = false;
+
+      return res.status(400).json({
         success: false,
-        message:
-          "The data provider could not process the request.",
-        providerResponse: response.data,
+        message: getProviderMessage(providerResponse),
+        reference: transaction.reference,
+        status: "REFUNDED",
+        walletBalance:
+          refundedCustomer?.walletBalance || 0,
+        providerResponse,
       });
     }
 
-    if (!isSuccessfulProviderResponse(response.data)) {
-      return res.status(400).json({
-        success: false,
-        message: getProviderMessage(response.data),
-        providerResponse: response.data,
-      });
-    }
+    transaction.status = "SUCCESSFUL";
+    transaction.providerResponse = {
+      planCode: selectedPlan,
+      response: providerResponse,
+    };
+
+    await transaction.save();
 
     return res.status(200).json({
       success: true,
-      message:
-        "Data purchase request was submitted successfully.",
+      message: "Data purchase was successful.",
+      reference: transaction.reference,
+      status: transaction.status,
+      walletBalance: customer.walletBalance,
       transaction: {
-        service: "DATA",
+        serviceType: transaction.serviceType,
         network: networkCode,
         phone: mobileNumber,
         planCode: selectedPlan,
-        providerStatus: getProviderStatus(response.data),
+        amount: dataAmount,
       },
-      providerResponse: response.data,
+      providerResponse,
     });
   } catch (error) {
-    console.error("CLUBKONNECT DATA ERROR:", {
+    console.error("DATA PURCHASE ERROR:", {
       message: error.message,
       status: error.response?.status,
       data: error.response?.data,
-      url: error.config?.url,
     });
 
     if (
-      error.code === "ECONNABORTED" ||
-      error.code === "ETIMEDOUT"
+      walletDebited &&
+      customer &&
+      transaction
     ) {
-      return res.status(504).json({
-        success: false,
-        message:
-          "The data provider took too long to respond. Please check the transaction status before trying again.",
-      });
+      try {
+        const refundedCustomer =
+          await refundCustomer({
+            customerId: customer._id,
+            amount: transaction.amount,
+            transactionId: transaction._id,
+            providerResponse:
+              error.response?.data || {
+                message: error.message,
+              },
+          });
+
+        return res.status(500).json({
+          success: false,
+          message:
+            "Data purchase failed. Your wallet has been refunded.",
+          reference: transaction.reference,
+          status: "REFUNDED",
+          walletBalance:
+            refundedCustomer?.walletBalance || 0,
+        });
+      } catch (refundError) {
+        console.error(
+          "DATA REFUND ERROR:",
+          refundError
+        );
+      }
     }
 
     return res.status(500).json({
       success: false,
       message:
         "Data purchase could not be completed.",
-      error:
-        error.response?.data ||
-        error.message ||
-        "Unknown server error.",
+      error: error.message,
     });
   }
 };

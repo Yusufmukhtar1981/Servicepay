@@ -5,9 +5,13 @@ const {
   buyData,
 } = require("../controllers/clubkonnect.controller");
 
+const {
+  protect,
+} = require("../middleware/auth.middleware");
+
 const router = express.Router();
 
-router.post("/airtime", buyAirtime);
-router.post("/data", buyData);
+router.post("/airtime", protect, buyAirtime);
+router.post("/data", protect, buyData);
 
 module.exports = router;
