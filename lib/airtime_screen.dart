@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'services/api_service.dart';
 
 class AirtimeScreen extends StatefulWidget {
@@ -9,11 +10,11 @@ class AirtimeScreen extends StatefulWidget {
 }
 
 class _AirtimeScreenState extends State<AirtimeScreen> {
-  final phoneController = TextEditingController();
-  final amountController = TextEditingController();
+  final TextEditingController phoneController =
+      TextEditingController();
 
-  String selectedNetwork = 'MTN';
-  bool isLoading = false;
+  final TextEditingController amountController =
+      TextEditingController();
 
   final List<String> networks = [
     'MTN',
@@ -21,6 +22,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     'Glo',
     '9mobile',
   ];
+
+  String selectedNetwork = 'MTN';
+  bool isLoading = false;
 
   @override
   void dispose() {
@@ -32,40 +36,56 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   Future<void> buyAirtime() async {
-    final phone = phoneController.text.trim();
-    final amountText = amountController.text.trim();
-    final amount = double.tryParse(amountText);
+    final String phone =
+        phoneController.text.trim();
+
+    final String amountText =
+        amountController.text.trim();
+
+    final double? amount =
+        double.tryParse(amountText);
 
     if (phone.isEmpty || amountText.isEmpty) {
-      showMessage('Please enter the phone number and amount.');
+      showMessage(
+        'Please enter the phone number and amount.',
+      );
       return;
     }
 
     if (!RegExp(r'^[0-9]{11}$').hasMatch(phone) ||
         !phone.startsWith('0')) {
-      showMessage('Please enter a valid 11-digit phone number.');
+      showMessage(
+        'Please enter a valid 11-digit phone number.',
+      );
       return;
     }
 
     if (amount == null || amount < 50) {
-      showMessage('The minimum airtime amount is ₦50.');
+      showMessage(
+        'The minimum airtime amount is ₦50.',
+      );
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final bool? confirmed =
+        await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('Confirm airtime purchase'),
+          title: const Text(
+            'Confirm airtime purchase',
+          ),
           content: Text(
             'Purchase ₦${amount.toStringAsFixed(0)} '
             '$selectedNetwork airtime for $phone?',
@@ -73,13 +93,19 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
               child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
@@ -94,12 +120,13 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
     if (confirmed != true) return;
 
-    try {
-      setState(() {
-        isLoading = true;
-      });
+    setState(() {
+      isLoading = true;
+    });
 
-      final result = await ApiService.buyAirtime(
+    try {
+      final Map<String, dynamic> result =
+          await ApiService.buyAirtime(
         network: selectedNetwork,
         phone: phone,
         amount: amountText,
@@ -107,30 +134,52 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
       if (!mounted) return;
 
-      final success =
-          result['success'] == true ||
-          result['status'] == true ||
-          result['status']?.toString().toLowerCase() == 'success' ||
-          result['status']?.toString() == '200';
+      final bool success =
+          result['success'] == true;
 
-      final message =
+      final String message =
           result['message']?.toString() ??
-          result['response_description']?.toString() ??
-          result['description']?.toString() ??
-          result['error']?.toString();
+              result['response_description']
+                  ?.toString() ??
+              result['description']?.toString() ??
+              result['error']?.toString() ??
+              (success
+                  ? 'Airtime purchase was successful.'
+                  : 'Airtime purchase failed.');
 
       if (success) {
-        showMessage(message ?? 'Airtime purchase was successful.');
+        showMessage(message);
 
         phoneController.clear();
         amountController.clear();
       } else {
-        showMessage(message ?? 'Airtime purchase failed.');
+        final String? reference =
+            result['reference']?.toString();
+
+        final String? status =
+            result['status']?.toString();
+
+        String finalMessage = message;
+
+        if (status == 'REFUNDED') {
+          finalMessage =
+              '$message Your wallet has been refunded.';
+        }
+
+        if (reference != null &&
+            reference.isNotEmpty) {
+          finalMessage =
+              '$finalMessage Reference: $reference';
+        }
+
+        showMessage(finalMessage);
       }
     } catch (error) {
-      showMessage(
-        'Unable to complete the request. Please check the server connection.',
-      );
+      final String message = error
+          .toString()
+          .replaceFirst('Exception: ', '');
+
+      showMessage(message);
     } finally {
       if (mounted) {
         setState(() {
@@ -143,7 +192,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor:
+          const Color(0xFFF5F7FA),
       appBar: AppBar(
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
@@ -162,7 +212,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
               maxWidth: 600,
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Select Network',
@@ -175,27 +226,33 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 DropdownButtonFormField<String>(
                   initialValue: selectedNetwork,
                   decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.sim_card_outlined),
+                    prefixIcon: const Icon(
+                      Icons.sim_card_outlined,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(12),
                     ),
                   ),
-                  items: networks.map((network) {
-                    return DropdownMenuItem<String>(
-                      value: network,
-                      child: Text(network),
-                    );
-                  }).toList(),
+                  items: networks
+                      .map(
+                        (String network) =>
+                            DropdownMenuItem<String>(
+                          value: network,
+                          child: Text(network),
+                        ),
+                      )
+                      .toList(),
                   onChanged: isLoading
                       ? null
-                      : (value) {
-                          if (value != null) {
-                            setState(() {
-                              selectedNetwork = value;
-                            });
-                          }
+                      : (String? value) {
+                          if (value == null) return;
+
+                          setState(() {
+                            selectedNetwork = value;
+                          });
                         },
                 ),
                 const SizedBox(height: 22),
@@ -210,16 +267,20 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 TextField(
                   controller: phoneController,
                   enabled: !isLoading,
-                  keyboardType: TextInputType.phone,
+                  keyboardType:
+                      TextInputType.phone,
                   maxLength: 11,
                   decoration: InputDecoration(
                     hintText: '08012345678',
                     counterText: '',
-                    prefixIcon: const Icon(Icons.phone_outlined),
+                    prefixIcon: const Icon(
+                      Icons.phone_outlined,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(12),
                     ),
                   ),
                 ),
@@ -235,17 +296,22 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 TextField(
                   controller: amountController,
                   enabled: !isLoading,
-                  keyboardType: const TextInputType.numberWithOptions(
+                  keyboardType:
+                      const TextInputType
+                          .numberWithOptions(
                     decimal: true,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Enter amount',
                     prefixText: '₦ ',
-                    prefixIcon: const Icon(Icons.payments_outlined),
+                    prefixIcon: const Icon(
+                      Icons.payments_outlined,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(12),
                     ),
                   ),
                 ),
@@ -254,19 +320,25 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: isLoading ? null : buyAirtime,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
+                    onPressed:
+                        isLoading ? null : buyAirtime,
+                    style:
+                        ElevatedButton.styleFrom(
+                      backgroundColor:
+                          Colors.green,
+                      foregroundColor:
+                          Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius:
+                            BorderRadius.circular(12),
                       ),
                     ),
                     child: isLoading
                         ? const SizedBox(
                             width: 24,
                             height: 24,
-                            child: CircularProgressIndicator(
+                            child:
+                                CircularProgressIndicator(
                               strokeWidth: 2.5,
                               color: Colors.white,
                             ),
@@ -275,7 +347,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                             'Buy Airtime',
                             style: TextStyle(
                               fontSize: 17,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                   ),
