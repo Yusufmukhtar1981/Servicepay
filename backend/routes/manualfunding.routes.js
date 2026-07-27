@@ -9,7 +9,7 @@ const {
   approveManualFundingRequest,
   rejectManualFundingRequest,
 } = require(
-  "../controllers/manualFunding.controller"
+  "../controllers/manualfunding.controller"
 );
 
 const {
