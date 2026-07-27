@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import 'manual_funding_screen.dart';
 import 'transfer_screen.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -15,11 +15,11 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  static const String baseUrl = 'https://api.servicepay.ng/api';
+  static const String baseUrl =
+      'https://api.servicepay.ng/api';
 
   bool isLoading = true;
   bool isRefreshing = false;
-  bool isFunding = false;
   bool hideBalance = false;
 
   double walletBalance = 0.0;
@@ -38,6 +38,8 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _loadWallet({
     bool showRefreshLoader = false,
   }) async {
+    if (!mounted) return;
+
     if (showRefreshLoader) {
       setState(() {
         isRefreshing = true;
@@ -52,7 +54,8 @@ class _WalletScreenState extends State<WalletScreen> {
       final SharedPreferences prefs =
           await SharedPreferences.getInstance();
 
-      final String? token = prefs.getString('auth_token');
+      final String? token =
+          prefs.getString('auth_token');
 
       final String savedName =
           prefs.getString('user_name') ??
@@ -78,23 +81,26 @@ class _WalletScreenState extends State<WalletScreen> {
 
       if (token == null || token.trim().isEmpty) {
         _showMessage(
-          'Your login session has expired. Please sign in again.',
+          'Unable to refresh wallet because your login token is unavailable.',
           isError: true,
         );
         return;
       }
 
-      final http.Response response = await http.get(
-        Uri.parse('$baseUrl/wallet'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(
-        const Duration(seconds: 30),
-      );
+      final http.Response response = await http
+          .get(
+            Uri.parse('$baseUrl/wallet'),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 30),
+          );
 
-      final dynamic decoded = _decodeResponse(response.body);
+      final dynamic decoded =
+          _decodeResponse(response.body);
 
       if (response.statusCode >= 200 &&
           response.statusCode < 300) {
@@ -118,7 +124,8 @@ class _WalletScreenState extends State<WalletScreen> {
       } else {
         final String message = _extractMessage(
           decoded,
-          fallback: 'Unable to load wallet.',
+          fallback:
+              'Unable to refresh wallet right now.',
         );
 
         _showMessage(
@@ -126,9 +133,9 @@ class _WalletScreenState extends State<WalletScreen> {
           isError: true,
         );
       }
-    } catch (error) {
+    } catch (_) {
       _showMessage(
-        'Unable to connect to Servicepay. Please check your internet connection.',
+        'Unable to connect to Servicepay. Your saved wallet balance is still available.',
         isError: true,
       );
     } finally {
@@ -235,7 +242,10 @@ class _WalletScreenState extends State<WalletScreen> {
     }
 
     return double.tryParse(
-      value.toString().replaceAll(',', '').trim(),
+      value
+          .toString()
+          .replaceAll(',', '')
+          .trim(),
     );
   }
 
@@ -259,267 +269,19 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _fundWallet() async {
-    if (isFunding) return;
-
-    setState(() {
-      isFunding = true;
-    });
-
-    try {
-      final SharedPreferences prefs =
-          await SharedPreferences.getInstance();
-
-      final String? token = prefs.getString('auth_token');
-
-      if (token == null || token.trim().isEmpty) {
-        _showMessage(
-          'Your login session has expired. Please sign in again.',
-          isError: true,
-        );
-        return;
-      }
-
-      final double? amount = await _showAmountDialog();
-
-      if (amount == null) {
-        return;
-      }
-
-      if (amount < 100) {
-        _showMessage(
-          'Minimum wallet funding amount is ₦100.',
-          isError: true,
-        );
-        return;
-      }
-
-      final http.Response response = await http.post(
-        Uri.parse('$baseUrl/paystack/initialize'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'amount': amount,
-        }),
-      ).timeout(
-        const Duration(seconds: 30),
-      );
-
-      final dynamic decoded = _decodeResponse(response.body);
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300) {
-        final String? paymentUrl =
-            _extractPaymentUrl(decoded);
-
-        if (paymentUrl == null ||
-            paymentUrl.trim().isEmpty) {
-          _showMessage(
-            'Payment link was not returned by the server.',
-            isError: true,
-          );
-          return;
-        }
-
-        final Uri paymentUri = Uri.parse(paymentUrl);
-
-        final bool opened = await launchUrl(
-          paymentUri,
-          mode: LaunchMode.externalApplication,
-        );
-
-        if (!opened) {
-          _showMessage(
-            'Unable to open the payment page.',
-            isError: true,
-          );
-          return;
-        }
-
-        _showMessage(
-          'Complete your payment, then return and refresh your wallet.',
-          isError: false,
-        );
-      } else {
-        final String message = _extractMessage(
-          decoded,
-          fallback:
-              'Unable to initialize wallet funding.',
-        );
-
-        _showMessage(
-          message,
-          isError: true,
-        );
-      }
-    } catch (error) {
-      _showMessage(
-        'Unable to start wallet funding. Please try again.',
-        isError: true,
-      );
-    } finally {
-      if (!mounted) return;
-
-      setState(() {
-        isFunding = false;
-      });
-    }
-  }
-
-  String? _extractPaymentUrl(dynamic data) {
-    if (data is! Map) {
-      return null;
-    }
-
-    final List<dynamic> possibleUrls = [
-      data['authorization_url'],
-      data['authorizationUrl'],
-      data['paymentUrl'],
-      data['payment_url'],
-      data['url'],
-      data['data'] is Map
-          ? data['data']['authorization_url']
-          : null,
-      data['data'] is Map
-          ? data['data']['authorizationUrl']
-          : null,
-      data['data'] is Map
-          ? data['data']['paymentUrl']
-          : null,
-      data['data'] is Map
-          ? data['data']['url']
-          : null,
-    ];
-
-    for (final dynamic value in possibleUrls) {
-      if (value != null &&
-          value.toString().trim().isNotEmpty) {
-        return value.toString();
-      }
-    }
-
-    return null;
-  }
-
-  Future<double?> _showAmountDialog() async {
-    final TextEditingController amountController =
-        TextEditingController();
-
-    final double? result = await showDialog<double>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'Fund Wallet',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Enter the amount you want to add to your Servicepay wallet.',
-                style: TextStyle(
-                  color: Color(0xFF64748B),
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 18),
-              TextField(
-                controller: amountController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Amount',
-                  hintText: 'Minimum ₦100',
-                  prefixText: '₦ ',
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFE2E8F0),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF0F766E),
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final String cleanedAmount =
-                    amountController.text
-                        .replaceAll(',', '')
-                        .replaceAll('₦', '')
-                        .trim();
-
-                final double? amount =
-                    double.tryParse(cleanedAmount);
-
-                if (amount == null || amount <= 0) {
-                  ScaffoldMessenger.of(context)
-                    ..hideCurrentSnackBar()
-                    ..showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Enter a valid amount.',
-                        ),
-                        backgroundColor:
-                            Color(0xFFDC2626),
-                      ),
-                    );
-                  return;
-                }
-
-                Navigator.pop(
-                  dialogContext,
-                  amount,
-                );
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor:
-                    const Color(0xFF0F766E),
-              ),
-              child: const Text('Continue'),
-            ),
-          ],
-        );
-      },
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const ManualFundingScreen(),
+      ),
     );
 
-    amountController.dispose();
+    if (!mounted) return;
 
-    return result;
+    await _loadWallet(
+      showRefreshLoader: true,
+    );
   }
 
   Future<void> _openTransferScreen() async {
@@ -529,6 +291,8 @@ class _WalletScreenState extends State<WalletScreen> {
         builder: (_) => const TransferScreen(),
       ),
     );
+
+    if (!mounted) return;
 
     await _loadWallet(
       showRefreshLoader: true,
@@ -558,16 +322,20 @@ class _WalletScreenState extends State<WalletScreen> {
     final String fixed =
         amount.toStringAsFixed(2);
 
-    final List<String> parts = fixed.split('.');
+    final List<String> parts =
+        fixed.split('.');
+
     final String whole = parts.first;
     final String decimal = parts.last;
 
     final StringBuffer formatted =
         StringBuffer();
 
-    for (int index = 0;
-        index < whole.length;
-        index++) {
+    for (
+      int index = 0;
+      index < whole.length;
+      index++
+    ) {
       formatted.write(whole[index]);
 
       final int remaining =
@@ -589,22 +357,32 @@ class _WalletScreenState extends State<WalletScreen> {
 
     try {
       final DateTime date =
-          DateTime.parse(value.toString()).toLocal();
+          DateTime.parse(
+            value.toString(),
+          ).toLocal();
 
       final String day =
-          date.day.toString().padLeft(2, '0');
+          date.day
+              .toString()
+              .padLeft(2, '0');
 
       final String month =
-          date.month.toString().padLeft(2, '0');
+          date.month
+              .toString()
+              .padLeft(2, '0');
 
       final String year =
           date.year.toString();
 
       final String hour =
-          date.hour.toString().padLeft(2, '0');
+          date.hour
+              .toString()
+              .padLeft(2, '0');
 
       final String minute =
-          date.minute.toString().padLeft(2, '0');
+          date.minute
+              .toString()
+              .padLeft(2, '0');
 
       return '$day/$month/$year, $hour:$minute';
     } catch (_) {
@@ -612,7 +390,9 @@ class _WalletScreenState extends State<WalletScreen> {
     }
   }
 
-  String _transactionTitle(dynamic transaction) {
+  String _transactionTitle(
+    dynamic transaction,
+  ) {
     if (transaction is! Map) {
       return 'Wallet Transaction';
     }
@@ -634,14 +414,16 @@ class _WalletScreenState extends State<WalletScreen> {
         .toLowerCase()
         .split(' ')
         .map(
-          (word) => word.isEmpty
+          (String word) => word.isEmpty
               ? ''
               : '${word[0].toUpperCase()}${word.substring(1)}',
         )
         .join(' ');
   }
 
-  double _transactionAmount(dynamic transaction) {
+  double _transactionAmount(
+    dynamic transaction,
+  ) {
     if (transaction is! Map) {
       return 0.0;
     }
@@ -653,7 +435,9 @@ class _WalletScreenState extends State<WalletScreen> {
         0.0;
   }
 
-  bool _isCreditTransaction(dynamic transaction) {
+  bool _isCreditTransaction(
+    dynamic transaction,
+  ) {
     if (transaction is! Map) {
       return false;
     }
@@ -677,7 +461,9 @@ class _WalletScreenState extends State<WalletScreen> {
         serviceType.contains('DEPOSIT');
   }
 
-  String _transactionStatus(dynamic transaction) {
+  String _transactionStatus(
+    dynamic transaction,
+  ) {
     if (transaction is! Map) {
       return '';
     }
@@ -703,11 +489,13 @@ class _WalletScreenState extends State<WalletScreen> {
       case 'SUCCESS':
       case 'SUCCESSFUL':
       case 'COMPLETED':
+      case 'APPROVED':
         return const Color(0xFF059669);
 
       case 'FAILED':
       case 'CANCELLED':
       case 'REVERSED':
+      case 'REJECTED':
         return const Color(0xFFDC2626);
 
       case 'PENDING':
@@ -756,6 +544,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     child:
                         CircularProgressIndicator(
                       strokeWidth: 2.4,
+                      color: Color(0xFF0F766E),
                     ),
                   )
                 : const Icon(
@@ -768,13 +557,16 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       body: isLoading
           ? const Center(
-              child: CircularProgressIndicator(
+              child:
+                  CircularProgressIndicator(
                 color: Color(0xFF0F766E),
               ),
             )
           : RefreshIndicator(
-              color: const Color(0xFF0F766E),
-              onRefresh: () => _loadWallet(
+              color:
+                  const Color(0xFF0F766E),
+              onRefresh: () =>
+                  _loadWallet(
                 showRefreshLoader: true,
               ),
               child: LayoutBuilder(
@@ -782,7 +574,8 @@ class _WalletScreenState extends State<WalletScreen> {
                   BuildContext context,
                   BoxConstraints constraints,
                 ) {
-                  final double horizontalPadding =
+                  final double
+                      horizontalPadding =
                       constraints.maxWidth >= 700
                           ? 32
                           : 16;
@@ -803,17 +596,23 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                     child: Center(
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(
+                        constraints:
+                            BoxConstraints(
                           maxWidth: contentWidth,
                         ),
                         child: Column(
                           crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                              CrossAxisAlignment
+                                  .start,
                           children: [
                             _buildWalletCard(),
-                            const SizedBox(height: 18),
+                            const SizedBox(
+                              height: 18,
+                            ),
                             _buildQuickActions(),
-                            const SizedBox(height: 26),
+                            const SizedBox(
+                              height: 26,
+                            ),
                             _buildTransactionsSection(),
                           ],
                         ),
@@ -890,12 +689,17 @@ class _WalletScreenState extends State<WalletScreen> {
                     height: 46,
                     decoration: BoxDecoration(
                       color: Colors.white
-                          .withValues(alpha: 0.15),
+                          .withValues(
+                        alpha: 0.15,
+                      ),
                       borderRadius:
-                          BorderRadius.circular(15),
+                          BorderRadius.circular(
+                        15,
+                      ),
                     ),
                     child: const Icon(
-                      Icons.account_balance_wallet_rounded,
+                      Icons
+                          .account_balance_wallet_rounded,
                       color: Colors.white,
                     ),
                   ),
@@ -903,26 +707,35 @@ class _WalletScreenState extends State<WalletScreen> {
                   Expanded(
                     child: Column(
                       crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          CrossAxisAlignment
+                              .start,
                       children: [
                         Text(
                           userName,
                           maxLines: 1,
                           overflow:
-                              TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
+                              TextOverflow
+                                  .ellipsis,
+                          style:
+                              const TextStyle(
+                            color:
+                                Colors.white,
                             fontSize: 16,
                             fontWeight:
-                                FontWeight.w700,
+                                FontWeight
+                                    .w700,
                           ),
                         ),
-                        if (userPhone.isNotEmpty)
+                        if (userPhone
+                            .isNotEmpty)
                           Text(
                             userPhone,
                             style: TextStyle(
-                              color: Colors.white
-                                  .withValues(alpha: 0.72),
+                              color: Colors
+                                  .white
+                                  .withValues(
+                                alpha: 0.72,
+                              ),
                               fontSize: 12,
                             ),
                           ),
@@ -941,8 +754,10 @@ class _WalletScreenState extends State<WalletScreen> {
                     },
                     icon: Icon(
                       hideBalance
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
+                          ? Icons
+                              .visibility_off_rounded
+                          : Icons
+                              .visibility_rounded,
                       color: Colors.white,
                     ),
                   ),
@@ -952,16 +767,19 @@ class _WalletScreenState extends State<WalletScreen> {
               Text(
                 'Available Balance',
                 style: TextStyle(
-                  color:
-                      Colors.white.withValues(alpha: 0.75),
+                  color: Colors.white
+                      .withValues(
+                    alpha: 0.75,
+                  ),
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 5),
               AnimatedSwitcher(
-                duration:
-                    const Duration(milliseconds: 250),
+                duration: const Duration(
+                  milliseconds: 250,
+                ),
                 child: Text(
                   hideBalance
                       ? '₦ ••••••••'
@@ -970,7 +788,8 @@ class _WalletScreenState extends State<WalletScreen> {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 31,
-                    fontWeight: FontWeight.w900,
+                    fontWeight:
+                        FontWeight.w900,
                     letterSpacing: -0.6,
                   ),
                 ),
@@ -981,20 +800,18 @@ class _WalletScreenState extends State<WalletScreen> {
                   Expanded(
                     child: _walletButton(
                       icon: Icons.add_rounded,
-                      label: isFunding
-                          ? 'Please wait'
-                          : 'Fund Wallet',
-                      onTap:
-                          isFunding ? null : _fundWallet,
+                      label: 'Fund Wallet',
+                      onTap: _fundWallet,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _walletButton(
-                      icon:
-                          Icons.swap_horiz_rounded,
+                      icon: Icons
+                          .swap_horiz_rounded,
                       label: 'Transfer',
-                      onTap: _openTransferScreen,
+                      onTap:
+                          _openTransferScreen,
                     ),
                   ),
                 ],
@@ -1012,7 +829,8 @@ class _WalletScreenState extends State<WalletScreen> {
     required VoidCallback? onTap,
   }) {
     return Material(
-      color: Colors.white.withValues(alpha: 0.14),
+      color: Colors.white
+          .withValues(alpha: 0.14),
       borderRadius:
           BorderRadius.circular(14),
       child: InkWell(
@@ -1026,23 +844,11 @@ class _WalletScreenState extends State<WalletScreen> {
             mainAxisAlignment:
                 MainAxisAlignment.center,
             children: [
-              if (isFunding &&
-                  label == 'Please wait')
-                const SizedBox(
-                  width: 17,
-                  height: 17,
-                  child:
-                      CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              else
-                Icon(
-                  icon,
-                  color: Colors.white,
-                  size: 21,
-                ),
+              Icon(
+                icon,
+                color: Colors.white,
+                size: 21,
+              ),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
@@ -1090,8 +896,8 @@ class _WalletScreenState extends State<WalletScreen> {
         children: [
           Expanded(
             child: _quickActionItem(
-              icon:
-                  Icons.account_balance_wallet_outlined,
+              icon: Icons
+                  .account_balance_wallet_outlined,
               label: 'Add Money',
               background:
                   const Color(0xFFDCFCE7),
@@ -1108,13 +914,13 @@ class _WalletScreenState extends State<WalletScreen> {
                   const Color(0xFFDBEAFE),
               iconColor:
                   const Color(0xFF1D4ED8),
-              onTap: _openTransferScreen,
+              onTap:
+                  _openTransferScreen,
             ),
           ),
           Expanded(
             child: _quickActionItem(
-              icon:
-                  Icons.refresh_rounded,
+              icon: Icons.refresh_rounded,
               label: 'Refresh',
               background:
                   const Color(0xFFFEF3C7),
@@ -1144,7 +950,8 @@ class _WalletScreenState extends State<WalletScreen> {
       borderRadius:
           BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(
+        padding:
+            const EdgeInsets.symmetric(
           vertical: 5,
         ),
         child: Column(
@@ -1155,7 +962,9 @@ class _WalletScreenState extends State<WalletScreen> {
               decoration: BoxDecoration(
                 color: background,
                 borderRadius:
-                    BorderRadius.circular(15),
+                    BorderRadius.circular(
+                  15,
+                ),
               ),
               child: Icon(
                 icon,
@@ -1173,7 +982,8 @@ class _WalletScreenState extends State<WalletScreen> {
               style: const TextStyle(
                 color: Color(0xFF334155),
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontWeight:
+                    FontWeight.w700,
               ),
             ),
           ],
@@ -1195,7 +1005,8 @@ class _WalletScreenState extends State<WalletScreen> {
                 style: TextStyle(
                   color: Color(0xFF0F172A),
                   fontSize: 19,
-                  fontWeight: FontWeight.w800,
+                  fontWeight:
+                      FontWeight.w800,
                 ),
               ),
             ),
@@ -1208,8 +1019,10 @@ class _WalletScreenState extends State<WalletScreen> {
               child: const Text(
                 'Refresh',
                 style: TextStyle(
-                  color: Color(0xFF0F766E),
-                  fontWeight: FontWeight.w700,
+                  color:
+                      Color(0xFF0F766E),
+                  fontWeight:
+                      FontWeight.w700,
                 ),
               ),
             ),
@@ -1223,24 +1036,29 @@ class _WalletScreenState extends State<WalletScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius:
-                  BorderRadius.circular(22),
+                  BorderRadius.circular(
+                22,
+              ),
               border: Border.all(
                 color:
                     const Color(0xFFE8EDF3),
               ),
             ),
             child: ListView.separated(
-              itemCount: transactions.length > 10
-                  ? 10
-                  : transactions.length,
+              itemCount:
+                  transactions.length > 10
+                      ? 10
+                      : transactions.length,
               shrinkWrap: true,
               physics:
                   const NeverScrollableScrollPhysics(),
-              separatorBuilder: (_, __) =>
-                  const Divider(
+              separatorBuilder:
+                  (_, __) =>
+                      const Divider(
                 height: 1,
                 indent: 76,
-                color: Color(0xFFEEF2F6),
+                color:
+                    Color(0xFFEEF2F6),
               ),
               itemBuilder: (
                 BuildContext context,
@@ -1259,7 +1077,8 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget _buildEmptyTransactions() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 24,
         vertical: 40,
       ),
@@ -1280,7 +1099,9 @@ class _WalletScreenState extends State<WalletScreen> {
               color:
                   const Color(0xFFE6FFFB),
               borderRadius:
-                  BorderRadius.circular(22),
+                  BorderRadius.circular(
+                22,
+              ),
             ),
             child: const Icon(
               Icons.receipt_long_rounded,
@@ -1294,7 +1115,8 @@ class _WalletScreenState extends State<WalletScreen> {
             style: TextStyle(
               color: Color(0xFF0F172A),
               fontSize: 16,
-              fontWeight: FontWeight.w800,
+              fontWeight:
+                  FontWeight.w800,
             ),
           ),
           const SizedBox(height: 6),
@@ -1331,9 +1153,10 @@ class _WalletScreenState extends State<WalletScreen> {
                 transaction['updatedAt']
             : null;
 
-    final Color transactionColor = isCredit
-        ? const Color(0xFF059669)
-        : const Color(0xFFDC2626);
+    final Color transactionColor =
+        isCredit
+            ? const Color(0xFF059669)
+            : const Color(0xFFDC2626);
 
     return ListTile(
       contentPadding:
@@ -1377,7 +1200,8 @@ class _WalletScreenState extends State<WalletScreen> {
                 overflow:
                     TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xFF94A3B8),
+                  color:
+                      Color(0xFF94A3B8),
                   fontSize: 11,
                 ),
               ),
@@ -1391,10 +1215,15 @@ class _WalletScreenState extends State<WalletScreen> {
                   vertical: 3,
                 ),
                 decoration: BoxDecoration(
-                  color: _statusColor(status)
-                      .withValues(alpha: 0.10),
+                  color: _statusColor(
+                    status,
+                  ).withValues(
+                    alpha: 0.10,
+                  ),
                   borderRadius:
-                      BorderRadius.circular(20),
+                      BorderRadius.circular(
+                    20,
+                  ),
                 ),
                 child: Text(
                   status,
