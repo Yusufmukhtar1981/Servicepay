@@ -7,6 +7,7 @@ import 'data_screen.dart';
 import 'electricity_screen.dart';
 import 'exam_pin_screen.dart';
 import 'flight_booking_screen.dart';
+import 'help_support_screen.dart';
 import 'id_verification_screen.dart';
 import 'logistics_screen.dart';
 import 'notifications_screen.dart';
@@ -73,16 +74,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : 'User';
 
       balance = savedBalance ?? 0;
-
       unreadNotifications = savedNotificationCount ?? 1;
-
       isLoading = false;
     });
   }
 
-  Future<void> openPage(
-    Widget page,
-  ) async {
+  Future<void> openPage(Widget page) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -106,14 +103,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void openTransactionsMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Tap Transactions on the bottom navigation to view your transaction history.',
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Tap Transactions on the bottom navigation to view your transaction history.',
+          ),
+          behavior: SnackBarBehavior.floating,
         ),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      );
   }
 
   List<_ServiceItem> get popularServices {
@@ -322,6 +321,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               description:
                   'Start SIM registration and access supported SIM-related services.',
             ),
+          );
+        },
+      ),
+      _ServiceItem(
+        title: 'Help Center',
+        icon: Icons.support_agent_rounded,
+        onTap: () {
+          openPage(
+            const HelpSupportScreen(),
           );
         },
       ),
@@ -545,7 +553,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               firstName: firstName,
                             ),
                             const SizedBox(height: 12),
-
                             TweenAnimationBuilder<double>(
                               tween: Tween(
                                 begin: 0.94,
@@ -588,11 +595,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     openTransactionsMessage,
                               ),
                             ),
-
                             const SizedBox(height: 12),
-
                             _SearchBox(
                               controller: searchController,
+                              searchQuery: searchQuery,
                               onChanged: (value) {
                                 setState(() {
                                   searchQuery = value;
@@ -606,9 +612,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 });
                               },
                             ),
-
                             const SizedBox(height: 14),
-
                             _QuickActions(
                               onFundWallet: () {
                                 openPage(
@@ -628,13 +632,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 );
                               },
                             ),
-
                             const SizedBox(height: 14),
-
                             const _PromoBanner(),
-
                             const SizedBox(height: 18),
-
                             _SectionHeader(
                               title: searching
                                   ? 'Search Results'
@@ -643,9 +643,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   ? '${filteredPopularServices.length + filteredMoreServices.length} found'
                                   : 'Frequently used',
                             ),
-
                             const SizedBox(height: 10),
-
                             if (searching)
                               buildServiceGrid(
                                 [
@@ -659,10 +657,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 filteredPopularServices,
                                 crossAxisCount,
                               ),
-
                             if (!searching) ...[
                               const SizedBox(height: 18),
-
                               _SectionHeader(
                                 title: 'More Services',
                                 subtitle: showMoreServices
@@ -675,9 +671,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   });
                                 },
                               ),
-
                               const SizedBox(height: 10),
-
                               AnimatedCrossFade(
                                 duration: const Duration(
                                   milliseconds: 300,
@@ -691,11 +685,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 firstChild:
                                     _MoreServicesPreview(
                                   services: moreServices,
-                                  onViewAll: () {
-                                    setState(() {
-                                      showMoreServices = true;
-                                    });
-                                  },
                                 ),
                                 secondChild: buildServiceGrid(
                                   moreServices,
@@ -1006,11 +995,13 @@ class _WalletButton extends StatelessWidget {
 
 class _SearchBox extends StatelessWidget {
   final TextEditingController controller;
+  final String searchQuery;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
 
   const _SearchBox({
     required this.controller,
+    required this.searchQuery,
     required this.onChanged,
     required this.onClear,
   });
@@ -1031,7 +1022,7 @@ class _SearchBox extends StatelessWidget {
           Icons.search_rounded,
           color: _DashboardScreenState.primaryGreen,
         ),
-        suffixIcon: controller.text.isEmpty
+        suffixIcon: searchQuery.isEmpty
             ? null
             : IconButton(
                 onPressed: onClear,
@@ -1377,11 +1368,9 @@ class _ServiceCard extends StatelessWidget {
 
 class _MoreServicesPreview extends StatelessWidget {
   final List<_ServiceItem> services;
-  final VoidCallback onViewAll;
 
   const _MoreServicesPreview({
     required this.services,
-    required this.onViewAll,
   });
 
   @override
@@ -1390,9 +1379,11 @@ class _MoreServicesPreview extends StatelessWidget {
 
     return Row(
       children: [
-        for (int index = 0;
-            index < previewServices.length;
-            index++) ...[
+        for (
+          int index = 0;
+          index < previewServices.length;
+          index++
+        ) ...[
           Expanded(
             child: _ServiceCard(
               service: previewServices[index],

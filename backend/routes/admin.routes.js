@@ -5,6 +5,7 @@ const {
   getUsers,
   getUserById,
   updateUserStatus,
+  getAdminTransactions,
 } = require("../controllers/admin.controller");
 
 const {
@@ -18,6 +19,8 @@ router.use(protect);
 router.use(adminOnly("HEAD_OFFICE"));
 
 router.get("/dashboard", getAdminDashboard);
+
+router.get("/transactions", getAdminTransactions);
 
 router.get("/users", getUsers);
 
