@@ -23,6 +23,7 @@ const NETWORK_CODES = {
   "9MOBILE": "03",
   ETISALAT: "03",
   T2MOBILE: "03",
+  T2: "03",
   "03": "03",
 
   AIRTEL: "04",
@@ -47,7 +48,7 @@ const normalizeNetwork = (network) => {
   const value = String(network || "")
     .trim()
     .toUpperCase()
-    .replace(/\s+/g, "");
+    .replace(/[^A-Z0-9]/g, "");
 
   return NETWORK_CODES[value] || null;
 };
@@ -55,10 +56,7 @@ const normalizeNetwork = (network) => {
 const normalizePhone = (phone) => {
   let value = String(phone || "").replace(/\D/g, "");
 
-  if (
-    value.startsWith("234") &&
-    value.length === 13
-  ) {
+  if (value.startsWith("234") && value.length === 13) {
     value = `0${value.substring(3)}`;
   }
 
@@ -102,18 +100,65 @@ const parseProviderResponse = (data) => {
   }
 };
 
+const normalizeKey = (key) => {
+  return String(key || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+};
+
+const readObjectField = (object, possibleNames) => {
+  if (!object || typeof object !== "object") {
+    return null;
+  }
+
+  const normalizedObject = {};
+
+  for (const [key, value] of Object.entries(object)) {
+    normalizedObject[normalizeKey(key)] = value;
+  }
+
+  for (const name of possibleNames) {
+    const value =
+      normalizedObject[normalizeKey(name)];
+
+    if (
+      value !== undefined &&
+      value !== null &&
+      String(value).trim() !== ""
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const parseMoney = (value) => {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+
+  const cleaned = String(value)
+    .replace(/NGN/gi, "")
+    .replace(/[₦,\s]/g, "")
+    .trim();
+
+  const number = Number(cleaned);
+
+  return Number.isFinite(number) ? number : 0;
+};
+
 const getProviderStatus = (data) => {
   const parsed = parseProviderResponse(data);
 
   return String(
-    parsed.status ||
-      parsed.Status ||
-      parsed.response_description ||
-      parsed.ResponseDescription ||
-      parsed.message ||
-      parsed.Message ||
-      parsed.response ||
-      ""
+    readObjectField(parsed, [
+      "status",
+      "response_description",
+      "responseDescription",
+      "message",
+      "response",
+    ]) || ""
   )
     .trim()
     .toUpperCase();
@@ -123,14 +168,13 @@ const getProviderMessage = (data) => {
   const parsed = parseProviderResponse(data);
 
   return String(
-    parsed.message ||
-      parsed.Message ||
-      parsed.response_description ||
-      parsed.ResponseDescription ||
-      parsed.status ||
-      parsed.Status ||
-      parsed.response ||
-      "The provider rejected this request."
+    readObjectField(parsed, [
+      "message",
+      "response_description",
+      "responseDescription",
+      "status",
+      "response",
+    ]) || "The provider rejected this request."
   ).trim();
 };
 
@@ -180,53 +224,104 @@ const isProviderSuccessful = (data) => {
   );
 };
 
-const extractArrayFromProvider = (data) => {
-  if (Array.isArray(data)) {
-    return data;
+const looksLikePlanObject = (value) => {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return false;
   }
 
-  if (!data || typeof data !== "object") {
-    return [];
-  }
+  const id = readObjectField(value, [
+    "id",
+    "planId",
+    "plan_id",
+    "productId",
+    "product_id",
+    "dataPlan",
+    "dataplan",
+    "code",
+  ]);
 
-  const possibleArrays = [
-    data.data,
-    data.plans,
-    data.Plans,
-    data.products,
-    data.Products,
-    data.response,
-    data.result,
-    data.results,
-  ];
+  const name = readObjectField(value, [
+    "name",
+    "planName",
+    "plan_name",
+    "productName",
+    "product_name",
+    "description",
+    "bundle",
+  ]);
 
-  for (const item of possibleArrays) {
-    if (Array.isArray(item)) {
-      return item;
-    }
-  }
+  const price = readObjectField(value, [
+    "price",
+    "amount",
+    "productAmount",
+    "product_amount",
+    "sellingPrice",
+    "selling_price",
+    "cost",
+  ]);
 
-  for (const value of Object.values(data)) {
-    if (Array.isArray(value)) {
-      return value;
-    }
-  }
-
-  return [];
+  return id !== null || (name !== null && price !== null);
 };
 
-const readPlanField = (plan, fields) => {
-  for (const field of fields) {
-    if (
-      plan[field] !== undefined &&
-      plan[field] !== null &&
-      String(plan[field]).trim() !== ""
-    ) {
-      return plan[field];
-    }
+const collectPlanObjects = (
+  value,
+  inheritedNetwork = null,
+  inheritedId = null,
+  output = []
+) => {
+  if (value === null || value === undefined) {
+    return output;
   }
 
-  return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectPlanObjects(
+        item,
+        inheritedNetwork,
+        inheritedId,
+        output
+      );
+    }
+
+    return output;
+  }
+
+  if (typeof value !== "object") {
+    return output;
+  }
+
+  if (looksLikePlanObject(value)) {
+    output.push({
+      ...value,
+      __inheritedNetwork: inheritedNetwork,
+      __inheritedId: inheritedId,
+    });
+
+    return output;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    const networkFromKey =
+      normalizeNetwork(key) || inheritedNetwork;
+
+    const idFromKey =
+      /^\d+(\.\d+)?$/.test(String(key).trim())
+        ? String(key).trim()
+        : inheritedId;
+
+    collectPlanObjects(
+      child,
+      networkFromKey,
+      idFromKey,
+      output
+    );
+  }
+
+  return output;
 };
 
 const normalizeDataPlan = (
@@ -234,103 +329,85 @@ const normalizeDataPlan = (
   requestedNetwork
 ) => {
   if (
-    rawPlan === null ||
-    rawPlan === undefined
+    !rawPlan ||
+    typeof rawPlan !== "object"
   ) {
     return null;
   }
 
-  if (
-    typeof rawPlan === "string" ||
-    typeof rawPlan === "number"
-  ) {
-    const text = String(rawPlan).trim();
+  const id =
+    readObjectField(rawPlan, [
+      "id",
+      "planId",
+      "plan_id",
+      "productId",
+      "product_id",
+      "dataPlan",
+      "dataplan",
+      "dataPlanId",
+      "data_plan_id",
+      "code",
+    ]) || rawPlan.__inheritedId;
 
-    return {
-      id: text,
-      code: text,
-      name: text,
-      price: 0,
-      networkCode: requestedNetwork,
-      network:
-        NETWORK_NAMES[requestedNetwork] ||
-        requestedNetwork,
-    };
-  }
-
-  if (typeof rawPlan !== "object") {
-    return null;
-  }
-
-  const id = readPlanField(rawPlan, [
-    "id",
-    "ID",
-    "planId",
-    "PlanID",
-    "plan_id",
-    "DataPlan",
-    "dataPlan",
-    "dataplan",
-    "code",
-    "Code",
-  ]);
-
-  const name = readPlanField(rawPlan, [
+  const name = readObjectField(rawPlan, [
     "name",
-    "Name",
     "planName",
-    "PlanName",
     "plan_name",
+    "productName",
+    "product_name",
     "description",
-    "Description",
     "bundle",
-    "Bundle",
+    "package",
+    "title",
   ]);
 
-  const priceValue = readPlanField(rawPlan, [
+  const priceValue = readObjectField(rawPlan, [
     "price",
-    "Price",
     "amount",
-    "Amount",
+    "productAmount",
+    "product_amount",
     "sellingPrice",
-    "SellingPrice",
     "selling_price",
     "cost",
-    "Cost",
+    "rate",
   ]);
 
-  const providerNetwork = readPlanField(rawPlan, [
-    "network",
-    "Network",
-    "networkCode",
-    "NetworkCode",
-    "MobileNetwork",
-    "mobileNetwork",
-  ]);
+  const providerNetwork =
+    readObjectField(rawPlan, [
+      "network",
+      "networkName",
+      "network_name",
+      "networkCode",
+      "network_code",
+      "mobileNetwork",
+      "mobile_network",
+    ]) || rawPlan.__inheritedNetwork;
 
   const networkCode =
     normalizeNetwork(providerNetwork) ||
     requestedNetwork;
 
-  const price = Number(
-    String(priceValue ?? "0")
-      .replace(/[₦,\s]/g, "")
-      .trim()
-  );
+  const price = parseMoney(priceValue);
 
-  if (id === null) {
+  if (
+    id === null ||
+    id === undefined ||
+    String(id).trim() === ""
+  ) {
+    return null;
+  }
+
+  if (networkCode !== requestedNetwork) {
     return null;
   }
 
   return {
     id: String(id).trim(),
     code: String(id).trim(),
-    name:
-      String(name || `Data Plan ${id}`).trim(),
-    price:
-      Number.isFinite(price) && price >= 0
-        ? price
-        : 0,
+    name: String(
+      name || `Data Plan ${id}`
+    ).trim(),
+    price,
     networkCode,
     network:
       NETWORK_NAMES[networkCode] ||
@@ -405,7 +482,7 @@ exports.getDataPlans = async (req, res) => {
     );
 
     console.log(
-      "CLUBKONNECT DATA PLANS RESPONSE:",
+      "CLUBKONNECT DATA PLANS RAW RESPONSE:",
       {
         httpStatus: response.status,
         networkCode,
@@ -428,39 +505,18 @@ exports.getDataPlans = async (req, res) => {
     const parsed =
       parseProviderResponse(response.data);
 
-    let rawPlans =
-      extractArrayFromProvider(parsed);
+    const rawPlans = collectPlanObjects(
+      parsed
+    );
 
-    /*
-     * Wasu lokuta provider na iya mayar da object
-     * wanda network codes suke matsayin keys.
-     */
-    if (
-      rawPlans.length === 0 &&
-      parsed &&
-      typeof parsed === "object"
-    ) {
-      const networkKeys = [
+    console.log(
+      "CLUBKONNECT EXTRACTED PLAN OBJECTS:",
+      {
         networkCode,
-        NETWORK_NAMES[networkCode],
-        NETWORK_NAMES[
-          networkCode
-        ]?.toUpperCase(),
-        networkCode === "03"
-          ? "9mobile"
-          : null,
-        networkCode === "03"
-          ? "t2mobile"
-          : null,
-      ].filter(Boolean);
-
-      for (const key of networkKeys) {
-        if (Array.isArray(parsed[key])) {
-          rawPlans = parsed[key];
-          break;
-        }
+        count: rawPlans.length,
+        plans: rawPlans,
       }
-    }
+    );
 
     const plans = rawPlans
       .map((plan) =>
@@ -469,30 +525,29 @@ exports.getDataPlans = async (req, res) => {
           networkCode
         )
       )
-      .filter(Boolean)
-      .filter(
-        (plan) =>
-          plan.networkCode === networkCode
-      )
+      .filter((plan) => plan !== null)
+      .filter((plan) => plan.price > 0)
       .filter(
         (plan, index, array) =>
           array.findIndex(
             (item) =>
-              item.id === plan.id &&
+              item.code === plan.code &&
               item.networkCode ===
                 plan.networkCode
           ) === index
       )
-      .sort((a, b) => {
-        if (
-          a.price > 0 &&
-          b.price > 0
-        ) {
-          return a.price - b.price;
-        }
-
-        return a.name.localeCompare(b.name);
+      .sort((first, second) => {
+        return first.price - second.price;
       });
+
+    console.log(
+      "CLUBKONNECT NORMALIZED DATA PLANS:",
+      {
+        networkCode,
+        count: plans.length,
+        plans,
+      }
+    );
 
     if (plans.length === 0) {
       return res.status(502).json({
@@ -504,6 +559,13 @@ exports.getDataPlans = async (req, res) => {
           name:
             NETWORK_NAMES[networkCode],
         },
+        debug: {
+          extractedCount: rawPlans.length,
+          providerType:
+            Array.isArray(parsed)
+              ? "array"
+              : typeof parsed,
+        },
         providerResponse: parsed,
       });
     }
@@ -514,7 +576,8 @@ exports.getDataPlans = async (req, res) => {
         "Data plans retrieved successfully.",
       network: {
         code: networkCode,
-        name: NETWORK_NAMES[networkCode],
+        name:
+          NETWORK_NAMES[networkCode],
       },
       count: plans.length,
       plans,
@@ -588,9 +651,7 @@ exports.buyAirtime = async (req, res) => {
     }
 
     if (
-      !Number.isFinite(
-        airtimeAmount
-      ) ||
+      !Number.isFinite(airtimeAmount) ||
       airtimeAmount < 50
     ) {
       return res.status(400).json({
@@ -844,8 +905,7 @@ exports.buyData = async (req, res) => {
       planCode || dataPlan || ""
     ).trim();
 
-    const dataAmount =
-      Number(amount);
+    const dataAmount = Number(amount);
 
     if (!networkCode) {
       return res.status(400).json({
