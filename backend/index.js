@@ -13,6 +13,7 @@ const idVerificationRoutes = require("./routes/idVerification.routes");
 const deliveryRoutes = require("./routes/delivery.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const adminRoutes = require("./routes/admin.routes");
+const walletRoutes = require("./routes/wallet.routes");
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use("/api/id-verification", idVerificationRoutes);
 app.use("/api/delivery", deliveryRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/wallet", walletRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
