@@ -845,7 +845,7 @@ class _WalletScreenState extends State<WalletScreen> {
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF0F766E)
-                .withOpacity(0.25),
+                .withValues(alpha: 0.25),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -861,7 +861,7 @@ class _WalletScreenState extends State<WalletScreen> {
               height: 150,
               decoration: BoxDecoration(
                 color: Colors.white
-                    .withOpacity(0.06),
+                    .withValues(alpha: 0.06),
                 shape: BoxShape.circle,
               ),
             ),
@@ -874,7 +874,7 @@ class _WalletScreenState extends State<WalletScreen> {
               height: 170,
               decoration: BoxDecoration(
                 color: Colors.white
-                    .withOpacity(0.04),
+                    .withValues(alpha: 0.04),
                 shape: BoxShape.circle,
               ),
             ),
@@ -890,7 +890,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     height: 46,
                     decoration: BoxDecoration(
                       color: Colors.white
-                          .withOpacity(0.15),
+                          .withValues(alpha: 0.15),
                       borderRadius:
                           BorderRadius.circular(15),
                     ),
@@ -922,7 +922,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             userPhone,
                             style: TextStyle(
                               color: Colors.white
-                                  .withOpacity(0.72),
+                                  .withValues(alpha: 0.72),
                               fontSize: 12,
                             ),
                           ),
@@ -953,7 +953,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 'Available Balance',
                 style: TextStyle(
                   color:
-                      Colors.white.withOpacity(0.75),
+                      Colors.white.withValues(alpha: 0.75),
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1012,7 +1012,7 @@ class _WalletScreenState extends State<WalletScreen> {
     required VoidCallback? onTap,
   }) {
     return Material(
-      color: Colors.white.withOpacity(0.14),
+      color: Colors.white.withValues(alpha: 0.14),
       borderRadius:
           BorderRadius.circular(14),
       child: InkWell(
@@ -1080,7 +1080,7 @@ class _WalletScreenState extends State<WalletScreen> {
         boxShadow: [
           BoxShadow(
             color: Colors.black
-                .withOpacity(0.035),
+                .withValues(alpha: 0.035),
             blurRadius: 14,
             offset: const Offset(0, 5),
           ),
@@ -1346,7 +1346,7 @@ class _WalletScreenState extends State<WalletScreen> {
         height: 46,
         decoration: BoxDecoration(
           color: transactionColor
-              .withOpacity(0.10),
+              .withValues(alpha: 0.10),
           borderRadius:
               BorderRadius.circular(15),
         ),
@@ -1392,7 +1392,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: _statusColor(status)
-                      .withOpacity(0.10),
+                      .withValues(alpha: 0.10),
                   borderRadius:
                       BorderRadius.circular(20),
                 ),
