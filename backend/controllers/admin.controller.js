@@ -137,11 +137,7 @@ exports.getAdminDashboard = async (req, res) => {
       Transaction.find()
         .populate(
           "customerId",
-          "fullName name email phone"
-        )
-        .populate(
-          "userId",
-          "fullName name email phone"
+          "fullName name email phone role status"
         )
         .sort({
           createdAt: -1,
@@ -171,12 +167,7 @@ exports.getAdminDashboard = async (req, res) => {
                   input: {
                     $ifNull: [
                       "$servicepayProfit",
-                      {
-                        $ifNull: [
-                          "$profit",
-                          0,
-                        ],
-                      },
+                      0,
                     ],
                   },
                   to: "double",
@@ -316,36 +307,13 @@ exports.getAdminTransactions = async (
 
     if (status && status !== "ALL") {
       if (status === "SUCCESSFUL") {
-        filter.status = {
-          $in: [
-            "SUCCESS",
-            "SUCCESSFUL",
-            "COMPLETED",
-            "APPROVED",
-          ],
-        };
+        filter.status = "SUCCESSFUL";
       } else if (status === "FAILED") {
-        filter.status = {
-          $in: [
-            "FAILED",
-            "CANCELLED",
-            "REJECTED",
-          ],
-        };
+        filter.status = "FAILED";
       } else if (status === "PENDING") {
-        filter.status = {
-          $in: [
-            "PENDING",
-            "PROCESSING",
-          ],
-        };
-      } else if (status === "REVERSED") {
-        filter.status = {
-          $in: [
-            "REVERSED",
-            "REFUNDED",
-          ],
-        };
+        filter.status = "PENDING";
+      } else if (status === "REFUNDED") {
+        filter.status = "REFUNDED";
       } else {
         filter.status = status;
       }
@@ -396,30 +364,10 @@ exports.getAdminTransactions = async (
           reference: searchRegex,
         },
         {
-          transactionReference:
-            searchRegex,
-        },
-        {
-          paymentReference:
-            searchRegex,
-        },
-        {
-          description: searchRegex,
-        },
-        {
-          narration: searchRegex,
+          provider: searchRegex,
         },
         {
           phone: searchRegex,
-        },
-        {
-          customerPhone: searchRegex,
-        },
-        {
-          customerName: searchRegex,
-        },
-        {
-          userName: searchRegex,
         },
       ];
 
@@ -436,18 +384,11 @@ exports.getAdminTransactions = async (
       }
 
       if (userIds.length > 0) {
-        searchConditions.push(
-          {
-            customerId: {
-              $in: userIds,
-            },
+        searchConditions.push({
+          customerId: {
+            $in: userIds,
           },
-          {
-            userId: {
-              $in: userIds,
-            },
-          }
-        );
+        });
       }
 
       filter.$or = searchConditions;
@@ -460,10 +401,6 @@ exports.getAdminTransactions = async (
       Transaction.find(filter)
         .populate(
           "customerId",
-          "fullName name email phone role status"
-        )
-        .populate(
-          "userId",
           "fullName name email phone role status"
         )
         .sort({
