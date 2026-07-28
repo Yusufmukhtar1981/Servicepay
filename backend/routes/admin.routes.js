@@ -5,6 +5,7 @@ const {
   getAdminTransactions,
   getAdminDeliveries,
   updateDeliveryStatus,
+  updateDeliveryPrice,
 } = require("../controllers/admin.controller");
 
 const {
@@ -40,6 +41,13 @@ router.patch(
   protect,
   adminOnly("HEAD_OFFICE"),
   updateDeliveryStatus
+);
+
+router.patch(
+  "/deliveries/:id/price",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateDeliveryPrice
 );
 
 module.exports = router;

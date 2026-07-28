@@ -21,11 +21,32 @@ class _DeliveryHistoryScreenState
   String? errorMessage;
 
   List<Map<String, dynamic>> deliveries = [];
+  final Set<String> payingDeliveryIds = {};
 
   @override
   void initState() {
     super.initState();
     loadDeliveries();
+  }
+
+  Future<Map<String, dynamic>?> decodeResponse(
+    http.Response response,
+  ) async {
+    try {
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
   }
 
   Future<void> loadDeliveries() async {
@@ -69,11 +90,13 @@ class _DeliveryHistoryScreenState
             const Duration(seconds: 30),
           );
 
-      final decodedBody = jsonDecode(response.body);
+      final decodedBody =
+          await decodeResponse(response);
 
       if (response.statusCode == 200 &&
-          decodedBody is Map<String, dynamic>) {
-        final result = decodedBody['deliveries'];
+          decodedBody != null) {
+        final result =
+            decodedBody['deliveries'];
 
         final parsedDeliveries =
             result is List
@@ -81,7 +104,9 @@ class _DeliveryHistoryScreenState
                     .whereType<Map>()
                     .map(
                       (item) =>
-                          Map<String, dynamic>.from(item),
+                          Map<String, dynamic>.from(
+                        item,
+                      ),
                     )
                     .toList()
                 : <Map<String, dynamic>>[];
@@ -95,11 +120,6 @@ class _DeliveryHistoryScreenState
           isLoading = false;
         });
       } else {
-        final message =
-            decodedBody is Map<String, dynamic>
-                ? decodedBody['message']?.toString()
-                : null;
-
         if (!mounted) {
           return;
         }
@@ -107,7 +127,7 @@ class _DeliveryHistoryScreenState
         setState(() {
           isLoading = false;
           errorMessage =
-              message ??
+              decodedBody?['message']?.toString() ??
               'Unable to load delivery history.';
         });
       }
@@ -124,16 +144,167 @@ class _DeliveryHistoryScreenState
     }
   }
 
+  Future<void> payDeliveryFee(
+    Map<String, dynamic> delivery,
+  ) async {
+    final id =
+        delivery['_id']?.toString() ?? '';
+
+    final fee =
+        parseAmount(delivery['deliveryFee']);
+
+    if (id.isEmpty) {
+      showMessage(
+        'Invalid delivery information.',
+      );
+      return;
+    }
+
+    if (fee <= 0) {
+      showMessage(
+        'The delivery fee has not been provided yet.',
+      );
+      return;
+    }
+
+    final shouldPay =
+        await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          icon: const Icon(
+            Icons.account_balance_wallet_rounded,
+            color: Color(0xFF1565C0),
+            size: 48,
+          ),
+          title: const Text(
+            'Pay Delivery Fee?',
+          ),
+          content: Text(
+            '₦${fee.toStringAsFixed(2)} will be deducted from your Servicepay wallet.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    const Color(0xFF1565C0),
+              ),
+              child: const Text(
+                'Pay Now',
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldPay != true) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        payingDeliveryIds.add(id);
+      });
+    }
+
+    try {
+      final preferences =
+          await SharedPreferences.getInstance();
+
+      final token =
+          preferences.getString('auth_token') ?? '';
+
+      if (token.isEmpty) {
+        showMessage(
+          'Your login session has expired. Please log in again.',
+        );
+        return;
+      }
+
+      final response = await http
+          .post(
+            Uri.parse(
+              '$baseUrl/delivery/pay/$id',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 45),
+          );
+
+      final decodedBody =
+          await decodeResponse(response);
+
+      if (response.statusCode == 200 &&
+          decodedBody != null) {
+        final walletBalance =
+            parseAmount(
+          decodedBody['walletBalance'],
+        );
+
+        await preferences.setDouble(
+          'wallet_balance',
+          walletBalance,
+        );
+
+        showMessage(
+          decodedBody['message']?.toString() ??
+              'Delivery fee paid successfully.',
+          isError: false,
+        );
+
+        await loadDeliveries();
+      } else {
+        showMessage(
+          decodedBody?['message']?.toString() ??
+              'Unable to pay delivery fee.',
+        );
+      }
+    } catch (_) {
+      showMessage(
+        'Unable to connect to the Servicepay server.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          payingDeliveryIds.remove(id);
+        });
+      }
+    }
+  }
+
   Future<void> cancelDelivery(
     Map<String, dynamic> delivery,
   ) async {
-    final id = delivery['_id']?.toString() ?? '';
+    final id =
+        delivery['_id']?.toString() ?? '';
 
     if (id.isEmpty) {
       return;
     }
 
-    final shouldCancel = await showDialog<bool>(
+    final shouldCancel =
+        await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -151,18 +322,26 @@ class _DeliveryHistoryScreenState
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
               child: const Text('No'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.red,
               ),
-              child: const Text('Yes, Cancel'),
+              child: const Text(
+                'Yes, Cancel',
+              ),
             ),
           ],
         );
@@ -201,11 +380,12 @@ class _DeliveryHistoryScreenState
             const Duration(seconds: 30),
           );
 
-      final decodedBody = jsonDecode(response.body);
+      final decodedBody =
+          await decodeResponse(response);
 
       if (response.statusCode == 200) {
         showMessage(
-          decodedBody['message']?.toString() ??
+          decodedBody?['message']?.toString() ??
               'Delivery cancelled successfully.',
           isError: false,
         );
@@ -213,7 +393,7 @@ class _DeliveryHistoryScreenState
         await loadDeliveries();
       } else {
         showMessage(
-          decodedBody['message']?.toString() ??
+          decodedBody?['message']?.toString() ??
               'Unable to cancel delivery.',
         );
       }
@@ -232,7 +412,8 @@ class _DeliveryHistoryScreenState
       return;
     }
 
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context)
+        .hideCurrentSnackBar();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -259,15 +440,34 @@ class _DeliveryHistoryScreenState
     switch (status) {
       case 'DELIVERED':
         return Colors.green;
+
       case 'IN_TRANSIT':
       case 'PICKED_UP':
         return Colors.blue;
+
       case 'ACCEPTED':
         return Colors.orange;
+
       case 'CANCELLED':
         return Colors.red;
+
       default:
         return Colors.grey;
+    }
+  }
+
+  Color getPaymentColor(
+    String paymentStatus,
+  ) {
+    switch (paymentStatus) {
+      case 'PAID':
+        return Colors.green;
+
+      case 'REFUNDED':
+        return Colors.orange;
+
+      default:
+        return Colors.red;
     }
   }
 
@@ -275,14 +475,19 @@ class _DeliveryHistoryScreenState
     switch (status) {
       case 'DELIVERED':
         return Icons.check_circle;
+
       case 'IN_TRANSIT':
         return Icons.local_shipping;
+
       case 'PICKED_UP':
         return Icons.inventory_2;
+
       case 'ACCEPTED':
         return Icons.assignment_turned_in;
+
       case 'CANCELLED':
         return Icons.cancel;
+
       default:
         return Icons.schedule;
     }
@@ -300,18 +505,30 @@ class _DeliveryHistoryScreenState
       return '-';
     }
 
-    final localDate = parsedDate.toLocal();
+    final localDate =
+        parsedDate.toLocal();
 
     final day =
-        localDate.day.toString().padLeft(2, '0');
+        localDate.day
+            .toString()
+            .padLeft(2, '0');
+
     final month =
-        localDate.month.toString().padLeft(2, '0');
+        localDate.month
+            .toString()
+            .padLeft(2, '0');
+
     final year = localDate.year;
 
     final hour =
-        localDate.hour.toString().padLeft(2, '0');
+        localDate.hour
+            .toString()
+            .padLeft(2, '0');
+
     final minute =
-        localDate.minute.toString().padLeft(2, '0');
+        localDate.minute
+            .toString()
+            .padLeft(2, '0');
 
     return '$day/$month/$year $hour:$minute';
   }
@@ -330,6 +547,9 @@ class _DeliveryHistoryScreenState
   Widget buildDeliveryCard(
     Map<String, dynamic> delivery,
   ) {
+    final id =
+        delivery['_id']?.toString() ?? '';
+
     final status =
         delivery['status']
                 ?.toString()
@@ -343,28 +563,49 @@ class _DeliveryHistoryScreenState
             'UNPAID';
 
     final fee =
-        parseAmount(delivery['deliveryFee']);
+        parseAmount(
+      delivery['deliveryFee'],
+    );
 
-    final canCancel = [
-      'PENDING',
-      'ACCEPTED',
-    ].contains(status);
+    final isPaying =
+        payingDeliveryIds.contains(id);
 
-    final statusColor = getStatusColor(status);
+    final canPay =
+        fee > 0 &&
+        paymentStatus == 'UNPAID' &&
+        status != 'CANCELLED' &&
+        status != 'DELIVERED';
+
+    final canCancel =
+        paymentStatus == 'UNPAID' &&
+        [
+          'PENDING',
+          'ACCEPTED',
+        ].contains(status);
+
+    final statusColor =
+        getStatusColor(status);
+
+    final paymentColor =
+        getPaymentColor(paymentStatus);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin:
+          const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFFE5E7EB),
+          color:
+              const Color(0xFFE5E7EB),
         ),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(
+              alpha: 0.03,
+            ),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
@@ -379,7 +620,9 @@ class _DeliveryHistoryScreenState
               CircleAvatar(
                 radius: 24,
                 backgroundColor:
-                    statusColor.withValues(alpha: 0.12),
+                    statusColor.withValues(
+                  alpha: 0.12,
+                ),
                 child: Icon(
                   getStatusIcon(status),
                   color: statusColor,
@@ -395,10 +638,13 @@ class _DeliveryHistoryScreenState
                       delivery['packageName']
                               ?.toString() ??
                           'Package',
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF111827),
+                        fontWeight:
+                            FontWeight.w800,
+                        color:
+                            Color(0xFF111827),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -406,23 +652,29 @@ class _DeliveryHistoryScreenState
                       delivery['trackingNumber']
                               ?.toString() ??
                           '-',
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF6B7280),
-                        fontWeight: FontWeight.w600,
+                        color:
+                            Color(0xFF6B7280),
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
+                padding:
+                    const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
                   color:
-                      statusColor.withValues(alpha: 0.12),
+                      statusColor.withValues(
+                    alpha: 0.12,
+                  ),
                   borderRadius:
                       BorderRadius.circular(20),
                 ),
@@ -431,7 +683,8 @@ class _DeliveryHistoryScreenState
                   style: TextStyle(
                     color: statusColor,
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
               ),
@@ -441,7 +694,8 @@ class _DeliveryHistoryScreenState
           const Divider(height: 1),
           const SizedBox(height: 16),
           buildSmallRow(
-            icon: Icons.location_on_outlined,
+            icon:
+                Icons.location_on_outlined,
             label: 'Pickup',
             value:
                 delivery['pickupAddress']
@@ -471,19 +725,196 @@ class _DeliveryHistoryScreenState
                 ? '₦${fee.toStringAsFixed(2)}'
                 : 'Not yet provided',
           ),
-          buildSmallRow(
-            icon:
-                Icons.account_balance_wallet_outlined,
-            label: 'Payment',
-            value: formatStatus(paymentStatus),
+          Padding(
+            padding:
+                const EdgeInsets.only(
+              bottom: 11,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons
+                      .account_balance_wallet_outlined,
+                  size: 19,
+                  color: Color(0xFF1565C0),
+                ),
+                const SizedBox(width: 10),
+                const SizedBox(
+                  width: 88,
+                  child: Text(
+                    'Payment',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color:
+                          Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        paymentColor.withValues(
+                      alpha: 0.12,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    formatStatus(
+                      paymentStatus,
+                    ),
+                    style: TextStyle(
+                      color: paymentColor,
+                      fontSize: 11,
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           buildSmallRow(
-            icon: Icons.calendar_today_outlined,
+            icon:
+                Icons.calendar_today_outlined,
             label: 'Created',
             value: formatDate(
               delivery['createdAt'],
             ),
           ),
+          if (fee <= 0 &&
+              status != 'CANCELLED') ...[
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color:
+                    const Color(0xFFFFF8E1),
+                borderRadius:
+                    BorderRadius.circular(12),
+                border: Border.all(
+                  color:
+                      const Color(0xFFFFE082),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color:
+                        Color(0xFFF59E0B),
+                    size: 20,
+                  ),
+                  SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'Servicepay is reviewing your request. The delivery price will appear here.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color:
+                            Color(0xFF6B4F00),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (canPay) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: isPaying
+                    ? null
+                    : () {
+                        payDeliveryFee(
+                          delivery,
+                        );
+                      },
+                icon: isPaying
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(
+                        Icons
+                            .account_balance_wallet_rounded,
+                      ),
+                label: Text(
+                  isPaying
+                      ? 'Processing Payment...'
+                      : 'Pay Delivery Fee',
+                ),
+                style:
+                    FilledButton.styleFrom(
+                  backgroundColor:
+                      const Color(0xFF1565C0),
+                  foregroundColor:
+                      Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(
+                    vertical: 14,
+                  ),
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (paymentStatus == 'PAID') ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color:
+                    const Color(0xFFE8F5E9),
+                borderRadius:
+                    BorderRadius.circular(12),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons
+                        .check_circle_outline,
+                    color: Colors.green,
+                    size: 21,
+                  ),
+                  SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'Delivery payment completed successfully.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color:
+                            Color(0xFF166534),
+                        fontWeight:
+                            FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (canCancel) ...[
             const SizedBox(height: 8),
             SizedBox(
@@ -498,12 +929,14 @@ class _DeliveryHistoryScreenState
                 label: const Text(
                   'Cancel Delivery',
                 ),
-                style: OutlinedButton.styleFrom(
+                style:
+                    OutlinedButton.styleFrom(
                   foregroundColor: Colors.red,
                   side: const BorderSide(
                     color: Colors.red,
                   ),
-                  shape: RoundedRectangleBorder(
+                  shape:
+                      RoundedRectangleBorder(
                     borderRadius:
                         BorderRadius.circular(12),
                   ),
@@ -522,7 +955,8 @@ class _DeliveryHistoryScreenState
     required String value,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
+      padding:
+          const EdgeInsets.only(bottom: 11),
       child: Row(
         crossAxisAlignment:
             CrossAxisAlignment.start,
@@ -530,7 +964,8 @@ class _DeliveryHistoryScreenState
           Icon(
             icon,
             size: 19,
-            color: const Color(0xFF1565C0),
+            color:
+                const Color(0xFF1565C0),
           ),
           const SizedBox(width: 10),
           SizedBox(
@@ -539,7 +974,8 @@ class _DeliveryHistoryScreenState
               label,
               style: const TextStyle(
                 fontSize: 12,
-                color: Color(0xFF6B7280),
+                color:
+                    Color(0xFF6B7280),
               ),
             ),
           ),
@@ -548,8 +984,10 @@ class _DeliveryHistoryScreenState
               value,
               style: const TextStyle(
                 fontSize: 13,
-                color: Color(0xFF111827),
-                fontWeight: FontWeight.w600,
+                color:
+                    Color(0xFF111827),
+                fontWeight:
+                    FontWeight.w600,
                 height: 1.35,
               ),
             ),
@@ -562,7 +1000,8 @@ class _DeliveryHistoryScreenState
   Widget buildEmptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(
+        padding:
+            const EdgeInsets.symmetric(
           horizontal: 24,
           vertical: 70,
         ),
@@ -571,14 +1010,17 @@ class _DeliveryHistoryScreenState
             Container(
               width: 92,
               height: 92,
-              decoration: const BoxDecoration(
-                color: Color(0xFFEAF3FF),
+              decoration:
+                  const BoxDecoration(
+                color:
+                    Color(0xFFEAF3FF),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.local_shipping_outlined,
                 size: 46,
-                color: Color(0xFF1565C0),
+                color:
+                    Color(0xFF1565C0),
               ),
             ),
             const SizedBox(height: 20),
@@ -586,8 +1028,10 @@ class _DeliveryHistoryScreenState
               'No Deliveries Yet',
               style: TextStyle(
                 fontSize: 19,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
+                fontWeight:
+                    FontWeight.w800,
+                color:
+                    Color(0xFF111827),
               ),
             ),
             const SizedBox(height: 8),
@@ -595,7 +1039,8 @@ class _DeliveryHistoryScreenState
               'Your delivery requests will appear here after you create one.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color:
+                    Color(0xFF6B7280),
                 height: 1.5,
               ),
             ),
@@ -608,7 +1053,8 @@ class _DeliveryHistoryScreenState
   Widget buildErrorState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(
+        padding:
+            const EdgeInsets.symmetric(
           horizontal: 24,
           vertical: 70,
         ),
@@ -625,15 +1071,18 @@ class _DeliveryHistoryScreenState
                   'Unable to load delivery history.',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color:
+                    Color(0xFF6B7280),
                 height: 1.5,
               ),
             ),
             const SizedBox(height: 18),
             FilledButton.icon(
               onPressed: loadDeliveries,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Try Again'),
+              icon:
+                  const Icon(Icons.refresh),
+              label:
+                  const Text('Try Again'),
             ),
           ],
         ),
@@ -650,7 +1099,8 @@ class _DeliveryHistoryScreenState
         title: const Text(
           'Delivery History',
           style: TextStyle(
-            fontWeight: FontWeight.w700,
+            fontWeight:
+                FontWeight.w700,
           ),
         ),
         centerTitle: true,
@@ -658,13 +1108,23 @@ class _DeliveryHistoryScreenState
         foregroundColor:
             const Color(0xFF111827),
         elevation: 0,
+        actions: [
+          IconButton(
+            onPressed:
+                isLoading ? null : loadDeliveries,
+            tooltip: 'Refresh',
+            icon:
+                const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: loadDeliveries,
           child: isLoading
               ? const Center(
-                  child: CircularProgressIndicator(),
+                  child:
+                      CircularProgressIndicator(),
                 )
               : errorMessage != null
                   ? ListView(

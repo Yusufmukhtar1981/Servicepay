@@ -14,6 +14,12 @@ const DELIVERY_STATUSES = [
   "FAILED",
 ];
 
+const PAYMENT_STATUSES = [
+  "UNPAID",
+  "PAID",
+  "REFUNDED",
+];
+
 const toPositiveInteger = (
   value,
   fallback,
@@ -26,6 +32,16 @@ const toPositiveInteger = (
   }
 
   return Math.min(parsed, maximum);
+};
+
+const toValidAmount = (value) => {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return Number(parsed.toFixed(2));
 };
 
 const escapeRegex = (value = "") => {
@@ -41,6 +57,19 @@ const normalizeDeliveryStatus = (value = "") => {
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
 };
+
+const normalizePaymentStatus = (value = "") => {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+};
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN DASHBOARD
+|--------------------------------------------------------------------------
+*/
 
 exports.getAdminDashboard = async (req, res) => {
   try {
@@ -61,6 +90,9 @@ exports.getAdminDashboard = async (req, res) => {
       recentTransactions,
       transactionSummary,
       walletSummary,
+      totalDeliveries,
+      pendingDeliveries,
+      deliveredDeliveries,
     ] = await Promise.all([
       User.countDocuments(),
 
@@ -198,6 +230,16 @@ exports.getAdminDashboard = async (req, res) => {
           },
         },
       ]),
+
+      Delivery.countDocuments(),
+
+      Delivery.countDocuments({
+        status: "PENDING",
+      }),
+
+      Delivery.countDocuments({
+        status: "DELIVERED",
+      }),
     ]);
 
     const totalVolume =
@@ -243,6 +285,12 @@ exports.getAdminDashboard = async (req, res) => {
           servicepayProfit,
         },
 
+        deliveries: {
+          total: totalDeliveries,
+          pending: pendingDeliveries,
+          delivered: deliveredDeliveries,
+        },
+
         servicepay: {
           totalProfit: servicepayProfit,
         },
@@ -265,6 +313,12 @@ exports.getAdminDashboard = async (req, res) => {
     });
   }
 };
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN TRANSACTIONS
+|--------------------------------------------------------------------------
+*/
 
 exports.getAdminTransactions = async (
   req,
@@ -306,14 +360,44 @@ exports.getAdminTransactions = async (
     const filter = {};
 
     if (status && status !== "ALL") {
-      if (status === "SUCCESSFUL") {
-        filter.status = "SUCCESSFUL";
+      if (
+        status === "SUCCESS" ||
+        status === "SUCCESSFUL" ||
+        status === "COMPLETED"
+      ) {
+        filter.status = {
+          $in: [
+            "SUCCESS",
+            "SUCCESSFUL",
+            "COMPLETED",
+            "APPROVED",
+          ],
+        };
       } else if (status === "FAILED") {
-        filter.status = "FAILED";
+        filter.status = {
+          $in: [
+            "FAILED",
+            "CANCELLED",
+            "REJECTED",
+          ],
+        };
       } else if (status === "PENDING") {
-        filter.status = "PENDING";
-      } else if (status === "REFUNDED") {
-        filter.status = "REFUNDED";
+        filter.status = {
+          $in: [
+            "PENDING",
+            "PROCESSING",
+          ],
+        };
+      } else if (
+        status === "REFUNDED" ||
+        status === "REVERSED"
+      ) {
+        filter.status = {
+          $in: [
+            "REFUNDED",
+            "REVERSED",
+          ],
+        };
       } else {
         filter.status = status;
       }
@@ -462,6 +546,12 @@ exports.getAdminTransactions = async (
   }
 };
 
+/*
+|--------------------------------------------------------------------------
+| GET ADMIN DELIVERIES
+|--------------------------------------------------------------------------
+*/
+
 exports.getAdminDeliveries = async (
   req,
   res
@@ -490,6 +580,11 @@ exports.getAdminDeliveries = async (
         req.query.status ?? ""
       );
 
+    const paymentStatus =
+      normalizePaymentStatus(
+        req.query.paymentStatus ?? ""
+      );
+
     const filter = {};
 
     if (status && status !== "ALL") {
@@ -506,6 +601,28 @@ exports.getAdminDeliveries = async (
       }
 
       filter.status = status;
+    }
+
+    if (
+      paymentStatus &&
+      paymentStatus !== "ALL"
+    ) {
+      if (
+        !PAYMENT_STATUSES.includes(
+          paymentStatus
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid payment status.",
+          allowedPaymentStatuses:
+            PAYMENT_STATUSES,
+        });
+      }
+
+      filter.paymentStatus =
+        paymentStatus;
     }
 
     if (search) {
@@ -575,6 +692,9 @@ exports.getAdminDeliveries = async (
         {
           riderPhone: searchRegex,
         },
+        {
+          adminNote: searchRegex,
+        },
       ];
 
       if (
@@ -611,7 +731,11 @@ exports.getAdminDeliveries = async (
       deliveredDeliveries,
       cancelledDeliveries,
       failedDeliveries,
+      unpaidDeliveries,
+      paidDeliveries,
+      refundedDeliveries,
       revenueSummary,
+      quotedPriceSummary,
     ] = await Promise.all([
       Delivery.find(filter)
         .populate(
@@ -661,10 +785,22 @@ exports.getAdminDeliveries = async (
         status: "FAILED",
       }),
 
+      Delivery.countDocuments({
+        paymentStatus: "UNPAID",
+      }),
+
+      Delivery.countDocuments({
+        paymentStatus: "PAID",
+      }),
+
+      Delivery.countDocuments({
+        paymentStatus: "REFUNDED",
+      }),
+
       Delivery.aggregate([
         {
           $match: {
-            status: "DELIVERED",
+            paymentStatus: "PAID",
           },
         },
         {
@@ -672,6 +808,25 @@ exports.getAdminDeliveries = async (
             _id: null,
 
             totalRevenue: {
+              $sum: {
+                $convert: {
+                  input: "$deliveryFee",
+                  to: "double",
+                  onError: 0,
+                  onNull: 0,
+                },
+              },
+            },
+          },
+        },
+      ]),
+
+      Delivery.aggregate([
+        {
+          $group: {
+            _id: null,
+
+            totalQuotedPrice: {
               $sum: {
                 $convert: {
                   input: "$deliveryFee",
@@ -696,6 +851,10 @@ exports.getAdminDeliveries = async (
     const totalRevenue =
       revenueSummary[0]?.totalRevenue ?? 0;
 
+    const totalQuotedPrice =
+      quotedPriceSummary[0]
+        ?.totalQuotedPrice ?? 0;
+
     return res.status(200).json({
       success: true,
       message:
@@ -714,7 +873,13 @@ exports.getAdminDeliveries = async (
           delivered: deliveredDeliveries,
           cancelled: cancelledDeliveries,
           failed: failedDeliveries,
+
+          unpaid: unpaidDeliveries,
+          paid: paidDeliveries,
+          refunded: refundedDeliveries,
+
           totalRevenue,
+          totalQuotedPrice,
         },
 
         pagination: {
@@ -750,6 +915,12 @@ exports.getAdminDeliveries = async (
     });
   }
 };
+
+/*
+|--------------------------------------------------------------------------
+| UPDATE DELIVERY STATUS
+|--------------------------------------------------------------------------
+*/
 
 exports.updateDeliveryStatus = async (
   req,
@@ -841,7 +1012,7 @@ exports.updateDeliveryStatus = async (
 
     if (
       req.body.assignedRiderId !==
-        undefined
+      undefined
     ) {
       const riderId = String(
         req.body.assignedRiderId ?? ""
@@ -971,6 +1142,173 @@ exports.updateDeliveryStatus = async (
       success: false,
       message:
         "Failed to update delivery status.",
+      error: error.message,
+    });
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| UPDATE DELIVERY PRICE
+|--------------------------------------------------------------------------
+*/
+
+exports.updateDeliveryPrice = async (
+  req,
+  res
+) => {
+  try {
+    const deliveryId = String(
+      req.params.id ?? ""
+    ).trim();
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        deliveryId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid delivery ID.",
+      });
+    }
+
+    const deliveryFee = toValidAmount(
+      req.body.deliveryFee ??
+        req.body.price ??
+        req.body.amount
+    );
+
+    if (deliveryFee === null) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Enter a valid delivery price.",
+      });
+    }
+
+    const paymentStatus =
+      normalizePaymentStatus(
+        req.body.paymentStatus ??
+          "UNPAID"
+      );
+
+    if (
+      !PAYMENT_STATUSES.includes(
+        paymentStatus
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid payment status.",
+        allowedPaymentStatuses:
+          PAYMENT_STATUSES,
+      });
+    }
+
+    const delivery =
+      await Delivery.findById(
+        deliveryId
+      );
+
+    if (!delivery) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Delivery was not found.",
+      });
+    }
+
+    const previousDeliveryFee =
+      Number(delivery.deliveryFee ?? 0);
+
+    const previousPaymentStatus =
+      delivery.paymentStatus;
+
+    delivery.deliveryFee =
+      deliveryFee;
+
+    delivery.paymentStatus =
+      paymentStatus;
+
+    if (
+      req.body.adminNote !== undefined
+    ) {
+      delivery.adminNote = String(
+        req.body.adminNote ?? ""
+      ).trim();
+    }
+
+    if (
+      paymentStatus === "PAID" &&
+      delivery.paidAt == null
+    ) {
+      delivery.paidAt = new Date();
+    }
+
+    if (
+      paymentStatus === "REFUNDED" &&
+      delivery.refundedAt == null
+    ) {
+      delivery.refundedAt = new Date();
+    }
+
+    await delivery.save();
+
+    const updatedDelivery =
+      await Delivery.findById(
+        delivery._id
+      )
+        .populate(
+          "customerId",
+          "fullName name email phone role status"
+        )
+        .populate(
+          "assignedRiderId",
+          "fullName name email phone role status"
+        )
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Delivery price updated successfully.",
+
+      data: {
+        delivery: updatedDelivery,
+
+        previousDeliveryFee,
+        currentDeliveryFee:
+          deliveryFee,
+
+        previousPaymentStatus,
+        currentPaymentStatus:
+          paymentStatus,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Update delivery price error:",
+      error
+    );
+
+    if (
+      error.name === "ValidationError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid delivery price information.",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to update delivery price.",
       error: error.message,
     });
   }

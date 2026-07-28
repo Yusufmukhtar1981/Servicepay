@@ -43,7 +43,8 @@ const transactionSchema = new mongoose.Schema(
         "EXAM_PIN",
         "WALLET_FUNDING",
         "TRANSFER",
-"BANK_TRANSFER",
+        "BANK_TRANSFER",
+        "DELIVERY",
       ],
       required: true,
     },
@@ -90,7 +91,12 @@ const transactionSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["PENDING", "SUCCESSFUL", "FAILED", "REFUNDED"],
+      enum: [
+        "PENDING",
+        "SUCCESSFUL",
+        "FAILED",
+        "REFUNDED",
+      ],
       default: "PENDING",
     },
 
