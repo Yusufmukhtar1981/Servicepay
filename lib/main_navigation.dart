@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'dashboard_screen.dart';
+import 'profile_screen.dart';
 import 'transactions_screen.dart';
 import 'wallet_screen.dart';
 
@@ -18,11 +19,13 @@ class _MainNavigationState extends State<MainNavigation> {
     DashboardScreen(),
     TransactionsScreen(),
     WalletScreen(),
-    _ProfilePlaceholder(),
+    ProfileScreen(),
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       body: IndexedStack(
         index: currentIndex,
@@ -76,26 +79,6 @@ class _MainNavigationState extends State<MainNavigation> {
             label: 'Profile',
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ProfilePlaceholder extends StatelessWidget {
-  const _ProfilePlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFFF8FAFC),
-      body: Center(
-        child: Text(
-          'Profile',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
       ),
     );
   }
