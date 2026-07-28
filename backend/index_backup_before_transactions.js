@@ -50,10 +50,6 @@ const announcementRoutes = require(
   "./routes/announcement.routes"
 );
 
-const transactionRoutes = require(
-  "./routes/transaction.routes"
-);
-
 const app = express();
 
 connectDB();
@@ -130,11 +126,6 @@ app.use(
 app.use(
   "/api/announcement",
   announcementRoutes
-);
-
-app.use(
-  "/api/transactions",
-  transactionRoutes
 );
 
 app.use((req, res) => {
