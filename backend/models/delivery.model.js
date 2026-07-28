@@ -77,7 +77,11 @@ const deliverySchema = new mongoose.Schema(
 
     paymentStatus: {
       type: String,
-      enum: ["UNPAID", "PAID", "REFUNDED"],
+      enum: [
+        "UNPAID",
+        "PAID",
+        "REFUNDED",
+      ],
       default: "UNPAID",
     },
 
@@ -90,6 +94,7 @@ const deliverySchema = new mongoose.Schema(
         "IN_TRANSIT",
         "DELIVERED",
         "CANCELLED",
+        "FAILED",
       ],
       default: "PENDING",
     },
@@ -100,13 +105,50 @@ const deliverySchema = new mongoose.Schema(
       default: null,
     },
 
+    riderName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    riderPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     adminNote: {
       type: String,
       default: "",
       trim: true,
     },
 
+    acceptedAt: {
+      type: Date,
+      default: null,
+    },
+
+    pickedUpAt: {
+      type: Date,
+      default: null,
+    },
+
+    inTransitAt: {
+      type: Date,
+      default: null,
+    },
+
     deliveredAt: {
+      type: Date,
+      default: null,
+    },
+
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+
+    failedAt: {
       type: Date,
       default: null,
     },
@@ -116,4 +158,7 @@ const deliverySchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model("Delivery", deliverySchema);
+module.exports = mongoose.model(
+  "Delivery",
+  deliverySchema
+);

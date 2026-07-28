@@ -2,10 +2,9 @@ const express = require("express");
 
 const {
   getAdminDashboard,
-  getUsers,
-  getUserById,
-  updateUserStatus,
   getAdminTransactions,
+  getAdminDeliveries,
+  updateDeliveryStatus,
 } = require("../controllers/admin.controller");
 
 const {
@@ -15,20 +14,32 @@ const {
 
 const router = express.Router();
 
-router.use(protect);
-router.use(adminOnly("HEAD_OFFICE"));
+router.get(
+  "/dashboard",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminDashboard
+);
 
-router.get("/dashboard", getAdminDashboard);
+router.get(
+  "/transactions",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminTransactions
+);
 
-router.get("/transactions", getAdminTransactions);
-
-router.get("/users", getUsers);
-
-router.get("/users/:userId", getUserById);
+router.get(
+  "/deliveries",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminDeliveries
+);
 
 router.patch(
-  "/users/:userId/status",
-  updateUserStatus
+  "/deliveries/:id/status",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateDeliveryStatus
 );
 
 module.exports = router;

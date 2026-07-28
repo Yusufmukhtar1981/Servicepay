@@ -1,5 +1,32 @@
+const mongoose = require("mongoose");
+
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
+const Delivery = require("../models/delivery.model");
+
+const DELIVERY_STATUSES = [
+  "PENDING",
+  "ACCEPTED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "DELIVERED",
+  "CANCELLED",
+  "FAILED",
+];
+
+const toPositiveInteger = (
+  value,
+  fallback,
+  maximum = 100
+) => {
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return Math.min(parsed, maximum);
+};
 
 const escapeRegex = (value = "") => {
   return String(value).replace(
@@ -8,58 +35,14 @@ const escapeRegex = (value = "") => {
   );
 };
 
-const getPositiveInteger = (
-  value,
-  fallback,
-  maximum = 100
-) => {
-  const parsedValue = Number.parseInt(value, 10);
-
-  if (
-    !Number.isFinite(parsedValue) ||
-    parsedValue < 1
-  ) {
-    return fallback;
-  }
-
-  return Math.min(parsedValue, maximum);
+const normalizeDeliveryStatus = (value = "") => {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
 };
 
-const buildTransactionQuery = (filter = {}) => {
-  let query = Transaction.find(filter);
-
-  if (Transaction.schema.path("customerId")) {
-    query = query.populate(
-      "customerId",
-      "fullName name email phone role status"
-    );
-  }
-
-  if (Transaction.schema.path("userId")) {
-    query = query.populate(
-      "userId",
-      "fullName name email phone role status"
-    );
-  }
-
-  if (Transaction.schema.path("senderId")) {
-    query = query.populate(
-      "senderId",
-      "fullName name email phone role status"
-    );
-  }
-
-  if (Transaction.schema.path("receiverId")) {
-    query = query.populate(
-      "receiverId",
-      "fullName name email phone role status"
-    );
-  }
-
-  return query;
-};
-
-const getAdminDashboard = async (req, res) => {
+exports.getAdminDashboard = async (req, res) => {
   try {
     const [
       totalUsers,
@@ -70,18 +53,14 @@ const getAdminDashboard = async (req, res) => {
       totalAgents,
       totalStateManagers,
       totalZonalManagers,
-      totalHeadOffice,
       totalTransactions,
       successfulTransactions,
       pendingTransactions,
       failedTransactions,
-      refundedTransactions,
-      walletResult,
-      transactionVolumeResult,
-      commissionResult,
-      profitResult,
       recentUsers,
       recentTransactions,
+      transactionSummary,
+      walletSummary,
     ] = await Promise.all([
       User.countDocuments(),
 
@@ -111,10 +90,6 @@ const getAdminDashboard = async (req, res) => {
 
       User.countDocuments({
         role: "ZONAL_MANAGER",
-      }),
-
-      User.countDocuments({
-        role: "HEAD_OFFICE",
       }),
 
       Transaction.countDocuments(),
@@ -149,14 +124,70 @@ const getAdminDashboard = async (req, res) => {
         },
       }),
 
-      Transaction.countDocuments({
-        status: {
-          $in: [
-            "REFUNDED",
-            "REVERSED",
-          ],
+      User.find()
+        .select(
+          "fullName name email phone role status createdAt"
+        )
+        .sort({
+          createdAt: -1,
+        })
+        .limit(5)
+        .lean(),
+
+      Transaction.find()
+        .populate(
+          "customerId",
+          "fullName name email phone"
+        )
+        .populate(
+          "userId",
+          "fullName name email phone"
+        )
+        .sort({
+          createdAt: -1,
+        })
+        .limit(5)
+        .lean(),
+
+      Transaction.aggregate([
+        {
+          $group: {
+            _id: null,
+
+            totalVolume: {
+              $sum: {
+                $convert: {
+                  input: "$amount",
+                  to: "double",
+                  onError: 0,
+                  onNull: 0,
+                },
+              },
+            },
+
+            totalProfit: {
+              $sum: {
+                $convert: {
+                  input: {
+                    $ifNull: [
+                      "$servicepayProfit",
+                      {
+                        $ifNull: [
+                          "$profit",
+                          0,
+                        ],
+                      },
+                    ],
+                  },
+                  to: "double",
+                  onError: 0,
+                  onNull: 0,
+                },
+              },
+            },
+          },
         },
-      }),
+      ]),
 
       User.aggregate([
         {
@@ -173,204 +204,22 @@ const getAdminDashboard = async (req, res) => {
                 },
               },
             },
-
-            totalCommissionBalance: {
-              $sum: {
-                $convert: {
-                  input: "$commissionBalance",
-                  to: "double",
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-            },
-
-            totalUserEarnings: {
-              $sum: {
-                $convert: {
-                  input: "$totalEarnings",
-                  to: "double",
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-            },
           },
         },
       ]),
-
-      Transaction.aggregate([
-        {
-          $match: {
-            status: {
-              $in: [
-                "SUCCESS",
-                "SUCCESSFUL",
-                "COMPLETED",
-                "APPROVED",
-              ],
-            },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-
-            totalTransactionVolume: {
-              $sum: {
-                $convert: {
-                  input: "$amount",
-                  to: "double",
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-            },
-          },
-        },
-      ]),
-
-      Transaction.aggregate([
-        {
-          $match: {
-            status: {
-              $in: [
-                "SUCCESS",
-                "SUCCESSFUL",
-                "COMPLETED",
-                "APPROVED",
-              ],
-            },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-
-            totalAgentCommission: {
-              $sum: {
-                $convert: {
-                  input: "$agentCommission",
-                  to: "double",
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-            },
-
-            totalStateManagerCommission: {
-              $sum: {
-                $convert: {
-                  input: "$stateManagerCommission",
-                  to: "double",
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-            },
-
-            totalZonalManagerCommission: {
-              $sum: {
-                $convert: {
-                  input: "$zonalManagerCommission",
-                  to: "double",
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-            },
-          },
-        },
-      ]),
-
-      Transaction.aggregate([
-        {
-          $match: {
-            status: {
-              $in: [
-                "SUCCESS",
-                "SUCCESSFUL",
-                "COMPLETED",
-                "APPROVED",
-              ],
-            },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-
-            totalServicepayProfit: {
-              $sum: {
-                $convert: {
-                  input: "$servicepayProfit",
-                  to: "double",
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-            },
-          },
-        },
-      ]),
-
-      User.find()
-        .select(
-          "fullName name email phone role status createdAt"
-        )
-        .sort({
-          createdAt: -1,
-        })
-        .limit(5)
-        .lean(),
-
-      buildTransactionQuery()
-        .sort({
-          createdAt: -1,
-        })
-        .limit(5)
-        .lean(),
     ]);
 
-    const walletStats = walletResult[0] || {
-      totalWalletBalance: 0,
-      totalCommissionBalance: 0,
-      totalUserEarnings: 0,
-    };
+    const totalVolume =
+      transactionSummary[0]?.totalVolume ?? 0;
 
-    const transactionStats =
-      transactionVolumeResult[0] || {
-        totalTransactionVolume: 0,
-      };
+    const servicepayProfit =
+      transactionSummary[0]?.totalProfit ?? 0;
 
-    const commissionStats =
-      commissionResult[0] || {
-        totalAgentCommission: 0,
-        totalStateManagerCommission: 0,
-        totalZonalManagerCommission: 0,
-      };
-
-    const profitStats = profitResult[0] || {
-      totalServicepayProfit: 0,
-    };
-
-    const totalCommission =
-      Number(
-        commissionStats.totalAgentCommission || 0
-      ) +
-      Number(
-        commissionStats.totalStateManagerCommission ||
-          0
-      ) +
-      Number(
-        commissionStats.totalZonalManagerCommission ||
-          0
-      );
+    const totalWalletBalance =
+      walletSummary[0]?.totalWalletBalance ?? 0;
 
     return res.status(200).json({
       success: true,
-      message:
-        "Admin dashboard loaded successfully.",
 
       data: {
         users: {
@@ -382,66 +231,29 @@ const getAdminDashboard = async (req, res) => {
           agents: totalAgents,
           stateManagers: totalStateManagers,
           zonalManagers: totalZonalManagers,
-          headOffice: totalHeadOffice,
         },
 
         kyc: {
           pending: 0,
-          verified: 0,
+        },
+
+        wallets: {
+          totalWalletBalance,
+          totalBalance: totalWalletBalance,
         },
 
         transactions: {
           total: totalTransactions,
+          totalVolume,
+          totalValue: totalVolume,
           successful: successfulTransactions,
           pending: pendingTransactions,
           failed: failedTransactions,
-          refunded: refundedTransactions,
-
-          totalVolume:
-            transactionStats.totalTransactionVolume ||
-            0,
-
-          totalValue:
-            transactionStats.totalTransactionVolume ||
-            0,
-
-          servicepayProfit:
-            profitStats.totalServicepayProfit || 0,
-        },
-
-        wallets: {
-          totalWalletBalance:
-            walletStats.totalWalletBalance || 0,
-
-          totalBalance:
-            walletStats.totalWalletBalance || 0,
-
-          totalCommissionBalance:
-            walletStats.totalCommissionBalance || 0,
-
-          totalUserEarnings:
-            walletStats.totalUserEarnings || 0,
-        },
-
-        commissions: {
-          agent:
-            commissionStats.totalAgentCommission ||
-            0,
-
-          stateManager:
-            commissionStats
-              .totalStateManagerCommission || 0,
-
-          zonalManager:
-            commissionStats
-              .totalZonalManagerCommission || 0,
-
-          total: totalCommission,
+          servicepayProfit,
         },
 
         servicepay: {
-          totalProfit:
-            profitStats.totalServicepayProfit || 0,
+          totalProfit: servicepayProfit,
         },
 
         recentUsers,
@@ -458,276 +270,23 @@ const getAdminDashboard = async (req, res) => {
       success: false,
       message:
         "Failed to load admin dashboard.",
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
+      error: error.message,
     });
   }
 };
 
-const getUsers = async (req, res) => {
+exports.getAdminTransactions = async (
+  req,
+  res
+) => {
   try {
-    const search = String(
-      req.query.search || ""
-    ).trim();
-
-    const role = String(
-      req.query.role || ""
-    )
-      .trim()
-      .toUpperCase();
-
-    const status = String(
-      req.query.status || ""
-    )
-      .trim()
-      .toUpperCase();
-
-    const currentPage = getPositiveInteger(
+    const page = toPositiveInteger(
       req.query.page,
       1,
       100000
     );
 
-    const pageLimit = getPositiveInteger(
-      req.query.limit,
-      20,
-      100
-    );
-
-    const skip =
-      (currentPage - 1) * pageLimit;
-
-    const filter = {};
-
-    if (search) {
-      const searchRegex = new RegExp(
-        escapeRegex(search),
-        "i"
-      );
-
-      filter.$or = [
-        {
-          fullName: searchRegex,
-        },
-        {
-          name: searchRegex,
-        },
-        {
-          phone: searchRegex,
-        },
-        {
-          email: searchRegex,
-        },
-      ];
-    }
-
-    if (role && role !== "ALL") {
-      filter.role = role;
-    }
-
-    if (status && status !== "ALL") {
-      filter.status = status;
-    }
-
-    const [users, totalUsers] =
-      await Promise.all([
-        User.find(filter)
-          .select("-password")
-          .sort({
-            createdAt: -1,
-          })
-          .skip(skip)
-          .limit(pageLimit)
-          .lean(),
-
-        User.countDocuments(filter),
-      ]);
-
-    const totalPages = Math.max(
-      Math.ceil(totalUsers / pageLimit),
-      1
-    );
-
-    return res.status(200).json({
-      success: true,
-
-      data: {
-        users,
-
-        pagination: {
-          page: currentPage,
-          currentPage,
-          limit: pageLimit,
-          total: totalUsers,
-          totalUsers,
-          totalItems: totalUsers,
-          totalPages,
-          hasNextPage:
-            currentPage < totalPages,
-          hasPreviousPage:
-            currentPage > 1,
-        },
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Get users error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load users.",
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
-    });
-  }
-};
-
-const getUserById = async (req, res) => {
-  try {
-    const user = await User.findById(
-      req.params.userId
-    )
-      .select("-password")
-      .populate(
-        "zonalManagerId stateManagerId agentId referredBy",
-        "fullName name phone email role status"
-      );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-
-      data: {
-        user,
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Get user error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load user.",
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
-    });
-  }
-};
-
-const updateUserStatus = async (
-  req,
-  res
-) => {
-  try {
-    const status = String(
-      req.body.status || ""
-    )
-      .trim()
-      .toUpperCase();
-
-    const allowedStatuses = [
-      "ACTIVE",
-      "SUSPENDED",
-      "BLOCKED",
-    ];
-
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Status must be ACTIVE, SUSPENDED, or BLOCKED.",
-      });
-    }
-
-    const user = await User.findById(
-      req.params.userId
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
-
-    if (
-      req.user &&
-      user._id.toString() ===
-        req.user._id.toString() &&
-      status !== "ACTIVE"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "You cannot suspend or block your own admin account.",
-      });
-    }
-
-    user.status = status;
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message:
-        `User status changed to ${status}.`,
-
-      data: {
-        user: {
-          id: user._id,
-          fullName: user.fullName,
-          phone: user.phone,
-          email: user.email,
-          role: user.role,
-          status: user.status,
-        },
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Update user status error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Failed to update user status.",
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
-    });
-  }
-};
-
-const getAdminTransactions = async (
-  req,
-  res
-) => {
-  try {
-    const page = getPositiveInteger(
-      req.query.page,
-      1,
-      100000
-    );
-
-    const limit = getPositiveInteger(
+    const limit = toPositiveInteger(
       req.query.limit,
       20,
       100
@@ -736,18 +295,18 @@ const getAdminTransactions = async (
     const skip = (page - 1) * limit;
 
     const search = String(
-      req.query.search || ""
+      req.query.search ?? ""
     ).trim();
 
     const status = String(
-      req.query.status || ""
+      req.query.status ?? ""
     )
       .trim()
       .toUpperCase();
 
     const serviceType = String(
-      req.query.serviceType ||
-        req.query.service ||
+      req.query.serviceType ??
+        req.query.service ??
         ""
     )
       .trim()
@@ -765,19 +324,19 @@ const getAdminTransactions = async (
             "APPROVED",
           ],
         };
-      } else if (status === "PENDING") {
-        filter.status = {
-          $in: [
-            "PENDING",
-            "PROCESSING",
-          ],
-        };
       } else if (status === "FAILED") {
         filter.status = {
           $in: [
             "FAILED",
             "CANCELLED",
             "REJECTED",
+          ],
+        };
+      } else if (status === "PENDING") {
+        filter.status = {
+          $in: [
+            "PENDING",
+            "PROCESSING",
           ],
         };
       } else if (status === "REVERSED") {
@@ -800,8 +359,11 @@ const getAdminTransactions = async (
     }
 
     if (search) {
+      const safeSearch =
+        escapeRegex(search);
+
       const searchRegex = new RegExp(
-        escapeRegex(search),
+        safeSearch,
         "i"
       );
 
@@ -861,50 +423,31 @@ const getAdminTransactions = async (
         },
       ];
 
+      if (
+        mongoose.Types.ObjectId.isValid(
+          search
+        )
+      ) {
+        searchConditions.push({
+          _id: new mongoose.Types.ObjectId(
+            search
+          ),
+        });
+      }
+
       if (userIds.length > 0) {
-        if (
-          Transaction.schema.path(
-            "customerId"
-          )
-        ) {
-          searchConditions.push({
+        searchConditions.push(
+          {
             customerId: {
               $in: userIds,
             },
-          });
-        }
-
-        if (
-          Transaction.schema.path("userId")
-        ) {
-          searchConditions.push({
+          },
+          {
             userId: {
               $in: userIds,
             },
-          });
-        }
-
-        if (
-          Transaction.schema.path("senderId")
-        ) {
-          searchConditions.push({
-            senderId: {
-              $in: userIds,
-            },
-          });
-        }
-
-        if (
-          Transaction.schema.path(
-            "receiverId"
-          )
-        ) {
-          searchConditions.push({
-            receiverId: {
-              $in: userIds,
-            },
-          });
-        }
+          }
+        );
       }
 
       filter.$or = searchConditions;
@@ -914,7 +457,15 @@ const getAdminTransactions = async (
       transactions,
       totalTransactions,
     ] = await Promise.all([
-      buildTransactionQuery(filter)
+      Transaction.find(filter)
+        .populate(
+          "customerId",
+          "fullName name email phone role status"
+        )
+        .populate(
+          "userId",
+          "fullName name email phone role status"
+        )
         .sort({
           createdAt: -1,
         })
@@ -926,8 +477,10 @@ const getAdminTransactions = async (
     ]);
 
     const totalPages = Math.max(
-      Math.ceil(totalTransactions / limit),
-      1
+      1,
+      Math.ceil(
+        totalTransactions / limit
+      )
     );
 
     return res.status(200).json({
@@ -967,18 +520,521 @@ const getAdminTransactions = async (
       success: false,
       message:
         "Failed to load admin transactions.",
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
+      error: error.message,
     });
   }
 };
 
-module.exports = {
-  getAdminDashboard,
-  getUsers,
-  getUserById,
-  updateUserStatus,
-  getAdminTransactions,
+exports.getAdminDeliveries = async (
+  req,
+  res
+) => {
+  try {
+    const page = toPositiveInteger(
+      req.query.page,
+      1,
+      100000
+    );
+
+    const limit = toPositiveInteger(
+      req.query.limit,
+      20,
+      100
+    );
+
+    const skip = (page - 1) * limit;
+
+    const search = String(
+      req.query.search ?? ""
+    ).trim();
+
+    const status =
+      normalizeDeliveryStatus(
+        req.query.status ?? ""
+      );
+
+    const filter = {};
+
+    if (status && status !== "ALL") {
+      if (
+        !DELIVERY_STATUSES.includes(status)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid delivery status.",
+          allowedStatuses:
+            DELIVERY_STATUSES,
+        });
+      }
+
+      filter.status = status;
+    }
+
+    if (search) {
+      const safeSearch =
+        escapeRegex(search);
+
+      const searchRegex = new RegExp(
+        safeSearch,
+        "i"
+      );
+
+      const matchingUsers = await User.find({
+        $or: [
+          {
+            fullName: searchRegex,
+          },
+          {
+            name: searchRegex,
+          },
+          {
+            email: searchRegex,
+          },
+          {
+            phone: searchRegex,
+          },
+        ],
+      })
+        .select("_id")
+        .limit(500)
+        .lean();
+
+      const userIds = matchingUsers.map(
+        (user) => user._id
+      );
+
+      const searchConditions = [
+        {
+          trackingNumber: searchRegex,
+        },
+        {
+          pickupAddress: searchRegex,
+        },
+        {
+          deliveryAddress: searchRegex,
+        },
+        {
+          senderName: searchRegex,
+        },
+        {
+          senderPhone: searchRegex,
+        },
+        {
+          receiverName: searchRegex,
+        },
+        {
+          receiverPhone: searchRegex,
+        },
+        {
+          packageName: searchRegex,
+        },
+        {
+          packageDescription: searchRegex,
+        },
+        {
+          riderName: searchRegex,
+        },
+        {
+          riderPhone: searchRegex,
+        },
+      ];
+
+      if (
+        mongoose.Types.ObjectId.isValid(
+          search
+        )
+      ) {
+        searchConditions.push({
+          _id: new mongoose.Types.ObjectId(
+            search
+          ),
+        });
+      }
+
+      if (userIds.length > 0) {
+        searchConditions.push({
+          customerId: {
+            $in: userIds,
+          },
+        });
+      }
+
+      filter.$or = searchConditions;
+    }
+
+    const [
+      deliveries,
+      filteredTotal,
+      totalDeliveries,
+      pendingDeliveries,
+      acceptedDeliveries,
+      pickedUpDeliveries,
+      inTransitDeliveries,
+      deliveredDeliveries,
+      cancelledDeliveries,
+      failedDeliveries,
+      revenueSummary,
+    ] = await Promise.all([
+      Delivery.find(filter)
+        .populate(
+          "customerId",
+          "fullName name email phone role status"
+        )
+        .populate(
+          "assignedRiderId",
+          "fullName name email phone role status"
+        )
+        .sort({
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Delivery.countDocuments(filter),
+
+      Delivery.countDocuments(),
+
+      Delivery.countDocuments({
+        status: "PENDING",
+      }),
+
+      Delivery.countDocuments({
+        status: "ACCEPTED",
+      }),
+
+      Delivery.countDocuments({
+        status: "PICKED_UP",
+      }),
+
+      Delivery.countDocuments({
+        status: "IN_TRANSIT",
+      }),
+
+      Delivery.countDocuments({
+        status: "DELIVERED",
+      }),
+
+      Delivery.countDocuments({
+        status: "CANCELLED",
+      }),
+
+      Delivery.countDocuments({
+        status: "FAILED",
+      }),
+
+      Delivery.aggregate([
+        {
+          $match: {
+            status: "DELIVERED",
+          },
+        },
+        {
+          $group: {
+            _id: null,
+
+            totalRevenue: {
+              $sum: {
+                $convert: {
+                  input: "$deliveryFee",
+                  to: "double",
+                  onError: 0,
+                  onNull: 0,
+                },
+              },
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const totalPages = Math.max(
+      1,
+      Math.ceil(
+        filteredTotal / limit
+      )
+    );
+
+    const totalRevenue =
+      revenueSummary[0]?.totalRevenue ?? 0;
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Deliveries loaded successfully.",
+
+      data: {
+        deliveries,
+
+        summary: {
+          total: totalDeliveries,
+          pending: pendingDeliveries,
+          accepted: acceptedDeliveries,
+          assigned: acceptedDeliveries,
+          pickedUp: pickedUpDeliveries,
+          inTransit: inTransitDeliveries,
+          delivered: deliveredDeliveries,
+          cancelled: cancelledDeliveries,
+          failed: failedDeliveries,
+          totalRevenue,
+        },
+
+        pagination: {
+          page,
+          currentPage: page,
+          limit,
+          total: filteredTotal,
+          totalItems: filteredTotal,
+          totalPages,
+          hasNextPage:
+            page < totalPages,
+          hasPreviousPage:
+            page > 1,
+        },
+
+        total: filteredTotal,
+        totalDeliveries: filteredTotal,
+        currentPage: page,
+        totalPages,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Get admin deliveries error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to load deliveries.",
+      error: error.message,
+    });
+  }
+};
+
+exports.updateDeliveryStatus = async (
+  req,
+  res
+) => {
+  try {
+    const deliveryId = String(
+      req.params.id ?? ""
+    ).trim();
+
+    const status =
+      normalizeDeliveryStatus(
+        req.body.status
+      );
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        deliveryId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid delivery ID.",
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Delivery status is required.",
+      });
+    }
+
+    if (
+      !DELIVERY_STATUSES.includes(status)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid delivery status.",
+        allowedStatuses:
+          DELIVERY_STATUSES,
+      });
+    }
+
+    const delivery =
+      await Delivery.findById(
+        deliveryId
+      );
+
+    if (!delivery) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Delivery was not found.",
+      });
+    }
+
+    const previousStatus =
+      delivery.status;
+
+    delivery.status = status;
+
+    if (
+      req.body.adminNote !== undefined
+    ) {
+      delivery.adminNote = String(
+        req.body.adminNote ?? ""
+      ).trim();
+    }
+
+    if (
+      req.body.riderName !== undefined
+    ) {
+      delivery.riderName = String(
+        req.body.riderName ?? ""
+      ).trim();
+    }
+
+    if (
+      req.body.riderPhone !== undefined
+    ) {
+      delivery.riderPhone = String(
+        req.body.riderPhone ?? ""
+      ).trim();
+    }
+
+    if (
+      req.body.assignedRiderId !==
+        undefined
+    ) {
+      const riderId = String(
+        req.body.assignedRiderId ?? ""
+      ).trim();
+
+      if (!riderId) {
+        delivery.assignedRiderId = null;
+      } else if (
+        mongoose.Types.ObjectId.isValid(
+          riderId
+        )
+      ) {
+        const rider = await User.findById(
+          riderId
+        ).select(
+          "_id fullName name phone role status"
+        );
+
+        if (!rider) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Assigned rider was not found.",
+          });
+        }
+
+        delivery.assignedRiderId =
+          rider._id;
+
+        if (!delivery.riderName) {
+          delivery.riderName =
+            rider.fullName ||
+            rider.name ||
+            "";
+        }
+
+        if (!delivery.riderPhone) {
+          delivery.riderPhone =
+            rider.phone || "";
+        }
+      } else {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid rider ID.",
+        });
+      }
+    }
+
+    const now = new Date();
+
+    if (status === "ACCEPTED") {
+      delivery.acceptedAt =
+        delivery.acceptedAt ?? now;
+    }
+
+    if (status === "PICKED_UP") {
+      delivery.pickedUpAt =
+        delivery.pickedUpAt ?? now;
+    }
+
+    if (status === "IN_TRANSIT") {
+      delivery.inTransitAt =
+        delivery.inTransitAt ?? now;
+    }
+
+    if (status === "DELIVERED") {
+      delivery.deliveredAt =
+        delivery.deliveredAt ?? now;
+    }
+
+    if (status === "CANCELLED") {
+      delivery.cancelledAt =
+        delivery.cancelledAt ?? now;
+    }
+
+    if (status === "FAILED") {
+      delivery.failedAt =
+        delivery.failedAt ?? now;
+    }
+
+    await delivery.save();
+
+    const updatedDelivery =
+      await Delivery.findById(
+        delivery._id
+      )
+        .populate(
+          "customerId",
+          "fullName name email phone role status"
+        )
+        .populate(
+          "assignedRiderId",
+          "fullName name email phone role status"
+        )
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Delivery status updated successfully.",
+
+      data: {
+        delivery: updatedDelivery,
+        previousStatus,
+        currentStatus: status,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Update delivery status error:",
+      error
+    );
+
+    if (
+      error.name === "ValidationError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid delivery information.",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to update delivery status.",
+      error: error.message,
+    });
+  }
 };
