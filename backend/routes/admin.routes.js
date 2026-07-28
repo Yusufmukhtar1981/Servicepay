@@ -156,7 +156,11 @@ router.get(
 router.get(
   "/users",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(
+    "HEAD_OFFICE",
+    "ZONAL_MANAGER",
+    "STATE_MANAGER"
+  ),
   getAdminUsers
 );
 

@@ -106,25 +106,31 @@ const protect = async (req, res, next) => {
 };
 
 const adminOnly = (...allowedRoles) => {
+  const roles = allowedRoles
+    .flat()
+    .map((role) =>
+      String(role || "")
+        .trim()
+        .toUpperCase()
+    );
+
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: "Authentication required.",
+        message: "Authentication is required.",
       });
     }
 
-    const currentRole = String(
+    const userRole = String(
       req.user.role || ""
-    ).toUpperCase();
-
-    const normalizedAllowedRoles =
-      allowedRoles.map((role) =>
-        String(role).toUpperCase()
-      );
+    )
+      .trim()
+      .toUpperCase();
 
     if (
-      !normalizedAllowedRoles.includes(currentRole)
+      roles.length > 0 &&
+      !roles.includes(userRole)
     ) {
       return res.status(403).json({
         success: false,
