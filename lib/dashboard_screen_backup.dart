@@ -1,7 +1,4 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'airtime_screen.dart';
@@ -25,14 +22,13 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  static const String baseUrl = 'https://api.servicepay.ng/api';
-
   static const Color primaryGreen = Color(0xFF2E7D32);
   static const Color secondaryGreen = Color(0xFF43A047);
   static const Color backgroundColor = Color(0xFFF8FAFC);
   static const Color cardBorderColor = Color(0xFFE8ECE8);
 
-  final TextEditingController searchController = TextEditingController();
+  final TextEditingController searchController =
+      TextEditingController();
 
   String name = 'User';
   String searchQuery = '';
@@ -42,17 +38,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int unreadNotifications = 1;
 
   bool isLoading = true;
-  bool isRefreshing = false;
   bool hideBalance = false;
   bool showMoreServices = false;
 
   @override
   void initState() {
     super.initState();
-
-    refreshDashboard(
-      initialLoad: true,
-    );
+    loadUserDetails();
   }
 
   @override
@@ -61,220 +53,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> loadSavedUserDetails() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+  Future<void> loadUserDetails() async {
+    final prefs = await SharedPreferences.getInstance();
 
-    final String? savedName = prefs.getString('user_name') ??
+    final savedName =
+        prefs.getString('user_name') ??
         prefs.getString('full_name') ??
         prefs.getString('name');
 
-    final double savedBalance = prefs.getDouble('wallet_balance') ?? 0;
+    final savedBalance = prefs.getDouble('wallet_balance');
 
-    final int savedNotificationCount =
-        prefs.getInt('unread_notifications') ?? 1;
+    final savedNotificationCount =
+        prefs.getInt('unread_notifications');
 
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     setState(() {
-      name = savedName?.trim().isNotEmpty == true ? savedName!.trim() : 'User';
+      name = savedName?.trim().isNotEmpty == true
+          ? savedName!.trim()
+          : 'User';
 
-      balance = savedBalance;
-
-      unreadNotifications = savedNotificationCount;
+      balance = savedBalance ?? 0;
+      unreadNotifications = savedNotificationCount ?? 1;
+      isLoading = false;
     });
-  }
-
-  Future<void> refreshDashboard({
-    bool initialLoad = false,
-    bool showSuccessMessage = false,
-  }) async {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      if (initialLoad) {
-        isLoading = true;
-      } else {
-        isRefreshing = true;
-      }
-    });
-
-    try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-
-      await loadSavedUserDetails();
-
-      final String token = prefs.getString('auth_token') ?? '';
-
-      if (token.trim().isEmpty) {
-        _showDashboardMessage(
-          'Your login session has expired. Please log in again.',
-          isError: true,
-        );
-
-        return;
-      }
-
-      final http.Response response = await http.get(
-        Uri.parse('$baseUrl/wallet'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(
-        const Duration(seconds: 30),
-      );
-
-      final dynamic decoded = _decodeDashboardResponse(
-        response.body,
-      );
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final double newBalance = _extractDashboardBalance(decoded) ?? balance;
-
-        await prefs.setDouble(
-          'wallet_balance',
-          newBalance,
-        );
-
-        if (!mounted) {
-          return;
-        }
-
-        setState(() {
-          balance = newBalance;
-        });
-
-        if (showSuccessMessage) {
-          _showDashboardMessage(
-            'Dashboard refreshed successfully.',
-            isError: false,
-          );
-        }
-      } else {
-        _showDashboardMessage(
-          _extractDashboardMessage(
-            decoded,
-            fallback: 'Unable to refresh the dashboard right now.',
-          ),
-          isError: true,
-        );
-      }
-    } catch (_) {
-      _showDashboardMessage(
-        'Unable to connect to Servicepay. Your saved balance is still available.',
-        isError: true,
-      );
-    } finally {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        isLoading = false;
-        isRefreshing = false;
-      });
-    }
-  }
-
-  dynamic _decodeDashboardResponse(
-    String body,
-  ) {
-    if (body.trim().isEmpty) {
-      return null;
-    }
-
-    try {
-      return jsonDecode(body);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  double? _extractDashboardBalance(
-    dynamic data,
-  ) {
-    if (data is! Map) {
-      return null;
-    }
-
-    final List<dynamic> possibleValues = [
-      data['walletBalance'],
-      data['wallet_balance'],
-      data['balance'],
-      data['availableBalance'],
-      data['available_balance'],
-      data['data'] is Map ? data['data']['walletBalance'] : null,
-      data['data'] is Map ? data['data']['wallet_balance'] : null,
-      data['data'] is Map ? data['data']['balance'] : null,
-      data['wallet'] is Map ? data['wallet']['balance'] : null,
-      data['user'] is Map ? data['user']['walletBalance'] : null,
-      data['user'] is Map ? data['user']['balance'] : null,
-    ];
-
-    for (final dynamic value in possibleValues) {
-      final double? parsed = _dashboardToDouble(value);
-
-      if (parsed != null) {
-        return parsed;
-      }
-    }
-
-    return null;
-  }
-
-  double? _dashboardToDouble(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return null;
-    }
-
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    return double.tryParse(
-      value.toString().replaceAll(',', '').trim(),
-    );
-  }
-
-  String _extractDashboardMessage(
-    dynamic data, {
-    required String fallback,
-  }) {
-    if (data is Map) {
-      final dynamic message =
-          data['message'] ?? data['error'] ?? data['detail'];
-
-      if (message != null && message.toString().trim().isNotEmpty) {
-        return message.toString();
-      }
-    }
-
-    return fallback;
-  }
-
-  void _showDashboardMessage(
-    String message, {
-    required bool isError,
-  }) {
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: isError ? const Color(0xFFDC2626) : primaryGreen,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
   }
 
   Future<void> openPage(Widget page) async {
@@ -285,11 +87,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
 
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
-    await refreshDashboard();
+    await loadUserDetails();
   }
 
   String get firstName {
@@ -610,9 +410,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredPopularServices = filterServices(popularServices);
+    final filteredPopularServices =
+        filterServices(popularServices);
 
-    final filteredMoreServices = filterServices(moreServices);
+    final filteredMoreServices =
+        filterServices(moreServices);
 
     final searching = searchQuery.trim().isNotEmpty;
 
@@ -640,26 +442,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Refresh Dashboard',
-            onPressed: isRefreshing
-                ? null
-                : () {
-                    refreshDashboard(
-                      showSuccessMessage: true,
-                    );
-                  },
-            icon: isRefreshing
-                ? const SizedBox(
-                    width: 21,
-                    height: 21,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.3,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(
-                    Icons.refresh_rounded,
-                  ),
+            tooltip: 'Refresh',
+            onPressed: loadUserDetails,
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
           ),
           Padding(
             padding: const EdgeInsets.only(
@@ -694,7 +481,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: Colors.red,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius:
+                            BorderRadius.circular(20),
                         border: Border.all(
                           color: primaryGreen,
                           width: 2,
@@ -726,9 +514,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             )
           : RefreshIndicator(
               color: primaryGreen,
-              onRefresh: () {
-                return refreshDashboard();
-              },
+              onRefresh: loadUserDetails,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final width = constraints.maxWidth;
@@ -746,7 +532,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   }
 
                   return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
+                    physics:
+                        const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(
                       14,
                       12,
@@ -759,7 +546,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           maxWidth: 1100,
                         ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
                           children: [
                             _WelcomeHeader(
                               firstName: firstName,
@@ -789,7 +577,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 hideBalance: hideBalance,
                                 onToggleBalance: () {
                                   setState(() {
-                                    hideBalance = !hideBalance;
+                                    hideBalance =
+                                        !hideBalance;
                                   });
                                 },
                                 onFundWallet: () {
@@ -802,7 +591,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     const TransferScreen(),
                                   );
                                 },
-                                onTransactions: openTransactionsMessage,
+                                onTransactions:
+                                    openTransactionsMessage,
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -834,7 +624,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   const TransferScreen(),
                                 );
                               },
-                              onTransactions: openTransactionsMessage,
+                              onTransactions:
+                                  openTransactionsMessage,
                               onVerifyId: () {
                                 openPage(
                                   const IdVerificationScreen(),
@@ -875,7 +666,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     : 'View all',
                                 onTap: () {
                                   setState(() {
-                                    showMoreServices = !showMoreServices;
+                                    showMoreServices =
+                                        !showMoreServices;
                                   });
                                 },
                               ),
@@ -884,10 +676,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 duration: const Duration(
                                   milliseconds: 300,
                                 ),
-                                crossFadeState: showMoreServices
-                                    ? CrossFadeState.showSecond
-                                    : CrossFadeState.showFirst,
-                                firstChild: _MoreServicesPreview(
+                                crossFadeState:
+                                    showMoreServices
+                                        ? CrossFadeState
+                                            .showSecond
+                                        : CrossFadeState
+                                            .showFirst,
+                                firstChild:
+                                    _MoreServicesPreview(
                                   services: moreServices,
                                 ),
                                 secondChild: buildServiceGrid(
@@ -948,7 +744,8 @@ class _WelcomeHeader extends StatelessWidget {
       children: [
         Expanded(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
             children: [
               const Text(
                 'Welcome back',
@@ -1032,7 +829,8 @@ class _WalletCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: _DashboardScreenState.primaryGreen.withValues(
+            color: _DashboardScreenState.primaryGreen
+                .withValues(
               alpha: 0.22,
             ),
             blurRadius: 18,
@@ -1041,7 +839,8 @@ class _WalletCard extends StatelessWidget {
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -1091,7 +890,9 @@ class _WalletCard extends StatelessWidget {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
-              hideBalance ? '₦ ••••••' : '₦${balance.toStringAsFixed(2)}',
+              hideBalance
+                  ? '₦ ••••••'
+                  : '₦${balance.toStringAsFixed(2)}',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 30,
@@ -1161,12 +962,14 @@ class _WalletButton extends StatelessWidget {
             vertical: 9,
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment:
+                MainAxisAlignment.center,
             children: [
               Icon(
                 icon,
                 size: 16,
-                color: _DashboardScreenState.primaryGreen,
+                color:
+                    _DashboardScreenState.primaryGreen,
               ),
               const SizedBox(width: 4),
               Flexible(
@@ -1175,7 +978,8 @@ class _WalletButton extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: _DashboardScreenState.primaryGreen,
+                    color:
+                        _DashboardScreenState.primaryGreen,
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1234,13 +1038,15 @@ class _SearchBox extends StatelessWidget {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(
-            color: _DashboardScreenState.cardBorderColor,
+            color:
+                _DashboardScreenState.cardBorderColor,
           ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(
-            color: _DashboardScreenState.primaryGreen,
+            color:
+                _DashboardScreenState.primaryGreen,
             width: 1.4,
           ),
         ),
@@ -1329,7 +1135,8 @@ class _QuickActionButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
-              color: _DashboardScreenState.cardBorderColor,
+              color:
+                  _DashboardScreenState.cardBorderColor,
             ),
           ),
           child: Column(
@@ -1344,7 +1151,8 @@ class _QuickActionButton extends StatelessWidget {
                 child: Icon(
                   icon,
                   size: 19,
-                  color: _DashboardScreenState.primaryGreen,
+                  color:
+                      _DashboardScreenState.primaryGreen,
                 ),
               ),
               const SizedBox(height: 6),
@@ -1398,7 +1206,8 @@ class _PromoBanner extends StatelessWidget {
           SizedBox(width: 11),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'Enjoy fast digital payments',
@@ -1465,7 +1274,8 @@ class _SectionHeader extends StatelessWidget {
             child: Text(
               subtitle,
               style: const TextStyle(
-                color: _DashboardScreenState.primaryGreen,
+                color:
+                    _DashboardScreenState.primaryGreen,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -1492,7 +1302,8 @@ class _ServiceCard extends StatelessWidget {
       child: InkWell(
         onTap: service.onTap,
         borderRadius: BorderRadius.circular(16),
-        splashColor: _DashboardScreenState.primaryGreen.withValues(
+        splashColor: _DashboardScreenState.primaryGreen
+            .withValues(
           alpha: 0.10,
         ),
         child: Container(
@@ -1503,7 +1314,8 @@ class _ServiceCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: _DashboardScreenState.cardBorderColor,
+              color:
+                  _DashboardScreenState.cardBorderColor,
             ),
             boxShadow: [
               BoxShadow(
@@ -1516,7 +1328,8 @@ class _ServiceCard extends StatelessWidget {
             ],
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment:
+                MainAxisAlignment.center,
             children: [
               Container(
                 width: 41,
@@ -1528,7 +1341,8 @@ class _ServiceCard extends StatelessWidget {
                 child: Icon(
                   service.icon,
                   size: 23,
-                  color: _DashboardScreenState.primaryGreen,
+                  color:
+                      _DashboardScreenState.primaryGreen,
                 ),
               ),
               const SizedBox(height: 7),
@@ -1565,13 +1379,18 @@ class _MoreServicesPreview extends StatelessWidget {
 
     return Row(
       children: [
-        for (int index = 0; index < previewServices.length; index++) ...[
+        for (
+          int index = 0;
+          index < previewServices.length;
+          index++
+        ) ...[
           Expanded(
             child: _ServiceCard(
               service: previewServices[index],
             ),
           ),
-          if (index < previewServices.length - 1) const SizedBox(width: 10),
+          if (index < previewServices.length - 1)
+            const SizedBox(width: 10),
         ],
       ],
     );
@@ -1736,7 +1555,8 @@ class ServiceFeatureScreen extends StatelessWidget {
                             backgroundColor: primaryGreen,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius:
+                                  BorderRadius.circular(14),
                             ),
                           ),
                         ),
