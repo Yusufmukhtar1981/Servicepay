@@ -272,3 +272,348 @@ exports.loginUser = async (req, res) => {
     });
   }
 };
+
+exports.getProfile = async (req, res) => {
+  try {
+    const userId =
+      req.user?._id ||
+      req.user?.id ||
+      req.userId;
+
+    const user = await User.findById(
+      userId
+    ).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User account not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Profile fetched successfully.",
+      user: formatUser(user),
+      data: {
+        user: formatUser(user),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Get profile error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to fetch your profile.",
+    });
+  }
+};
+
+exports.updateProfile = async (
+  req,
+  res
+) => {
+  try {
+    const userId =
+      req.user?._id ||
+      req.user?.id ||
+      req.userId;
+
+    const {
+      fullName,
+      phone,
+      email,
+      state,
+      lga,
+      zone,
+    } = req.body;
+
+    const user = await User.findById(
+      userId
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User account not found.",
+      });
+    }
+
+    const cleanFullName =
+      fullName === undefined
+        ? user.fullName
+        : String(fullName).trim();
+
+    const cleanPhone =
+      phone === undefined
+        ? user.phone
+        : String(phone).trim();
+
+    const cleanEmail =
+      email === undefined
+        ? String(user.email || "")
+        : String(email)
+            .trim()
+            .toLowerCase();
+
+    if (!cleanFullName) {
+      return res.status(400).json({
+        success: false,
+        message: "Full name is required.",
+      });
+    }
+
+    if (
+      !cleanPhone ||
+      cleanPhone.length < 10
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Enter a valid phone number.",
+      });
+    }
+
+    const duplicateConditions = [
+      {
+        phone: cleanPhone,
+        _id: {
+          $ne: userId,
+        },
+      },
+    ];
+
+    if (cleanEmail) {
+      duplicateConditions.push({
+        email: cleanEmail,
+        _id: {
+          $ne: userId,
+        },
+      });
+    }
+
+    const existingUser =
+      await User.findOne({
+        $or: duplicateConditions,
+      });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Another account already uses this phone number or email.",
+      });
+    }
+
+    user.fullName = cleanFullName;
+    user.phone = cleanPhone;
+    user.email =
+      cleanEmail || undefined;
+
+    if (state !== undefined) {
+      user.state =
+        String(state || "").trim() ||
+        undefined;
+    }
+
+    if (lga !== undefined) {
+      user.lga =
+        String(lga || "").trim() ||
+        undefined;
+    }
+
+    if (zone !== undefined) {
+      user.zone =
+        String(zone || "").trim() ||
+        undefined;
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Profile updated successfully.",
+      user: formatUser(user),
+      data: {
+        user: formatUser(user),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Update profile error:",
+      error
+    );
+
+    if (error?.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Another account already uses this phone number or email.",
+      });
+    }
+
+    if (
+      error?.name === "ValidationError"
+    ) {
+      const message = Object.values(
+        error.errors || {}
+      )
+        .map((item) => item.message)
+        .join(", ");
+
+      return res.status(400).json({
+        success: false,
+        message:
+          message ||
+          "Invalid profile information.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to update your profile.",
+    });
+  }
+};
+
+exports.changePassword = async (
+  req,
+  res
+) => {
+  try {
+    const userId =
+      req.user?._id ||
+      req.user?.id ||
+      req.userId;
+
+    const {
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    } = req.body;
+
+    if (
+      !currentPassword ||
+      !newPassword ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Current password, new password and confirmation are required.",
+      });
+    }
+
+    if (
+      String(newPassword).length < 6
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "New password must contain at least 6 characters.",
+      });
+    }
+
+    if (
+      String(newPassword) !==
+      String(confirmPassword)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "New password and confirmation do not match.",
+      });
+    }
+
+    if (
+      String(currentPassword) ===
+      String(newPassword)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "New password must be different from the current password.",
+      });
+    }
+
+    const user = await User.findById(
+      userId
+    ).select("+password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User account not found.",
+      });
+    }
+
+    let passwordIsCorrect = false;
+
+    const savedPassword =
+      typeof user.password === "string"
+        ? user.password
+        : "";
+
+    const passwordIsHashed =
+      savedPassword.startsWith("$2a$") ||
+      savedPassword.startsWith("$2b$") ||
+      savedPassword.startsWith("$2y$");
+
+    if (passwordIsHashed) {
+      if (
+        typeof user.comparePassword !==
+        "function"
+      ) {
+        throw new Error(
+          "comparePassword function is missing from the user model."
+        );
+      }
+
+      passwordIsCorrect =
+        await user.comparePassword(
+          currentPassword
+        );
+    } else {
+      passwordIsCorrect =
+        String(currentPassword) ===
+        savedPassword;
+    }
+
+    if (!passwordIsCorrect) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Current password is incorrect.",
+      });
+    }
+
+    user.password =
+      String(newPassword);
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Password changed successfully.",
+    });
+  } catch (error) {
+    console.error(
+      "Change password error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to change your password.",
+    });
+  }
+};
