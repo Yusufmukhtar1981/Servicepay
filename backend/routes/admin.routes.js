@@ -2,6 +2,7 @@ const express = require("express");
 
 const {
   getAdminDashboard,
+  getAdminUsers,
   getAdminTransactions,
   getAdminDeliveries,
   updateDeliveryStatus,
@@ -20,6 +21,13 @@ router.get(
   protect,
   adminOnly("HEAD_OFFICE"),
   getAdminDashboard
+);
+
+router.get(
+  "/users",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminUsers
 );
 
 router.get(

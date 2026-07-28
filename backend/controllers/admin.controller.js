@@ -1313,3 +1313,297 @@ exports.updateDeliveryPrice = async (
     });
   }
 };
+
+/*
+|--------------------------------------------------------------------------
+| GET ADMIN USERS
+|--------------------------------------------------------------------------
+*/
+
+exports.getAdminUsers = async (
+  req,
+  res
+) => {
+  try {
+    const page = toPositiveInteger(
+      req.query.page,
+      1,
+      100000
+    );
+
+    const limit = toPositiveInteger(
+      req.query.limit,
+      20,
+      100
+    );
+
+    const skip = (page - 1) * limit;
+
+    const search = String(
+      req.query.search ?? ""
+    ).trim();
+
+    const role = String(
+      req.query.role ?? ""
+    )
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, "_");
+
+    const status = String(
+      req.query.status ?? ""
+    )
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, "_");
+
+    const allowedRoles = [
+      "CUSTOMER",
+      "AGENT",
+      "STATE_MANAGER",
+      "ZONAL_MANAGER",
+      "HEAD_OFFICE",
+    ];
+
+    const allowedStatuses = [
+      "ACTIVE",
+      "SUSPENDED",
+      "BLOCKED",
+      "PENDING",
+    ];
+
+    const filter = {};
+
+    if (role && role !== "ALL") {
+      if (!allowedRoles.includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid user role.",
+          allowedRoles,
+        });
+      }
+
+      filter.role = role;
+    }
+
+    if (
+      status &&
+      status !== "ALL"
+    ) {
+      if (
+        !allowedStatuses.includes(status)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid account status.",
+          allowedStatuses,
+        });
+      }
+
+      filter.status = status;
+    }
+
+    if (search) {
+      const safeSearch =
+        escapeRegex(search);
+
+      const searchRegex =
+        new RegExp(
+          safeSearch,
+          "i"
+        );
+
+      filter.$or = [
+        {
+          fullName: searchRegex,
+        },
+        {
+          name: searchRegex,
+        },
+        {
+          phone: searchRegex,
+        },
+        {
+          email: searchRegex,
+        },
+        {
+          state: searchRegex,
+        },
+        {
+          lga: searchRegex,
+        },
+        {
+          zone: searchRegex,
+        },
+      ];
+
+      if (
+        mongoose.Types.ObjectId.isValid(
+          search
+        )
+      ) {
+        filter.$or.push({
+          _id:
+            new mongoose.Types.ObjectId(
+              search
+            ),
+        });
+      }
+    }
+
+    const [
+      users,
+      filteredTotal,
+      totalUsers,
+      activeUsers,
+      suspendedUsers,
+      blockedUsers,
+      pendingUsers,
+      totalCustomers,
+      totalAgents,
+      totalStateManagers,
+      totalZonalManagers,
+      totalHeadOffice,
+    ] = await Promise.all([
+      User.find(filter)
+        .select(
+          "-password"
+        )
+        .sort({
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      User.countDocuments(filter),
+
+      User.countDocuments(),
+
+      User.countDocuments({
+        status: "ACTIVE",
+      }),
+
+      User.countDocuments({
+        status: "SUSPENDED",
+      }),
+
+      User.countDocuments({
+        status: "BLOCKED",
+      }),
+
+      User.countDocuments({
+        status: "PENDING",
+      }),
+
+      User.countDocuments({
+        role: "CUSTOMER",
+      }),
+
+      User.countDocuments({
+        role: "AGENT",
+      }),
+
+      User.countDocuments({
+        role: "STATE_MANAGER",
+      }),
+
+      User.countDocuments({
+        role: "ZONAL_MANAGER",
+      }),
+
+      User.countDocuments({
+        role: "HEAD_OFFICE",
+      }),
+    ]);
+
+    const totalPages = Math.max(
+      1,
+      Math.ceil(
+        filteredTotal / limit
+      )
+    );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Users loaded successfully.",
+
+      users,
+
+      data: {
+        users,
+
+        summary: {
+          total: totalUsers,
+          active: activeUsers,
+          suspended: suspendedUsers,
+          blocked: blockedUsers,
+          pending: pendingUsers,
+
+          customers: totalCustomers,
+          agents: totalAgents,
+          stateManagers:
+            totalStateManagers,
+          zonalManagers:
+            totalZonalManagers,
+          headOffice:
+            totalHeadOffice,
+        },
+
+        pagination: {
+          page,
+          currentPage: page,
+          limit,
+          total: filteredTotal,
+          totalItems:
+            filteredTotal,
+          totalPages,
+          hasNextPage:
+            page < totalPages,
+          hasPreviousPage:
+            page > 1,
+        },
+
+        total: filteredTotal,
+        totalUsers:
+          filteredTotal,
+        currentPage: page,
+        totalPages,
+      },
+
+      pagination: {
+        page,
+        currentPage: page,
+        limit,
+        total: filteredTotal,
+        totalItems:
+          filteredTotal,
+        totalPages,
+        hasNextPage:
+          page < totalPages,
+        hasPreviousPage:
+          page > 1,
+      },
+
+      total: filteredTotal,
+      totalUsers:
+        filteredTotal,
+      currentPage: page,
+      totalPages,
+    });
+  } catch (error) {
+    console.error(
+      "Get admin users error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to load users.",
+      error: error.message,
+    });
+  }
+};
