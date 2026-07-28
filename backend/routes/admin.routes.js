@@ -3,6 +3,9 @@ const express = require("express");
 const {
   getAdminDashboard,
   getAdminUsers,
+  createAdminUser,
+  updateAdminUserStatus,
+  updateAdminUserRole,
   getAdminTransactions,
   getAdminDeliveries,
   updateDeliveryStatus,
@@ -28,6 +31,27 @@ router.get(
   protect,
   adminOnly("HEAD_OFFICE"),
   getAdminUsers
+);
+
+router.post(
+  "/users",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  createAdminUser
+);
+
+router.patch(
+  "/users/:id/status",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateAdminUserStatus
+);
+
+router.patch(
+  "/users/:id/role",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateAdminUserRole
 );
 
 router.get(

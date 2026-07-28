@@ -1607,3 +1607,759 @@ exports.getAdminUsers = async (
     });
   }
 };
+
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN USER MANAGEMENT
+|--------------------------------------------------------------------------
+*/
+
+const ADMIN_CREATABLE_ROLES = [
+  "ZONAL_MANAGER",
+  "STATE_MANAGER",
+  "AGENT",
+];
+
+const USER_STATUSES = [
+  "ACTIVE",
+  "SUSPENDED",
+  "BLOCKED",
+];
+
+const normalizeUserRole = (value = "") => {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+};
+
+const normalizeUserStatus = (value = "") => {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+};
+
+const generateUniqueReferralCode = async (
+  role
+) => {
+  const prefixes = {
+    AGENT: "AGT",
+    STATE_MANAGER: "STM",
+    ZONAL_MANAGER: "ZNM",
+  };
+
+  const prefix = prefixes[role] || "SP";
+
+  let referralCode;
+  let exists = true;
+
+  while (exists) {
+    const randomNumber = Math.floor(
+      100000 + Math.random() * 900000
+    );
+
+    referralCode = `${prefix}${randomNumber}`;
+
+    exists = await User.exists({
+      referralCode,
+    });
+  }
+
+  return referralCode;
+};
+
+/*
+|--------------------------------------------------------------------------
+| CREATE AGENT / STATE MANAGER / ZONAL MANAGER
+|--------------------------------------------------------------------------
+*/
+
+exports.createAdminUser = async (
+  req,
+  res
+) => {
+  try {
+    const fullName = String(
+      req.body.fullName ??
+        req.body.name ??
+        ""
+    ).trim();
+
+    const phone = String(
+      req.body.phone ?? ""
+    ).trim();
+
+    const email = String(
+      req.body.email ?? ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const password = String(
+      req.body.password ?? ""
+    );
+
+    const role = normalizeUserRole(
+      req.body.role
+    );
+
+    const status =
+      normalizeUserStatus(
+        req.body.status ?? "ACTIVE"
+      );
+
+    const zone = String(
+      req.body.zone ?? ""
+    ).trim();
+
+    const state = String(
+      req.body.state ?? ""
+    ).trim();
+
+    const lga = String(
+      req.body.lga ?? ""
+    ).trim();
+
+    const zonalManagerId = String(
+      req.body.zonalManagerId ?? ""
+    ).trim();
+
+    const stateManagerId = String(
+      req.body.stateManagerId ?? ""
+    ).trim();
+
+    if (!fullName) {
+      return res.status(400).json({
+        success: false,
+        message: "Full name is required.",
+      });
+    }
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Phone number is required.",
+      });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must contain at least 6 characters.",
+      });
+    }
+
+    if (
+      !ADMIN_CREATABLE_ROLES.includes(role)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Admin can only create Agent, State Manager or Zonal Manager accounts.",
+        allowedRoles:
+          ADMIN_CREATABLE_ROLES,
+      });
+    }
+
+    if (!USER_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid account status.",
+        allowedStatuses: USER_STATUSES,
+      });
+    }
+
+    const existingConditions = [
+      { phone },
+    ];
+
+    if (email) {
+      existingConditions.push({ email });
+    }
+
+    const existingUser =
+      await User.findOne({
+        $or: existingConditions,
+      }).lean();
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "A user with this phone number or email already exists.",
+      });
+    }
+
+    let selectedZonalManager = null;
+    let selectedStateManager = null;
+
+    if (role === "ZONAL_MANAGER") {
+      if (!zone) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Zone is required for a Zonal Manager.",
+        });
+      }
+    }
+
+    if (role === "STATE_MANAGER") {
+      if (!zone || !state) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Zone and state are required for a State Manager.",
+        });
+      }
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          zonalManagerId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Select a valid Zonal Manager.",
+        });
+      }
+
+      selectedZonalManager =
+        await User.findOne({
+          _id: zonalManagerId,
+          role: "ZONAL_MANAGER",
+        });
+
+      if (!selectedZonalManager) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "The selected Zonal Manager was not found.",
+        });
+      }
+
+      if (
+        selectedZonalManager.status !==
+        "ACTIVE"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "The selected Zonal Manager is not active.",
+        });
+      }
+    }
+
+    if (role === "AGENT") {
+      if (!zone || !state || !lga) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Zone, state and LGA are required for an Agent.",
+        });
+      }
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          stateManagerId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Select a valid State Manager.",
+        });
+      }
+
+      selectedStateManager =
+        await User.findOne({
+          _id: stateManagerId,
+          role: "STATE_MANAGER",
+        });
+
+      if (!selectedStateManager) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "The selected State Manager was not found.",
+        });
+      }
+
+      if (
+        selectedStateManager.status !==
+        "ACTIVE"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "The selected State Manager is not active.",
+        });
+      }
+
+      if (
+        selectedStateManager
+          .zonalManagerId
+      ) {
+        selectedZonalManager =
+          await User.findById(
+            selectedStateManager
+              .zonalManagerId
+          );
+      }
+    }
+
+    const referralCode =
+      await generateUniqueReferralCode(
+        role
+      );
+
+    const newUser = await User.create({
+      fullName,
+      phone,
+      email: email || undefined,
+      password,
+      role,
+      status,
+
+      zone: zone || null,
+      state: state || null,
+      lga: lga || null,
+
+      zonalManagerId:
+        role === "STATE_MANAGER"
+          ? selectedZonalManager?._id
+          : role === "AGENT"
+            ? selectedZonalManager?._id ||
+              selectedStateManager
+                ?.zonalManagerId ||
+              null
+            : null,
+
+      stateManagerId:
+        role === "AGENT"
+          ? selectedStateManager?._id
+          : null,
+
+      agentId: null,
+      referralCode,
+      walletBalance: 0,
+      commissionBalance: 0,
+      totalEarnings: 0,
+      totalTransactions: 0,
+    });
+
+    const createdUser =
+      await User.findById(newUser._id)
+        .select("-password")
+        .populate(
+          "zonalManagerId",
+          "fullName phone email role zone state status"
+        )
+        .populate(
+          "stateManagerId",
+          "fullName phone email role zone state lga status"
+        )
+        .lean();
+
+    return res.status(201).json({
+      success: true,
+      message:
+        `${role.replaceAll("_", " ")} created successfully.`,
+      data: {
+        user: createdUser,
+      },
+      user: createdUser,
+    });
+  } catch (error) {
+    console.error(
+      "Create admin user error:",
+      error
+    );
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Phone number, email or referral code already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to create user.",
+      error: error.message,
+    });
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| UPDATE USER STATUS
+|--------------------------------------------------------------------------
+*/
+
+exports.updateAdminUserStatus = async (
+  req,
+  res
+) => {
+  try {
+    const userId = String(
+      req.params.id ?? ""
+    ).trim();
+
+    const status =
+      normalizeUserStatus(
+        req.body.status
+      );
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        userId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID.",
+      });
+    }
+
+    if (!USER_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid account status.",
+        allowedStatuses: USER_STATUSES,
+      });
+    }
+
+    const user = await User.findById(
+      userId
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "User was not found.",
+      });
+    }
+
+    if (
+      user.role === "HEAD_OFFICE" &&
+      String(user._id) ===
+        String(req.user._id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You cannot suspend or block your own Head Office account.",
+      });
+    }
+
+    const previousStatus = user.status;
+    user.status = status;
+
+    await user.save();
+
+    const updatedUser =
+      await User.findById(user._id)
+        .select("-password")
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "User status updated successfully.",
+      data: {
+        user: updatedUser,
+        previousStatus,
+        currentStatus: status,
+      },
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error(
+      "Update admin user status error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to update user status.",
+      error: error.message,
+    });
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| UPDATE USER ROLE
+|--------------------------------------------------------------------------
+*/
+
+exports.updateAdminUserRole = async (
+  req,
+  res
+) => {
+  try {
+    const userId = String(
+      req.params.id ?? ""
+    ).trim();
+
+    const role = normalizeUserRole(
+      req.body.role
+    );
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        userId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID.",
+      });
+    }
+
+    if (
+      !ADMIN_CREATABLE_ROLES.includes(role)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Role can only be changed to Agent, State Manager or Zonal Manager.",
+        allowedRoles:
+          ADMIN_CREATABLE_ROLES,
+      });
+    }
+
+    const user = await User.findById(
+      userId
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "User was not found.",
+      });
+    }
+
+    if (user.role === "HEAD_OFFICE") {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Head Office role cannot be changed.",
+      });
+    }
+
+    const previousRole = user.role;
+    user.role = role;
+
+    if (role === "ZONAL_MANAGER") {
+      user.zone = String(
+        req.body.zone ??
+          user.zone ??
+          ""
+      ).trim();
+
+      if (!user.zone) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Zone is required for a Zonal Manager.",
+        });
+      }
+
+      user.state = null;
+      user.lga = null;
+      user.zonalManagerId = null;
+      user.stateManagerId = null;
+      user.agentId = null;
+    }
+
+    if (role === "STATE_MANAGER") {
+      const zonalManagerId = String(
+        req.body.zonalManagerId ?? ""
+      ).trim();
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          zonalManagerId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Select a valid Zonal Manager.",
+        });
+      }
+
+      const zonalManager =
+        await User.findOne({
+          _id: zonalManagerId,
+          role: "ZONAL_MANAGER",
+          status: "ACTIVE",
+        });
+
+      if (!zonalManager) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Active Zonal Manager was not found.",
+        });
+      }
+
+      user.zone = String(
+        req.body.zone ??
+          zonalManager.zone ??
+          ""
+      ).trim();
+
+      user.state = String(
+        req.body.state ??
+          user.state ??
+          ""
+      ).trim();
+
+      if (!user.zone || !user.state) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Zone and state are required.",
+        });
+      }
+
+      user.lga = null;
+      user.zonalManagerId =
+        zonalManager._id;
+      user.stateManagerId = null;
+      user.agentId = null;
+    }
+
+    if (role === "AGENT") {
+      const stateManagerId = String(
+        req.body.stateManagerId ?? ""
+      ).trim();
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          stateManagerId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Select a valid State Manager.",
+        });
+      }
+
+      const stateManager =
+        await User.findOne({
+          _id: stateManagerId,
+          role: "STATE_MANAGER",
+          status: "ACTIVE",
+        });
+
+      if (!stateManager) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Active State Manager was not found.",
+        });
+      }
+
+      user.zone = String(
+        req.body.zone ??
+          stateManager.zone ??
+          ""
+      ).trim();
+
+      user.state = String(
+        req.body.state ??
+          stateManager.state ??
+          ""
+      ).trim();
+
+      user.lga = String(
+        req.body.lga ??
+          user.lga ??
+          ""
+      ).trim();
+
+      if (
+        !user.zone ||
+        !user.state ||
+        !user.lga
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Zone, state and LGA are required.",
+        });
+      }
+
+      user.zonalManagerId =
+        stateManager.zonalManagerId ||
+        null;
+
+      user.stateManagerId =
+        stateManager._id;
+
+      user.agentId = null;
+    }
+
+    if (!user.referralCode) {
+      user.referralCode =
+        await generateUniqueReferralCode(
+          role
+        );
+    }
+
+    await user.save();
+
+    const updatedUser =
+      await User.findById(user._id)
+        .select("-password")
+        .populate(
+          "zonalManagerId",
+          "fullName phone email role zone state status"
+        )
+        .populate(
+          "stateManagerId",
+          "fullName phone email role zone state lga status"
+        )
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "User role updated successfully.",
+      data: {
+        user: updatedUser,
+        previousRole,
+        currentRole: role,
+      },
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error(
+      "Update admin user role error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to update user role.",
+      error: error.message,
+    });
+  }
+};
