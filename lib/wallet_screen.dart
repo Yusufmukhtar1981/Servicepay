@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,12 +23,27 @@ class _WalletScreenState extends State<WalletScreen> {
   bool isRefreshing = false;
   bool hideBalance = false;
 
+  bool isVirtualAccountLoading = false;
+  bool isCreatingVirtualAccount = false;
+
   double walletBalance = 0.0;
 
   String userName = 'Servicepay Customer';
   String userPhone = '';
 
+  String virtualAccountProvider = '';
+  String virtualAccountNumber = '';
+  String virtualAccountName = '';
+  String virtualAccountBank = '';
+  String virtualAccountStatus = 'NOT_CREATED';
+  String virtualAccountFailureReason = '';
+
   List<dynamic> transactions = [];
+
+  bool get hasVirtualAccount {
+    return virtualAccountStatus == 'ACTIVE' &&
+        virtualAccountNumber.trim().isNotEmpty;
+  }
 
   @override
   void initState() {
@@ -40,15 +56,13 @@ class _WalletScreenState extends State<WalletScreen> {
   }) async {
     if (!mounted) return;
 
-    if (showRefreshLoader) {
-      setState(() {
+    setState(() {
+      if (showRefreshLoader) {
         isRefreshing = true;
-      });
-    } else {
-      setState(() {
+      } else {
         isLoading = true;
-      });
-    }
+      }
+    });
 
     try {
       final SharedPreferences prefs =
@@ -81,12 +95,44 @@ class _WalletScreenState extends State<WalletScreen> {
 
       if (token == null || token.trim().isEmpty) {
         _showMessage(
-          'Unable to refresh wallet because your login token is unavailable.',
+          'Your login session is unavailable. Please sign in again.',
           isError: true,
         );
         return;
       }
 
+      await Future.wait([
+        _fetchWallet(
+          token: token,
+          prefs: prefs,
+          savedBalance: savedBalance,
+        ),
+        _fetchVirtualAccount(
+          token: token,
+          showMessageOnFailure: false,
+        ),
+      ]);
+    } catch (_) {
+      _showMessage(
+        'Unable to connect to Servicepay. Your saved wallet information is still available.',
+        isError: true,
+      );
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+        isRefreshing = false;
+      });
+    }
+  }
+
+  Future<void> _fetchWallet({
+    required String token,
+    required SharedPreferences prefs,
+    required double savedBalance,
+  }) async {
+    try {
       final http.Response response = await http
           .get(
             Uri.parse('$baseUrl/wallet'),
@@ -134,18 +180,304 @@ class _WalletScreenState extends State<WalletScreen> {
         );
       }
     } catch (_) {
+      // Keep the locally saved wallet balance.
+    }
+  }
+
+  Future<void> _fetchVirtualAccount({
+    required String token,
+    bool showMessageOnFailure = true,
+  }) async {
+    if (!mounted) return;
+
+    setState(() {
+      isVirtualAccountLoading = true;
+    });
+
+    try {
+      final http.Response response = await http
+          .get(
+            Uri.parse(
+              '$baseUrl/securewave/virtual-account',
+            ),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 30),
+          );
+
+      final dynamic decoded =
+          _decodeResponse(response.body);
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        _applyVirtualAccountResponse(decoded);
+      } else {
+        final String message = _extractMessage(
+          decoded,
+          fallback:
+              'Unable to retrieve your virtual account.',
+        );
+
+        if (showMessageOnFailure) {
+          _showMessage(
+            message,
+            isError: true,
+          );
+        }
+      }
+    } catch (_) {
+      if (showMessageOnFailure) {
+        _showMessage(
+          'Unable to connect to the virtual account service.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        isVirtualAccountLoading = false;
+      });
+    }
+  }
+
+  void _applyVirtualAccountResponse(
+    dynamic decoded,
+  ) {
+    if (decoded is! Map) {
+      return;
+    }
+
+    final dynamic responseData = decoded['data'];
+
+    if (responseData is! Map) {
+      return;
+    }
+
+    final dynamic accountData =
+        responseData['virtualAccount'] ??
+        responseData['virtual_account'] ??
+        responseData;
+
+    if (accountData is! Map) {
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      virtualAccountProvider = _stringValue(
+        accountData['provider'],
+      );
+
+      virtualAccountNumber = _stringValue(
+        accountData['accountNumber'] ??
+            accountData['account_number'],
+      );
+
+      virtualAccountName = _stringValue(
+        accountData['accountName'] ??
+            accountData['account_name'],
+      );
+
+      virtualAccountBank = _stringValue(
+        accountData['bankName'] ??
+            accountData['bank_name'] ??
+            accountData['bank'],
+      );
+
+      virtualAccountStatus = _stringValue(
+        accountData['status'],
+        fallback: 'NOT_CREATED',
+      ).toUpperCase();
+
+      virtualAccountFailureReason = _stringValue(
+        accountData['failureReason'] ??
+            accountData['failure_reason'],
+      );
+    });
+  }
+
+  Future<void> _createVirtualAccount() async {
+    if (isCreatingVirtualAccount) return;
+
+    setState(() {
+      isCreatingVirtualAccount = true;
+    });
+
+    try {
+      final SharedPreferences prefs =
+          await SharedPreferences.getInstance();
+
+      final String token =
+          prefs.getString('auth_token') ?? '';
+
+      if (token.trim().isEmpty) {
+        _showMessage(
+          'Your login session has expired. Please sign in again.',
+          isError: true,
+        );
+        return;
+      }
+
+      final http.Response response = await http
+          .post(
+            Uri.parse(
+              '$baseUrl/securewave/virtual-account',
+            ),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 45),
+          );
+
+      final dynamic decoded =
+          _decodeResponse(response.body);
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        final dynamic responseData =
+            decoded is Map ? decoded['data'] : null;
+
+        if (responseData is Map) {
+          _applyDirectVirtualAccount(
+            responseData,
+          );
+        } else {
+          await _fetchVirtualAccount(
+            token: token,
+            showMessageOnFailure: false,
+          );
+        }
+
+        _showMessage(
+          _extractMessage(
+            decoded,
+            fallback:
+                'Virtual account created successfully.',
+          ),
+          isError: false,
+        );
+      } else {
+        final String message = _extractMessage(
+          decoded,
+          fallback:
+              'Unable to create your virtual account.',
+        );
+
+        await _fetchVirtualAccount(
+          token: token,
+          showMessageOnFailure: false,
+        );
+
+        _showMessage(
+          message,
+          isError: true,
+        );
+      }
+    } catch (_) {
       _showMessage(
-        'Unable to connect to Servicepay. Your saved wallet balance is still available.',
+        'Unable to connect to SecureWaveNG right now.',
         isError: true,
       );
     } finally {
       if (!mounted) return;
 
       setState(() {
-        isLoading = false;
-        isRefreshing = false;
+        isCreatingVirtualAccount = false;
       });
     }
+  }
+
+  void _applyDirectVirtualAccount(
+    Map<dynamic, dynamic> accountData,
+  ) {
+    if (!mounted) return;
+
+    setState(() {
+      virtualAccountProvider = _stringValue(
+        accountData['provider'],
+      );
+
+      virtualAccountNumber = _stringValue(
+        accountData['accountNumber'] ??
+            accountData['account_number'],
+      );
+
+      virtualAccountName = _stringValue(
+        accountData['accountName'] ??
+            accountData['account_name'],
+      );
+
+      virtualAccountBank = _stringValue(
+        accountData['bankName'] ??
+            accountData['bank_name'],
+      );
+
+      virtualAccountStatus = _stringValue(
+        accountData['status'],
+        fallback: 'ACTIVE',
+      ).toUpperCase();
+
+      virtualAccountFailureReason = _stringValue(
+        accountData['failureReason'] ??
+            accountData['failure_reason'],
+      );
+    });
+  }
+
+  Future<void> _copyAccountNumber() async {
+    if (virtualAccountNumber.isEmpty) return;
+
+    await Clipboard.setData(
+      ClipboardData(
+        text: virtualAccountNumber,
+      ),
+    );
+
+    _showMessage(
+      'Account number copied.',
+      isError: false,
+    );
+  }
+
+  Future<void> _fundWallet() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const ManualFundingScreen(),
+      ),
+    );
+
+    if (!mounted) return;
+
+    await _loadWallet(
+      showRefreshLoader: true,
+    );
+  }
+
+  Future<void> _openTransferScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const TransferScreen(),
+      ),
+    );
+
+    if (!mounted) return;
+
+    await _loadWallet(
+      showRefreshLoader: true,
+    );
   }
 
   dynamic _decodeResponse(String body) {
@@ -158,6 +490,22 @@ class _WalletScreenState extends State<WalletScreen> {
     } catch (_) {
       return null;
     }
+  }
+
+  String _stringValue(
+    dynamic value, {
+    String fallback = '',
+  }) {
+    if (value == null) {
+      return fallback;
+    }
+
+    final String result =
+        value.toString().trim();
+
+    return result.isEmpty
+        ? fallback
+        : result;
   }
 
   double? _extractBalance(dynamic data) {
@@ -191,8 +539,10 @@ class _WalletScreenState extends State<WalletScreen> {
           : null,
     ];
 
-    for (final dynamic value in possibleValues) {
-      final double? parsed = _toDouble(value);
+    for (final dynamic value
+        in possibleValues) {
+      final double? parsed =
+          _toDouble(value);
 
       if (parsed != null) {
         return parsed;
@@ -202,7 +552,9 @@ class _WalletScreenState extends State<WalletScreen> {
     return null;
   }
 
-  List<dynamic> _extractTransactions(dynamic data) {
+  List<dynamic> _extractTransactions(
+    dynamic data,
+  ) {
     if (data is! Map) {
       return [];
     }
@@ -214,7 +566,8 @@ class _WalletScreenState extends State<WalletScreen> {
       return directTransactions;
     }
 
-    final dynamic responseData = data['data'];
+    final dynamic responseData =
+        data['data'];
 
     if (responseData is Map) {
       final dynamic nestedTransactions =
@@ -266,37 +619,6 @@ class _WalletScreenState extends State<WalletScreen> {
     }
 
     return fallback;
-  }
-
-  Future<void> _fundWallet() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            const ManualFundingScreen(),
-      ),
-    );
-
-    if (!mounted) return;
-
-    await _loadWallet(
-      showRefreshLoader: true,
-    );
-  }
-
-  Future<void> _openTransferScreen() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const TransferScreen(),
-      ),
-    );
-
-    if (!mounted) return;
-
-    await _loadWallet(
-      showRefreshLoader: true,
-    );
   }
 
   void _showMessage(
@@ -356,35 +678,23 @@ class _WalletScreenState extends State<WalletScreen> {
     }
 
     try {
-      final DateTime date =
-          DateTime.parse(
-            value.toString(),
-          ).toLocal();
+      final DateTime date = DateTime.parse(
+        value.toString(),
+      ).toLocal();
 
       final String day =
-          date.day
-              .toString()
-              .padLeft(2, '0');
+          date.day.toString().padLeft(2, '0');
 
       final String month =
-          date.month
-              .toString()
-              .padLeft(2, '0');
-
-      final String year =
-          date.year.toString();
+          date.month.toString().padLeft(2, '0');
 
       final String hour =
-          date.hour
-              .toString()
-              .padLeft(2, '0');
+          date.hour.toString().padLeft(2, '0');
 
       final String minute =
-          date.minute
-              .toString()
-              .padLeft(2, '0');
+          date.minute.toString().padLeft(2, '0');
 
-      return '$day/$month/$year, $hour:$minute';
+      return '$day/$month/${date.year}, $hour:$minute';
     } catch (_) {
       return value.toString();
     }
@@ -474,18 +784,9 @@ class _WalletScreenState extends State<WalletScreen> {
     ).toString().toUpperCase();
   }
 
-  IconData _transactionIcon(
-    dynamic transaction,
-  ) {
-    if (_isCreditTransaction(transaction)) {
-      return Icons.south_west_rounded;
-    }
-
-    return Icons.north_east_rounded;
-  }
-
   Color _statusColor(String status) {
-    switch (status) {
+    switch (status.toUpperCase()) {
+      case 'ACTIVE':
       case 'SUCCESS':
       case 'SUCCESSFUL':
       case 'COMPLETED':
@@ -504,6 +805,24 @@ class _WalletScreenState extends State<WalletScreen> {
 
       default:
         return const Color(0xFF64748B);
+    }
+  }
+
+  String _virtualAccountMessage() {
+    switch (virtualAccountStatus) {
+      case 'PENDING':
+        return 'Your virtual account is being prepared. Please refresh shortly.';
+
+      case 'FAILED':
+        return virtualAccountFailureReason.isNotEmpty
+            ? virtualAccountFailureReason
+            : 'Virtual account creation was unsuccessful. Tap Retry to try again.';
+
+      case 'DISABLED':
+        return 'This virtual account is currently unavailable.';
+
+      default:
+        return 'Create a dedicated bank account for funding your ServicePay wallet.';
     }
   }
 
@@ -574,8 +893,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   BuildContext context,
                   BoxConstraints constraints,
                 ) {
-                  final double
-                      horizontalPadding =
+                  final double horizontalPadding =
                       constraints.maxWidth >= 700
                           ? 32
                           : 16;
@@ -596,23 +914,19 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                     child: Center(
                       child: ConstrainedBox(
-                        constraints:
-                            BoxConstraints(
+                        constraints: BoxConstraints(
                           maxWidth: contentWidth,
                         ),
                         child: Column(
                           crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                              CrossAxisAlignment.start,
                           children: [
                             _buildWalletCard(),
-                            const SizedBox(
-                              height: 18,
-                            ),
+                            const SizedBox(height: 18),
+                            _buildVirtualAccountCard(),
+                            const SizedBox(height: 18),
                             _buildQuickActions(),
-                            const SizedBox(
-                              height: 26,
-                            ),
+                            const SizedBox(height: 26),
                             _buildTransactionsSection(),
                           ],
                         ),
@@ -650,175 +964,451 @@ class _WalletScreenState extends State<WalletScreen> {
           ),
         ],
       ),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
-          Positioned(
-            right: -35,
-            top: -55,
-            child: Container(
-              width: 150,
-              height: 150,
-              decoration: BoxDecoration(
-                color: Colors.white
-                    .withValues(alpha: 0.06),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Positioned(
-            left: -45,
-            bottom: -80,
-            child: Container(
-              width: 170,
-              height: 170,
-              decoration: BoxDecoration(
-                color: Colors.white
-                    .withValues(alpha: 0.04),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+          Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: Colors.white
-                          .withValues(
-                        alpha: 0.15,
-                      ),
-                      borderRadius:
-                          BorderRadius.circular(
-                        15,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons
-                          .account_balance_wallet_rounded,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
-                      children: [
-                        Text(
-                          userName,
-                          maxLines: 1,
-                          overflow:
-                              TextOverflow
-                                  .ellipsis,
-                          style:
-                              const TextStyle(
-                            color:
-                                Colors.white,
-                            fontSize: 16,
-                            fontWeight:
-                                FontWeight
-                                    .w700,
-                          ),
-                        ),
-                        if (userPhone
-                            .isNotEmpty)
-                          Text(
-                            userPhone,
-                            style: TextStyle(
-                              color: Colors
-                                  .white
-                                  .withValues(
-                                alpha: 0.72,
-                              ),
-                              fontSize: 12,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: hideBalance
-                        ? 'Show balance'
-                        : 'Hide balance',
-                    onPressed: () {
-                      setState(() {
-                        hideBalance =
-                            !hideBalance;
-                      });
-                    },
-                    icon: Icon(
-                      hideBalance
-                          ? Icons
-                              .visibility_off_rounded
-                          : Icons
-                              .visibility_rounded,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              Text(
-                'Available Balance',
-                style: TextStyle(
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
                   color: Colors.white
-                      .withValues(
-                    alpha: 0.75,
-                  ),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
+                      .withValues(alpha: 0.15),
+                  borderRadius:
+                      BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons
+                      .account_balance_wallet_rounded,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 5),
-              AnimatedSwitcher(
-                duration: const Duration(
-                  milliseconds: 250,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      userName,
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight:
+                            FontWeight.w700,
+                      ),
+                    ),
+                    if (userPhone.isNotEmpty)
+                      Text(
+                        userPhone,
+                        style: TextStyle(
+                          color: Colors.white
+                              .withValues(
+                            alpha: 0.72,
+                          ),
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
                 ),
-                child: Text(
+              ),
+              IconButton(
+                tooltip: hideBalance
+                    ? 'Show balance'
+                    : 'Hide balance',
+                onPressed: () {
+                  setState(() {
+                    hideBalance =
+                        !hideBalance;
+                  });
+                },
+                icon: Icon(
                   hideBalance
-                      ? '₦ ••••••••'
-                      : '₦${_formatMoney(walletBalance)}',
-                  key: ValueKey(hideBalance),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 31,
-                    fontWeight:
-                        FontWeight.w900,
-                    letterSpacing: -0.6,
-                  ),
+                      ? Icons
+                          .visibility_off_rounded
+                      : Icons.visibility_rounded,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: _walletButton(
-                      icon: Icons.add_rounded,
-                      label: 'Fund Wallet',
-                      onTap: _fundWallet,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _walletButton(
-                      icon: Icons
-                          .swap_horiz_rounded,
-                      label: 'Transfer',
-                      onTap:
-                          _openTransferScreen,
-                    ),
-                  ),
-                ],
+            ],
+          ),
+          const SizedBox(height: 28),
+          Text(
+            'Available Balance',
+            style: TextStyle(
+              color: Colors.white.withValues(
+                alpha: 0.75,
+              ),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 5),
+          AnimatedSwitcher(
+            duration: const Duration(
+              milliseconds: 250,
+            ),
+            child: Text(
+              hideBalance
+                  ? '₦ ••••••••'
+                  : '₦${_formatMoney(walletBalance)}',
+              key: ValueKey(hideBalance),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 31,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.6,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _walletButton(
+                  icon: Icons.add_rounded,
+                  label: 'Fund Wallet',
+                  onTap: _fundWallet,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _walletButton(
+                  icon:
+                      Icons.swap_horiz_rounded,
+                  label: 'Transfer',
+                  onTap:
+                      _openTransferScreen,
+                ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVirtualAccountCard() {
+    if (isVirtualAccountLoading) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(22),
+        decoration: _whiteCardDecoration(),
+        child: const Row(
+          children: [
+            CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: Color(0xFF0F766E),
+            ),
+            SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                'Loading your virtual account...',
+                style: TextStyle(
+                  color: Color(0xFF475569),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (hasVirtualAccount) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: _whiteCardDecoration(),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color:
+                        const Color(0xFFE6FFFB),
+                    borderRadius:
+                        BorderRadius.circular(15),
+                  ),
+                  child: const Icon(
+                    Icons
+                        .account_balance_rounded,
+                    color: Color(0xFF0F766E),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Virtual Account',
+                        style: TextStyle(
+                          color:
+                              Color(0xFF0F172A),
+                          fontSize: 17,
+                          fontWeight:
+                              FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Transfer money here to fund your wallet.',
+                        style: TextStyle(
+                          color:
+                              Color(0xFF64748B),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _statusBadge(
+                  virtualAccountStatus,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(
+              virtualAccountBank.isEmpty
+                  ? 'SecureWaveNG Virtual Account'
+                  : virtualAccountBank,
+              style: const TextStyle(
+                color: Color(0xFF475569),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    virtualAccountNumber,
+                    style: const TextStyle(
+                      color:
+                          Color(0xFF0F172A),
+                      fontSize: 27,
+                      letterSpacing: 1.2,
+                      fontWeight:
+                          FontWeight.w900,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip:
+                      'Copy account number',
+                  onPressed:
+                      _copyAccountNumber,
+                  icon: const Icon(
+                    Icons.copy_rounded,
+                    color: Color(0xFF0F766E),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+            const Text(
+              'Account Name',
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              virtualAccountName.isEmpty
+                  ? userName
+                  : virtualAccountName,
+              style: const TextStyle(
+                color: Color(0xFF334155),
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 13),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color:
+                    const Color(0xFFF0FDFA),
+                borderRadius:
+                    BorderRadius.circular(13),
+              ),
+              child: const Row(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: Color(0xFF0F766E),
+                  ),
+                  SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'Money sent to this account will be credited to your ServicePay wallet automatically after confirmation.',
+                      style: TextStyle(
+                        color:
+                            Color(0xFF115E59),
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: _whiteCardDecoration(),
+      child: Column(
+        children: [
+          Container(
+            width: 62,
+            height: 62,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE6FFFB),
+              borderRadius:
+                  BorderRadius.circular(20),
+            ),
+            child: const Icon(
+              Icons.account_balance_rounded,
+              color: Color(0xFF0F766E),
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Dedicated Virtual Account',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            _virtualAccountMessage(),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 18),
+          if (virtualAccountStatus !=
+              'PENDING')
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed:
+                    isCreatingVirtualAccount
+                        ? null
+                        : _createVirtualAccount,
+                style: FilledButton.styleFrom(
+                  backgroundColor:
+                      const Color(0xFF0F766E),
+                  foregroundColor:
+                      Colors.white,
+                  minimumSize:
+                      const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(14),
+                  ),
+                ),
+                icon: isCreatingVirtualAccount
+                    ? const SizedBox(
+                        width: 19,
+                        height: 19,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.add_card_rounded,
+                      ),
+                label: Text(
+                  isCreatingVirtualAccount
+                      ? 'Creating Account...'
+                      : virtualAccountStatus ==
+                              'FAILED'
+                          ? 'Retry Virtual Account'
+                          : 'Create Virtual Account',
+                  style: const TextStyle(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  BoxDecoration _whiteCardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(
+        color: const Color(0xFFE8EDF3),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(
+            alpha: 0.035,
+          ),
+          blurRadius: 14,
+          offset: const Offset(0, 5),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusBadge(String status) {
+    final Color color =
+        _statusColor(status);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 9,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius:
+            BorderRadius.circular(20),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -829,8 +1419,9 @@ class _WalletScreenState extends State<WalletScreen> {
     required VoidCallback? onTap,
   }) {
     return Material(
-      color: Colors.white
-          .withValues(alpha: 0.14),
+      color: Colors.white.withValues(
+        alpha: 0.14,
+      ),
       borderRadius:
           BorderRadius.circular(14),
       child: InkWell(
@@ -876,22 +1467,7 @@ class _WalletScreenState extends State<WalletScreen> {
         vertical: 18,
         horizontal: 14,
       ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(22),
-        border: Border.all(
-          color: const Color(0xFFE8EDF3),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black
-                .withValues(alpha: 0.035),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
+      decoration: _whiteCardDecoration(),
       child: Row(
         children: [
           Expanded(
@@ -962,9 +1538,7 @@ class _WalletScreenState extends State<WalletScreen> {
               decoration: BoxDecoration(
                 color: background,
                 borderRadius:
-                    BorderRadius.circular(
-                  15,
-                ),
+                    BorderRadius.circular(15),
               ),
               child: Icon(
                 icon,
@@ -1033,17 +1607,8 @@ class _WalletScreenState extends State<WalletScreen> {
           _buildEmptyTransactions()
         else
           Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(
-                22,
-              ),
-              border: Border.all(
-                color:
-                    const Color(0xFFE8EDF3),
-              ),
-            ),
+            decoration:
+                _whiteCardDecoration(),
             child: ListView.separated(
               itemCount:
                   transactions.length > 10
@@ -1082,35 +1647,16 @@ class _WalletScreenState extends State<WalletScreen> {
         horizontal: 24,
         vertical: 40,
       ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(22),
-        border: Border.all(
-          color: const Color(0xFFE8EDF3),
-        ),
-      ),
-      child: Column(
+      decoration: _whiteCardDecoration(),
+      child: const Column(
         children: [
-          Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              color:
-                  const Color(0xFFE6FFFB),
-              borderRadius:
-                  BorderRadius.circular(
-                22,
-              ),
-            ),
-            child: const Icon(
-              Icons.receipt_long_rounded,
-              color: Color(0xFF0F766E),
-              size: 32,
-            ),
+          Icon(
+            Icons.receipt_long_rounded,
+            color: Color(0xFF0F766E),
+            size: 42,
           ),
-          const SizedBox(height: 15),
-          const Text(
+          SizedBox(height: 15),
+          Text(
             'No transactions yet',
             style: TextStyle(
               color: Color(0xFF0F172A),
@@ -1119,14 +1665,13 @@ class _WalletScreenState extends State<WalletScreen> {
                   FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 6),
-          const Text(
+          SizedBox(height: 6),
+          Text(
             'Your wallet transactions will appear here.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Color(0xFF64748B),
               fontSize: 13,
-              height: 1.4,
             ),
           ),
         ],
@@ -1174,7 +1719,9 @@ class _WalletScreenState extends State<WalletScreen> {
               BorderRadius.circular(15),
         ),
         child: Icon(
-          _transactionIcon(transaction),
+          isCredit
+              ? Icons.south_west_rounded
+              : Icons.north_east_rounded,
           color: transactionColor,
           size: 22,
         ),
@@ -1208,34 +1755,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             if (status.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(
-                  horizontal: 7,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: _statusColor(
-                    status,
-                  ).withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    20,
-                  ),
-                ),
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    color:
-                        _statusColor(status),
-                    fontSize: 9,
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-              ),
+              _statusBadge(status),
             ],
           ],
         ),
