@@ -13,7 +13,10 @@ const paystackRoutes = require(
 const clubkonnectRoutes = require(
   "./routes/clubkonnect.routes"
 );
-const securewaveRoutes = require("./routes/securewave.routes");
+
+const securewaveRoutes = require(
+  "./routes/securewave.routes"
+);
 
 const authRoutes = require(
   "./routes/auth.routes"
@@ -61,7 +64,19 @@ connectDB();
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+
+/*
+ * Keep the original raw JSON payload.
+ * SecureWaveNG uses it for HMAC-SHA256
+ * webhook signature verification.
+ */
+app.use(
+  express.json({
+    verify: (req, res, buffer) => {
+      req.rawBody = buffer;
+    },
+  })
+);
 
 app.use(
   express.urlencoded({
@@ -97,7 +112,11 @@ app.use(
   "/api/transfer",
   transferRoutes
 );
-app.use("/api/securewave", securewaveRoutes);
+
+app.use(
+  "/api/securewave",
+  securewaveRoutes
+);
 
 app.use(
   "/api/id-verification",
