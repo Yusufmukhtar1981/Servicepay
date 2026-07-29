@@ -78,17 +78,20 @@ const userSchema = new mongoose.Schema(
     walletBalance: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     commissionBalance: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     referralCode: {
       type: String,
       unique: true,
       sparse: true,
+      trim: true,
     },
 
     referredBy: {
@@ -100,16 +103,90 @@ const userSchema = new mongoose.Schema(
     totalEarnings: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     totalTransactions: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     kycVerified: {
       type: Boolean,
       default: false,
+    },
+
+    virtualAccount: {
+      provider: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      accountNumber: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      accountName: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      bankName: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      bankCode: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      customerReference: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      providerCustomerId: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      status: {
+        type: String,
+        enum: [
+          "NOT_CREATED",
+          "PENDING",
+          "ACTIVE",
+          "FAILED",
+          "DISABLED",
+        ],
+        default: "NOT_CREATED",
+      },
+
+      failureReason: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      createdAt: {
+        type: Date,
+        default: null,
+      },
+
+      updatedAt: {
+        type: Date,
+        default: null,
+      },
     },
 
     status: {
@@ -123,16 +200,54 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+/*
+ * Prevent two ServicePay users from sharing
+ * the same virtual account number.
+ */
+userSchema.index(
+  {
+    "virtualAccount.accountNumber": 1,
+  },
+  {
+    unique: true,
+    sparse: true,
+  }
+);
+
+/*
+ * Prevent duplicate provider references.
+ */
+userSchema.index(
+  {
+    "virtualAccount.customerReference": 1,
+  },
+  {
+    unique: true,
+    sparse: true,
+  }
+);
+
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
     return;
   }
 
-  this.password = await bcrypt.hash(this.password, 12);
+  this.password = await bcrypt.hash(
+    this.password,
+    12
+  );
 });
 
-userSchema.methods.comparePassword = async function (enteredPassword) {
-  return bcrypt.compare(enteredPassword, this.password);
+userSchema.methods.comparePassword = async function (
+  enteredPassword
+) {
+  return bcrypt.compare(
+    enteredPassword,
+    this.password
+  );
 };
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.model(
+  "User",
+  userSchema
+);
