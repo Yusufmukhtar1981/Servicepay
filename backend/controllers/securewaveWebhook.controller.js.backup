@@ -305,95 +305,23 @@ const extractWebhookData = (
       firstNonEmptyValue(
         data?.account_number,
         data?.accountNumber,
-
-        data?.destination_account_number,
-        data?.destinationAccountNumber,
-
-        data?.recipient_account_number,
-        data?.recipientAccountNumber,
-
-        data?.beneficiary_account_number,
-        data?.beneficiaryAccountNumber,
-
         data?.virtual_account_number,
         data?.virtualAccountNumber,
-
-        data?.credited_account_number,
-        data?.creditedAccountNumber,
-
-        data?.receiving_account_number,
-        data?.receivingAccountNumber,
-
-        data?.destination_account?.account_number,
-        data?.destination_account?.accountNumber,
-
-        data?.destinationAccount?.account_number,
-        data?.destinationAccount?.accountNumber,
-
-        data?.beneficiary_account?.account_number,
-        data?.beneficiary_account?.accountNumber,
-
-        data?.beneficiaryAccount?.account_number,
-        data?.beneficiaryAccount?.accountNumber,
-
         transaction?.account_number,
         transaction?.accountNumber,
-
-        transaction?.destination_account_number,
-        transaction?.destinationAccountNumber,
-
-        transaction?.recipient_account_number,
-        transaction?.recipientAccountNumber,
-
-        transaction?.beneficiary_account_number,
-        transaction?.beneficiaryAccountNumber,
-
-        transaction?.virtual_account_number,
-        transaction?.virtualAccountNumber,
-
         virtualAccount?.account_number,
         virtualAccount?.accountNumber,
-
-        virtualAccount?.virtual_account_number,
-        virtualAccount?.virtualAccountNumber,
-
+        virtualAccount
+          ?.virtual_account_number,
+        virtualAccount
+          ?.virtualAccountNumber,
         virtualAccount?.number,
-
         customer?.account_number,
         customer?.accountNumber,
-
         payload?.account_number,
         payload?.accountNumber,
-
-        payload?.destination_account_number,
-        payload?.destinationAccountNumber,
-
-        payload?.recipient_account_number,
-        payload?.recipientAccountNumber,
-
-        payload?.beneficiary_account_number,
-        payload?.beneficiaryAccountNumber,
-
         payload?.virtual_account_number,
-        payload?.virtualAccountNumber,
-
-        payload?.credited_account_number,
-        payload?.creditedAccountNumber,
-
-        payload?.receiving_account_number,
-        payload?.receivingAccountNumber,
-
-        payload?.destination_account?.account_number,
-        payload?.destination_account?.accountNumber,
-
-        payload?.destinationAccount?.account_number,
-        payload?.destinationAccount?.accountNumber,
-
-        payload?.beneficiary_account?.account_number,
-        payload?.beneficiary_account?.accountNumber,
-
-        payload?.beneficiaryAccount?.account_number,
-        payload?.beneficiaryAccount?.accountNumber
+        payload?.virtualAccountNumber
       )
     );
 
@@ -688,11 +616,6 @@ exports.handleVirtualAccountWebhook =
 
       const payload =
         req.body || {};
-
-      console.log(
-        "SecureWave complete webhook payload:",
-        JSON.stringify(payload, null, 2)
-      );
 
       const webhookData =
         extractWebhookData(
