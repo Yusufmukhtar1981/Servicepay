@@ -4,6 +4,7 @@ const router = express.Router();
 
 const {
   getBanks,
+  getMyVirtualAccount,
   validateAccountName,
   generateVirtualAccount,
 } = require(
@@ -18,29 +19,43 @@ const {
 
 const {
   protect,
-} = require("../middleware/auth.middleware");
+} = require(
+  "../middleware/auth.middleware"
+);
 
 router.get("/banks", getBanks);
 
 /*
  * SecureWaveNG calls this route directly.
- * Do not add ServicePay JWT protection.
  */
 router.post(
   "/webhook",
   handleVirtualAccountWebhook
 );
 
-router.post(
-  "/validate-account-name",
+/*
+ * Fetch the authenticated customer's
+ * stored virtual account.
+ */
+router.get(
+  "/virtual-account",
   protect,
-  validateAccountName
+  getMyVirtualAccount
 );
 
+/*
+ * Create a virtual account.
+ */
 router.post(
   "/virtual-account",
   protect,
   generateVirtualAccount
+);
+
+router.post(
+  "/validate-account-name",
+  protect,
+  validateAccountName
 );
 
 module.exports = router;
