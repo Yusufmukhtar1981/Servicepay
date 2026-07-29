@@ -13,6 +13,7 @@ const paystackRoutes = require(
 const clubkonnectRoutes = require(
   "./routes/clubkonnect.routes"
 );
+const securewaveRoutes = require("./routes/securewave.routes");
 
 const authRoutes = require(
   "./routes/auth.routes"
@@ -96,6 +97,7 @@ app.use(
   "/api/transfer",
   transferRoutes
 );
+app.use("/api/securewave", securewaveRoutes);
 
 app.use(
   "/api/id-verification",
