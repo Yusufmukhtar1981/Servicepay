@@ -428,6 +428,34 @@ const markFailed = async (
 
 exports.handleVirtualAccountWebhook =
   async (req, res) => {
+
+    console.log(
+      "SECUREWAVE_REQUEST_REACHED_BACKEND",
+      {
+        time: new Date().toISOString(),
+        method: req.method,
+        url: req.originalUrl,
+        contentType: req.headers["content-type"],
+        signatureHeaders: {
+          xSignature:
+            Boolean(req.headers["x-signature"]),
+          xSecurewaveSignature:
+            Boolean(
+              req.headers["x-securewave-signature"]
+            ),
+          securewaveSignature:
+            Boolean(
+              req.headers["securewave-signature"]
+            ),
+        },
+        bodyKeys:
+          req.body &&
+          typeof req.body === "object"
+            ? Object.keys(req.body)
+            : [],
+      }
+    );
+
     let webhookEvent = null;
     let session = null;
 
