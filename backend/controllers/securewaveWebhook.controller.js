@@ -220,6 +220,104 @@ const normalizeAccountNumber = (
 };
 
 /*
+ * Search the complete SecureWave payload for
+ * a virtual/destination account number.
+ */
+const findNestedAccountNumber = (value) => {
+  const preferredKeys = [
+    "account_number",
+    "accountNumber",
+    "virtual_account_number",
+    "virtualAccountNumber",
+    "destination_account_number",
+    "destinationAccountNumber",
+    "beneficiary_account_number",
+    "beneficiaryAccountNumber",
+    "recipient_account_number",
+    "recipientAccountNumber",
+    "receiving_account_number",
+    "receivingAccountNumber",
+    "credited_account_number",
+    "creditedAccountNumber",
+  ];
+
+  const visited = new Set();
+
+  const search = (currentValue) => {
+    if (
+      currentValue === null ||
+      currentValue === undefined
+    ) {
+      return "";
+    }
+
+    if (
+      typeof currentValue !== "object"
+    ) {
+      return "";
+    }
+
+    if (visited.has(currentValue)) {
+      return "";
+    }
+
+    visited.add(currentValue);
+
+    /*
+     * Check preferred account fields first.
+     */
+    for (const key of preferredKeys) {
+      const possibleAccount =
+        currentValue[key];
+
+      if (
+        possibleAccount !== undefined &&
+        possibleAccount !== null
+      ) {
+        const normalizedAccount =
+          normalizeAccountNumber(
+            possibleAccount
+          );
+
+        if (
+          /^\d{10}$/.test(
+            normalizedAccount
+          )
+        ) {
+          return normalizedAccount;
+        }
+      }
+    }
+
+    /*
+     * Search nested objects and arrays.
+     */
+    const children =
+      Array.isArray(currentValue)
+        ? currentValue
+        : Object.values(currentValue);
+
+    for (const child of children) {
+      if (
+        child &&
+        typeof child === "object"
+      ) {
+        const result = search(child);
+
+        if (result) {
+          return result;
+        }
+      }
+    }
+
+    return "";
+  };
+
+  return search(value);
+};
+
+
+/*
  * Escape text before using it in MongoDB regex.
  */
 const escapeRegex = (value) => {
@@ -397,6 +495,17 @@ const extractWebhookData = (
       )
     );
 
+  /*
+   * SecureWave sometimes nests account_number
+   * inside recipient/bank details.
+   */
+  const resolvedAccountNumber =
+    accountNumber ||
+    findNestedAccountNumber(data) ||
+    findNestedAccountNumber(payload);
+
+
+
   const notificationStatus =
     normalizeText(
       firstNonEmptyValue(
@@ -493,7 +602,7 @@ const extractWebhookData = (
   return {
     transactionId,
     providerReference,
-    accountNumber,
+    accountNumber: resolvedAccountNumber,
     notificationStatus,
     transactionStatus,
     transactionType,
