@@ -1,4 +1,7 @@
 const User = require("../models/user.model");
+const IdVerification = require(
+  "../models/idVerification.model"
+);
 
 const {
   getBanks,
@@ -15,7 +18,9 @@ const getAuthenticatedUserId = (req) => {
   );
 };
 
-const formatVirtualAccount = (virtualAccount) => {
+const formatVirtualAccount = (
+  virtualAccount
+) => {
   if (!virtualAccount) {
     return {
       provider: null,
@@ -31,55 +36,77 @@ const formatVirtualAccount = (virtualAccount) => {
   }
 
   return {
-    provider: virtualAccount.provider || null,
+    provider:
+      virtualAccount.provider || null,
+
     accountNumber:
       virtualAccount.accountNumber || null,
+
     accountName:
       virtualAccount.accountName || null,
+
     bankName:
       virtualAccount.bankName || null,
+
     bankCode:
       virtualAccount.bankCode || null,
+
     status:
-      virtualAccount.status || "NOT_CREATED",
+      virtualAccount.status ||
+      "NOT_CREATED",
+
     failureReason:
       virtualAccount.failureReason || null,
+
     createdAt:
       virtualAccount.createdAt || null,
+
     updatedAt:
       virtualAccount.updatedAt || null,
   };
 };
 
 /*
- * Extract one virtual account from the different
- * response formats SecureWaveNG may return.
+ * Extract a virtual account from possible
+ * SecureWaveNG response formats.
  */
 const extractVirtualAccount = (
   providerResponse
 ) => {
-  const responseData = providerResponse?.data;
+  const responseData =
+    providerResponse?.data;
 
   let account = null;
 
   if (Array.isArray(responseData)) {
-    account = responseData[0] || null;
+    account =
+      responseData[0] || null;
   } else if (
     responseData &&
     typeof responseData === "object"
   ) {
     if (
-      Array.isArray(responseData.accounts)
+      Array.isArray(
+        responseData.accounts
+      )
     ) {
       account =
-        responseData.accounts[0] || null;
+        responseData.accounts[0] ||
+        null;
     } else if (
       responseData.virtual_account &&
-      typeof responseData.virtual_account ===
-        "object"
+      typeof responseData
+        .virtual_account === "object"
     ) {
       account =
         responseData.virtual_account;
+    } else if (
+      responseData.virtualAccount &&
+      typeof responseData
+        .virtualAccount === "object"
+    ) {
+      account =
+        responseData.virtualAccount;
     } else {
       account = responseData;
     }
@@ -122,6 +149,7 @@ const extractVirtualAccount = (
       account.customerReference ||
       account.reference ||
       account.provider_reference ||
+      account.providerReference ||
       ""
   ).trim();
 
@@ -143,16 +171,19 @@ const extractVirtualAccount = (
     bankCode,
     customerReference,
     providerCustomerId,
-    raw: account,
   };
 };
 
 /*
  * GET /api/securewave/banks
  */
-exports.getBanks = async (req, res) => {
+exports.getBanks = async (
+  req,
+  res
+) => {
   try {
-    const response = await getBanks();
+    const response =
+      await getBanks();
 
     return res.status(200).json({
       success: true,
@@ -166,23 +197,23 @@ exports.getBanks = async (req, res) => {
     );
 
     return res
-      .status(error.statusCode || 500)
+      .status(
+        error.statusCode || 500
+      )
       .json({
         success: false,
         message:
           error.message ||
           "Unable to fetch banks.",
         providerResponse:
-          error.providerResponse || null,
+          error.providerResponse ||
+          null,
       });
   }
 };
 
 /*
  * GET /api/securewave/virtual-account
- *
- * Returns the authenticated customer's
- * stored virtual-account details.
  */
 exports.getMyVirtualAccount = async (
   req,
@@ -200,11 +231,12 @@ exports.getMyVirtualAccount = async (
       });
     }
 
-    const customer = await User.findById(
-      authenticatedUserId
-    ).select(
-      "fullName email phone role status virtualAccount"
-    );
+    const customer =
+      await User.findById(
+        authenticatedUserId
+      ).select(
+        "fullName email phone role status virtualAccount"
+      );
 
     if (!customer) {
       return res.status(404).json({
@@ -214,7 +246,9 @@ exports.getMyVirtualAccount = async (
       });
     }
 
-    if (customer.role !== "CUSTOMER") {
+    if (
+      customer.role !== "CUSTOMER"
+    ) {
       return res.status(403).json({
         success: false,
         message:
@@ -228,7 +262,8 @@ exports.getMyVirtualAccount = async (
       );
 
     const hasActiveAccount =
-      virtualAccount.status === "ACTIVE" &&
+      virtualAccount.status ===
+        "ACTIVE" &&
       Boolean(
         virtualAccount.accountNumber
       );
@@ -249,7 +284,7 @@ exports.getMyVirtualAccount = async (
   } catch (error) {
     console.error(
       "Get virtual account error:",
-      error
+      error.message
     );
 
     return res.status(500).json({
@@ -280,7 +315,10 @@ exports.validateAccountName = async (
         ""
     ).trim();
 
-    if (!bankCode || !accountNumber) {
+    if (
+      !bankCode ||
+      !accountNumber
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -297,7 +335,9 @@ exports.validateAccountName = async (
     }
 
     if (
-      !/^\d{10}$/.test(accountNumber)
+      !/^\d{10}$/.test(
+        accountNumber
+      )
     ) {
       return res.status(400).json({
         success: false,
@@ -324,23 +364,23 @@ exports.validateAccountName = async (
     );
 
     return res
-      .status(error.statusCode || 500)
+      .status(
+        error.statusCode || 500
+      )
       .json({
         success: false,
         message:
           error.message ||
           "Unable to verify account name.",
         providerResponse:
-          error.providerResponse || null,
+          error.providerResponse ||
+          null,
       });
   }
 };
 
 /*
  * POST /api/securewave/virtual-account
- *
- * Creates and stores a virtual account
- * for the authenticated customer.
  */
 exports.generateVirtualAccount = async (
   req,
@@ -360,9 +400,10 @@ exports.generateVirtualAccount = async (
       });
     }
 
-    customer = await User.findById(
-      authenticatedUserId
-    );
+    customer =
+      await User.findById(
+        authenticatedUserId
+      );
 
     if (!customer) {
       return res.status(404).json({
@@ -372,7 +413,9 @@ exports.generateVirtualAccount = async (
       });
     }
 
-    if (customer.status !== "ACTIVE") {
+    if (
+      customer.status !== "ACTIVE"
+    ) {
       return res.status(403).json({
         success: false,
         message:
@@ -380,7 +423,9 @@ exports.generateVirtualAccount = async (
       });
     }
 
-    if (customer.role !== "CUSTOMER") {
+    if (
+      customer.role !== "CUSTOMER"
+    ) {
       return res.status(403).json({
         success: false,
         message:
@@ -388,6 +433,10 @@ exports.generateVirtualAccount = async (
       });
     }
 
+    /*
+     * Return the existing account instead
+     * of creating another one.
+     */
     if (
       customer.virtualAccount?.status ===
         "ACTIVE" &&
@@ -398,9 +447,10 @@ exports.generateVirtualAccount = async (
         success: true,
         message:
           "Virtual account already exists.",
-        data: formatVirtualAccount(
-          customer.virtualAccount
-        ),
+        data:
+          formatVirtualAccount(
+            customer.virtualAccount
+          ),
       });
     }
 
@@ -452,12 +502,62 @@ exports.generateVirtualAccount = async (
     }
 
     if (
-      !/^\d{11}$/.test(phoneNumber)
+      !/^\d{11}$/.test(
+        phoneNumber
+      )
     ) {
       return res.status(400).json({
         success: false,
         message:
           "The phone number on your profile must contain exactly 11 digits.",
+      });
+    }
+
+    /*
+     * SecureWaveNG requires a verified
+     * NIN or BVN.
+     *
+     * Prefer NIN if both are available.
+     */
+    const verifiedId =
+      await IdVerification.findOne({
+        user: customer._id,
+        status: "SUCCESS",
+        idType: {
+          $in: ["NIN", "BVN"],
+        },
+      }).sort({
+        createdAt: -1,
+      });
+
+    if (!verifiedId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please complete NIN or BVN verification before creating a virtual account.",
+      });
+    }
+
+    const idType = String(
+      verifiedId.idType || ""
+    )
+      .trim()
+      .toUpperCase();
+
+    const idNumber = String(
+      verifiedId.idNumber || ""
+    ).trim();
+
+    if (
+      !["NIN", "BVN"].includes(
+        idType
+      ) ||
+      !idNumber
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Your verified identity record is incomplete. Please verify your NIN or BVN again.",
       });
     }
 
@@ -475,7 +575,8 @@ exports.generateVirtualAccount = async (
     customer.virtualAccount = {
       ...(customer.virtualAccount
         ?.toObject
-        ? customer.virtualAccount.toObject()
+        ? customer.virtualAccount
+            .toObject()
         : customer.virtualAccount ||
           {}),
 
@@ -493,6 +594,8 @@ exports.generateVirtualAccount = async (
         firstName,
         lastName,
         phoneNumber,
+        idType,
+        idNumber,
       });
 
     const virtualAccount =
@@ -506,7 +609,9 @@ exports.generateVirtualAccount = async (
           "SecureWaveNG did not return a valid virtual account number."
         );
 
-      responseError.statusCode = 502;
+      responseError.statusCode =
+        502;
+
       responseError.providerResponse =
         providerResponse;
 
@@ -532,11 +637,13 @@ exports.generateVirtualAccount = async (
         null,
 
       customerReference:
-        virtualAccount.customerReference ||
-        null,
+        virtualAccount
+          .customerReference ||
+        undefined,
 
       providerCustomerId:
-        virtualAccount.providerCustomerId ||
+        virtualAccount
+          .providerCustomerId ||
         null,
 
       status: "ACTIVE",
@@ -558,9 +665,10 @@ exports.generateVirtualAccount = async (
       message:
         providerResponse?.message ||
         "Virtual account created successfully.",
-      data: formatVirtualAccount(
-        customer.virtualAccount
-      ),
+      data:
+        formatVirtualAccount(
+          customer.virtualAccount
+        ),
       providerData:
         providerResponse?.data ||
         null,
@@ -568,20 +676,25 @@ exports.generateVirtualAccount = async (
   } catch (error) {
     console.error(
       "SecureWave virtual account error:",
-      error.providerResponse ||
-        error.message
+      error.message
     );
 
+    /*
+     * Do not log or return the customer's
+     * NIN/BVN in error responses.
+     */
     if (customer) {
       try {
         customer.virtualAccount = {
           ...(customer.virtualAccount
             ?.toObject
-            ? customer.virtualAccount.toObject()
+            ? customer.virtualAccount
+                .toObject()
             : customer.virtualAccount ||
               {}),
 
-          provider: "SECUREWAVENG",
+          provider:
+            "SECUREWAVENG",
 
           status: "FAILED",
 
@@ -589,7 +702,8 @@ exports.generateVirtualAccount = async (
             error.message ||
             "Virtual account creation failed.",
 
-          updatedAt: new Date(),
+          updatedAt:
+            new Date(),
         };
 
         await customer.save();
@@ -602,7 +716,9 @@ exports.generateVirtualAccount = async (
     }
 
     return res
-      .status(error.statusCode || 500)
+      .status(
+        error.statusCode || 500
+      )
       .json({
         success: false,
         message:
