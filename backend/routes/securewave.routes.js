@@ -23,18 +23,62 @@ const {
   "../middleware/auth.middleware"
 );
 
-router.get("/banks", getBanks);
+router.get(
+  "/banks",
+  getBanks
+);
 
 /*
- * SecureWaveNG calls this route directly.
+ * SecureWaveNG webhook.
+ *
+ * Temporary logging is included so that we can
+ * see the exact payload sent by SecureWaveNG.
  */
 router.post(
   "/webhook",
+
+  (req, res, next) => {
+    console.log(
+      "========== SECUREWAVE WEBHOOK START =========="
+    );
+
+    console.log(
+      "SecureWave webhook headers:",
+      JSON.stringify(
+        req.headers,
+        null,
+        2
+      )
+    );
+
+    console.log(
+      "SecureWave webhook body:",
+      JSON.stringify(
+        req.body,
+        null,
+        2
+      )
+    );
+
+    console.log(
+      "SecureWave raw body available:",
+      Buffer.isBuffer(
+        req.rawBody
+      )
+    );
+
+    console.log(
+      "========== SECUREWAVE WEBHOOK END =========="
+    );
+
+    next();
+  },
+
   handleVirtualAccountWebhook
 );
 
 /*
- * Fetch the authenticated customer's
+ * Fetch authenticated customer's
  * stored virtual account.
  */
 router.get(
