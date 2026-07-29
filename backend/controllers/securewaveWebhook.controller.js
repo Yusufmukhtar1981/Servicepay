@@ -686,8 +686,19 @@ exports.handleVirtualAccountWebhook =
         });
       }
 
-      const payload =
-        req.body || {};
+      const payload = req.body || {};
+
+      console.log(
+        "SECUREWAVE_RAW_PAYLOAD_START"
+      );
+
+      console.log(
+        JSON.stringify(payload, null, 2)
+      );
+
+      console.log(
+        "SECUREWAVE_RAW_PAYLOAD_END"
+      );
 
       console.log(
         "SecureWave complete webhook payload:",
