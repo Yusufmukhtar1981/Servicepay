@@ -2,24 +2,36 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 
 const User = require("../models/user.model");
+
 const Transaction = require(
   "../models/transaction.model"
 );
+
 const SecurewaveWebhook = require(
   "../models/securewaveWebhook.model"
 );
 
+/*
+ * Read a request header safely.
+ */
 const getHeaderValue = (req, name) => {
-  const value = req.headers[name.toLowerCase()];
+  const value =
+    req.headers[String(name).toLowerCase()];
 
   if (Array.isArray(value)) {
-    return value[0] || "";
+    return String(value[0] || "").trim();
   }
 
   return String(value || "").trim();
 };
 
-const safeCompare = (firstValue, secondValue) => {
+/*
+ * Compare signatures safely.
+ */
+const safeCompare = (
+  firstValue,
+  secondValue
+) => {
   const firstBuffer = Buffer.from(
     String(firstValue || ""),
     "utf8"
@@ -32,7 +44,9 @@ const safeCompare = (firstValue, secondValue) => {
 
   if (
     firstBuffer.length === 0 ||
-    firstBuffer.length !== secondBuffer.length
+    secondBuffer.length === 0 ||
+    firstBuffer.length !==
+      secondBuffer.length
   ) {
     return false;
   }
@@ -43,9 +57,22 @@ const safeCompare = (firstValue, secondValue) => {
   );
 };
 
-const verifySecureWaveSignature = (req) => {
-  const webhookSecret =
-    process.env.SECUREWAVE_WEBHOOK_SECRET;
+/*
+ * Verify SecureWaveNG webhook signature.
+ *
+ * Ensure index.js keeps req.rawBody as a Buffer:
+ *
+ * verify: (req, res, buffer) => {
+ *   req.rawBody = buffer;
+ * }
+ */
+const verifySecureWaveSignature = (
+  req
+) => {
+  const webhookSecret = String(
+    process.env
+      .SECUREWAVE_WEBHOOK_SECRET || ""
+  ).trim();
 
   if (!webhookSecret) {
     const error = new Error(
@@ -53,11 +80,27 @@ const verifySecureWaveSignature = (req) => {
     );
 
     error.statusCode = 503;
+
     throw error;
   }
 
+  /*
+   * Support common SecureWave signature
+   * header names.
+   */
   const receivedSignature =
-    getHeaderValue(req, "x-signature");
+    getHeaderValue(
+      req,
+      "x-signature"
+    ) ||
+    getHeaderValue(
+      req,
+      "x-securewave-signature"
+    ) ||
+    getHeaderValue(
+      req,
+      "securewave-signature"
+    );
 
   if (!receivedSignature) {
     return false;
@@ -72,15 +115,23 @@ const verifySecureWaveSignature = (req) => {
     return false;
   }
 
-  const expectedHexSignature = crypto
-    .createHmac("sha256", webhookSecret)
-    .update(rawPayload)
-    .digest("hex");
+  const expectedHexSignature =
+    crypto
+      .createHmac(
+        "sha256",
+        webhookSecret
+      )
+      .update(rawPayload)
+      .digest("hex");
 
-  const expectedBase64Signature = crypto
-    .createHmac("sha256", webhookSecret)
-    .update(rawPayload)
-    .digest("base64");
+  const expectedBase64Signature =
+    crypto
+      .createHmac(
+        "sha256",
+        webhookSecret
+      )
+      .update(rawPayload)
+      .digest("base64");
 
   const normalizedReceivedSignature =
     receivedSignature
@@ -99,7 +150,12 @@ const verifySecureWaveSignature = (req) => {
   );
 };
 
-const firstNonEmptyValue = (...values) => {
+/*
+ * Return the first value that is not empty.
+ */
+const firstNonEmptyValue = (
+  ...values
+) => {
   for (const value of values) {
     if (
       value !== undefined &&
@@ -113,112 +169,215 @@ const firstNonEmptyValue = (...values) => {
   return null;
 };
 
+/*
+ * Convert money to a safe two-decimal number.
+ */
 const normalizeMoney = (value) => {
-  const amount = Number(value);
+  let normalizedValue = value;
+
+  if (typeof normalizedValue === "string") {
+    normalizedValue =
+      normalizedValue.replace(
+        /,/g,
+        ""
+      );
+  }
+
+  const amount = Number(
+    normalizedValue
+  );
 
   if (!Number.isFinite(amount)) {
     return 0;
   }
 
-  return Math.round(amount * 100) / 100;
+  return (
+    Math.round(
+      (amount +
+        Number.EPSILON) *
+        100
+    ) / 100
+  );
 };
 
+/*
+ * Convert any value to trimmed text.
+ */
 const normalizeText = (value) => {
   return String(value || "").trim();
 };
 
-const extractWebhookData = (payload) => {
+/*
+ * Normalize an account number.
+ */
+const normalizeAccountNumber = (
+  value
+) => {
+  return normalizeText(value).replace(
+    /\s+/g,
+    ""
+  );
+};
+
+/*
+ * Escape text before using it in MongoDB regex.
+ */
+const escapeRegex = (value) => {
+  return String(value).replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&"
+  );
+};
+
+/*
+ * Extract the useful information from
+ * different possible SecureWaveNG payload
+ * formats.
+ */
+const extractWebhookData = (
+  payload
+) => {
   const data =
     payload?.data &&
     typeof payload.data === "object"
       ? payload.data
       : payload;
 
+  const transaction =
+    data?.transaction &&
+    typeof data.transaction ===
+      "object"
+      ? data.transaction
+      : {};
+
   const virtualAccount =
     data?.virtual_account &&
-    typeof data.virtual_account === "object"
+    typeof data.virtual_account ===
+      "object"
       ? data.virtual_account
-      : {};
+      : data?.virtualAccount &&
+          typeof data.virtualAccount ===
+            "object"
+        ? data.virtualAccount
+        : {};
 
   const customer =
     data?.customer &&
-    typeof data.customer === "object"
+    typeof data.customer ===
+      "object"
       ? data.customer
       : {};
 
-  const transactionId = normalizeText(
-    firstNonEmptyValue(
-      data?.transaction_id,
-      data?.transactionId,
-      data?.id,
-      payload?.transaction_id,
-      payload?.transactionId,
-      payload?.id
-    )
-  );
+  const transactionId =
+    normalizeText(
+      firstNonEmptyValue(
+        data?.transaction_id,
+        data?.transactionId,
+        transaction?.transaction_id,
+        transaction?.transactionId,
+        transaction?.id,
+        data?.id,
+        payload?.transaction_id,
+        payload?.transactionId,
+        payload?.id
+      )
+    );
 
-  const providerReference = normalizeText(
-    firstNonEmptyValue(
-      data?.provider_reference,
-      data?.providerReference,
-      data?.reference,
-      payload?.provider_reference,
-      payload?.providerReference,
-      payload?.reference
-    )
-  );
+  const providerReference =
+    normalizeText(
+      firstNonEmptyValue(
+        data?.provider_reference,
+        data?.providerReference,
+        data?.payment_reference,
+        data?.paymentReference,
+        transaction?.provider_reference,
+        transaction?.providerReference,
+        transaction?.reference,
+        data?.reference,
+        payload?.provider_reference,
+        payload?.providerReference,
+        payload?.reference
+      )
+    );
 
-  const accountNumber = normalizeText(
-    firstNonEmptyValue(
-      data?.account_number,
-      data?.accountNumber,
-      data?.virtual_account_number,
-      data?.virtualAccountNumber,
-      virtualAccount?.account_number,
-      virtualAccount?.accountNumber,
-      virtualAccount?.number,
-      customer?.account_number,
-      customer?.accountNumber,
-      payload?.account_number,
-      payload?.accountNumber
-    )
-  );
+  const accountNumber =
+    normalizeAccountNumber(
+      firstNonEmptyValue(
+        data?.account_number,
+        data?.accountNumber,
+        data?.virtual_account_number,
+        data?.virtualAccountNumber,
+        transaction?.account_number,
+        transaction?.accountNumber,
+        virtualAccount?.account_number,
+        virtualAccount?.accountNumber,
+        virtualAccount
+          ?.virtual_account_number,
+        virtualAccount
+          ?.virtualAccountNumber,
+        virtualAccount?.number,
+        customer?.account_number,
+        customer?.accountNumber,
+        payload?.account_number,
+        payload?.accountNumber,
+        payload?.virtual_account_number,
+        payload?.virtualAccountNumber
+      )
+    );
 
-  const notificationStatus = normalizeText(
-    firstNonEmptyValue(
-      data?.notification_status,
-      data?.notificationStatus,
-      payload?.notification_status,
-      payload?.notificationStatus
-    )
-  ).toLowerCase();
+  const notificationStatus =
+    normalizeText(
+      firstNonEmptyValue(
+        data?.notification_status,
+        data?.notificationStatus,
+        payload?.notification_status,
+        payload?.notificationStatus,
+        payload?.event
+      )
+    ).toLowerCase();
 
-  const transactionStatus = normalizeText(
-    firstNonEmptyValue(
-      data?.transaction_status,
-      data?.transactionStatus,
-      data?.status,
-      payload?.transaction_status,
-      payload?.transactionStatus,
-      payload?.status
-    )
-  ).toLowerCase();
+  const transactionStatus =
+    normalizeText(
+      firstNonEmptyValue(
+        data?.transaction_status,
+        data?.transactionStatus,
+        transaction?.status,
+        data?.payment_status,
+        data?.paymentStatus,
+        data?.status,
+        payload?.transaction_status,
+        payload?.transactionStatus,
+        payload?.payment_status,
+        payload?.paymentStatus,
+        payload?.status
+      )
+    ).toLowerCase();
 
-  const transactionType = normalizeText(
-    firstNonEmptyValue(
-      data?.transaction_type,
-      data?.transactionType,
-      data?.type,
-      payload?.transaction_type,
-      payload?.transactionType,
-      payload?.type
-    )
-  ).toLowerCase();
+  const transactionType =
+    normalizeText(
+      firstNonEmptyValue(
+        data?.transaction_type,
+        data?.transactionType,
+        transaction?.type,
+        data?.type,
+        payload?.transaction_type,
+        payload?.transactionType,
+        payload?.type,
+        payload?.event
+      )
+    ).toLowerCase();
 
   const amount = normalizeMoney(
     firstNonEmptyValue(
       data?.amount,
-      payload?.amount
+      data?.paid_amount,
+      data?.paidAmount,
+      transaction?.amount,
+      transaction?.paid_amount,
+      transaction?.paidAmount,
+      payload?.amount,
+      payload?.paid_amount,
+      payload?.paidAmount
     )
   );
 
@@ -226,28 +385,38 @@ const extractWebhookData = (payload) => {
     firstNonEmptyValue(
       data?.fees,
       data?.fee,
+      transaction?.fees,
+      transaction?.fee,
       payload?.fees,
-      payload?.fee
+      payload?.fee,
+      0
     )
   );
 
-  const settlementAmount = normalizeMoney(
-    firstNonEmptyValue(
-      data?.settlement_amount,
-      data?.settlementAmount,
-      payload?.settlement_amount,
-      payload?.settlementAmount,
-      amount
-    )
-  );
+  const settlementAmount =
+    normalizeMoney(
+      firstNonEmptyValue(
+        data?.settlement_amount,
+        data?.settlementAmount,
+        transaction
+          ?.settlement_amount,
+        transaction
+          ?.settlementAmount,
+        payload?.settlement_amount,
+        payload?.settlementAmount,
+        amount
+      )
+    );
 
-  const currency = normalizeText(
-    firstNonEmptyValue(
-      data?.currency,
-      payload?.currency,
-      "NGN"
-    )
-  ).toUpperCase();
+  const currency =
+    normalizeText(
+      firstNonEmptyValue(
+        data?.currency,
+        transaction?.currency,
+        payload?.currency,
+        "NGN"
+      )
+    ).toUpperCase();
 
   return {
     transactionId,
@@ -263,407 +432,787 @@ const extractWebhookData = (payload) => {
   };
 };
 
+/*
+ * Decide whether the event represents
+ * a successful incoming payment.
+ */
 const isSuccessfulPayment = ({
   notificationStatus,
   transactionStatus,
 }) => {
-  const successfulNotificationStatuses = [
+  const successfulStatuses = [
     "payment_successful",
+    "payment successful",
     "successful",
     "success",
     "completed",
-  ];
-
-  const successfulTransactionStatuses = [
-    "successful",
-    "success",
-    "completed",
+    "complete",
+    "paid",
+    "approved",
   ];
 
   return (
-    successfulNotificationStatuses.includes(
+    successfulStatuses.includes(
       notificationStatus
     ) ||
-    successfulTransactionStatuses.includes(
+    successfulStatuses.includes(
       transactionStatus
     )
   );
 };
 
 /*
- * POST /api/securewave/webhook
+ * Find the ServicePay customer that owns
+ * the virtual account.
  */
-exports.handleVirtualAccountWebhook = async (
-  req,
-  res
-) => {
-  let webhookEvent = null;
-  let session = null;
+const findCustomerByAccountNumber =
+  async (accountNumber) => {
+    const normalizedAccount =
+      normalizeAccountNumber(
+        accountNumber
+      );
 
-  try {
-    const isValidSignature =
-      verifySecureWaveSignature(req);
-
-    if (!isValidSignature) {
-      return res.status(401).json({
-        success: false,
-        message:
-          "Invalid SecureWaveNG webhook signature.",
-      });
-    }
-
-    const payload = req.body || {};
-
-    const webhookData =
-      extractWebhookData(payload);
-
-    if (!webhookData.transactionId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Webhook transaction ID is missing.",
-      });
+    if (!normalizedAccount) {
+      return null;
     }
 
     /*
-     * Idempotency:
-     * If SecureWaveNG resends the same event,
-     * acknowledge it without crediting again.
+     * Try the current expected User model
+     * structure first.
      */
-    const existingEvent =
-      await SecurewaveWebhook.findOne({
-        transactionId:
-          webhookData.transactionId,
+    let customer =
+      await User.findOne({
+        "virtualAccount.accountNumber":
+          normalizedAccount,
       });
 
-    if (existingEvent) {
-      return res.status(200).json({
-        success: true,
-        message:
-          "Webhook event was already received.",
-      });
+    if (customer) {
+      return customer;
     }
 
-    try {
-      webhookEvent =
-        await SecurewaveWebhook.create({
-          transactionId:
-            webhookData.transactionId,
-
-          providerReference:
-            webhookData.providerReference ||
-            null,
-
-          notificationStatus:
-            webhookData.notificationStatus ||
-            null,
-
-          transactionStatus:
-            webhookData.transactionStatus ||
-            null,
-
-          transactionType:
-            webhookData.transactionType ||
-            null,
-
+    /*
+     * Try older possible field names so
+     * existing accounts do not stop working.
+     */
+    customer = await User.findOne({
+      $or: [
+        {
+          virtualAccountNumber:
+            normalizedAccount,
+        },
+        {
+          dedicatedAccountNumber:
+            normalizedAccount,
+        },
+        {
           accountNumber:
-            webhookData.accountNumber ||
-            null,
+            normalizedAccount,
+        },
+      ],
+    });
 
-          amount: webhookData.amount,
+    if (customer) {
+      return customer;
+    }
 
-          fees: webhookData.fees,
+    /*
+     * Final case-insensitive exact match.
+     */
+    const exactAccountRegex =
+      new RegExp(
+        `^${escapeRegex(
+          normalizedAccount
+        )}$`,
+        "i"
+      );
 
-          settlementAmount:
-            webhookData.settlementAmount,
+    return User.findOne({
+      $or: [
+        {
+          "virtualAccount.accountNumber":
+            exactAccountRegex,
+        },
+        {
+          virtualAccountNumber:
+            exactAccountRegex,
+        },
+        {
+          dedicatedAccountNumber:
+            exactAccountRegex,
+        },
+        {
+          accountNumber:
+            exactAccountRegex,
+        },
+      ],
+    });
+  };
 
-          currency:
-            webhookData.currency || "NGN",
+/*
+ * Mark a webhook as failed.
+ */
+const markWebhookAsFailed = async (
+  webhookId,
+  reason
+) => {
+  if (!webhookId) {
+    return;
+  }
 
-          status: "RECEIVED",
+  await SecurewaveWebhook.updateOne(
+    {
+      _id: webhookId,
+      status: {
+        $ne: "PROCESSED",
+      },
+    },
+    {
+      $set: {
+        status: "FAILED",
+        failureReason:
+          reason ||
+          "Webhook processing failed.",
+        processedAt: new Date(),
+      },
+    }
+  );
+};
 
-          payload,
-        });
-    } catch (error) {
-      if (error?.code === 11000) {
-        return res.status(200).json({
-          success: true,
+/*
+ * POST /api/securewave/webhook
+ */
+exports.handleVirtualAccountWebhook =
+  async (req, res) => {
+    let webhookEvent = null;
+    let session = null;
+
+    try {
+      const isValidSignature =
+        verifySecureWaveSignature(
+          req
+        );
+
+      if (!isValidSignature) {
+        console.error(
+          "SecureWave webhook signature verification failed.",
+          {
+            availableHeaders:
+              Object.keys(
+                req.headers || {}
+              ),
+            hasRawBody:
+              Buffer.isBuffer(
+                req.rawBody
+              ),
+          }
+        );
+
+        return res.status(401).json({
+          success: false,
           message:
-            "Webhook event was already received.",
+            "Invalid SecureWaveNG webhook signature.",
         });
       }
 
-      throw error;
-    }
+      const payload =
+        req.body || {};
 
-    if (
-      !isSuccessfulPayment(webhookData)
-    ) {
-      webhookEvent.status = "IGNORED";
-      webhookEvent.failureReason =
-        "Webhook is not a successful payment event.";
-      webhookEvent.processedAt = new Date();
+      const webhookData =
+        extractWebhookData(
+          payload
+        );
 
-      await webhookEvent.save();
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "Webhook received but no wallet credit was required.",
-      });
-    }
-
-    if (
-      webhookData.currency &&
-      webhookData.currency !== "NGN"
-    ) {
-      webhookEvent.status = "IGNORED";
-      webhookEvent.failureReason =
-        `Unsupported currency: ${webhookData.currency}`;
-      webhookEvent.processedAt = new Date();
-
-      await webhookEvent.save();
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "Webhook currency is not supported.",
-      });
-    }
-
-    if (!webhookData.accountNumber) {
-      webhookEvent.status = "FAILED";
-      webhookEvent.failureReason =
-        "Virtual account number is missing.";
-      webhookEvent.processedAt = new Date();
-
-      await webhookEvent.save();
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Virtual account number is missing.",
-      });
-    }
-
-    if (webhookData.amount <= 0) {
-      webhookEvent.status = "FAILED";
-      webhookEvent.failureReason =
-        "Webhook amount must be greater than zero.";
-      webhookEvent.processedAt = new Date();
-
-      await webhookEvent.save();
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Webhook amount is invalid.",
-      });
-    }
-
-    const customer = await User.findOne({
-      "virtualAccount.accountNumber":
-        webhookData.accountNumber,
-
-      "virtualAccount.provider":
-        "SECUREWAVENG",
-    });
-
-    if (!customer) {
-      webhookEvent.status = "FAILED";
-      webhookEvent.failureReason =
-        "No ServicePay customer matches the virtual account number.";
-      webhookEvent.processedAt = new Date();
-
-      await webhookEvent.save();
-
-      return res.status(404).json({
-        success: false,
-        message:
-          "Virtual account customer was not found.",
-      });
-    }
-
-    /*
-     * Wallet credit uses the incoming amount.
-     * Provider fees and settlement figures remain
-     * recorded in the webhook event for reconciliation.
-     */
-    const walletCreditAmount =
-      webhookData.amount;
-
-    session = await mongoose.startSession();
-
-    await session.withTransaction(
-      async () => {
-        const duplicateTransaction =
-          await Transaction.findOne({
-            reference:
-              webhookData.transactionId,
-          }).session(session);
-
-        if (duplicateTransaction) {
-          return;
+      console.log(
+        "SecureWave webhook received:",
+        {
+          transactionId:
+            webhookData.transactionId,
+          accountNumber:
+            webhookData.accountNumber,
+          amount:
+            webhookData.amount,
+          currency:
+            webhookData.currency,
+          notificationStatus:
+            webhookData.notificationStatus,
+          transactionStatus:
+            webhookData.transactionStatus,
+          transactionType:
+            webhookData.transactionType,
         }
+      );
 
-        const updatedCustomer =
-          await User.findOneAndUpdate(
-            {
-              _id: customer._id,
-              status: "ACTIVE",
-            },
-            {
-              $inc: {
-                walletBalance:
-                  walletCreditAmount,
-                totalTransactions: 1,
+      if (
+        !webhookData.transactionId
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Webhook transaction ID is missing.",
+        });
+      }
+
+      /*
+       * Find an existing webhook event.
+       *
+       * PROCESSED events must never credit
+       * the wallet again.
+       */
+      const existingEvent =
+        await SecurewaveWebhook.findOne({
+          transactionId:
+            webhookData.transactionId,
+        });
+
+      if (
+        existingEvent?.status ===
+        "PROCESSED"
+      ) {
+        return res.status(200).json({
+          success: true,
+          message:
+            "Webhook was already processed.",
+        });
+      }
+
+      if (
+        existingEvent?.status ===
+        "IGNORED"
+      ) {
+        return res.status(200).json({
+          success: true,
+          message:
+            "Webhook was already received and ignored.",
+        });
+      }
+
+      /*
+       * Retry events that were previously
+       * RECEIVED, PROCESSING or FAILED.
+       */
+      if (existingEvent) {
+        webhookEvent =
+          existingEvent;
+
+        webhookEvent.providerReference =
+          webhookData
+            .providerReference ||
+          null;
+
+        webhookEvent.notificationStatus =
+          webhookData
+            .notificationStatus ||
+          null;
+
+        webhookEvent.transactionStatus =
+          webhookData
+            .transactionStatus ||
+          null;
+
+        webhookEvent.transactionType =
+          webhookData
+            .transactionType ||
+          null;
+
+        webhookEvent.accountNumber =
+          webhookData.accountNumber ||
+          null;
+
+        webhookEvent.amount =
+          webhookData.amount;
+
+        webhookEvent.fees =
+          webhookData.fees;
+
+        webhookEvent.settlementAmount =
+          webhookData
+            .settlementAmount;
+
+        webhookEvent.currency =
+          webhookData.currency ||
+          "NGN";
+
+        webhookEvent.status =
+          "PROCESSING";
+
+        webhookEvent.failureReason =
+          null;
+
+        webhookEvent.payload =
+          payload;
+
+        webhookEvent.processedAt =
+          null;
+
+        await webhookEvent.save();
+      } else {
+        try {
+          webhookEvent =
+            await SecurewaveWebhook.create(
+              {
+                transactionId:
+                  webhookData
+                    .transactionId,
+
+                providerReference:
+                  webhookData
+                    .providerReference ||
+                  null,
+
+                notificationStatus:
+                  webhookData
+                    .notificationStatus ||
+                  null,
+
+                transactionStatus:
+                  webhookData
+                    .transactionStatus ||
+                  null,
+
+                transactionType:
+                  webhookData
+                    .transactionType ||
+                  null,
+
+                accountNumber:
+                  webhookData
+                    .accountNumber ||
+                  null,
+
+                amount:
+                  webhookData.amount,
+
+                fees:
+                  webhookData.fees,
+
+                settlementAmount:
+                  webhookData
+                    .settlementAmount,
+
+                currency:
+                  webhookData
+                    .currency ||
+                  "NGN",
+
+                status:
+                  "PROCESSING",
+
+                payload,
+              }
+            );
+        } catch (error) {
+          if (error?.code === 11000) {
+            const duplicateEvent =
+              await SecurewaveWebhook.findOne(
+                {
+                  transactionId:
+                    webhookData
+                      .transactionId,
+                }
+              );
+
+            if (
+              duplicateEvent?.status ===
+              "PROCESSED"
+            ) {
+              return res
+                .status(200)
+                .json({
+                  success: true,
+                  message:
+                    "Webhook was already processed.",
+                });
+            }
+
+            return res
+              .status(200)
+              .json({
+                success: true,
+                message:
+                  "Webhook is currently being processed.",
+              });
+          }
+
+          throw error;
+        }
+      }
+
+      /*
+       * Ignore events that do not represent
+       * successful payments.
+       */
+      if (
+        !isSuccessfulPayment(
+          webhookData
+        )
+      ) {
+        webhookEvent.status =
+          "IGNORED";
+
+        webhookEvent.failureReason =
+          "Webhook is not a successful payment event.";
+
+        webhookEvent.processedAt =
+          new Date();
+
+        await webhookEvent.save();
+
+        return res.status(200).json({
+          success: true,
+          message:
+            "Webhook received but no wallet credit was required.",
+        });
+      }
+
+      /*
+       * ServicePay wallet currently accepts
+       * NGN funding only.
+       */
+      if (
+        webhookData.currency !==
+        "NGN"
+      ) {
+        webhookEvent.status =
+          "IGNORED";
+
+        webhookEvent.failureReason =
+          `Unsupported currency: ${webhookData.currency}`;
+
+        webhookEvent.processedAt =
+          new Date();
+
+        await webhookEvent.save();
+
+        return res.status(200).json({
+          success: true,
+          message:
+            "Webhook currency is not supported.",
+        });
+      }
+
+      if (
+        !webhookData.accountNumber
+      ) {
+        await markWebhookAsFailed(
+          webhookEvent._id,
+          "Virtual account number is missing."
+        );
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "Virtual account number is missing.",
+        });
+      }
+
+      if (
+        webhookData.amount <= 0
+      ) {
+        await markWebhookAsFailed(
+          webhookEvent._id,
+          "Webhook amount must be greater than zero."
+        );
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "Webhook amount is invalid.",
+        });
+      }
+
+      /*
+       * Find the customer using the virtual
+       * account number.
+       */
+      const customer =
+        await findCustomerByAccountNumber(
+          webhookData.accountNumber
+        );
+
+      if (!customer) {
+        await markWebhookAsFailed(
+          webhookEvent._id,
+          "No ServicePay customer matches the virtual account number."
+        );
+
+        console.error(
+          "SecureWave customer not found:",
+          {
+            accountNumber:
+              webhookData.accountNumber,
+            transactionId:
+              webhookData.transactionId,
+          }
+        );
+
+        return res.status(404).json({
+          success: false,
+          message:
+            "Virtual account customer was not found.",
+        });
+      }
+
+      /*
+       * Credit the amount paid by the sender.
+       *
+       * The provider fees and settlement
+       * amount remain stored for reconciliation.
+       */
+      const walletCreditAmount =
+        webhookData.amount;
+
+      session =
+        await mongoose.startSession();
+
+      await session.withTransaction(
+        async () => {
+          /*
+           * Transaction reference provides
+           * another layer of idempotency.
+           */
+          const duplicateTransaction =
+            await Transaction.findOne({
+              reference:
+                webhookData
+                  .transactionId,
+            }).session(session);
+
+          if (
+            duplicateTransaction
+          ) {
+            await SecurewaveWebhook.updateOne(
+              {
+                _id:
+                  webhookEvent._id,
               },
-            },
+              {
+                $set: {
+                  status:
+                    "PROCESSED",
+
+                  creditedUserId:
+                    duplicateTransaction
+                      .customerId ||
+                    customer._id,
+
+                  walletCreditedAmount:
+                    duplicateTransaction
+                      .amount ||
+                    walletCreditAmount,
+
+                  failureReason:
+                    null,
+
+                  processedAt:
+                    new Date(),
+                },
+              },
+              {
+                session,
+              }
+            );
+
+            return;
+          }
+
+          const updatedCustomer =
+            await User.findOneAndUpdate(
+              {
+                _id: customer._id,
+
+                /*
+                 * Permit older customers whose
+                 * status field may be missing.
+                 */
+                $or: [
+                  {
+                    status:
+                      "ACTIVE",
+                  },
+                  {
+                    status: {
+                      $exists:
+                        false,
+                    },
+                  },
+                  {
+                    status:
+                      null,
+                  },
+                ],
+              },
+              {
+                $inc: {
+                  walletBalance:
+                    walletCreditAmount,
+
+                  totalTransactions:
+                    1,
+                },
+              },
+              {
+                new: true,
+                session,
+              }
+            );
+
+          if (!updatedCustomer) {
+            throw new Error(
+              "Customer is not active or could not be updated."
+            );
+          }
+
+          await Transaction.create(
+            [
+              {
+                reference:
+                  webhookData
+                    .transactionId,
+
+                customerId:
+                  updatedCustomer._id,
+
+                agentId:
+                  updatedCustomer
+                    .agentId ||
+                  null,
+
+                stateManagerId:
+                  updatedCustomer
+                    .stateManagerId ||
+                  null,
+
+                zonalManagerId:
+                  updatedCustomer
+                    .zonalManagerId ||
+                  null,
+
+                serviceType:
+                  "WALLET_FUNDING",
+
+                provider:
+                  "SECUREWAVENG",
+
+                phone:
+                  updatedCustomer
+                    .phone,
+
+                amount:
+                  walletCreditAmount,
+
+                status:
+                  "SUCCESSFUL",
+
+                providerResponse:
+                  payload,
+              },
+            ],
             {
-              new: true,
               session,
             }
           );
 
-        if (!updatedCustomer) {
-          throw new Error(
-            "Customer is not active or could not be updated."
+          await SecurewaveWebhook.updateOne(
+            {
+              _id:
+                webhookEvent._id,
+            },
+            {
+              $set: {
+                status:
+                  "PROCESSED",
+
+                creditedUserId:
+                  updatedCustomer._id,
+
+                walletCreditedAmount:
+                  walletCreditAmount,
+
+                failureReason:
+                  null,
+
+                processedAt:
+                  new Date(),
+              },
+            },
+            {
+              session,
+            }
           );
         }
-
-        await Transaction.create(
-          [
-            {
-              reference:
-                webhookData.transactionId,
-
-              customerId:
-                updatedCustomer._id,
-
-              agentId:
-                updatedCustomer.agentId ||
-                null,
-
-              stateManagerId:
-                updatedCustomer
-                  .stateManagerId || null,
-
-              zonalManagerId:
-                updatedCustomer
-                  .zonalManagerId || null,
-
-              serviceType:
-                "WALLET_FUNDING",
-
-              provider: "SECUREWAVENG",
-
-              phone:
-                updatedCustomer.phone,
-
-              amount:
-                walletCreditAmount,
-
-              status: "SUCCESSFUL",
-
-              providerResponse: payload,
-            },
-          ],
-          {
-            session,
-          }
-        );
-
-        await SecurewaveWebhook.updateOne(
-          {
-            _id: webhookEvent._id,
-          },
-          {
-            $set: {
-              status: "PROCESSED",
-
-              creditedUserId:
-                updatedCustomer._id,
-
-              walletCreditedAmount:
-                walletCreditAmount,
-
-              failureReason: null,
-
-              processedAt: new Date(),
-            },
-          },
-          {
-            session,
-          }
-        );
-      }
-    );
-
-    const processedEvent =
-      await SecurewaveWebhook.findById(
-        webhookEvent._id
       );
 
-    if (
-      processedEvent?.status ===
-      "PROCESSED"
-    ) {
+      const processedEvent =
+        await SecurewaveWebhook.findById(
+          webhookEvent._id
+        );
+
+      if (
+        processedEvent?.status ===
+        "PROCESSED"
+      ) {
+        console.log(
+          "SecureWave wallet credited:",
+          {
+            transactionId:
+              webhookData.transactionId,
+            customerId:
+              processedEvent
+                .creditedUserId,
+            amount:
+              processedEvent
+                .walletCreditedAmount,
+          }
+        );
+
+        return res.status(200).json({
+          success: true,
+          message:
+            "Wallet funded successfully.",
+        });
+      }
+
       return res.status(200).json({
         success: true,
         message:
-          "Wallet funded successfully.",
+          "Webhook was already processed.",
       });
-    }
+    } catch (error) {
+      console.error(
+        "SecureWave webhook error:",
+        error
+      );
 
-    return res.status(200).json({
-      success: true,
-      message:
-        "Webhook was already processed.",
-    });
-  } catch (error) {
-    console.error(
-      "SecureWave webhook error:",
-      error
-    );
+      if (webhookEvent?._id) {
+        try {
+          await markWebhookAsFailed(
+            webhookEvent._id,
+            error.message ||
+              "Webhook processing failed."
+          );
+        } catch (updateError) {
+          console.error(
+            "Unable to update webhook failure:",
+            updateError.message
+          );
+        }
+      }
 
-    if (webhookEvent?._id) {
-      try {
-        await SecurewaveWebhook.updateOne(
-          {
-            _id: webhookEvent._id,
-            status: {
-              $ne: "PROCESSED",
-            },
-          },
-          {
-            $set: {
-              status: "FAILED",
-              failureReason:
-                error.message ||
-                "Webhook processing failed.",
-              processedAt: new Date(),
-            },
-          }
-        );
-      } catch (updateError) {
-        console.error(
-          "Unable to update webhook failure:",
-          updateError.message
-        );
+      return res
+        .status(
+          error.statusCode ||
+            error.status ||
+            500
+        )
+        .json({
+          success: false,
+          message:
+            error.message ||
+            "Unable to process SecureWaveNG webhook.",
+        });
+    } finally {
+      if (session) {
+        await session.endSession();
       }
     }
-
-    return res
-      .status(error.statusCode || 500)
-      .json({
-        success: false,
-        message:
-          error.message ||
-          "Unable to process SecureWaveNG webhook.",
-      });
-  } finally {
-    if (session) {
-      await session.endSession();
-    }
-  }
-};
+  };
