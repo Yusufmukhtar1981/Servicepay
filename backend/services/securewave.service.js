@@ -107,9 +107,27 @@ const validateAccountName = async ({
     },
   });
 };
+const generateVirtualAccount = async ({
+  email,
+  firstName,
+  lastName,
+  phoneNumber,
+}) => {
+  return secureWaveRequest({
+    method: "POST",
+    endpoint: "/virtual_accounts/generate",
+    data: {
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      phone_number: phoneNumber,
+    },
+  });
+};
 module.exports = {
   getSecureWaveHeaders,
   secureWaveRequest,
   getBanks,
   validateAccountName,
+  generateVirtualAccount,
 };
