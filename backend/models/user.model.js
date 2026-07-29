@@ -124,9 +124,14 @@ const userSchema = new mongoose.Schema(
         trim: true,
       },
 
+      /*
+       * Do not save null for fields that have
+       * unique indexes. Leave them undefined
+       * until a real value is available.
+       */
       accountNumber: {
         type: String,
-        default: null,
+        default: undefined,
         trim: true,
       },
 
@@ -150,7 +155,7 @@ const userSchema = new mongoose.Schema(
 
       customerReference: {
         type: String,
-        default: null,
+        default: undefined,
         trim: true,
       },
 
@@ -191,7 +196,11 @@ const userSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["ACTIVE", "SUSPENDED", "BLOCKED"],
+      enum: [
+        "ACTIVE",
+        "SUSPENDED",
+        "BLOCKED",
+      ],
       default: "ACTIVE",
     },
   },
@@ -201,29 +210,45 @@ const userSchema = new mongoose.Schema(
 );
 
 /*
- * Prevent two ServicePay users from sharing
- * the same virtual account number.
+ * Create the unique index only for users who
+ * already have a real virtual-account number.
+ *
+ * This prevents MongoDB from treating multiple
+ * null values as duplicate account numbers.
  */
 userSchema.index(
   {
     "virtualAccount.accountNumber": 1,
   },
   {
+    name: "virtualAccount.accountNumber_1",
     unique: true,
-    sparse: true,
+    partialFilterExpression: {
+      "virtualAccount.accountNumber": {
+        $type: "string",
+        $gt: "",
+      },
+    },
   }
 );
 
 /*
- * Prevent duplicate provider references.
+ * Create the unique index only when a real
+ * SecureWaveNG customer reference exists.
  */
 userSchema.index(
   {
     "virtualAccount.customerReference": 1,
   },
   {
+    name: "virtualAccount.customerReference_1",
     unique: true,
-    sparse: true,
+    partialFilterExpression: {
+      "virtualAccount.customerReference": {
+        $type: "string",
+        $gt: "",
+      },
+    },
   }
 );
 
@@ -238,14 +263,13 @@ userSchema.pre("save", async function () {
   );
 });
 
-userSchema.methods.comparePassword = async function (
-  enteredPassword
-) {
-  return bcrypt.compare(
-    enteredPassword,
-    this.password
-  );
-};
+userSchema.methods.comparePassword =
+  async function (enteredPassword) {
+    return bcrypt.compare(
+      enteredPassword,
+      this.password
+    );
+  };
 
 module.exports = mongoose.model(
   "User",
