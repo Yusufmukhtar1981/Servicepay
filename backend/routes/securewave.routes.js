@@ -6,22 +6,31 @@ const {
   getBanks,
   validateAccountName,
   generateVirtualAccount,
-} = require("../controllers/securewave.controller");
+} = require(
+  "../controllers/securewave.controller"
+);
+
+const {
+  handleVirtualAccountWebhook,
+} = require(
+  "../controllers/securewaveWebhook.controller"
+);
 
 const {
   protect,
 } = require("../middleware/auth.middleware");
 
-/*
- * Public route:
- * Returns the list of supported Nigerian banks.
- */
 router.get("/banks", getBanks);
 
 /*
- * Protected routes:
- * Customer must provide a valid ServicePay JWT token.
+ * SecureWaveNG calls this route directly.
+ * Do not add ServicePay JWT protection.
  */
+router.post(
+  "/webhook",
+  handleVirtualAccountWebhook
+);
+
 router.post(
   "/validate-account-name",
   protect,
