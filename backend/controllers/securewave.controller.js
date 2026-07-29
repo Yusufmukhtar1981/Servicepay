@@ -1,7 +1,4 @@
 const User = require("../models/user.model");
-const IdVerification = require(
-  "../models/idVerification.model"
-);
 
 const {
   getBanks,
@@ -18,9 +15,7 @@ const getAuthenticatedUserId = (req) => {
   );
 };
 
-const formatVirtualAccount = (
-  virtualAccount
-) => {
+const formatVirtualAccount = (virtualAccount) => {
   if (!virtualAccount) {
     return {
       provider: null,
@@ -36,77 +31,49 @@ const formatVirtualAccount = (
   }
 
   return {
-    provider:
-      virtualAccount.provider || null,
-
+    provider: virtualAccount.provider || null,
     accountNumber:
       virtualAccount.accountNumber || null,
-
     accountName:
       virtualAccount.accountName || null,
-
     bankName:
       virtualAccount.bankName || null,
-
     bankCode:
       virtualAccount.bankCode || null,
-
     status:
-      virtualAccount.status ||
-      "NOT_CREATED",
-
+      virtualAccount.status || "NOT_CREATED",
     failureReason:
       virtualAccount.failureReason || null,
-
     createdAt:
       virtualAccount.createdAt || null,
-
     updatedAt:
       virtualAccount.updatedAt || null,
   };
 };
 
-/*
- * Extract a virtual account from possible
- * SecureWaveNG response formats.
- */
-const extractVirtualAccount = (
-  providerResponse
-) => {
-  const responseData =
-    providerResponse?.data;
+const extractVirtualAccount = (providerResponse) => {
+  const responseData = providerResponse?.data;
 
   let account = null;
 
   if (Array.isArray(responseData)) {
-    account =
-      responseData[0] || null;
+    account = responseData[0] || null;
   } else if (
     responseData &&
     typeof responseData === "object"
   ) {
-    if (
-      Array.isArray(
-        responseData.accounts
-      )
-    ) {
-      account =
-        responseData.accounts[0] ||
-        null;
+    if (Array.isArray(responseData.accounts)) {
+      account = responseData.accounts[0] || null;
     } else if (
       responseData.virtual_account &&
-      typeof responseData
-        .virtual_account === "object"
+      typeof responseData.virtual_account === "object"
     ) {
-      account =
-        responseData.virtual_account;
+      account = responseData.virtual_account;
     } else if (
       responseData.virtualAccount &&
-      typeof responseData
-        .virtualAccount === "object"
+      typeof responseData.virtualAccount === "object"
     ) {
-      account =
-        responseData.virtualAccount;
+      account = responseData.virtualAccount;
     } else {
       account = responseData;
     }
@@ -177,13 +144,9 @@ const extractVirtualAccount = (
 /*
  * GET /api/securewave/banks
  */
-exports.getBanks = async (
-  req,
-  res
-) => {
+exports.getBanks = async (req, res) => {
   try {
-    const response =
-      await getBanks();
+    const response = await getBanks();
 
     return res.status(200).json({
       success: true,
@@ -192,22 +155,18 @@ exports.getBanks = async (
   } catch (error) {
     console.error(
       "SecureWave get banks error:",
-      error.providerResponse ||
-        error.message
+      error.providerResponse || error.message
     );
 
     return res
-      .status(
-        error.statusCode || 500
-      )
+      .status(error.statusCode || 500)
       .json({
         success: false,
         message:
           error.message ||
           "Unable to fetch banks.",
         providerResponse:
-          error.providerResponse ||
-          null,
+          error.providerResponse || null,
       });
   }
 };
@@ -215,10 +174,7 @@ exports.getBanks = async (
 /*
  * GET /api/securewave/virtual-account
  */
-exports.getMyVirtualAccount = async (
-  req,
-  res
-) => {
+exports.getMyVirtualAccount = async (req, res) => {
   try {
     const authenticatedUserId =
       getAuthenticatedUserId(req);
@@ -226,29 +182,24 @@ exports.getMyVirtualAccount = async (
     if (!authenticatedUserId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Authentication is required.",
+        message: "Authentication is required.",
       });
     }
 
-    const customer =
-      await User.findById(
-        authenticatedUserId
-      ).select(
-        "fullName email phone role status virtualAccount"
-      );
+    const customer = await User.findById(
+      authenticatedUserId
+    ).select(
+      "fullName email phone role status virtualAccount"
+    );
 
     if (!customer) {
       return res.status(404).json({
         success: false,
-        message:
-          "Customer account not found.",
+        message: "Customer account not found.",
       });
     }
 
-    if (
-      customer.role !== "CUSTOMER"
-    ) {
+    if (customer.role !== "CUSTOMER") {
       return res.status(403).json({
         success: false,
         message:
@@ -262,11 +213,8 @@ exports.getMyVirtualAccount = async (
       );
 
     const hasActiveAccount =
-      virtualAccount.status ===
-        "ACTIVE" &&
-      Boolean(
-        virtualAccount.accountNumber
-      );
+      virtualAccount.status === "ACTIVE" &&
+      Boolean(virtualAccount.accountNumber);
 
     return res.status(200).json({
       success: true,
@@ -274,10 +222,8 @@ exports.getMyVirtualAccount = async (
         ? "Virtual account fetched successfully."
         : "Virtual account has not been created yet.",
       data: {
-        hasVirtualAccount:
-          hasActiveAccount,
-        customerName:
-          customer.fullName,
+        hasVirtualAccount: hasActiveAccount,
+        customerName: customer.fullName,
         virtualAccount,
       },
     });
@@ -298,10 +244,7 @@ exports.getMyVirtualAccount = async (
 /*
  * POST /api/securewave/validate-account-name
  */
-exports.validateAccountName = async (
-  req,
-  res
-) => {
+exports.validateAccountName = async (req, res) => {
   try {
     const bankCode = String(
       req.body.bankCode ||
@@ -315,10 +258,7 @@ exports.validateAccountName = async (
         ""
     ).trim();
 
-    if (
-      !bankCode ||
-      !accountNumber
-    ) {
+    if (!bankCode || !accountNumber) {
       return res.status(400).json({
         success: false,
         message:
@@ -329,16 +269,11 @@ exports.validateAccountName = async (
     if (!/^\d+$/.test(bankCode)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Bank code is invalid.",
+        message: "Bank code is invalid.",
       });
     }
 
-    if (
-      !/^\d{10}$/.test(
-        accountNumber
-      )
-    ) {
+    if (!/^\d{10}$/.test(accountNumber)) {
       return res.status(400).json({
         success: false,
         message:
@@ -346,11 +281,10 @@ exports.validateAccountName = async (
       });
     }
 
-    const response =
-      await validateAccountName({
-        bankCode,
-        accountNumber,
-      });
+    const response = await validateAccountName({
+      bankCode,
+      accountNumber,
+    });
 
     return res.status(200).json({
       success: true,
@@ -359,22 +293,18 @@ exports.validateAccountName = async (
   } catch (error) {
     console.error(
       "SecureWave account verification error:",
-      error.providerResponse ||
-        error.message
+      error.providerResponse || error.message
     );
 
     return res
-      .status(
-        error.statusCode || 500
-      )
+      .status(error.statusCode || 500)
       .json({
         success: false,
         message:
           error.message ||
           "Unable to verify account name.",
         providerResponse:
-          error.providerResponse ||
-          null,
+          error.providerResponse || null,
       });
   }
 };
@@ -395,27 +325,22 @@ exports.generateVirtualAccount = async (
     if (!authenticatedUserId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Authentication is required.",
+        message: "Authentication is required.",
       });
     }
 
-    customer =
-      await User.findById(
-        authenticatedUserId
-      );
+    customer = await User.findById(
+      authenticatedUserId
+    );
 
     if (!customer) {
       return res.status(404).json({
         success: false,
-        message:
-          "Customer account not found.",
+        message: "Customer account not found.",
       });
     }
 
-    if (
-      customer.status !== "ACTIVE"
-    ) {
+    if (customer.status !== "ACTIVE") {
       return res.status(403).json({
         success: false,
         message:
@@ -423,9 +348,7 @@ exports.generateVirtualAccount = async (
       });
     }
 
-    if (
-      customer.role !== "CUSTOMER"
-    ) {
+    if (customer.role !== "CUSTOMER") {
       return res.status(403).json({
         success: false,
         message:
@@ -433,24 +356,18 @@ exports.generateVirtualAccount = async (
       });
     }
 
-    /*
-     * Return the existing account instead
-     * of creating another one.
-     */
     if (
       customer.virtualAccount?.status ===
         "ACTIVE" &&
-      customer.virtualAccount
-        ?.accountNumber
+      customer.virtualAccount?.accountNumber
     ) {
       return res.status(200).json({
         success: true,
         message:
           "Virtual account already exists.",
-        data:
-          formatVirtualAccount(
-            customer.virtualAccount
-          ),
+        data: formatVirtualAccount(
+          customer.virtualAccount
+        ),
       });
     }
 
@@ -501,11 +418,7 @@ exports.generateVirtualAccount = async (
       });
     }
 
-    if (
-      !/^\d{11}$/.test(
-        phoneNumber
-      )
-    ) {
+    if (!/^\d{11}$/.test(phoneNumber)) {
       return res.status(400).json({
         success: false,
         message:
@@ -513,72 +426,19 @@ exports.generateVirtualAccount = async (
       });
     }
 
-    /*
-     * SecureWaveNG requires a verified
-     * NIN or BVN.
-     *
-     * Prefer NIN if both are available.
-     */
-    const verifiedId =
-      await IdVerification.findOne({
-        user: customer._id,
-        status: "SUCCESS",
-        idType: {
-          $in: ["NIN", "BVN"],
-        },
-      }).sort({
-        createdAt: -1,
-      });
-
-    if (!verifiedId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Please complete NIN or BVN verification before creating a virtual account.",
-      });
-    }
-
-    const idType = String(
-      verifiedId.idType || ""
-    )
-      .trim()
-      .toUpperCase();
-
-    const idNumber = String(
-      verifiedId.idNumber || ""
-    ).trim();
-
-    if (
-      !["NIN", "BVN"].includes(
-        idType
-      ) ||
-      !idNumber
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Your verified identity record is incomplete. Please verify your NIN or BVN again.",
-      });
-    }
-
-    const nameParts =
-      fullName.split(" ");
+    const nameParts = fullName.split(" ");
 
     const firstName =
-      nameParts.shift() ||
-      "ServicePay";
+      nameParts.shift() || "ServicePay";
 
     const lastName =
       nameParts.join(" ").trim() ||
       firstName;
 
     customer.virtualAccount = {
-      ...(customer.virtualAccount
-        ?.toObject
-        ? customer.virtualAccount
-            .toObject()
-        : customer.virtualAccount ||
-          {}),
+      ...(customer.virtualAccount?.toObject
+        ? customer.virtualAccount.toObject()
+        : customer.virtualAccount || {}),
 
       provider: "SECUREWAVENG",
       status: "PENDING",
@@ -588,14 +448,16 @@ exports.generateVirtualAccount = async (
 
     await customer.save();
 
+    /*
+     * Merchant BVN and Business ID are read
+     * inside securewave.service.js from Render.
+     */
     const providerResponse =
       await generateVirtualAccount({
         email,
         firstName,
         lastName,
         phoneNumber,
-        idType,
-        idNumber,
       });
 
     const virtualAccount =
@@ -604,14 +466,11 @@ exports.generateVirtualAccount = async (
       );
 
     if (!virtualAccount) {
-      const responseError =
-        new Error(
-          "SecureWaveNG did not return a valid virtual account number."
-        );
+      const responseError = new Error(
+        "SecureWaveNG did not return a valid virtual account number."
+      );
 
-      responseError.statusCode =
-        502;
-
+      responseError.statusCode = 502;
       responseError.providerResponse =
         providerResponse;
 
@@ -629,21 +488,17 @@ exports.generateVirtualAccount = async (
         fullName,
 
       bankName:
-        virtualAccount.bankName ||
-        null,
+        virtualAccount.bankName || null,
 
       bankCode:
-        virtualAccount.bankCode ||
-        null,
+        virtualAccount.bankCode || null,
 
       customerReference:
-        virtualAccount
-          .customerReference ||
+        virtualAccount.customerReference ||
         undefined,
 
       providerCustomerId:
-        virtualAccount
-          .providerCustomerId ||
+        virtualAccount.providerCustomerId ||
         null,
 
       status: "ACTIVE",
@@ -651,8 +506,7 @@ exports.generateVirtualAccount = async (
       failureReason: null,
 
       createdAt:
-        customer.virtualAccount
-          ?.createdAt ||
+        customer.virtualAccount?.createdAt ||
         new Date(),
 
       updatedAt: new Date(),
@@ -665,13 +519,11 @@ exports.generateVirtualAccount = async (
       message:
         providerResponse?.message ||
         "Virtual account created successfully.",
-      data:
-        formatVirtualAccount(
-          customer.virtualAccount
-        ),
+      data: formatVirtualAccount(
+        customer.virtualAccount
+      ),
       providerData:
-        providerResponse?.data ||
-        null,
+        providerResponse?.data || null,
     });
   } catch (error) {
     console.error(
@@ -679,22 +531,14 @@ exports.generateVirtualAccount = async (
       error.message
     );
 
-    /*
-     * Do not log or return the customer's
-     * NIN/BVN in error responses.
-     */
     if (customer) {
       try {
         customer.virtualAccount = {
-          ...(customer.virtualAccount
-            ?.toObject
-            ? customer.virtualAccount
-                .toObject()
-            : customer.virtualAccount ||
-              {}),
+          ...(customer.virtualAccount?.toObject
+            ? customer.virtualAccount.toObject()
+            : customer.virtualAccount || {}),
 
-          provider:
-            "SECUREWAVENG",
+          provider: "SECUREWAVENG",
 
           status: "FAILED",
 
@@ -702,8 +546,7 @@ exports.generateVirtualAccount = async (
             error.message ||
             "Virtual account creation failed.",
 
-          updatedAt:
-            new Date(),
+          updatedAt: new Date(),
         };
 
         await customer.save();
@@ -716,17 +559,14 @@ exports.generateVirtualAccount = async (
     }
 
     return res
-      .status(
-        error.statusCode || 500
-      )
+      .status(error.statusCode || 500)
       .json({
         success: false,
         message:
           error.message ||
           "Unable to generate virtual account.",
         providerResponse:
-          error.providerResponse ||
-          null,
+          error.providerResponse || null,
       });
   }
 };

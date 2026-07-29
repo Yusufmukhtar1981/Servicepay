@@ -5,7 +5,7 @@ const SECUREWAVE_BASE_URL =
   "https://securewaveng.com/api";
 
 /*
- * Return the SecureWaveNG Live API headers.
+ * SecureWaveNG Live API headers.
  */
 const getSecureWaveHeaders = () => {
   const publicKey = String(
@@ -34,7 +34,7 @@ const getSecureWaveHeaders = () => {
 };
 
 /*
- * Send a request to SecureWaveNG.
+ * General SecureWaveNG request function.
  */
 const secureWaveRequest = async ({
   method,
@@ -106,7 +106,7 @@ const secureWaveRequest = async ({
 };
 
 /*
- * Get the list of supported Nigerian banks.
+ * Get supported banks.
  */
 const getBanks = async () => {
   return secureWaveRequest({
@@ -116,9 +116,11 @@ const getBanks = async () => {
 };
 
 /*
- * This endpoint may remain unavailable because
- * SecureWaveNG confirmed that they do not provide
- * customer-to-bank payouts.
+ * Account-name validation.
+ *
+ * SecureWaveNG support confirmed that they
+ * do not provide customer-to-bank payouts.
+ * This function may therefore remain unavailable.
  */
 const validateAccountName = async ({
   bankCode,
@@ -169,22 +171,26 @@ const validateAccountName = async ({
 /*
  * Generate a dedicated Virtual Account.
  *
- * idType and idNumber must come from a successful
- * KYC verification stored in MongoDB.
+ * SecureWaveNG confirmed:
+ * - id_type must be BVN
+ * - id_number must be the merchant BVN
+ * - business_id must be the merchant Business ID
  *
- * businessId comes from the backend environment,
- * never from Flutter or the customer request.
+ * Merchant BVN and Business ID are read only
+ * from Render environment variables.
  */
 const generateVirtualAccount = async ({
   email,
   firstName,
   lastName,
   phoneNumber,
-  idType,
-  idNumber,
 }) => {
   const businessId = String(
     process.env.SECUREWAVE_BUSINESS_ID || ""
+  ).trim();
+
+  const merchantBvn = String(
+    process.env.SECUREWAVE_MERCHANT_BVN || ""
   ).trim();
 
   const normalizedEmail = String(
@@ -205,19 +211,27 @@ const generateVirtualAccount = async ({
     phoneNumber || ""
   ).trim();
 
-  const normalizedIdType = String(
-    idType || ""
-  )
-    .trim()
-    .toUpperCase();
-
-  const normalizedIdNumber = String(
-    idNumber || ""
-  ).trim();
-
   if (!businessId) {
     const error = new Error(
       "SecureWaveNG Business ID is not configured."
+    );
+
+    error.statusCode = 503;
+    throw error;
+  }
+
+  if (!merchantBvn) {
+    const error = new Error(
+      "SecureWaveNG merchant BVN is not configured."
+    );
+
+    error.statusCode = 503;
+    throw error;
+  }
+
+  if (!/^\d{11}$/.test(merchantBvn)) {
+    const error = new Error(
+      "SecureWaveNG merchant BVN must contain exactly 11 digits."
     );
 
     error.statusCode = 503;
@@ -264,28 +278,6 @@ const generateVirtualAccount = async ({
     throw error;
   }
 
-  if (
-    !["NIN", "BVN"].includes(
-      normalizedIdType
-    )
-  ) {
-    const error = new Error(
-      "A successfully verified NIN or BVN is required to create a virtual account."
-    );
-
-    error.statusCode = 400;
-    throw error;
-  }
-
-  if (!normalizedIdNumber) {
-    const error = new Error(
-      "Verified ID number is required."
-    );
-
-    error.statusCode = 400;
-    throw error;
-  }
-
   return secureWaveRequest({
     method: "POST",
     endpoint:
@@ -296,8 +288,9 @@ const generateVirtualAccount = async ({
       last_name: normalizedLastName,
       phone_number:
         normalizedPhoneNumber,
-      id_type: normalizedIdType,
-      id_number: normalizedIdNumber,
+
+      id_type: "BVN",
+      id_number: merchantBvn,
       business_id: businessId,
     },
   });
