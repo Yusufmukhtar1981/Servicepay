@@ -93,9 +93,23 @@ const getBanks = async () => {
     endpoint: "/banks",
   });
 };
-
+const validateAccountName = async ({
+  bankCode,
+  accountNumber,
+}) => {
+  return secureWaveRequest({
+    method: "POST",
+    endpoint:
+      "/customer_withdrawals/validate-account-name",
+    data: {
+      bank_code: bankCode,
+      account_number: accountNumber,
+    },
+  });
+};
 module.exports = {
   getSecureWaveHeaders,
   secureWaveRequest,
   getBanks,
+  validateAccountName,
 };
