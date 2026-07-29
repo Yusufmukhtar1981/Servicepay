@@ -688,6 +688,83 @@ exports.handleVirtualAccountWebhook =
 
       const payload = req.body || {};
 
+      const findSecureWaveAccountFields = (
+        value,
+        currentPath = "payload",
+        results = []
+      ) => {
+        if (
+          value === null ||
+          value === undefined
+        ) {
+          return results;
+        }
+
+        if (Array.isArray(value)) {
+          value.forEach((item, index) => {
+            findSecureWaveAccountFields(
+              item,
+              `${currentPath}[${index}]`,
+              results
+            );
+          });
+
+          return results;
+        }
+
+        if (typeof value !== "object") {
+          return results;
+        }
+
+        for (
+          const [key, childValue]
+          of Object.entries(value)
+        ) {
+          const fieldPath =
+            `${currentPath}.${key}`;
+
+          const normalizedKey =
+            key.toLowerCase();
+
+          if (
+            normalizedKey.includes("account") ||
+            normalizedKey.includes("virtual") ||
+            normalizedKey.includes("destination") ||
+            normalizedKey.includes("beneficiary") ||
+            normalizedKey.includes("recipient") ||
+            normalizedKey.includes("reserved")
+          ) {
+            results.push({
+              path: fieldPath,
+              value: childValue,
+            });
+          }
+
+          if (
+            childValue &&
+            typeof childValue === "object"
+          ) {
+            findSecureWaveAccountFields(
+              childValue,
+              fieldPath,
+              results
+            );
+          }
+        }
+
+        return results;
+      };
+
+      console.log(
+        "SECUREWAVE_ACCOUNT_FIELDS:",
+        JSON.stringify(
+          findSecureWaveAccountFields(payload),
+          null,
+          2
+        )
+      );
+
+
       console.log(
         "SECUREWAVE_RAW_PAYLOAD_START"
       );
