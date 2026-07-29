@@ -4,9 +4,6 @@ const SECUREWAVE_BASE_URL =
   process.env.SECUREWAVE_BASE_URL ||
   "https://securewaveng.com/api";
 
-/*
- * SecureWaveNG Live API headers.
- */
 const getSecureWaveHeaders = () => {
   const publicKey = String(
     process.env.SECUREWAVE_PUBLIC_KEY || ""
@@ -33,9 +30,6 @@ const getSecureWaveHeaders = () => {
   };
 };
 
-/*
- * General SecureWaveNG request function.
- */
 const secureWaveRequest = async ({
   method,
   endpoint,
@@ -105,9 +99,6 @@ const secureWaveRequest = async ({
   }
 };
 
-/*
- * Get supported banks.
- */
 const getBanks = async () => {
   return secureWaveRequest({
     method: "GET",
@@ -115,13 +106,6 @@ const getBanks = async () => {
   });
 };
 
-/*
- * Account-name validation.
- *
- * SecureWaveNG support confirmed that they
- * do not provide customer-to-bank payouts.
- * This function may therefore remain unavailable.
- */
 const validateAccountName = async ({
   bankCode,
   accountNumber,
@@ -168,17 +152,6 @@ const validateAccountName = async ({
   });
 };
 
-/*
- * Generate a dedicated Virtual Account.
- *
- * SecureWaveNG confirmed:
- * - id_type must be BVN
- * - id_number must be the merchant BVN
- * - business_id must be the merchant Business ID
- *
- * Merchant BVN and Business ID are read only
- * from Render environment variables.
- */
 const generateVirtualAccount = async ({
   email,
   firstName,
@@ -289,9 +262,12 @@ const generateVirtualAccount = async ({
       phone_number:
         normalizedPhoneNumber,
 
-      id_type: "BVN",
-      id_number: merchantBvn,
+      bank_code: [1],
       business_id: businessId,
+      account_type: "static",
+
+      id_type: "bvn",
+      id_number: merchantBvn,
     },
   });
 };
