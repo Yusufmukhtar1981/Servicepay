@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +14,8 @@ class TransferScreen extends StatefulWidget {
 
 class _TransferScreenState extends State<TransferScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  static const Color primaryGreen = Color(0xFF2E7D32);
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -43,8 +46,7 @@ class _TransferScreenState extends State<TransferScreen> {
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor:
-              isError ? Colors.red.shade700 : Colors.green.shade700,
+          backgroundColor: isError ? const Color(0xFFDC2626) : primaryGreen,
         ),
       );
   }
@@ -82,10 +84,6 @@ class _TransferScreenState extends State<TransferScreen> {
 
     if (amount == null) {
       return 'Enter a valid amount';
-    }
-
-    if (amount <= 0) {
-      return 'Amount must be greater than zero';
     }
 
     if (amount < 100) {
@@ -126,11 +124,11 @@ class _TransferScreenState extends State<TransferScreen> {
       final dynamic sender = data['sender'];
 
       if (sender is Map) {
-        final dynamic senderBalance = sender['walletBalance'];
+        final dynamic balance = sender['walletBalance'];
 
-        if (senderBalance != null) {
+        if (balance != null) {
           return double.tryParse(
-            senderBalance.toString(),
+            balance.toString(),
           );
         }
       }
@@ -157,6 +155,219 @@ class _TransferScreenState extends State<TransferScreen> {
     return null;
   }
 
+  Future<String?> requestTransactionPin({
+    required String receiverPhone,
+    required double amount,
+  }) async {
+    final TextEditingController pinController = TextEditingController();
+
+    bool hidePin = true;
+    String errorMessage = '';
+
+    final String? pin = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (
+        BuildContext dialogContext,
+      ) {
+        return StatefulBuilder(
+          builder: (
+            BuildContext context,
+            StateSetter setDialogState,
+          ) {
+            void submitPin() {
+              final String enteredPin = pinController.text.trim();
+
+              if (!RegExp(r'^\d{4}$').hasMatch(enteredPin)) {
+                setDialogState(() {
+                  errorMessage = 'Enter your valid 4-digit transaction PIN.';
+                });
+
+                return;
+              }
+
+              Navigator.pop(
+                dialogContext,
+                enteredPin,
+              );
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              title: const Text(
+                'Confirm Transfer',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(
+                        15,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(
+                          0xFFF0FDF4,
+                        ),
+                        borderRadius: BorderRadius.circular(
+                          14,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'You are sending',
+                            style: TextStyle(
+                              color: Color(
+                                0xFF6B7280,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 5,
+                          ),
+                          Text(
+                            '₦${amount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: primaryGreen,
+                              fontSize: 25,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 5,
+                          ),
+                          Text(
+                            'to $receiverPhone',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    TextField(
+                      controller: pinController,
+                      autofocus: true,
+                      obscureText: hidePin,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      maxLength: 4,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(
+                          4,
+                        ),
+                      ],
+                      onSubmitted: (_) {
+                        submitPin();
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Transaction PIN',
+                        hintText: 'Enter 4-digit PIN',
+                        counterText: '',
+                        prefixIcon: const Icon(
+                          Icons.pin_outlined,
+                          color: primaryGreen,
+                        ),
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              hidePin = !hidePin;
+                            });
+                          },
+                          icon: Icon(
+                            hidePin
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                        errorText: errorMessage.isEmpty ? null : errorMessage,
+                        filled: true,
+                        fillColor: const Color(
+                          0xFFF8FAFC,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 8,
+                    ),
+                    const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.lock_outline_rounded,
+                          size: 18,
+                          color: Color(
+                            0xFF6B7280,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 7,
+                        ),
+                        Expanded(
+                          child: Text(
+                            'Do not share your transaction PIN with anyone.',
+                            style: TextStyle(
+                              color: Color(
+                                0xFF6B7280,
+                              ),
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(
+                      dialogContext,
+                    );
+                  },
+                  child: const Text(
+                    'Cancel',
+                  ),
+                ),
+                FilledButton(
+                  onPressed: submitPin,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                  ),
+                  child: const Text(
+                    'Confirm Transfer',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    pinController.dispose();
+
+    return pin;
+  }
+
   Future<void> transferMoney() async {
     FocusScope.of(context).unfocus();
 
@@ -170,54 +381,12 @@ class _TransferScreenState extends State<TransferScreen> {
       amountController.text.trim(),
     );
 
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (
-        BuildContext dialogContext,
-      ) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'Confirm Transfer',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          content: Text(
-            'Transfer ₦${amount.toStringAsFixed(2)} to $receiverPhone?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
-              child: const Text(
-                'Cancel',
-              ),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              child: const Text(
-                'Confirm',
-              ),
-            ),
-          ],
-        );
-      },
+    final String? pin = await requestTransactionPin(
+      receiverPhone: receiverPhone,
+      amount: amount,
     );
 
-    if (confirmed != true) {
+    if (pin == null) {
       return;
     }
 
@@ -255,14 +424,10 @@ class _TransferScreenState extends State<TransferScreen> {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
             },
-
-            /*
-                 * Backend expects receiverPhone,
-                 * not recipientPhone.
-                 */
             body: jsonEncode({
               'receiverPhone': receiverPhone,
               'amount': amount,
+              'pin': pin,
             }),
           )
           .timeout(
@@ -286,6 +451,7 @@ class _TransferScreenState extends State<TransferScreen> {
           responseData['message']?.toString() ??
               'Transfer failed. Please try again.',
         );
+
         return;
       }
 
@@ -303,7 +469,6 @@ class _TransferScreenState extends State<TransferScreen> {
       final dynamic data = responseData['data'];
 
       String reference = '';
-
       String receiverName = '';
 
       if (data is Map) {
@@ -319,6 +484,10 @@ class _TransferScreenState extends State<TransferScreen> {
       phoneController.clear();
       amountController.clear();
 
+      if (!mounted) {
+        return;
+      }
+
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -331,7 +500,7 @@ class _TransferScreenState extends State<TransferScreen> {
             ),
             icon: const Icon(
               Icons.check_circle_rounded,
-              color: Colors.green,
+              color: primaryGreen,
               size: 64,
             ),
             title: const Text(
@@ -357,7 +526,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 12,
-                      color: Colors.grey,
+                      color: Color(0xFF6B7280),
                     ),
                   ),
                 ],
@@ -372,6 +541,9 @@ class _TransferScreenState extends State<TransferScreen> {
                       dialogContext,
                     );
                   },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                  ),
                   child: const Text(
                     'Done',
                   ),
@@ -388,7 +560,7 @@ class _TransferScreenState extends State<TransferScreen> {
           true,
         );
       }
-    } catch (error) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
@@ -409,14 +581,14 @@ class _TransferScreenState extends State<TransferScreen> {
   Widget build(
     BuildContext context,
   ) {
-    final Color primaryColor = Theme.of(context).colorScheme.primary;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text(
           'ServicePay Transfer',
         ),
+        backgroundColor: primaryGreen,
+        foregroundColor: Colors.white,
       ),
       body: SafeArea(
         child: Form(
@@ -429,7 +601,12 @@ class _TransferScreenState extends State<TransferScreen> {
                   20,
                 ),
                 decoration: BoxDecoration(
-                  color: primaryColor,
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF2E7D32),
+                      Color(0xFF43A047),
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(
                     20,
                   ),
@@ -494,6 +671,12 @@ class _TransferScreenState extends State<TransferScreen> {
                 enabled: !isLoading,
                 keyboardType: TextInputType.phone,
                 maxLength: 11,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(
+                    11,
+                  ),
+                ],
                 validator: validatePhone,
                 decoration: InputDecoration(
                   labelText: 'Phone Number',
@@ -501,6 +684,7 @@ class _TransferScreenState extends State<TransferScreen> {
                   counterText: '',
                   prefixIcon: const Icon(
                     Icons.phone_outlined,
+                    color: primaryGreen,
                   ),
                   filled: true,
                   fillColor: Colors.white,
@@ -530,6 +714,13 @@ class _TransferScreenState extends State<TransferScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(
+                    RegExp(
+                      r'^\d*\.?\d{0,2}',
+                    ),
+                  ),
+                ],
                 validator: validateAmount,
                 decoration: InputDecoration(
                   labelText: 'Transfer Amount',
@@ -537,6 +728,7 @@ class _TransferScreenState extends State<TransferScreen> {
                   prefixText: '₦ ',
                   prefixIcon: const Icon(
                     Icons.payments_outlined,
+                    color: primaryGreen,
                   ),
                   filled: true,
                   fillColor: Colors.white,
@@ -555,27 +747,31 @@ class _TransferScreenState extends State<TransferScreen> {
                   15,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: const Color(
+                    0xFFF0FDF4,
+                  ),
                   borderRadius: BorderRadius.circular(
                     14,
                   ),
                   border: Border.all(
-                    color: Colors.blue.shade100,
+                    color: const Color(
+                      0xFFBBF7D0,
+                    ),
                   ),
                 ),
                 child: const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      Icons.info_outline,
-                      color: Colors.blue,
+                      Icons.verified_user_outlined,
+                      color: primaryGreen,
                     ),
                     SizedBox(
                       width: 10,
                     ),
                     Expanded(
                       child: Text(
-                        'Confirm the recipient phone number before completing the transfer.',
+                        'You will enter your 4-digit transaction PIN before the transfer is processed.',
                         style: TextStyle(
                           height: 1.4,
                         ),
@@ -591,6 +787,9 @@ class _TransferScreenState extends State<TransferScreen> {
                 height: 55,
                 child: FilledButton.icon(
                   onPressed: isLoading ? null : transferMoney,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                  ),
                   icon: isLoading
                       ? const SizedBox(
                           width: 22,
@@ -620,7 +819,7 @@ class _TransferScreenState extends State<TransferScreen> {
                 children: [
                   Icon(
                     Icons.lock_outline,
-                    color: Colors.grey,
+                    color: Color(0xFF6B7280),
                     size: 20,
                   ),
                   SizedBox(
@@ -628,9 +827,9 @@ class _TransferScreenState extends State<TransferScreen> {
                   ),
                   Expanded(
                     child: Text(
-                      'ServicePay-to-ServicePay transfers are protected and processed securely.',
+                      'ServicePay-to-ServicePay transfers are protected with your transaction PIN.',
                       style: TextStyle(
-                        color: Colors.grey,
+                        color: Color(0xFF6B7280),
                         height: 1.4,
                       ),
                     ),
