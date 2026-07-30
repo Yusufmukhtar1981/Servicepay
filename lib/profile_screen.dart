@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_screen.dart';
+import 'transaction_pin_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -216,6 +217,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'wallet_balance',
       walletBalance,
     );
+
+    await prefs.setBool(
+      'transaction_pin_set',
+      userData['transactionPinSet'] == true,
+    );
   }
 
   String _text(
@@ -366,6 +372,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> openTransactionPin() async {
+    final bool? created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const TransactionPinScreen(),
+      ),
+    );
+
+    if (created == true) {
+      await loadProfile(
+        showRefreshLoader: true,
+      );
+    }
+  }
+
   Future<void> openChangePassword() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -473,6 +493,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       await prefs.remove(
         'wallet_balance',
+      );
+
+      await prefs.remove(
+        'transaction_pin_set',
       );
 
       if (!mounted) return;
@@ -653,6 +677,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             title: 'Edit Profile',
                             subtitle: 'Update your personal information',
                             onTap: openEditProfile,
+                          ),
+                          _ProfileActionTile(
+                            icon: Icons.pin_outlined,
+                            title: user['transactionPinSet'] == true
+                                ? 'Transaction PIN'
+                                : 'Create Transaction PIN',
+                            subtitle: user['transactionPinSet'] == true
+                                ? 'Your transaction PIN is active'
+                                : 'Create a 4-digit PIN for transactions',
+                            onTap: openTransactionPin,
                           ),
                           _ProfileActionTile(
                             icon: Icons.lock_outline_rounded,
