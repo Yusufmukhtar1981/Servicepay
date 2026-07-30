@@ -1,4 +1,5 @@
 const express = require("express");
+const appSettingsRoutes = require("./routes/appSettings.routes");
 const cors = require("cors");
 const helmet = require("helmet");
 
@@ -175,6 +176,9 @@ app.use(
   "/api/transaction-pin",
   transactionPinRoutes
 );
+
+
+app.use("/api/settings", appSettingsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
