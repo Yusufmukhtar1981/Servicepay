@@ -2,13 +2,16 @@ name: Deploy ServicePay Customer Web
 
 on:
   workflow_dispatch:
+
   push:
     branches:
       - main
+
     paths:
       - "lib/**"
       - "!lib/admin/**"
       - "web/**"
+      - "assets/**"
       - "pubspec.yaml"
       - "pubspec.lock"
       - ".github/workflows/deploy-customer-web.yml"
@@ -42,11 +45,134 @@ jobs:
       - name: Install Packages
         run: flutter pub get
 
+      - name: Clean Previous Build
+        run: |
+          flutter clean
+          rm -rf build/web
+          flutter pub get
+
       - name: Build Customer Website
-        run: flutter build web --release --target lib/main.dart --base-href /
+        run: |
+          flutter build web \
+            --release \
+            --target lib/main.dart \
+            --base-href /
+
+      - name: Remove Old Service Worker Cache
+        env:
+          BUILD_VERSION: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          build_dir = Path("build/web")
+          index_path = build_dir / "index.html"
+          service_worker_path = build_dir / "flutter_service_worker.js"
+
+          if not index_path.exists():
+              raise SystemExit(
+                  "ERROR: build/web/index.html was not found."
+              )
+
+          # Remove a generated service worker file if this
+          # Flutter version still creates one.
+          if service_worker_path.exists():
+              service_worker_path.unlink()
+              print("Removed flutter_service_worker.js")
+
+          html = index_path.read_text(encoding="utf-8")
+          version = os.environ.get(
+              "BUILD_VERSION",
+              "latest",
+          )
+
+          cleanup_script = f"""
+          <script>
+            window.SERVICEPAY_BUILD_VERSION = "{version}";
+
+            async function clearOldServicePayCache() {{
+              try {{
+                if ("serviceWorker" in navigator) {{
+                  const registrations =
+                    await navigator.serviceWorker.getRegistrations();
+
+                  for (const registration of registrations) {{
+                    await registration.unregister();
+                  }}
+                }}
+
+                if ("caches" in window) {{
+                  const cacheNames = await caches.keys();
+
+                  await Promise.all(
+                    cacheNames.map(
+                      (cacheName) => caches.delete(cacheName)
+                    )
+                  );
+                }}
+              }} catch (error) {{
+                console.warn(
+                  "ServicePay cache cleanup warning:",
+                  error
+                );
+              }}
+            }}
+
+            clearOldServicePayCache();
+          </script>
+          """
+
+          marker = "SERVICEPAY_BUILD_VERSION"
+
+          if marker not in html:
+              if "</head>" not in html:
+                  raise SystemExit(
+                      "ERROR: Closing head tag was not found."
+                  )
+
+              html = html.replace(
+                  "</head>",
+                  f"{cleanup_script}\\n</head>",
+                  1,
+              )
+
+          # Force each deployment to request the current
+          # Flutter bootstrap file instead of an old copy.
+          html = html.replace(
+              'src="flutter_bootstrap.js"',
+              f'src="flutter_bootstrap.js?v={version}"',
+          )
+
+          index_path.write_text(
+              html,
+              encoding="utf-8",
+          )
+
+          print(
+              f"Added cache cleanup for build {version}"
+          )
+          PY
 
       - name: Add Custom Domain
         run: echo "servicepay.ng" > build/web/CNAME
+
+      - name: Add No Jekyll File
+        run: touch build/web/.nojekyll
+
+      - name: Verify Customer Build
+        run: |
+          echo "Checking new Electricity screen..."
+
+          grep -R -n \
+            "Verify Meter First" \
+            build/web/main.dart.js
+
+          grep -R -n \
+            "Electricity Bill" \
+            build/web/main.dart.js
+
+          echo "Customer build contains the new Electricity screen."
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
