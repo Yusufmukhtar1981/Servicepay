@@ -1054,6 +1054,25 @@ exports.payElectricity = async (
         providerResponse.data
       );
 
+    console.log(
+      "Electricity provider response:",
+      {
+        httpStatus:
+          providerResponse.status,
+
+        data:
+          providerData,
+
+        reference,
+
+        meterNumber,
+
+        electricCompany,
+
+        meterType,
+      }
+    );
+
     const accepted =
       providerAcceptedOrder(
         providerResponse.status,
