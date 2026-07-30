@@ -111,7 +111,7 @@ exports.transfer = async (req, res) => {
       senderId
     )
       .select(
-        "+transactionPin transactionPinSet"
+        "+transactionPin"
       )
       .session(session);
 
