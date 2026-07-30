@@ -10,7 +10,9 @@ const {
   "../controllers/appSettings.controller"
 );
 
-const protect = require(
+const {
+  protect,
+} = require(
   "../middleware/auth.middleware"
 );
 
