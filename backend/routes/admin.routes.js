@@ -19,6 +19,13 @@ const {
 
 const router = express.Router();
 
+const MANAGEMENT_ROLES = [
+  "HEAD_OFFICE",
+  "ZONAL_MANAGER",
+  "STATE_MANAGER",
+];
+
+
 /*
 |--------------------------------------------------------------------------
 | HIERARCHY ACCOUNT CREATION PERMISSION
@@ -149,7 +156,7 @@ const canCreateManagedUser = (
 router.get(
   "/dashboard",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...MANAGEMENT_ROLES),
   getAdminDashboard
 );
 
@@ -174,7 +181,7 @@ router.post(
 router.patch(
   "/users/:id/status",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...MANAGEMENT_ROLES),
   updateAdminUserStatus
 );
 
