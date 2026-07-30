@@ -17,6 +17,7 @@ class _TransferScreenState extends State<TransferScreen> {
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
   final TextEditingController phoneController = TextEditingController();
+
   final TextEditingController amountController = TextEditingController();
 
   bool isLoading = false;
@@ -32,7 +33,9 @@ class _TransferScreenState extends State<TransferScreen> {
     String message, {
     bool isError = true,
   }) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -46,7 +49,9 @@ class _TransferScreenState extends State<TransferScreen> {
       );
   }
 
-  String? validatePhone(String? value) {
+  String? validatePhone(
+    String? value,
+  ) {
     final String phone = value?.trim() ?? '';
 
     if (phone.isEmpty) {
@@ -64,7 +69,9 @@ class _TransferScreenState extends State<TransferScreen> {
     return null;
   }
 
-  String? validateAmount(String? value) {
+  String? validateAmount(
+    String? value,
+  ) {
     final String amountText = value?.trim() ?? '';
 
     if (amountText.isEmpty) {
@@ -88,6 +95,68 @@ class _TransferScreenState extends State<TransferScreen> {
     return null;
   }
 
+  Map<String, dynamic> decodeResponse(
+    String responseBody,
+  ) {
+    if (responseBody.trim().isEmpty) {
+      return {};
+    }
+
+    try {
+      final dynamic decoded = jsonDecode(responseBody);
+
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(
+          decoded,
+        );
+      }
+    } catch (_) {
+      return {};
+    }
+
+    return {};
+  }
+
+  double? extractWalletBalance(
+    Map<String, dynamic> responseData,
+  ) {
+    final dynamic data = responseData['data'];
+
+    if (data is Map) {
+      final dynamic sender = data['sender'];
+
+      if (sender is Map) {
+        final dynamic senderBalance = sender['walletBalance'];
+
+        if (senderBalance != null) {
+          return double.tryParse(
+            senderBalance.toString(),
+          );
+        }
+      }
+
+      final dynamic dataBalance = data['walletBalance'];
+
+      if (dataBalance != null) {
+        return double.tryParse(
+          dataBalance.toString(),
+        );
+      }
+    }
+
+    final dynamic directBalance = responseData['walletBalance'] ??
+        responseData['balance'] ??
+        responseData['senderBalance'];
+
+    if (directBalance != null) {
+      return double.tryParse(
+        directBalance.toString(),
+      );
+    }
+
+    return null;
+  }
+
   Future<void> transferMoney() async {
     FocusScope.of(context).unfocus();
 
@@ -95,27 +164,53 @@ class _TransferScreenState extends State<TransferScreen> {
       return;
     }
 
+    final String receiverPhone = phoneController.text.trim();
+
+    final double amount = double.parse(
+      amountController.text.trim(),
+    );
+
     final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) {
+      barrierDismissible: false,
+      builder: (
+        BuildContext dialogContext,
+      ) {
         return AlertDialog(
-          title: const Text('Confirm Transfer'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Confirm Transfer',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           content: Text(
-            'Transfer ₦${amountController.text.trim()} to '
-            '${phoneController.text.trim()}?',
+            'Transfer ₦${amount.toStringAsFixed(2)} to $receiverPhone?',
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
-              child: const Text('Cancel'),
+              child: const Text(
+                'Cancel',
+              ),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
-              child: const Text('Confirm'),
+              child: const Text(
+                'Confirm',
+              ),
             ),
           ],
         );
@@ -123,6 +218,10 @@ class _TransferScreenState extends State<TransferScreen> {
     );
 
     if (confirmed != true) {
+      return;
+    }
+
+    if (!mounted) {
       return;
     }
 
@@ -134,116 +233,165 @@ class _TransferScreenState extends State<TransferScreen> {
       final SharedPreferences preferences =
           await SharedPreferences.getInstance();
 
-      final String? token = preferences.getString('auth_token');
+      final String token = preferences.getString(
+            'auth_token',
+          ) ??
+          '';
 
-      if (token == null || token.isEmpty) {
+      if (token.trim().isEmpty) {
         showMessage(
           'Your login session has expired. Please log in again.',
         );
         return;
       }
 
-      final double amount =
-          double.parse(amountController.text.trim());
-
       final http.Response response = await http
           .post(
-            Uri.parse('$baseUrl/transfer/servicepay'),
+            Uri.parse(
+              '$baseUrl/transfer/servicepay',
+            ),
             headers: {
+              'Accept': 'application/json',
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
             },
+
+            /*
+                 * Backend expects receiverPhone,
+                 * not recipientPhone.
+                 */
             body: jsonEncode({
-              'recipientPhone': phoneController.text.trim(),
+              'receiverPhone': receiverPhone,
               'amount': amount,
             }),
           )
-          .timeout(const Duration(seconds: 45));
+          .timeout(
+            const Duration(
+              seconds: 45,
+            ),
+          );
 
-      Map<String, dynamic> responseData = {};
+      final Map<String, dynamic> responseData = decodeResponse(response.body);
 
-      try {
-        final dynamic decodedResponse = jsonDecode(response.body);
-
-        if (decodedResponse is Map<String, dynamic>) {
-          responseData = decodedResponse;
-        }
-      } catch (_) {
-        responseData = {
-          'success': false,
-          'message': 'Invalid response received from the server.',
-        };
+      if (!mounted) {
+        return;
       }
 
-      if (!mounted) return;
-
-      if (response.statusCode >= 200 &&
+      final bool requestSuccessful = response.statusCode >= 200 &&
           response.statusCode < 300 &&
-          responseData['success'] == true) {
-        final dynamic newBalance =
-            responseData['walletBalance'] ??
-            responseData['balance'] ??
-            responseData['senderBalance'] ??
-            responseData['user']?['walletBalance'];
+          responseData['success'] == true;
 
-        if (newBalance != null) {
-          final double? parsedBalance =
-              double.tryParse(newBalance.toString());
-
-          if (parsedBalance != null) {
-            await preferences.setDouble(
-              'wallet_balance',
-              parsedBalance,
-            );
-          }
-        }
-
-        showMessage(
-          responseData['message']?.toString() ??
-              'Transfer completed successfully.',
-          isError: false,
-        );
-
-        phoneController.clear();
-        amountController.clear();
-
-        await showDialog<void>(
-          context: context,
-          builder: (BuildContext dialogContext) {
-            return AlertDialog(
-              icon: const Icon(
-                Icons.check_circle,
-                color: Colors.green,
-                size: 58,
-              ),
-              title: const Text('Transfer Successful'),
-              content: const Text(
-                'The money has been transferred successfully.',
-                textAlign: TextAlign.center,
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('Done'),
-                ),
-              ],
-            );
-          },
-        );
-
-        if (mounted) {
-          Navigator.pop(context, true);
-        }
-      } else {
+      if (!requestSuccessful) {
         showMessage(
           responseData['message']?.toString() ??
               'Transfer failed. Please try again.',
         );
+        return;
+      }
+
+      final double? newBalance = extractWalletBalance(
+        responseData,
+      );
+
+      if (newBalance != null) {
+        await preferences.setDouble(
+          'wallet_balance',
+          newBalance,
+        );
+      }
+
+      final dynamic data = responseData['data'];
+
+      String reference = '';
+
+      String receiverName = '';
+
+      if (data is Map) {
+        reference = data['reference']?.toString() ?? '';
+
+        final dynamic receiver = data['receiver'];
+
+        if (receiver is Map) {
+          receiverName = receiver['fullName']?.toString() ?? '';
+        }
+      }
+
+      phoneController.clear();
+      amountController.clear();
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (
+          BuildContext dialogContext,
+        ) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            icon: const Icon(
+              Icons.check_circle_rounded,
+              color: Colors.green,
+              size: 64,
+            ),
+            title: const Text(
+              'Transfer Successful',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '₦${amount.toStringAsFixed(2)} was transferred successfully${receiverName.isNotEmpty ? ' to $receiverName' : ''}.',
+                  textAlign: TextAlign.center,
+                ),
+                if (reference.isNotEmpty) ...[
+                  const SizedBox(
+                    height: 14,
+                  ),
+                  Text(
+                    'Reference: $reference',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.pop(
+                      dialogContext,
+                    );
+                  },
+                  child: const Text(
+                    'Done',
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (mounted) {
+        Navigator.pop(
+          context,
+          true,
+        );
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       showMessage(
         'Unable to connect to the server. Please try again.',
@@ -258,13 +406,17 @@ class _TransferScreenState extends State<TransferScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final Color primaryColor =
-        Theme.of(context).colorScheme.primary;
+  Widget build(
+    BuildContext context,
+  ) {
+    final Color primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('ServicePay Transfer'),
+        title: const Text(
+          'ServicePay Transfer',
+        ),
       ),
       body: SafeArea(
         child: Form(
@@ -273,10 +425,14 @@ class _TransferScreenState extends State<TransferScreen> {
             padding: const EdgeInsets.all(18),
             children: [
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(
+                  20,
+                ),
                 decoration: BoxDecoration(
                   color: primaryColor,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(
+                    20,
+                  ),
                 ),
                 child: const Row(
                   children: [
@@ -289,11 +445,12 @@ class _TransferScreenState extends State<TransferScreen> {
                         size: 34,
                       ),
                     ),
-                    SizedBox(width: 15),
+                    SizedBox(
+                      width: 15,
+                    ),
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Send Money',
@@ -303,7 +460,9 @@ class _TransferScreenState extends State<TransferScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          SizedBox(height: 5),
+                          SizedBox(
+                            height: 5,
+                          ),
                           Text(
                             'Transfer money instantly to another ServicePay user.',
                             style: TextStyle(
@@ -317,7 +476,9 @@ class _TransferScreenState extends State<TransferScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(
+                height: 28,
+              ),
               const Text(
                 'Recipient Phone Number',
                 style: TextStyle(
@@ -325,7 +486,9 @@ class _TransferScreenState extends State<TransferScreen> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 9),
+              const SizedBox(
+                height: 9,
+              ),
               TextFormField(
                 controller: phoneController,
                 enabled: !isLoading,
@@ -336,13 +499,21 @@ class _TransferScreenState extends State<TransferScreen> {
                   labelText: 'Phone Number',
                   hintText: "Enter recipient's phone number",
                   counterText: '',
-                  prefixIcon: const Icon(Icons.phone_outlined),
+                  prefixIcon: const Icon(
+                    Icons.phone_outlined,
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(
+                      14,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(
+                height: 20,
+              ),
               const Text(
                 'Amount',
                 style: TextStyle(
@@ -350,7 +521,9 @@ class _TransferScreenState extends State<TransferScreen> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 9),
+              const SizedBox(
+                height: 9,
+              ),
               TextFormField(
                 controller: amountController,
                 enabled: !isLoading,
@@ -362,19 +535,30 @@ class _TransferScreenState extends State<TransferScreen> {
                   labelText: 'Transfer Amount',
                   hintText: 'Enter amount',
                   prefixText: '₦ ',
-                  prefixIcon:
-                      const Icon(Icons.payments_outlined),
+                  prefixIcon: const Icon(
+                    Icons.payments_outlined,
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(
+                      14,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(
+                height: 18,
+              ),
               Container(
-                padding: const EdgeInsets.all(15),
+                padding: const EdgeInsets.all(
+                  15,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(
+                    14,
+                  ),
                   border: Border.all(
                     color: Colors.blue.shade100,
                   ),
@@ -386,7 +570,9 @@ class _TransferScreenState extends State<TransferScreen> {
                       Icons.info_outline,
                       color: Colors.blue,
                     ),
-                    SizedBox(width: 10),
+                    SizedBox(
+                      width: 10,
+                    ),
                     Expanded(
                       child: Text(
                         'Confirm the recipient phone number before completing the transfer.',
@@ -398,12 +584,13 @@ class _TransferScreenState extends State<TransferScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 25),
+              const SizedBox(
+                height: 25,
+              ),
               SizedBox(
                 height: 55,
                 child: FilledButton.icon(
-                  onPressed:
-                      isLoading ? null : transferMoney,
+                  onPressed: isLoading ? null : transferMoney,
                   icon: isLoading
                       ? const SizedBox(
                           width: 22,
@@ -413,11 +600,11 @@ class _TransferScreenState extends State<TransferScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.send_outlined),
+                      : const Icon(
+                          Icons.send_outlined,
+                        ),
                   label: Text(
-                    isLoading
-                        ? 'Processing...'
-                        : 'Transfer Money',
+                    isLoading ? 'Processing...' : 'Transfer Money',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -425,7 +612,9 @@ class _TransferScreenState extends State<TransferScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(
+                height: 20,
+              ),
               const Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -434,7 +623,9 @@ class _TransferScreenState extends State<TransferScreen> {
                     color: Colors.grey,
                     size: 20,
                   ),
-                  SizedBox(width: 8),
+                  SizedBox(
+                    width: 8,
+                  ),
                   Expanded(
                     child: Text(
                       'ServicePay-to-ServicePay transfers are protected and processed securely.',
