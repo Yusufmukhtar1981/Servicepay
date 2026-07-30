@@ -124,12 +124,12 @@ const adminOnly = (...roles) => {
 
     if (!allowedRoles.includes(userRole)) {
       console.error(
-        "Admin access denied:",
-        {
-          userId: req.user._id,
-          userRole,
-          allowedRoles,
-        }
+        "ADMIN_ACCESS_DENIED " +
+          JSON.stringify({
+            userId: String(req.user._id),
+            userRole,
+            allowedRoles,
+          })
       );
 
       return res.status(403).json({
