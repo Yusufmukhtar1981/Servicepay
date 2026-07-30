@@ -3,6 +3,9 @@ const crypto = require("crypto");
 
 const User = require("../models/user.model");
 const Transfer = require("../models/transfer.model");
+const Transaction = require(
+  "../models/transaction.model"
+);
 
 const generateReference = () => {
   return `SPT-${Date.now()}-${crypto
@@ -12,10 +15,9 @@ const generateReference = () => {
 };
 
 /*
- * Check a ServicePay beneficiary before transfer.
+ * Check a beneficiary before transfer.
  *
- * This only returns safe public information.
- * It does not return wallet balance, email or private data.
+ * Only safe information is returned.
  */
 exports.lookupBeneficiary = async (
   req,
@@ -23,7 +25,9 @@ exports.lookupBeneficiary = async (
 ) => {
   try {
     const senderId =
-      req.user?._id || req.userId;
+      req.user?._id ||
+      req.user?.id ||
+      req.userId;
 
     const receiverPhone = String(
       req.params.phone || ""
@@ -37,11 +41,7 @@ exports.lookupBeneficiary = async (
       });
     }
 
-    if (
-      !/^\d{11}$/.test(
-        receiverPhone
-      )
-    ) {
+    if (!/^\d{11}$/.test(receiverPhone)) {
       return res.status(400).json({
         success: false,
         message:
@@ -69,9 +69,7 @@ exports.lookupBeneficiary = async (
       .trim()
       .toUpperCase();
 
-    if (
-      receiverStatus !== "ACTIVE"
-    ) {
+    if (receiverStatus !== "ACTIVE") {
       return res.status(403).json({
         success: false,
         message:
@@ -97,10 +95,8 @@ exports.lookupBeneficiary = async (
       data: {
         beneficiary: {
           id: receiver._id,
-          fullName:
-            receiver.fullName,
-          phone:
-            receiver.phone,
+          fullName: receiver.fullName,
+          phone: receiver.phone,
         },
       },
     });
@@ -118,6 +114,9 @@ exports.lookupBeneficiary = async (
   }
 };
 
+/*
+ * ServicePay-to-ServicePay transfer.
+ */
 exports.transfer = async (
   req,
   res
@@ -131,7 +130,9 @@ exports.transfer = async (
     );
 
     const senderId =
-      req.user?._id || req.userId;
+      req.user?._id ||
+      req.user?.id ||
+      req.userId;
 
     const receiverPhone = String(
       req.body.receiverPhone || ""
@@ -164,11 +165,7 @@ exports.transfer = async (
       });
     }
 
-    if (
-      !/^\d{11}$/.test(
-        receiverPhone
-      )
-    ) {
+    if (!/^\d{11}$/.test(receiverPhone)) {
       return res.status(400).json({
         success: false,
         message:
@@ -185,9 +182,7 @@ exports.transfer = async (
     }
 
     if (
-      !Number.isFinite(
-        transferAmount
-      ) ||
+      !Number.isFinite(transferAmount) ||
       transferAmount <= 0
     ) {
       return res.status(400).json({
@@ -217,15 +212,13 @@ exports.transfer = async (
     session.startTransaction();
 
     /*
-     * Only transactionPin is hidden with
-     * select:false. Other user fields remain available.
+     * transactionPin has select:false.
      */
-    const sender =
-      await User.findById(
-        senderId
-      )
-        .select("+transactionPin")
-        .session(session);
+    const sender = await User.findById(
+      senderId
+    )
+      .select("+transactionPin")
+      .session(session);
 
     if (!sender) {
       await session.abortTransaction();
@@ -243,9 +236,7 @@ exports.transfer = async (
       .trim()
       .toUpperCase();
 
-    if (
-      senderStatus !== "ACTIVE"
-    ) {
+    if (senderStatus !== "ACTIVE") {
       await session.abortTransaction();
 
       return res.status(403).json({
@@ -287,10 +278,9 @@ exports.transfer = async (
       });
     }
 
-    const receiver =
-      await User.findOne({
-        phone: receiverPhone,
-      }).session(session);
+    const receiver = await User.findOne({
+      phone: receiverPhone,
+    }).session(session);
 
     if (!receiver) {
       await session.abortTransaction();
@@ -308,9 +298,7 @@ exports.transfer = async (
       .trim()
       .toUpperCase();
 
-    if (
-      receiverStatus !== "ACTIVE"
-    ) {
+    if (receiverStatus !== "ACTIVE") {
       await session.abortTransaction();
 
       return res.status(403).json({
@@ -334,9 +322,8 @@ exports.transfer = async (
     }
 
     if (
-      Number(
-        sender.walletBalance || 0
-      ) < amount
+      Number(sender.walletBalance || 0) <
+      amount
     ) {
       await session.abortTransaction();
 
@@ -353,6 +340,9 @@ exports.transfer = async (
       });
     }
 
+    /*
+     * Debit sender.
+     */
     const updatedSender =
       await User.findOneAndUpdate(
         {
@@ -385,6 +375,9 @@ exports.transfer = async (
       });
     }
 
+    /*
+     * Credit beneficiary.
+     */
     const updatedReceiver =
       await User.findOneAndUpdate(
         {
@@ -394,6 +387,7 @@ exports.transfer = async (
         {
           $inc: {
             walletBalance: amount,
+            totalTransactions: 1,
           },
         },
         {
@@ -412,6 +406,9 @@ exports.transfer = async (
     const reference =
       generateReference();
 
+    /*
+     * Save transfer record.
+     */
     const transfers =
       await Transfer.create(
         [
@@ -437,6 +434,99 @@ exports.transfer = async (
     const savedTransfer =
       transfers[0];
 
+    /*
+     * Save sender transaction history.
+     *
+     * providerResponse contains receipt details.
+     */
+    const senderTransactions =
+      await Transaction.create(
+        [
+          {
+            reference,
+            customerId:
+              updatedSender._id,
+
+            agentId:
+              updatedSender.agentId ||
+              null,
+
+            stateManagerId:
+              updatedSender
+                .stateManagerId ||
+              null,
+
+            zonalManagerId:
+              updatedSender
+                .zonalManagerId ||
+              null,
+
+            serviceType: "TRANSFER",
+            provider:
+              "SERVICEPAY",
+
+            phone:
+              updatedReceiver.phone,
+
+            amount,
+            status: "SUCCESSFUL",
+
+            providerResponse: {
+              transactionDirection:
+                "DEBIT",
+
+              transferType:
+                "SERVICEPAY_TO_SERVICEPAY",
+
+              narration:
+                `Transfer to ${updatedReceiver.fullName}`,
+
+              sender: {
+                id:
+                  updatedSender._id,
+                fullName:
+                  updatedSender.fullName,
+                phone:
+                  updatedSender.phone,
+                balanceAfter:
+                  updatedSender
+                    .walletBalance,
+              },
+
+              beneficiary: {
+                id:
+                  updatedReceiver._id,
+                fullName:
+                  updatedReceiver
+                    .fullName,
+                phone:
+                  updatedReceiver.phone,
+                balanceAfter:
+                  updatedReceiver
+                    .walletBalance,
+              },
+
+              transferId:
+                savedTransfer._id,
+
+              reference,
+              amount,
+              status:
+                "SUCCESSFUL",
+
+              receiptTitle:
+                "ServicePay Transfer Receipt",
+            },
+          },
+        ],
+        {
+          session,
+        }
+      );
+
+    const savedTransaction =
+      senderTransactions[0];
+
     await session.commitTransaction();
 
     console.log(
@@ -455,13 +545,20 @@ exports.transfer = async (
       success: true,
       message:
         "Transfer completed successfully.",
+
       data: {
         transferId:
           savedTransfer._id,
+
+        transactionId:
+          savedTransaction._id,
+
         reference:
           savedTransfer.reference,
+
         status:
           savedTransfer.status,
+
         amount:
           savedTransfer.amount,
 
@@ -483,6 +580,25 @@ exports.transfer = async (
             updatedReceiver.fullName,
           phone:
             updatedReceiver.phone,
+        },
+
+        receipt: {
+          title:
+            "ServicePay Transfer Receipt",
+          reference,
+          status:
+            "SUCCESSFUL",
+          amount,
+          senderName:
+            updatedSender.fullName,
+          senderPhone:
+            updatedSender.phone,
+          beneficiaryName:
+            updatedReceiver.fullName,
+          beneficiaryPhone:
+            updatedReceiver.phone,
+          createdAt:
+            savedTransfer.createdAt,
         },
 
         createdAt:
