@@ -3,13 +3,19 @@ const User = require("../models/user.model");
 
 const generateToken = (userId) => {
   if (!process.env.JWT_SECRET) {
-    throw new Error("JWT_SECRET ba ya cikin environment variables.");
+    throw new Error(
+      "JWT_SECRET is missing from environment variables."
+    );
   }
 
   return jwt.sign(
-    { id: userId },
+    {
+      id: userId,
+    },
     process.env.JWT_SECRET,
-    { expiresIn: "7d" }
+    {
+      expiresIn: "7d",
+    }
   );
 };
 
@@ -28,13 +34,33 @@ const formatUser = (user) => {
     zonalManagerId: user.zonalManagerId,
     stateManagerId: user.stateManagerId,
     agentId: user.agentId,
-    walletBalance: Number(user.walletBalance || 0),
+    walletBalance: Number(
+      user.walletBalance || 0
+    ),
+    commissionBalance: Number(
+      user.commissionBalance || 0
+    ),
+    totalEarnings: Number(
+      user.totalEarnings || 0
+    ),
+    totalTransactions: Number(
+      user.totalTransactions || 0
+    ),
+    kycVerified:
+      user.kycVerified === true,
+    transactionPinSet:
+      user.transactionPinSet === true,
+    virtualAccount:
+      user.virtualAccount || null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
 };
 
-exports.registerUser = async (req, res) => {
+exports.registerUser = async (
+  req,
+  res
+) => {
   try {
     const {
       fullName,
@@ -49,34 +75,56 @@ exports.registerUser = async (req, res) => {
       agentId,
     } = req.body;
 
-    const cleanFullName = String(fullName || "").trim();
-    const cleanPhone = String(phone || "").trim();
-    const cleanEmail = String(email || "").trim().toLowerCase();
-    const cleanPassword = String(password || "");
+    const cleanFullName = String(
+      fullName || ""
+    ).trim();
 
-    if (!cleanFullName || !cleanPhone || !cleanPassword) {
+    const cleanPhone = String(
+      phone || ""
+    ).trim();
+
+    const cleanEmail = String(
+      email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const cleanPassword = String(
+      password || ""
+    );
+
+    if (
+      !cleanFullName ||
+      !cleanPhone ||
+      !cleanPassword
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Full name, phone da password suna da bukata.",
+        message:
+          "Full name, phone number and password are required.",
       });
     }
 
     if (cleanPhone.length < 10) {
       return res.status(400).json({
         success: false,
-        message: "Ka saka ingantaccen phone number.",
+        message:
+          "Enter a valid phone number.",
       });
     }
 
     if (cleanPassword.length < 6) {
       return res.status(400).json({
         success: false,
-        message: "Password dole ya kasance akalla haruffa 6.",
+        message:
+          "Password must contain at least 6 characters.",
       });
     }
 
     const duplicateConditions = [
-      { phone: cleanPhone },
+      {
+        phone: cleanPhone,
+      },
     ];
 
     if (cleanEmail) {
@@ -85,78 +133,116 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({
-      $or: duplicateConditions,
-    });
+    const existingUser =
+      await User.findOne({
+        $or: duplicateConditions,
+      });
 
     if (existingUser) {
       return res.status(400).json({
         success: false,
         message:
-          "An riga an yi register da wannan phone ko email.",
+          "An account already exists with this phone number or email.",
       });
     }
 
     const user = await User.create({
       fullName: cleanFullName,
       phone: cleanPhone,
-      email: cleanEmail || undefined,
+      email:
+        cleanEmail || undefined,
       password: cleanPassword,
 
-      // Customer ne kawai zai iya register daga public app.
+      /*
+       * Only CUSTOMER accounts can register
+       * through the public ServicePay app.
+       */
       role: "CUSTOMER",
       status: "ACTIVE",
       walletBalance: 0,
+      commissionBalance: 0,
+      totalEarnings: 0,
+      totalTransactions: 0,
+      transactionPinSet: false,
 
-      zone: zone || undefined,
-      state: state || undefined,
-      lga: lga || undefined,
-      zonalManagerId: zonalManagerId || undefined,
-      stateManagerId: stateManagerId || undefined,
-      agentId: agentId || undefined,
+      zone:
+        String(zone || "").trim() ||
+        undefined,
+
+      state:
+        String(state || "").trim() ||
+        undefined,
+
+      lga:
+        String(lga || "").trim() ||
+        undefined,
+
+      zonalManagerId:
+        zonalManagerId || undefined,
+
+      stateManagerId:
+        stateManagerId || undefined,
+
+      agentId:
+        agentId || undefined,
     });
 
     return res.status(201).json({
       success: true,
-      message: "An kirkiri account cikin nasara.",
+      message:
+        "Account created successfully.",
       token: generateToken(user._id),
       user: formatUser(user),
     });
   } catch (error) {
-    console.error("Register error:", error);
+    console.error(
+      "Register error:",
+      error
+    );
 
     if (error?.code === 11000) {
       return res.status(400).json({
         success: false,
         message:
-          "An riga an yi register da wannan phone ko email.",
+          "An account already exists with this phone number or email.",
       });
     }
 
-    if (error?.name === "ValidationError") {
-      const validationMessage = Object.values(
-        error.errors || {}
-      )
-        .map((item) => item.message)
-        .join(", ");
+    if (
+      error?.name ===
+      "ValidationError"
+    ) {
+      const validationMessage =
+        Object.values(
+          error.errors || {}
+        )
+          .map(
+            (item) =>
+              item.message
+          )
+          .join(", ");
 
       return res.status(400).json({
         success: false,
         message:
           validationMessage ||
-          "Bayanan registration ba su cika ba.",
+          "Invalid registration information.",
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "An samu matsala wajen kirkirar account.",
+      message:
+        "Unable to create account.",
       error: error.message,
     });
   }
 };
 
-exports.loginUser = async (req, res) => {
+exports.loginUser = async (
+  req,
+  res
+) => {
   try {
     const {
       phone,
@@ -166,84 +252,122 @@ exports.loginUser = async (req, res) => {
     } = req.body;
 
     const loginValue =
-      email || phone || identifier;
+      email ||
+      phone ||
+      identifier;
 
-    if (!loginValue || !password) {
+    if (
+      !loginValue ||
+      !password
+    ) {
       return res.status(400).json({
         success: false,
         message:
-          "Email ko phone tare da password suna da bukata.",
+          "Email or phone number and password are required.",
       });
     }
 
-    const cleanLoginValue =
-      String(loginValue).trim();
+    const cleanLoginValue = String(
+      loginValue
+    ).trim();
 
     const normalizedEmail =
       cleanLoginValue.toLowerCase();
 
+    /*
+     * Password uses select:false in user.model.js.
+     * We must explicitly request it with +password.
+     */
     const user = await User.findOne({
       $or: [
-        { email: normalizedEmail },
-        { phone: cleanLoginValue },
+        {
+          email: normalizedEmail,
+        },
+        {
+          phone: cleanLoginValue,
+        },
       ],
-    });
+    }).select("+password");
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Bayanan shiga ba daidai ba ne.",
+        message:
+          "Incorrect email, phone number or password.",
       });
     }
 
     const userStatus = String(
       user.status || "ACTIVE"
-    ).toUpperCase();
+    )
+      .trim()
+      .toUpperCase();
 
-    if (userStatus !== "ACTIVE") {
+    if (
+      userStatus !== "ACTIVE"
+    ) {
       return res.status(403).json({
         success: false,
         message:
-          "Wannan account din ba ya aiki a halin yanzu.",
+          "This account is not active.",
       });
     }
 
-    let passwordIsCorrect = false;
-
     const savedPassword =
-      typeof user.password === "string"
+      typeof user.password ===
+      "string"
         ? user.password
         : "";
 
+    if (!savedPassword) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Incorrect email, phone number or password.",
+      });
+    }
+
     const passwordIsHashed =
-      savedPassword.startsWith("$2a$") ||
-      savedPassword.startsWith("$2b$") ||
-      savedPassword.startsWith("$2y$");
+      savedPassword.startsWith(
+        "$2a$"
+      ) ||
+      savedPassword.startsWith(
+        "$2b$"
+      ) ||
+      savedPassword.startsWith(
+        "$2y$"
+      );
+
+    let passwordIsCorrect = false;
 
     if (passwordIsHashed) {
-      if (
-        typeof user.comparePassword !== "function"
-      ) {
-        throw new Error(
-          "comparePassword function ba ya cikin user model."
+      passwordIsCorrect =
+        await user.comparePassword(
+          String(password)
         );
-      }
-
-      passwordIsCorrect =
-        await user.comparePassword(password);
     } else {
+      /*
+       * This supports older accounts whose
+       * passwords were saved before bcrypt.
+       */
       passwordIsCorrect =
-        String(password) === savedPassword;
+        String(password) ===
+        savedPassword;
 
       if (passwordIsCorrect) {
-        user.password = String(password);
+        user.password =
+          String(password);
 
-        // pre-save hook na user.model.js zai hash password.
+        /*
+         * user.model.js will hash it
+         * automatically before saving.
+         */
         await user.save();
 
         console.log(
           `Password migrated to bcrypt for ${
-            user.email || user.phone
+            user.email ||
+            user.phone
           }`
         );
       }
@@ -252,42 +376,61 @@ exports.loginUser = async (req, res) => {
     if (!passwordIsCorrect) {
       return res.status(401).json({
         success: false,
-        message: "Bayanan shiga ba daidai ba ne.",
+        message:
+          "Incorrect email, phone number or password.",
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "An shiga account cikin nasara.",
-      token: generateToken(user._id),
+      message:
+        "Login successful.",
+      token: generateToken(
+        user._id
+      ),
       user: formatUser(user),
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error(
+      "Login error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "An samu matsala wajen shiga account.",
+      message:
+        "Unable to sign in at the moment.",
       error: error.message,
     });
   }
 };
 
-exports.getProfile = async (req, res) => {
+exports.getProfile = async (
+  req,
+  res
+) => {
   try {
     const userId =
       req.user?._id ||
       req.user?.id ||
       req.userId;
 
-    const user = await User.findById(
-      userId
-    ).select("-password");
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Authentication is required.",
+      });
+    }
+
+    const user =
+      await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User account not found.",
+        message:
+          "User account not found.",
       });
     }
 
@@ -324,6 +467,14 @@ exports.updateProfile = async (
       req.user?.id ||
       req.userId;
 
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Authentication is required.",
+      });
+    }
+
     const {
       fullName,
       phone,
@@ -333,21 +484,23 @@ exports.updateProfile = async (
       zone,
     } = req.body;
 
-    const user = await User.findById(
-      userId
-    );
+    const user =
+      await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User account not found.",
+        message:
+          "User account not found.",
       });
     }
 
     const cleanFullName =
       fullName === undefined
         ? user.fullName
-        : String(fullName).trim();
+        : String(
+            fullName
+          ).trim();
 
     const cleanPhone =
       phone === undefined
@@ -356,7 +509,9 @@ exports.updateProfile = async (
 
     const cleanEmail =
       email === undefined
-        ? String(user.email || "")
+        ? String(
+            user.email || ""
+          )
         : String(email)
             .trim()
             .toLowerCase();
@@ -364,7 +519,8 @@ exports.updateProfile = async (
     if (!cleanFullName) {
       return res.status(400).json({
         success: false,
-        message: "Full name is required.",
+        message:
+          "Full name is required.",
       });
     }
 
@@ -410,27 +566,34 @@ exports.updateProfile = async (
       });
     }
 
-    user.fullName = cleanFullName;
-    user.phone = cleanPhone;
+    user.fullName =
+      cleanFullName;
+
+    user.phone =
+      cleanPhone;
+
     user.email =
       cleanEmail || undefined;
 
     if (state !== undefined) {
       user.state =
-        String(state || "").trim() ||
-        undefined;
+        String(
+          state || ""
+        ).trim() || undefined;
     }
 
     if (lga !== undefined) {
       user.lga =
-        String(lga || "").trim() ||
-        undefined;
+        String(
+          lga || ""
+        ).trim() || undefined;
     }
 
     if (zone !== undefined) {
       user.zone =
-        String(zone || "").trim() ||
-        undefined;
+        String(
+          zone || ""
+        ).trim() || undefined;
     }
 
     await user.save();
@@ -459,13 +622,18 @@ exports.updateProfile = async (
     }
 
     if (
-      error?.name === "ValidationError"
+      error?.name ===
+      "ValidationError"
     ) {
-      const message = Object.values(
-        error.errors || {}
-      )
-        .map((item) => item.message)
-        .join(", ");
+      const message =
+        Object.values(
+          error.errors || {}
+        )
+          .map(
+            (item) =>
+              item.message
+          )
+          .join(", ");
 
       return res.status(400).json({
         success: false,
@@ -493,6 +661,14 @@ exports.changePassword = async (
       req.user?.id ||
       req.userId;
 
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Authentication is required.",
+      });
+    }
+
     const {
       currentPassword,
       newPassword,
@@ -512,7 +688,8 @@ exports.changePassword = async (
     }
 
     if (
-      String(newPassword).length < 6
+      String(newPassword)
+        .length < 6
     ) {
       return res.status(400).json({
         success: false,
@@ -543,47 +720,58 @@ exports.changePassword = async (
       });
     }
 
-    const user = await User.findById(
-      userId
-    ).select("+password");
+    const user =
+      await User.findById(
+        userId
+      ).select("+password");
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User account not found.",
+        message:
+          "User account not found.",
       });
     }
 
-    let passwordIsCorrect = false;
-
     const savedPassword =
-      typeof user.password === "string"
+      typeof user.password ===
+      "string"
         ? user.password
         : "";
 
+    if (!savedPassword) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Current password is incorrect.",
+      });
+    }
+
     const passwordIsHashed =
-      savedPassword.startsWith("$2a$") ||
-      savedPassword.startsWith("$2b$") ||
-      savedPassword.startsWith("$2y$");
+      savedPassword.startsWith(
+        "$2a$"
+      ) ||
+      savedPassword.startsWith(
+        "$2b$"
+      ) ||
+      savedPassword.startsWith(
+        "$2y$"
+      );
+
+    let passwordIsCorrect = false;
 
     if (passwordIsHashed) {
-      if (
-        typeof user.comparePassword !==
-        "function"
-      ) {
-        throw new Error(
-          "comparePassword function is missing from the user model."
-        );
-      }
-
       passwordIsCorrect =
         await user.comparePassword(
-          currentPassword
+          String(
+            currentPassword
+          )
         );
     } else {
       passwordIsCorrect =
-        String(currentPassword) ===
-        savedPassword;
+        String(
+          currentPassword
+        ) === savedPassword;
     }
 
     if (!passwordIsCorrect) {
