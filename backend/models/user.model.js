@@ -28,6 +28,29 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       minlength: 6,
+      select: false,
+    },
+
+    /*
+     * Transaction PIN is optional because existing
+     * users may not have created a PIN yet.
+     *
+     * It will be hashed before being saved.
+     */
+    transactionPin: {
+      type: String,
+      default: undefined,
+      select: false,
+    },
+
+    transactionPinSet: {
+      type: Boolean,
+      default: false,
+    },
+
+    transactionPinUpdatedAt: {
+      type: Date,
+      default: null,
     },
 
     role: {
@@ -124,11 +147,6 @@ const userSchema = new mongoose.Schema(
         trim: true,
       },
 
-      /*
-       * Do not save null for fields that have
-       * unique indexes. Leave them undefined
-       * until a real value is available.
-       */
       accountNumber: {
         type: String,
         default: undefined,
@@ -210,11 +228,7 @@ const userSchema = new mongoose.Schema(
 );
 
 /*
- * Create the unique index only for users who
- * already have a real virtual-account number.
- *
- * This prevents MongoDB from treating multiple
- * null values as duplicate account numbers.
+ * Unique virtual-account number index.
  */
 userSchema.index(
   {
@@ -233,8 +247,7 @@ userSchema.index(
 );
 
 /*
- * Create the unique index only when a real
- * SecureWaveNG customer reference exists.
+ * Unique SecureWaveNG customer reference index.
  */
 userSchema.index(
   {
@@ -252,23 +265,90 @@ userSchema.index(
   }
 );
 
+/*
+ * Hash password before saving.
+ */
 userSchema.pre("save", async function () {
-  if (!this.isModified("password")) {
-    return;
+  if (this.isModified("password")) {
+    this.password = await bcrypt.hash(
+      this.password,
+      12
+    );
   }
 
-  this.password = await bcrypt.hash(
-    this.password,
-    12
-  );
+  /*
+   * Hash transaction PIN before saving.
+   */
+  if (
+    this.isModified("transactionPin") &&
+    this.transactionPin
+  ) {
+    const plainPin = String(
+      this.transactionPin
+    ).trim();
+
+    if (!/^\d{4}$/.test(plainPin)) {
+      throw new Error(
+        "Transaction PIN must contain exactly 4 digits."
+      );
+    }
+
+    this.transactionPin = await bcrypt.hash(
+      plainPin,
+      12
+    );
+
+    this.transactionPinSet = true;
+    this.transactionPinUpdatedAt = new Date();
+  }
 });
 
+/*
+ * Compare login password.
+ */
 userSchema.methods.comparePassword =
   async function (enteredPassword) {
+    if (!this.password) {
+      return false;
+    }
+
     return bcrypt.compare(
-      enteredPassword,
+      String(enteredPassword),
       this.password
     );
+  };
+
+/*
+ * Compare transaction PIN.
+ */
+userSchema.methods.compareTransactionPin =
+  async function (enteredPin) {
+    if (!this.transactionPin) {
+      return false;
+    }
+
+    return bcrypt.compare(
+      String(enteredPin),
+      this.transactionPin
+    );
+  };
+
+/*
+ * Set or change transaction PIN.
+ */
+userSchema.methods.setTransactionPin =
+  function (newPin) {
+    const pin = String(newPin || "").trim();
+
+    if (!/^\d{4}$/.test(pin)) {
+      throw new Error(
+        "Transaction PIN must contain exactly 4 digits."
+      );
+    }
+
+    this.transactionPin = pin;
+    this.transactionPinSet = true;
+    this.transactionPinUpdatedAt = new Date();
   };
 
 module.exports = mongoose.model(

@@ -58,6 +58,10 @@ const transactionRoutes = require(
   "./routes/transaction.routes"
 );
 
+const transactionPinRoutes = require(
+  "./routes/transactionPin.routes"
+);
+
 const app = express();
 
 connectDB();
@@ -156,6 +160,11 @@ app.use(
 app.use(
   "/api/transactions",
   transactionRoutes
+);
+
+app.use(
+  "/api/transaction-pin",
+  transactionPinRoutes
 );
 
 app.use((req, res) => {
