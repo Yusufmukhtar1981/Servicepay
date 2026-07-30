@@ -58,6 +58,10 @@ const transactionRoutes = require(
   "./routes/transaction.routes"
 );
 
+const electricityRoutes = require(
+  "./routes/electricity.routes"
+);
+
 const transactionPinRoutes = require(
   "./routes/transactionPin.routes"
 );
@@ -160,6 +164,11 @@ app.use(
 app.use(
   "/api/transactions",
   transactionRoutes
+);
+
+app.use(
+  "/api/electricity",
+  electricityRoutes
 );
 
 app.use(
