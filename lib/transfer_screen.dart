@@ -155,7 +155,90 @@ class _TransferScreenState extends State<TransferScreen> {
     return null;
   }
 
+  Future<Map<String, dynamic>?> lookupBeneficiary({
+    required String phone,
+    required String token,
+  }) async {
+    try {
+      final http.Response response = await http.get(
+        Uri.parse(
+          '$baseUrl/transfer/beneficiary/$phone',
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(
+          seconds: 30,
+        ),
+      );
+
+      final Map<String, dynamic> responseData = decodeResponse(response.body);
+
+      final bool successful = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          responseData['success'] == true;
+
+      if (!successful) {
+        showMessage(
+          responseData['message']?.toString() ??
+              'Unable to verify beneficiary.',
+        );
+
+        return null;
+      }
+
+      final dynamic data = responseData['data'];
+
+      if (data is! Map) {
+        showMessage(
+          'Invalid beneficiary information received.',
+        );
+
+        return null;
+      }
+
+      final dynamic beneficiary = data['beneficiary'];
+
+      if (beneficiary is! Map) {
+        showMessage(
+          'Beneficiary account was not found.',
+        );
+
+        return null;
+      }
+
+      final Map<String, dynamic> beneficiaryData = Map<String, dynamic>.from(
+        beneficiary,
+      );
+
+      final String fullName =
+          beneficiaryData['fullName']?.toString().trim() ?? '';
+
+      final String beneficiaryPhone =
+          beneficiaryData['phone']?.toString().trim() ?? '';
+
+      if (fullName.isEmpty || beneficiaryPhone.isEmpty) {
+        showMessage(
+          'Beneficiary information is incomplete.',
+        );
+
+        return null;
+      }
+
+      return beneficiaryData;
+    } catch (_) {
+      showMessage(
+        'Unable to verify beneficiary. Check your internet connection.',
+      );
+
+      return null;
+    }
+  }
+
   Future<String?> requestTransactionPin({
+    required String beneficiaryName,
     required String receiverPhone,
     required double amount,
   }) async {
@@ -194,7 +277,9 @@ class _TransferScreenState extends State<TransferScreen> {
 
             return AlertDialog(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(
+                  22,
+                ),
               ),
               title: const Text(
                 'Confirm Transfer',
@@ -209,44 +294,100 @@ class _TransferScreenState extends State<TransferScreen> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(
-                        15,
+                        16,
                       ),
                       decoration: BoxDecoration(
                         color: const Color(
                           0xFFF0FDF4,
                         ),
                         borderRadius: BorderRadius.circular(
-                          14,
+                          16,
+                        ),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFBBF7D0,
+                          ),
                         ),
                       ),
                       child: Column(
                         children: [
+                          Container(
+                            width: 54,
+                            height: 54,
+                            decoration: const BoxDecoration(
+                              color: Color(
+                                0xFFDCFCE7,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.person_rounded,
+                              color: primaryGreen,
+                              size: 30,
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 10,
+                          ),
                           const Text(
-                            'You are sending',
+                            'Beneficiary',
                             style: TextStyle(
                               color: Color(
                                 0xFF6B7280,
                               ),
+                              fontSize: 12,
                             ),
                           ),
                           const SizedBox(
-                            height: 5,
+                            height: 4,
+                          ),
+                          Text(
+                            beneficiaryName,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Color(
+                                0xFF111827,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 3,
+                          ),
+                          Text(
+                            receiverPhone,
+                            style: const TextStyle(
+                              color: Color(
+                                0xFF6B7280,
+                              ),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(
+                              vertical: 13,
+                            ),
+                            child: Divider(),
+                          ),
+                          const Text(
+                            'Amount',
+                            style: TextStyle(
+                              color: Color(
+                                0xFF6B7280,
+                              ),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 4,
                           ),
                           Text(
                             '₦${amount.toStringAsFixed(2)}',
                             style: const TextStyle(
                               color: primaryGreen,
-                              fontSize: 25,
+                              fontSize: 27,
                               fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(
-                            height: 5,
-                          ),
-                          Text(
-                            'to $receiverPhone',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
@@ -268,6 +409,15 @@ class _TransferScreenState extends State<TransferScreen> {
                           4,
                         ),
                       ],
+                      onChanged: (_) {
+                        if (errorMessage.isNotEmpty) {
+                          setDialogState(
+                            () {
+                              errorMessage = '';
+                            },
+                          );
+                        }
+                      },
                       onSubmitted: (_) {
                         submitPin();
                       },
@@ -281,9 +431,11 @@ class _TransferScreenState extends State<TransferScreen> {
                         ),
                         suffixIcon: IconButton(
                           onPressed: () {
-                            setDialogState(() {
-                              hidePin = !hidePin;
-                            });
+                            setDialogState(
+                              () {
+                                hidePin = !hidePin;
+                              },
+                            );
                           },
                           icon: Icon(
                             hidePin
@@ -321,7 +473,7 @@ class _TransferScreenState extends State<TransferScreen> {
                         ),
                         Expanded(
                           child: Text(
-                            'Do not share your transaction PIN with anyone.',
+                            'Confirm that the beneficiary name is correct before entering your PIN.',
                             style: TextStyle(
                               color: Color(
                                 0xFF6B7280,
@@ -381,19 +533,6 @@ class _TransferScreenState extends State<TransferScreen> {
       amountController.text.trim(),
     );
 
-    final String? pin = await requestTransactionPin(
-      receiverPhone: receiverPhone,
-      amount: amount,
-    );
-
-    if (pin == null) {
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-
     setState(() {
       isLoading = true;
     });
@@ -411,8 +550,59 @@ class _TransferScreenState extends State<TransferScreen> {
         showMessage(
           'Your login session has expired. Please log in again.',
         );
+
         return;
       }
+
+      /*
+       * Verify beneficiary before asking
+       * the customer for a transaction PIN.
+       */
+      final Map<String, dynamic>? beneficiary = await lookupBeneficiary(
+        phone: receiverPhone,
+        token: token,
+      );
+
+      if (beneficiary == null) {
+        return;
+      }
+
+      final String beneficiaryName =
+          beneficiary['fullName']?.toString().trim() ?? '';
+
+      if (beneficiaryName.isEmpty) {
+        showMessage(
+          'Beneficiary name could not be verified.',
+        );
+
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isLoading = false;
+      });
+
+      final String? pin = await requestTransactionPin(
+        beneficiaryName: beneficiaryName,
+        receiverPhone: receiverPhone,
+        amount: amount,
+      );
+
+      if (pin == null) {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isLoading = true;
+      });
 
       final http.Response response = await http
           .post(
@@ -469,7 +659,7 @@ class _TransferScreenState extends State<TransferScreen> {
       final dynamic data = responseData['data'];
 
       String reference = '';
-      String receiverName = '';
+      String confirmedReceiverName = beneficiaryName;
 
       if (data is Map) {
         reference = data['reference']?.toString() ?? '';
@@ -477,7 +667,12 @@ class _TransferScreenState extends State<TransferScreen> {
         final dynamic receiver = data['receiver'];
 
         if (receiver is Map) {
-          receiverName = receiver['fullName']?.toString() ?? '';
+          final String returnedName =
+              receiver['fullName']?.toString().trim() ?? '';
+
+          if (returnedName.isNotEmpty) {
+            confirmedReceiverName = returnedName;
+          }
         }
       }
 
@@ -496,7 +691,9 @@ class _TransferScreenState extends State<TransferScreen> {
         ) {
           return AlertDialog(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(
+                22,
+              ),
             ),
             icon: const Icon(
               Icons.check_circle_rounded,
@@ -514,8 +711,19 @@ class _TransferScreenState extends State<TransferScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '₦${amount.toStringAsFixed(2)} was transferred successfully${receiverName.isNotEmpty ? ' to $receiverName' : ''}.',
+                  '₦${amount.toStringAsFixed(2)} was transferred successfully to $confirmedReceiverName.',
                   textAlign: TextAlign.center,
+                ),
+                const SizedBox(
+                  height: 6,
+                ),
+                Text(
+                  receiverPhone,
+                  style: const TextStyle(
+                    color: Color(
+                      0xFF6B7280,
+                    ),
+                  ),
                 ),
                 if (reference.isNotEmpty) ...[
                   const SizedBox(
@@ -526,7 +734,9 @@ class _TransferScreenState extends State<TransferScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF6B7280),
+                      color: Color(
+                        0xFF6B7280,
+                      ),
                     ),
                   ),
                 ],
@@ -594,7 +804,9 @@ class _TransferScreenState extends State<TransferScreen> {
         child: Form(
           key: formKey,
           child: ListView(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(
+              18,
+            ),
             children: [
               Container(
                 padding: const EdgeInsets.all(
@@ -603,8 +815,12 @@ class _TransferScreenState extends State<TransferScreen> {
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [
-                      Color(0xFF2E7D32),
-                      Color(0xFF43A047),
+                      Color(
+                        0xFF2E7D32,
+                      ),
+                      Color(
+                        0xFF43A047,
+                      ),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(
@@ -771,7 +987,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     ),
                     Expanded(
                       child: Text(
-                        'You will enter your 4-digit transaction PIN before the transfer is processed.',
+                        'The beneficiary name will be verified and displayed before you enter your transaction PIN.',
                         style: TextStyle(
                           height: 1.4,
                         ),
@@ -803,7 +1019,7 @@ class _TransferScreenState extends State<TransferScreen> {
                           Icons.send_outlined,
                         ),
                   label: Text(
-                    isLoading ? 'Processing...' : 'Transfer Money',
+                    isLoading ? 'Verifying...' : 'Transfer Money',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -819,7 +1035,9 @@ class _TransferScreenState extends State<TransferScreen> {
                 children: [
                   Icon(
                     Icons.lock_outline,
-                    color: Color(0xFF6B7280),
+                    color: Color(
+                      0xFF6B7280,
+                    ),
                     size: 20,
                   ),
                   SizedBox(
@@ -827,9 +1045,11 @@ class _TransferScreenState extends State<TransferScreen> {
                   ),
                   Expanded(
                     child: Text(
-                      'ServicePay-to-ServicePay transfers are protected with your transaction PIN.',
+                      'ServicePay-to-ServicePay transfers are protected with beneficiary verification and your transaction PIN.',
                       style: TextStyle(
-                        color: Color(0xFF6B7280),
+                        color: Color(
+                          0xFF6B7280,
+                        ),
                         height: 1.4,
                       ),
                     ),
