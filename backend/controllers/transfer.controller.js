@@ -11,8 +11,119 @@ const generateReference = () => {
     .toUpperCase()}`;
 };
 
-exports.transfer = async (req, res) => {
-  const session = await mongoose.startSession();
+/*
+ * Check a ServicePay beneficiary before transfer.
+ *
+ * This only returns safe public information.
+ * It does not return wallet balance, email or private data.
+ */
+exports.lookupBeneficiary = async (
+  req,
+  res
+) => {
+  try {
+    const senderId =
+      req.user?._id || req.userId;
+
+    const receiverPhone = String(
+      req.params.phone || ""
+    ).trim();
+
+    if (!senderId) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Please sign in before checking a beneficiary.",
+      });
+    }
+
+    if (
+      !/^\d{11}$/.test(
+        receiverPhone
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Enter a valid 11-digit phone number.",
+      });
+    }
+
+    const receiver = await User.findOne({
+      phone: receiverPhone,
+    }).select(
+      "_id fullName phone status"
+    );
+
+    if (!receiver) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "No ServicePay user was found with this phone number.",
+      });
+    }
+
+    const receiverStatus = String(
+      receiver.status || ""
+    )
+      .trim()
+      .toUpperCase();
+
+    if (
+      receiverStatus !== "ACTIVE"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "The beneficiary account is not active.",
+      });
+    }
+
+    if (
+      receiver._id.toString() ===
+      senderId.toString()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You cannot transfer money to your own account.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Beneficiary found successfully.",
+      data: {
+        beneficiary: {
+          id: receiver._id,
+          fullName:
+            receiver.fullName,
+          phone:
+            receiver.phone,
+        },
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Beneficiary lookup error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to verify the beneficiary.",
+    });
+  }
+};
+
+exports.transfer = async (
+  req,
+  res
+) => {
+  const session =
+    await mongoose.startSession();
 
   try {
     console.log(
@@ -34,9 +145,6 @@ exports.transfer = async (req, res) => {
       req.body.amount
     );
 
-    /*
-     * Confirm authenticated sender.
-     */
     if (!senderId) {
       return res.status(401).json({
         success: false,
@@ -45,9 +153,6 @@ exports.transfer = async (req, res) => {
       });
     }
 
-    /*
-     * Confirm required transfer information.
-     */
     if (
       !receiverPhone ||
       req.body.amount === undefined
@@ -59,10 +164,18 @@ exports.transfer = async (req, res) => {
       });
     }
 
-    /*
-     * Transaction PIN must contain exactly
-     * four numbers.
-     */
+    if (
+      !/^\d{11}$/.test(
+        receiverPhone
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Enter a valid 11-digit recipient phone number.",
+      });
+    }
+
     if (!/^\d{4}$/.test(pin)) {
       return res.status(400).json({
         success: false,
@@ -71,11 +184,10 @@ exports.transfer = async (req, res) => {
       });
     }
 
-    /*
-     * Validate transfer amount.
-     */
     if (
-      !Number.isFinite(transferAmount) ||
+      !Number.isFinite(
+        transferAmount
+      ) ||
       transferAmount <= 0
     ) {
       return res.status(400).json({
@@ -87,8 +199,10 @@ exports.transfer = async (req, res) => {
 
     const amount =
       Math.round(
-        (transferAmount +
-          Number.EPSILON) *
+        (
+          transferAmount +
+          Number.EPSILON
+        ) *
           100
       ) / 100;
 
@@ -103,17 +217,15 @@ exports.transfer = async (req, res) => {
     session.startTransaction();
 
     /*
-     * transactionPin uses select:false in
-     * user.model.js, so it must be requested
-     * explicitly with +transactionPin.
+     * Only transactionPin is hidden with
+     * select:false. Other user fields remain available.
      */
-    const sender = await User.findById(
-      senderId
-    )
-      .select(
-        "+transactionPin"
+    const sender =
+      await User.findById(
+        senderId
       )
-      .session(session);
+        .select("+transactionPin")
+        .session(session);
 
     if (!sender) {
       await session.abortTransaction();
@@ -131,7 +243,9 @@ exports.transfer = async (req, res) => {
       .trim()
       .toUpperCase();
 
-    if (senderStatus !== "ACTIVE") {
+    if (
+      senderStatus !== "ACTIVE"
+    ) {
       await session.abortTransaction();
 
       return res.status(403).json({
@@ -141,10 +255,6 @@ exports.transfer = async (req, res) => {
       });
     }
 
-    /*
-     * Require the sender to create a
-     * transaction PIN first.
-     */
     if (
       sender.transactionPinSet !== true ||
       !sender.transactionPin
@@ -153,16 +263,13 @@ exports.transfer = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        code: "TRANSACTION_PIN_NOT_SET",
+        code:
+          "TRANSACTION_PIN_NOT_SET",
         message:
           "Please create your transaction PIN before making a transfer.",
       });
     }
 
-    /*
-     * Verify sender transaction PIN before
-     * debiting or crediting any wallet.
-     */
     const pinIsCorrect =
       await sender.compareTransactionPin(
         pin
@@ -173,19 +280,17 @@ exports.transfer = async (req, res) => {
 
       return res.status(401).json({
         success: false,
-        code: "INCORRECT_TRANSACTION_PIN",
+        code:
+          "INCORRECT_TRANSACTION_PIN",
         message:
           "Incorrect transaction PIN.",
       });
     }
 
-    /*
-     * Find the recipient using their
-     * registered ServicePay phone number.
-     */
-    const receiver = await User.findOne({
-      phone: receiverPhone,
-    }).session(session);
+    const receiver =
+      await User.findOne({
+        phone: receiverPhone,
+      }).session(session);
 
     if (!receiver) {
       await session.abortTransaction();
@@ -203,20 +308,18 @@ exports.transfer = async (req, res) => {
       .trim()
       .toUpperCase();
 
-    if (receiverStatus !== "ACTIVE") {
+    if (
+      receiverStatus !== "ACTIVE"
+    ) {
       await session.abortTransaction();
 
       return res.status(403).json({
         success: false,
         message:
-          "The recipient account is not active.",
+          "The beneficiary account is not active.",
       });
     }
 
-    /*
-     * Prevent customers from transferring
-     * money to their own account.
-     */
     if (
       sender._id.toString() ===
       receiver._id.toString()
@@ -230,13 +333,10 @@ exports.transfer = async (req, res) => {
       });
     }
 
-    /*
-     * Confirm that the sender has enough
-     * money in their wallet.
-     */
     if (
-      Number(sender.walletBalance || 0) <
-      amount
+      Number(
+        sender.walletBalance || 0
+      ) < amount
     ) {
       await session.abortTransaction();
 
@@ -253,9 +353,6 @@ exports.transfer = async (req, res) => {
       });
     }
 
-    /*
-     * Debit the sender atomically.
-     */
     const updatedSender =
       await User.findOneAndUpdate(
         {
@@ -288,9 +385,6 @@ exports.transfer = async (req, res) => {
       });
     }
 
-    /*
-     * Credit the recipient atomically.
-     */
     const updatedReceiver =
       await User.findOneAndUpdate(
         {
@@ -311,19 +405,13 @@ exports.transfer = async (req, res) => {
 
     if (!updatedReceiver) {
       throw new Error(
-        "Unable to credit the recipient wallet."
+        "Unable to credit the beneficiary wallet."
       );
     }
 
-    /*
-     * Generate a unique transfer reference.
-     */
     const reference =
       generateReference();
 
-    /*
-     * Save the successful transfer record.
-     */
     const transfers =
       await Transfer.create(
         [
@@ -378,7 +466,8 @@ exports.transfer = async (req, res) => {
           savedTransfer.amount,
 
         sender: {
-          id: updatedSender._id,
+          id:
+            updatedSender._id,
           fullName:
             updatedSender.fullName,
           phone:
@@ -388,7 +477,8 @@ exports.transfer = async (req, res) => {
         },
 
         receiver: {
-          id: updatedReceiver._id,
+          id:
+            updatedReceiver._id,
           fullName:
             updatedReceiver.fullName,
           phone:

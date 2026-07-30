@@ -1,9 +1,32 @@
 const express = require("express");
+
+const {
+  protect,
+} = require("../middleware/auth.middleware");
+
+const transferController = require(
+  "../controllers/transfer.controller"
+);
+
 const router = express.Router();
 
-const { protect } = require("../middleware/auth.middleware");
-const transferController = require("../controllers/transfer.controller");
+/*
+ * Verify beneficiary before asking
+ * the customer for a transaction PIN.
+ */
+router.get(
+  "/beneficiary/:phone",
+  protect,
+  transferController.lookupBeneficiary
+);
 
-router.post("/servicepay", protect, transferController.transfer);
+/*
+ * Complete ServicePay-to-ServicePay transfer.
+ */
+router.post(
+  "/servicepay",
+  protect,
+  transferController.transfer
+);
 
 module.exports = router;
