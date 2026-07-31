@@ -1,1065 +1,438 @@
 const axios = require("axios");
-const crypto = require("crypto");
-const mongoose = require("mongoose");
 
-const IdVerification = require(
-  "../models/idVerification.model"
-);
-
-const User = require(
-  "../models/user.model"
-);
-
-const Transaction = require(
-  "../models/transaction.model"
-);
+const IdVerification = require("../models/idVerification.model");
+const User = require("../models/user.model");
+const Transaction = require("../models/transaction.model");
 
 const PREMBLY_BASE_URL =
-  process.env.PREMBLY_BASE_URL ||
-  "https://api.prembly.com";
+  process.env.PREMBLY_BASE_URL || "https://api.prembly.com";
+
+const PREMBLY_APP_ID = process.env.PREMBLY_APP_ID || "";
+const PREMBLY_SECRET_KEY =
+  process.env.PREMBLY_SECRET_KEY || "";
 
 const verificationFees = {
-  NIN: 500,
-  BVN: 500,
-  DRIVER_LICENSE: 700,
-  PASSPORT: 700,
-  VOTER_CARD: 700,
+  PREMIUM: 250,
+  STANDARD: 250,
+  REGULAR: 200,
+  INFORMATION: 150,
 };
 
-const supportedIdTypes =
-  Object.keys(verificationFees);
-
-const connectedIdTypes = [
-  "NIN",
-];
-
-const generateVerificationReference = () => {
-  return `IDV-${Date.now()}-${crypto
-    .randomBytes(4)
-    .toString("hex")
-    .toUpperCase()}`;
+const generateReference = (prefix = "NIN") => {
+  const random = Math.floor(
+    100000 + Math.random() * 900000
+  );
+  return `${prefix}-${Date.now()}-${random}`;
 };
 
-const maskIdNumber = (
-  idNumber
-) => {
-  const value = String(
-    idNumber || ""
-  ).trim();
+const maskIdNumber = (value) => {
+  const id = String(value || "").trim();
 
-  if (value.length <= 4) {
+  if (id.length <= 4) {
     return "****";
   }
 
-  return `${"*".repeat(
-    value.length - 4
-  )}${value.slice(-4)}`;
+  return `${"*".repeat(id.length - 4)}${id.slice(-4)}`;
 };
 
-const getPremblyRequest = (
-  idType,
-  idNumber
-) => {
-  switch (idType) {
-    case "NIN":
-      return {
-        url:
-          `${PREMBLY_BASE_URL}/verification/vnin`,
+const normalizeSlipType = (value) => {
+  const slipType = String(value || "")
+    .trim()
+    .toUpperCase();
 
-        body: {
-          number_nin: idNumber,
-        },
-      };
-
-    default:
-      return null;
+  if (
+    ["PREMIUM", "STANDARD", "REGULAR", "INFORMATION"].includes(
+      slipType
+    )
+  ) {
+    return slipType;
   }
+
+  return "PREMIUM";
+};
+
+const normalizeSearchType = (value) => {
+  const searchType = String(value || "")
+    .trim()
+    .toUpperCase();
+
+  if (
+    ["NIN_NUMBER", "PHONE_NUMBER", "DEMOGRAPHIC"].includes(
+      searchType
+    )
+  ) {
+    return searchType;
+  }
+
+  return "NIN_NUMBER";
 };
 
 const getPremblyHeaders = () => {
-  const headers = {
-    "Content-Type":
-      "application/json",
-
-    Accept:
-      "application/json",
-
-    "x-api-key":
-      process.env.PREMBLY_SECRET_KEY,
+  return {
+    "Content-Type": "application/json",
+    app_id: PREMBLY_APP_ID,
+    "x-api-key": PREMBLY_SECRET_KEY,
   };
-
-  /*
-   * Some Prembly products require App ID.
-   * Add it only when configured.
-   */
-  if (
-    process.env.PREMBLY_APP_ID
-  ) {
-    headers["app-id"] =
-      process.env.PREMBLY_APP_ID;
-  }
-
-  return headers;
 };
 
-const getProviderMessage = (
-  providerData
-) => {
-  return (
-    providerData?.detail ||
-    providerData?.message ||
-    providerData?.error ||
-    providerData?.response_message ||
-    providerData?.responseMessage ||
-    "ID verification failed."
-  );
-};
-
-const getResultData = (
-  providerData
-) => {
-  if (
-    providerData?.data &&
-    typeof providerData.data ===
-      "object" &&
-    !Array.isArray(
-      providerData.data
-    )
-  ) {
-    return providerData.data;
-  }
-
-  if (
-    providerData?.verification &&
-    typeof providerData.verification ===
-      "object" &&
-    !Array.isArray(
-      providerData.verification
-    )
-  ) {
-    return providerData.verification;
-  }
-
-  return {};
-};
-
-const verificationWasSuccessful = (
-  statusCode,
-  providerData
-) => {
-  if (
-    statusCode < 200 ||
-    statusCode >= 300
-  ) {
-    return false;
-  }
-
-  if (
-    providerData?.status === false ||
-    providerData?.success === false
-  ) {
-    return false;
-  }
-
-  const responseCode =
-    providerData?.response_code ??
-    providerData?.responseCode ??
-    providerData?.code;
-
-  if (
-    responseCode !== undefined &&
-    responseCode !== null
-  ) {
-    const cleanCode =
-      String(responseCode)
-        .trim()
-        .toUpperCase();
-
-    const successfulCodes = [
-      "00",
-      "200",
-      "SUCCESS",
-      "SUCCESSFUL",
-    ];
-
-    if (
-      !successfulCodes.includes(
-        cleanCode
-      )
-    ) {
-      return false;
-    }
-  }
-
-  const verificationStatus =
-    providerData?.verification
-      ?.status ||
-    providerData?.verification
-      ?.verification_status;
-
-  if (verificationStatus) {
-    const cleanStatus =
-      String(verificationStatus)
-        .trim()
-        .toUpperCase();
-
-    if (
-      [
-        "FAILED",
-        "FAILURE",
-        "NOT_VERIFIED",
-        "DECLINED",
-      ].includes(cleanStatus)
-    ) {
-      return false;
-    }
-  }
-
-  return Boolean(
-    providerData?.status === true ||
-      providerData?.success === true ||
-      providerData?.data ||
-      providerData?.verification
-  );
-};
-
-const firstValue = (
-  object,
-  keys
-) => {
-  for (const key of keys) {
-    const value =
-      object?.[key];
-
-    if (
-      value === undefined ||
-      value === null
-    ) {
-      continue;
-    }
-
-    const text =
-      String(value).trim();
-
-    if (
-      text &&
-      text.toLowerCase() !==
-        "null"
-    ) {
-      return text;
-    }
-  }
-
-  return "";
-};
-
-const extractIdentityResult = (
-  providerData
-) => {
-  const resultData =
-    getResultData(providerData);
+const extractNinData = (payload) => {
+  const root = payload?.data || payload || {};
+  const data =
+    root?.data ||
+    root?.response ||
+    root?.verification ||
+    root;
 
   const firstName =
-    firstValue(
-      resultData,
-      [
-        "firstName",
-        "firstname",
-        "first_name",
-        "first_name_on_nin",
-      ]
-    );
+    data?.first_name ||
+    data?.firstname ||
+    data?.firstName ||
+    "";
 
   const middleName =
-    firstValue(
-      resultData,
-      [
-        "middleName",
-        "middlename",
-        "middle_name",
-      ]
-    );
+    data?.middle_name ||
+    data?.middlename ||
+    data?.middleName ||
+    "";
 
   const lastName =
-    firstValue(
-      resultData,
-      [
-        "lastName",
-        "lastname",
-        "last_name",
-        "surname",
-      ]
-    );
-
-  const combinedName = [
-    firstName,
-    middleName,
-    lastName,
-  ]
-    .filter(Boolean)
-    .join(" ");
+    data?.last_name ||
+    data?.surname ||
+    data?.lastname ||
+    data?.lastName ||
+    "";
 
   const fullName =
-    firstValue(
-      resultData,
-      [
-        "fullName",
-        "full_name",
-        "name",
-      ]
-    ) ||
-    combinedName ||
-    "Verified identity";
-
-  const dateOfBirth =
-    firstValue(
-      resultData,
-      [
-        "dateOfBirth",
-        "date_of_birth",
-        "birthdate",
-        "dob",
-      ]
-    );
-
-  const gender =
-    firstValue(
-      resultData,
-      [
-        "gender",
-        "sex",
-      ]
-    );
-
-  const phone =
-    firstValue(
-      resultData,
-      [
-        "phoneNumber",
-        "phone_number",
-        "phone",
-        "mobile",
-      ]
-    );
-
-  const photo =
-    firstValue(
-      resultData,
-      [
-        "photo",
-        "image",
-        "base64Image",
-        "photo_base64",
-      ]
-    );
-
-  const address =
-    firstValue(
-      resultData,
-      [
-        "address",
-        "residence_address",
-        "residential_address",
-      ]
-    );
+    data?.full_name ||
+    data?.fullname ||
+    data?.fullName ||
+    [firstName, middleName, lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
 
   return {
     fullName,
     firstName,
     middleName,
     lastName,
-    dateOfBirth,
-    gender,
-    phone,
-    photo,
-    address,
+    nin:
+      data?.nin ||
+      data?.number_nin ||
+      data?.id_number ||
+      data?.idNumber ||
+      "",
+    phone:
+      data?.phone ||
+      data?.mobile ||
+      data?.telephone ||
+      "",
+    gender: data?.gender || "",
+    dateOfBirth:
+      data?.date_of_birth ||
+      data?.dob ||
+      data?.birthdate ||
+      "",
+    address:
+      data?.address ||
+      data?.residence_address ||
+      data?.residential_address ||
+      "",
+    stateOfOrigin:
+      data?.state_of_origin ||
+      data?.state ||
+      "",
+    lga:
+      data?.lga ||
+      data?.local_government ||
+      data?.local_government_area ||
+      "",
+    photo:
+      data?.photo ||
+      data?.image ||
+      data?.passport ||
+      data?.passport_photo ||
+      "",
   };
 };
 
-const extractProviderReference = (
-  providerData
-) => {
-  return (
-    firstValue(
-      providerData?.verification ||
-        {},
-      [
-        "reference",
-        "reference_id",
-        "transaction_reference",
-      ]
-    ) ||
-    firstValue(
-      providerData,
-      [
-        "reference",
-        "reference_id",
-        "transaction_reference",
-        "transactionReference",
-      ]
-    )
-  );
+const createWalletTransaction = async ({
+  user,
+  amount,
+  reference,
+  description,
+  verificationId,
+  slipType,
+  maskedNin,
+}) => {
+  try {
+    await Transaction.create({
+      userId: user._id,
+      customerId: user._id,
+      amount,
+      type: "DEBIT",
+      status: "SUCCESSFUL",
+      serviceType: "ID_VERIFICATION",
+      reference,
+      description,
+      meta: {
+        verificationId,
+        slipType,
+        ninNumberMasked: maskedNin,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Transaction logging failed:",
+      error.message
+    );
+  }
 };
 
-exports.verifyId = async (
-  req,
-  res
-) => {
-  let verificationRecord = null;
-
+exports.verifyNin = async (req, res) => {
   try {
-    const idType = String(
-      req.body?.idType || ""
-    )
-      .trim()
-      .toUpperCase();
+    const userId = req.user?._id || req.user?.id;
 
-    const idNumber = String(
-      req.body?.idNumber || ""
-    ).trim();
-
-    const consent =
-      req.body?.consent === true ||
-      req.body?.consent ===
-        "true";
-
-    if (
-      !idType ||
-      !idNumber
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "ID type and ID number are required.",
-      });
-    }
-
-    if (
-      !supportedIdTypes.includes(
-        idType
-      )
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Unsupported ID type.",
-      });
-    }
-
-    if (!consent) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Consent is required before verification.",
-      });
-    }
-
-    if (
-      (
-        idType === "NIN" ||
-        idType === "BVN"
-      ) &&
-      !/^\d{11}$/.test(
-        idNumber
-      )
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          `${idType} must be exactly 11 digits.`,
-      });
-    }
-
-    if (
-      !connectedIdTypes.includes(
-        idType
-      )
-    ) {
-      return res.status(503).json({
-        success: false,
-        code:
-          "ID_TYPE_NOT_CONNECTED",
-
-        message:
-          `${idType} verification is coming soon. No money was deducted.`,
-      });
-    }
-
-    if (
-      !process.env
-        .PREMBLY_SECRET_KEY
-    ) {
-      return res.status(503).json({
-        success: false,
-        message:
-          "Prembly Secret Key is not configured on the server.",
-      });
-    }
-
-    const userId =
-      req.user?._id ||
-      req.user?.id ||
-      req.userId;
+    const {
+      ninNumber,
+      slipType,
+      searchType,
+      consentAccepted,
+    } = req.body;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Authentication failed. Please log in again.",
+        message: "Unauthorized.",
       });
     }
 
-    const user =
-      await User.findById(
-        userId
-      );
+    if (!ninNumber || String(ninNumber).trim().length !== 11) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid 11-digit NIN.",
+      });
+    }
+
+    if (!consentAccepted) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Consent confirmation is required before verification.",
+      });
+    }
+
+    const normalizedSlipType =
+      normalizeSlipType(slipType);
+    const normalizedSearchType =
+      normalizeSearchType(searchType);
+
+    const amount =
+      verificationFees[normalizedSlipType] || 250;
+
+    const user = await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message:
-          "User account was not found.",
+        message: "User not found.",
       });
     }
 
-    const userStatus =
-      String(
-        user.status || ""
-      )
-        .trim()
-        .toUpperCase();
-
     if (
-      userStatus !== "ACTIVE"
-    ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "Your account is not active.",
-      });
-    }
-
-    const fee =
-      verificationFees[idType];
-
-    if (
-      Number(
-        user.walletBalance || 0
-      ) < fee
+      Number(user.walletBalance || 0) < Number(amount)
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Insufficient wallet balance.",
-        data: {
-          walletBalance: Number(
-            user.walletBalance || 0
-          ),
-          requiredAmount: fee,
-        },
+          "Insufficient wallet balance for NIN verification.",
       });
     }
 
-    const premblyRequest =
-      getPremblyRequest(
-        idType,
-        idNumber
-      );
-
-    if (!premblyRequest) {
-      return res.status(503).json({
+    if (!PREMBLY_SECRET_KEY) {
+      return res.status(500).json({
         success: false,
         message:
-          `${idType} verification is not connected. No money was deducted.`,
+          "Prembly secret key is missing on the server.",
       });
     }
 
-    /*
-     * Create a pending verification record.
-     * The complete ID number remains only in
-     * the protected database record.
-     */
-    verificationRecord =
-      await IdVerification.create({
-        user: user._id,
-        idType,
-        idNumber,
-        amountCharged: 0,
-        consent: true,
-        status: "PENDING",
-        provider: "PREMBLY",
-        providerReference: "",
-        verificationData: {
-          maskedIdNumber:
-            maskIdNumber(
-              idNumber
-            ),
-        },
-        providerResponse: {},
-        errorMessage: "",
-      });
+    const reference = generateReference("NIN");
+    const maskedNin = maskIdNumber(ninNumber);
 
-    const premblyResponse =
-      await axios.post(
-        premblyRequest.url,
-        premblyRequest.body,
-        {
-          headers:
-            getPremblyHeaders(),
+    const verification = await IdVerification.create({
+      userId: user._id,
+      idType: "NIN",
+      searchType: normalizedSearchType,
+      slipType: normalizedSlipType,
+      reference,
+      amountCharged: amount,
+      status: "PENDING",
+      ninNumberMasked: maskedNin,
+      consentAccepted: true,
+    });
 
-          timeout: 60000,
-
-          validateStatus:
-            () => true,
-        }
-      );
-
-    const providerData =
-      premblyResponse.data &&
-      typeof premblyResponse.data ===
-        "object"
-        ? premblyResponse.data
-        : {
-            rawResponse:
-              String(
-                premblyResponse.data ||
-                  ""
-              ),
-          };
-
-    const successful =
-      verificationWasSuccessful(
-        premblyResponse.status,
-        providerData
-      );
-
-    if (!successful) {
-      const failureMessage =
-        getProviderMessage(
-          providerData
-        );
-
-      verificationRecord.status =
-        "FAILED";
-
-      verificationRecord.providerResponse =
-        providerData;
-
-      verificationRecord.errorMessage =
-        failureMessage;
-
-      await verificationRecord.save();
-
-      return res.status(
-        premblyResponse.status >=
-            400 &&
-          premblyResponse.status <
-            500
-          ? premblyResponse.status
-          : 400
-      ).json({
-        success: false,
-        message:
-          `${failureMessage} No money was deducted.`,
-      });
-    }
-
-    const identityResult =
-      extractIdentityResult(
-        providerData
-      );
-
-    const providerReference =
-      extractProviderReference(
-        providerData
-      );
-
-    const transactionReference =
-      providerReference ||
-      generateVerificationReference();
-
-    /*
-     * Wallet debit, verification update and
-     * transaction history are committed together.
-     */
-    const session =
-      await mongoose.startSession();
+    let premblyResponse;
 
     try {
-      session.startTransaction();
-
-      const updatedUser =
-        await User.findOneAndUpdate(
-          {
-            _id: user._id,
-            status: "ACTIVE",
-            walletBalance: {
-              $gte: fee,
-            },
-          },
-          {
-            $inc: {
-              walletBalance: -fee,
-              totalTransactions: 1,
-            },
-          },
-          {
-            new: true,
-            session,
-            runValidators: true,
-          }
-        );
-
-      if (!updatedUser) {
-        throw new Error(
-          "Your wallet balance changed and is no longer sufficient. No money was deducted."
-        );
-      }
-
-      const verificationData = {
-        ...identityResult,
-
-        maskedIdNumber:
-          maskIdNumber(
-            idNumber
-          ),
-
-        status:
-          "Verified",
-      };
-
-      const updatedVerification =
-        await IdVerification.findByIdAndUpdate(
-          verificationRecord._id,
-          {
-            $set: {
-              status:
-                "SUCCESS",
-
-              amountCharged:
-                fee,
-
-              provider:
-                "PREMBLY",
-
-              providerReference:
-                transactionReference,
-
-              verificationData,
-
-              providerResponse:
-                providerData,
-
-              errorMessage:
-                "",
-            },
-          },
-          {
-            new: true,
-            session,
-            runValidators: true,
-          }
-        );
-
-      if (!updatedVerification) {
-        throw new Error(
-          "Unable to save the verification result."
-        );
-      }
-
-      const transactions =
-        await Transaction.create(
-          [
-            {
-              reference:
-                transactionReference,
-
-              customerId:
-                updatedUser._id,
-
-              agentId:
-                updatedUser.agentId ||
-                null,
-
-              stateManagerId:
-                updatedUser
-                  .stateManagerId ||
-                null,
-
-              zonalManagerId:
-                updatedUser
-                  .zonalManagerId ||
-                null,
-
-              serviceType:
-                "ID_VERIFICATION",
-
-              provider:
-                "PREMBLY",
-
-              phone:
-                identityResult.phone ||
-                updatedUser.phone ||
-                null,
-
-              amount:
-                fee,
-
-              status:
-                "SUCCESSFUL",
-
-              providerResponse: {
-                verificationId:
-                  updatedVerification._id,
-
-                idType,
-
-                maskedIdNumber:
-                  verificationData
-                    .maskedIdNumber,
-
-                fullName:
-                  identityResult
-                    .fullName,
-
-                dateOfBirth:
-                  identityResult
-                    .dateOfBirth,
-
-                gender:
-                  identityResult
-                    .gender,
-
-                phone:
-                  identityResult
-                    .phone,
-
-                address:
-                  identityResult
-                    .address,
-
-                providerReference:
-                  transactionReference,
-
-                narration:
-                  `${idType} identity verification`,
-
-                walletBalanceAfter:
-                  updatedUser
-                    .walletBalance,
-
-                status:
-                  "Verified",
-
-                receiptTitle:
-                  "ServicePay ID Verification Receipt",
-              },
-            },
-          ],
-          {
-            session,
-          }
-        );
-
-      const savedTransaction =
-        transactions[0];
-
-      await session.commitTransaction();
-
-      verificationRecord =
-        updatedVerification;
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "ID verified successfully.",
-
-        verification: {
-          id:
-            updatedVerification._id,
-
-          transactionId:
-            savedTransaction._id,
-
-          idType,
-
-          fullName:
-            identityResult.fullName,
-
-          firstName:
-            identityResult.firstName,
-
-          middleName:
-            identityResult.middleName,
-
-          lastName:
-            identityResult.lastName,
-
-          dateOfBirth:
-            identityResult.dateOfBirth,
-
-          gender:
-            identityResult.gender,
-
-          phone:
-            identityResult.phone,
-
-          address:
-            identityResult.address,
-
-          photo:
-            identityResult.photo,
-
-          maskedIdNumber:
-            verificationData
-              .maskedIdNumber,
-
-          status:
-            "Verified",
-
-          amountCharged:
-            fee,
-
-          walletBalance:
-            updatedUser
-              .walletBalance,
-
-          reference:
-            transactionReference,
-
-          createdAt:
-            updatedVerification
-              .createdAt,
+      premblyResponse = await axios.post(
+        `${PREMBLY_BASE_URL}/verification/vnin`,
+        {
+          number_nin: String(ninNumber).trim(),
         },
-
-        data: {
-          verification: {
-            id:
-              updatedVerification._id,
-
-            transactionId:
-              savedTransaction._id,
-
-            idType,
-
-            fullName:
-              identityResult.fullName,
-
-            dateOfBirth:
-              identityResult
-                .dateOfBirth,
-
-            gender:
-              identityResult.gender,
-
-            phone:
-              identityResult.phone,
-
-            address:
-              identityResult.address,
-
-            photo:
-              identityResult.photo,
-
-            maskedIdNumber:
-              verificationData
-                .maskedIdNumber,
-
-            status:
-              "Verified",
-
-            amountCharged:
-              fee,
-
-            walletBalance:
-              updatedUser
-                .walletBalance,
-
-            reference:
-              transactionReference,
-
-            createdAt:
-              updatedVerification
-                .createdAt,
-          },
-        },
-      });
-    } catch (transactionError) {
-      if (
-        session.inTransaction()
-      ) {
-        await session.abortTransaction();
-      }
-
-      /*
-       * Prembly verification succeeded, but
-       * no wallet debit was committed.
-       */
-      verificationRecord.status =
-        "FAILED";
-
-      verificationRecord.amountCharged =
-        0;
-
-      verificationRecord.providerReference =
-        transactionReference;
-
-      verificationRecord.providerResponse =
-        providerData;
-
-      verificationRecord.errorMessage =
-        transactionError.message;
-
-      await verificationRecord
-        .save()
-        .catch(() => {});
+        {
+          headers: getPremblyHeaders(),
+          timeout: 45000,
+        }
+      );
+    } catch (error) {
+      verification.status = "FAILED";
+      verification.failureReason =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Verification request failed.";
+      verification.rawResponse =
+        error?.response?.data || {};
+      await verification.save();
 
       return res.status(400).json({
         success: false,
         message:
-          transactionError.message ||
-          "Unable to complete billing. No money was deducted.",
+          verification.failureReason ||
+          "NIN verification failed.",
       });
-    } finally {
-      await session.endSession();
     }
-  } catch (error) {
-    console.error(
-      "Prembly ID verification error:",
-      error.response?.data ||
-        error.message
+
+    const responseData = premblyResponse?.data || {};
+    const ninData = extractNinData(responseData);
+
+    if (!ninData.nin && !ninData.fullName) {
+      verification.status = "FAILED";
+      verification.failureReason =
+        responseData?.message ||
+        "No valid NIN data returned from provider.";
+      verification.rawResponse = responseData;
+      await verification.save();
+
+      return res.status(400).json({
+        success: false,
+        message:
+          verification.failureReason ||
+          "Verification failed. No data returned.",
+      });
+    }
+
+    const previousBalance = Number(
+      user.walletBalance || 0
     );
 
-    if (
-      verificationRecord &&
-      verificationRecord.status ===
-        "PENDING"
-    ) {
-      verificationRecord.status =
-        "FAILED";
+    user.walletBalance = previousBalance - Number(amount);
+    await user.save();
 
-      verificationRecord.amountCharged =
-        0;
+    verification.status = "SUCCESSFUL";
+    verification.verificationData = {
+      ...ninData,
+      nin: String(ninNumber).trim(),
+    };
+    verification.rawResponse = responseData;
+    await verification.save();
 
-      verificationRecord.errorMessage =
-        error.response?.data
-          ?.message ||
-        error.message ||
-        "Verification failed.";
+    await createWalletTransaction({
+      user,
+      amount,
+      reference,
+      description: `NIN verification (${normalizedSlipType})`,
+      verificationId: verification._id,
+      slipType: normalizedSlipType,
+      maskedNin,
+    });
 
-      verificationRecord.providerResponse =
-        error.response?.data ||
-        {};
+    return res.status(200).json({
+      success: true,
+      message: "NIN verified successfully.",
+      data: {
+        verificationId: verification._id,
+        reference: verification.reference,
+        searchType: verification.searchType,
+        slipType: verification.slipType,
+        amountCharged: verification.amountCharged,
+        walletBalance: user.walletBalance,
+        verificationData: verification.verificationData,
+        createdAt: verification.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("verifyNin error:", error.message);
 
-      await verificationRecord
-        .save()
-        .catch(() => {});
-    }
+    return res.status(500).json({
+      success: false,
+      message: "Server error while verifying NIN.",
+      error: error.message,
+    });
+  }
+};
+
+exports.getNinVerificationHistory = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+
+    const verifications = await IdVerification.find({
+      userId,
+      idType: "NIN",
+    })
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    return res.status(200).json({
+      success: true,
+      data: verifications,
+    });
+  } catch (error) {
+    console.error(
+      "getNinVerificationHistory error:",
+      error.message
+    );
 
     return res.status(500).json({
       success: false,
       message:
-        "Unable to complete ID verification. No money was deducted.",
+        "Server error while fetching verification history.",
+    });
+  }
+};
+
+exports.getSingleNinVerification = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+    const { id } = req.params;
+
+    const verification = await IdVerification.findOne({
+      _id: id,
+      userId,
+      idType: "NIN",
+    });
+
+    if (!verification) {
+      return res.status(404).json({
+        success: false,
+        message: "Verification record not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: verification,
+    });
+  } catch (error) {
+    console.error(
+      "getSingleNinVerification error:",
+      error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while fetching verification details.",
     });
   }
 };
