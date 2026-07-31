@@ -2,17 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_notifications_screen.dart';
+import 'admin_product_commission_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
 
   @override
-  State<AdminDashboardScreen> createState() =>
-      _AdminDashboardScreenState();
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
-class _AdminDashboardScreenState
-    extends State<AdminDashboardScreen> {
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   String adminName = 'Admin';
   String adminRole = 'ADMIN';
 
@@ -34,20 +33,17 @@ class _AdminDashboardScreenState
   Future<void> loadAdminDetails() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final savedName =
-        prefs.getString('user_name') ??
+    final savedName = prefs.getString('user_name') ??
         prefs.getString('full_name') ??
         prefs.getString('name');
 
-    final savedRole =
-        prefs.getString('user_role') ?? 'ADMIN';
+    final savedRole = prefs.getString('user_role') ?? 'ADMIN';
 
     if (!mounted) return;
 
     setState(() {
-      adminName = savedName?.trim().isNotEmpty == true
-          ? savedName!.trim()
-          : 'Admin';
+      adminName =
+          savedName?.trim().isNotEmpty == true ? savedName!.trim() : 'Admin';
 
       adminRole = savedRole.trim().isNotEmpty
           ? savedRole.trim().toUpperCase()
@@ -122,8 +118,7 @@ class _AdminDashboardScreenState
           const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   value,
@@ -242,8 +237,7 @@ class _AdminDashboardScreenState
           : RefreshIndicator(
               onRefresh: refreshDashboard,
               child: ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(18),
                 children: [
                   Container(
@@ -251,8 +245,7 @@ class _AdminDashboardScreenState
                     padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
                       color: Colors.green,
-                      borderRadius:
-                          BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.green.withValues(
@@ -264,8 +257,7 @@ class _AdminDashboardScreenState
                       ],
                     ),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Welcome Back',
@@ -285,8 +277,7 @@ class _AdminDashboardScreenState
                         ),
                         const SizedBox(height: 8),
                         Container(
-                          padding:
-                              const EdgeInsets.symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 6,
                           ),
@@ -294,8 +285,7 @@ class _AdminDashboardScreenState
                             color: Colors.white.withValues(
                               alpha: 0.18,
                             ),
-                            borderRadius:
-                                BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
                             adminRole.replaceAll('_', ' '),
@@ -321,8 +311,7 @@ class _AdminDashboardScreenState
                   GridView.count(
                     crossAxisCount: 2,
                     shrinkWrap: true,
-                    physics:
-                        const NeverScrollableScrollPhysics(),
+                    physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 14,
                     crossAxisSpacing: 14,
                     childAspectRatio: 1.55,
@@ -359,8 +348,7 @@ class _AdminDashboardScreenState
                       ),
                       buildStatCard(
                         title: 'ID Verifications',
-                        value:
-                            pendingVerifications.toString(),
+                        value: pendingVerifications.toString(),
                         icon: Icons.badge_outlined,
                         color: Colors.teal,
                       ),
@@ -386,8 +374,7 @@ class _AdminDashboardScreenState
                   ),
                   buildAdminAction(
                     title: 'Transactions',
-                    subtitle:
-                        'Monitor all customer transactions.',
+                    subtitle: 'Monitor all customer transactions.',
                     icon: Icons.receipt_long_outlined,
                     onTap: () {
                       showComingSoon(
@@ -397,8 +384,7 @@ class _AdminDashboardScreenState
                   ),
                   buildAdminAction(
                     title: 'Delivery Management',
-                    subtitle:
-                        'Set delivery fees and update delivery status.',
+                    subtitle: 'Set delivery fees and update delivery status.',
                     icon: Icons.local_shipping_outlined,
                     onTap: () {
                       showComingSoon(
@@ -430,12 +416,14 @@ class _AdminDashboardScreenState
                   ),
                   buildAdminAction(
                     title: 'Commission Management',
-                    subtitle:
-                        'Manage agent and manager commissions.',
+                    subtitle: 'Manage agent and manager commissions.',
                     icon: Icons.percent_outlined,
                     onTap: () {
-                      showComingSoon(
-                        'Commission Management',
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminProductCommissionScreen(),
+                        ),
                       );
                     },
                   ),
