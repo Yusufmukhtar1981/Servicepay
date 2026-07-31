@@ -34,6 +34,34 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   bool isLoading = false;
 
   late String selectedIdType;
+  String selectedSlipType = 'PREMIUM';
+
+  final Map<String, Map<String, dynamic>> slipTypes = {
+    'PREMIUM': {
+      'title': 'Premium',
+      'fee': 250.0,
+      'icon': Icons.workspace_premium_rounded,
+      'description': 'Modern premium NIN card',
+    },
+    'STANDARD': {
+      'title': 'Standard',
+      'fee': 250.0,
+      'icon': Icons.badge_rounded,
+      'description': 'Clean standard NIN card',
+    },
+    'REGULAR': {
+      'title': 'Regular',
+      'fee': 200.0,
+      'icon': Icons.article_rounded,
+      'description': 'Detailed regular NIN slip',
+    },
+    'INFORMATION': {
+      'title': 'Information',
+      'fee': 150.0,
+      'icon': Icons.description_rounded,
+      'description': 'Simple information slip',
+    },
+  };
 
   final Map<String, Map<String, dynamic>> idTypes = {
     'NIN': {
@@ -102,7 +130,12 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   }
 
   double get selectedFee {
-    return (idTypes[selectedIdType]?['fee'] as num?)?.toDouble() ?? 0;
+    return (slipTypes[selectedSlipType]?['fee'] as num?)?.toDouble() ?? 0;
+  }
+
+  String get selectedSlipTitle {
+    return slipTypes[selectedSlipType]?['title']?.toString() ??
+        selectedSlipType;
   }
 
   String get selectedTitle {
@@ -266,8 +299,12 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
               'Authorization': 'Bearer ${token.trim()}',
             },
             body: jsonEncode({
-              'idType': selectedIdType,
+              'ninNumber': idNumberController.text.trim(),
               'idNumber': idNumberController.text.trim(),
+              'idType': selectedIdType,
+              'searchType': 'NIN_NUMBER',
+              'slipType': selectedSlipType,
+              'consentAccepted': true,
               'consent': true,
             }),
           )
@@ -668,6 +705,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
       MaterialPageRoute(
         builder: (_) => _VerificationResultScreen(
           idType: selectedShortTitle,
+          slipType: selectedSlipType,
           fullName: fullName,
           firstName: firstName,
           middleName: middleName,
@@ -844,6 +882,73 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
     );
   }
 
+  Widget buildSlipTypeCard(
+    String slipType,
+  ) {
+    final Map<String, dynamic> details = slipTypes[slipType]!;
+    final bool selected = selectedSlipType == slipType;
+    final double fee = (details['fee'] as num).toDouble();
+
+    return InkWell(
+      onTap: isLoading
+          ? null
+          : () {
+              setState(() {
+                selectedSlipType = slipType;
+              });
+            },
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 145,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFE8F5E9) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? primaryGreen : const Color(0xFFE5E7EB),
+            width: selected ? 2.3 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(
+                  details['icon'] as IconData,
+                  color: selected ? primaryGreen : const Color(0xFF6B7280),
+                ),
+                const Spacer(),
+                if (selected)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: primaryGreen,
+                    size: 20,
+                  ),
+              ],
+            ),
+            const Spacer(),
+            Text(
+              details['title'].toString(),
+              style: TextStyle(
+                color: selected ? primaryGreen : const Color(0xFF17211A),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '₦${fee.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -953,6 +1058,35 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
               const SizedBox(
                 height: 25,
               ),
+              const Text(
+                'Select Slip Layout',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Choose the NIN card or slip format you need.',
+                style: TextStyle(
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 132,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: slipTypes.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final String slipType = slipTypes.keys.elementAt(index);
+
+                    return buildSlipTypeCard(slipType);
+                  },
+                ),
+              ),
+              const SizedBox(height: 25),
               Text(
                 selectedTitle,
                 style: const TextStyle(
@@ -1138,6 +1272,7 @@ class _VerificationResultScreen extends StatelessWidget {
   final ScreenshotController _screenshotController = ScreenshotController();
 
   final String idType;
+  final String slipType;
   final String fullName;
   final String firstName;
   final String middleName;
@@ -1157,6 +1292,7 @@ class _VerificationResultScreen extends StatelessWidget {
 
   _VerificationResultScreen({
     required this.idType,
+    required this.slipType,
     required this.fullName,
     required this.firstName,
     required this.middleName,
@@ -1309,6 +1445,58 @@ class _VerificationResultScreen extends StatelessWidget {
       );
   }
 
+  Widget _buildSelectedLayout() {
+    switch (slipType.toUpperCase()) {
+      case 'STANDARD':
+        return _StandardNinCard(
+          idType: idType,
+          fullName: fullName,
+          dateOfBirth: dateOfBirth,
+          gender: gender,
+          ninNumber: maskedIdNumber,
+          photoValue: photoValue,
+          reference: reference,
+        );
+
+      case 'REGULAR':
+        return _RegularNinSlip(
+          idType: idType,
+          fullName: fullName,
+          dateOfBirth: dateOfBirth,
+          gender: gender,
+          phone: phone,
+          address: address,
+          ninNumber: maskedIdNumber,
+          photoValue: photoValue,
+          reference: reference,
+        );
+
+      case 'INFORMATION':
+        return _InformationNinSlip(
+          idType: idType,
+          fullName: fullName,
+          dateOfBirth: dateOfBirth,
+          gender: gender,
+          phone: phone,
+          address: address,
+          ninNumber: maskedIdNumber,
+          reference: reference,
+        );
+
+      case 'PREMIUM':
+      default:
+        return _VerifiedIdentityCard(
+          idType: idType,
+          fullName: fullName,
+          dateOfBirth: dateOfBirth,
+          gender: gender,
+          maskedIdNumber: maskedIdNumber,
+          photoValue: photoValue,
+          reference: reference,
+        );
+    }
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -1364,15 +1552,7 @@ class _VerificationResultScreen extends StatelessWidget {
              */
             Screenshot(
               controller: _screenshotController,
-              child: _VerifiedIdentityCard(
-                idType: idType,
-                fullName: fullName,
-                dateOfBirth: dateOfBirth,
-                gender: gender,
-                maskedIdNumber: maskedIdNumber,
-                photoValue: photoValue,
-                reference: reference,
-              ),
+              child: _buildSelectedLayout(),
             ),
             const SizedBox(
               height: 18,
@@ -1395,6 +1575,10 @@ class _VerificationResultScreen extends StatelessWidget {
                   _ResultDetailRow(
                     label: 'ID Type',
                     value: idType,
+                  ),
+                  _ResultDetailRow(
+                    label: 'Layout',
+                    value: slipType,
                   ),
                   _ResultDetailRow(
                     label: 'ID Number',
@@ -1836,6 +2020,394 @@ class _VerifiedIdentityCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StandardNinCard extends StatelessWidget {
+  static const Color blue = Color(0xFF174EA6);
+
+  final String idType;
+  final String fullName;
+  final String dateOfBirth;
+  final String gender;
+  final String ninNumber;
+  final String photoValue;
+  final String reference;
+
+  const _StandardNinCard({
+    required this.idType,
+    required this.fullName,
+    required this.dateOfBirth,
+    required this.gender,
+    required this.ninNumber,
+    required this.photoValue,
+    required this.reference,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 1.58,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: const Color(0xFFB8CBE8),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.badge_rounded,
+                  color: blue,
+                  size: 35,
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'SERVICEPAY STANDARD ID',
+                    style: TextStyle(
+                      color: blue,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.verified_rounded,
+                  color: blue,
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            Expanded(
+              child: Row(
+                children: [
+                  _IdentityPhoto(photoValue: photoValue),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'FULL NAME',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          fullName.toUpperCase(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const Spacer(),
+                        _CardField(
+                          label: '$idType NUMBER',
+                          value: ninNumber,
+                        ),
+                        const SizedBox(height: 7),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _CardField(
+                                label: 'DATE OF BIRTH',
+                                value: dateOfBirth,
+                              ),
+                            ),
+                            Expanded(
+                              child: _CardField(
+                                label: 'GENDER',
+                                value: gender,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RegularNinSlip extends StatelessWidget {
+  static const Color green = Color(0xFF2E7D32);
+
+  final String idType;
+  final String fullName;
+  final String dateOfBirth;
+  final String gender;
+  final String phone;
+  final String address;
+  final String ninNumber;
+  final String photoValue;
+  final String reference;
+
+  const _RegularNinSlip({
+    required this.idType,
+    required this.fullName,
+    required this.dateOfBirth,
+    required this.gender,
+    required this.phone,
+    required this.address,
+    required this.ninNumber,
+    required this.photoValue,
+    required this.reference,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFFB7C9B9),
+        ),
+      ),
+      child: Column(
+        children: [
+          const Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: green,
+                child: Icon(
+                  Icons.article_rounded,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SERVICEPAY',
+                      style: TextStyle(
+                        color: green,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                      ),
+                    ),
+                    Text(
+                      'REGULAR NIN VERIFICATION SLIP',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 26),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _IdentityPhoto(photoValue: photoValue),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  children: [
+                    _SlipField(
+                      label: 'FULL NAME',
+                      value: fullName,
+                    ),
+                    _SlipField(
+                      label: '$idType NUMBER',
+                      value: ninNumber,
+                    ),
+                    _SlipField(
+                      label: 'DATE OF BIRTH',
+                      value: dateOfBirth,
+                    ),
+                    _SlipField(
+                      label: 'GENDER',
+                      value: gender,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          _SlipField(
+            label: 'PHONE NUMBER',
+            value: phone,
+          ),
+          _SlipField(
+            label: 'RESIDENTIAL ADDRESS',
+            value: address,
+          ),
+          if (reference.isNotEmpty)
+            _SlipField(
+              label: 'REFERENCE',
+              value: reference,
+              showDivider: false,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InformationNinSlip extends StatelessWidget {
+  static const Color dark = Color(0xFF374151);
+
+  final String idType;
+  final String fullName;
+  final String dateOfBirth;
+  final String gender;
+  final String phone;
+  final String address;
+  final String ninNumber;
+  final String reference;
+
+  const _InformationNinSlip({
+    required this.idType,
+    required this.fullName,
+    required this.dateOfBirth,
+    required this.gender,
+    required this.phone,
+    required this.address,
+    required this.ninNumber,
+    required this.reference,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      color: Colors.white,
+      child: Column(
+        children: [
+          const Icon(
+            Icons.description_rounded,
+            color: dark,
+            size: 42,
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            'SERVICEPAY ID INFORMATION',
+            style: TextStyle(
+              color: dark,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'VERIFIED IDENTITY INFORMATION SHEET',
+            style: TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Divider(height: 28),
+          _SlipField(
+            label: 'FULL NAME',
+            value: fullName,
+          ),
+          _SlipField(
+            label: '$idType NUMBER',
+            value: ninNumber,
+          ),
+          _SlipField(
+            label: 'DATE OF BIRTH',
+            value: dateOfBirth,
+          ),
+          _SlipField(
+            label: 'GENDER',
+            value: gender,
+          ),
+          _SlipField(
+            label: 'PHONE NUMBER',
+            value: phone,
+          ),
+          _SlipField(
+            label: 'ADDRESS',
+            value: address,
+          ),
+          if (reference.isNotEmpty)
+            _SlipField(
+              label: 'REFERENCE',
+              value: reference,
+              showDivider: false,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SlipField extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool showDivider;
+
+  const _SlipField({
+    required this.label,
+    required this.value,
+    this.showDivider = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        vertical: 9,
+      ),
+      decoration: BoxDecoration(
+        border: showDivider
+            ? const Border(
+                bottom: BorderSide(
+                  color: Color(0xFFE5E7EB),
+                ),
+              )
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 9,
+              color: Color(0xFF6B7280),
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
