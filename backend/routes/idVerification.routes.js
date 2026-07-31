@@ -7,10 +7,18 @@ const {
   getSingleNinVerification,
 } = require("../controllers/idVerification.controller");
 
-const { protect } = require("../middlewares/auth.middleware");
+const protect = require("../middleware/auth.middleware");
 
 router.post("/nin", protect, verifyNin);
-router.get("/nin/history", protect, getNinVerificationHistory);
-router.get("/nin/:id", protect, getSingleNinVerification);
+router.get(
+  "/nin/history",
+  protect,
+  getNinVerificationHistory
+);
+router.get(
+  "/nin/:id",
+  protect,
+  getSingleNinVerification
+);
 
 module.exports = router;
