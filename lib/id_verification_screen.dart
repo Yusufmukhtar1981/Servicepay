@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:gal/gal.dart';
 
 class IdVerificationScreen extends StatefulWidget {
   final String initialIdType;
@@ -1132,6 +1135,8 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
 class _VerificationResultScreen extends StatelessWidget {
   static const Color primaryGreen = Color(0xFF2E7D32);
 
+  final ScreenshotController _screenshotController = ScreenshotController();
+
   final String idType;
   final String fullName;
   final String firstName;
@@ -1150,7 +1155,7 @@ class _VerificationResultScreen extends StatelessWidget {
   final double? walletBalance;
   final String message;
 
-  const _VerificationResultScreen({
+  _VerificationResultScreen({
     required this.idType,
     required this.fullName,
     required this.firstName,
@@ -1169,6 +1174,140 @@ class _VerificationResultScreen extends StatelessWidget {
     required this.walletBalance,
     required this.message,
   });
+
+  Future<Uint8List?> _captureCard(
+    BuildContext context,
+  ) async {
+    try {
+      await Future<void>.delayed(
+        const Duration(milliseconds: 200),
+      );
+
+      return await _screenshotController.capture(
+        delay: const Duration(milliseconds: 100),
+        pixelRatio: 3,
+      );
+    } catch (_) {
+      _showActionMessage(
+        context,
+        'Unable to prepare the NIN card image.',
+        isError: true,
+      );
+
+      return null;
+    }
+  }
+
+  Future<void> _downloadCard(
+    BuildContext context,
+  ) async {
+    final Uint8List? imageBytes = await _captureCard(context);
+
+    if (imageBytes == null) {
+      return;
+    }
+
+    try {
+      final bool hasAccess = await Gal.hasAccess();
+
+      if (!hasAccess) {
+        await Gal.requestAccess();
+      }
+
+      final String fileName =
+          'servicepay_nin_${DateTime.now().millisecondsSinceEpoch}';
+
+      await Gal.putImageBytes(
+        imageBytes,
+        name: fileName,
+      );
+
+      if (!context.mounted) {
+        return;
+      }
+
+      _showActionMessage(
+        context,
+        'NIN card downloaded to your Gallery.',
+        isError: false,
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+
+      _showActionMessage(
+        context,
+        'Unable to save the NIN card. Please allow photo access and try again.',
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _shareCard(
+    BuildContext context,
+  ) async {
+    final Uint8List? imageBytes = await _captureCard(context);
+
+    if (imageBytes == null) {
+      return;
+    }
+
+    try {
+      final String fileName =
+          'servicepay_nin_${DateTime.now().millisecondsSinceEpoch}.png';
+
+      final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+
+      await SharePlus.instance.share(
+        ShareParams(
+          title: 'ServicePay NIN Card',
+          text: 'ServicePay NIN verification card',
+          files: [
+            XFile.fromData(
+              imageBytes,
+              mimeType: 'image/png',
+            ),
+          ],
+          fileNameOverrides: [
+            fileName,
+          ],
+          sharePositionOrigin: renderBox == null
+              ? null
+              : renderBox.localToGlobal(
+                    Offset.zero,
+                  ) &
+                  renderBox.size,
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+
+      _showActionMessage(
+        context,
+        'Unable to share the NIN card. Please try again.',
+        isError: true,
+      );
+    }
+  }
+
+  void _showActionMessage(
+    BuildContext context,
+    String message, {
+    required bool isError,
+  }) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? const Color(0xFFDC2626) : primaryGreen,
+        ),
+      );
+  }
 
   @override
   Widget build(
@@ -1223,14 +1362,17 @@ class _VerificationResultScreen extends StatelessWidget {
              * verification result card.
              * It is not an official government ID.
              */
-            _VerifiedIdentityCard(
-              idType: idType,
-              fullName: fullName,
-              dateOfBirth: dateOfBirth,
-              gender: gender,
-              maskedIdNumber: maskedIdNumber,
-              photoValue: photoValue,
-              reference: reference,
+            Screenshot(
+              controller: _screenshotController,
+              child: _VerifiedIdentityCard(
+                idType: idType,
+                fullName: fullName,
+                dateOfBirth: dateOfBirth,
+                gender: gender,
+                maskedIdNumber: maskedIdNumber,
+                photoValue: photoValue,
+                reference: reference,
+              ),
             ),
             const SizedBox(
               height: 18,
@@ -1325,6 +1467,51 @@ class _VerificationResultScreen extends StatelessWidget {
             ),
             const SizedBox(
               height: 18,
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      _downloadCard(context);
+                    },
+                    icon: const Icon(
+                      Icons.download_rounded,
+                    ),
+                    label: const Text(
+                      'Download Card',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  width: 10,
+                ),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      _shareCard(context);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                    ),
+                    icon: const Icon(
+                      Icons.share_rounded,
+                    ),
+                    label: const Text(
+                      'Share Card',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(
+              height: 16,
             ),
             Container(
               padding: const EdgeInsets.all(14),
