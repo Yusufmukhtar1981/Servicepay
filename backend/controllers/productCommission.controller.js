@@ -104,6 +104,7 @@ exports.upsertProductCommission = async (
       serviceType,
       productCode,
       productName,
+      headOfficeCommission,
       agentCommission,
       stateCommission,
       zonalCommission,
@@ -143,6 +144,9 @@ exports.upsertProductCommission = async (
       });
     }
 
+    const normalizedHeadOfficeCommission =
+      normalizeAmount(headOfficeCommission);
+
     const normalizedAgentCommission =
       normalizeAmount(agentCommission);
 
@@ -153,6 +157,7 @@ exports.upsertProductCommission = async (
       normalizeAmount(zonalCommission);
 
     if (
+      normalizedHeadOfficeCommission === null ||
       normalizedAgentCommission === null ||
       normalizedStateCommission === null ||
       normalizedZonalCommission === null

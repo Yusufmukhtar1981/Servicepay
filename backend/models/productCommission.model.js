@@ -24,6 +24,13 @@ const productCommissionSchema = new mongoose.Schema(
       trim: true,
     },
 
+    headOfficeCommission: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+
     agentCommission: {
       type: Number,
       default: 0,
