@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+
+import 'bvn_verification_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -953,6 +955,10 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   Widget build(
     BuildContext context,
   ) {
+    if (widget.initialIdType.trim().toUpperCase() == 'BVN') {
+      return const BvnVerificationScreen();
+    }
+
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
