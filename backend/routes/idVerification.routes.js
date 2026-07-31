@@ -7,7 +7,7 @@ const {
   getSingleNinVerification,
 } = require("../controllers/idVerification.controller");
 
-const protect = require("../middleware/auth.middleware");
+const { protect } = require("../middleware/auth.middleware");
 
 router.post("/nin", protect, verifyNin);
 router.get(
