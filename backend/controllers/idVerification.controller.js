@@ -76,36 +76,53 @@ const getPremblyHeaders = () => {
 };
 
 const extractNinData = (payload) => {
-  const root = payload?.data || payload || {};
+  const possibleSources = [
+    payload?.data,
+    payload?.nin_data,
+    payload?.data?.nin_data,
+    payload?.response?.data,
+    payload?.response?.nin_data,
+    payload?.verificationData,
+    payload,
+  ];
+
   const data =
-    root?.data ||
-    root?.response ||
-    root?.verification ||
-    root;
+    possibleSources.find(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        (
+          item.firstname ||
+          item.first_name ||
+          item.surname ||
+          item.nin ||
+          item.birthdate
+        )
+    ) || {};
 
   const firstName =
-    data?.first_name ||
-    data?.firstname ||
-    data?.firstName ||
+    data.firstname ||
+    data.first_name ||
+    data.firstName ||
     "";
 
   const middleName =
-    data?.middle_name ||
-    data?.middlename ||
-    data?.middleName ||
+    data.middlename ||
+    data.middle_name ||
+    data.middleName ||
     "";
 
   const lastName =
-    data?.last_name ||
-    data?.surname ||
-    data?.lastname ||
-    data?.lastName ||
+    data.surname ||
+    data.lastname ||
+    data.last_name ||
+    data.lastName ||
     "";
 
   const fullName =
-    data?.full_name ||
-    data?.fullname ||
-    data?.fullName ||
+    data.fullname ||
+    data.full_name ||
+    data.fullName ||
     [firstName, middleName, lastName]
       .filter(Boolean)
       .join(" ")
@@ -116,42 +133,55 @@ const extractNinData = (payload) => {
     firstName,
     middleName,
     lastName,
+
     nin:
-      data?.nin ||
-      data?.number_nin ||
-      data?.id_number ||
-      data?.idNumber ||
+      data.nin ||
+      data.number_nin ||
+      data.id_number ||
       "",
+
     phone:
-      data?.phone ||
-      data?.mobile ||
-      data?.telephone ||
+      data.telephoneno ||
+      data.phone ||
+      data.phone_number ||
+      data.mobile ||
       "",
-    gender: data?.gender || "",
+
+    gender:
+      data.gender ||
+      data.sex ||
+      "",
+
     dateOfBirth:
-      data?.date_of_birth ||
-      data?.dob ||
-      data?.birthdate ||
+      data.birthdate ||
+      data.date_of_birth ||
+      data.dateOfBirth ||
+      data.dob ||
       "",
+
     address:
-      data?.address ||
-      data?.residence_address ||
-      data?.residential_address ||
+      data.residence_address ||
+      data.residential_address ||
+      data.address ||
       "",
+
     stateOfOrigin:
-      data?.state_of_origin ||
-      data?.state ||
+      data.self_origin_state ||
+      data.state_of_origin ||
+      data.birthstate ||
       "",
+
     lga:
-      data?.lga ||
-      data?.local_government ||
-      data?.local_government_area ||
+      data.self_origin_lga ||
+      data.lga ||
+      data.local_government ||
       "",
+
     photo:
-      data?.photo ||
-      data?.image ||
-      data?.passport ||
-      data?.passport_photo ||
+      data.photo ||
+      data.passport ||
+      data.passport_photo ||
+      data.image ||
       "",
   };
 };
@@ -313,7 +343,7 @@ exports.verifyNin = async (req, res) => {
     const responseData = premblyResponse?.data || {};
     const ninData = extractNinData(responseData);
 
-    if (!ninData.nin && !ninData.fullName) {
+    if (!ninData.fullName) {
       verification.status = "FAILED";
       verification.failureReason =
         responseData?.message ||
@@ -354,17 +384,37 @@ exports.verifyNin = async (req, res) => {
       maskedNin,
     });
 
+    const cleanVerificationData =
+      verification.verificationData?.toObject
+        ? verification.verificationData.toObject()
+        : verification.verificationData || {};
+
     return res.status(200).json({
       success: true,
       message: "NIN verified successfully.",
+
+      // Compatibility for both the old and new ServicePay APK.
+      verification: {
+        ...cleanVerificationData,
+        status: "Verified",
+        reference: verification.reference,
+        amountCharged: verification.amountCharged,
+        walletBalance: user.walletBalance,
+        createdAt: verification.createdAt,
+        maskedIdNumber: verification.ninNumberMasked,
+      },
+
       data: {
+        ...cleanVerificationData,
         verificationId: verification._id,
         reference: verification.reference,
         searchType: verification.searchType,
         slipType: verification.slipType,
         amountCharged: verification.amountCharged,
         walletBalance: user.walletBalance,
-        verificationData: verification.verificationData,
+        verificationData: cleanVerificationData,
+        status: "Verified",
+        maskedIdNumber: verification.ninNumberMasked,
         createdAt: verification.createdAt,
       },
     });
