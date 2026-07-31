@@ -596,6 +596,9 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
     final String maskedIdNumber = firstAvailableValue(
           verification,
           const [
+            'nin',
+            'nin_number',
+            'number_nin',
             'maskedIdNumber',
             'masked_id_number',
           ],
