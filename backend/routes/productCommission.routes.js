@@ -9,6 +9,7 @@ const { protect } = require(
 const {
   getProductCommissions,
   upsertProductCommission,
+  updateProductCommission,
   updateProductCommissionStatus,
   deleteProductCommission,
 } = require(
@@ -46,6 +47,11 @@ router.get(
 router.post(
   "/",
   upsertProductCommission
+);
+
+router.patch(
+  "/:id",
+  updateProductCommission
 );
 
 router.patch(

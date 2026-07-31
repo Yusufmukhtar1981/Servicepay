@@ -242,6 +242,142 @@ exports.upsertProductCommission = async (
   }
 };
 
+
+exports.updateProductCommission = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      serviceType,
+      productCode,
+      productName,
+      headOfficeCommission,
+      agentCommission,
+      stateCommission,
+      zonalCommission,
+      isActive,
+    } = req.body;
+
+    const normalizedServiceType =
+      normalizeText(serviceType);
+
+    const normalizedProductCode =
+      normalizeText(productCode);
+
+    const cleanProductName =
+      String(productName || "").trim();
+
+    if (!normalizedServiceType) {
+      return res.status(400).json({
+        success: false,
+        message: "Service type is required.",
+      });
+    }
+
+    if (!normalizedProductCode) {
+      return res.status(400).json({
+        success: false,
+        message: "Product code is required.",
+      });
+    }
+
+    if (!cleanProductName) {
+      return res.status(400).json({
+        success: false,
+        message: "Product name is required.",
+      });
+    }
+
+    const normalizedHeadOfficeCommission =
+      normalizeAmount(headOfficeCommission);
+
+    const normalizedAgentCommission =
+      normalizeAmount(agentCommission);
+
+    const normalizedStateCommission =
+      normalizeAmount(stateCommission);
+
+    const normalizedZonalCommission =
+      normalizeAmount(zonalCommission);
+
+    if (
+      normalizedHeadOfficeCommission === null ||
+      normalizedAgentCommission === null ||
+      normalizedStateCommission === null ||
+      normalizedZonalCommission === null
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Commission amounts must be valid numbers and cannot be negative.",
+      });
+    }
+
+    const product =
+      await ProductCommission.findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            serviceType: normalizedServiceType,
+            productCode: normalizedProductCode,
+            productName: cleanProductName,
+
+            headOfficeCommission:
+              normalizedHeadOfficeCommission,
+
+            agentCommission:
+              normalizedAgentCommission,
+
+            stateCommission:
+              normalizedStateCommission,
+
+            zonalCommission:
+              normalizedZonalCommission,
+
+            isActive:
+              typeof isActive === "boolean"
+                ? isActive
+                : true,
+
+            updatedBy:
+              req.user?._id ||
+              req.user?.id ||
+              null,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product commission not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Product commission updated successfully.",
+      product,
+    });
+  } catch (error) {
+    console.error(
+      "updateProductCommission error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while updating product commission.",
+    });
+  }
+};
+
 exports.updateProductCommissionStatus =
   async (req, res) => {
     try {
