@@ -255,7 +255,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
       final http.Response response = await http
           .post(
             Uri.parse(
-              '$baseUrl/id-verification/verify',
+              '$baseUrl/id-verification/nin',
             ),
             headers: {
               'Accept': 'application/json',
