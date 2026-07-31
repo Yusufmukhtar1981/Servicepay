@@ -180,6 +180,15 @@ app.use(
 
 app.use("/api/settings", appSettingsRoutes);
 
+const productCommissionRoutes = require(
+  "./routes/productCommission.routes"
+);
+
+app.use(
+  "/api/admin/product-commissions",
+  productCommissionRoutes
+);
+
 app.use((req, res) => {
   res.status(404).json({
     success: false,
