@@ -11,7 +11,7 @@ const {
   getSingleBvnVerification,
 } = require("../controllers/idVerification.controller");
 
-const protect = require("../middleware/auth.middleware");
+const { protect } = require("../middleware/auth.middleware");
 
 // NIN verification routes
 router.post(
