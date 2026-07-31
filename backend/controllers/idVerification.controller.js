@@ -193,12 +193,19 @@ exports.verifyNin = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
 
-    const {
-      ninNumber,
-      slipType,
-      searchType,
-      consentAccepted,
-    } = req.body;
+    const ninNumber =
+      req.body.ninNumber || req.body.idNumber;
+
+    const slipType =
+      req.body.slipType || "PREMIUM";
+
+    const searchType =
+      req.body.searchType || "NIN_NUMBER";
+
+    const consentAccepted =
+      req.body.consentAccepted ??
+      req.body.consent ??
+      false;
 
     if (!userId) {
       return res.status(401).json({
