@@ -8,12 +8,10 @@ class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
 
   @override
-  State<AdminMainNavigation> createState() =>
-      _AdminMainNavigationState();
+  State<AdminMainNavigation> createState() => _AdminMainNavigationState();
 }
 
-class _AdminMainNavigationState
-    extends State<AdminMainNavigation> {
+class _AdminMainNavigationState extends State<AdminMainNavigation> {
   int currentIndex = 0;
 
   final List<Widget> pages = const [
@@ -41,10 +39,8 @@ class _AdminMainNavigationState
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
         type: BottomNavigationBarType.fixed,
-        selectedItemColor:
-            const Color(0xFF0F766E),
-        unselectedItemColor:
-            const Color(0xFF94A3B8),
+        selectedItemColor: const Color(0xFF0F766E),
+        unselectedItemColor: const Color(0xFF94A3B8),
         backgroundColor: Colors.white,
         elevation: 12,
         selectedLabelStyle: const TextStyle(
