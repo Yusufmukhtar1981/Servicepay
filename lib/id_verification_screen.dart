@@ -79,10 +79,10 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
       'shortTitle': 'BVN',
       'title': 'Bank Verification Number',
       'description': 'Verify a Bank Verification Number',
-      'fee': 500.0,
+      'fee': 200.0,
       'length': 11,
       'icon': Icons.account_balance_outlined,
-      'available': false,
+      'available': true,
     },
     'DRIVER_LICENSE': {
       'shortTitle': 'Driver License',
@@ -798,6 +798,15 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                 showMessage(
                   '${details['shortTitle']} verification is coming soon.',
                   isError: true,
+                );
+                return;
+              }
+
+              if (idType == 'BVN') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const BvnVerificationScreen(),
+                  ),
                 );
                 return;
               }
