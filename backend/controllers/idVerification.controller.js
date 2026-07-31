@@ -496,7 +496,7 @@ exports.getSingleNinVerification = async (req, res) => {
 
 // ===== BVN VERIFICATION FUNCTIONS =====
 
-const BVN_VERIFICATION_FEE = 500;
+const BVN_VERIFICATION_FEE = 200;
 
 const extractBvnData = (payload) => {
   const possibleSources = [
