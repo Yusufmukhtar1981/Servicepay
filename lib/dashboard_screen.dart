@@ -10,10 +10,10 @@ import 'data_screen.dart';
 import 'electricity_screen.dart';
 import 'exam_pin_screen.dart';
 import 'flight_booking_screen.dart';
-import 'help_support_screen.dart';
 import 'id_verification_screen.dart';
 import 'logistics_screen.dart';
 import 'notifications_screen.dart';
+import 'transactions_screen.dart';
 import 'transfer_screen.dart';
 import 'wallet_screen.dart';
 
@@ -27,32 +27,29 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF2E7D32);
-  static const Color secondaryGreen = Color(0xFF43A047);
-  static const Color backgroundColor = Color(0xFFF8FAFC);
-  static const Color cardBorderColor = Color(0xFFE8ECE8);
+  static const Color primaryGreen = Color(0xFF08783E);
+
+  static const Color deepGreen = Color(0xFF004E2C);
+
+  static const Color softGreen = Color(0xFFEAF7F0);
 
   final TextEditingController searchController = TextEditingController();
 
-  String name = 'User';
-  String searchQuery = '';
-
-  double balance = 0;
+  String userName = 'Customer';
+  double walletBalance = 0;
 
   int unreadNotifications = 1;
 
   bool isLoading = true;
   bool isRefreshing = false;
   bool hideBalance = false;
-  bool showMoreServices = false;
+
+  String searchQuery = '';
 
   @override
   void initState() {
     super.initState();
-
-    refreshDashboard(
-      initialLoad: true,
-    );
+    loadDashboard();
   }
 
   @override
@@ -61,60 +58,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> loadSavedUserDetails() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+  Future<String?> getSavedAuthToken(
+    SharedPreferences preferences,
+  ) async {
+    const List<String> tokenKeys = [
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
 
-    final String? savedName = prefs.getString('user_name') ??
-        prefs.getString('full_name') ??
-        prefs.getString('name');
+    for (final String key in tokenKeys) {
+      final String? value = preferences.getString(key);
 
-    final double savedBalance = prefs.getDouble('wallet_balance') ?? 0;
+      if (value == null || value.trim().isEmpty) {
+        continue;
+      }
 
-    final int savedNotificationCount =
-        prefs.getInt('unread_notifications') ?? 1;
+      String token = value.trim();
 
-    if (!mounted) {
-      return;
+      if (token.toLowerCase().startsWith(
+            'bearer ',
+          )) {
+        token = token.substring(7).trim();
+      }
+
+      if (token.isNotEmpty) {
+        return token;
+      }
     }
 
-    setState(() {
-      name = savedName?.trim().isNotEmpty == true ? savedName!.trim() : 'User';
-
-      balance = savedBalance;
-
-      unreadNotifications = savedNotificationCount;
-    });
+    return null;
   }
 
-  Future<void> refreshDashboard({
-    bool initialLoad = false,
-    bool showSuccessMessage = false,
+  Future<void> loadDashboard({
+    bool refreshing = false,
   }) async {
-    if (!mounted) {
-      return;
+    if (mounted) {
+      setState(() {
+        if (refreshing) {
+          isRefreshing = true;
+        } else {
+          isLoading = true;
+        }
+      });
     }
 
-    setState(() {
-      if (initialLoad) {
-        isLoading = true;
-      } else {
-        isRefreshing = true;
-      }
-    });
-
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
 
-      await loadSavedUserDetails();
+      final String savedName = preferences.getString('user_name') ??
+          preferences.getString('full_name') ??
+          preferences.getString('name') ??
+          'Customer';
 
-      final String token = prefs.getString('auth_token') ?? '';
+      final double savedBalance = preferences.getDouble('wallet_balance') ?? 0;
 
-      if (token.trim().isEmpty) {
-        _showDashboardMessage(
-          'Your login session has expired. Please log in again.',
-          isError: true,
-        );
+      if (mounted) {
+        setState(() {
+          userName = savedName.trim().isEmpty ? 'Customer' : savedName.trim();
 
+          walletBalance = savedBalance;
+        });
+      }
+
+      final String? token = await getSavedAuthToken(preferences);
+
+      if (token == null || token.isEmpty) {
         return;
       }
 
@@ -128,1236 +141,996 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const Duration(seconds: 30),
       );
 
-      final dynamic decoded = _decodeDashboardResponse(
-        response.body,
-      );
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final double newBalance = _extractDashboardBalance(decoded) ?? balance;
-
-        await prefs.setDouble(
-          'wallet_balance',
-          newBalance,
-        );
-
-        if (!mounted) {
-          return;
-        }
-
-        setState(() {
-          balance = newBalance;
-        });
-
-        if (showSuccessMessage) {
-          _showDashboardMessage(
-            'Dashboard refreshed successfully.',
-            isError: false,
-          );
-        }
-      } else {
-        _showDashboardMessage(
-          _extractDashboardMessage(
-            decoded,
-            fallback: 'Unable to refresh the dashboard right now.',
-          ),
-          isError: true,
-        );
-      }
-    } catch (_) {
-      _showDashboardMessage(
-        'Unable to connect to Servicepay. Your saved balance is still available.',
-        isError: true,
-      );
-    } finally {
-      if (!mounted) {
+      if (response.statusCode != 200) {
         return;
       }
 
-      setState(() {
-        isLoading = false;
-        isRefreshing = false;
-      });
-    }
-  }
+      final dynamic decoded = jsonDecode(response.body);
 
-  dynamic _decodeDashboardResponse(
-    String body,
-  ) {
-    if (body.trim().isEmpty) {
-      return null;
-    }
+      if (decoded is! Map) {
+        return;
+      }
 
-    try {
-      return jsonDecode(body);
+      final Map<String, dynamic> data = Map<String, dynamic>.from(decoded);
+
+      dynamic rawBalance = data['walletBalance'] ?? data['balance'];
+
+      if (data['data'] is Map) {
+        final Map<String, dynamic> nested = Map<String, dynamic>.from(
+          data['data'] as Map,
+        );
+
+        rawBalance ??= nested['walletBalance'] ?? nested['balance'];
+      }
+
+      final double freshBalance = rawBalance is num
+          ? rawBalance.toDouble()
+          : double.tryParse(
+                rawBalance?.toString() ?? '',
+              ) ??
+              walletBalance;
+
+      await preferences.setDouble(
+        'wallet_balance',
+        freshBalance,
+      );
+
+      if (mounted) {
+        setState(() {
+          walletBalance = freshBalance;
+        });
+      }
     } catch (_) {
-      return null;
+      // Keep locally saved dashboard values.
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+        });
+      }
     }
   }
 
-  double? _extractDashboardBalance(
-    dynamic data,
-  ) {
-    if (data is! Map) {
-      return null;
+  String firstName() {
+    final String trimmed = userName.trim();
+
+    if (trimmed.isEmpty) {
+      return 'Customer';
     }
 
-    final List<dynamic> possibleValues = [
-      data['walletBalance'],
-      data['wallet_balance'],
-      data['balance'],
-      data['availableBalance'],
-      data['available_balance'],
-      data['data'] is Map ? data['data']['walletBalance'] : null,
-      data['data'] is Map ? data['data']['wallet_balance'] : null,
-      data['data'] is Map ? data['data']['balance'] : null,
-      data['wallet'] is Map ? data['wallet']['balance'] : null,
-      data['user'] is Map ? data['user']['walletBalance'] : null,
-      data['user'] is Map ? data['user']['balance'] : null,
-    ];
+    return trimmed.split(RegExp(r'\s+')).first;
+  }
 
-    for (final dynamic value in possibleValues) {
-      final double? parsed = _dashboardToDouble(value);
+  String formatMoney(double amount) {
+    final String value = amount.toStringAsFixed(2);
 
-      if (parsed != null) {
-        return parsed;
+    final List<String> parts = value.split('.');
+
+    final String whole = parts.first;
+
+    final StringBuffer formatted = StringBuffer();
+
+    for (int index = 0; index < whole.length; index++) {
+      final int remaining = whole.length - index;
+
+      formatted.write(whole[index]);
+
+      if (remaining > 1 && remaining % 3 == 1) {
+        formatted.write(',');
       }
     }
 
-    return null;
+    return '₦${formatted.toString()}.${parts.last}';
   }
 
-  double? _dashboardToDouble(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return null;
-    }
-
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    return double.tryParse(
-      value.toString().replaceAll(',', '').trim(),
+  void openScreen(Widget screen) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => screen,
+      ),
     );
   }
 
-  String _extractDashboardMessage(
-    dynamic data, {
-    required String fallback,
-  }) {
-    if (data is Map) {
-      final dynamic message =
-          data['message'] ?? data['error'] ?? data['detail'];
-
-      if (message != null && message.toString().trim().isNotEmpty) {
-        return message.toString();
-      }
-    }
-
-    return fallback;
-  }
-
-  void _showDashboardMessage(
-    String message, {
-    required bool isError,
-  }) {
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: isError ? const Color(0xFFDC2626) : primaryGreen,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-
-  Future<void> openPage(Widget page) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => page,
-      ),
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    await refreshDashboard();
-  }
-
-  String get firstName {
-    final trimmedName = name.trim();
-
-    if (trimmedName.isEmpty) {
-      return 'User';
-    }
-
-    return trimmedName.split(' ').first;
-  }
-
-  void openTransactionsMessage() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Tap Transactions on the bottom navigation to view your transaction history.',
+  void showBankTransferNotice() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(
+            22,
+            8,
+            22,
+            30,
           ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-
-  List<_ServiceItem> get popularServices {
-    return [
-      _ServiceItem(
-        title: 'Airtime',
-        icon: Icons.phone_android_rounded,
-        onTap: () {
-          openPage(
-            const AirtimeScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Data',
-        icon: Icons.wifi_rounded,
-        onTap: () {
-          openPage(
-            const DataScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Cable TV',
-        icon: Icons.live_tv_outlined,
-        onTap: () {
-          openPage(
-            const CableScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Electricity',
-        icon: Icons.lightbulb_outline_rounded,
-        onTap: () {
-          openPage(
-            const ElectricityScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Exam PIN',
-        icon: Icons.school_outlined,
-        onTap: () {
-          openPage(
-            const ExamPinScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'School Fees',
-        icon: Icons.account_balance_outlined,
-        onTap: () {
-          openPage(
-            const ServiceFeatureScreen(
-              title: 'School Fees',
-              icon: Icons.account_balance_outlined,
-              description:
-                  'Select a school, enter the student details and pay school fees securely through Servicepay.',
-            ),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Wallet',
-        icon: Icons.account_balance_wallet_outlined,
-        onTap: () {
-          openPage(
-            const WalletScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Transfer',
-        icon: Icons.send_rounded,
-        onTap: () {
-          openPage(
-            const TransferScreen(),
-          );
-        },
-      ),
-    ];
-  }
-
-  List<_ServiceItem> get moreServices {
-    return [
-      _ServiceItem(
-        title: 'Flights',
-        icon: Icons.flight_takeoff_rounded,
-        onTap: () {
-          openPage(
-            const FlightBookingScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Hotels',
-        icon: Icons.hotel_outlined,
-        onTap: () {
-          openPage(
-            const ServiceFeatureScreen(
-              title: 'Hotel Booking',
-              icon: Icons.hotel_outlined,
-              description:
-                  'Search for hotels, select rooms and make reservations through Servicepay.',
-            ),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Taxi',
-        icon: Icons.local_taxi_outlined,
-        onTap: () {
-          openPage(
-            const ServiceFeatureScreen(
-              title: 'Taxi Booking',
-              icon: Icons.local_taxi_outlined,
-              description:
-                  'Enter your pickup location and destination to request a taxi.',
-            ),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Keke',
-        icon: Icons.electric_rickshaw_outlined,
-        onTap: () {
-          openPage(
-            const ServiceFeatureScreen(
-              title: 'Keke Napep Booking',
-              icon: Icons.electric_rickshaw_outlined,
-              description:
-                  'Request a nearby Keke Napep for convenient and affordable local trips.',
-            ),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Logistics',
-        icon: Icons.local_shipping_outlined,
-        onTap: () {
-          openPage(
-            const LogisticsScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Food Order',
-        icon: Icons.restaurant_outlined,
-        onTap: () {
-          openPage(
-            const ServiceFeatureScreen(
-              title: 'Restaurant Food Order',
-              icon: Icons.restaurant_outlined,
-              description:
-                  'Browse nearby restaurants, select meals and place your order.',
-            ),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Professionals',
-        icon: Icons.handyman_outlined,
-        onTap: () {
-          openPage(
-            const ServiceFeatureScreen(
-              title: 'Hire a Professional',
-              icon: Icons.handyman_outlined,
-              description:
-                  'Find plumbers, electricians, mechanics, cleaners and other trusted professionals.',
-            ),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Buy & Sell',
-        icon: Icons.storefront_outlined,
-        onTap: () {
-          openPage(
-            const ServiceFeatureScreen(
-              title: 'Buy & Sell Marketplace',
-              icon: Icons.storefront_outlined,
-              description:
-                  'Browse products, create listings and buy or sell safely through Servicepay.',
-            ),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Verify ID',
-        icon: Icons.verified_user_outlined,
-        onTap: () {
-          openPage(
-            const IdVerificationScreen(),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'SIM Services',
-        icon: Icons.sim_card_outlined,
-        onTap: () {
-          openPage(
-            const ServiceFeatureScreen(
-              title: 'SIM Registration Service',
-              icon: Icons.sim_card_outlined,
-              description:
-                  'Start SIM registration and access supported SIM-related services.',
-            ),
-          );
-        },
-      ),
-      _ServiceItem(
-        title: 'Help Center',
-        icon: Icons.support_agent_rounded,
-        onTap: () {
-          openPage(
-            const HelpSupportScreen(),
-          );
-        },
-      ),
-    ];
-  }
-
-  List<_ServiceItem> filterServices(
-    List<_ServiceItem> services,
-  ) {
-    final query = searchQuery.trim().toLowerCase();
-
-    if (query.isEmpty) {
-      return services;
-    }
-
-    return services.where((service) {
-      return service.title.toLowerCase().contains(query);
-    }).toList();
-  }
-
-  Widget buildServiceGrid(
-    List<_ServiceItem> services,
-    int crossAxisCount,
-  ) {
-    if (services.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(
-          vertical: 28,
-          horizontal: 18,
-        ),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: cardBorderColor,
-          ),
-        ),
-        child: const Column(
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 42,
-              color: Colors.grey,
-            ),
-            SizedBox(height: 8),
-            Text(
-              'No matching service found',
-              style: TextStyle(
-                color: Colors.grey,
-                fontWeight: FontWeight.w600,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
+                  color: softGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.account_balance_rounded,
+                  size: 32,
+                  color: primaryGreen,
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: services.length,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 0.88,
-      ),
-      itemBuilder: (context, index) {
-        final service = services[index];
-
-        return _ServiceCard(
-          service: service,
+              const SizedBox(height: 16),
+              const Text(
+                'Bank Transfer',
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Bank Transfer is being prepared. '
+                'It will become available after '
+                'final security and provider checks.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF667085),
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                  ),
+                  child: const Text('Okay'),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final filteredPopularServices = filterServices(popularServices);
+  List<_DashboardService> popularServices() {
+    return [
+      _DashboardService(
+        title: 'Airtime',
+        icon: Icons.phone_android_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'airtime recharge phone',
+        onTap: () {
+          openScreen(const AirtimeScreen());
+        },
+      ),
+      _DashboardService(
+        title: 'Data',
+        icon: Icons.signal_cellular_alt_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFF0F7FF),
+        keywords: 'data internet bundle',
+        onTap: () {
+          openScreen(const DataScreen());
+        },
+      ),
+      _DashboardService(
+        title: 'Electricity',
+        icon: Icons.lightbulb_rounded,
+        iconColor: const Color(0xFFF59E0B),
+        backgroundColor: const Color(0xFFFFF7DF),
+        keywords: 'electricity power light bill',
+        onTap: () {
+          openScreen(const ElectricityScreen());
+        },
+      ),
+      _DashboardService(
+        title: 'Cable TV',
+        icon: Icons.live_tv_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'cable tv dstv gotv startimes',
+        onTap: () {
+          openScreen(const CableScreen());
+        },
+      ),
+      _DashboardService(
+        title: 'Exam PIN',
+        icon: Icons.workspace_premium_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'exam pin waec neco jamb',
+        onTap: () {
+          openScreen(const ExamPinScreen());
+        },
+      ),
+    ];
+  }
 
-    final filteredMoreServices = filterServices(moreServices);
+  List<_DashboardService> moreServices() {
+    return [
+      _DashboardService(
+        title: 'NIN Verification',
+        icon: Icons.fingerprint_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'nin verification identity',
+        onTap: () {
+          openScreen(
+            const IdVerificationScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Delivery',
+        icon: Icons.local_shipping_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'delivery logistics courier',
+        onTap: () {
+          openScreen(const LogisticsScreen());
+        },
+      ),
+      _DashboardService(
+        title: 'Flight Booking',
+        icon: Icons.flight_takeoff_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'flight booking airline travel',
+        onTap: () {
+          openScreen(
+            const FlightBookingScreen(),
+          );
+        },
+      ),
+    ];
+  }
 
-    final searching = searchQuery.trim().isNotEmpty;
+  List<_DashboardService> filtered(
+    List<_DashboardService> services,
+  ) {
+    final String query = searchQuery.trim().toLowerCase();
 
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      appBar: AppBar(
-        toolbarHeight: 58,
-        elevation: 0,
-        backgroundColor: primaryGreen,
-        foregroundColor: Colors.white,
-        titleSpacing: 16,
-        title: const Row(
-          children: [
-            _ServicepayLogo(),
-            SizedBox(width: 10),
-            Text(
-              'Servicepay',
-              style: TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
+    if (query.isEmpty) {
+      return services;
+    }
+
+    return services.where(
+      (_DashboardService service) {
+        final String searchable =
+            '${service.title} ${service.keywords}'.toLowerCase();
+
+        return searchable.contains(query);
+      },
+    ).toList();
+  }
+
+  Widget buildHeader() {
+    return Row(
+      children: [
+        Container(
+          width: 54,
+          height: 54,
+          decoration: const BoxDecoration(
+            color: primaryGreen,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              firstName().substring(0, 1).toUpperCase(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
               ),
             ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh Dashboard',
-            onPressed: isRefreshing
-                ? null
-                : () {
-                    refreshDashboard(
-                      showSuccessMessage: true,
-                    );
-                  },
-            icon: isRefreshing
-                ? const SizedBox(
-                    width: 21,
-                    height: 21,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.3,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(
-                    Icons.refresh_rounded,
-                  ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(
-              right: 8,
+        ),
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Hello, ${firstName()}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF101828),
+                ),
+              ),
+              const SizedBox(height: 2),
+              const Text(
+                'Welcome back! Glad to see you.',
+                style: TextStyle(
+                  color: Color(0xFF667085),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton.filledTonal(
+              onPressed: () {
+                openScreen(
+                  const NotificationsScreen(),
+                );
+              },
+              style: IconButton.styleFrom(
+                backgroundColor: softGreen,
+                foregroundColor: primaryGreen,
+              ),
+              icon: const Icon(
+                Icons.notifications_none_rounded,
+              ),
             ),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                IconButton(
-                  tooltip: 'Notifications',
-                  onPressed: () {
-                    openPage(
-                      const NotificationsScreen(),
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.notifications_none_rounded,
-                    size: 27,
+            if (unreadNotifications > 0)
+              Positioned(
+                right: -2,
+                top: -3,
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 19,
+                    minHeight: 19,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF16A34A),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    unreadNotifications > 9 ? '9+' : '$unreadNotifications',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
-                if (unreadNotifications > 0)
-                  Positioned(
-                    right: 5,
-                    top: 5,
-                    child: Container(
-                      constraints: const BoxConstraints(
-                        minWidth: 18,
-                        minHeight: 18,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget buildWalletCard() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(25),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            deepGreen,
+            Color(0xFF058448),
+            Color(0xFF0E9B55),
+          ],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33004E2C),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -50,
+            top: -70,
+            child: Container(
+              width: 210,
+              height: 210,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(
+                    alpha: 0.07,
+                  ),
+                  width: 24,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Wallet Balance',
+                      style: TextStyle(
+                        color: Color(0xFFD8F5E5),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: primaryGreen,
-                          width: 2,
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        unreadNotifications > 9
-                            ? '9+'
-                            : unreadNotifications.toString(),
-                        style: const TextStyle(
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          hideBalance = !hideBalance;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(30),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          hideBalance
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
                           color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
+                          size: 22,
                         ),
                       ),
                     ),
+                    const Spacer(),
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(
+                          alpha: 0.14,
+                        ),
+                        borderRadius: BorderRadius.circular(17),
+                      ),
+                      child: const Icon(
+                        Icons.account_balance_wallet_rounded,
+                        color: Colors.white,
+                        size: 30,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1,
                   ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(
+                      alpha: 0.10,
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: Colors.white.withValues(
+                        alpha: 0.18,
+                      ),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.verified_user_outlined,
+                        color: Color(0xFFB7F7D2),
+                        size: 17,
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'Secured & Protected',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 21),
+                Divider(
+                  color: Colors.white.withValues(
+                    alpha: 0.18,
+                  ),
+                  height: 1,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.add_circle_outline,
+                        label: 'Fund Wallet',
+                        onTap: () {
+                          openScreen(
+                            const WalletScreen(),
+                          );
+                        },
+                      ),
+                    ),
+                    _walletDivider(),
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.account_balance_rounded,
+                        label: 'Bank Transfer',
+                        onTap: showBankTransferNotice,
+                      ),
+                    ),
+                    _walletDivider(),
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.send_rounded,
+                        label: 'ServicePay Transfer',
+                        onTap: () {
+                          openScreen(
+                            const TransferScreen(),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: primaryGreen,
-              ),
-            )
-          : RefreshIndicator(
-              color: primaryGreen,
-              onRefresh: () {
-                return refreshDashboard();
-              },
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final width = constraints.maxWidth;
-
-                  int crossAxisCount = 4;
-
-                  if (width >= 1100) {
-                    crossAxisCount = 8;
-                  } else if (width >= 850) {
-                    crossAxisCount = 7;
-                  } else if (width >= 650) {
-                    crossAxisCount = 6;
-                  } else if (width >= 500) {
-                    crossAxisCount = 5;
-                  }
-
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(
-                      14,
-                      12,
-                      14,
-                      24,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: 1100,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _WelcomeHeader(
-                              firstName: firstName,
-                            ),
-                            const SizedBox(height: 12),
-                            TweenAnimationBuilder<double>(
-                              tween: Tween(
-                                begin: 0.94,
-                                end: 1,
-                              ),
-                              duration: const Duration(
-                                milliseconds: 450,
-                              ),
-                              curve: Curves.easeOutBack,
-                              builder: (
-                                context,
-                                animationValue,
-                                child,
-                              ) {
-                                return Transform.scale(
-                                  scale: animationValue,
-                                  child: child,
-                                );
-                              },
-                              child: _WalletCard(
-                                balance: balance,
-                                hideBalance: hideBalance,
-                                onToggleBalance: () {
-                                  setState(() {
-                                    hideBalance = !hideBalance;
-                                  });
-                                },
-                                onFundWallet: () {
-                                  openPage(
-                                    const WalletScreen(),
-                                  );
-                                },
-                                onTransfer: () {
-                                  openPage(
-                                    const TransferScreen(),
-                                  );
-                                },
-                                onTransactions: openTransactionsMessage,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _SearchBox(
-                              controller: searchController,
-                              searchQuery: searchQuery,
-                              onChanged: (value) {
-                                setState(() {
-                                  searchQuery = value;
-                                });
-                              },
-                              onClear: () {
-                                searchController.clear();
-
-                                setState(() {
-                                  searchQuery = '';
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 14),
-                            _QuickActions(
-                              onFundWallet: () {
-                                openPage(
-                                  const WalletScreen(),
-                                );
-                              },
-                              onTransfer: () {
-                                openPage(
-                                  const TransferScreen(),
-                                );
-                              },
-                              onTransactions: openTransactionsMessage,
-                              onVerifyId: () {
-                                openPage(
-                                  const IdVerificationScreen(),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 14),
-                            const _PromoBanner(),
-                            const SizedBox(height: 18),
-                            _SectionHeader(
-                              title: searching
-                                  ? 'Search Results'
-                                  : 'Popular Services',
-                              subtitle: searching
-                                  ? '${filteredPopularServices.length + filteredMoreServices.length} found'
-                                  : 'Frequently used',
-                            ),
-                            const SizedBox(height: 10),
-                            if (searching)
-                              buildServiceGrid(
-                                [
-                                  ...filteredPopularServices,
-                                  ...filteredMoreServices,
-                                ],
-                                crossAxisCount,
-                              )
-                            else
-                              buildServiceGrid(
-                                filteredPopularServices,
-                                crossAxisCount,
-                              ),
-                            if (!searching) ...[
-                              const SizedBox(height: 18),
-                              _SectionHeader(
-                                title: 'More Services',
-                                subtitle: showMoreServices
-                                    ? 'Hide services'
-                                    : 'View all',
-                                onTap: () {
-                                  setState(() {
-                                    showMoreServices = !showMoreServices;
-                                  });
-                                },
-                              ),
-                              const SizedBox(height: 10),
-                              AnimatedCrossFade(
-                                duration: const Duration(
-                                  milliseconds: 300,
-                                ),
-                                crossFadeState: showMoreServices
-                                    ? CrossFadeState.showSecond
-                                    : CrossFadeState.showFirst,
-                                firstChild: _MoreServicesPreview(
-                                  services: moreServices,
-                                ),
-                                secondChild: buildServiceGrid(
-                                  moreServices,
-                                  crossAxisCount,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
     );
   }
-}
 
-class _ServicepayLogo extends StatelessWidget {
-  const _ServicepayLogo();
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _walletDivider() {
     return Container(
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(
-          alpha: 0.18,
-        ),
-        borderRadius: BorderRadius.circular(11),
+      width: 1,
+      height: 38,
+      margin: const EdgeInsets.symmetric(
+        horizontal: 6,
       ),
-      alignment: Alignment.center,
-      child: const Text(
-        'S',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 21,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
+      color: Colors.white.withValues(alpha: 0.16),
     );
   }
-}
 
-class _WelcomeHeader extends StatelessWidget {
-  final String firstName;
-
-  const _WelcomeHeader({
-    required this.firstName,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Welcome back',
-                style: TextStyle(
-                  color: Color(0xFF7C847E),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                firstName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF171A18),
-                  fontSize: 21,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F5E9),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0xFFC8E6C9),
-            ),
-          ),
-          child: const Icon(
-            Icons.person_outline_rounded,
-            color: _DashboardScreenState.primaryGreen,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _WalletCard extends StatelessWidget {
-  final double balance;
-  final bool hideBalance;
-
-  final VoidCallback onToggleBalance;
-  final VoidCallback onFundWallet;
-  final VoidCallback onTransfer;
-  final VoidCallback onTransactions;
-
-  const _WalletCard({
-    required this.balance,
-    required this.hideBalance,
-    required this.onToggleBalance,
-    required this.onFundWallet,
-    required this.onTransfer,
-    required this.onTransactions,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-        18,
-        15,
-        15,
-        14,
-      ),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            _DashboardScreenState.primaryGreen,
-            _DashboardScreenState.secondaryGreen,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: _DashboardScreenState.primaryGreen.withValues(
-              alpha: 0.22,
-            ),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Wallet Balance',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 5),
-              InkWell(
-                onTap: onToggleBalance,
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(
-                    hideBalance
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                    color: Colors.white70,
-                    size: 18,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(
-                    alpha: 0.16,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.account_balance_wallet_rounded,
-                  color: Colors.white,
-                  size: 21,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              hideBalance ? '₦ ••••••' : '₦${balance.toStringAsFixed(2)}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.7,
-              ),
-            ),
-          ),
-          const SizedBox(height: 13),
-          Row(
-            children: [
-              Expanded(
-                child: _WalletButton(
-                  icon: Icons.add_rounded,
-                  label: 'Fund',
-                  onTap: onFundWallet,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _WalletButton(
-                  icon: Icons.send_rounded,
-                  label: 'Transfer',
-                  onTap: onTransfer,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _WalletButton(
-                  icon: Icons.receipt_long_outlined,
-                  label: 'History',
-                  onTap: onTransactions,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WalletButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _WalletButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(
-        alpha: 0.96,
-      ),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 5,
-            vertical: 9,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: _DashboardScreenState.primaryGreen,
-              ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _DashboardScreenState.primaryGreen,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchBox extends StatelessWidget {
-  final TextEditingController controller;
-  final String searchQuery;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onClear;
-
-  const _SearchBox({
-    required this.controller,
-    required this.searchQuery,
-    required this.onChanged,
-    required this.onClear,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget buildSearchBar() {
     return TextField(
-      controller: controller,
-      onChanged: onChanged,
-      textInputAction: TextInputAction.search,
+      controller: searchController,
+      onChanged: (String value) {
+        setState(() {
+          searchQuery = value;
+        });
+      },
       decoration: InputDecoration(
-        hintText: 'Search services...',
+        hintText: 'Search services',
         hintStyle: const TextStyle(
-          color: Color(0xFF979D99),
-          fontSize: 14,
+          color: Color(0xFF98A2B3),
         ),
         prefixIcon: const Icon(
           Icons.search_rounded,
-          color: _DashboardScreenState.primaryGreen,
+          color: primaryGreen,
         ),
         suffixIcon: searchQuery.isEmpty
-            ? null
+            ? Container(
+                margin: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: softGreen,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.tune_rounded,
+                  color: primaryGreen,
+                ),
+              )
             : IconButton(
-                onPressed: onClear,
+                onPressed: () {
+                  searchController.clear();
+
+                  setState(() {
+                    searchQuery = '';
+                  });
+                },
                 icon: const Icon(
                   Icons.close_rounded,
                 ),
               ),
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(
-          vertical: 13,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(
+            color: Color(0xFFE4E7EC),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           borderSide: const BorderSide(
-            color: _DashboardScreenState.cardBorderColor,
+            color: Color(0xFFE4E7EC),
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           borderSide: const BorderSide(
-            color: _DashboardScreenState.primaryGreen,
-            width: 1.4,
+            color: primaryGreen,
+            width: 1.5,
           ),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 18,
         ),
       ),
     );
   }
-}
 
-class _QuickActions extends StatelessWidget {
-  final VoidCallback onFundWallet;
-  final VoidCallback onTransfer;
-  final VoidCallback onTransactions;
-  final VoidCallback onVerifyId;
+  Widget buildQuickActions() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 17,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(23),
+        border: Border.all(
+          color: const Color(0xFFE7EAEF),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F101828),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _QuickAction(
+              icon: Icons.account_balance_wallet_rounded,
+              label: 'Fund Wallet',
+              onTap: () {
+                openScreen(const WalletScreen());
+              },
+            ),
+          ),
+          _quickDivider(),
+          Expanded(
+            child: _QuickAction(
+              icon: Icons.account_balance_rounded,
+              label: 'Bank Transfer',
+              onTap: showBankTransferNotice,
+            ),
+          ),
+          _quickDivider(),
+          Expanded(
+            child: _QuickAction(
+              icon: Icons.receipt_long_rounded,
+              label: 'Transactions',
+              onTap: () {
+                openScreen(
+                  const TransactionsScreen(),
+                );
+              },
+            ),
+          ),
+          _quickDivider(),
+          Expanded(
+            child: _QuickAction(
+              icon: Icons.badge_rounded,
+              label: 'Verify ID',
+              onTap: () {
+                openScreen(
+                  const IdVerificationScreen(),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  const _QuickActions({
-    required this.onFundWallet,
-    required this.onTransfer,
-    required this.onTransactions,
-    required this.onVerifyId,
-  });
+  Widget _quickDivider() {
+    return Container(
+      width: 1,
+      height: 55,
+      color: const Color(0xFFE4E7EC),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
+  Widget buildPopularServices() {
+    final List<_DashboardService> services = filtered(popularServices());
+
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: _QuickActionButton(
-            icon: Icons.add_card_rounded,
-            label: 'Fund',
-            onTap: onFundWallet,
-          ),
+        const _SectionHeader(
+          title: 'Popular Services',
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _QuickActionButton(
-            icon: Icons.send_rounded,
-            label: 'Transfer',
-            onTap: onTransfer,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _QuickActionButton(
-            icon: Icons.history_rounded,
-            label: 'History',
-            onTap: onTransactions,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _QuickActionButton(
-            icon: Icons.verified_user_outlined,
-            label: 'Verify ID',
-            onTap: onVerifyId,
-          ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (
+            BuildContext context,
+            BoxConstraints constraints,
+          ) {
+            final int columns = constraints.maxWidth >= 850
+                ? 5
+                : constraints.maxWidth >= 550
+                    ? 4
+                    : 3;
+
+            return GridView.builder(
+              itemCount: services.length,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: columns == 3 ? 0.92 : 1.05,
+              ),
+              itemBuilder: (
+                BuildContext context,
+                int index,
+              ) {
+                return _PopularServiceCard(
+                  service: services[index],
+                );
+              },
+            );
+          },
         ),
       ],
     );
   }
-}
 
-class _QuickActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+  Widget buildMoreServices() {
+    final List<_DashboardService> services = filtered(moreServices());
 
-  const _QuickActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(
+          title: 'More Services',
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (
+            BuildContext context,
+            BoxConstraints constraints,
+          ) {
+            final int columns = constraints.maxWidth >= 720 ? 3 : 1;
+
+            return GridView.builder(
+              itemCount: services.length,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: 11,
+                crossAxisSpacing: 11,
+                childAspectRatio: columns == 1 ? 4.1 : 2.8,
+              ),
+              itemBuilder: (
+                BuildContext context,
+                int index,
+              ) {
+                return _MoreServiceCard(
+                  service: services[index],
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget buildEmptySearch() {
+    if (searchQuery.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final bool hasPopular = filtered(popularServices()).isNotEmpty;
+
+    final bool hasMore = filtered(moreServices()).isNotEmpty;
+
+    if (hasPopular || hasMore) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFFE4E7EC),
+        ),
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.search_off_rounded,
+            size: 44,
+            color: Color(0xFF98A2B3),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No service found for “$searchQuery”',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF475467),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPromoBanner() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        21,
+        19,
+        16,
+        19,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF003D28),
+            Color(0xFF006B3B),
+          ],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x26004E2C),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'One Platform,',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  'Many Solutions',
+                  style: TextStyle(
+                    color: Color(0xFF8EEA93),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Fast. Secure. Reliable.',
+                  style: TextStyle(
+                    color: Color(0xFFD9F5E4),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 82,
+            height: 82,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(
+                alpha: 0.11,
+              ),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(
+                  alpha: 0.14,
+                ),
+              ),
+            ),
+            child: const Icon(
+              Icons.shield_rounded,
+              color: Color(0xFF8EEA93),
+              size: 45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(15),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(15),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            vertical: 11,
-            horizontal: 3,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-              color: _DashboardScreenState.cardBorderColor,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9FB),
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: primaryGreen,
+          onRefresh: () {
+            return loadDashboard(
+              refreshing: true,
+            );
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              17,
+              16,
+              17,
+              30,
             ),
-          ),
-          child: Column(
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
-                  borderRadius: BorderRadius.circular(11),
+              buildHeader(),
+              const SizedBox(height: 20),
+              if (isLoading)
+                const LinearProgressIndicator(
+                  color: primaryGreen,
+                  backgroundColor: softGreen,
+                  minHeight: 2,
                 ),
-                child: Icon(
-                  icon,
-                  size: 19,
-                  color: _DashboardScreenState.primaryGreen,
+              if (isLoading) const SizedBox(height: 10),
+              buildWalletCard(),
+              const SizedBox(height: 19),
+              buildSearchBar(),
+              const SizedBox(height: 16),
+              buildQuickActions(),
+              const SizedBox(height: 23),
+              buildPopularServices(),
+              if (filtered(popularServices()).isNotEmpty)
+                const SizedBox(height: 23),
+              buildMoreServices(),
+              buildEmptySearch(),
+              if (searchQuery.trim().isEmpty) const SizedBox(height: 23),
+              if (searchQuery.trim().isEmpty) buildPromoBanner(),
+              if (isRefreshing)
+                const Padding(
+                  padding: EdgeInsets.only(top: 20),
+                  child: Center(
+                    child: Text(
+                      'Refreshing dashboard...',
+                      style: TextStyle(
+                        color: Color(0xFF667085),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF252925),
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
             ],
           ),
         ),
@@ -1366,65 +1139,128 @@ class _QuickActionButton extends StatelessWidget {
   }
 }
 
-class _PromoBanner extends StatelessWidget {
-  const _PromoBanner();
+class _DashboardService {
+  final String title;
+  final IconData icon;
+  final Color iconColor;
+  final Color backgroundColor;
+  final String keywords;
+  final VoidCallback onTap;
+
+  const _DashboardService({
+    required this.title,
+    required this.icon,
+    required this.iconColor,
+    required this.backgroundColor,
+    required this.keywords,
+    required this.onTap,
+  });
+}
+
+class _WalletAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _WalletAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 12,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E1),
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(
-          color: const Color(0xFFFFECB3),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: 5,
+          horizontal: 2,
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(
+                icon,
+                color: _DashboardScreenState.primaryGreen,
+                size: 22,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              label,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
-      child: const Row(
-        children: [
-          CircleAvatar(
-            radius: 19,
-            backgroundColor: Color(0xFFFFECB3),
-            child: Icon(
-              Icons.card_giftcard_rounded,
-              color: Color(0xFFF57F17),
-              size: 20,
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 4,
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: _DashboardScreenState.softGreen,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                icon,
+                color: _DashboardScreenState.primaryGreen,
+                size: 24,
+              ),
             ),
-          ),
-          SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Enjoy fast digital payments',
-                  style: TextStyle(
-                    color: Color(0xFF4A3B00),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Pay bills and access everyday services in one place.',
-                  style: TextStyle(
-                    color: Color(0xFF766526),
-                    fontSize: 11.5,
-                  ),
-                ),
-              ],
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF344054),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          Icon(
-            Icons.arrow_forward_ios_rounded,
-            color: Color(0xFFF57F17),
-            size: 15,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1432,55 +1268,46 @@ class _PromoBanner extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
 
   const _SectionHeader({
     required this.title,
-    required this.subtitle,
-    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: Color(0xFF181B19),
-            fontSize: 18,
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 19,
+              color: Color(0xFF101828),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const Text(
+          'View All',
+          style: TextStyle(
+            color: _DashboardScreenState.primaryGreen,
             fontWeight: FontWeight.w800,
           ),
         ),
-        const Spacer(),
-        InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 5,
-              vertical: 4,
-            ),
-            child: Text(
-              subtitle,
-              style: const TextStyle(
-                color: _DashboardScreenState.primaryGreen,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
+        const SizedBox(width: 4),
+        const Icon(
+          Icons.chevron_right_rounded,
+          color: _DashboardScreenState.primaryGreen,
         ),
       ],
     );
   }
 }
 
-class _ServiceCard extends StatelessWidget {
-  final _ServiceItem service;
+class _PopularServiceCard extends StatelessWidget {
+  final _DashboardService service;
 
-  const _ServiceCard({
+  const _PopularServiceCard({
     required this.service,
   });
 
@@ -1488,30 +1315,25 @@ class _ServiceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: service.onTap,
-        borderRadius: BorderRadius.circular(16),
-        splashColor: _DashboardScreenState.primaryGreen.withValues(
-          alpha: 0.10,
-        ),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.symmetric(
-            horizontal: 4,
-            vertical: 9,
+            horizontal: 8,
+            vertical: 13,
           ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: _DashboardScreenState.cardBorderColor,
+              color: const Color(0xFFE7EAEF),
             ),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withValues(
-                  alpha: 0.035,
-                ),
-                blurRadius: 6,
-                offset: const Offset(0, 3),
+                color: Color(0x0D101828),
+                blurRadius: 13,
+                offset: Offset(0, 5),
               ),
             ],
           ),
@@ -1519,28 +1341,27 @@ class _ServiceCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 41,
-                height: 41,
+                width: 49,
+                height: 49,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
-                  borderRadius: BorderRadius.circular(13),
+                  color: service.backgroundColor,
+                  borderRadius: BorderRadius.circular(15),
                 ),
                 child: Icon(
                   service.icon,
-                  size: 23,
-                  color: _DashboardScreenState.primaryGreen,
+                  color: service.iconColor,
+                  size: 27,
                 ),
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 10),
               Text(
                 service.title,
-                textAlign: TextAlign.center,
                 maxLines: 2,
+                textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xFF202420),
-                  fontSize: 11,
-                  height: 1.15,
+                  color: Color(0xFF1D2939),
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1552,200 +1373,72 @@ class _ServiceCard extends StatelessWidget {
   }
 }
 
-class _MoreServicesPreview extends StatelessWidget {
-  final List<_ServiceItem> services;
+class _MoreServiceCard extends StatelessWidget {
+  final _DashboardService service;
 
-  const _MoreServicesPreview({
-    required this.services,
+  const _MoreServiceCard({
+    required this.service,
   });
 
   @override
   Widget build(BuildContext context) {
-    final previewServices = services.take(4).toList();
-
-    return Row(
-      children: [
-        for (int index = 0; index < previewServices.length; index++) ...[
-          Expanded(
-            child: _ServiceCard(
-              service: previewServices[index],
-            ),
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: service.onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 11,
           ),
-          if (index < previewServices.length - 1) const SizedBox(width: 10),
-        ],
-      ],
-    );
-  }
-}
-
-class _ServiceItem {
-  final String title;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _ServiceItem({
-    required this.title,
-    required this.icon,
-    required this.onTap,
-  });
-}
-
-class ServiceFeatureScreen extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final String description;
-
-  const ServiceFeatureScreen({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.description,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF2E7D32);
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: primaryGreen,
-        foregroundColor: Colors.white,
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 650,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: const Color(0xFFE7EAEF),
             ),
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF2E7D32),
-                        Color(0xFF43A047),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 88,
-                        height: 88,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(
-                            alpha: 0.18,
-                          ),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          icon,
-                          size: 46,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        title,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        description,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 15,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0B101828),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 45,
+                height: 45,
+                decoration: BoxDecoration(
+                  color: service.backgroundColor,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  service.icon,
+                  color: service.iconColor,
+                  size: 25,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  service.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF1D2939),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 22),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: const Color(0xFFE8ECE8),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        icon,
-                        size: 52,
-                        color: primaryGreen,
-                      ),
-                      const SizedBox(height: 15),
-                      const Text(
-                        'Service Setup',
-                        style: TextStyle(
-                          fontSize: 21,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'The booking form and service provider connection will be added during the next development stage.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 15,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                          },
-                          icon: const Icon(
-                            Icons.arrow_back_rounded,
-                          ),
-                          label: const Text(
-                            'Back to Dashboard',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryGreen,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF98A2B3),
+              ),
+            ],
           ),
         ),
       ),
