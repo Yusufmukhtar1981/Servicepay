@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'create_state_manager_screen.dart';
-import 'create_aggregator_screen.dart';
+import 'create_agent_screen.dart';
 import 'my_customers_screen.dart';
 import 'main_navigation.dart';
 import 'profile_screen.dart';
