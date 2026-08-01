@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +11,7 @@ import 'profile_screen.dart';
 import 'role_transactions_screen.dart';
 import 'role_commissions_screen.dart';
 import 'management_users_screen.dart';
+import 'package:http/http.dart' as http;
 
 class RoleDashboardScreen extends StatefulWidget {
   final String role;
@@ -30,9 +33,19 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
   String userName = 'ServicePay User';
   double walletBalance = 0;
 
+  int totalTransactions = 0;
+  int successfulTransactions = 0;
+  int pendingTransactions = 0;
+  int failedTransactions = 0;
+  double totalTransactionValue = 0;
+
+  bool isSummaryLoading = true;
+  String summaryErrorMessage = '';
+
   @override
   void initState() {
     super.initState();
+    loadRoleSummary();
     loadUserDetails();
   }
 
@@ -56,6 +69,310 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
 
       walletBalance = savedBalance;
     });
+  }
+
+  Future<String?> getSavedAuthToken() async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+
+    const List<String> tokenKeys = [
+      'auth_token',
+      'token',
+      'access_token',
+      'admin_token',
+    ];
+
+    for (final String key in tokenKeys) {
+      final String? value = preferences.getString(key);
+
+      if (value != null && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  }
+
+  int summaryInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double summaryDouble(dynamic value) {
+    if (value is double) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  Future<void> loadRoleSummary() async {
+    if (mounted) {
+      setState(() {
+        isSummaryLoading = true;
+        summaryErrorMessage = '';
+      });
+    }
+
+    try {
+      final String? token = await getSavedAuthToken();
+
+      if (token == null) {
+        throw Exception(
+          'Session expired. Please log in again.',
+        );
+      }
+
+      final Uri uri = Uri.parse(
+        'https://api.servicepay.ng/api/management/'
+        'role-transactions?page=1&limit=1&status=ALL',
+      );
+
+      final http.Response response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 65));
+
+      Map<String, dynamic> body = {};
+
+      try {
+        final dynamic decoded = jsonDecode(response.body);
+
+        if (decoded is Map<String, dynamic>) {
+          body = decoded;
+        }
+      } catch (_) {
+        body = {};
+      }
+
+      if (response.statusCode == 401) {
+        throw Exception(
+          'Session expired. Please log in again.',
+        );
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          body['success'] != true) {
+        throw Exception(
+          body['message']?.toString() ?? 'Unable to load dashboard summary.',
+        );
+      }
+
+      final dynamic rawSummary = body['summary'];
+
+      final Map<String, dynamic> summary = rawSummary is Map
+          ? Map<String, dynamic>.from(rawSummary)
+          : <String, dynamic>{};
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        totalTransactions = summaryInt(
+          summary['total'] ?? summary['totalTransactions'],
+        );
+
+        successfulTransactions = summaryInt(
+          summary['successful'] ?? summary['successfulTransactions'],
+        );
+
+        pendingTransactions = summaryInt(
+          summary['pending'] ?? summary['pendingTransactions'],
+        );
+
+        failedTransactions = summaryInt(
+          summary['failed'] ?? summary['failedTransactions'],
+        );
+
+        totalTransactionValue = summaryDouble(
+          summary['totalVolume'] ?? summary['totalValue'] ?? summary['volume'],
+        );
+
+        summaryErrorMessage = '';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        summaryErrorMessage = error.toString().replaceFirst(
+              'Exception: ',
+              '',
+            );
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSummaryLoading = false;
+        });
+      }
+    }
+  }
+
+  Widget buildSummaryCard({
+    required String title,
+    required String value,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: 0.035,
+            ),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 41,
+            height: 41,
+            decoration: BoxDecoration(
+              color: softGreen,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(
+              icon,
+              color: primaryGreen,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isSummaryLoading ? '...' : value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: darkGreen,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildDashboardSummary() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Transaction Overview',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: darkGreen,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: isSummaryLoading ? null : loadRoleSummary,
+              icon: const Icon(
+                Icons.refresh_rounded,
+                color: primaryGreen,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.80,
+          children: [
+            buildSummaryCard(
+              title: 'Total',
+              value: totalTransactions.toString(),
+              icon: Icons.receipt_long_rounded,
+            ),
+            buildSummaryCard(
+              title: 'Successful',
+              value: successfulTransactions.toString(),
+              icon: Icons.check_circle_outline_rounded,
+            ),
+            buildSummaryCard(
+              title: 'Pending',
+              value: pendingTransactions.toString(),
+              icon: Icons.hourglass_bottom_rounded,
+            ),
+            buildSummaryCard(
+              title: 'Value',
+              value: formatMoney(totalTransactionValue),
+              icon: Icons.account_balance_wallet_outlined,
+            ),
+          ],
+        ),
+        if (summaryErrorMessage.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              summaryErrorMessage,
+              style: TextStyle(
+                color: Colors.orange.shade900,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   String get normalizedRole => widget.role.trim().toUpperCase();
@@ -513,6 +830,8 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
               ],
             ),
             const SizedBox(height: 13),
+            buildDashboardSummary(),
+            const SizedBox(height: 22),
             GridView.builder(
               itemCount: items.length,
               shrinkWrap: true,
