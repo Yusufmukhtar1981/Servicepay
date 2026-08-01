@@ -8,6 +8,7 @@ import 'main_navigation.dart';
 import 'profile_screen.dart';
 import 'role_transactions_screen.dart';
 import 'role_commissions_screen.dart';
+import 'management_users_screen.dart';
 
 class RoleDashboardScreen extends StatefulWidget {
   final String role;
@@ -186,6 +187,11 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             title: 'Agents',
             subtitle: 'Agents registered under your state',
             icon: Icons.support_agent_rounded,
+            onTap: () {
+              openScreen(
+                const ManagementUsersScreen.agents(),
+              );
+            },
           ),
           _RoleMenuItem(
             title: 'State Commission',
@@ -234,6 +240,11 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             title: 'State Managers',
             subtitle: 'Managers registered under your zone',
             icon: Icons.manage_accounts_rounded,
+            onTap: () {
+              openScreen(
+                const ManagementUsersScreen.stateManagers(),
+              );
+            },
           ),
           _RoleMenuItem(
             title: 'Zonal Commission',
