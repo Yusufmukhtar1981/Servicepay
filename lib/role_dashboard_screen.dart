@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'create_state_manager_screen.dart';
 import 'main_navigation.dart';
 import 'profile_screen.dart';
 import 'transactions_screen.dart';
@@ -177,6 +178,22 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
 
       case 'ZONAL_MANAGER':
         return [
+          _RoleMenuItem(
+            title: 'Create State Manager',
+            subtitle: 'Register a new manager under your zone',
+            icon: Icons.person_add_alt_1_rounded,
+            onTap: () async {
+              final bool? created = await Navigator.of(context).push<bool>(
+                MaterialPageRoute<bool>(
+                  builder: (_) => const CreateStateManagerScreen(),
+                ),
+              );
+
+              if (created == true) {
+                await loadUserDetails();
+              }
+            },
+          ),
           _RoleMenuItem(
             title: 'State Managers',
             subtitle: 'Managers registered under your zone',
