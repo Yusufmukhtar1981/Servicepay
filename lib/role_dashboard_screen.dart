@@ -7,6 +7,7 @@ import 'my_customers_screen.dart';
 import 'main_navigation.dart';
 import 'profile_screen.dart';
 import 'role_transactions_screen.dart';
+import 'role_commissions_screen.dart';
 
 class RoleDashboardScreen extends StatefulWidget {
   final String role;
@@ -140,6 +141,11 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             title: 'Commission',
             subtitle: 'Agent commission and earnings',
             icon: Icons.account_balance_wallet_rounded,
+            onTap: () {
+              openScreen(
+                const RoleCommissionsScreen(),
+              );
+            },
           ),
           _RoleMenuItem(
             title: 'Transactions',
@@ -185,6 +191,11 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             title: 'State Commission',
             subtitle: 'Your state manager earnings',
             icon: Icons.account_balance_wallet_rounded,
+            onTap: () {
+              openScreen(
+                const RoleCommissionsScreen(),
+              );
+            },
           ),
           _RoleMenuItem(
             title: 'State Transactions',
@@ -228,6 +239,11 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             title: 'Zonal Commission',
             subtitle: 'Your zonal manager earnings',
             icon: Icons.account_balance_wallet_rounded,
+            onTap: () {
+              openScreen(
+                const RoleCommissionsScreen(),
+              );
+            },
           ),
           _RoleMenuItem(
             title: 'Zone Transactions',
