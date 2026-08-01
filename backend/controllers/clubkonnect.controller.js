@@ -694,7 +694,7 @@ exports.buyAirtime = async (req, res) => {
         transaction,
         customer,
         serviceType: "AIRTIME",
-        productCode: networkCode,
+        productCode: "AIRTIME",
         description: "Airtime purchase commission",
         metadata: {
           network: networkCode,
@@ -937,7 +937,7 @@ exports.buyData = async (req, res) => {
         transaction,
         customer,
         serviceType: "DATA",
-        productCode: selectedPlan,
+        productCode: "DATA",
         description: "Data purchase commission",
         metadata: {
           network: networkCode,
