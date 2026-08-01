@@ -1,5 +1,6 @@
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
+const Commission = require("../models/commission.model");
 
 const normalizeText = (value) =>
   String(value || "").trim();
@@ -944,6 +945,408 @@ exports.getAgentTransactions = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Unable to load Agent transactions.",
+    });
+  }
+};
+
+
+exports.getRoleTransactions = async (req, res) => {
+  try {
+    const loggedInUser = req.user;
+
+    if (!loggedInUser) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const role = String(loggedInUser.role || "")
+      .trim()
+      .toUpperCase();
+
+    if (
+      ![
+        "AGENT",
+        "STATE_MANAGER",
+        "ZONAL_MANAGER",
+      ].includes(role)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You are not permitted to view role transactions.",
+      });
+    }
+
+    const page = Math.max(
+      Number.parseInt(req.query.page, 10) || 1,
+      1,
+    );
+
+    const limit = Math.min(
+      Math.max(
+        Number.parseInt(req.query.limit, 10) || 50,
+        1,
+      ),
+      100,
+    );
+
+    const search = String(
+      req.query.search || "",
+    ).trim();
+
+    const status = String(
+      req.query.status || "ALL",
+    )
+      .trim()
+      .toUpperCase();
+
+    const serviceType = String(
+      req.query.serviceType || "ALL",
+    )
+      .trim()
+      .toUpperCase();
+
+    const query = {};
+
+    if (role === "AGENT") {
+      query.agentId = loggedInUser._id;
+    }
+
+    if (role === "STATE_MANAGER") {
+      query.stateManagerId = loggedInUser._id;
+    }
+
+    if (role === "ZONAL_MANAGER") {
+      query.zonalManagerId = loggedInUser._id;
+    }
+
+    if (status !== "ALL") {
+      query.status = status;
+    }
+
+    if (serviceType !== "ALL") {
+      query.serviceType = serviceType;
+    }
+
+    if (search) {
+      query.$or = [
+        {
+          reference: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          serviceType: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          phone: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [
+      transactions,
+      total,
+      successful,
+      pending,
+      failed,
+      volumeResult,
+    ] = await Promise.all([
+      Transaction.find(query)
+        .populate(
+          "customerId",
+          "fullName phone email",
+        )
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Transaction.countDocuments(query),
+
+      Transaction.countDocuments({
+        ...query,
+        status: "SUCCESSFUL",
+      }),
+
+      Transaction.countDocuments({
+        ...query,
+        status: "PENDING",
+      }),
+
+      Transaction.countDocuments({
+        ...query,
+        status: {
+          $in: [
+            "FAILED",
+            "REFUNDED",
+            "REVERSED",
+          ],
+        },
+      }),
+
+      Transaction.aggregate([
+        {
+          $match: query,
+        },
+        {
+          $group: {
+            _id: null,
+            totalVolume: {
+              $sum: {
+                $ifNull: ["$amount", 0],
+              },
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const totalVolume =
+      volumeResult.length > 0
+        ? Number(
+            volumeResult[0].totalVolume || 0,
+          )
+        : 0;
+
+    return res.status(200).json({
+      success: true,
+      role,
+      summary: {
+        total,
+        successful,
+        pending,
+        failed,
+        totalVolume,
+      },
+      transactions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(
+          Math.ceil(total / limit),
+          1,
+        ),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "GET ROLE TRANSACTIONS ERROR:",
+      error,
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while loading role transactions.",
+    });
+  }
+};
+
+exports.getRoleCommissions = async (req, res) => {
+  try {
+    const loggedInUser = req.user;
+
+    if (!loggedInUser) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const role = String(loggedInUser.role || "")
+      .trim()
+      .toUpperCase();
+
+    if (
+      ![
+        "AGENT",
+        "STATE_MANAGER",
+        "ZONAL_MANAGER",
+      ].includes(role)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You are not permitted to view commissions.",
+      });
+    }
+
+    const page = Math.max(
+      Number.parseInt(req.query.page, 10) || 1,
+      1,
+    );
+
+    const limit = Math.min(
+      Math.max(
+        Number.parseInt(req.query.limit, 10) || 50,
+        1,
+      ),
+      100,
+    );
+
+    const status = String(
+      req.query.status || "ALL",
+    )
+      .trim()
+      .toUpperCase();
+
+    const query = {
+      beneficiaryId: loggedInUser._id,
+      beneficiaryRole: role,
+    };
+
+    if (status !== "ALL") {
+      query.status = status;
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [
+      commissions,
+      total,
+      availableResult,
+      pendingResult,
+      withdrawnResult,
+    ] = await Promise.all([
+      Commission.find(query)
+        .populate(
+          "transactionId",
+          "reference serviceType amount status createdAt",
+        )
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Commission.countDocuments(query),
+
+      Commission.aggregate([
+        {
+          $match: {
+            beneficiaryId: loggedInUser._id,
+            beneficiaryRole: role,
+            status: "AVAILABLE",
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            amount: {
+              $sum: "$commissionAmount",
+            },
+          },
+        },
+      ]),
+
+      Commission.aggregate([
+        {
+          $match: {
+            beneficiaryId: loggedInUser._id,
+            beneficiaryRole: role,
+            status: "PENDING",
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            amount: {
+              $sum: "$commissionAmount",
+            },
+          },
+        },
+      ]),
+
+      Commission.aggregate([
+        {
+          $match: {
+            beneficiaryId: loggedInUser._id,
+            beneficiaryRole: role,
+            status: "WITHDRAWN",
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            amount: {
+              $sum: "$commissionAmount",
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const available =
+      availableResult.length > 0
+        ? Number(
+            availableResult[0].amount || 0,
+          )
+        : 0;
+
+    const pending =
+      pendingResult.length > 0
+        ? Number(
+            pendingResult[0].amount || 0,
+          )
+        : 0;
+
+    const withdrawn =
+      withdrawnResult.length > 0
+        ? Number(
+            withdrawnResult[0].amount || 0,
+          )
+        : 0;
+
+    return res.status(200).json({
+      success: true,
+      role,
+      summary: {
+        total,
+        available,
+        pending,
+        withdrawn,
+        totalEarned:
+          available + pending + withdrawn,
+      },
+      commissions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(
+          Math.ceil(total / limit),
+          1,
+        ),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "GET ROLE COMMISSIONS ERROR:",
+      error,
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while loading role commissions.",
     });
   }
 };

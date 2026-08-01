@@ -12,6 +12,8 @@ const {
   createCustomer,
   getCustomers,
   getAgentTransactions,
+  getRoleTransactions,
+  getRoleCommissions,
 } = require(
   "../controllers/management.controller"
 );
@@ -41,6 +43,18 @@ router
 router.get(
   "/agent-transactions",
   getAgentTransactions
+);
+
+
+
+router.get(
+  "/role-transactions",
+  getRoleTransactions
+);
+
+router.get(
+  "/role-commissions",
+  getRoleCommissions
 );
 
 module.exports = router;
