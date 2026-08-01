@@ -167,7 +167,7 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
       }
 
       final Uri uri = Uri.parse(
-        '$baseUrl/management/agents',
+        '$baseUrl/management/aggregators',
       );
 
       final http.Response response = await http
@@ -204,8 +204,8 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
             )
           : <String, dynamic>{};
 
-      final String message =
-          result['message']?.toString().trim() ?? 'Unable to create Agent.';
+      final String message = result['message']?.toString().trim() ??
+          'Unable to create Aggregator.';
 
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
@@ -296,7 +296,7 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
       backgroundColor: const Color(0xFFF7F9FB),
       appBar: AppBar(
         title: const Text(
-          'Create Agent',
+          'Create Aggregator',
         ),
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF101828),
@@ -349,7 +349,7 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'New Agent',
+                            'New Aggregator',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 18,
@@ -407,7 +407,7 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
                 decoration: fieldDecoration(
                   label: 'Email Address (Optional)',
                   icon: Icons.email_outlined,
-                  hint: 'agent@example.com',
+                  hint: 'aggregator@example.com',
                 ),
                 validator: validateEmail,
               ),
@@ -462,7 +462,7 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
                     SizedBox(width: 9),
                     Expanded(
                       child: Text(
-                        'The Agent can change the temporary password after signing in.',
+                        'The Aggregator can change the temporary password after signing in.',
                         style: TextStyle(
                           color: Color(0xFF344054),
                           fontSize: 12,
@@ -499,7 +499,7 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
                           Icons.person_add_alt_1_rounded,
                         ),
                   label: Text(
-                    isSaving ? 'Creating Agent...' : 'Create Agent',
+                    isSaving ? 'Creating Aggregator...' : 'Create Aggregator',
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
                     ),

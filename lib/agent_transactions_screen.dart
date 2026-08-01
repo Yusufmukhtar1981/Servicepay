@@ -89,7 +89,7 @@ class _AgentTransactionsScreenState extends State<AgentTransactionsScreen> {
       final String search = searchController.text.trim();
 
       final Uri uri = Uri.parse(
-        '$baseUrl/management/agent-transactions',
+        '$baseUrl/management/aggregator-transactions',
       ).replace(
         queryParameters: {
           'page': '1',
@@ -310,7 +310,7 @@ class _AgentTransactionsScreenState extends State<AgentTransactionsScreen> {
       backgroundColor: const Color(0xFFF7F9F8),
       appBar: AppBar(
         title: const Text(
-          'Agent Transactions',
+          'Aggregator Transactions',
         ),
         backgroundColor: const Color(0xFFF7F9F8),
         surfaceTintColor: Colors.transparent,

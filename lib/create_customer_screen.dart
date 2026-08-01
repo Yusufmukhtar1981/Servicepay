@@ -340,7 +340,7 @@ class _CreateCustomerScreenState extends State<CreateCustomerScreen> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'The customer will be linked automatically to your Agent account.',
+                            'The customer will be linked automatically to your Aggregator account.',
                             style: TextStyle(
                               color: Color(0xFFD9F7E6),
                               fontSize: 12,

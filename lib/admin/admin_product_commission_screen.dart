@@ -299,7 +299,7 @@ class _AdminProductCommissionScreenState
 
     for (final Map<String, dynamic> product in products) {
       agentTotal += toAmount(
-        product['agentCommission'],
+        product['aggregatorCommission'],
       );
 
       stateTotal += toAmount(
@@ -348,7 +348,7 @@ class _AdminProductCommissionScreenState
               children: [
                 Expanded(
                   child: SummaryItem(
-                    title: 'Agent',
+                    title: 'Aggregator',
                     value: formatMoney(agentTotal),
                     icon: Icons.person_outline,
                   ),
@@ -471,9 +471,9 @@ class _AdminProductCommissionScreenState
               children: [
                 Expanded(
                   child: CommissionAmountBox(
-                    title: 'Agent',
+                    title: 'Aggregator',
                     amount: formatMoney(
-                      product['agentCommission'],
+                      product['aggregatorCommission'],
                     ),
                   ),
                 ),
@@ -790,7 +790,7 @@ class _ProductCommissionFormSheetState
 
     agentCommissionController = TextEditingController(
       text: amountText(
-        product?['agentCommission'],
+        product?['aggregatorCommission'],
       ),
     );
 
@@ -885,7 +885,7 @@ class _ProductCommissionFormSheetState
               'serviceType': selectedServiceType,
               'productCode': productCodeController.text.trim().toUpperCase(),
               'productName': productNameController.text.trim(),
-              'agentCommission': parseAmount(
+              'aggregatorCommission': parseAmount(
                 agentCommissionController,
               ),
               'stateCommission': parseAmount(
@@ -1019,7 +1019,7 @@ class _ProductCommissionFormSheetState
               ),
               const SizedBox(height: 6),
               Text(
-                'Set the fixed amount for Agent, State Manager and Zonal Manager.',
+                'Set the fixed amount for Aggregator, State Manager and Zonal Manager.',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -1086,7 +1086,7 @@ class _ProductCommissionFormSheetState
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
-                  labelText: 'Agent Commission',
+                  labelText: 'Aggregator Commission',
                   prefixText: '₦ ',
                   border: OutlineInputBorder(),
                 ),

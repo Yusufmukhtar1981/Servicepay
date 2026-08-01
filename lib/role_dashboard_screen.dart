@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'create_state_manager_screen.dart';
-import 'create_agent_screen.dart';
+import 'create_aggregator_screen.dart';
 import 'my_customers_screen.dart';
 import 'main_navigation.dart';
 import 'profile_screen.dart';
@@ -380,7 +380,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
   String get roleTitle {
     switch (normalizedRole) {
       case 'AGENT':
-        return 'Agent';
+        return 'Aggregator';
       case 'STATE_MANAGER':
         return 'State Manager';
       case 'ZONAL_MANAGER':
@@ -395,7 +395,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
       case 'AGENT':
         return 'Manage your customers, transactions and commissions.';
       case 'STATE_MANAGER':
-        return 'Monitor agents and performance across your state.';
+        return 'Monitor aggregators and performance across your state.';
       case 'ZONAL_MANAGER':
         return 'Monitor state managers and performance across your zone.';
       default:
@@ -457,7 +457,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
           ),
           _RoleMenuItem(
             title: 'Commission',
-            subtitle: 'Agent commission and earnings',
+            subtitle: 'Aggregator commission and earnings',
             icon: Icons.account_balance_wallet_rounded,
             onTap: () {
               openScreen(
@@ -485,8 +485,8 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
       case 'STATE_MANAGER':
         return [
           _RoleMenuItem(
-            title: 'Create Agent',
-            subtitle: 'Register a new Agent under your state',
+            title: 'Create Aggregator',
+            subtitle: 'Register a new Aggregator under your state',
             icon: Icons.person_add_alt_1_rounded,
             onTap: () async {
               final bool? created = await Navigator.of(context).push<bool>(
@@ -501,8 +501,8 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             },
           ),
           _RoleMenuItem(
-            title: 'Agents',
-            subtitle: 'Agents registered under your state',
+            title: 'Aggregators',
+            subtitle: 'Aggregators registered under your state',
             icon: Icons.support_agent_rounded,
             onTap: () {
               openScreen(
@@ -530,7 +530,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
           ),
           _RoleMenuItem(
             title: 'State Performance',
-            subtitle: 'Monitor agents and customer activity',
+            subtitle: 'Monitor aggregators and customer activity',
             icon: Icons.bar_chart_rounded,
           ),
         ];
@@ -583,7 +583,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
           ),
           _RoleMenuItem(
             title: 'Zone Performance',
-            subtitle: 'Monitor states, agents and customers',
+            subtitle: 'Monitor states, aggregators and customers',
             icon: Icons.query_stats_rounded,
           ),
         ];

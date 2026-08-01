@@ -416,7 +416,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                   buildAdminAction(
                     title: 'Commission Management',
-                    subtitle: 'Manage agent and manager commissions.',
+                    subtitle: 'Manage aggregator and manager commissions.',
                     icon: Icons.percent_outlined,
                     onTap: () {
                       Navigator.push(
