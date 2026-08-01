@@ -1,4 +1,5 @@
 const User = require("../models/user.model");
+const Transaction = require("../models/transaction.model");
 
 const normalizeText = (value) =>
   String(value || "").trim();
@@ -742,6 +743,217 @@ exports.getCustomers = async (req, res) => {
       success: false,
       message:
         "Server error while loading Customers.",
+    });
+  }
+};
+
+exports.getAgentTransactions = async (req, res) => {
+  try {
+    const loggedInUser = req.user;
+
+    if (!loggedInUser) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const role = String(loggedInUser.role || "")
+      .trim()
+      .toUpperCase();
+
+    if (role !== "AGENT") {
+      return res.status(403).json({
+        success: false,
+        message: "Only an Agent can view Agent transactions.",
+      });
+    }
+
+    const search = String(req.query.search || "").trim();
+    const status = String(req.query.status || "ALL")
+      .trim()
+      .toUpperCase();
+
+    const page = Math.max(
+      Number.parseInt(req.query.page, 10) || 1,
+      1
+    );
+
+    const limit = Math.min(
+      Math.max(Number.parseInt(req.query.limit, 10) || 20, 1),
+      100
+    );
+
+    const customerQuery = {
+      role: "CUSTOMER",
+      agentId: loggedInUser._id,
+    };
+
+    const customers = await User.find(customerQuery)
+      .select("_id fullName phone email")
+      .lean();
+
+    const customerIds = customers.map(
+      (customer) => customer._id
+    );
+
+    if (customerIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        summary: {
+          totalTransactions: 0,
+          successfulTransactions: 0,
+          pendingTransactions: 0,
+          failedTransactions: 0,
+          totalAmount: 0,
+        },
+        transactions: [],
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      });
+    }
+
+    const transactionQuery = {
+      $or: [
+        { customerId: { $in: customerIds } },
+        { userId: { $in: customerIds } },
+      ],
+    };
+
+    if (status !== "ALL") {
+      transactionQuery.status = status;
+    }
+
+    if (search) {
+      transactionQuery.$and = [
+        {
+          $or: [
+            {
+              reference: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+            {
+              serviceType: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+            {
+              description: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+          ],
+        },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [
+      transactions,
+      total,
+      summaryRows,
+    ] = await Promise.all([
+      Transaction.find(transactionQuery)
+        .populate(
+          "customerId",
+          "fullName phone email"
+        )
+        .populate(
+          "userId",
+          "fullName phone email"
+        )
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Transaction.countDocuments(transactionQuery),
+
+      Transaction.aggregate([
+        {
+          $match: {
+            $or: [
+              { customerId: { $in: customerIds } },
+              { userId: { $in: customerIds } },
+            ],
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalTransactions: { $sum: 1 },
+            totalAmount: {
+              $sum: { $ifNull: ["$amount", 0] },
+            },
+            successfulTransactions: {
+              $sum: {
+                $cond: [
+                  { $eq: ["$status", "SUCCESSFUL"] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            pendingTransactions: {
+              $sum: {
+                $cond: [
+                  { $eq: ["$status", "PENDING"] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            failedTransactions: {
+              $sum: {
+                $cond: [
+                  { $eq: ["$status", "FAILED"] },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const summary = summaryRows[0] || {
+      totalTransactions: 0,
+      successfulTransactions: 0,
+      pendingTransactions: 0,
+      failedTransactions: 0,
+      totalAmount: 0,
+    };
+
+    return res.status(200).json({
+      success: true,
+      summary,
+      transactions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "GET AGENT TRANSACTIONS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load Agent transactions.",
     });
   }
 };

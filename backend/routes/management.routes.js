@@ -11,6 +11,7 @@ const {
   getAgents,
   createCustomer,
   getCustomers,
+  getAgentTransactions,
 } = require(
   "../controllers/management.controller"
 );
@@ -35,5 +36,11 @@ router
   .route("/customers")
   .get(getCustomers)
   .post(createCustomer);
+
+
+router.get(
+  "/agent-transactions",
+  getAgentTransactions
+);
 
 module.exports = router;
