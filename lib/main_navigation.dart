@@ -27,27 +27,27 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
+      extendBody: false,
       body: IndexedStack(
         index: currentIndex,
         children: pages,
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(
-          14,
+          10,
           0,
-          14,
-          12,
+          10,
+          8,
         ),
         child: Container(
-          height: 76,
+          height: 68,
           padding: const EdgeInsets.symmetric(
             horizontal: 8,
             vertical: 7,
           ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: const Color(0xFFE7EAEF),
             ),

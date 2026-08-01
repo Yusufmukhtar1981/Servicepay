@@ -416,8 +416,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
@@ -441,7 +441,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   'S',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 29,
+                    fontSize: 25,
                     fontWeight: FontWeight.w900,
                     fontStyle: FontStyle.italic,
                   ),
@@ -454,7 +454,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 'ServicePay',
                 style: TextStyle(
                   color: Color(0xFF064E2F),
-                  fontSize: 24,
+                  fontSize: 21,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.7,
                 ),
@@ -510,12 +510,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 19),
+        const SizedBox(height: 13),
         Row(
           children: [
             Container(
-              width: 56,
-              height: 56,
+              width: 46,
+              height: 46,
               decoration: const BoxDecoration(
                 color: primaryGreen,
                 shape: BoxShape.circle,
@@ -525,7 +525,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   firstName().substring(0, 1).toUpperCase(),
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 23,
+                    fontSize: 19,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -542,7 +542,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Color(0xFF101828),
-                      fontSize: 22,
+                      fontSize: 19,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.5,
                     ),
@@ -639,8 +639,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               right: 20,
               top: 42,
               child: Container(
-                width: 104,
-                height: 91,
+                width: 88,
+                height: 76,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(
                     alpha: 0.12,
@@ -668,8 +668,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       left: 8,
                       bottom: 5,
                       child: Container(
-                        width: 52,
-                        height: 52,
+                        width: 43,
+                        height: 43,
                         decoration: const BoxDecoration(
                           color: Color(0xFFEAF7F0),
                           shape: BoxShape.circle,
@@ -677,7 +677,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: const Icon(
                           Icons.verified_user_rounded,
                           color: primaryGreen,
-                          size: 30,
+                          size: 25,
                         ),
                       ),
                     ),
@@ -687,10 +687,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                22,
-                22,
-                22,
-                20,
+                19,
+                18,
+                19,
+                16,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -728,14 +728,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   const SizedBox(height: 15),
                   SizedBox(
-                    width: 230,
+                    width: 205,
                     child: Text(
                       hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 36,
+                        fontSize: 30,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -1.4,
                       ),
@@ -778,7 +778,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 23),
+                  const SizedBox(height: 17),
                   Divider(
                     height: 1,
                     color: Colors.white.withValues(
@@ -1001,7 +1001,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 13),
         SizedBox(
-          height: 122,
+          height: 108,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: services.length,
@@ -1014,7 +1014,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               int index,
             ) {
               return SizedBox(
-                width: 103,
+                width: 88,
                 child: _PopularServiceCard(
                   service: services[index],
                 ),
@@ -1039,38 +1039,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const _SectionHeader(
           title: 'More Services',
         ),
-        const SizedBox(height: 13),
-        LayoutBuilder(
-          builder: (
-            BuildContext context,
-            BoxConstraints constraints,
-          ) {
-            final int columns = constraints.maxWidth >= 760
-                ? 3
-                : constraints.maxWidth >= 520
-                    ? 2
-                    : 1;
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 105,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: services.length,
+            padding: const EdgeInsets.only(right: 3),
+            separatorBuilder: (_, __) => const SizedBox(width: 11),
+            itemBuilder: (
+              BuildContext context,
+              int index,
+            ) {
+              final _DashboardService service = services[index];
 
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: services.length,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: columns,
-                mainAxisSpacing: 11,
-                crossAxisSpacing: 11,
-                childAspectRatio: columns == 1 ? 4.3 : 3.15,
-              ),
-              itemBuilder: (
-                BuildContext context,
-                int index,
-              ) {
-                return _MoreServiceCard(
-                  service: services[index],
-                );
-              },
-            );
-          },
+              return Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(19),
+                child: InkWell(
+                  onTap: service.onTap,
+                  borderRadius: BorderRadius.circular(19),
+                  child: Container(
+                    width: 145,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(19),
+                      border: Border.all(
+                        color: const Color(0xFFE7EAEF),
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x0B101828),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 43,
+                          height: 43,
+                          decoration: BoxDecoration(
+                            color: service.backgroundColor,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            service.icon,
+                            color: service.iconColor,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          service.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(0xFF1D2939),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -1122,7 +1164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget buildPromoBanner() {
     return Container(
       constraints: const BoxConstraints(
-        minHeight: 145,
+        minHeight: 122,
       ),
       padding: const EdgeInsets.fromLTRB(
         21,
@@ -1174,8 +1216,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Transform.rotate(
               angle: -0.12,
               child: Container(
-                width: 74,
-                height: 100,
+                width: 64,
+                height: 86,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [
@@ -1224,7 +1266,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   'One Platform,',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 22,
+                    fontSize: 19,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.4,
                   ),
@@ -1233,7 +1275,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   'Many Solutions',
                   style: TextStyle(
                     color: Color(0xFF91EE96),
-                    fontSize: 23,
+                    fontSize: 19,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.5,
                   ),
@@ -1270,10 +1312,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
-              17,
-              16,
-              17,
-              125,
+              15,
+              14,
+              15,
+              30,
             ),
             children: [
               buildHeader(),
@@ -1286,17 +1328,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               if (isLoading) const SizedBox(height: 10),
               buildWalletCard(),
-              const SizedBox(height: 19),
+              const SizedBox(height: 13),
               buildSearchBar(),
               const SizedBox(height: 16),
               buildQuickActions(),
-              const SizedBox(height: 23),
+              const SizedBox(height: 18),
               buildPopularServices(),
               if (filtered(popularServices()).isNotEmpty)
-                const SizedBox(height: 23),
+                const SizedBox(height: 18),
               buildMoreServices(),
               buildEmptySearch(),
-              if (searchQuery.trim().isEmpty) const SizedBox(height: 23),
+              if (searchQuery.trim().isEmpty) const SizedBox(height: 18),
               if (searchQuery.trim().isEmpty) buildPromoBanner(),
               if (isRefreshing)
                 const Padding(
@@ -1543,79 +1585,6 @@ class _PopularServiceCard extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MoreServiceCard extends StatelessWidget {
-  final _DashboardService service;
-
-  const _MoreServiceCard({
-    required this.service,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: service.onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 11,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: const Color(0xFFE7EAEF),
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0B101828),
-                blurRadius: 12,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 45,
-                height: 45,
-                decoration: BoxDecoration(
-                  color: service.backgroundColor,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  service.icon,
-                  color: service.iconColor,
-                  size: 25,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  service.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF1D2939),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF98A2B3),
               ),
             ],
           ),
