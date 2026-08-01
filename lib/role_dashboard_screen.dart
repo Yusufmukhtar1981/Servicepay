@@ -6,8 +6,7 @@ import 'create_agent_screen.dart';
 import 'my_customers_screen.dart';
 import 'main_navigation.dart';
 import 'profile_screen.dart';
-import 'transactions_screen.dart';
-import 'agent_transactions_screen.dart';
+import 'role_transactions_screen.dart';
 
 class RoleDashboardScreen extends StatefulWidget {
   final String role;
@@ -148,7 +147,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             icon: Icons.receipt_long_rounded,
             onTap: () {
               openScreen(
-                const AgentTransactionsScreen(),
+                const RoleTransactionsScreen(),
               );
             },
           ),
@@ -192,7 +191,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             subtitle: 'Transactions completed in your state',
             icon: Icons.receipt_long_rounded,
             onTap: () {
-              openScreen(const TransactionsScreen());
+              openScreen(const RoleTransactionsScreen());
             },
           ),
           _RoleMenuItem(
@@ -235,7 +234,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             subtitle: 'Transactions completed in your zone',
             icon: Icons.receipt_long_rounded,
             onTap: () {
-              openScreen(const TransactionsScreen());
+              openScreen(const RoleTransactionsScreen());
             },
           ),
           _RoleMenuItem(
