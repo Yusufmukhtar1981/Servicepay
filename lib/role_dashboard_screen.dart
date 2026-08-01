@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'create_state_manager_screen.dart';
+import 'create_agent_screen.dart';
 import 'main_navigation.dart';
 import 'profile_screen.dart';
 import 'transactions_screen.dart';
@@ -151,6 +152,22 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
 
       case 'STATE_MANAGER':
         return [
+          _RoleMenuItem(
+            title: 'Create Agent',
+            subtitle: 'Register a new Agent under your state',
+            icon: Icons.person_add_alt_1_rounded,
+            onTap: () async {
+              final bool? created = await Navigator.of(context).push<bool>(
+                MaterialPageRoute<bool>(
+                  builder: (_) => const CreateAgentScreen(),
+                ),
+              );
+
+              if (created == true) {
+                await loadUserDetails();
+              }
+            },
+          ),
           _RoleMenuItem(
             title: 'Agents',
             subtitle: 'Agents registered under your state',
