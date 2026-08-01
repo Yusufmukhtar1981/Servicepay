@@ -272,3 +272,235 @@ exports.getStateManagers = async (req, res) => {
     });
   }
 };
+
+
+exports.createAgent = async (req, res) => {
+  try {
+    const loggedInUser = req.user;
+
+    if (!loggedInUser) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const loggedInRole = normalizeText(
+      loggedInUser.role
+    ).toUpperCase();
+
+    if (loggedInRole !== "STATE_MANAGER") {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Only a State Manager can create an Agent.",
+      });
+    }
+
+    const {
+      fullName,
+      phone,
+      email,
+      password,
+      lga,
+    } = req.body || {};
+
+    const cleanFullName = normalizeText(fullName);
+    const cleanPhone = normalizePhone(phone);
+    const cleanEmail = normalizeEmail(email);
+    const cleanPassword = String(password || "");
+    const cleanLga = normalizeText(lga);
+
+    if (!cleanFullName) {
+      return res.status(400).json({
+        success: false,
+        message: "Full name is required.",
+      });
+    }
+
+    if (!cleanPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required.",
+      });
+    }
+
+    if (!/^\d{11}$/.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Phone number must contain exactly 11 digits.",
+      });
+    }
+
+    if (!cleanPassword || cleanPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must contain at least 6 characters.",
+      });
+    }
+
+    const duplicateConditions = [
+      { phone: cleanPhone },
+    ];
+
+    if (cleanEmail) {
+      duplicateConditions.push({
+        email: cleanEmail,
+      });
+    }
+
+    const existingUser = await User.findOne({
+      $or: duplicateConditions,
+    }).select("_id phone email");
+
+    if (existingUser) {
+      const samePhone =
+        normalizePhone(existingUser.phone) ===
+        cleanPhone;
+
+      return res.status(409).json({
+        success: false,
+        message: samePhone
+          ? "A user with this phone number already exists."
+          : "A user with this email address already exists.",
+      });
+    }
+
+    const agent = new User({
+      fullName: cleanFullName,
+      phone: cleanPhone,
+      email: cleanEmail || undefined,
+      password: cleanPassword,
+      role: "AGENT",
+      status: "ACTIVE",
+
+      zone: normalizeText(loggedInUser.zone),
+      state: normalizeText(loggedInUser.state),
+      lga: cleanLga || undefined,
+
+      zonalManagerId:
+        loggedInUser.zonalManagerId || undefined,
+
+      stateManagerId:
+        loggedInUser._id || loggedInUser.id,
+    });
+
+    await agent.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Agent created successfully.",
+      agent: publicUser(agent),
+    });
+  } catch (error) {
+    console.error("createAgent error:", error);
+
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Phone number or email address already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while creating Agent.",
+    });
+  }
+};
+
+exports.getAgents = async (req, res) => {
+  try {
+    const loggedInUser = req.user;
+
+    if (!loggedInUser) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const loggedInRole = normalizeText(
+      loggedInUser.role
+    ).toUpperCase();
+
+    if (loggedInRole !== "STATE_MANAGER") {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Only a State Manager can view Agents.",
+      });
+    }
+
+    const search = normalizeText(req.query.search);
+    const status = normalizeText(
+      req.query.status
+    ).toUpperCase();
+
+    const query = {
+      role: "AGENT",
+      stateManagerId:
+        loggedInUser._id || loggedInUser.id,
+    };
+
+    if (
+      status &&
+      ["ACTIVE", "SUSPENDED", "BLOCKED"].includes(
+        status
+      )
+    ) {
+      query.status = status;
+    }
+
+    if (search) {
+      query.$or = [
+        {
+          fullName: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          phone: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          email: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          lga: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    const agents = await User.find(query)
+      .select("-password -transactionPin")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: agents.length,
+      agents: agents.map(publicUser),
+    });
+  } catch (error) {
+    console.error("getAgents error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while loading Agents.",
+    });
+  }
+};
