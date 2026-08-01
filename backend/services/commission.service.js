@@ -227,27 +227,73 @@ const buildCommissionRecord = ({
   };
 };
 
-const saveCommissionRecord =
-  async (record) => {
-    return Commission.findOneAndUpdate(
-      {
-        transactionId:
-          record.transactionId,
-        beneficiaryRole:
-          record.beneficiaryRole,
-        beneficiaryId:
-          record.beneficiaryId || null,
-      },
-      {
-        $setOnInsert: record,
-      },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true,
+const saveCommissionRecord = async (record) => {
+  try {
+    /*
+     * Commission.create() yana bari unique index ya tabbatar
+     * cewa transaction ɗaya ba zai ba mutum commission sau biyu ba.
+     */
+    const savedCommission = await Commission.create(record);
+
+    const beneficiaryId = record.beneficiaryId;
+    const commissionAmount = roundMoney(record.commissionAmount);
+
+    if (
+      beneficiaryId &&
+      commissionAmount > 0 &&
+      normalizeText(record.status) === "AVAILABLE"
+    ) {
+      const updatedBeneficiary = await User.findByIdAndUpdate(
+        beneficiaryId,
+        {
+          $inc: {
+            walletBalance: commissionAmount,
+            commissionBalance: commissionAmount,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+
+      if (!updatedBeneficiary) {
+        /*
+         * Idan beneficiary bai samu ba, mu cire commission record
+         * domin kada history ya nuna an biya alhali wallet bai karu ba.
+         */
+        await Commission.deleteOne({
+          _id: savedCommission._id,
+        });
+
+        throw new Error(
+          "Commission beneficiary account was not found."
+        );
       }
-    );
-  };
+    }
+
+    return savedCommission;
+  } catch (error) {
+    /*
+     * MongoDB duplicate key error.
+     * Wannan yana nufin an riga an credit wannan beneficiary
+     * daga wannan transaction, saboda haka kada wallet ya sake karuwa.
+     */
+    if (error && error.code === 11000) {
+      const existingCommission = await Commission.findOne({
+        transactionId: record.transactionId,
+        beneficiaryRole: record.beneficiaryRole,
+        beneficiaryId: record.beneficiaryId || null,
+      });
+
+      if (existingCommission) {
+        return existingCommission;
+      }
+    }
+
+    throw error;
+  }
+};
 
 const distributeCommission = async ({
   transaction,
