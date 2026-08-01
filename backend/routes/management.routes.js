@@ -9,6 +9,8 @@ const {
   getStateManagers,
   createAgent,
   getAgents,
+  createCustomer,
+  getCustomers,
 } = require(
   "../controllers/management.controller"
 );
@@ -27,5 +29,11 @@ router
   .route("/agents")
   .get(getAgents)
   .post(createAgent);
+
+
+router
+  .route("/customers")
+  .get(getCustomers)
+  .post(createCustomer);
 
 module.exports = router;
