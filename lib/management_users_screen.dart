@@ -21,7 +21,7 @@ class ManagementUsersScreen extends StatefulWidget {
   const ManagementUsersScreen.agents({super.key})
       : title = 'Aggregators',
         endpoint = '/management/agents',
-        responseKey = 'aggregators',
+        responseKey = 'agents',
         emptyMessage = 'No Aggregator has been registered under your state.';
 
   const ManagementUsersScreen.stateManagers({super.key})
