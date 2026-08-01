@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'create_state_manager_screen.dart';
 import 'create_agent_screen.dart';
+import 'my_customers_screen.dart';
 import 'main_navigation.dart';
 import 'profile_screen.dart';
 import 'transactions_screen.dart';
@@ -129,6 +130,11 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             title: 'My Customers',
             subtitle: 'Customers registered under you',
             icon: Icons.groups_rounded,
+            onTap: () {
+              openScreen(
+                const MyCustomersScreen(),
+              );
+            },
           ),
           _RoleMenuItem(
             title: 'Commission',
