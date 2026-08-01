@@ -818,10 +818,7 @@ exports.getAgentTransactions = async (req, res) => {
     }
 
     const transactionQuery = {
-      $or: [
-        { customerId: { $in: customerIds } },
-        { userId: { $in: customerIds } },
-      ],
+      customerId: { $in: customerIds },
     };
 
     if (status !== "ALL") {
@@ -867,10 +864,6 @@ exports.getAgentTransactions = async (req, res) => {
           "customerId",
           "fullName phone email"
         )
-        .populate(
-          "userId",
-          "fullName phone email"
-        )
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -881,10 +874,7 @@ exports.getAgentTransactions = async (req, res) => {
       Transaction.aggregate([
         {
           $match: {
-            $or: [
-              { customerId: { $in: customerIds } },
-              { userId: { $in: customerIds } },
-            ],
+            customerId: { $in: customerIds },
           },
         },
         {
