@@ -71,6 +71,8 @@ const app = express();
 
 connectDB();
 
+const managementRoutes = require("./routes/management.routes");
+
 app.use(helmet());
 app.use(cors());
 
@@ -177,6 +179,11 @@ app.use(
   transactionPinRoutes
 );
 
+
+app.use(
+  "/api/management",
+  managementRoutes
+);
 
 app.use("/api/settings", appSettingsRoutes);
 
