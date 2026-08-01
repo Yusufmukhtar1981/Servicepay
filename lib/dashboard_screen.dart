@@ -388,6 +388,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         },
       ),
+      _DashboardService(
+        title: 'Wallet Funding',
+        icon: Icons.account_balance_wallet_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'wallet funding fund wallet deposit',
+        onTap: () {
+          openScreen(
+            const WalletScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Bank Transfer',
+        icon: Icons.account_balance_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'bank transfer send money',
+        onTap: showBankTransferNotice,
+      ),
+      _DashboardService(
+        title: 'ServicePay Transfer',
+        icon: Icons.send_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'servicepay transfer send money',
+        onTap: () {
+          openScreen(
+            const TransferScreen(),
+          );
+        },
+      ),
     ];
   }
 
@@ -636,48 +668,151 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             Positioned(
-              right: 20,
-              top: 42,
-              child: Container(
-                width: 88,
-                height: 76,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(
-                    alpha: 0.12,
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: 0.15,
-                    ),
-                  ),
-                ),
+              right: 14,
+              top: 31,
+              child: SizedBox(
+                width: 132,
+                height: 112,
                 child: Stack(
-                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
                   children: [
-                    const Positioned(
-                      right: 13,
-                      top: 17,
-                      child: Icon(
-                        Icons.credit_card_rounded,
-                        color: Color(0xFFB9F5D1),
-                        size: 54,
+                    Positioned(
+                      right: 4,
+                      top: 7,
+                      child: Transform.rotate(
+                        angle: -0.10,
+                        child: Container(
+                          width: 84,
+                          height: 57,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFFB8E7FF),
+                                Color(0xFF68B7E6),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(13),
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     Positioned(
-                      left: 8,
+                      right: 0,
+                      top: 22,
+                      child: Transform.rotate(
+                        angle: 0.07,
+                        child: Container(
+                          width: 91,
+                          height: 61,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFFE9F8E8),
+                                Color(0xFFA7DDAE),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 7,
                       bottom: 5,
                       child: Container(
-                        width: 43,
-                        height: 43,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEAF7F0),
+                        width: 101,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF28B866),
+                              Color(0xFF006B3A),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(19),
+                          border: Border.all(
+                            color: const Color(0xFF69D899),
+                            width: 1.5,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x55002115),
+                              blurRadius: 14,
+                              offset: Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              right: -5,
+                              top: 24,
+                              child: Container(
+                                width: 32,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0C7E43),
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: const Center(
+                                  child: CircleAvatar(
+                                    radius: 6,
+                                    backgroundColor: Color(0xFFFFC94B),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const Center(
+                              child: Icon(
+                                Icons.account_balance_wallet_rounded,
+                                color: Color(0xFFE9FFF2),
+                                size: 43,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFFE9FFF2),
+                              Color(0xFF9EE8BB),
+                            ],
+                          ),
                           shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 3,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x55002115),
+                              blurRadius: 12,
+                              offset: Offset(0, 6),
+                            ),
+                          ],
                         ),
                         child: const Icon(
                           Icons.verified_user_rounded,
-                          color: primaryGreen,
-                          size: 25,
+                          color: Color(0xFF08783E),
+                          size: 35,
                         ),
                       ),
                     ),
@@ -1163,136 +1298,165 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget buildPromoBanner() {
     return Container(
-      constraints: const BoxConstraints(
-        minHeight: 122,
-      ),
-      padding: const EdgeInsets.fromLTRB(
-        21,
-        20,
-        17,
-        18,
-      ),
+      height: 144,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(25),
         gradient: const LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: [
-            Color(0xFF003A28),
-            Color(0xFF00633A),
-            Color(0xFF0B8248),
+            Color(0xFF003B29),
+            Color(0xFF006A3C),
+            Color(0xFF088149),
           ],
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x2B004E2C),
-            blurRadius: 23,
+            color: Color(0x33004E2C),
+            blurRadius: 22,
             offset: Offset(0, 11),
           ),
         ],
       ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -22,
-            top: -35,
-            child: Container(
-              width: 150,
-              height: 150,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(
-                    alpha: 0.08,
-                  ),
-                  width: 22,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 15,
-            bottom: 4,
-            child: Transform.rotate(
-              angle: -0.12,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -35,
+              top: -48,
               child: Container(
-                width: 64,
-                height: 86,
+                width: 190,
+                height: 190,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF14B866),
-                      Color(0xFF006837),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(17),
+                  shape: BoxShape.circle,
                   border: Border.all(
                     color: Colors.white.withValues(
-                      alpha: 0.28,
+                      alpha: 0.07,
                     ),
-                    width: 2,
+                    width: 27,
                   ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x59000000),
-                      blurRadius: 13,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
                 ),
-                child: const Center(
-                  child: Text(
-                    'S',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 36,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
+              ),
+            ),
+            Positioned(
+              right: 15,
+              bottom: 8,
+              child: Transform.rotate(
+                angle: -0.12,
+                child: Container(
+                  width: 73,
+                  height: 109,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF17C86B),
+                        Color(0xFF006B3B),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(
+                        alpha: 0.40,
+                      ),
+                      width: 2,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x66000000),
+                        blurRadius: 16,
+                        offset: Offset(0, 9),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'S',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 39,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(
-              right: 100,
+            const Positioned(
+              right: 94,
+              top: 18,
+              child: Icon(
+                Icons.bolt_rounded,
+                color: Color(0x66FFD54F),
+                size: 29,
+              ),
             ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'One Platform,',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.4,
-                  ),
-                ),
-                Text(
-                  'Many Solutions',
-                  style: TextStyle(
-                    color: Color(0xFF91EE96),
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                SizedBox(height: 10),
-                Text(
-                  'Fast. Secure. Reliable.',
-                  style: TextStyle(
-                    color: Color(0xFFD9F5E4),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+            const Positioned(
+              right: 112,
+              bottom: 21,
+              child: Icon(
+                Icons.monetization_on_rounded,
+                color: Color(0xFFFFC94B),
+                size: 28,
+              ),
             ),
-          ),
-        ],
+            const Positioned(
+              right: 28,
+              top: 15,
+              child: Icon(
+                Icons.wifi_rounded,
+                color: Color(0x668EEA93),
+                size: 27,
+              ),
+            ),
+            const Positioned(
+              left: 21,
+              top: 20,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'One Platform,',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    'Many Solutions',
+                    style: TextStyle(
+                      color: Color(0xFF91EE96),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Fast. Secure. Reliable.',
+                    style: TextStyle(
+                      color: Color(0xFFD9F5E4),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Positioned(
+              right: 53,
+              bottom: 9,
+              child: Icon(
+                Icons.shield_rounded,
+                color: Color(0xFF9DE8B9),
+                size: 31,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
