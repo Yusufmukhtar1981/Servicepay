@@ -1,5 +1,7 @@
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+const { sendEmail } = require("../services/email.service");
 
 const generateToken = (userId) => {
   if (!process.env.JWT_SECRET) {
@@ -805,3 +807,309 @@ exports.changePassword = async (
     });
   }
 };
+
+/**
+ * Request a password reset link.
+ * Always returns a generic response so attackers cannot discover
+ * whether an email address is registered.
+ */
+exports.forgotPassword = async (req, res) => {
+  const genericMessage =
+    "If an account exists with this email, a password reset link has been sent.";
+
+  try {
+    const email = String(req.body?.email || "")
+      .trim()
+      .toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address is required.",
+      });
+    }
+
+    const user = await User.findOne({
+      email,
+    }).select(
+      "+passwordResetToken +passwordResetExpires"
+    );
+
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: genericMessage,
+      });
+    }
+
+    const resetToken = crypto
+      .randomBytes(32)
+      .toString("hex");
+
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    user.passwordResetToken = hashedToken;
+    user.passwordResetExpires =
+      Date.now() + 20 * 60 * 1000;
+
+    await user.save({
+      validateBeforeSave: false,
+    });
+
+    const frontendUrl = String(
+      process.env.FRONTEND_URL ||
+        "https://servicepay.ng"
+    ).replace(/\/+$/, "");
+
+    const resetUrl =
+      `${frontendUrl}/reset-password?token=${resetToken}`;
+
+    const firstName =
+      String(user.fullName || "Customer")
+        .trim()
+        .split(/\s+/)[0] || "Customer";
+
+    const subject =
+      "Reset your ServicePay password";
+
+    const text = [
+      `Hello ${firstName},`,
+      "",
+      "We received a request to reset your ServicePay password.",
+      "",
+      `Open this link to create a new password: ${resetUrl}`,
+      "",
+      "This link will expire in 20 minutes.",
+      "",
+      "If you did not request this change, you can ignore this email.",
+      "",
+      "ServicePay Support",
+    ].join("\n");
+
+    const html = `
+      <!doctype html>
+      <html>
+        <body style="margin:0;padding:0;background:#f4f7f6;font-family:Arial,sans-serif;color:#17211a;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="padding:30px 12px;background:#f4f7f6;">
+            <tr>
+              <td align="center">
+                <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:18px;overflow:hidden;">
+                  <tr>
+                    <td style="padding:24px;background:#149b8f;color:#ffffff;">
+                      <div style="font-size:24px;font-weight:800;">ServicePay</div>
+                      <div style="font-size:13px;margin-top:4px;">Password Reset</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:28px;">
+                      <p style="font-size:17px;margin-top:0;">Hello ${firstName},</p>
+
+                      <p style="line-height:1.6;">
+                        We received a request to reset your ServicePay password.
+                      </p>
+
+                      <p style="line-height:1.6;">
+                        Click the button below to create a new password.
+                        This link expires in <strong>20 minutes</strong>.
+                      </p>
+
+                      <p style="text-align:center;margin:30px 0;">
+                        <a
+                          href="${resetUrl}"
+                          style="display:inline-block;background:#149b8f;color:#ffffff;text-decoration:none;padding:15px 25px;border-radius:10px;font-weight:700;"
+                        >
+                          Reset Password
+                        </a>
+                      </p>
+
+                      <p style="font-size:13px;line-height:1.6;color:#64748b;">
+                        If the button does not work, copy and paste this link into your browser:
+                      </p>
+
+                      <p style="font-size:12px;word-break:break-all;color:#149b8f;">
+                        ${resetUrl}
+                      </p>
+
+                      <p style="line-height:1.6;margin-bottom:0;">
+                        If you did not request this change, you can safely ignore this email.
+                      </p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:18px 28px;background:#f8fafc;color:#64748b;font-size:12px;">
+                      © ServicePay. Making everyday services simple.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `;
+
+    try {
+      await sendEmail({
+        to: user.email,
+        subject,
+        text,
+        html,
+      });
+    } catch (emailError) {
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+
+      await user.save({
+        validateBeforeSave: false,
+      });
+
+      console.error(
+        "Forgot password email error:",
+        emailError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to send the password reset email. Please try again later.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: genericMessage,
+    });
+  } catch (error) {
+    console.error(
+      "Forgot password error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to process the password reset request.",
+    });
+  }
+};
+
+/**
+ * Reset password with a valid one-time token.
+ */
+exports.resetPassword = async (req, res) => {
+  try {
+    const token = String(
+      req.body?.token ||
+        req.params?.token ||
+        ""
+    ).trim();
+
+    const newPassword = String(
+      req.body?.newPassword ||
+        req.body?.password ||
+        ""
+    );
+
+    const confirmPassword = String(
+      req.body?.confirmPassword ||
+        req.body?.passwordConfirmation ||
+        ""
+    );
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password reset token is required.",
+      });
+    }
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "New password and confirmation are required.",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "New password must contain at least 6 characters.",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "New password and confirmation do not match.",
+      });
+    }
+
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: {
+        $gt: Date.now(),
+      },
+    }).select(
+      "+password +passwordResetToken +passwordResetExpires"
+    );
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This password reset link is invalid or has expired.",
+      });
+    }
+
+    const sameAsCurrentPassword =
+      await bcrypt.compare(
+        newPassword,
+        user.password
+      );
+
+    if (sameAsCurrentPassword) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "New password must be different from the previous password.",
+      });
+    }
+
+    user.password = newPassword;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.passwordChangedAt = new Date();
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Password reset successfully. You can now log in with your new password.",
+    });
+  } catch (error) {
+    console.error(
+      "Reset password error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to reset your password. Please try again.",
+    });
+  }
+};
+

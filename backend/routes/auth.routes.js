@@ -6,6 +6,8 @@ const {
   getProfile,
   updateProfile,
   changePassword,
+  forgotPassword,
+  resetPassword,
 } = require("../controllers/auth.controller");
 
 const {
@@ -17,6 +19,16 @@ const router = express.Router();
 router.post(
   "/register",
   registerUser
+);
+
+router.post(
+  "/forgot-password",
+  forgotPassword
+);
+
+router.post(
+  "/reset-password",
+  resetPassword
 );
 
 router.post(

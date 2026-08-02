@@ -53,6 +53,27 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    /*
+     * Password reset fields.
+     * passwordResetToken stores only the hashed reset token.
+     */
+    passwordResetToken: {
+      type: String,
+      select: false,
+      default: undefined,
+    },
+
+    passwordResetExpires: {
+      type: Date,
+      select: false,
+      default: undefined,
+    },
+
+    passwordChangedAt: {
+      type: Date,
+      default: undefined,
+    },
+
     role: {
       type: String,
       enum: [
