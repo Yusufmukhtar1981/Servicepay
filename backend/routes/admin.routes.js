@@ -17,6 +17,11 @@ const {
   adminOnly,
 } = require("../middleware/auth.middleware");
 
+const {
+  loadStaffRole,
+  requirePermission,
+} = require("../middleware/staffPermission.middleware");
+
 const router = express.Router();
 
 const MANAGEMENT_ROLES = [
@@ -156,7 +161,8 @@ const canCreateManagedUser = (
 router.get(
   "/dashboard",
   protect,
-  adminOnly(...MANAGEMENT_ROLES),
+  loadStaffRole,
+  requirePermission("dashboard.view"),
   getAdminDashboard
 );
 
