@@ -1,0 +1,480 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({
+    super.key,
+  });
+
+  @override
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+}
+
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  static const Color primaryGreen = Color(0xFF159447);
+
+  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+
+  final TextEditingController emailController = TextEditingController();
+
+  bool isLoading = false;
+  bool emailSent = false;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    super.dispose();
+  }
+
+  String? validateEmail(
+    String? value,
+  ) {
+    final String email = value?.trim().toLowerCase() ?? '';
+
+    if (email.isEmpty) {
+      return 'Enter your registered email address.';
+    }
+
+    final RegExp emailPattern = RegExp(
+      r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
+    );
+
+    if (!emailPattern.hasMatch(email)) {
+      return 'Enter a valid email address.';
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic> decodeResponse(
+    http.Response response,
+  ) {
+    final String body = response.body.trim();
+
+    if (body.isEmpty) {
+      return {
+        'success': false,
+        'message': 'The server returned an empty response.',
+      };
+    }
+
+    try {
+      final dynamic decoded = jsonDecode(body);
+
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(
+          decoded,
+        );
+      }
+    } catch (_) {
+      // A friendly error is returned below.
+    }
+
+    return {
+      'success': false,
+      'message': 'The server returned an invalid response.',
+    };
+  }
+
+  void showMessage(
+    String message, {
+    required bool isError,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+          backgroundColor: isError ? Colors.red.shade700 : primaryGreen,
+        ),
+      );
+  }
+
+  Future<void> sendResetLink() async {
+    final bool valid = formKey.currentState?.validate() ?? false;
+
+    if (!valid || isLoading) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final http.Response response = await http
+          .post(
+            Uri.parse(
+              '$baseUrl/auth/forgot-password',
+            ),
+            headers: const {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'email': emailController.text.trim().toLowerCase(),
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 40),
+          );
+
+      final Map<String, dynamic> result = decodeResponse(response);
+
+      if (!mounted) {
+        return;
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          result['success'] != true) {
+        showMessage(
+          result['message']?.toString() ??
+              'Unable to send the password reset link.',
+          isError: true,
+        );
+        return;
+      }
+
+      setState(() {
+        emailSent = true;
+      });
+
+      showMessage(
+        result['message']?.toString() ??
+            'Password reset instructions have been sent.',
+        isError: false,
+      );
+    } on TimeoutException {
+      showMessage(
+        'The request took too long. Please try again.',
+        isError: true,
+      );
+    } on http.ClientException {
+      showMessage(
+        'Unable to connect to the ServicePay server.',
+        isError: true,
+      );
+    } catch (_) {
+      showMessage(
+        'Unable to send the password reset link. Please try again.',
+        isError: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text(
+          'Forgot Password',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 440,
+              ),
+              child: Card(
+                elevation: 8,
+                shadowColor: Colors.black12,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: emailSent ? buildSuccessContent() : buildRequestForm(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildRequestForm() {
+    return Form(
+      key: formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: primaryGreen.withValues(
+                  alpha: 0.12,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.lock_reset_rounded,
+                color: primaryGreen,
+                size: 48,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Reset your password',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF1F2937),
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Enter the email address registered '
+            'with your ServicePay account. We will '
+            'send you a secure password reset link.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 28),
+          TextFormField(
+            controller: emailController,
+            enabled: !isLoading,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [
+              AutofillHints.email,
+            ],
+            validator: validateEmail,
+            onFieldSubmitted: (_) {
+              if (!isLoading) {
+                sendResetLink();
+              }
+            },
+            decoration: InputDecoration(
+              labelText: 'Registered email address',
+              hintText: 'customer@example.com',
+              prefixIcon: const Icon(
+                Icons.email_outlined,
+              ),
+              filled: true,
+              fillColor: const Color(0xFFF8FAFC),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: Color(0xFFE2E8F0),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: primaryGreen,
+                  width: 2,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+          SizedBox(
+            height: 54,
+            child: FilledButton.icon(
+              onPressed: isLoading ? null : sendResetLink,
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryGreen,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.send_rounded,
+                    ),
+              label: Text(
+                isLoading ? 'Sending...' : 'Send Reset Link',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          TextButton.icon(
+            onPressed: isLoading
+                ? null
+                : () {
+                    Navigator.pop(context);
+                  },
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+            ),
+            label: const Text(
+              'Back to Sign In',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildSuccessContent() {
+    final String email = emailController.text.trim().toLowerCase();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: Container(
+            width: 86,
+            height: 86,
+            decoration: BoxDecoration(
+              color: primaryGreen.withValues(
+                alpha: 0.12,
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.mark_email_read_outlined,
+              color: primaryGreen,
+              size: 48,
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Check your email',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xFF1F2937),
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'If a ServicePay account exists for '
+          '$email, a password reset link has been sent.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.grey.shade700,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF7ED),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFFFED7AA),
+            ),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.schedule_rounded,
+                color: Color(0xFFEA580C),
+              ),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'The password reset link expires '
+                  'after 20 minutes. Also check your '
+                  'Spam or Promotions folder.',
+                  style: TextStyle(
+                    color: Color(0xFF7C2D12),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        SizedBox(
+          height: 54,
+          child: FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: primaryGreen,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              'Return to Sign In',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: isLoading
+              ? null
+              : () {
+                  setState(() {
+                    emailSent = false;
+                  });
+                },
+          child: const Text(
+            'Send another link',
+          ),
+        ),
+      ],
+    );
+  }
+}

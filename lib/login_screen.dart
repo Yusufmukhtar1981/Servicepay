@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'forgot_password_screen.dart';
 import 'main_navigation.dart';
 import 'role_dashboard_screen.dart';
 import 'register_screen.dart';
@@ -452,6 +453,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void openForgotPasswordScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ForgotPasswordScreen(),
+      ),
+    );
+  }
+
   void openRegisterScreen() {
     Navigator.push(
       context,
@@ -622,7 +632,22 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 22),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed:
+                                isLoading ? null : openForgotPasswordScreen,
+                            child: const Text(
+                              'Forgot Password?',
+                              style: TextStyle(
+                                color: Color(0xFF159447),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
                         SizedBox(
                           height: 54,
                           child: ElevatedButton(
