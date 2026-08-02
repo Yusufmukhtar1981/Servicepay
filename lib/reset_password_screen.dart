@@ -160,7 +160,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             }),
           )
           .timeout(
-            const Duration(seconds: 40),
+            const Duration(seconds: 120),
           );
 
       final Map<String, dynamic> result = decodeResponse(response);
