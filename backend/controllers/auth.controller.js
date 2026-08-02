@@ -865,7 +865,7 @@ exports.forgotPassword = async (req, res) => {
     ).replace(/\/+$/, "");
 
     const resetUrl =
-      `${frontendUrl}/reset-password?token=${resetToken}`;
+      `${frontendUrl}/?reset-password=true&token=${resetToken}`;
 
     const firstName =
       String(user.fullName || "Customer")
