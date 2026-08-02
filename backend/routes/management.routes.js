@@ -33,6 +33,15 @@ router
   .get(getAgents)
   .post(createAgent);
 
+/*
+ * Aggregator is the new public name for Agent.
+ * Both routes are retained so older app versions continue working.
+ */
+router
+  .route("/aggregators")
+  .get(getAgents)
+  .post(createAgent);
+
 
 router
   .route("/customers")
