@@ -74,10 +74,70 @@ const userSchema = new mongoose.Schema(
       default: undefined,
     },
 
+    /*
+     * Internal ServicePay staff account.
+     * Specific duties and permissions come from staffRoleId.
+     */
+    isStaff: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    staffId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      unique: true,
+      sparse: true,
+      default: undefined,
+    },
+
+    staffRoleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Role",
+      default: null,
+      index: true,
+    },
+
+    department: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      enum: [
+        "ADMINISTRATION",
+        "OPERATIONS",
+        "DELIVERY",
+        "FINANCE",
+        "AUDIT",
+        "COMPLIANCE",
+        "CUSTOMER_SUPPORT",
+        null,
+      ],
+      default: null,
+    },
+
+    staffCreatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    lastStaffLoginAt: {
+      type: Date,
+      default: null,
+    },
+
+    mustChangePassword: {
+      type: Boolean,
+      default: false,
+    },
+
     role: {
       type: String,
       enum: [
         "HEAD_OFFICE",
+        "STAFF",
         "ZONAL_MANAGER",
         "STATE_MANAGER",
         "AGENT",

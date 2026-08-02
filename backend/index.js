@@ -1,3 +1,4 @@
+const staffManagementRoutes = require("./routes/staffManagement.routes");
 const express = require("express");
 const appSettingsRoutes = require("./routes/appSettings.routes");
 const cors = require("cors");
@@ -186,6 +187,8 @@ app.use(
 );
 
 app.use("/api/settings", appSettingsRoutes);
+
+app.use("/api/staff-management", staffManagementRoutes);
 
 const productCommissionRoutes = require(
   "./routes/productCommission.routes"

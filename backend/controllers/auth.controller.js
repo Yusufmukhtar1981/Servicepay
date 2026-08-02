@@ -54,6 +54,49 @@ const formatUser = (user) => {
       user.transactionPinSet === true,
     virtualAccount:
       user.virtualAccount || null,
+
+    isStaff: user.isStaff === true,
+    staffId: user.staffId || null,
+    department: user.department || null,
+    mustChangePassword:
+      user.mustChangePassword === true,
+    lastStaffLoginAt:
+      user.lastStaffLoginAt || null,
+
+    staffRole:
+      user.staffRoleId &&
+      typeof user.staffRoleId === "object" &&
+      user.staffRoleId.name
+        ? {
+            id:
+              user.staffRoleId._id ||
+              user.staffRoleId.id,
+            name:
+              user.staffRoleId.name,
+            displayName:
+              user.staffRoleId.displayName,
+            department:
+              user.staffRoleId.department,
+            permissions:
+              Array.isArray(
+                user.staffRoleId.permissions
+              )
+                ? user.staffRoleId.permissions
+                : [],
+            status:
+              user.staffRoleId.status,
+          }
+        : null,
+
+    permissions:
+      user.staffRoleId &&
+      typeof user.staffRoleId === "object" &&
+      Array.isArray(
+        user.staffRoleId.permissions
+      )
+        ? user.staffRoleId.permissions
+        : [],
+
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -380,6 +423,40 @@ exports.loginUser = async (
         success: false,
         message:
           "Incorrect email, phone number or password.",
+      });
+    }
+
+    /*
+     * Load the assigned staff role only for internal staff accounts.
+     * Existing customer and network-manager logins remain unchanged.
+     */
+    if (
+      String(user.role || "")
+        .trim()
+        .toUpperCase() === "STAFF" &&
+      user.isStaff === true
+    ) {
+      await user.populate({
+        path: "staffRoleId",
+        select:
+          "name displayName department permissions status",
+      });
+
+      if (
+        !user.staffRoleId ||
+        user.staffRoleId.status !== "ACTIVE"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Your assigned staff role is unavailable or inactive.",
+        });
+      }
+
+      user.lastStaffLoginAt = new Date();
+
+      await user.save({
+        validateBeforeSave: false,
       });
     }
 
