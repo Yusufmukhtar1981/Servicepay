@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:gal/gal.dart';
 
 class IdVerificationScreen extends StatefulWidget {
   final String initialIdType;
@@ -16,23 +19,17 @@ class IdVerificationScreen extends StatefulWidget {
   });
 
   @override
-  State<IdVerificationScreen> createState() =>
-      _IdVerificationScreenState();
+  State<IdVerificationScreen> createState() => _IdVerificationScreenState();
 }
 
-class _IdVerificationScreenState
-    extends State<IdVerificationScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+class _IdVerificationScreenState extends State<IdVerificationScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen =
-      Color(0xFF149B8F);
+  static const Color primaryGreen = Color(0xFF149B8F);
 
-  final GlobalKey<FormState> formKey =
-      GlobalKey<FormState>();
+  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
-  final TextEditingController ninController =
-      TextEditingController();
+  final TextEditingController ninController = TextEditingController();
 
   bool hasConsent = false;
   bool isLoading = false;
@@ -101,15 +98,11 @@ class _IdVerificationScreenState
   }
 
   double get selectedFee {
-    return (slipTypes[selectedSlipType]?['fee']
-                as num?)
-            ?.toDouble() ??
-        0;
+    return (slipTypes[selectedSlipType]?['fee'] as num?)?.toDouble() ?? 0;
   }
 
   String get selectedSlipTitle {
-    return slipTypes[selectedSlipType]?['title']
-            ?.toString() ??
+    return slipTypes[selectedSlipType]?['title']?.toString() ??
         selectedSlipType;
   }
 
@@ -126,8 +119,7 @@ class _IdVerificationScreenState
     ];
 
     for (final String key in tokenKeys) {
-      final String? saved =
-          preferences.getString(key);
+      final String? saved = preferences.getString(key);
 
       if (saved == null || saved.trim().isEmpty) {
         continue;
@@ -181,8 +173,7 @@ class _IdVerificationScreenState
       final SharedPreferences preferences =
           await SharedPreferences.getInstance();
 
-      final String? token =
-          await getSavedAuthToken(preferences);
+      final String? token = await getSavedAuthToken(preferences);
 
       if (token == null || token.isEmpty) {
         if (mounted) {
@@ -193,22 +184,19 @@ class _IdVerificationScreenState
         return;
       }
 
-      final http.Response response = await http
-          .get(
-            Uri.parse(
-              '$baseUrl/id-verification/nin/history',
-            ),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-          )
-          .timeout(
-            const Duration(seconds: 45),
-          );
+      final http.Response response = await http.get(
+        Uri.parse(
+          '$baseUrl/id-verification/nin/history',
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 45),
+      );
 
-      final Map<String, dynamic> responseData =
-          decodeServerResponse(response);
+      final Map<String, dynamic> responseData = decodeServerResponse(response);
 
       if (!mounted) {
         return;
@@ -224,8 +212,7 @@ class _IdVerificationScreenState
             verificationHistory = data
                 .whereType<Map>()
                 .map(
-                  (item) =>
-                      Map<String, dynamic>.from(item),
+                  (item) => Map<String, dynamic>.from(item),
                 )
                 .toList();
           });
@@ -245,8 +232,7 @@ class _IdVerificationScreenState
   Future<void> verifyNin() async {
     FocusScope.of(context).unfocus();
 
-    final bool valid =
-        formKey.currentState?.validate() ?? false;
+    final bool valid = formKey.currentState?.validate() ?? false;
 
     if (!valid) {
       return;
@@ -264,6 +250,8 @@ class _IdVerificationScreenState
       return;
     }
 
+    final String submittedNin = ninController.text.trim();
+
     setState(() {
       isLoading = true;
     });
@@ -272,8 +260,7 @@ class _IdVerificationScreenState
       final SharedPreferences preferences =
           await SharedPreferences.getInstance();
 
-      final String? token =
-          await getSavedAuthToken(preferences);
+      final String? token = await getSavedAuthToken(preferences);
 
       if (!mounted) {
         return;
@@ -298,8 +285,7 @@ class _IdVerificationScreenState
               'Authorization': 'Bearer $token',
             },
             body: jsonEncode({
-              'ninNumber':
-                  ninController.text.trim(),
+              'ninNumber': submittedNin,
               'slipType': selectedSlipType,
               'searchType': selectedSearchType,
               'consentAccepted': true,
@@ -309,8 +295,7 @@ class _IdVerificationScreenState
             const Duration(seconds: 65),
           );
 
-      final Map<String, dynamic> responseData =
-          decodeServerResponse(response);
+      final Map<String, dynamic> responseData = decodeServerResponse(response);
 
       if (!mounted) {
         return;
@@ -322,18 +307,16 @@ class _IdVerificationScreenState
         showMessage(
           messageFromResponse(
             responseData,
-            fallback:
-                'Your login session is invalid. Please log in again.',
+            fallback: 'Your login session is invalid. Please log in again.',
           ),
           isError: true,
         );
         return;
       }
 
-      final bool successful =
-          response.statusCode >= 200 &&
-              response.statusCode < 300 &&
-              responseData['success'] == true;
+      final bool successful = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          responseData['success'] == true;
 
       if (!successful) {
         showMessage(
@@ -347,8 +330,11 @@ class _IdVerificationScreenState
         return;
       }
 
-      final Map<String, dynamic> result =
-          extractSuccessfulResult(responseData);
+      final Map<String, dynamic> result = extractSuccessfulResult(responseData);
+
+      // Keep the complete NIN only for the immediate verification result.
+      // It is not written to logs or transaction history here.
+      result['fullNin'] = submittedNin;
 
       await saveWalletBalance(
         preferences,
@@ -411,73 +397,49 @@ class _IdVerificationScreenState
       return {};
     }
 
-    final Map<String, dynamic> data =
-        Map<String, dynamic>.from(rawData);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(rawData);
 
-    final dynamic rawVerificationData =
-        data['verificationData'];
+    final dynamic rawVerificationData = data['verificationData'];
 
-    final Map<String, dynamic> verificationData =
-        rawVerificationData is Map
-            ? Map<String, dynamic>.from(
-                rawVerificationData,
-              )
-            : {};
+    final Map<String, dynamic> verificationData = rawVerificationData is Map
+        ? Map<String, dynamic>.from(
+            rawVerificationData,
+          )
+        : {};
 
     return {
       ...verificationData,
-      'verificationId':
-          data['verificationId']?.toString() ?? '',
-      'reference':
-          data['reference']?.toString() ?? '',
-      'searchType':
-          data['searchType']?.toString() ??
-              selectedSearchType,
-      'slipType':
-          data['slipType']?.toString() ??
-              selectedSlipType,
-      'amountCharged':
-          data['amountCharged'] ?? selectedFee,
+      'verificationId': data['verificationId']?.toString() ?? '',
+      'reference': data['reference']?.toString() ?? '',
+      'searchType': data['searchType']?.toString() ?? selectedSearchType,
+      'slipType': data['slipType']?.toString() ?? selectedSlipType,
+      'amountCharged': data['amountCharged'] ?? selectedFee,
       'walletBalance': data['walletBalance'],
-      'createdAt':
-          data['createdAt']?.toString() ?? '',
+      'createdAt': data['createdAt']?.toString() ?? '',
       'status': 'SUCCESSFUL',
       'message':
-          responseData['message']?.toString() ??
-              'NIN verified successfully.',
+          responseData['message']?.toString() ?? 'NIN verified successfully.',
     };
   }
 
   Map<String, dynamic> flattenHistoryItem(
     Map<String, dynamic> record,
   ) {
-    final dynamic nested =
-        record['verificationData'];
+    final dynamic nested = record['verificationData'];
 
     final Map<String, dynamic> details =
-        nested is Map
-            ? Map<String, dynamic>.from(nested)
-            : {};
+        nested is Map ? Map<String, dynamic>.from(nested) : {};
 
     return {
       ...details,
-      'verificationId':
-          record['_id']?.toString() ?? '',
-      'reference':
-          record['reference']?.toString() ?? '',
-      'searchType':
-          record['searchType']?.toString() ?? '',
-      'slipType':
-          record['slipType']?.toString() ?? '',
-      'amountCharged':
-          record['amountCharged'] ?? 0,
-      'createdAt':
-          record['createdAt']?.toString() ?? '',
-      'status':
-          record['status']?.toString() ?? '',
-      'ninNumberMasked':
-          record['ninNumberMasked']?.toString() ??
-              '',
+      'verificationId': record['_id']?.toString() ?? '',
+      'reference': record['reference']?.toString() ?? '',
+      'searchType': record['searchType']?.toString() ?? '',
+      'slipType': record['slipType']?.toString() ?? '',
+      'amountCharged': record['amountCharged'] ?? 0,
+      'createdAt': record['createdAt']?.toString() ?? '',
+      'status': record['status']?.toString() ?? '',
+      'ninNumberMasked': record['ninNumberMasked']?.toString() ?? '',
       'message': 'Saved NIN verification',
     };
   }
@@ -492,8 +454,7 @@ class _IdVerificationScreenState
       return;
     }
 
-    final double? balance =
-        double.tryParse(value.toString());
+    final double? balance = double.tryParse(value.toString());
 
     if (balance == null) {
       return;
@@ -513,8 +474,7 @@ class _IdVerificationScreenState
     if (body.isEmpty) {
       return {
         'success': false,
-        'message':
-            'The server returned an empty response.',
+        'message': 'The server returned an empty response.',
       };
     }
 
@@ -529,14 +489,12 @@ class _IdVerificationScreenState
 
       return {
         'success': false,
-        'message':
-            'Invalid response received from the server.',
+        'message': 'Invalid response received from the server.',
       };
     } catch (_) {
       return {
         'success': false,
-        'message':
-            'The server returned an invalid response.',
+        'message': 'The server returned an invalid response.',
       };
     }
   }
@@ -545,13 +503,11 @@ class _IdVerificationScreenState
     Map<String, dynamic> responseData, {
     required String fallback,
   }) {
-    final dynamic value =
-        responseData['message'] ??
-            responseData['error'] ??
-            responseData['detail'];
+    final dynamic value = responseData['message'] ??
+        responseData['error'] ??
+        responseData['detail'];
 
-    final String message =
-        value?.toString().trim() ?? '';
+    final String message = value?.toString().trim() ?? '';
 
     return message.isEmpty ? fallback : message;
   }
@@ -570,9 +526,7 @@ class _IdVerificationScreenState
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? const Color(0xFFDC2626)
-              : primaryGreen,
+          backgroundColor: isError ? const Color(0xFFDC2626) : primaryGreen,
         ),
       );
   }
@@ -611,14 +565,11 @@ class _IdVerificationScreenState
   Widget buildSearchTypeCard(
     String key,
   ) {
-    final Map<String, dynamic> item =
-        searchTypes[key]!;
+    final Map<String, dynamic> item = searchTypes[key]!;
 
-    final bool selected =
-        selectedSearchType == key;
+    final bool selected = selectedSearchType == key;
 
-    final bool available =
-        item['available'] == true;
+    final bool available = item['available'] == true;
 
     return Expanded(
       child: InkWell(
@@ -639,42 +590,32 @@ class _IdVerificationScreenState
               },
         borderRadius: BorderRadius.circular(18),
         child: AnimatedContainer(
-          duration:
-              const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 200),
           height: 120,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: selected
-                ? const Color(0xFFF0ECFF)
-                : Colors.white,
-            borderRadius:
-                BorderRadius.circular(18),
+            color: selected ? const Color(0xFFF0ECFF) : Colors.white,
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: selected
-                  ? const Color(0xFF805AD5)
-                  : const Color(0xFFE5E7EB),
+              color:
+                  selected ? const Color(0xFF805AD5) : const Color(0xFFE5E7EB),
               width: selected ? 2.5 : 1,
             ),
           ),
           child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 item['icon'] as IconData,
                 size: 31,
-                color: available
-                    ? const Color(0xFF805AD5)
-                    : Colors.grey,
+                color: available ? const Color(0xFF805AD5) : Colors.grey,
               ),
               const SizedBox(height: 10),
               Text(
                 item['title'].toString(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: available
-                      ? const Color(0xFF29263A)
-                      : Colors.grey,
+                  color: available ? const Color(0xFF29263A) : Colors.grey,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -700,14 +641,11 @@ class _IdVerificationScreenState
   Widget buildSlipCard(
     String key,
   ) {
-    final Map<String, dynamic> item =
-        slipTypes[key]!;
+    final Map<String, dynamic> item = slipTypes[key]!;
 
-    final bool selected =
-        selectedSlipType == key;
+    final bool selected = selectedSlipType == key;
 
-    final double fee =
-        (item['fee'] as num).toDouble();
+    final double fee = (item['fee'] as num).toDouble();
 
     return InkWell(
       onTap: isLoading
@@ -719,20 +657,14 @@ class _IdVerificationScreenState
             },
       borderRadius: BorderRadius.circular(18),
       child: AnimatedContainer(
-        duration:
-            const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 200),
         width: 145,
         padding: const EdgeInsets.all(13),
         decoration: BoxDecoration(
-          color: selected
-              ? const Color(0xFFEAF9F4)
-              : Colors.white,
-          borderRadius:
-              BorderRadius.circular(18),
+          color: selected ? const Color(0xFFEAF9F4) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected
-                ? const Color(0xFF35B78F)
-                : const Color(0xFFE5E7EB),
+            color: selected ? const Color(0xFF35B78F) : const Color(0xFFE5E7EB),
             width: selected ? 2.5 : 1,
           ),
         ),
@@ -750,17 +682,13 @@ class _IdVerificationScreenState
             Icon(
               item['icon'] as IconData,
               size: 37,
-              color: selected
-                  ? primaryGreen
-                  : const Color(0xFF8B8B94),
+              color: selected ? primaryGreen : const Color(0xFF8B8B94),
             ),
             const Spacer(),
             Text(
               item['title'].toString(),
               style: TextStyle(
-                color: selected
-                    ? primaryGreen
-                    : const Color(0xFF777783),
+                color: selected ? primaryGreen : const Color(0xFF777783),
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -785,8 +713,7 @@ class _IdVerificationScreenState
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius:
-              BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: const Column(
           children: [
@@ -808,100 +735,78 @@ class _IdVerificationScreenState
     }
 
     return Column(
-      children: verificationHistory
-          .take(5)
-          .map(
-            (record) {
-              final Map<String, dynamic> result =
-                  flattenHistoryItem(record);
+      children: verificationHistory.take(5).map(
+        (record) {
+          final Map<String, dynamic> result = flattenHistoryItem(record);
 
-              final String name =
-                  firstValue(
-                        result,
-                        const [
-                          'fullName',
-                          'full_name',
-                        ],
-                      ) ??
-                      'NIN Verification';
+          final String name = firstValue(
+                result,
+                const [
+                  'fullName',
+                  'full_name',
+                ],
+              ) ??
+              'NIN Verification';
 
-              final String reference =
-                  result['reference']
-                          ?.toString() ??
-                      '';
+          final String reference = result['reference']?.toString() ?? '';
 
-              final String date =
-                  formatDate(
-                    result['createdAt']
-                            ?.toString() ??
-                        '',
-                  );
+          final String date = formatDate(
+            result['createdAt']?.toString() ?? '',
+          );
 
-              final String slipType =
-                  result['slipType']
-                          ?.toString() ??
-                      '';
+          final String slipType = result['slipType']?.toString() ?? '';
 
-              return Card(
-                margin:
-                    const EdgeInsets.only(bottom: 10),
-                color: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(16),
-                  side: const BorderSide(
-                    color: Color(0xFFE5E7EB),
-                  ),
-                ),
-                child: ListTile(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            VerificationResultScreen(
-                          verification: result,
-                        ),
-                      ),
-                    );
-                  },
-                  leading: const CircleAvatar(
-                    backgroundColor:
-                        Color(0xFFE6F7F4),
-                    child: Icon(
-                      Icons.badge_outlined,
-                      color: primaryGreen,
+          return Card(
+            margin: const EdgeInsets.only(bottom: 10),
+            color: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(
+                color: Color(0xFFE5E7EB),
+              ),
+            ),
+            child: ListTile(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => VerificationResultScreen(
+                      verification: result,
                     ),
                   ),
-                  title: Text(
-                    name,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  subtitle: Text(
-                    [
-                      if (slipType.isNotEmpty)
-                        slipType,
-                      if (date.isNotEmpty) date,
-                      if (reference.isNotEmpty)
-                        reference,
-                    ].join(' • '),
-                    maxLines: 2,
-                    overflow:
-                        TextOverflow.ellipsis,
-                  ),
-                  trailing: const Icon(
-                    Icons.chevron_right_rounded,
-                  ),
+                );
+              },
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFE6F7F4),
+                child: Icon(
+                  Icons.badge_outlined,
+                  color: primaryGreen,
                 ),
-              );
-            },
-          )
-          .toList(),
+              ),
+              title: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              subtitle: Text(
+                [
+                  if (slipType.isNotEmpty) slipType,
+                  if (date.isNotEmpty) date,
+                  if (reference.isNotEmpty) reference,
+                ].join(' • '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(
+                Icons.chevron_right_rounded,
+              ),
+            ),
+          );
+        },
+      ).toList(),
     );
   }
 
@@ -916,11 +821,9 @@ class _IdVerificationScreenState
         continue;
       }
 
-      final String text =
-          value.toString().trim();
+      final String text = value.toString().trim();
 
-      if (text.isNotEmpty &&
-          text.toLowerCase() != 'null') {
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
         return text;
       }
     }
@@ -932,8 +835,7 @@ class _IdVerificationScreenState
     String value,
   ) {
     try {
-      final DateTime parsed =
-          DateTime.parse(value).toLocal();
+      final DateTime parsed = DateTime.parse(value).toLocal();
 
       return '${parsed.day.toString().padLeft(2, '0')}/'
           '${parsed.month.toString().padLeft(2, '0')}/'
@@ -948,8 +850,7 @@ class _IdVerificationScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF7F8FA),
+      backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
         title: const Text(
           'NIN Verification',
@@ -969,22 +870,19 @@ class _IdVerificationScreenState
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius:
-                      BorderRadius.circular(28),
+                  borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(
-                        0.05,
+                      color: Colors.black.withValues(
+                        alpha: 0.05,
                       ),
                       blurRadius: 22,
-                      offset:
-                          const Offset(0, 8),
+                      offset: const Offset(0, 8),
                     ),
                   ],
                 ),
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     buildSectionNumber(
                       '1',
@@ -1015,20 +913,13 @@ class _IdVerificationScreenState
                     SizedBox(
                       height: 150,
                       child: ListView.separated(
-                        scrollDirection:
-                            Axis.horizontal,
-                        itemCount:
-                            slipTypes.length,
-                        separatorBuilder:
-                            (_, __) =>
-                                const SizedBox(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: slipTypes.length,
+                        separatorBuilder: (_, __) => const SizedBox(
                           width: 10,
                         ),
-                        itemBuilder:
-                            (context, index) {
-                          final String key =
-                              slipTypes.keys
-                                  .elementAt(index);
+                        itemBuilder: (context, index) {
+                          final String key = slipTypes.keys.elementAt(index);
 
                           return buildSlipCard(key);
                         },
@@ -1053,12 +944,10 @@ class _IdVerificationScreenState
                     TextFormField(
                       controller: ninController,
                       enabled: !isLoading,
-                      keyboardType:
-                          TextInputType.number,
+                      keyboardType: TextInputType.number,
                       maxLength: 11,
                       inputFormatters: [
-                        FilteringTextInputFormatter
-                            .digitsOnly,
+                        FilteringTextInputFormatter.digitsOnly,
                         LengthLimitingTextInputFormatter(
                           11,
                         ),
@@ -1074,11 +963,9 @@ class _IdVerificationScreenState
                         hintText: '###########',
                         counterText: '',
                         filled: true,
-                        fillColor:
-                            const Color(0xFFFAFAFB),
+                        fillColor: const Color(0xFFFAFAFB),
                         border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(
+                          borderRadius: BorderRadius.circular(
                             18,
                           ),
                         ),
@@ -1094,15 +981,12 @@ class _IdVerificationScreenState
                     const SizedBox(height: 18),
                     Container(
                       decoration: BoxDecoration(
-                        color:
-                            const Color(0xFFFBF8F3),
-                        borderRadius:
-                            BorderRadius.circular(
+                        color: const Color(0xFFFBF8F3),
+                        borderRadius: BorderRadius.circular(
                           18,
                         ),
                         border: Border.all(
-                          color:
-                              const Color(0xFFEAE4DB),
+                          color: const Color(0xFFEAE4DB),
                         ),
                       ),
                       child: CheckboxListTile(
@@ -1111,14 +995,11 @@ class _IdVerificationScreenState
                             ? null
                             : (bool? value) {
                                 setState(() {
-                                  hasConsent =
-                                      value ?? false;
+                                  hasConsent = value ?? false;
                                 });
                               },
                         activeColor: primaryGreen,
-                        controlAffinity:
-                            ListTileControlAffinity
-                                .leading,
+                        controlAffinity: ListTileControlAffinity.leading,
                         title: const Text(
                           'I confirm that the owner of this ID has granted permission to verify his or her identity.',
                           style: TextStyle(
@@ -1133,15 +1014,11 @@ class _IdVerificationScreenState
                       height: 58,
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed:
-                            isLoading ? null : verifyNin,
+                        onPressed: isLoading ? null : verifyNin,
                         style: FilledButton.styleFrom(
-                          backgroundColor:
-                              primaryGreen,
-                          shape:
-                              RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(
+                          backgroundColor: primaryGreen,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
                               18,
                             ),
                           ),
@@ -1150,15 +1027,13 @@ class _IdVerificationScreenState
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,
-                                child:
-                                    CircularProgressIndicator(
+                                child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
                                   color: Colors.white,
                                 ),
                               )
                             : const Icon(
-                                Icons
-                                    .fingerprint_rounded,
+                                Icons.fingerprint_rounded,
                                 size: 28,
                               ),
                         label: Text(
@@ -1167,8 +1042,7 @@ class _IdVerificationScreenState
                               : 'Verify — ₦${selectedFee.toStringAsFixed(0)}',
                           style: const TextStyle(
                             fontSize: 17,
-                            fontWeight:
-                                FontWeight.w800,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
@@ -1201,17 +1075,28 @@ class _IdVerificationScreenState
   }
 }
 
-class VerificationResultScreen
-    extends StatelessWidget {
-  static const Color primaryGreen =
-      Color(0xFF149B8F);
-
+class VerificationResultScreen extends StatefulWidget {
   final Map<String, dynamic> verification;
 
   const VerificationResultScreen({
     super.key,
     required this.verification,
   });
+
+  @override
+  State<VerificationResultScreen> createState() =>
+      _VerificationResultScreenState();
+}
+
+class _VerificationResultScreenState extends State<VerificationResultScreen> {
+  static const Color primaryGreen = Color(0xFF149B8F);
+
+  final ScreenshotController screenshotController = ScreenshotController();
+
+  bool isDownloading = false;
+  bool isSharing = false;
+
+  Map<String, dynamic> get verification => widget.verification;
 
   String value(
     List<String> keys, {
@@ -1224,11 +1109,9 @@ class VerificationResultScreen
         continue;
       }
 
-      final String text =
-          raw.toString().trim();
+      final String text = raw.toString().trim();
 
-      if (text.isNotEmpty &&
-          text.toLowerCase() != 'null') {
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
         return text;
       }
     }
@@ -1236,47 +1119,200 @@ class VerificationResultScreen
     return fallback;
   }
 
-  String maskNin(
-    String nin,
-  ) {
-    if (nin.isEmpty) {
-      return '***********';
-    }
-
-    if (nin.contains('*')) {
-      return nin;
-    }
-
-    if (nin.length <= 4) {
-      return '****';
-    }
-
-    return '${'*' * (nin.length - 4)}'
-        '${nin.substring(nin.length - 4)}';
-  }
-
-  String formatGender(
-    String gender,
-  ) {
-    final String clean =
-        gender.trim().toLowerCase();
+  String formatGender(String gender) {
+    final String clean = gender.trim().toLowerCase();
 
     if (clean == 'm' || clean == 'male') {
       return 'Male';
     }
 
-    if (clean == 'f' ||
-        clean == 'female') {
+    if (clean == 'f' || clean == 'female') {
       return 'Female';
     }
 
     return gender;
   }
 
+  String formatNin(String rawNin) {
+    final String clean = rawNin.replaceAll(
+      RegExp(r'[^0-9*]'),
+      '',
+    );
+
+    if (clean.length != 11) {
+      return clean.isEmpty ? '***********' : clean;
+    }
+
+    return '${clean.substring(0, 3)} '
+        '${clean.substring(3, 6)} '
+        '${clean.substring(6, 9)} '
+        '${clean.substring(9, 11)}';
+  }
+
+  String formatDate(String rawDate) {
+    final String clean = rawDate.trim();
+
+    if (clean.isEmpty || clean == 'Not provided') {
+      return clean;
+    }
+
+    try {
+      final DateTime parsed = DateTime.parse(clean).toLocal();
+
+      const List<String> months = [
+        'JAN',
+        'FEB',
+        'MAR',
+        'APR',
+        'MAY',
+        'JUN',
+        'JUL',
+        'AUG',
+        'SEP',
+        'OCT',
+        'NOV',
+        'DEC',
+      ];
+
+      return '${parsed.day.toString().padLeft(2, '0')} '
+          '${months[parsed.month - 1]} '
+          '${parsed.year}';
+    } catch (_) {
+      return clean;
+    }
+  }
+
+  Future<Uint8List?> captureCard() async {
+    try {
+      await Future<void>.delayed(
+        const Duration(milliseconds: 250),
+      );
+
+      return await screenshotController.capture(
+        delay: const Duration(milliseconds: 100),
+        pixelRatio: 3,
+      );
+    } catch (_) {
+      if (mounted) {
+        showMessage(
+          'Unable to prepare the NIN card.',
+          isError: true,
+        );
+      }
+
+      return null;
+    }
+  }
+
+  Future<void> downloadCard() async {
+    if (isDownloading || isSharing) {
+      return;
+    }
+
+    setState(() {
+      isDownloading = true;
+    });
+
+    try {
+      final Uint8List? imageBytes = await captureCard();
+
+      if (imageBytes == null) {
+        return;
+      }
+
+      await Gal.putImageBytes(imageBytes);
+
+      if (mounted) {
+        showMessage(
+          'NIN card downloaded to your Gallery.',
+          isError: false,
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        showMessage(
+          'Unable to download the NIN card. Please allow gallery permission and try again.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDownloading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> shareCard() async {
+    if (isSharing || isDownloading) {
+      return;
+    }
+
+    setState(() {
+      isSharing = true;
+    });
+
+    try {
+      final Uint8List? imageBytes = await captureCard();
+
+      if (imageBytes == null) {
+        return;
+      }
+
+      final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+
+      await SharePlus.instance.share(
+        ShareParams(
+          text: 'ServicePay NIN verification card',
+          files: [
+            XFile.fromData(
+              imageBytes,
+              mimeType: 'image/png',
+              name: 'servicepay_nin_card.png',
+            ),
+          ],
+          sharePositionOrigin: renderBox == null
+              ? null
+              : renderBox.localToGlobal(
+                    Offset.zero,
+                  ) &
+                  renderBox.size,
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        showMessage(
+          'Unable to share the NIN card. Please try again.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSharing = false;
+        });
+      }
+    }
+  }
+
+  void showMessage(
+    String message, {
+    required bool isError,
+  }) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? const Color(0xFFDC2626) : primaryGreen,
+        ),
+      );
+  }
+
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     final String fullName = value(
       const [
         'fullName',
@@ -1285,17 +1321,42 @@ class VerificationResultScreen
       ],
     );
 
-    final String dateOfBirth = value(
+    final String surname = value(
       const [
-        'dateOfBirth',
-        'date_of_birth',
-        'dob',
+        'surname',
+        'lastName',
+        'last_name',
       ],
+      fallback:
+          fullName.split(' ').isNotEmpty ? fullName.split(' ').last : fullName,
+    );
+
+    final String givenNames = value(
+      const [
+        'givenNames',
+        'given_names',
+        'firstName',
+        'first_name',
+      ],
+      fallback: fullName,
+    );
+
+    final String dateOfBirth = formatDate(
+      value(
+        const [
+          'dateOfBirth',
+          'date_of_birth',
+          'dob',
+        ],
+      ),
     );
 
     final String gender = formatGender(
       value(
-        const ['gender', 'sex'],
+        const [
+          'gender',
+          'sex',
+        ],
       ),
     );
 
@@ -1325,12 +1386,19 @@ class VerificationResultScreen
       fallback: '',
     );
 
-    final String nin = maskNin(
+    /*
+     * fullNin is added locally immediately after a successful verification.
+     * Older saved history may still display a masked NIN because the complete
+     * number is intentionally not recovered from masked history records.
+     */
+    final String nin = formatNin(
       value(
         const [
+          'fullNin',
           'nin',
-          'ninNumberMasked',
+          'ninNumber',
           'nin_number',
+          'ninNumberMasked',
         ],
         fallback: '',
       ),
@@ -1351,20 +1419,26 @@ class VerificationResultScreen
       fallback: 'SUCCESSFUL',
     );
 
-    final double amount =
-        double.tryParse(
-              verification['amountCharged']
-                      ?.toString() ??
-                  '',
-            ) ??
-            0;
+    final String verificationDate = formatDate(
+      value(
+        const ['createdAt'],
+        fallback: DateTime.now().toIso8601String(),
+      ),
+    );
+
+    final double amount = double.tryParse(
+          verification['amountCharged']?.toString() ?? '',
+        ) ??
+        0;
 
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF4F7F6),
+      backgroundColor: const Color(0xFFF4F7F6),
       appBar: AppBar(
         title: const Text(
           'Verification Result',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
       body: ListView(
@@ -1373,37 +1447,100 @@ class VerificationResultScreen
           const Icon(
             Icons.verified_rounded,
             color: primaryGreen,
-            size: 68,
+            size: 64,
           ),
           const SizedBox(height: 8),
           const Text(
             'Verification Successful',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 23,
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 20),
-          VerifiedNinCard(
-            fullName: fullName,
-            dateOfBirth: dateOfBirth,
-            gender: gender,
-            nin: nin,
-            photoValue: photo,
-            reference: reference,
-            slipType: slipType,
+          const SizedBox(height: 18),
+          Screenshot(
+            controller: screenshotController,
+            child: VerifiedNinCard(
+              surname: surname,
+              givenNames: givenNames,
+              dateOfBirth: dateOfBirth,
+              gender: gender,
+              nin: nin,
+              photoValue: photo,
+              reference: reference,
+              verificationDate: verificationDate,
+              slipType: slipType,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 54,
+                  child: OutlinedButton.icon(
+                    onPressed: isDownloading || isSharing ? null : downloadCard,
+                    icon: isDownloading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.3,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.download_rounded,
+                          ),
+                    label: Text(
+                      isDownloading ? 'Downloading...' : 'Download Card',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: primaryGreen,
+                      side: const BorderSide(
+                        color: primaryGreen,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SizedBox(
+                  height: 54,
+                  child: FilledButton.icon(
+                    onPressed: isDownloading || isSharing ? null : shareCard,
+                    icon: isSharing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.3,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.share_rounded,
+                          ),
+                    label: Text(
+                      isSharing ? 'Preparing...' : 'Share Card',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 18),
           Container(
             padding: const EdgeInsets.all(17),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color:
-                    const Color(0xFFE5E7EB),
+                color: const Color(0xFFE5E7EB),
               ),
             ),
             child: Column(
@@ -1448,8 +1585,7 @@ class VerificationResultScreen
                   ),
                 ResultRow(
                   label: 'Amount Charged',
-                  value:
-                      '₦${amount.toStringAsFixed(2)}',
+                  value: '₦${amount.toStringAsFixed(2)}',
                   showDivider: false,
                 ),
               ],
@@ -1459,18 +1595,14 @@ class VerificationResultScreen
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color:
-                  const Color(0xFFFFF7ED),
-              borderRadius:
-                  BorderRadius.circular(14),
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color:
-                    const Color(0xFFFED7AA),
+                color: const Color(0xFFFED7AA),
               ),
             ),
             child: const Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
                   Icons.info_outline,
@@ -1479,7 +1611,7 @@ class VerificationResultScreen
                 SizedBox(width: 9),
                 Expanded(
                   child: Text(
-                    'This is a ServicePay verification result. It is not a replacement for an official government-issued identity document.',
+                    'This is a ServicePay verification card. It is not an official NIMC identity card or a replacement for a government-issued identity document.',
                     style: TextStyle(
                       color: Color(0xFF7C2D12),
                       height: 1.4,
@@ -1497,15 +1629,13 @@ class VerificationResultScreen
                 Navigator.pop(context);
               },
               style: FilledButton.styleFrom(
-                backgroundColor:
-                    primaryGreen,
+                backgroundColor: primaryGreen,
               ),
               child: const Text(
                 'Done',
                 style: TextStyle(
                   fontSize: 16,
-                  fontWeight:
-                      FontWeight.w800,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
@@ -1517,223 +1647,254 @@ class VerificationResultScreen
 }
 
 class VerifiedNinCard extends StatelessWidget {
-  static const Color primaryGreen =
-      Color(0xFF149B8F);
+  static const Color primaryGreen = Color(0xFF149B8F);
 
-  final String fullName;
+  final String surname;
+  final String givenNames;
   final String dateOfBirth;
   final String gender;
   final String nin;
   final String photoValue;
   final String reference;
+  final String verificationDate;
   final String slipType;
 
   const VerifiedNinCard({
     super.key,
-    required this.fullName,
+    required this.surname,
+    required this.givenNames,
     required this.dateOfBirth,
     required this.gender,
     required this.nin,
     required this.photoValue,
     required this.reference,
+    required this.verificationDate,
     required this.slipType,
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return AspectRatio(
       aspectRatio: 1.58,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Color(0xFFF8FFFD),
-              Color(0xFFD9F5EC),
+              Color(0xFFF8FFF8),
+              Color(0xFFDCEFD9),
+              Color(0xFFF4F8E9),
             ],
           ),
-          borderRadius:
-              BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color:
-                const Color(0xFF9DDCC8),
+            color: const Color(0xFF91C79E),
           ),
           boxShadow: [
             BoxShadow(
-              color:
-                  Colors.black.withOpacity(0.10),
-              blurRadius: 18,
-              offset:
-                  const Offset(0, 8),
+              color: Colors.black.withValues(
+                alpha: 0.10,
+              ),
+              blurRadius: 16,
+              offset: const Offset(0, 7),
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Row(
-              children: [
-                const CircleAvatar(
-                  backgroundColor:
-                      primaryGreen,
-                  child: Icon(
-                    Icons
-                        .account_balance_wallet_rounded,
-                    color: Colors.white,
-                  ),
+            Positioned(
+              right: -20,
+              bottom: -30,
+              child: Icon(
+                Icons.verified_user_rounded,
+                size: 150,
+                color: primaryGreen.withValues(
+                  alpha: 0.06,
                 ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'SERVICEPAY',
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: primaryGreen,
+                      child: Text(
+                        'S',
                         style: TextStyle(
-                          color:
-                              primaryGreen,
-                          fontWeight:
-                              FontWeight.w900,
-                          letterSpacing: 1.3,
+                          color: Colors.white,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                      Text(
-                        'VERIFIED IDENTITY',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color:
-                              Color(0xFF52705A),
-                          fontWeight:
-                              FontWeight.w700,
+                    ),
+                    const SizedBox(width: 9),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SERVICEPAY',
+                            style: TextStyle(
+                              color: Color(0xFF123D30),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          Text(
+                            'NIN VERIFICATION CARD',
+                            style: TextStyle(
+                              color: Color(0xFF446456),
+                              fontSize: 8,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Icon(
+                          Icons.verified_rounded,
+                          color: primaryGreen,
+                          size: 22,
+                        ),
+                        Text(
+                          slipType,
+                          style: const TextStyle(
+                            color: primaryGreen,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 11),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      IdentityPhoto(
+                        photoValue: photoValue,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CardField(
+                              label: 'SURNAME',
+                              value: surname.toUpperCase(),
+                              large: true,
+                            ),
+                            const SizedBox(height: 5),
+                            CardField(
+                              label: 'GIVEN NAMES',
+                              value: givenNames.toUpperCase(),
+                              large: true,
+                            ),
+                            const Spacer(),
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 2,
+                                  child: CardField(
+                                    label: 'DATE OF BIRTH',
+                                    value: dateOfBirth,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: CardField(
+                                    label: 'SEX',
+                                    value: gender,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                Text(
-                  slipType,
-                  style: const TextStyle(
-                    color: primaryGreen,
-                    fontSize: 10,
-                    fontWeight:
-                        FontWeight.w800,
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Expanded(
-              child: Row(
-                children: [
-                  IdentityPhoto(
-                    photoValue: photoValue,
-                  ),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'FULL NAME',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color:
-                                Color(0xFF647A69),
-                            fontWeight:
-                                FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          fullName.toUpperCase(),
-                          maxLines: 2,
-                          overflow:
-                              TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight:
-                                FontWeight.w900,
-                          ),
-                        ),
-                        const Spacer(),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CardField(
-                                label:
-                                    'DATE OF BIRTH',
-                                value:
-                                    dateOfBirth,
-                              ),
-                            ),
-                            Expanded(
-                              child: CardField(
-                                label: 'GENDER',
-                                value: gender,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(
+                      alpha: 0.72,
                     ),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 9,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white
-                    .withOpacity(0.75),
-                borderRadius:
-                    BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'NIN NUMBER',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color:
-                                Color(0xFF647A69),
-                            fontWeight:
-                                FontWeight.w700,
-                          ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'NATIONAL IDENTIFICATION NUMBER (NIN)',
+                        style: TextStyle(
+                          color: Color(0xFF314C3E),
+                          fontSize: 7,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
                         ),
-                        Text(
+                      ),
+                      const SizedBox(height: 1),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
                           nin,
                           style: const TextStyle(
-                            fontSize: 16,
-                            letterSpacing: 1.2,
-                            fontWeight:
-                                FontWeight.w900,
+                            color: Color(0xFF101B15),
+                            fontSize: 24,
+                            letterSpacing: 3,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  if (reference.isNotEmpty)
-                    const Icon(
-                      Icons.qr_code_2,
-                      color: primaryGreen,
-                      size: 35,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        reference.isEmpty
+                            ? 'Verified by ServicePay'
+                            : 'REF: $reference',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF52675B),
+                          fontSize: 6.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                ],
-              ),
+                    Text(
+                      'VERIFIED: $verificationDate',
+                      style: const TextStyle(
+                        color: Color(0xFF52675B),
+                        fontSize: 6.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
@@ -1751,21 +1912,16 @@ class IdentityPhoto extends StatelessWidget {
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Container(
-      width: 85,
-      height: 102,
+      width: 82,
+      height: 105,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color:
-            const Color(0xFFE5E7EB),
-        borderRadius:
-            BorderRadius.circular(12),
+        color: const Color(0xFFE5E7EB),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color:
-              const Color(0xFF9DDCC8),
+          color: const Color(0xFF8DBD9A),
         ),
       ),
       child: buildImage(),
@@ -1773,10 +1929,9 @@ class IdentityPhoto extends StatelessWidget {
   }
 
   Widget buildImage() {
-    final String value =
-        photoValue.trim();
+    final String imageValue = photoValue.trim();
 
-    if (value.isEmpty) {
+    if (imageValue.isEmpty) {
       return const Icon(
         Icons.person,
         size: 55,
@@ -1784,10 +1939,9 @@ class IdentityPhoto extends StatelessWidget {
       );
     }
 
-    if (value.startsWith('http://') ||
-        value.startsWith('https://')) {
+    if (imageValue.startsWith('http://') || imageValue.startsWith('https://')) {
       return Image.network(
-        value,
+        imageValue,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) {
           return const Icon(
@@ -1800,7 +1954,7 @@ class IdentityPhoto extends StatelessWidget {
     }
 
     try {
-      String clean = value;
+      String clean = imageValue;
 
       if (clean.contains(',')) {
         clean = clean.split(',').last;
@@ -1811,8 +1965,7 @@ class IdentityPhoto extends StatelessWidget {
         '',
       );
 
-      final Uint8List bytes =
-          base64Decode(clean);
+      final Uint8List bytes = base64Decode(clean);
 
       return Image.memory(
         bytes,
@@ -1838,37 +1991,37 @@ class IdentityPhoto extends StatelessWidget {
 class CardField extends StatelessWidget {
   final String label;
   final String value;
+  final bool large;
 
   const CardField({
     super.key,
     required this.label,
     required this.value,
+    this.large = false,
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: const TextStyle(
-            fontSize: 8,
+            fontSize: 7,
             color: Color(0xFF647A69),
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
           ),
         ),
         Text(
           value,
           maxLines: 1,
-          overflow:
-              TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: const Color(0xFF18261E),
+            fontSize: large ? 12 : 9,
+            fontWeight: FontWeight.w900,
+            letterSpacing: large ? 1 : 0,
           ),
         ),
       ],
@@ -1891,37 +2044,30 @@ class ResultRow extends StatelessWidget {
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         vertical: 12,
       ),
       decoration: BoxDecoration(
         border: showDivider
             ? const Border(
                 bottom: BorderSide(
-                  color:
-                      Color(0xFFE5E7EB),
+                  color: Color(0xFFE5E7EB),
                 ),
               )
             : null,
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 115,
             child: Text(
               label,
               style: const TextStyle(
-                color:
-                    Color(0xFF6B7280),
-                fontWeight:
-                    FontWeight.w600,
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -1935,8 +2081,7 @@ class ResultRow extends StatelessWidget {
                     const Color(
                       0xFF17211A,
                     ),
-                fontWeight:
-                    FontWeight.w800,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
