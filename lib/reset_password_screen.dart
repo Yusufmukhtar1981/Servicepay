@@ -197,9 +197,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         'Unable to connect to the ServicePay server.',
         isError: true,
       );
-    } catch (_) {
+    } catch (error) {
+      debugPrint('Reset password error: $error');
+
       showMessage(
-        'Unable to reset your password. Please try again.',
+        'Reset failed: $error',
         isError: true,
       );
     } finally {
