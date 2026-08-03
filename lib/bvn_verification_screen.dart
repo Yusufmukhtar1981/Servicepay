@@ -701,7 +701,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -1544,7 +1544,7 @@ class BvnVerifiedCard extends StatelessWidget {
                 vertical: 9,
               ),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.75),
+                color: Colors.white.withValues(alpha: 0.75),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
