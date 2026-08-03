@@ -3,7 +3,6 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
 const { sendEmail } = require("../services/email.service");
-const bcrypt = require("bcryptjs");
 
 const generateToken = (userId) => {
   if (!process.env.JWT_SECRET) {
