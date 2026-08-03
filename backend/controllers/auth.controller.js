@@ -1189,7 +1189,9 @@ exports.resetPassword = async (req, res) => {
     user.passwordResetExpires = undefined;
     user.passwordChangedAt = new Date();
 
-    await user.save();
+    await user.save({
+      validateBeforeSave: false,
+    });
 
     return res.status(200).json({
       success: true,
