@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'airtime_screen.dart';
+import 'bank_transfer_screen.dart';
 import 'cable_screen.dart';
 import 'data_screen.dart';
 import 'electricity_screen.dart';
@@ -406,7 +407,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
         keywords: 'bank transfer send money',
-        onTap: showBankTransferNotice,
+        onTap: () {
+          openScreen(
+            const BankTransferScreen(),
+          );
+        },
       ),
       _DashboardService(
         title: 'ServicePay Transfer',
@@ -939,7 +944,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: _WalletAction(
                           icon: Icons.account_balance_rounded,
                           label: 'Bank Transfer',
-                          onTap: showBankTransferNotice,
+                          onTap: () {
+                            openScreen(
+                              const BankTransferScreen(),
+                            );
+                          },
                         ),
                       ),
                       _walletDivider(),
@@ -1081,7 +1090,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: _QuickAction(
               icon: Icons.account_balance_rounded,
               label: 'Bank Transfer',
-              onTap: showBankTransferNotice,
+              onTap: () {
+                openScreen(
+                  const BankTransferScreen(),
+                );
+              },
             ),
           ),
           _quickDivider(),
