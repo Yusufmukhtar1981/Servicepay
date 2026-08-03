@@ -1151,11 +1151,30 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    const sameAsCurrentPassword =
-      await bcrypt.compare(
-        newPassword,
-        user.password
-      );
+    const savedPassword =
+      typeof user.password === "string"
+        ? user.password
+        : "";
+
+    const passwordIsHashed =
+      savedPassword.startsWith("$2a$") ||
+      savedPassword.startsWith("$2b$") ||
+      savedPassword.startsWith("$2y$");
+
+    let sameAsCurrentPassword = false;
+
+    if (savedPassword) {
+      if (passwordIsHashed) {
+        sameAsCurrentPassword =
+          await bcrypt.compare(
+            newPassword,
+            savedPassword
+          );
+      } else {
+        sameAsCurrentPassword =
+          newPassword === savedPassword;
+      }
+    }
 
     if (sameAsCurrentPassword) {
       return res.status(400).json({
