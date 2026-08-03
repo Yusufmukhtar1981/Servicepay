@@ -1,12 +1,18 @@
-const staffManagementRoutes = require("./routes/staffManagement.routes");
 const express = require("express");
-const appSettingsRoutes = require("./routes/appSettings.routes");
 const cors = require("cors");
 const helmet = require("helmet");
 
 require("dotenv").config();
 
 const connectDB = require("./config/db");
+
+const staffManagementRoutes = require(
+  "./routes/staffManagement.routes"
+);
+
+const appSettingsRoutes = require(
+  "./routes/appSettings.routes"
+);
 
 const paystackRoutes = require(
   "./routes/paystack.routes"
@@ -68,11 +74,21 @@ const transactionPinRoutes = require(
   "./routes/transactionPin.routes"
 );
 
+const managementRoutes = require(
+  "./routes/management.routes"
+);
+
+const productCommissionRoutes = require(
+  "./routes/productCommission.routes"
+);
+
+const examPinRoutes = require(
+  "./routes/examPin.routes"
+);
+
 const app = express();
 
 connectDB();
-
-const managementRoutes = require("./routes/management.routes");
 
 app.use(helmet());
 app.use(cors());
@@ -180,23 +196,37 @@ app.use(
   transactionPinRoutes
 );
 
-
 app.use(
   "/api/management",
   managementRoutes
 );
 
-app.use("/api/settings", appSettingsRoutes);
+app.use(
+  "/api/settings",
+  appSettingsRoutes
+);
 
-app.use("/api/staff-management", staffManagementRoutes);
-
-const productCommissionRoutes = require(
-  "./routes/productCommission.routes"
+app.use(
+  "/api/staff-management",
+  staffManagementRoutes
 );
 
 app.use(
   "/api/admin/product-commissions",
   productCommissionRoutes
+);
+
+/*
+ * Exam PIN routes:
+ *
+ * GET  /api/exam-pin/products
+ * POST /api/exam-pin/buy
+ * GET  /api/exam-pin/history
+ * GET  /api/exam-pin/history/:id
+ */
+app.use(
+  "/api/exam-pin",
+  examPinRoutes
 );
 
 app.use((req, res) => {
