@@ -1,5 +1,14 @@
 const User = require("../models/user.model");
 
+const getLoggedInUserId = (req) => {
+  return (
+    req.user?._id ||
+    req.user?.id ||
+    req.userId ||
+    null
+  );
+};
+
 /*
  * Check whether the logged-in user
  * has already created a transaction PIN.
@@ -9,8 +18,17 @@ exports.getTransactionPinStatus = async (
   res
 ) => {
   try {
+    const userId = getLoggedInUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
     const user = await User.findById(
-      req.userId
+      userId
     ).select("transactionPinSet");
 
     if (!user) {
@@ -41,15 +59,21 @@ exports.getTransactionPinStatus = async (
 
 /*
  * Create a transaction PIN.
- *
- * This is only for users who have not
- * created a PIN before.
  */
 exports.createTransactionPin = async (
   req,
   res
 ) => {
   try {
+    const userId = getLoggedInUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
     const pin = String(
       req.body.pin || ""
     ).trim();
@@ -75,7 +99,7 @@ exports.createTransactionPin = async (
     }
 
     const user = await User.findById(
-      req.userId
+      userId
     ).select(
       "+transactionPin transactionPinSet"
     );
@@ -125,16 +149,21 @@ exports.createTransactionPin = async (
 
 /*
  * Verify transaction PIN.
- *
- * This endpoint can be used temporarily
- * for testing before connecting the PIN
- * to transfers, airtime and data purchases.
  */
 exports.verifyTransactionPin = async (
   req,
   res
 ) => {
   try {
+    const userId = getLoggedInUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
     const pin = String(
       req.body.pin || ""
     ).trim();
@@ -148,7 +177,7 @@ exports.verifyTransactionPin = async (
     }
 
     const user = await User.findById(
-      req.userId
+      userId
     ).select(
       "+transactionPin transactionPinSet"
     );
@@ -172,7 +201,9 @@ exports.verifyTransactionPin = async (
     }
 
     const pinIsCorrect =
-      await user.compareTransactionPin(pin);
+      await user.compareTransactionPin(
+        pin
+      );
 
     if (!pinIsCorrect) {
       return res.status(401).json({
@@ -209,6 +240,15 @@ exports.changeTransactionPin = async (
   res
 ) => {
   try {
+    const userId = getLoggedInUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
     const currentPin = String(
       req.body.currentPin || ""
     ).trim();
@@ -254,7 +294,7 @@ exports.changeTransactionPin = async (
     }
 
     const user = await User.findById(
-      req.userId
+      userId
     ).select(
       "+transactionPin transactionPinSet"
     );
