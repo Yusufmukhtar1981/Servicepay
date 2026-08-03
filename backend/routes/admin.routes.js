@@ -13,6 +13,15 @@ const {
 } = require("../controllers/admin.controller");
 
 const {
+  getAdminUserDetails,
+  updateAdminUserProfile,
+  resetAdminUserTransactionPin,
+  requestAdminUserPasswordReset,
+  getAdminUserTransactions,
+  getAdminAuditLogs,
+} = require("../controllers/adminCustomer.controller");
+
+const {
   protect,
   adminOnly,
 } = require("../middleware/auth.middleware");
@@ -29,7 +38,6 @@ const MANAGEMENT_ROLES = [
   "ZONAL_MANAGER",
   "STATE_MANAGER",
 ];
-
 
 /*
 |--------------------------------------------------------------------------
@@ -157,6 +165,11 @@ const canCreateManagedUser = (
   });
 };
 
+/*
+|--------------------------------------------------------------------------
+| DASHBOARD
+|--------------------------------------------------------------------------
+*/
 
 router.get(
   "/dashboard",
@@ -165,6 +178,12 @@ router.get(
   requirePermission("dashboard.view"),
   getAdminDashboard
 );
+
+/*
+|--------------------------------------------------------------------------
+| USERS
+|--------------------------------------------------------------------------
+*/
 
 router.get(
   "/users",
@@ -184,6 +203,24 @@ router.post(
   createAdminUser
 );
 
+router.get(
+  "/users/:id",
+  protect,
+  adminOnly(
+    "HEAD_OFFICE",
+    "ZONAL_MANAGER",
+    "STATE_MANAGER"
+  ),
+  getAdminUserDetails
+);
+
+router.patch(
+  "/users/:id/profile",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateAdminUserProfile
+);
+
 router.patch(
   "/users/:id/status",
   protect,
@@ -198,12 +235,69 @@ router.patch(
   updateAdminUserRole
 );
 
+router.post(
+  "/users/:id/reset-transaction-pin",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  resetAdminUserTransactionPin
+);
+
+router.post(
+  "/users/:id/password-reset",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  requestAdminUserPasswordReset
+);
+
+router.get(
+  "/users/:id/transactions",
+  protect,
+  adminOnly(
+    "HEAD_OFFICE",
+    "ZONAL_MANAGER",
+    "STATE_MANAGER"
+  ),
+  getAdminUserTransactions
+);
+
+router.get(
+  "/users/:id/audit-logs",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminAuditLogs
+);
+
+/*
+|--------------------------------------------------------------------------
+| GLOBAL AUDIT LOGS
+|--------------------------------------------------------------------------
+*/
+
+router.get(
+  "/audit-logs",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminAuditLogs
+);
+
+/*
+|--------------------------------------------------------------------------
+| TRANSACTIONS
+|--------------------------------------------------------------------------
+*/
+
 router.get(
   "/transactions",
   protect,
   adminOnly("HEAD_OFFICE"),
   getAdminTransactions
 );
+
+/*
+|--------------------------------------------------------------------------
+| DELIVERIES
+|--------------------------------------------------------------------------
+*/
 
 router.get(
   "/deliveries",
