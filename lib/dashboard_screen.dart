@@ -17,6 +17,7 @@ import 'notifications_screen.dart';
 import 'transactions_screen.dart';
 import 'transfer_screen.dart';
 import 'wallet_screen.dart';
+import 'amana_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -300,6 +301,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<_DashboardService> popularServices() {
     return [
+      _DashboardService(
+        title: 'ServicePay Amana',
+        icon: Icons.volunteer_activism_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'amana family support food school fees medical assistance',
+        onTap: () {
+          openScreen(
+            const AmanaScreen(),
+          );
+        },
+      ),
       _DashboardService(
         title: 'Airtime',
         icon: Icons.phone_android_rounded,
