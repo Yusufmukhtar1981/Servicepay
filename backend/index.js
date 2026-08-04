@@ -86,6 +86,8 @@ const examPinRoutes = require(
   "./routes/examPin.routes"
 );
 
+const amanaRoutes = require("./routes/amana.routes");
+
 const app = express();
 
 connectDB();
@@ -140,6 +142,8 @@ app.use(
   "/api/transfer",
   transferRoutes
 );
+
+app.use("/api/amana", amanaRoutes);
 
 app.use(
   "/api/securewave",
