@@ -88,6 +88,10 @@ const examPinRoutes = require(
 
 const amanaRoutes = require("./routes/amana.routes");
 
+const adminAmanaRoutes = require(
+  "./routes/adminAmana.routes"
+);
+
 const app = express();
 
 connectDB();
@@ -144,6 +148,11 @@ app.use(
 );
 
 app.use("/api/amana", amanaRoutes);
+
+app.use(
+  "/api/admin/amana",
+  adminAmanaRoutes
+);
 
 app.use(
   "/api/securewave",
