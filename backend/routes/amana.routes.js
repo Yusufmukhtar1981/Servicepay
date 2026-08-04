@@ -8,11 +8,15 @@ const amanaController = require(
   "../controllers/amana.controller"
 );
 
+const amanaPaymentController = require(
+  "../controllers/amanaPayment.controller"
+);
+
 const router = express.Router();
 
 /*
- * All ServicePay Amana routes below
- * require a logged-in user.
+ * All ServicePay Amana routes require
+ * an authenticated and active user.
  */
 router.use(protect);
 
@@ -38,13 +42,19 @@ router.get(
 );
 
 /*
- * Get one Amana request.
+ * Pay for an Amana request using
+ * the customer's ServicePay wallet.
  *
- * GET /api/amana/:id
+ * POST /api/amana/:id/pay
+ *
+ * Request body:
+ * {
+ *   "transactionPin": "1234"
+ * }
  */
-router.get(
-  "/:id",
-  amanaController.getMyAmanaOrderById
+router.post(
+  "/:id/pay",
+  amanaPaymentController.payAmanaOrder
 );
 
 /*
@@ -55,6 +65,19 @@ router.get(
 router.patch(
   "/:id/cancel",
   amanaController.cancelMyAmanaOrder
+);
+
+/*
+ * Get one Amana request.
+ *
+ * Keep this route after the specific
+ * /:id/pay and /:id/cancel routes.
+ *
+ * GET /api/amana/:id
+ */
+router.get(
+  "/:id",
+  amanaController.getMyAmanaOrderById
 );
 
 module.exports = router;

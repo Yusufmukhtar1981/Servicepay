@@ -8,6 +8,7 @@ const transactionSchema =
         required: true,
         unique: true,
         trim: true,
+        index: true,
       },
 
       customerId: {
@@ -16,6 +17,7 @@ const transactionSchema =
             .ObjectId,
         ref: "User",
         required: true,
+        index: true,
       },
 
       agentId: {
@@ -55,8 +57,10 @@ const transactionSchema =
           "BANK_TRANSFER",
           "DELIVERY",
           "ID_VERIFICATION",
+          "AMANA",
         ],
         required: true,
+        index: true,
       },
 
       provider: {
@@ -110,6 +114,7 @@ const transactionSchema =
           "REFUNDED",
         ],
         default: "PENDING",
+        index: true,
       },
 
       providerResponse: {
@@ -122,6 +127,17 @@ const transactionSchema =
       timestamps: true,
     }
   );
+
+transactionSchema.index({
+  customerId: 1,
+  createdAt: -1,
+});
+
+transactionSchema.index({
+  serviceType: 1,
+  status: 1,
+  createdAt: -1,
+});
 
 const Transaction =
   mongoose.model(
