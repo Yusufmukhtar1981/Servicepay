@@ -89,6 +89,7 @@ const deliverySchema = new mongoose.Schema(
       type: String,
       enum: [
         "PENDING",
+        "ASSIGNED",
         "ACCEPTED",
         "PICKED_UP",
         "IN_TRANSIT",
@@ -97,12 +98,14 @@ const deliverySchema = new mongoose.Schema(
         "FAILED",
       ],
       default: "PENDING",
+      index: true,
     },
 
     assignedRiderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
+      index: true,
     },
 
     riderName: {
@@ -112,6 +115,33 @@ const deliverySchema = new mongoose.Schema(
     },
 
     riderPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    assignedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    assignedAt: {
+      type: Date,
+      default: null,
+    },
+
+    riderAcceptedAt: {
+      type: Date,
+      default: null,
+    },
+
+    riderRejectedAt: {
+      type: Date,
+      default: null,
+    },
+
+    riderRejectionReason: {
       type: String,
       default: "",
       trim: true,
@@ -157,6 +187,12 @@ const deliverySchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+deliverySchema.index({
+  assignedRiderId: 1,
+  status: 1,
+  createdAt: -1,
+});
 
 module.exports = mongoose.model(
   "Delivery",

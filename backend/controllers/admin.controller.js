@@ -6,6 +6,7 @@ const Delivery = require("../models/delivery.model");
 
 const DELIVERY_STATUSES = [
   "PENDING",
+  "ASSIGNED",
   "ACCEPTED",
   "PICKED_UP",
   "IN_TRANSIT",
@@ -18,6 +19,18 @@ const PAYMENT_STATUSES = [
   "UNPAID",
   "PAID",
   "REFUNDED",
+];
+
+const ADMIN_CREATABLE_ROLES = [
+  "ZONAL_MANAGER",
+  "STATE_MANAGER",
+  "AGENT",
+];
+
+const USER_STATUSES = [
+  "ACTIVE",
+  "SUSPENDED",
+  "BLOCKED",
 ];
 
 const toPositiveInteger = (
@@ -51,18 +64,71 @@ const escapeRegex = (value = "") => {
   );
 };
 
-const normalizeDeliveryStatus = (value = "") => {
+const normalizeDeliveryStatus = (
+  value = ""
+) => {
   return String(value)
     .trim()
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
 };
 
-const normalizePaymentStatus = (value = "") => {
+const normalizePaymentStatus = (
+  value = ""
+) => {
   return String(value)
     .trim()
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
+};
+
+const normalizeUserRole = (
+  value = ""
+) => {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+};
+
+const normalizeUserStatus = (
+  value = ""
+) => {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+};
+
+const generateUniqueReferralCode = async (
+  role
+) => {
+  const prefixes = {
+    AGENT: "AGT",
+    STATE_MANAGER: "STM",
+    ZONAL_MANAGER: "ZNM",
+  };
+
+  const prefix =
+    prefixes[role] || "SP";
+
+  let referralCode;
+  let exists = true;
+
+  while (exists) {
+    const randomNumber = Math.floor(
+      100000 + Math.random() * 900000
+    );
+
+    referralCode =
+      `${prefix}${randomNumber}`;
+
+    exists = await User.exists({
+      referralCode,
+    });
+  }
+
+  return referralCode;
 };
 
 /*
@@ -71,7 +137,10 @@ const normalizePaymentStatus = (value = "") => {
 |--------------------------------------------------------------------------
 */
 
-exports.getAdminDashboard = async (req, res) => {
+exports.getAdminDashboard = async (
+  req,
+  res
+) => {
   try {
     const [
       totalUsers,
@@ -82,6 +151,7 @@ exports.getAdminDashboard = async (req, res) => {
       totalAgents,
       totalStateManagers,
       totalZonalManagers,
+      totalDeliveryRiders,
       totalTransactions,
       successfulTransactions,
       pendingTransactions,
@@ -92,6 +162,7 @@ exports.getAdminDashboard = async (req, res) => {
       walletSummary,
       totalDeliveries,
       pendingDeliveries,
+      assignedDeliveries,
       deliveredDeliveries,
     ] = await Promise.all([
       User.countDocuments(),
@@ -122,6 +193,10 @@ exports.getAdminDashboard = async (req, res) => {
 
       User.countDocuments({
         role: "ZONAL_MANAGER",
+      }),
+
+      User.countDocuments({
+        role: "DELIVERY_RIDER",
       }),
 
       Transaction.countDocuments(),
@@ -238,18 +313,25 @@ exports.getAdminDashboard = async (req, res) => {
       }),
 
       Delivery.countDocuments({
+        status: "ASSIGNED",
+      }),
+
+      Delivery.countDocuments({
         status: "DELIVERED",
       }),
     ]);
 
     const totalVolume =
-      transactionSummary[0]?.totalVolume ?? 0;
+      transactionSummary[0]
+        ?.totalVolume ?? 0;
 
     const servicepayProfit =
-      transactionSummary[0]?.totalProfit ?? 0;
+      transactionSummary[0]
+        ?.totalProfit ?? 0;
 
     const totalWalletBalance =
-      walletSummary[0]?.totalWalletBalance ?? 0;
+      walletSummary[0]
+        ?.totalWalletBalance ?? 0;
 
     return res.status(200).json({
       success: true,
@@ -262,8 +344,12 @@ exports.getAdminDashboard = async (req, res) => {
           blocked: blockedUsers,
           customers: totalCustomers,
           agents: totalAgents,
-          stateManagers: totalStateManagers,
-          zonalManagers: totalZonalManagers,
+          stateManagers:
+            totalStateManagers,
+          zonalManagers:
+            totalZonalManagers,
+          deliveryRiders:
+            totalDeliveryRiders,
         },
 
         kyc: {
@@ -272,27 +358,36 @@ exports.getAdminDashboard = async (req, res) => {
 
         wallets: {
           totalWalletBalance,
-          totalBalance: totalWalletBalance,
+          totalBalance:
+            totalWalletBalance,
         },
 
         transactions: {
           total: totalTransactions,
           totalVolume,
           totalValue: totalVolume,
-          successful: successfulTransactions,
-          pending: pendingTransactions,
-          failed: failedTransactions,
+          successful:
+            successfulTransactions,
+          pending:
+            pendingTransactions,
+          failed:
+            failedTransactions,
           servicepayProfit,
         },
 
         deliveries: {
           total: totalDeliveries,
-          pending: pendingDeliveries,
-          delivered: deliveredDeliveries,
+          pending:
+            pendingDeliveries,
+          assigned:
+            assignedDeliveries,
+          delivered:
+            deliveredDeliveries,
         },
 
         servicepay: {
-          totalProfit: servicepayProfit,
+          totalProfit:
+            servicepayProfit,
         },
 
         recentUsers,
@@ -337,7 +432,8 @@ exports.getAdminTransactions = async (
       100
     );
 
-    const skip = (page - 1) * limit;
+    const skip =
+      (page - 1) * limit;
 
     const search = String(
       req.query.search ?? ""
@@ -359,7 +455,10 @@ exports.getAdminTransactions = async (
 
     const filter = {};
 
-    if (status && status !== "ALL") {
+    if (
+      status &&
+      status !== "ALL"
+    ) {
       if (
         status === "SUCCESS" ||
         status === "SUCCESSFUL" ||
@@ -373,7 +472,9 @@ exports.getAdminTransactions = async (
             "APPROVED",
           ],
         };
-      } else if (status === "FAILED") {
+      } else if (
+        status === "FAILED"
+      ) {
         filter.status = {
           $in: [
             "FAILED",
@@ -381,7 +482,9 @@ exports.getAdminTransactions = async (
             "REJECTED",
           ],
         };
-      } else if (status === "PENDING") {
+      } else if (
+        status === "PENDING"
+      ) {
         filter.status = {
           $in: [
             "PENDING",
@@ -407,63 +510,73 @@ exports.getAdminTransactions = async (
       serviceType &&
       serviceType !== "ALL"
     ) {
-      filter.serviceType = serviceType;
+      filter.serviceType =
+        serviceType;
     }
 
     if (search) {
       const safeSearch =
         escapeRegex(search);
 
-      const searchRegex = new RegExp(
-        safeSearch,
-        "i"
-      );
+      const searchRegex =
+        new RegExp(
+          safeSearch,
+          "i"
+        );
 
-      const matchingUsers = await User.find({
-        $or: [
-          {
-            fullName: searchRegex,
-          },
-          {
-            name: searchRegex,
-          },
-          {
-            phone: searchRegex,
-          },
-          {
-            email: searchRegex,
-          },
-        ],
-      })
-        .select("_id")
-        .limit(500)
-        .lean();
+      const matchingUsers =
+        await User.find({
+          $or: [
+            {
+              fullName:
+                searchRegex,
+            },
+            {
+              name:
+                searchRegex,
+            },
+            {
+              phone:
+                searchRegex,
+            },
+            {
+              email:
+                searchRegex,
+            },
+          ],
+        })
+          .select("_id")
+          .limit(500)
+          .lean();
 
-      const userIds = matchingUsers.map(
-        (user) => user._id
-      );
+      const userIds =
+        matchingUsers.map(
+          (user) => user._id
+        );
 
       const searchConditions = [
         {
-          reference: searchRegex,
+          reference:
+            searchRegex,
         },
         {
-          provider: searchRegex,
+          provider:
+            searchRegex,
         },
         {
-          phone: searchRegex,
+          phone:
+            searchRegex,
         },
       ];
 
       if (
-        mongoose.Types.ObjectId.isValid(
-          search
-        )
+        mongoose.Types.ObjectId
+          .isValid(search)
       ) {
         searchConditions.push({
-          _id: new mongoose.Types.ObjectId(
-            search
-          ),
+          _id:
+            new mongoose.Types
+              .ObjectId(search),
         });
       }
 
@@ -475,7 +588,8 @@ exports.getAdminTransactions = async (
         });
       }
 
-      filter.$or = searchConditions;
+      filter.$or =
+        searchConditions;
     }
 
     const [
@@ -494,7 +608,9 @@ exports.getAdminTransactions = async (
         .limit(limit)
         .lean(),
 
-      Transaction.countDocuments(filter),
+      Transaction.countDocuments(
+        filter
+      ),
     ]);
 
     const totalPages = Math.max(
@@ -516,8 +632,10 @@ exports.getAdminTransactions = async (
           page,
           currentPage: page,
           limit,
-          total: totalTransactions,
-          totalItems: totalTransactions,
+          total:
+            totalTransactions,
+          totalItems:
+            totalTransactions,
           totalPages,
           hasNextPage:
             page < totalPages,
@@ -525,7 +643,8 @@ exports.getAdminTransactions = async (
             page > 1,
         },
 
-        total: totalTransactions,
+        total:
+          totalTransactions,
         totalTransactions,
         currentPage: page,
         totalPages,
@@ -545,7 +664,6 @@ exports.getAdminTransactions = async (
     });
   }
 };
-
 /*
 |--------------------------------------------------------------------------
 | GET ADMIN DELIVERIES
@@ -569,7 +687,8 @@ exports.getAdminDeliveries = async (
       100
     );
 
-    const skip = (page - 1) * limit;
+    const skip =
+      (page - 1) * limit;
 
     const search = String(
       req.query.search ?? ""
@@ -587,9 +706,14 @@ exports.getAdminDeliveries = async (
 
     const filter = {};
 
-    if (status && status !== "ALL") {
+    if (
+      status &&
+      status !== "ALL"
+    ) {
       if (
-        !DELIVERY_STATUSES.includes(status)
+        !DELIVERY_STATUSES.includes(
+          status
+        )
       ) {
         return res.status(400).json({
           success: false,
@@ -629,83 +753,101 @@ exports.getAdminDeliveries = async (
       const safeSearch =
         escapeRegex(search);
 
-      const searchRegex = new RegExp(
-        safeSearch,
-        "i"
-      );
+      const searchRegex =
+        new RegExp(
+          safeSearch,
+          "i"
+        );
 
-      const matchingUsers = await User.find({
-        $or: [
-          {
-            fullName: searchRegex,
-          },
-          {
-            name: searchRegex,
-          },
-          {
-            email: searchRegex,
-          },
-          {
-            phone: searchRegex,
-          },
-        ],
-      })
-        .select("_id")
-        .limit(500)
-        .lean();
+      const matchingUsers =
+        await User.find({
+          $or: [
+            {
+              fullName:
+                searchRegex,
+            },
+            {
+              name:
+                searchRegex,
+            },
+            {
+              email:
+                searchRegex,
+            },
+            {
+              phone:
+                searchRegex,
+            },
+          ],
+        })
+          .select("_id")
+          .limit(500)
+          .lean();
 
-      const userIds = matchingUsers.map(
-        (user) => user._id
-      );
+      const userIds =
+        matchingUsers.map(
+          (user) => user._id
+        );
 
       const searchConditions = [
         {
-          trackingNumber: searchRegex,
+          trackingNumber:
+            searchRegex,
         },
         {
-          pickupAddress: searchRegex,
+          pickupAddress:
+            searchRegex,
         },
         {
-          deliveryAddress: searchRegex,
+          deliveryAddress:
+            searchRegex,
         },
         {
-          senderName: searchRegex,
+          senderName:
+            searchRegex,
         },
         {
-          senderPhone: searchRegex,
+          senderPhone:
+            searchRegex,
         },
         {
-          receiverName: searchRegex,
+          receiverName:
+            searchRegex,
         },
         {
-          receiverPhone: searchRegex,
+          receiverPhone:
+            searchRegex,
         },
         {
-          packageName: searchRegex,
+          packageName:
+            searchRegex,
         },
         {
-          packageDescription: searchRegex,
+          packageDescription:
+            searchRegex,
         },
         {
-          riderName: searchRegex,
+          riderName:
+            searchRegex,
         },
         {
-          riderPhone: searchRegex,
+          riderPhone:
+            searchRegex,
         },
         {
-          adminNote: searchRegex,
+          adminNote:
+            searchRegex,
         },
       ];
 
       if (
-        mongoose.Types.ObjectId.isValid(
-          search
-        )
+        mongoose.Types.ObjectId
+          .isValid(search)
       ) {
         searchConditions.push({
-          _id: new mongoose.Types.ObjectId(
-            search
-          ),
+          _id:
+            new mongoose.Types
+              .ObjectId(search),
         });
       }
 
@@ -717,7 +859,8 @@ exports.getAdminDeliveries = async (
         });
       }
 
-      filter.$or = searchConditions;
+      filter.$or =
+        searchConditions;
     }
 
     const [
@@ -725,6 +868,7 @@ exports.getAdminDeliveries = async (
       filteredTotal,
       totalDeliveries,
       pendingDeliveries,
+      assignedDeliveries,
       acceptedDeliveries,
       pickedUpDeliveries,
       inTransitDeliveries,
@@ -744,7 +888,25 @@ exports.getAdminDeliveries = async (
         )
         .populate(
           "assignedRiderId",
-          "fullName name email phone role status"
+          [
+            "riderId",
+            "fullName",
+            "name",
+            "email",
+            "phone",
+            "role",
+            "status",
+            "vehicleType",
+            "plateNumber",
+            "riderState",
+            "riderLga",
+            "availabilityStatus",
+            "riderVerificationStatus",
+          ].join(" ")
+        )
+        .populate(
+          "assignedBy",
+          "fullName email phone role"
         )
         .sort({
           createdAt: -1,
@@ -753,12 +915,18 @@ exports.getAdminDeliveries = async (
         .limit(limit)
         .lean(),
 
-      Delivery.countDocuments(filter),
+      Delivery.countDocuments(
+        filter
+      ),
 
       Delivery.countDocuments(),
 
       Delivery.countDocuments({
         status: "PENDING",
+      }),
+
+      Delivery.countDocuments({
+        status: "ASSIGNED",
       }),
 
       Delivery.countDocuments({
@@ -810,7 +978,8 @@ exports.getAdminDeliveries = async (
             totalRevenue: {
               $sum: {
                 $convert: {
-                  input: "$deliveryFee",
+                  input:
+                    "$deliveryFee",
                   to: "double",
                   onError: 0,
                   onNull: 0,
@@ -829,7 +998,8 @@ exports.getAdminDeliveries = async (
             totalQuotedPrice: {
               $sum: {
                 $convert: {
-                  input: "$deliveryFee",
+                  input:
+                    "$deliveryFee",
                   to: "double",
                   onError: 0,
                   onNull: 0,
@@ -849,7 +1019,8 @@ exports.getAdminDeliveries = async (
     );
 
     const totalRevenue =
-      revenueSummary[0]?.totalRevenue ?? 0;
+      revenueSummary[0]
+        ?.totalRevenue ?? 0;
 
     const totalQuotedPrice =
       quotedPriceSummary[0]
@@ -864,19 +1035,31 @@ exports.getAdminDeliveries = async (
         deliveries,
 
         summary: {
-          total: totalDeliveries,
-          pending: pendingDeliveries,
-          accepted: acceptedDeliveries,
-          assigned: acceptedDeliveries,
-          pickedUp: pickedUpDeliveries,
-          inTransit: inTransitDeliveries,
-          delivered: deliveredDeliveries,
-          cancelled: cancelledDeliveries,
-          failed: failedDeliveries,
+          total:
+            totalDeliveries,
+          pending:
+            pendingDeliveries,
+          assigned:
+            assignedDeliveries,
+          accepted:
+            acceptedDeliveries,
+          pickedUp:
+            pickedUpDeliveries,
+          inTransit:
+            inTransitDeliveries,
+          delivered:
+            deliveredDeliveries,
+          cancelled:
+            cancelledDeliveries,
+          failed:
+            failedDeliveries,
 
-          unpaid: unpaidDeliveries,
-          paid: paidDeliveries,
-          refunded: refundedDeliveries,
+          unpaid:
+            unpaidDeliveries,
+          paid:
+            paidDeliveries,
+          refunded:
+            refundedDeliveries,
 
           totalRevenue,
           totalQuotedPrice,
@@ -886,8 +1069,10 @@ exports.getAdminDeliveries = async (
           page,
           currentPage: page,
           limit,
-          total: filteredTotal,
-          totalItems: filteredTotal,
+          total:
+            filteredTotal,
+          totalItems:
+            filteredTotal,
           totalPages,
           hasNextPage:
             page < totalPages,
@@ -895,8 +1080,10 @@ exports.getAdminDeliveries = async (
             page > 1,
         },
 
-        total: filteredTotal,
-        totalDeliveries: filteredTotal,
+        total:
+          filteredTotal,
+        totalDeliveries:
+          filteredTotal,
         currentPage: page,
         totalPages,
       },
@@ -918,6 +1105,519 @@ exports.getAdminDeliveries = async (
 
 /*
 |--------------------------------------------------------------------------
+| GET AVAILABLE DELIVERY RIDERS
+|--------------------------------------------------------------------------
+*/
+
+exports.getAvailableRiders = async (
+  req,
+  res
+) => {
+  try {
+    const deliveryId = String(
+      req.params.id ?? ""
+    ).trim();
+
+    if (
+      !mongoose.Types.ObjectId
+        .isValid(deliveryId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid delivery ID.",
+      });
+    }
+
+    const delivery =
+      await Delivery.findById(
+        deliveryId
+      ).lean();
+
+    if (!delivery) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Delivery was not found.",
+      });
+    }
+
+    const riders = await User.find({
+      role: "DELIVERY_RIDER",
+      status: "ACTIVE",
+      riderVerificationStatus:
+        "VERIFIED",
+    })
+      .select(
+        [
+          "_id",
+          "riderId",
+          "fullName",
+          "phone",
+          "email",
+          "vehicleType",
+          "plateNumber",
+          "riderState",
+          "riderLga",
+          "availabilityStatus",
+          "riderRating",
+          "totalAssignedDeliveries",
+          "totalCompletedDeliveries",
+        ].join(" ")
+      )
+      .sort({
+        availabilityStatus: -1,
+        riderRating: -1,
+        createdAt: -1,
+      })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Verified riders loaded successfully.",
+
+      data: {
+        delivery,
+        riders,
+      },
+
+      riders,
+    });
+  } catch (error) {
+    console.error(
+      "Get available riders error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to load available riders.",
+      error: error.message,
+    });
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| ASSIGN RIDER TO DELIVERY
+|--------------------------------------------------------------------------
+*/
+
+exports.assignRiderToDelivery = async (
+  req,
+  res
+) => {
+  try {
+    const deliveryId = String(
+      req.params.id ?? ""
+    ).trim();
+
+    const riderId = String(
+      req.body.riderId ??
+        req.body.assignedRiderId ??
+        ""
+    ).trim();
+
+    if (
+      !mongoose.Types.ObjectId
+        .isValid(deliveryId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid delivery ID.",
+      });
+    }
+
+    if (
+      !mongoose.Types.ObjectId
+        .isValid(riderId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Select a valid rider.",
+      });
+    }
+
+    const delivery =
+      await Delivery.findById(
+        deliveryId
+      );
+
+    if (!delivery) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Delivery was not found.",
+      });
+    }
+
+    if (
+      [
+        "DELIVERED",
+        "CANCELLED",
+        "FAILED",
+      ].includes(delivery.status)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          `A ${delivery.status.toLowerCase()} delivery cannot be assigned.`,
+      });
+    }
+
+    const rider =
+      await User.findOne({
+        _id: riderId,
+        role: "DELIVERY_RIDER",
+      });
+
+    if (!rider) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Delivery Rider was not found.",
+      });
+    }
+
+    if (
+      rider.status !== "ACTIVE"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "The selected rider account is not active.",
+      });
+    }
+
+    if (
+      rider.riderVerificationStatus !==
+      "VERIFIED"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Only verified riders can receive delivery jobs.",
+      });
+    }
+
+    const previousRiderId =
+      delivery.assignedRiderId
+        ? String(
+            delivery.assignedRiderId
+          )
+        : "";
+
+    const sameRider =
+      previousRiderId ===
+      String(rider._id);
+
+    if (
+      previousRiderId &&
+      !sameRider
+    ) {
+      await User.updateOne(
+        {
+          _id:
+            previousRiderId,
+          totalAssignedDeliveries: {
+            $gt: 0,
+          },
+        },
+        {
+          $inc: {
+            totalAssignedDeliveries:
+              -1,
+          },
+        }
+      );
+    }
+
+    delivery.assignedRiderId =
+      rider._id;
+
+    delivery.riderName =
+      rider.fullName || "";
+
+    delivery.riderPhone =
+      rider.phone || "";
+
+    delivery.assignedBy =
+      req.user?._id ?? null;
+
+    delivery.assignedAt =
+      new Date();
+
+    delivery.riderAcceptedAt =
+      null;
+
+    delivery.riderRejectedAt =
+      null;
+
+    delivery.riderRejectionReason =
+      "";
+
+    delivery.status =
+      "ASSIGNED";
+
+    if (
+      req.body.adminNote !==
+      undefined
+    ) {
+      delivery.adminNote = String(
+        req.body.adminNote ?? ""
+      ).trim();
+    }
+
+    await delivery.save();
+
+    if (!sameRider) {
+      rider.totalAssignedDeliveries =
+        Number(
+          rider
+            .totalAssignedDeliveries ||
+            0
+        ) + 1;
+
+      await rider.save();
+    }
+
+    const updatedDelivery =
+      await Delivery.findById(
+        delivery._id
+      )
+        .populate(
+          "customerId",
+          "fullName email phone role status"
+        )
+        .populate(
+          "assignedRiderId",
+          [
+            "riderId",
+            "fullName",
+            "email",
+            "phone",
+            "role",
+            "status",
+            "vehicleType",
+            "plateNumber",
+            "riderState",
+            "riderLga",
+            "availabilityStatus",
+            "riderVerificationStatus",
+          ].join(" ")
+        )
+        .populate(
+          "assignedBy",
+          "fullName email phone role"
+        )
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        `${rider.fullName} has been assigned successfully.`,
+
+      data: {
+        delivery:
+          updatedDelivery,
+
+        rider: {
+          id: rider._id,
+          riderId:
+            rider.riderId || null,
+          fullName:
+            rider.fullName,
+          phone:
+            rider.phone,
+          availabilityStatus:
+            rider.availabilityStatus,
+        },
+      },
+
+      delivery:
+        updatedDelivery,
+    });
+  } catch (error) {
+    console.error(
+      "Assign rider error:",
+      error
+    );
+
+    if (
+      error?.name ===
+      "ValidationError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid rider assignment information.",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to assign rider.",
+      error: error.message,
+    });
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| UNASSIGN RIDER FROM DELIVERY
+|--------------------------------------------------------------------------
+*/
+
+exports.unassignRiderFromDelivery =
+  async (req, res) => {
+    try {
+      const deliveryId = String(
+        req.params.id ?? ""
+      ).trim();
+
+      if (
+        !mongoose.Types.ObjectId
+          .isValid(deliveryId)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid delivery ID.",
+        });
+      }
+
+      const delivery =
+        await Delivery.findById(
+          deliveryId
+        );
+
+      if (!delivery) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Delivery was not found.",
+        });
+      }
+
+      if (
+        [
+          "PICKED_UP",
+          "IN_TRANSIT",
+          "DELIVERED",
+        ].includes(
+          delivery.status
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "The rider cannot be removed after pickup.",
+        });
+      }
+
+      const previousRiderId =
+        delivery.assignedRiderId
+          ? String(
+              delivery
+                .assignedRiderId
+            )
+          : "";
+
+      delivery.assignedRiderId =
+        null;
+
+      delivery.riderName = "";
+      delivery.riderPhone = "";
+
+      delivery.assignedBy = null;
+      delivery.assignedAt = null;
+
+      delivery.riderAcceptedAt =
+        null;
+
+      delivery.riderRejectedAt =
+        null;
+
+      delivery.riderRejectionReason =
+        "";
+
+      delivery.status =
+        "PENDING";
+
+      if (
+        req.body.adminNote !==
+        undefined
+      ) {
+        delivery.adminNote = String(
+          req.body.adminNote ?? ""
+        ).trim();
+      }
+
+      await delivery.save();
+
+      if (previousRiderId) {
+        await User.updateOne(
+          {
+            _id:
+              previousRiderId,
+            totalAssignedDeliveries: {
+              $gt: 0,
+            },
+          },
+          {
+            $inc: {
+              totalAssignedDeliveries:
+                -1,
+            },
+          }
+        );
+      }
+
+      const updatedDelivery =
+        await Delivery.findById(
+          delivery._id
+        )
+          .populate(
+            "customerId",
+            "fullName email phone role status"
+          )
+          .lean();
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Rider removed successfully.",
+
+        data: {
+          delivery:
+            updatedDelivery,
+        },
+
+        delivery:
+          updatedDelivery,
+      });
+    } catch (error) {
+      console.error(
+        "Unassign rider error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to remove rider.",
+        error: error.message,
+      });
+    }
+  };
+  /*
+|--------------------------------------------------------------------------
 | UPDATE DELIVERY STATUS
 |--------------------------------------------------------------------------
 */
@@ -937,9 +1637,8 @@ exports.updateDeliveryStatus = async (
       );
 
     if (
-      !mongoose.Types.ObjectId.isValid(
-        deliveryId
-      )
+      !mongoose.Types.ObjectId
+        .isValid(deliveryId)
     ) {
       return res.status(400).json({
         success: false,
@@ -957,7 +1656,9 @@ exports.updateDeliveryStatus = async (
     }
 
     if (
-      !DELIVERY_STATUSES.includes(status)
+      !DELIVERY_STATUSES.includes(
+        status
+      )
     ) {
       return res.status(400).json({
         success: false,
@@ -984,82 +1685,30 @@ exports.updateDeliveryStatus = async (
     const previousStatus =
       delivery.status;
 
+    /*
+     * A delivery cannot be moved to ASSIGNED
+     * without an assigned rider.
+     */
+    if (
+      status === "ASSIGNED" &&
+      !delivery.assignedRiderId
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Assign a rider before changing the delivery status to ASSIGNED.",
+      });
+    }
+
     delivery.status = status;
 
     if (
-      req.body.adminNote !== undefined
+      req.body.adminNote !==
+      undefined
     ) {
       delivery.adminNote = String(
         req.body.adminNote ?? ""
       ).trim();
-    }
-
-    if (
-      req.body.riderName !== undefined
-    ) {
-      delivery.riderName = String(
-        req.body.riderName ?? ""
-      ).trim();
-    }
-
-    if (
-      req.body.riderPhone !== undefined
-    ) {
-      delivery.riderPhone = String(
-        req.body.riderPhone ?? ""
-      ).trim();
-    }
-
-    if (
-      req.body.assignedRiderId !==
-      undefined
-    ) {
-      const riderId = String(
-        req.body.assignedRiderId ?? ""
-      ).trim();
-
-      if (!riderId) {
-        delivery.assignedRiderId = null;
-      } else if (
-        mongoose.Types.ObjectId.isValid(
-          riderId
-        )
-      ) {
-        const rider = await User.findById(
-          riderId
-        ).select(
-          "_id fullName name phone role status"
-        );
-
-        if (!rider) {
-          return res.status(404).json({
-            success: false,
-            message:
-              "Assigned rider was not found.",
-          });
-        }
-
-        delivery.assignedRiderId =
-          rider._id;
-
-        if (!delivery.riderName) {
-          delivery.riderName =
-            rider.fullName ||
-            rider.name ||
-            "";
-        }
-
-        if (!delivery.riderPhone) {
-          delivery.riderPhone =
-            rider.phone || "";
-        }
-      } else {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid rider ID.",
-        });
-      }
     }
 
     const now = new Date();
@@ -1067,6 +1716,10 @@ exports.updateDeliveryStatus = async (
     if (status === "ACCEPTED") {
       delivery.acceptedAt =
         delivery.acceptedAt ?? now;
+
+      delivery.riderAcceptedAt =
+        delivery.riderAcceptedAt ??
+        now;
     }
 
     if (status === "PICKED_UP") {
@@ -1106,7 +1759,25 @@ exports.updateDeliveryStatus = async (
         )
         .populate(
           "assignedRiderId",
-          "fullName name email phone role status"
+          [
+            "riderId",
+            "fullName",
+            "name",
+            "email",
+            "phone",
+            "role",
+            "status",
+            "vehicleType",
+            "plateNumber",
+            "riderState",
+            "riderLga",
+            "availabilityStatus",
+            "riderVerificationStatus",
+          ].join(" ")
+        )
+        .populate(
+          "assignedBy",
+          "fullName email phone role"
         )
         .lean();
 
@@ -1116,10 +1787,16 @@ exports.updateDeliveryStatus = async (
         "Delivery status updated successfully.",
 
       data: {
-        delivery: updatedDelivery,
+        delivery:
+          updatedDelivery,
+
         previousStatus,
-        currentStatus: status,
+        currentStatus:
+          status,
       },
+
+      delivery:
+        updatedDelivery,
     });
   } catch (error) {
     console.error(
@@ -1128,13 +1805,15 @@ exports.updateDeliveryStatus = async (
     );
 
     if (
-      error.name === "ValidationError"
+      error?.name ===
+      "ValidationError"
     ) {
       return res.status(400).json({
         success: false,
         message:
           "Invalid delivery information.",
-        error: error.message,
+        error:
+          error.message,
       });
     }
 
@@ -1142,7 +1821,8 @@ exports.updateDeliveryStatus = async (
       success: false,
       message:
         "Failed to update delivery status.",
-      error: error.message,
+      error:
+        error.message,
     });
   }
 };
@@ -1163,9 +1843,8 @@ exports.updateDeliveryPrice = async (
     ).trim();
 
     if (
-      !mongoose.Types.ObjectId.isValid(
-        deliveryId
-      )
+      !mongoose.Types.ObjectId
+        .isValid(deliveryId)
     ) {
       return res.status(400).json({
         success: false,
@@ -1174,11 +1853,12 @@ exports.updateDeliveryPrice = async (
       });
     }
 
-    const deliveryFee = toValidAmount(
-      req.body.deliveryFee ??
-        req.body.price ??
-        req.body.amount
-    );
+    const deliveryFee =
+      toValidAmount(
+        req.body.deliveryFee ??
+          req.body.price ??
+          req.body.amount
+      );
 
     if (deliveryFee === null) {
       return res.status(400).json({
@@ -1222,7 +1902,9 @@ exports.updateDeliveryPrice = async (
     }
 
     const previousDeliveryFee =
-      Number(delivery.deliveryFee ?? 0);
+      Number(
+        delivery.deliveryFee ?? 0
+      );
 
     const previousPaymentStatus =
       delivery.paymentStatus;
@@ -1234,25 +1916,12 @@ exports.updateDeliveryPrice = async (
       paymentStatus;
 
     if (
-      req.body.adminNote !== undefined
+      req.body.adminNote !==
+      undefined
     ) {
       delivery.adminNote = String(
         req.body.adminNote ?? ""
       ).trim();
-    }
-
-    if (
-      paymentStatus === "PAID" &&
-      delivery.paidAt == null
-    ) {
-      delivery.paidAt = new Date();
-    }
-
-    if (
-      paymentStatus === "REFUNDED" &&
-      delivery.refundedAt == null
-    ) {
-      delivery.refundedAt = new Date();
     }
 
     await delivery.save();
@@ -1267,7 +1936,25 @@ exports.updateDeliveryPrice = async (
         )
         .populate(
           "assignedRiderId",
-          "fullName name email phone role status"
+          [
+            "riderId",
+            "fullName",
+            "name",
+            "email",
+            "phone",
+            "role",
+            "status",
+            "vehicleType",
+            "plateNumber",
+            "riderState",
+            "riderLga",
+            "availabilityStatus",
+            "riderVerificationStatus",
+          ].join(" ")
+        )
+        .populate(
+          "assignedBy",
+          "fullName email phone role"
         )
         .lean();
 
@@ -1277,7 +1964,8 @@ exports.updateDeliveryPrice = async (
         "Delivery price updated successfully.",
 
       data: {
-        delivery: updatedDelivery,
+        delivery:
+          updatedDelivery,
 
         previousDeliveryFee,
         currentDeliveryFee:
@@ -1287,6 +1975,9 @@ exports.updateDeliveryPrice = async (
         currentPaymentStatus:
           paymentStatus,
       },
+
+      delivery:
+        updatedDelivery,
     });
   } catch (error) {
     console.error(
@@ -1295,13 +1986,15 @@ exports.updateDeliveryPrice = async (
     );
 
     if (
-      error.name === "ValidationError"
+      error?.name ===
+      "ValidationError"
     ) {
       return res.status(400).json({
         success: false,
         message:
           "Invalid delivery price information.",
-        error: error.message,
+        error:
+          error.message,
       });
     }
 
@@ -1309,7 +2002,8 @@ exports.updateDeliveryPrice = async (
       success: false,
       message:
         "Failed to update delivery price.",
-      error: error.message,
+      error:
+        error.message,
     });
   }
 };
@@ -1337,25 +2031,22 @@ exports.getAdminUsers = async (
       100
     );
 
-    const skip = (page - 1) * limit;
+    const skip =
+      (page - 1) * limit;
 
     const search = String(
       req.query.search ?? ""
     ).trim();
 
-    const role = String(
-      req.query.role ?? ""
-    )
-      .trim()
-      .toUpperCase()
-      .replace(/[\s-]+/g, "_");
+    const role =
+      normalizeUserRole(
+        req.query.role ?? ""
+      );
 
-    const status = String(
-      req.query.status ?? ""
-    )
-      .trim()
-      .toUpperCase()
-      .replace(/[\s-]+/g, "_");
+    const status =
+      normalizeUserStatus(
+        req.query.status ?? ""
+      );
 
     const allowedRoles = [
       "CUSTOMER",
@@ -1363,22 +2054,31 @@ exports.getAdminUsers = async (
       "STATE_MANAGER",
       "ZONAL_MANAGER",
       "HEAD_OFFICE",
+      "STAFF",
+      "DELIVERY_RIDER",
     ];
 
     const allowedStatuses = [
       "ACTIVE",
       "SUSPENDED",
       "BLOCKED",
-      "PENDING",
     ];
 
     const filter = {};
 
-    if (role && role !== "ALL") {
-      if (!allowedRoles.includes(role)) {
+    if (
+      role &&
+      role !== "ALL"
+    ) {
+      if (
+        !allowedRoles.includes(
+          role
+        )
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Invalid user role.",
+          message:
+            "Invalid user role.",
           allowedRoles,
         });
       }
@@ -1391,7 +2091,9 @@ exports.getAdminUsers = async (
       status !== "ALL"
     ) {
       if (
-        !allowedStatuses.includes(status)
+        !allowedStatuses.includes(
+          status
+        )
       ) {
         return res.status(400).json({
           success: false,
@@ -1416,38 +2118,47 @@ exports.getAdminUsers = async (
 
       filter.$or = [
         {
-          fullName: searchRegex,
+          fullName:
+            searchRegex,
         },
         {
-          name: searchRegex,
+          phone:
+            searchRegex,
         },
         {
-          phone: searchRegex,
+          email:
+            searchRegex,
         },
         {
-          email: searchRegex,
+          state:
+            searchRegex,
         },
         {
-          state: searchRegex,
+          lga:
+            searchRegex,
         },
         {
-          lga: searchRegex,
+          zone:
+            searchRegex,
         },
         {
-          zone: searchRegex,
+          riderId:
+            searchRegex,
+        },
+        {
+          plateNumber:
+            searchRegex,
         },
       ];
 
       if (
-        mongoose.Types.ObjectId.isValid(
-          search
-        )
+        mongoose.Types.ObjectId
+          .isValid(search)
       ) {
         filter.$or.push({
           _id:
-            new mongoose.Types.ObjectId(
-              search
-            ),
+            new mongoose.Types
+              .ObjectId(search),
         });
       }
     }
@@ -1459,17 +2170,16 @@ exports.getAdminUsers = async (
       activeUsers,
       suspendedUsers,
       blockedUsers,
-      pendingUsers,
       totalCustomers,
       totalAgents,
       totalStateManagers,
       totalZonalManagers,
       totalHeadOffice,
+      totalStaff,
+      totalDeliveryRiders,
     ] = await Promise.all([
       User.find(filter)
-        .select(
-          "-password"
-        )
+        .select("-password")
         .sort({
           createdAt: -1,
         })
@@ -1477,7 +2187,9 @@ exports.getAdminUsers = async (
         .limit(limit)
         .lean(),
 
-      User.countDocuments(filter),
+      User.countDocuments(
+        filter
+      ),
 
       User.countDocuments(),
 
@@ -1491,10 +2203,6 @@ exports.getAdminUsers = async (
 
       User.countDocuments({
         status: "BLOCKED",
-      }),
-
-      User.countDocuments({
-        status: "PENDING",
       }),
 
       User.countDocuments({
@@ -1516,6 +2224,14 @@ exports.getAdminUsers = async (
       User.countDocuments({
         role: "HEAD_OFFICE",
       }),
+
+      User.countDocuments({
+        role: "STAFF",
+      }),
+
+      User.countDocuments({
+        role: "DELIVERY_RIDER",
+      }),
     ]);
 
     const totalPages = Math.max(
@@ -1524,6 +2240,40 @@ exports.getAdminUsers = async (
         filteredTotal / limit
       )
     );
+
+    const summary = {
+      total: totalUsers,
+      active: activeUsers,
+      suspended: suspendedUsers,
+      blocked: blockedUsers,
+      customers: totalCustomers,
+      agents: totalAgents,
+      stateManagers:
+        totalStateManagers,
+      zonalManagers:
+        totalZonalManagers,
+      headOffice:
+        totalHeadOffice,
+      staff:
+        totalStaff,
+      deliveryRiders:
+        totalDeliveryRiders,
+    };
+
+    const pagination = {
+      page,
+      currentPage: page,
+      limit,
+      total:
+        filteredTotal,
+      totalItems:
+        filteredTotal,
+      totalPages,
+      hasNextPage:
+        page < totalPages,
+      hasPreviousPage:
+        page > 1,
+    };
 
     return res.status(200).json({
       success: true,
@@ -1534,63 +2284,26 @@ exports.getAdminUsers = async (
 
       data: {
         users,
-
-        summary: {
-          total: totalUsers,
-          active: activeUsers,
-          suspended: suspendedUsers,
-          blocked: blockedUsers,
-          pending: pendingUsers,
-
-          customers: totalCustomers,
-          agents: totalAgents,
-          stateManagers:
-            totalStateManagers,
-          zonalManagers:
-            totalZonalManagers,
-          headOffice:
-            totalHeadOffice,
-        },
-
-        pagination: {
-          page,
-          currentPage: page,
-          limit,
-          total: filteredTotal,
-          totalItems:
-            filteredTotal,
-          totalPages,
-          hasNextPage:
-            page < totalPages,
-          hasPreviousPage:
-            page > 1,
-        },
-
-        total: filteredTotal,
+        summary,
+        pagination,
+        total:
+          filteredTotal,
         totalUsers:
           filteredTotal,
-        currentPage: page,
+        currentPage:
+          page,
         totalPages,
       },
 
-      pagination: {
-        page,
-        currentPage: page,
-        limit,
-        total: filteredTotal,
-        totalItems:
-          filteredTotal,
-        totalPages,
-        hasNextPage:
-          page < totalPages,
-        hasPreviousPage:
-          page > 1,
-      },
+      summary,
+      pagination,
 
-      total: filteredTotal,
+      total:
+        filteredTotal,
       totalUsers:
         filteredTotal,
-      currentPage: page,
+      currentPage:
+        page,
       totalPages,
     });
   } catch (error) {
@@ -1603,73 +2316,11 @@ exports.getAdminUsers = async (
       success: false,
       message:
         "Failed to load users.",
-      error: error.message,
+      error:
+        error.message,
     });
   }
 };
-
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN USER MANAGEMENT
-|--------------------------------------------------------------------------
-*/
-
-const ADMIN_CREATABLE_ROLES = [
-  "ZONAL_MANAGER",
-  "STATE_MANAGER",
-  "AGENT",
-];
-
-const USER_STATUSES = [
-  "ACTIVE",
-  "SUSPENDED",
-  "BLOCKED",
-];
-
-const normalizeUserRole = (value = "") => {
-  return String(value)
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_");
-};
-
-const normalizeUserStatus = (value = "") => {
-  return String(value)
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_");
-};
-
-const generateUniqueReferralCode = async (
-  role
-) => {
-  const prefixes = {
-    AGENT: "AGT",
-    STATE_MANAGER: "STM",
-    ZONAL_MANAGER: "ZNM",
-  };
-
-  const prefix = prefixes[role] || "SP";
-
-  let referralCode;
-  let exists = true;
-
-  while (exists) {
-    const randomNumber = Math.floor(
-      100000 + Math.random() * 900000
-    );
-
-    referralCode = `${prefix}${randomNumber}`;
-
-    exists = await User.exists({
-      referralCode,
-    });
-  }
-
-  return referralCode;
-};
-
 /*
 |--------------------------------------------------------------------------
 | CREATE AGENT / STATE MANAGER / ZONAL MANAGER
@@ -1701,13 +2352,15 @@ exports.createAdminUser = async (
       req.body.password ?? ""
     );
 
-    const role = normalizeUserRole(
-      req.body.role
-    );
+    const role =
+      normalizeUserRole(
+        req.body.role
+      );
 
     const status =
       normalizeUserStatus(
-        req.body.status ?? "ACTIVE"
+        req.body.status ??
+          "ACTIVE"
       );
 
     const zone = String(
@@ -1722,18 +2375,23 @@ exports.createAdminUser = async (
       req.body.lga ?? ""
     ).trim();
 
-    const zonalManagerId = String(
-      req.body.zonalManagerId ?? ""
-    ).trim();
+    const zonalManagerId =
+      String(
+        req.body.zonalManagerId ??
+          ""
+      ).trim();
 
-    const stateManagerId = String(
-      req.body.stateManagerId ?? ""
-    ).trim();
+    const stateManagerId =
+      String(
+        req.body.stateManagerId ??
+          ""
+      ).trim();
 
     if (!fullName) {
       return res.status(400).json({
         success: false,
-        message: "Full name is required.",
+        message:
+          "Full name is required.",
       });
     }
 
@@ -1745,7 +2403,10 @@ exports.createAdminUser = async (
       });
     }
 
-    if (!password || password.length < 6) {
+    if (
+      !password ||
+      password.length < 6
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -1754,7 +2415,8 @@ exports.createAdminUser = async (
     }
 
     if (
-      !ADMIN_CREATABLE_ROLES.includes(role)
+      !ADMIN_CREATABLE_ROLES
+        .includes(role)
     ) {
       return res.status(400).json({
         success: false,
@@ -1765,26 +2427,35 @@ exports.createAdminUser = async (
       });
     }
 
-    if (!USER_STATUSES.includes(status)) {
+    if (
+      !USER_STATUSES
+        .includes(status)
+    ) {
       return res.status(400).json({
         success: false,
         message:
           "Invalid account status.",
-        allowedStatuses: USER_STATUSES,
+        allowedStatuses:
+          USER_STATUSES,
       });
     }
 
     const existingConditions = [
-      { phone },
+      {
+        phone,
+      },
     ];
 
     if (email) {
-      existingConditions.push({ email });
+      existingConditions.push({
+        email,
+      });
     }
 
     const existingUser =
       await User.findOne({
-        $or: existingConditions,
+        $or:
+          existingConditions,
       }).lean();
 
     if (existingUser) {
@@ -1795,10 +2466,16 @@ exports.createAdminUser = async (
       });
     }
 
-    let selectedZonalManager = null;
-    let selectedStateManager = null;
+    let selectedZonalManager =
+      null;
 
-    if (role === "ZONAL_MANAGER") {
+    let selectedStateManager =
+      null;
+
+    if (
+      role ===
+      "ZONAL_MANAGER"
+    ) {
       if (!zone) {
         return res.status(400).json({
           success: false,
@@ -1808,8 +2485,14 @@ exports.createAdminUser = async (
       }
     }
 
-    if (role === "STATE_MANAGER") {
-      if (!zone || !state) {
+    if (
+      role ===
+      "STATE_MANAGER"
+    ) {
+      if (
+        !zone ||
+        !state
+      ) {
         return res.status(400).json({
           success: false,
           message:
@@ -1818,9 +2501,10 @@ exports.createAdminUser = async (
       }
 
       if (
-        !mongoose.Types.ObjectId.isValid(
-          zonalManagerId
-        )
+        !mongoose.Types.ObjectId
+          .isValid(
+            zonalManagerId
+          )
       ) {
         return res.status(400).json({
           success: false,
@@ -1831,11 +2515,15 @@ exports.createAdminUser = async (
 
       selectedZonalManager =
         await User.findOne({
-          _id: zonalManagerId,
-          role: "ZONAL_MANAGER",
+          _id:
+            zonalManagerId,
+          role:
+            "ZONAL_MANAGER",
         });
 
-      if (!selectedZonalManager) {
+      if (
+        !selectedZonalManager
+      ) {
         return res.status(404).json({
           success: false,
           message:
@@ -1844,7 +2532,8 @@ exports.createAdminUser = async (
       }
 
       if (
-        selectedZonalManager.status !==
+        selectedZonalManager
+          .status !==
         "ACTIVE"
       ) {
         return res.status(400).json({
@@ -1855,8 +2544,14 @@ exports.createAdminUser = async (
       }
     }
 
-    if (role === "AGENT") {
-      if (!zone || !state || !lga) {
+    if (
+      role === "AGENT"
+    ) {
+      if (
+        !zone ||
+        !state ||
+        !lga
+      ) {
         return res.status(400).json({
           success: false,
           message:
@@ -1865,9 +2560,10 @@ exports.createAdminUser = async (
       }
 
       if (
-        !mongoose.Types.ObjectId.isValid(
-          stateManagerId
-        )
+        !mongoose.Types.ObjectId
+          .isValid(
+            stateManagerId
+          )
       ) {
         return res.status(400).json({
           success: false,
@@ -1878,11 +2574,15 @@ exports.createAdminUser = async (
 
       selectedStateManager =
         await User.findOne({
-          _id: stateManagerId,
-          role: "STATE_MANAGER",
+          _id:
+            stateManagerId,
+          role:
+            "STATE_MANAGER",
         });
 
-      if (!selectedStateManager) {
+      if (
+        !selectedStateManager
+      ) {
         return res.status(404).json({
           success: false,
           message:
@@ -1891,7 +2591,8 @@ exports.createAdminUser = async (
       }
 
       if (
-        selectedStateManager.status !==
+        selectedStateManager
+          .status !==
         "ACTIVE"
       ) {
         return res.status(400).json({
@@ -1918,43 +2619,57 @@ exports.createAdminUser = async (
         role
       );
 
-    const newUser = await User.create({
-      fullName,
-      phone,
-      email: email || undefined,
-      password,
-      role,
-      status,
+    const newUser =
+      await User.create({
+        fullName,
+        phone,
+        email:
+          email || undefined,
+        password,
+        role,
+        status,
 
-      zone: zone || null,
-      state: state || null,
-      lga: lga || null,
+        zone:
+          zone || null,
+        state:
+          state || null,
+        lga:
+          lga || null,
 
-      zonalManagerId:
-        role === "STATE_MANAGER"
-          ? selectedZonalManager?._id
-          : role === "AGENT"
-            ? selectedZonalManager?._id ||
-              selectedStateManager
-                ?.zonalManagerId ||
-              null
+        zonalManagerId:
+          role ===
+          "STATE_MANAGER"
+            ? selectedZonalManager
+                ?._id
+            : role ===
+                "AGENT"
+              ? selectedZonalManager
+                    ?._id ||
+                selectedStateManager
+                  ?.zonalManagerId ||
+                null
+              : null,
+
+        stateManagerId:
+          role ===
+          "AGENT"
+            ? selectedStateManager
+                ?._id
             : null,
 
-      stateManagerId:
-        role === "AGENT"
-          ? selectedStateManager?._id
-          : null,
+        agentId: null,
+        referralCode,
 
-      agentId: null,
-      referralCode,
-      walletBalance: 0,
-      commissionBalance: 0,
-      totalEarnings: 0,
-      totalTransactions: 0,
-    });
+        walletBalance: 0,
+        commissionBalance: 0,
+        totalEarnings: 0,
+        totalTransactions: 0,
+      });
 
     const createdUser =
-      await User.findById(newUser._id)
+      await User.findById(
+        newUser._id
+      )
         .select("-password")
         .populate(
           "zonalManagerId",
@@ -1969,11 +2684,18 @@ exports.createAdminUser = async (
     return res.status(201).json({
       success: true,
       message:
-        `${role.replaceAll("_", " ")} created successfully.`,
+        `${role.replaceAll(
+          "_",
+          " "
+        )} created successfully.`,
+
       data: {
-        user: createdUser,
+        user:
+          createdUser,
       },
-      user: createdUser,
+
+      user:
+        createdUser,
     });
   } catch (error) {
     console.error(
@@ -1981,7 +2703,9 @@ exports.createAdminUser = async (
       error
     );
 
-    if (error.code === 11000) {
+    if (
+      error?.code === 11000
+    ) {
       return res.status(409).json({
         success: false,
         message:
@@ -1989,11 +2713,25 @@ exports.createAdminUser = async (
       });
     }
 
+    if (
+      error?.name ===
+      "ValidationError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid user information.",
+        error:
+          error.message,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message:
         "Failed to create user.",
-      error: error.message,
+      error:
+        error.message,
     });
   }
 };
@@ -2004,99 +2742,123 @@ exports.createAdminUser = async (
 |--------------------------------------------------------------------------
 */
 
-exports.updateAdminUserStatus = async (
-  req,
-  res
-) => {
-  try {
-    const userId = String(
-      req.params.id ?? ""
-    ).trim();
+exports.updateAdminUserStatus =
+  async (req, res) => {
+    try {
+      const userId = String(
+        req.params.id ?? ""
+      ).trim();
 
-    const status =
-      normalizeUserStatus(
-        req.body.status
+      const status =
+        normalizeUserStatus(
+          req.body.status
+        );
+
+      if (
+        !mongoose.Types.ObjectId
+          .isValid(userId)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid user ID.",
+        });
+      }
+
+      if (
+        !USER_STATUSES
+          .includes(status)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid account status.",
+          allowedStatuses:
+            USER_STATUSES,
+        });
+      }
+
+      const user =
+        await User.findById(
+          userId
+        );
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "User was not found.",
+        });
+      }
+
+      if (
+        user.role ===
+          "HEAD_OFFICE" &&
+        String(user._id) ===
+          String(req.user?._id)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "You cannot suspend or block your own Head Office account.",
+        });
+      }
+
+      const previousStatus =
+        user.status;
+
+      user.status =
+        status;
+
+      if (
+        user.role ===
+          "DELIVERY_RIDER" &&
+        status !== "ACTIVE"
+      ) {
+        user.availabilityStatus =
+          "OFFLINE";
+      }
+
+      await user.save();
+
+      const updatedUser =
+        await User.findById(
+          user._id
+        )
+          .select("-password")
+          .lean();
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "User status updated successfully.",
+
+        data: {
+          user:
+            updatedUser,
+          previousStatus,
+          currentStatus:
+            status,
+        },
+
+        user:
+          updatedUser,
+      });
+    } catch (error) {
+      console.error(
+        "Update admin user status error:",
+        error
       );
 
-    if (
-      !mongoose.Types.ObjectId.isValid(
-        userId
-      )
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID.",
-      });
-    }
-
-    if (!USER_STATUSES.includes(status)) {
-      return res.status(400).json({
+      return res.status(500).json({
         success: false,
         message:
-          "Invalid account status.",
-        allowedStatuses: USER_STATUSES,
+          "Failed to update user status.",
+        error:
+          error.message,
       });
     }
-
-    const user = await User.findById(
-      userId
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "User was not found.",
-      });
-    }
-
-    if (
-      user.role === "HEAD_OFFICE" &&
-      String(user._id) ===
-        String(req.user._id)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "You cannot suspend or block your own Head Office account.",
-      });
-    }
-
-    const previousStatus = user.status;
-    user.status = status;
-
-    await user.save();
-
-    const updatedUser =
-      await User.findById(user._id)
-        .select("-password")
-        .lean();
-
-    return res.status(200).json({
-      success: true,
-      message:
-        "User status updated successfully.",
-      data: {
-        user: updatedUser,
-        previousStatus,
-        currentStatus: status,
-      },
-      user: updatedUser,
-    });
-  } catch (error) {
-    console.error(
-      "Update admin user status error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Failed to update user status.",
-      error: error.message,
-    });
-  }
-};
+  };
 
 /*
 |--------------------------------------------------------------------------
@@ -2104,262 +2866,324 @@ exports.updateAdminUserStatus = async (
 |--------------------------------------------------------------------------
 */
 
-exports.updateAdminUserRole = async (
-  req,
-  res
-) => {
-  try {
-    const userId = String(
-      req.params.id ?? ""
-    ).trim();
-
-    const role = normalizeUserRole(
-      req.body.role
-    );
-
-    if (
-      !mongoose.Types.ObjectId.isValid(
-        userId
-      )
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID.",
-      });
-    }
-
-    if (
-      !ADMIN_CREATABLE_ROLES.includes(role)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Role can only be changed to Agent, State Manager or Zonal Manager.",
-        allowedRoles:
-          ADMIN_CREATABLE_ROLES,
-      });
-    }
-
-    const user = await User.findById(
-      userId
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "User was not found.",
-      });
-    }
-
-    if (user.role === "HEAD_OFFICE") {
-      return res.status(403).json({
-        success: false,
-        message:
-          "Head Office role cannot be changed.",
-      });
-    }
-
-    const previousRole = user.role;
-    user.role = role;
-
-    if (role === "ZONAL_MANAGER") {
-      user.zone = String(
-        req.body.zone ??
-          user.zone ??
-          ""
+exports.updateAdminUserRole =
+  async (req, res) => {
+    try {
+      const userId = String(
+        req.params.id ?? ""
       ).trim();
 
-      if (!user.zone) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Zone is required for a Zonal Manager.",
-        });
-      }
-
-      user.state = null;
-      user.lga = null;
-      user.zonalManagerId = null;
-      user.stateManagerId = null;
-      user.agentId = null;
-    }
-
-    if (role === "STATE_MANAGER") {
-      const zonalManagerId = String(
-        req.body.zonalManagerId ?? ""
-      ).trim();
-
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          zonalManagerId
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Select a valid Zonal Manager.",
-        });
-      }
-
-      const zonalManager =
-        await User.findOne({
-          _id: zonalManagerId,
-          role: "ZONAL_MANAGER",
-          status: "ACTIVE",
-        });
-
-      if (!zonalManager) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Active Zonal Manager was not found.",
-        });
-      }
-
-      user.zone = String(
-        req.body.zone ??
-          zonalManager.zone ??
-          ""
-      ).trim();
-
-      user.state = String(
-        req.body.state ??
-          user.state ??
-          ""
-      ).trim();
-
-      if (!user.zone || !user.state) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Zone and state are required.",
-        });
-      }
-
-      user.lga = null;
-      user.zonalManagerId =
-        zonalManager._id;
-      user.stateManagerId = null;
-      user.agentId = null;
-    }
-
-    if (role === "AGENT") {
-      const stateManagerId = String(
-        req.body.stateManagerId ?? ""
-      ).trim();
-
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          stateManagerId
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Select a valid State Manager.",
-        });
-      }
-
-      const stateManager =
-        await User.findOne({
-          _id: stateManagerId,
-          role: "STATE_MANAGER",
-          status: "ACTIVE",
-        });
-
-      if (!stateManager) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Active State Manager was not found.",
-        });
-      }
-
-      user.zone = String(
-        req.body.zone ??
-          stateManager.zone ??
-          ""
-      ).trim();
-
-      user.state = String(
-        req.body.state ??
-          stateManager.state ??
-          ""
-      ).trim();
-
-      user.lga = String(
-        req.body.lga ??
-          user.lga ??
-          ""
-      ).trim();
-
-      if (
-        !user.zone ||
-        !user.state ||
-        !user.lga
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Zone, state and LGA are required.",
-        });
-      }
-
-      user.zonalManagerId =
-        stateManager.zonalManagerId ||
-        null;
-
-      user.stateManagerId =
-        stateManager._id;
-
-      user.agentId = null;
-    }
-
-    if (!user.referralCode) {
-      user.referralCode =
-        await generateUniqueReferralCode(
-          role
+      const role =
+        normalizeUserRole(
+          req.body.role
         );
+
+      if (
+        !mongoose.Types.ObjectId
+          .isValid(userId)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid user ID.",
+        });
+      }
+
+      if (
+        !ADMIN_CREATABLE_ROLES
+          .includes(role)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Role can only be changed to Agent, State Manager or Zonal Manager.",
+          allowedRoles:
+            ADMIN_CREATABLE_ROLES,
+        });
+      }
+
+      const user =
+        await User.findById(
+          userId
+        );
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "User was not found.",
+        });
+      }
+
+      if (
+        user.role ===
+        "HEAD_OFFICE"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Head Office role cannot be changed.",
+        });
+      }
+
+      if (
+        user.role ===
+        "DELIVERY_RIDER"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Delivery Rider roles must be managed from the Riders section.",
+        });
+      }
+
+      const previousRole =
+        user.role;
+
+      user.role =
+        role;
+
+      if (
+        role ===
+        "ZONAL_MANAGER"
+      ) {
+        user.zone = String(
+          req.body.zone ??
+            user.zone ??
+            ""
+        ).trim();
+
+        if (!user.zone) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Zone is required for a Zonal Manager.",
+          });
+        }
+
+        user.state = null;
+        user.lga = null;
+        user.zonalManagerId =
+          null;
+        user.stateManagerId =
+          null;
+        user.agentId = null;
+      }
+
+      if (
+        role ===
+        "STATE_MANAGER"
+      ) {
+        const zonalManagerId =
+          String(
+            req.body
+              .zonalManagerId ??
+              ""
+          ).trim();
+
+        if (
+          !mongoose.Types.ObjectId
+            .isValid(
+              zonalManagerId
+            )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Select a valid Zonal Manager.",
+          });
+        }
+
+        const zonalManager =
+          await User.findOne({
+            _id:
+              zonalManagerId,
+            role:
+              "ZONAL_MANAGER",
+            status:
+              "ACTIVE",
+          });
+
+        if (!zonalManager) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Active Zonal Manager was not found.",
+          });
+        }
+
+        user.zone = String(
+          req.body.zone ??
+            zonalManager.zone ??
+            ""
+        ).trim();
+
+        user.state = String(
+          req.body.state ??
+            user.state ??
+            ""
+        ).trim();
+
+        if (
+          !user.zone ||
+          !user.state
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Zone and state are required.",
+          });
+        }
+
+        user.lga = null;
+
+        user.zonalManagerId =
+          zonalManager._id;
+
+        user.stateManagerId =
+          null;
+
+        user.agentId =
+          null;
+      }
+
+      if (
+        role === "AGENT"
+      ) {
+        const stateManagerId =
+          String(
+            req.body
+              .stateManagerId ??
+              ""
+          ).trim();
+
+        if (
+          !mongoose.Types.ObjectId
+            .isValid(
+              stateManagerId
+            )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Select a valid State Manager.",
+          });
+        }
+
+        const stateManager =
+          await User.findOne({
+            _id:
+              stateManagerId,
+            role:
+              "STATE_MANAGER",
+            status:
+              "ACTIVE",
+          });
+
+        if (!stateManager) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Active State Manager was not found.",
+          });
+        }
+
+        user.zone = String(
+          req.body.zone ??
+            stateManager.zone ??
+            ""
+        ).trim();
+
+        user.state = String(
+          req.body.state ??
+            stateManager.state ??
+            ""
+        ).trim();
+
+        user.lga = String(
+          req.body.lga ??
+            user.lga ??
+            ""
+        ).trim();
+
+        if (
+          !user.zone ||
+          !user.state ||
+          !user.lga
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Zone, state and LGA are required.",
+          });
+        }
+
+        user.zonalManagerId =
+          stateManager
+            .zonalManagerId ||
+          null;
+
+        user.stateManagerId =
+          stateManager._id;
+
+        user.agentId =
+          null;
+      }
+
+      if (
+        !user.referralCode
+      ) {
+        user.referralCode =
+          await generateUniqueReferralCode(
+            role
+          );
+      }
+
+      await user.save();
+
+      const updatedUser =
+        await User.findById(
+          user._id
+        )
+          .select("-password")
+          .populate(
+            "zonalManagerId",
+            "fullName phone email role zone state status"
+          )
+          .populate(
+            "stateManagerId",
+            "fullName phone email role zone state lga status"
+          )
+          .lean();
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "User role updated successfully.",
+
+        data: {
+          user:
+            updatedUser,
+          previousRole,
+          currentRole:
+            role,
+        },
+
+        user:
+          updatedUser,
+      });
+    } catch (error) {
+      console.error(
+        "Update admin user role error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to update user role.",
+        error:
+          error.message,
+      });
     }
-
-    await user.save();
-
-    const updatedUser =
-      await User.findById(user._id)
-        .select("-password")
-        .populate(
-          "zonalManagerId",
-          "fullName phone email role zone state status"
-        )
-        .populate(
-          "stateManagerId",
-          "fullName phone email role zone state lga status"
-        )
-        .lean();
-
-    return res.status(200).json({
-      success: true,
-      message:
-        "User role updated successfully.",
-      data: {
-        user: updatedUser,
-        previousRole,
-        currentRole: role,
-      },
-      user: updatedUser,
-    });
-  } catch (error) {
-    console.error(
-      "Update admin user role error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Failed to update user role.",
-      error: error.message,
-    });
-  }
-};
+  };
