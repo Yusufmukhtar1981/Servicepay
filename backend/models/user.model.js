@@ -133,6 +133,9 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
+    /*
+     * Main ServicePay account role.
+     */
     role: {
       type: String,
       enum: [
@@ -141,24 +144,29 @@ const userSchema = new mongoose.Schema(
         "ZONAL_MANAGER",
         "STATE_MANAGER",
         "AGENT",
+        "DELIVERY_RIDER",
         "CUSTOMER",
       ],
       default: "CUSTOMER",
+      index: true,
     },
 
     zone: {
       type: String,
       default: null,
+      trim: true,
     },
 
     state: {
       type: String,
       default: null,
+      trim: true,
     },
 
     lga: {
       type: String,
       default: null,
+      trim: true,
     },
 
     zonalManagerId: {
@@ -177,6 +185,212 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
+    },
+
+    /*
+     * Delivery Rider details.
+     * These fields are mainly used when role is DELIVERY_RIDER.
+     */
+    riderId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      unique: true,
+      sparse: true,
+      default: undefined,
+    },
+
+    vehicleType: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      enum: [
+        "MOTORCYCLE",
+        "TRICYCLE",
+        "BICYCLE",
+        "CAR",
+        "VAN",
+        "TRUCK",
+        "OTHER",
+        null,
+      ],
+      default: null,
+    },
+
+    plateNumber: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      default: null,
+    },
+
+    riderState: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    riderLga: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    riderAddress: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    riderEmergencyContactName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    riderEmergencyContactPhone: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    availabilityStatus: {
+      type: String,
+      enum: [
+        "ONLINE",
+        "OFFLINE",
+        "BUSY",
+      ],
+      default: "OFFLINE",
+      index: true,
+    },
+
+    riderVerificationStatus: {
+      type: String,
+      enum: [
+        "NOT_SUBMITTED",
+        "PENDING",
+        "VERIFIED",
+        "REJECTED",
+        "SUSPENDED",
+      ],
+      default: "NOT_SUBMITTED",
+      index: true,
+    },
+
+    riderVerificationNote: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    riderVerifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    riderVerifiedAt: {
+      type: Date,
+      default: null,
+    },
+
+    riderCreatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    riderJoinedAt: {
+      type: Date,
+      default: null,
+    },
+
+    riderLastOnlineAt: {
+      type: Date,
+      default: null,
+    },
+
+    totalRiderEarnings: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    pendingRiderSettlement: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    settledRiderEarnings: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalAssignedDeliveries: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalAcceptedDeliveries: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalCompletedDeliveries: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalRejectedDeliveries: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    riderRating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+
+    riderRatingCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    /*
+     * Optional current rider location.
+     * We will activate live tracking later.
+     */
+    riderCurrentLocation: {
+      latitude: {
+        type: Number,
+        default: null,
+      },
+
+      longitude: {
+        type: Number,
+        default: null,
+      },
+
+      address: {
+        type: String,
+        trim: true,
+        default: null,
+      },
+
+      updatedAt: {
+        type: Date,
+        default: null,
+      },
     },
 
     walletBalance: {
@@ -301,6 +515,7 @@ const userSchema = new mongoose.Schema(
         "BLOCKED",
       ],
       default: "ACTIVE",
+      index: true,
     },
   },
   {
@@ -347,6 +562,16 @@ userSchema.index(
 );
 
 /*
+ * Helps admin find available and verified riders quickly.
+ */
+userSchema.index({
+  role: 1,
+  status: 1,
+  riderVerificationStatus: 1,
+  availabilityStatus: 1,
+});
+
+/*
  * Hash password before saving.
  */
 userSchema.pre("save", async function () {
@@ -381,6 +606,23 @@ userSchema.pre("save", async function () {
 
     this.transactionPinSet = true;
     this.transactionPinUpdatedAt = new Date();
+  }
+
+  /*
+   * Automatically set rider joining date.
+   */
+  if (
+    this.role === "DELIVERY_RIDER" &&
+    !this.riderJoinedAt
+  ) {
+    this.riderJoinedAt = new Date();
+  }
+
+  /*
+   * A non-rider account should not remain online.
+   */
+  if (this.role !== "DELIVERY_RIDER") {
+    this.availabilityStatus = "OFFLINE";
   }
 });
 
@@ -430,6 +672,19 @@ userSchema.methods.setTransactionPin =
     this.transactionPin = pin;
     this.transactionPinSet = true;
     this.transactionPinUpdatedAt = new Date();
+  };
+
+/*
+ * Check whether a rider can receive delivery jobs.
+ */
+userSchema.methods.canReceiveDelivery =
+  function () {
+    return (
+      this.role === "DELIVERY_RIDER" &&
+      this.status === "ACTIVE" &&
+      this.riderVerificationStatus === "VERIFIED" &&
+      this.availabilityStatus === "ONLINE"
+    );
   };
 
 module.exports = mongoose.model(

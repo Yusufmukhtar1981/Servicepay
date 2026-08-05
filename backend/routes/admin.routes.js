@@ -21,6 +21,18 @@ const {
   getAdminAuditLogs,
 } = require("../controllers/adminCustomer.controller");
 
+/*
+ * Delivery Rider management controllers.
+ */
+const {
+  getAdminRiders,
+  createAdminRider,
+  getAdminRiderDetails,
+  updateAdminRider,
+  updateAdminRiderStatus,
+  updateAdminRiderVerification,
+} = require("../controllers/adminRider.controller");
+
 const {
   protect,
   adminOnly,
@@ -265,6 +277,57 @@ router.get(
   protect,
   adminOnly("HEAD_OFFICE"),
   getAdminAuditLogs
+);
+
+/*
+|--------------------------------------------------------------------------
+| DELIVERY RIDERS
+|--------------------------------------------------------------------------
+|
+| Only Head Office can create, verify, suspend or edit riders.
+|
+*/
+
+router.get(
+  "/riders",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminRiders
+);
+
+router.post(
+  "/riders",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  createAdminRider
+);
+
+router.get(
+  "/riders/:id",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminRiderDetails
+);
+
+router.patch(
+  "/riders/:id",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateAdminRider
+);
+
+router.patch(
+  "/riders/:id/status",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateAdminRiderStatus
+);
+
+router.patch(
+  "/riders/:id/verification",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateAdminRiderVerification
 );
 
 /*
