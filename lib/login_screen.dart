@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'forgot_password_screen.dart';
 import 'main_navigation.dart';
+import 'rider/rider_main_navigation.dart';
 import 'role_dashboard_screen.dart';
 import 'register_screen.dart';
 
@@ -231,6 +232,66 @@ class _LoginScreenState extends State<LoginScreen> {
       'user_status',
       user['status']?.toString() ?? 'ACTIVE',
     );
+    await prefs.setString(
+  'rider_id',
+  user['riderId']?.toString() ??
+      user['rider_id']?.toString() ??
+      '',
+);
+
+await prefs.setString(
+  'rider_verification_status',
+  user['riderVerificationStatus']
+          ?.toString()
+          .trim()
+          .toUpperCase() ??
+      'PENDING',
+);
+
+await prefs.setString(
+  'rider_availability_status',
+  user['availabilityStatus']
+          ?.toString()
+          .trim()
+          .toUpperCase() ??
+      'OFFLINE',
+);
+
+await prefs.setString(
+  'rider_vehicle_type',
+  user['vehicleType']?.toString() ?? '',
+);
+
+await prefs.setString(
+  'rider_plate_number',
+  user['plateNumber']?.toString() ?? '',
+);
+
+await prefs.setString(
+  'rider_state',
+  user['riderState']?.toString() ??
+      user['state']?.toString() ??
+      '',
+);
+
+await prefs.setString(
+  'rider_lga',
+  user['riderLga']?.toString() ??
+      user['lga']?.toString() ??
+      '',
+);
+
+final String riderAvailability =
+    user['availabilityStatus']
+            ?.toString()
+            .trim()
+            .toUpperCase() ??
+        'OFFLINE';
+
+await prefs.setBool(
+  'rider_is_online',
+  riderAvailability == 'ONLINE',
+);
 
     final dynamic balanceValue =
         user['walletBalance'] ?? user['wallet_balance'] ?? user['balance'];
@@ -406,20 +467,25 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) {
-            if (role == 'CUSTOMER') {
-              return const MainNavigation();
-            }
+  context,
+  MaterialPageRoute(
+    builder: (_) {
+      if (role == 'DELIVERY_RIDER') {
+        return const RiderMainNavigation();
+      }
 
-            return RoleDashboardScreen(
-              role: role,
-            );
-          },
-        ),
-        (Route<dynamic> route) => false,
+      if (role == 'CUSTOMER') {
+        return const MainNavigation();
+      }
+
+      return RoleDashboardScreen(
+        role: role,
       );
+    },
+  ),
+  (Route<dynamic> route) => false,
+);
+
     } on TimeoutException {
       showMessage(
         'The server took too long to respond. '
