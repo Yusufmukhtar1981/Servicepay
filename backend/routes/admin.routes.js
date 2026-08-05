@@ -8,6 +8,9 @@ const {
   updateAdminUserRole,
   getAdminTransactions,
   getAdminDeliveries,
+  getAvailableRiders,
+  assignRiderToDelivery,
+  unassignRiderFromDelivery,
   updateDeliveryStatus,
   updateDeliveryPrice,
 } = require("../controllers/admin.controller");
@@ -21,9 +24,6 @@ const {
   getAdminAuditLogs,
 } = require("../controllers/adminCustomer.controller");
 
-/*
- * Delivery Rider management controllers.
- */
 const {
   getAdminRiders,
   createAdminRider,
@@ -51,12 +51,6 @@ const MANAGEMENT_ROLES = [
   "STATE_MANAGER",
 ];
 
-/*
-|--------------------------------------------------------------------------
-| HIERARCHY ACCOUNT CREATION PERMISSION
-|--------------------------------------------------------------------------
-*/
-
 const canCreateManagedUser = (
   req,
   res,
@@ -67,7 +61,8 @@ const canCreateManagedUser = (
   if (!creator) {
     return res.status(401).json({
       success: false,
-      message: "Authentication is required.",
+      message:
+        "Authentication is required.",
     });
   }
 
@@ -283,9 +278,6 @@ router.get(
 |--------------------------------------------------------------------------
 | DELIVERY RIDERS
 |--------------------------------------------------------------------------
-|
-| Only Head Office can create, verify, suspend or edit riders.
-|
 */
 
 router.get(
@@ -367,6 +359,27 @@ router.get(
   protect,
   adminOnly("HEAD_OFFICE"),
   getAdminDeliveries
+);
+
+router.get(
+  "/deliveries/:id/available-riders",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAvailableRiders
+);
+
+router.patch(
+  "/deliveries/:id/assign-rider",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  assignRiderToDelivery
+);
+
+router.patch(
+  "/deliveries/:id/unassign-rider",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  unassignRiderFromDelivery
 );
 
 router.patch(
