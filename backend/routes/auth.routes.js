@@ -8,6 +8,7 @@ const {
   changePassword,
   forgotPassword,
   resetPassword,
+  updateRiderAvailability,
 } = require("../controllers/auth.controller");
 
 const {
@@ -52,6 +53,18 @@ router.put(
   "/change-password",
   protect,
   changePassword
+);
+
+/*
+|--------------------------------------------------------------------------
+| DELIVERY RIDER AVAILABILITY
+|--------------------------------------------------------------------------
+*/
+
+router.patch(
+  "/rider/availability",
+  protect,
+  updateRiderAvailability
 );
 
 module.exports = router;

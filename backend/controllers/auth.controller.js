@@ -26,64 +26,197 @@ const formatUser = (user) => {
   return {
     id: user._id,
     _id: user._id,
+
     fullName: user.fullName,
     phone: user.phone,
     email: user.email,
+
     role: user.role,
     status: user.status,
+
     zone: user.zone,
     state: user.state,
     lga: user.lga,
-    zonalManagerId: user.zonalManagerId,
-    stateManagerId: user.stateManagerId,
-    agentId: user.agentId,
+
+    zonalManagerId:
+      user.zonalManagerId,
+
+    stateManagerId:
+      user.stateManagerId,
+
+    agentId:
+      user.agentId,
+
     walletBalance: Number(
       user.walletBalance || 0
     ),
+
     commissionBalance: Number(
       user.commissionBalance || 0
     ),
+
     totalEarnings: Number(
       user.totalEarnings || 0
     ),
+
     totalTransactions: Number(
       user.totalTransactions || 0
     ),
+
     kycVerified:
       user.kycVerified === true,
+
     transactionPinSet:
       user.transactionPinSet === true,
+
     virtualAccount:
       user.virtualAccount || null,
 
-    isStaff: user.isStaff === true,
-    staffId: user.staffId || null,
-    department: user.department || null,
+    /*
+     * Delivery Rider information.
+     */
+    riderId:
+      user.riderId || null,
+
+    riderState:
+      user.riderState ||
+      user.state ||
+      null,
+
+    riderLga:
+      user.riderLga ||
+      user.lga ||
+      null,
+
+    riderAddress:
+      user.riderAddress || null,
+
+    vehicleType:
+      user.vehicleType || null,
+
+    plateNumber:
+      user.plateNumber || null,
+
+    availabilityStatus:
+      user.availabilityStatus ||
+      "OFFLINE",
+
+    riderVerificationStatus:
+      user.riderVerificationStatus ||
+      "NOT_SUBMITTED",
+
+    riderVerificationNote:
+      user.riderVerificationNote ||
+      null,
+
+    riderVerifiedAt:
+      user.riderVerifiedAt ||
+      null,
+
+    riderJoinedAt:
+      user.riderJoinedAt ||
+      null,
+
+    riderLastOnlineAt:
+      user.riderLastOnlineAt ||
+      null,
+
+    riderEmergencyContactName:
+      user.riderEmergencyContactName ||
+      null,
+
+    riderEmergencyContactPhone:
+      user.riderEmergencyContactPhone ||
+      null,
+
+    totalRiderEarnings: Number(
+      user.totalRiderEarnings || 0
+    ),
+
+    pendingRiderSettlement: Number(
+      user.pendingRiderSettlement || 0
+    ),
+
+    settledRiderEarnings: Number(
+      user.settledRiderEarnings || 0
+    ),
+
+    totalAssignedDeliveries: Number(
+      user.totalAssignedDeliveries || 0
+    ),
+
+    totalAcceptedDeliveries: Number(
+      user.totalAcceptedDeliveries || 0
+    ),
+
+    totalCompletedDeliveries: Number(
+      user.totalCompletedDeliveries || 0
+    ),
+
+    totalRejectedDeliveries: Number(
+      user.totalRejectedDeliveries || 0
+    ),
+
+    riderRating: Number(
+      user.riderRating || 0
+    ),
+
+    riderRatingCount: Number(
+      user.riderRatingCount || 0
+    ),
+
+    riderCurrentLocation:
+      user.riderCurrentLocation ||
+      null,
+
+    /*
+     * Staff information.
+     */
+    isStaff:
+      user.isStaff === true,
+
+    staffId:
+      user.staffId || null,
+
+    department:
+      user.department || null,
+
     mustChangePassword:
       user.mustChangePassword === true,
+
     lastStaffLoginAt:
       user.lastStaffLoginAt || null,
 
     staffRole:
       user.staffRoleId &&
-      typeof user.staffRoleId === "object" &&
+      typeof user.staffRoleId ===
+        "object" &&
       user.staffRoleId.name
         ? {
             id:
               user.staffRoleId._id ||
               user.staffRoleId.id,
+
             name:
               user.staffRoleId.name,
+
             displayName:
-              user.staffRoleId.displayName,
+              user.staffRoleId
+                .displayName,
+
             department:
-              user.staffRoleId.department,
+              user.staffRoleId
+                .department,
+
             permissions:
               Array.isArray(
-                user.staffRoleId.permissions
+                user.staffRoleId
+                  .permissions
               )
-                ? user.staffRoleId.permissions
+                ? user.staffRoleId
+                    .permissions
                 : [],
+
             status:
               user.staffRoleId.status,
           }
@@ -91,15 +224,20 @@ const formatUser = (user) => {
 
     permissions:
       user.staffRoleId &&
-      typeof user.staffRoleId === "object" &&
+      typeof user.staffRoleId ===
+        "object" &&
       Array.isArray(
         user.staffRoleId.permissions
       )
-        ? user.staffRoleId.permissions
+        ? user.staffRoleId
+            .permissions
         : [],
 
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
+    createdAt:
+      user.createdAt,
+
+    updatedAt:
+      user.updatedAt,
   };
 };
 
@@ -1211,4 +1349,156 @@ exports.resetPassword = async (req, res) => {
     });
   }
 };
+/*
+|--------------------------------------------------------------------------
+| UPDATE RIDER AVAILABILITY
+|--------------------------------------------------------------------------
+|
+| PATCH /api/auth/rider/availability
+|
+| Body:
+| {
+|   "availabilityStatus": "ONLINE"
+| }
+|
+*/
+
+exports.updateRiderAvailability =
+  async (req, res) => {
+    try {
+      const userId =
+        req.user?._id ||
+        req.user?.id ||
+        req.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "Authentication is required.",
+        });
+      }
+
+      const availabilityStatus =
+        String(
+          req.body
+            ?.availabilityStatus ||
+            req.body?.status ||
+            ""
+        )
+          .trim()
+          .toUpperCase();
+
+      const allowedStatuses = [
+        "ONLINE",
+        "OFFLINE",
+        "BUSY",
+      ];
+
+      if (
+        !allowedStatuses.includes(
+          availabilityStatus
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Availability status must be ONLINE, OFFLINE or BUSY.",
+        });
+      }
+
+      const rider =
+        await User.findById(userId);
+
+      if (!rider) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Rider account was not found.",
+        });
+      }
+
+      const riderRole = String(
+        rider.role || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      if (
+        riderRole !==
+        "DELIVERY_RIDER"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Only Delivery Rider accounts can update availability.",
+        });
+      }
+
+      if (
+        rider.status !== "ACTIVE"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Your rider account is not active.",
+        });
+      }
+
+      if (
+        rider.riderVerificationStatus !==
+          "VERIFIED" &&
+        availabilityStatus !==
+          "OFFLINE"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Your rider account must be verified before going online.",
+        });
+      }
+
+      rider.availabilityStatus =
+        availabilityStatus;
+
+      if (
+        availabilityStatus ===
+        "ONLINE"
+      ) {
+        rider.riderLastOnlineAt =
+          new Date();
+      }
+
+      await rider.save();
+
+      return res.status(200).json({
+        success: true,
+        message:
+          availabilityStatus ===
+          "ONLINE"
+            ? "You are now online and available for delivery jobs."
+            : availabilityStatus ===
+                "BUSY"
+              ? "Your rider status is now busy."
+              : "You are now offline.",
+
+        user: formatUser(rider),
+
+        data: {
+          user: formatUser(rider),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Update rider availability error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to update rider availability.",
+      });
+    }
+  };
 
