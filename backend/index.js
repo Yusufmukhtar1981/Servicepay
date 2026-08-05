@@ -42,6 +42,10 @@ const deliveryRoutes = require(
   "./routes/delivery.routes"
 );
 
+const riderRoutes = require(
+  "./routes/rider.routes"
+);
+
 const notificationRoutes = require(
   "./routes/notification.routes"
 );
@@ -167,6 +171,11 @@ app.use(
 app.use(
   "/api/delivery",
   deliveryRoutes
+);
+
+app.use(
+  "/api/rider",
+  riderRoutes
 );
 
 app.use(
