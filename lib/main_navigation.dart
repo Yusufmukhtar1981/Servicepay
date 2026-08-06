@@ -6,14 +6,19 @@ import 'transactions_screen.dart';
 import 'wallet_screen.dart';
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+  const MainNavigation({
+    super.key,
+  });
 
   @override
-  State<MainNavigation> createState() => _MainNavigationState();
+  State<MainNavigation> createState() =>
+      _MainNavigationState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
-  static const Color primaryGreen = Color(0xFF08783E);
+class _MainNavigationState
+    extends State<MainNavigation> {
+  static const Color primaryGreen =
+      Color(0xFF08783E);
 
   int currentIndex = 0;
 
@@ -25,7 +30,9 @@ class _MainNavigationState extends State<MainNavigation> {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       extendBody: false,
       body: IndexedStack(
@@ -33,56 +40,79 @@ class _MainNavigationState extends State<MainNavigation> {
         children: pages,
       ),
       bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(
+        top: false,
+        minimum:
+            const EdgeInsets.fromLTRB(
           10,
           0,
           10,
           8,
         ),
         child: Container(
-          height: 68,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: 7,
+          height: 78,
+          padding:
+              const EdgeInsets.symmetric(
+            horizontal: 7,
+            vertical: 6,
           ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius:
+                BorderRadius.circular(
+              22,
+            ),
             border: Border.all(
-              color: const Color(0xFFE7EAEF),
+              color: const Color(
+                0xFFE7EAEF,
+              ),
             ),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x24101828),
+                color: Color(
+                  0x24101828,
+                ),
                 blurRadius: 24,
-                offset: Offset(0, 10),
+                offset: Offset(
+                  0,
+                  10,
+                ),
               ),
             ],
           ),
           child: Row(
+            crossAxisAlignment:
+                CrossAxisAlignment.stretch,
             children: [
               buildNavigationItem(
                 index: 0,
-                icon: Icons.home_outlined,
-                activeIcon: Icons.home_rounded,
+                icon:
+                    Icons.home_outlined,
+                activeIcon:
+                    Icons.home_rounded,
                 label: 'Home',
               ),
               buildNavigationItem(
                 index: 1,
-                icon: Icons.receipt_long_outlined,
-                activeIcon: Icons.receipt_long_rounded,
+                icon: Icons
+                    .receipt_long_outlined,
+                activeIcon: Icons
+                    .receipt_long_rounded,
                 label: 'Transactions',
               ),
               buildNavigationItem(
                 index: 2,
-                icon: Icons.account_balance_wallet_outlined,
-                activeIcon: Icons.account_balance_wallet_rounded,
+                icon: Icons
+                    .account_balance_wallet_outlined,
+                activeIcon: Icons
+                    .account_balance_wallet_rounded,
                 label: 'Wallet',
               ),
               buildNavigationItem(
                 index: 3,
-                icon: Icons.person_outline_rounded,
-                activeIcon: Icons.person_rounded,
+                icon: Icons
+                    .person_outline_rounded,
+                activeIcon:
+                    Icons.person_rounded,
                 label: 'Profile',
               ),
             ],
@@ -98,56 +128,122 @@ class _MainNavigationState extends State<MainNavigation> {
     required IconData activeIcon,
     required String label,
   }) {
-    final bool selected = currentIndex == index;
+    final bool selected =
+        currentIndex == index;
 
     return Expanded(
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            currentIndex = index;
-          });
-        },
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 4,
-            vertical: 7,
-          ),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF7F0) : Colors.transparent,
-            borderRadius: BorderRadius.circular(19),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                width: selected ? 34 : 29,
-                height: selected ? 34 : 29,
-                decoration: BoxDecoration(
-                  color: selected ? primaryGreen : Colors.transparent,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  selected ? activeIcon : icon,
-                  color: selected ? Colors.white : const Color(0xFF667085),
-                  size: selected ? 20 : 22,
+      child: Padding(
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 2,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              setState(() {
+                currentIndex = index;
+              });
+            },
+            borderRadius:
+                BorderRadius.circular(
+              18,
+            ),
+            child: AnimatedContainer(
+              duration:
+                  const Duration(
+                milliseconds: 220,
+              ),
+              curve: Curves.easeOut,
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 2,
+                vertical: 5,
+              ),
+              decoration:
+                  BoxDecoration(
+                color: selected
+                    ? const Color(
+                        0xFFEAF7F0,
+                      )
+                    : Colors.transparent,
+                borderRadius:
+                    BorderRadius.circular(
+                  18,
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  color: selected ? primaryGreen : const Color(0xFF667085),
-                ),
+              child: Column(
+                mainAxisSize:
+                    MainAxisSize.min,
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration:
+                        const Duration(
+                      milliseconds: 220,
+                    ),
+                    width:
+                        selected ? 31 : 27,
+                    height:
+                        selected ? 31 : 27,
+                    decoration:
+                        BoxDecoration(
+                      color: selected
+                          ? primaryGreen
+                          : Colors.transparent,
+                      shape:
+                          BoxShape.circle,
+                    ),
+                    alignment:
+                        Alignment.center,
+                    child: Icon(
+                      selected
+                          ? activeIcon
+                          : icon,
+                      color: selected
+                          ? Colors.white
+                          : const Color(
+                              0xFF667085,
+                            ),
+                      size:
+                          selected ? 19 : 21,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 3,
+                  ),
+                  SizedBox(
+                    width:
+                        double.infinity,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      textAlign:
+                          TextAlign.center,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: label ==
+                                'Transactions'
+                            ? 9
+                            : 10,
+                        height: 1,
+                        fontWeight:
+                            selected
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                        color: selected
+                            ? primaryGreen
+                            : const Color(
+                                0xFF667085,
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

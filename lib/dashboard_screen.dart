@@ -465,51 +465,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Row(
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF12A85B),
-                    Color(0xFF006837),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x3308783E),
-                    blurRadius: 14,
-                    offset: Offset(0, 7),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Text(
-                  'S',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 25,
-                    fontWeight: FontWeight.w900,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 11),
-            const Expanded(
-              child: Text(
-                'ServicePay',
-                style: TextStyle(
-                  color: Color(0xFF064E2F),
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.7,
-                ),
+            SizedBox(
+              width: 165,
+              height: 58,
+              child: Image.asset(
+                'assets/image/servicepay_logo.png',
+                fit: BoxFit.contain,
+                alignment: Alignment.centerLeft,
+                filterQuality: FilterQuality.high,
+                errorBuilder: (
+                  BuildContext context,
+                  Object error,
+                  StackTrace? stackTrace,
+                ) {
+                  debugPrint(
+                    'DASHBOARD LOGO ERROR: $error',
+                  );
+
+                  return const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'ServicePay',
+                      style: TextStyle(
+                        color: Color(0xFF064E2F),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.7,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
+            const Spacer(),
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -520,9 +508,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     );
                   },
                   style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFFEAF7F0),
+                    backgroundColor: softGreen,
                     foregroundColor: primaryGreen,
-                    minimumSize: const Size(45, 45),
+                    minimumSize: const Size(
+                      45,
+                      45,
+                    ),
                   ),
                   icon: const Icon(
                     Icons.notifications_none_rounded,
@@ -560,7 +551,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 13),
+        const SizedBox(
+          height: 13,
+        ),
         Row(
           children: [
             Container(
@@ -581,7 +574,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            const SizedBox(width: 13),
+            const SizedBox(
+              width: 13,
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -597,7 +592,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(
+                    height: 3,
+                  ),
                   const Text(
                     'Welcome back! Glad to see you.',
                     style: TextStyle(
@@ -614,8 +611,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 vertical: 9,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF7F0),
-                borderRadius: BorderRadius.circular(25),
+                color: softGreen,
+                borderRadius: BorderRadius.circular(
+                  25,
+                ),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
@@ -625,7 +624,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     color: primaryGreen,
                     size: 18,
                   ),
-                  SizedBox(width: 6),
+                  SizedBox(
+                    width: 6,
+                  ),
                   Text(
                     'Verified',
                     style: TextStyle(
@@ -1162,7 +1163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 13),
         SizedBox(
-          height: 108,
+          height: 128,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: services.length,
@@ -1202,7 +1203,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 105,
+          height: 120,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: services.length,
@@ -1733,7 +1734,7 @@ class _PopularServiceCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: 8,
-            vertical: 13,
+            vertical: 9,
           ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
@@ -1752,8 +1753,8 @@ class _PopularServiceCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 49,
-                height: 49,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: service.backgroundColor,
                   borderRadius: BorderRadius.circular(15),
@@ -1764,7 +1765,7 @@ class _PopularServiceCard extends StatelessWidget {
                   size: 27,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 7),
               Text(
                 service.title,
                 maxLines: 2,
@@ -1772,7 +1773,8 @@ class _PopularServiceCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Color(0xFF1D2939),
-                  fontSize: 12,
+                  fontSize: 11,
+                  height: 1.15,
                   fontWeight: FontWeight.w700,
                 ),
               ),
