@@ -36,10 +36,32 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   bool isLoading = false;
   bool isLoadingHistory = true;
 
+  String selectedIdType = 'NIN';
   String selectedSearchType = 'NIN_NUMBER';
   String selectedSlipType = 'PREMIUM';
 
   List<Map<String, dynamic>> verificationHistory = [];
+
+  final Map<String, Map<String, dynamic>> idTypes = {
+    'NIN': {
+      'title': 'NIN',
+      'subtitle': 'National Identification Number',
+      'icon': Icons.badge_outlined,
+      'available': true,
+    },
+    'BVN': {
+      'title': 'BVN',
+      'subtitle': 'Bank Verification Number',
+      'icon': Icons.account_balance_outlined,
+      'available': false,
+    },
+    'PASSPORT': {
+      'title': 'Passport',
+      'subtitle': 'International Passport',
+      'icon': Icons.public_rounded,
+      'available': false,
+    },
+  };
 
   final Map<String, Map<String, dynamic>> searchTypes = {
     'NIN_NUMBER': {
@@ -85,6 +107,11 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   @override
   void initState() {
     super.initState();
+
+    final String requestedType = widget.initialIdType.trim().toUpperCase();
+
+    selectedIdType = idTypes.containsKey(requestedType) ? requestedType : 'NIN';
+
     loadVerificationHistory();
   }
 
@@ -593,6 +620,97 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
     );
   }
 
+  Widget buildIdTypeCard(String key) {
+    final Map<String, dynamic> item = idTypes[key]!;
+
+    final bool selected = selectedIdType == key;
+
+    final bool available = item['available'] == true;
+
+    return SizedBox(
+      width: 150,
+      child: InkWell(
+        onTap: isLoading
+            ? null
+            : () {
+                if (!available) {
+                  showMessage(
+                    '${item['title']} verification will be available soon.',
+                    isError: true,
+                  );
+                  return;
+                }
+
+                setState(() {
+                  selectedIdType = key;
+                });
+              },
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: 126,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF9F4) : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? primaryGreen : const Color(0xFFE5E7EB),
+              width: selected ? 2.5 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                item['icon'] as IconData,
+                size: 30,
+                color: available ? primaryGreen : Colors.grey,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                item['title'].toString(),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: available ? const Color(0xFF17211A) : Colors.grey,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                item['subtitle'].toString(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF8A8A94),
+                  fontSize: 10,
+                  height: 1.1,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (!available)
+                const Padding(
+                  padding: EdgeInsets.only(top: 3),
+                  child: Text(
+                    'Soon',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget buildSearchTypeCard(
     String key,
   ) {
@@ -622,8 +740,11 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
         borderRadius: BorderRadius.circular(18),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          height: 120,
-          padding: const EdgeInsets.all(12),
+          height: 142,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 7,
+            vertical: 10,
+          ),
           decoration: BoxDecoration(
             color: selected ? const Color(0xFFF0ECFF) : Colors.white,
             borderRadius: BorderRadius.circular(18),
@@ -638,30 +759,36 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
             children: [
               Icon(
                 item['icon'] as IconData,
-                size: 31,
+                size: 29,
                 color: available ? const Color(0xFF805AD5) : Colors.grey,
               ),
-              const SizedBox(height: 10),
-              Text(
-                item['title'].toString(),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: available ? const Color(0xFF29263A) : Colors.grey,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              if (!available)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Text(
-                    'Soon',
-                    style: TextStyle(
-                      color: Colors.orange,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: Text(
+                  item['title'].toString(),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: available ? const Color(0xFF29263A) : Colors.grey,
+                    fontSize: 13,
+                    height: 1.15,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+              ),
+              if (!available) ...[
+                const SizedBox(height: 4),
+                const Text(
+                  'Soon',
+                  style: TextStyle(
+                    color: Colors.orange,
+                    fontSize: 10,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -847,7 +974,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
       backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
         title: const Text(
-          'NIN Verification',
+          'ID Verification',
           style: TextStyle(
             fontWeight: FontWeight.w800,
           ),
@@ -880,6 +1007,31 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                   children: [
                     buildSectionNumber(
                       '1',
+                      'ID Type',
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 126,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: idTypes.length,
+                        separatorBuilder: (_, __) => const SizedBox(
+                          width: 10,
+                        ),
+                        itemBuilder: (context, index) {
+                          final String key = idTypes.keys.elementAt(
+                            index,
+                          );
+
+                          return buildIdTypeCard(
+                            key,
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    buildSectionNumber(
+                      '2',
                       'Search Type',
                     ),
                     const SizedBox(height: 16),
@@ -900,7 +1052,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                     ),
                     const SizedBox(height: 28),
                     buildSectionNumber(
-                      '2',
+                      '3',
                       'Slip Layout',
                     ),
                     const SizedBox(height: 16),
@@ -925,7 +1077,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                     ),
                     const SizedBox(height: 28),
                     buildSectionNumber(
-                      '3',
+                      '4',
                       'Supply ID Number',
                     ),
                     const SizedBox(height: 16),

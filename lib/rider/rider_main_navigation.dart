@@ -6,10 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../login_screen.dart';
+import 'rider_withdrawal_screen.dart';
 
 class RiderApi {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static Map<String, dynamic> mapFromDynamic(
     dynamic value,
@@ -21,8 +21,7 @@ class RiderApi {
     return <String, dynamic>{};
   }
 
-  static List<Map<String, dynamic>>
-      listFromDynamic(
+  static List<Map<String, dynamic>> listFromDynamic(
     dynamic value,
   ) {
     if (value is! List) {
@@ -32,8 +31,7 @@ class RiderApi {
     return value
         .whereType<Map>()
         .map(
-          (Map item) =>
-              Map<String, dynamic>.from(item),
+          (Map item) => Map<String, dynamic>.from(item),
         )
         .toList();
   }
@@ -42,12 +40,9 @@ class RiderApi {
     dynamic value, {
     String fallback = '',
   }) {
-    final String result =
-        value?.toString().trim() ?? '';
+    final String result = value?.toString().trim() ?? '';
 
-    return result.isEmpty
-        ? fallback
-        : result;
+    return result.isEmpty ? fallback : result;
   }
 
   static int integer(
@@ -71,22 +66,19 @@ class RiderApi {
   static Map<String, dynamic> decodeResponse(
     http.Response response,
   ) {
-    final String body =
-        response.body.trim();
+    final String body = response.body.trim();
 
     if (body.isEmpty) {
       return <String, dynamic>{};
     }
 
-    final dynamic decoded =
-        jsonDecode(body);
+    final dynamic decoded = jsonDecode(body);
 
     return mapFromDynamic(decoded);
   }
 
   static Future<String> getToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     const List<String> tokenKeys = [
       'auth_token',
@@ -98,8 +90,7 @@ class RiderApi {
     ];
 
     for (final String key in tokenKeys) {
-      String token =
-          prefs.getString(key)?.trim() ?? '';
+      String token = prefs.getString(key)?.trim() ?? '';
 
       if (token.toLowerCase().startsWith(
             'bearer ',
@@ -115,10 +106,8 @@ class RiderApi {
     return '';
   }
 
-  static Future<Map<String, dynamic>>
-      getProfile() async {
-    final String token =
-        await getToken();
+  static Future<Map<String, dynamic>> getProfile() async {
+    final String token = await getToken();
 
     if (token.isEmpty) {
       throw Exception(
@@ -126,42 +115,33 @@ class RiderApi {
       );
     }
 
-    final http.Response response =
-        await http
-            .get(
-              Uri.parse(
-                '$baseUrl/auth/profile',
-              ),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization':
-                    'Bearer $token',
-              },
-            )
-            .timeout(
-              const Duration(seconds: 35),
-            );
+    final http.Response response = await http.get(
+      Uri.parse(
+        '$baseUrl/auth/profile',
+      ),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(
+      const Duration(seconds: 35),
+    );
 
-    final Map<String, dynamic> root =
-        decodeResponse(response);
+    final Map<String, dynamic> root = decodeResponse(response);
 
-    if (response.statusCode < 200 ||
-        response.statusCode >= 300) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         text(
           root['message'],
-          fallback:
-              'Unable to load rider profile.',
+          fallback: 'Unable to load rider profile.',
         ),
       );
     }
 
-    Map<String, dynamic> user =
-        mapFromDynamic(root['user']);
+    Map<String, dynamic> user = mapFromDynamic(root['user']);
 
     if (user.isEmpty) {
-      final Map<String, dynamic> data =
-          mapFromDynamic(root['data']);
+      final Map<String, dynamic> data = mapFromDynamic(root['data']);
 
       user = mapFromDynamic(
         data['user'],
@@ -180,8 +160,7 @@ class RiderApi {
   static Future<void> saveProfile(
     Map<String, dynamic> user,
   ) async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     final String riderName = text(
       user['fullName'],
@@ -250,34 +229,29 @@ class RiderApi {
     await prefs.setString(
       'rider_state',
       text(
-        user['riderState'] ??
-            user['state'],
+        user['riderState'] ?? user['state'],
       ),
     );
 
     await prefs.setString(
       'rider_lga',
       text(
-        user['riderLga'] ??
-            user['lga'],
+        user['riderLga'] ?? user['lga'],
       ),
     );
   }
 }
 
-class RiderMainNavigation
-    extends StatefulWidget {
+class RiderMainNavigation extends StatefulWidget {
   const RiderMainNavigation({
     super.key,
   });
 
   @override
-  State<RiderMainNavigation> createState() =>
-      _RiderMainNavigationState();
+  State<RiderMainNavigation> createState() => _RiderMainNavigationState();
 }
 
-class _RiderMainNavigationState
-    extends State<RiderMainNavigation> {
+class _RiderMainNavigationState extends State<RiderMainNavigation> {
   int currentIndex = 0;
 
   late final List<Widget> pages;
@@ -339,12 +313,10 @@ class _RiderMainNavigationState
           ),
           NavigationDestination(
             icon: Icon(
-              Icons
-                  .account_balance_wallet_outlined,
+              Icons.account_balance_wallet_outlined,
             ),
             selectedIcon: Icon(
-              Icons
-                  .account_balance_wallet_rounded,
+              Icons.account_balance_wallet_rounded,
             ),
             label: 'Earnings',
           ),
@@ -363,8 +335,7 @@ class _RiderMainNavigationState
   }
 }
 
-class RiderDashboardScreen
-    extends StatefulWidget {
+class RiderDashboardScreen extends StatefulWidget {
   const RiderDashboardScreen({
     required this.openDeliveries,
     super.key,
@@ -373,25 +344,19 @@ class RiderDashboardScreen
   final VoidCallback openDeliveries;
 
   @override
-  State<RiderDashboardScreen> createState() =>
-      _RiderDashboardScreenState();
+  State<RiderDashboardScreen> createState() => _RiderDashboardScreenState();
 }
 
-class _RiderDashboardScreenState
-    extends State<RiderDashboardScreen> {
-  static const Color primaryGreen =
-      Color(0xFF159447);
+class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
+  static const Color primaryGreen = Color(0xFF159447);
 
-  String riderName =
-      'Delivery Rider';
+  String riderName = 'Delivery Rider';
 
   String riderId = '';
 
-  String verificationStatus =
-      'PENDING';
+  String verificationStatus = 'PENDING';
 
-  String availabilityStatus =
-      'OFFLINE';
+  String availabilityStatus = 'OFFLINE';
 
   bool isOnline = false;
   bool isLoading = true;
@@ -424,19 +389,15 @@ class _RiderDashboardScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? Colors.red.shade700
-              : Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor:
+              isError ? Colors.red.shade700 : Colors.green.shade700,
         ),
       );
   }
 
-  Future<Map<String, dynamic>>
-      loadDeliverySummary() async {
-    final String token =
-        await RiderApi.getToken();
+  Future<Map<String, dynamic>> loadDeliverySummary() async {
+    final String token = await RiderApi.getToken();
 
     if (token.isEmpty) {
       throw Exception(
@@ -444,40 +405,31 @@ class _RiderDashboardScreenState
       );
     }
 
-    final http.Response response =
-        await http
-            .get(
-              Uri.parse(
-                '${RiderApi.baseUrl}'
-                '/rider/deliveries',
-              ),
-              headers: {
-                'Accept':
-                    'application/json',
-                'Authorization':
-                    'Bearer $token',
-              },
-            )
-            .timeout(
-              const Duration(seconds: 35),
-            );
+    final http.Response response = await http.get(
+      Uri.parse(
+        '${RiderApi.baseUrl}'
+        '/rider/deliveries',
+      ),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(
+      const Duration(seconds: 35),
+    );
 
-    final Map<String, dynamic> root =
-        RiderApi.decodeResponse(response);
+    final Map<String, dynamic> root = RiderApi.decodeResponse(response);
 
-    if (response.statusCode < 200 ||
-        response.statusCode >= 300) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         RiderApi.text(
           root['message'],
-          fallback:
-              'Unable to load delivery summary.',
+          fallback: 'Unable to load delivery summary.',
         ),
       );
     }
 
-    final Map<String, dynamic> data =
-        RiderApi.mapFromDynamic(
+    final Map<String, dynamic> data = RiderApi.mapFromDynamic(
       root['data'],
     );
 
@@ -494,24 +446,20 @@ class _RiderDashboardScreenState
     }
 
     try {
-      final List<dynamic> responses =
-          await Future.wait<dynamic>([
+      final List<dynamic> responses = await Future.wait<dynamic>([
         RiderApi.getProfile(),
         loadDeliverySummary(),
       ]);
 
-      final Map<String, dynamic> user =
-          RiderApi.mapFromDynamic(
+      final Map<String, dynamic> user = RiderApi.mapFromDynamic(
         responses[0],
       );
 
-      final Map<String, dynamic> summary =
-          RiderApi.mapFromDynamic(
+      final Map<String, dynamic> summary = RiderApi.mapFromDynamic(
         responses[1],
       );
 
-      final String role =
-          RiderApi.text(
+      final String role = RiderApi.text(
         user['role'],
         fallback: 'CUSTOMER',
       ).toUpperCase();
@@ -538,51 +486,39 @@ class _RiderDashboardScreenState
           user['riderId'],
         );
 
-        verificationStatus =
-            RiderApi.text(
+        verificationStatus = RiderApi.text(
           user['riderVerificationStatus'],
           fallback: 'PENDING',
         ).toUpperCase();
 
-        availabilityStatus =
-            RiderApi.text(
+        availabilityStatus = RiderApi.text(
           user['availabilityStatus'],
           fallback: 'OFFLINE',
         ).toUpperCase();
 
-        isOnline =
-            availabilityStatus == 'ONLINE';
+        isOnline = availabilityStatus == 'ONLINE';
 
-        assignedDeliveries =
-            RiderApi.integer(
-          summary['totalAssigned'] ??
-              user['totalAssignedDeliveries'],
+        assignedDeliveries = RiderApi.integer(
+          summary['totalAssigned'] ?? user['totalAssignedDeliveries'],
         );
 
-        activeDeliveries =
-            RiderApi.integer(
+        activeDeliveries = RiderApi.integer(
           summary['active'],
         );
 
-        completedDeliveries =
-            RiderApi.integer(
-          summary['completed'] ??
-              user[
-                  'totalCompletedDeliveries'],
+        completedDeliveries = RiderApi.integer(
+          summary['completed'] ?? user['totalCompletedDeliveries'],
         );
 
-        pendingAcceptance =
-            RiderApi.integer(
+        pendingAcceptance = RiderApi.integer(
           summary['pendingAcceptance'],
         );
 
-        totalEarnings =
-            RiderApi.number(
+        totalEarnings = RiderApi.number(
           user['totalRiderEarnings'],
         );
 
-        todayEarnings =
-            RiderApi.number(
+        todayEarnings = RiderApi.number(
           user['todayRiderEarnings'],
         );
 
@@ -631,8 +567,7 @@ class _RiderDashboardScreenState
       return;
     }
 
-    if (value &&
-        verificationStatus != 'VERIFIED') {
+    if (value && verificationStatus != 'VERIFIED') {
       showMessage(
         'Your rider account must be verified before going online.',
       );
@@ -644,8 +579,7 @@ class _RiderDashboardScreenState
     });
 
     try {
-      final String token =
-          await RiderApi.getToken();
+      final String token = await RiderApi.getToken();
 
       if (token.isEmpty) {
         throw Exception(
@@ -653,57 +587,46 @@ class _RiderDashboardScreenState
         );
       }
 
-      final String requestedStatus =
-          value ? 'ONLINE' : 'OFFLINE';
+      final String requestedStatus = value ? 'ONLINE' : 'OFFLINE';
 
-      final http.Response response =
-          await http
-              .patch(
-                Uri.parse(
-                  '${RiderApi.baseUrl}'
-                  '/auth/rider/availability',
-                ),
-                headers: {
-                  'Accept':
-                      'application/json',
-                  'Content-Type':
-                      'application/json',
-                  'Authorization':
-                      'Bearer $token',
-                },
-                body: jsonEncode({
-                  'availabilityStatus':
-                      requestedStatus,
-                }),
-              )
-              .timeout(
-                const Duration(seconds: 35),
-              );
+      final http.Response response = await http
+          .patch(
+            Uri.parse(
+              '${RiderApi.baseUrl}'
+              '/auth/rider/availability',
+            ),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'availabilityStatus': requestedStatus,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 35),
+          );
 
-      final Map<String, dynamic> root =
-          RiderApi.decodeResponse(
+      final Map<String, dynamic> root = RiderApi.decodeResponse(
         response,
       );
 
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
           RiderApi.text(
             root['message'],
-            fallback:
-                'Unable to update rider availability.',
+            fallback: 'Unable to update rider availability.',
           ),
         );
       }
 
-      Map<String, dynamic> user =
-          RiderApi.mapFromDynamic(
+      Map<String, dynamic> user = RiderApi.mapFromDynamic(
         root['user'],
       );
 
       if (user.isEmpty) {
-        final Map<String, dynamic> data =
-            RiderApi.mapFromDynamic(
+        final Map<String, dynamic> data = RiderApi.mapFromDynamic(
           root['data'],
         );
 
@@ -712,8 +635,7 @@ class _RiderDashboardScreenState
         );
       }
 
-      final String updatedStatus =
-          RiderApi.text(
+      final String updatedStatus = RiderApi.text(
         user['availabilityStatus'],
         fallback: requestedStatus,
       ).toUpperCase();
@@ -725,19 +647,15 @@ class _RiderDashboardScreenState
       }
 
       setState(() {
-        availabilityStatus =
-            updatedStatus;
+        availabilityStatus = updatedStatus;
 
-        isOnline =
-            updatedStatus == 'ONLINE';
+        isOnline = updatedStatus == 'ONLINE';
       });
 
       showMessage(
         RiderApi.text(
           root['message'],
-          fallback: isOnline
-              ? 'You are now online.'
-              : 'You are now offline.',
+          fallback: isOnline ? 'You are now online.' : 'You are now offline.',
         ),
         isError: false,
       );
@@ -770,13 +688,13 @@ class _RiderDashboardScreenState
   ) {
     return '₦${value.toStringAsFixed(2)}';
   }
+
   @override
   Widget build(
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
@@ -790,25 +708,21 @@ class _RiderDashboardScreenState
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed:
-                isLoading ? null : loadDashboard,
+            onPressed: isLoading ? null : loadDashboard,
             icon: const Icon(
               Icons.refresh_rounded,
             ),
           ),
           IconButton(
             tooltip: 'Deliveries',
-            onPressed:
-                widget.openDeliveries,
+            onPressed: widget.openDeliveries,
             icon: Badge(
-              isLabelVisible:
-                  pendingAcceptance > 0,
+              isLabelVisible: pendingAcceptance > 0,
               label: Text(
                 pendingAcceptance.toString(),
               ),
               child: const Icon(
-                Icons
-                    .notifications_outlined,
+                Icons.notifications_outlined,
               ),
             ),
           ),
@@ -817,70 +731,54 @@ class _RiderDashboardScreenState
       ),
       body: isLoading
           ? const Center(
-              child:
-                  CircularProgressIndicator(),
+              child: CircularProgressIndicator(),
             )
           : RefreshIndicator(
               onRefresh: loadDashboard,
               child: ListView(
-                padding:
-                    const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.all(18),
+                    padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      gradient:
-                          const LinearGradient(
+                      gradient: const LinearGradient(
                         colors: [
                           Color(0xFF159447),
                           Color(0xFF0F766E),
                         ],
-                        begin:
-                            Alignment.topLeft,
-                        end:
-                            Alignment.bottomRight,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      borderRadius:
-                          BorderRadius.circular(
+                      borderRadius: BorderRadius.circular(
                         22,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: primaryGreen
-                              .withValues(
+                          color: primaryGreen.withValues(
                             alpha: 0.22,
                           ),
                           blurRadius: 18,
-                          offset:
-                              const Offset(0, 8),
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
                             Container(
                               width: 56,
                               height: 56,
-                              decoration:
-                                  BoxDecoration(
-                                color: Colors.white
-                                    .withValues(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(
                                   alpha: 0.18,
                                 ),
-                                shape:
-                                    BoxShape.circle,
+                                shape: BoxShape.circle,
                               ),
                               child: const Icon(
-                                Icons
-                                    .delivery_dining_rounded,
-                                color:
-                                    Colors.white,
+                                Icons.delivery_dining_rounded,
+                                color: Colors.white,
                                 size: 34,
                               ),
                             ),
@@ -889,16 +787,12 @@ class _RiderDashboardScreenState
                             ),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
                                     'Welcome back',
-                                    style:
-                                        TextStyle(
-                                      color: Colors
-                                          .white70,
+                                    style: TextStyle(
+                                      color: Colors.white70,
                                       fontSize: 13,
                                     ),
                                   ),
@@ -908,27 +802,18 @@ class _RiderDashboardScreenState
                                   Text(
                                     riderName,
                                     maxLines: 1,
-                                    overflow:
-                                        TextOverflow
-                                            .ellipsis,
-                                    style:
-                                        const TextStyle(
-                                      color:
-                                          Colors.white,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
                                       fontSize: 20,
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  if (riderId
-                                      .isNotEmpty)
+                                  if (riderId.isNotEmpty)
                                     Text(
                                       'Rider ID: $riderId',
-                                      style:
-                                          const TextStyle(
-                                        color: Colors
-                                            .white70,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -939,69 +824,50 @@ class _RiderDashboardScreenState
                         ),
                         const SizedBox(height: 22),
                         Container(
-                          padding:
-                              const EdgeInsets
-                                  .symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 10,
                           ),
-                          decoration:
-                              BoxDecoration(
-                            color: Colors.white
-                                .withValues(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(
                               alpha: 0.14,
                             ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(14),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                           child: Row(
                             children: [
                               Icon(
                                 isOnline
-                                    ? Icons
-                                        .radio_button_checked
-                                    : Icons
-                                        .radio_button_off,
-                                color:
-                                    Colors.white,
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_off,
+                                color: Colors.white,
                               ),
                               const SizedBox(
                                 width: 10,
                               ),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       isOnline
                                           ? 'You are online'
-                                          : availabilityStatus ==
-                                                  'BUSY'
+                                          : availabilityStatus == 'BUSY'
                                               ? 'You are busy'
                                               : 'You are offline',
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            Colors.white,
-                                        fontWeight:
-                                            FontWeight
-                                                .w700,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
                                     Text(
                                       isOnline
                                           ? 'Available for new delivery jobs'
-                                          : availabilityStatus ==
-                                                  'BUSY'
+                                          : availabilityStatus == 'BUSY'
                                               ? 'Complete your active delivery'
                                               : 'Turn on when you are ready',
-                                      style:
-                                          const TextStyle(
-                                        color: Colors
-                                            .white70,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
                                         fontSize: 11,
                                       ),
                                     ),
@@ -1012,26 +878,19 @@ class _RiderDashboardScreenState
                                 const SizedBox(
                                   width: 22,
                                   height: 22,
-                                  child:
-                                      CircularProgressIndicator(
+                                  child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color:
-                                        Colors.white,
+                                    color: Colors.white,
                                   ),
                                 )
                               else
                                 Switch(
                                   value: isOnline,
-                                  onChanged:
-                                      availabilityStatus ==
-                                              'BUSY'
-                                          ? null
-                                          : toggleAvailability,
-                                  activeThumbColor:
-                                      Colors.white,
-                                  activeTrackColor:
-                                      Colors
-                                          .greenAccent,
+                                  onChanged: availabilityStatus == 'BUSY'
+                                      ? null
+                                      : toggleAvailability,
+                                  activeThumbColor: Colors.white,
+                                  activeTrackColor: Colors.greenAccent,
                                 ),
                             ],
                           ),
@@ -1042,33 +901,26 @@ class _RiderDashboardScreenState
                   const SizedBox(height: 16),
                   if (pendingAcceptance > 0)
                     Material(
-                      color: Colors.orange
-                          .withValues(
+                      color: Colors.orange.withValues(
                         alpha: 0.12,
                       ),
-                      borderRadius:
-                          BorderRadius.circular(
+                      borderRadius: BorderRadius.circular(
                         16,
                       ),
                       child: InkWell(
-                        onTap:
-                            widget.openDeliveries,
-                        borderRadius:
-                            BorderRadius.circular(
+                        onTap: widget.openDeliveries,
+                        borderRadius: BorderRadius.circular(
                           16,
                         ),
                         child: Padding(
-                          padding:
-                              const EdgeInsets.all(
+                          padding: const EdgeInsets.all(
                             16,
                           ),
                           child: Row(
                             children: [
                               const Icon(
-                                Icons
-                                    .notifications_active_rounded,
-                                color:
-                                    Colors.orange,
+                                Icons.notifications_active_rounded,
+                                color: Colors.orange,
                                 size: 30,
                               ),
                               const SizedBox(
@@ -1076,22 +928,17 @@ class _RiderDashboardScreenState
                               ),
                               Expanded(
                                 child: Text(
-                                  pendingAcceptance ==
-                                          1
+                                  pendingAcceptance == 1
                                       ? 'You have 1 new delivery job waiting for your response.'
                                       : 'You have $pendingAcceptance new delivery jobs waiting for your response.',
-                                  style:
-                                      const TextStyle(
-                                    fontWeight:
-                                        FontWeight
-                                            .w700,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
                                     height: 1.4,
                                   ),
                                 ),
                               ),
                               const Icon(
-                                Icons
-                                    .chevron_right_rounded,
+                                Icons.chevron_right_rounded,
                               ),
                             ],
                           ),
@@ -1103,34 +950,26 @@ class _RiderDashboardScreenState
                       height: 16,
                     ),
                   Container(
-                    padding:
-                        const EdgeInsets.all(
+                    padding: const EdgeInsets.all(
                       14,
                     ),
                     decoration: BoxDecoration(
-                      color: verificationStatus ==
-                              'VERIFIED'
-                          ? Colors.green
-                              .withValues(
+                      color: verificationStatus == 'VERIFIED'
+                          ? Colors.green.withValues(
                               alpha: 0.10,
                             )
-                          : Colors.orange
-                              .withValues(
+                          : Colors.orange.withValues(
                               alpha: 0.10,
                             ),
-                      borderRadius:
-                          BorderRadius.circular(
+                      borderRadius: BorderRadius.circular(
                         14,
                       ),
                       border: Border.all(
-                        color: verificationStatus ==
-                                'VERIFIED'
-                            ? Colors.green
-                                .withValues(
+                        color: verificationStatus == 'VERIFIED'
+                            ? Colors.green.withValues(
                                 alpha: 0.30,
                               )
-                            : Colors.orange
-                                .withValues(
+                            : Colors.orange.withValues(
                                 alpha: 0.30,
                               ),
                       ),
@@ -1138,14 +977,10 @@ class _RiderDashboardScreenState
                     child: Row(
                       children: [
                         Icon(
-                          verificationStatus ==
-                                  'VERIFIED'
-                              ? Icons
-                                  .verified_rounded
-                              : Icons
-                                  .verified_user_outlined,
-                          color: verificationStatus ==
-                                  'VERIFIED'
+                          verificationStatus == 'VERIFIED'
+                              ? Icons.verified_rounded
+                              : Icons.verified_user_outlined,
+                          color: verificationStatus == 'VERIFIED'
                               ? Colors.green
                               : Colors.orange,
                         ),
@@ -1154,15 +989,12 @@ class _RiderDashboardScreenState
                         ),
                         Expanded(
                           child: Text(
-                            verificationStatus ==
-                                    'VERIFIED'
+                            verificationStatus == 'VERIFIED'
                                 ? 'Your rider account has been verified by ServicePay Head Office.'
                                 : 'Verification status: $verificationStatus. You can go online after verification.',
-                            style:
-                                const TextStyle(
+                            style: const TextStyle(
                               height: 1.4,
-                              fontWeight:
-                                  FontWeight.w600,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -1174,43 +1006,32 @@ class _RiderDashboardScreenState
                     'Delivery Summary',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 12),
                   GridView.count(
                     crossAxisCount: 3,
                     shrinkWrap: true,
-                    physics:
-                        const NeverScrollableScrollPhysics(),
+                    physics: const NeverScrollableScrollPhysics(),
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 10,
                     childAspectRatio: 0.92,
                     children: [
                       RiderSummaryCard(
                         title: 'Assigned',
-                        value:
-                            assignedDeliveries
-                                .toString(),
-                        icon: Icons
-                            .assignment_outlined,
+                        value: assignedDeliveries.toString(),
+                        icon: Icons.assignment_outlined,
                       ),
                       RiderSummaryCard(
                         title: 'Active',
-                        value:
-                            activeDeliveries
-                                .toString(),
-                        icon: Icons
-                            .local_shipping_outlined,
+                        value: activeDeliveries.toString(),
+                        icon: Icons.local_shipping_outlined,
                       ),
                       RiderSummaryCard(
                         title: 'Completed',
-                        value:
-                            completedDeliveries
-                                .toString(),
-                        icon: Icons
-                            .check_circle_outline,
+                        value: completedDeliveries.toString(),
+                        icon: Icons.check_circle_outline,
                       ),
                     ],
                   ),
@@ -1219,38 +1040,31 @@ class _RiderDashboardScreenState
                     'Earnings',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
-                        child:
-                            RiderEarningCard(
-                          title:
-                              'Today Earnings',
+                        child: RiderEarningCard(
+                          title: 'Today Earnings',
                           amount: formatMoney(
                             todayEarnings,
                           ),
-                          icon: Icons
-                              .today_outlined,
+                          icon: Icons.today_outlined,
                         ),
                       ),
                       const SizedBox(
                         width: 12,
                       ),
                       Expanded(
-                        child:
-                            RiderEarningCard(
-                          title:
-                              'Total Earnings',
+                        child: RiderEarningCard(
+                          title: 'Total Earnings',
                           amount: formatMoney(
                             totalEarnings,
                           ),
-                          icon: Icons
-                              .account_balance_wallet_outlined,
+                          icon: Icons.account_balance_wallet_outlined,
                         ),
                       ),
                     ],
@@ -1259,28 +1073,20 @@ class _RiderDashboardScreenState
                   Row(
                     children: [
                       Expanded(
-                        child:
-                            RiderActionButton(
-                          label:
-                              'View Deliveries',
-                          icon: Icons
-                              .local_shipping_outlined,
-                          onTap: widget
-                              .openDeliveries,
+                        child: RiderActionButton(
+                          label: 'View Deliveries',
+                          icon: Icons.local_shipping_outlined,
+                          onTap: widget.openDeliveries,
                         ),
                       ),
                       const SizedBox(
                         width: 12,
                       ),
                       Expanded(
-                        child:
-                            RiderActionButton(
-                          label:
-                              'Refresh Status',
-                          icon: Icons
-                              .sync_rounded,
-                          onTap:
-                              loadDashboard,
+                        child: RiderActionButton(
+                          label: 'Refresh Status',
+                          icon: Icons.sync_rounded,
+                          onTap: loadDashboard,
                         ),
                       ),
                     ],
@@ -1312,8 +1118,7 @@ class RiderSummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
             color: Colors.black12,
@@ -1323,25 +1128,20 @@ class RiderSummaryCard extends StatelessWidget {
         ],
       ),
       child: Column(
-        mainAxisAlignment:
-            MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color:
-                  const Color(0xFF159447)
-                      .withValues(
+              color: const Color(0xFF159447).withValues(
                 alpha: 0.10,
               ),
-              borderRadius:
-                  BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               icon,
-              color:
-                  const Color(0xFF159447),
+              color: const Color(0xFF159447),
             ),
           ),
           const SizedBox(height: 8),
@@ -1366,8 +1166,7 @@ class RiderSummaryCard extends StatelessWidget {
   }
 }
 
-class RiderEarningCard
-    extends StatelessWidget {
+class RiderEarningCard extends StatelessWidget {
   const RiderEarningCard({
     required this.title,
     required this.amount,
@@ -1387,8 +1186,7 @@ class RiderEarningCard
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
             color: Colors.black12,
@@ -1398,13 +1196,11 @@ class RiderEarningCard
         ],
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             icon,
-            color:
-                const Color(0xFF159447),
+            color: const Color(0xFF159447),
           ),
           const SizedBox(height: 10),
           Text(
@@ -1428,8 +1224,7 @@ class RiderEarningCard
   }
 }
 
-class RiderActionButton
-    extends StatelessWidget {
+class RiderActionButton extends StatelessWidget {
   const RiderActionButton({
     required this.label,
     required this.icon,
@@ -1447,32 +1242,26 @@ class RiderActionButton
   ) {
     return Material(
       color: Colors.white,
-      borderRadius:
-          BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius:
-            BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(
+          padding: const EdgeInsets.symmetric(
             vertical: 18,
             horizontal: 12,
           ),
           decoration: BoxDecoration(
-            borderRadius:
-                BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color:
-                  const Color(0xFFE2E8F0),
+              color: const Color(0xFFE2E8F0),
             ),
           ),
           child: Column(
             children: [
               Icon(
                 icon,
-                color:
-                    const Color(0xFF159447),
+                color: const Color(0xFF159447),
                 size: 28,
               ),
               const SizedBox(height: 8),
@@ -1480,8 +1269,7 @@ class RiderActionButton
                 label,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontWeight:
-                      FontWeight.w700,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
@@ -1491,31 +1279,25 @@ class RiderActionButton
     );
   }
 }
-class RiderDeliveriesScreen
-    extends StatefulWidget {
+
+class RiderDeliveriesScreen extends StatefulWidget {
   const RiderDeliveriesScreen({
     super.key,
   });
 
   @override
-  State<RiderDeliveriesScreen> createState() =>
-      _RiderDeliveriesScreenState();
+  State<RiderDeliveriesScreen> createState() => _RiderDeliveriesScreenState();
 }
 
-class _RiderDeliveriesScreenState
-    extends State<RiderDeliveriesScreen>
+class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
     with SingleTickerProviderStateMixin {
-  static const Color primaryGreen =
-      Color(0xFF159447);
+  static const Color primaryGreen = Color(0xFF159447);
 
-  late final AnimationController
-      pulseController;
+  late final AnimationController pulseController;
 
-  late final Animation<double>
-      pulseAnimation;
+  late final Animation<double> pulseAnimation;
 
-  List<Map<String, dynamic>> deliveries =
-      <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> deliveries = <Map<String, dynamic>>[];
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -1528,15 +1310,12 @@ class _RiderDeliveriesScreenState
   void initState() {
     super.initState();
 
-    pulseController =
-        AnimationController(
+    pulseController = AnimationController(
       vsync: this,
-      duration:
-          const Duration(milliseconds: 850),
+      duration: const Duration(milliseconds: 850),
     );
 
-    pulseAnimation =
-        Tween<double>(
+    pulseAnimation = Tween<double>(
       begin: 0.98,
       end: 1.02,
     ).animate(
@@ -1572,11 +1351,8 @@ class _RiderDeliveriesScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? Colors.red.shade700
-              : primaryGreen,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? Colors.red.shade700 : primaryGreen,
         ),
       );
   }
@@ -1598,8 +1374,7 @@ class _RiderDeliveriesScreenState
     }
 
     try {
-      final String token =
-          await RiderApi.getToken();
+      final String token = await RiderApi.getToken();
 
       if (token.isEmpty) {
         throw Exception(
@@ -1607,66 +1382,49 @@ class _RiderDeliveriesScreenState
         );
       }
 
-      final Map<String, String>
-          queryParameters =
-          <String, String>{};
+      final Map<String, String> queryParameters = <String, String>{};
 
       if (selectedStatus != 'ALL') {
-        queryParameters['status'] =
-            selectedStatus;
+        queryParameters['status'] = selectedStatus;
       }
 
       final Uri endpoint = Uri.parse(
         '${RiderApi.baseUrl}'
         '/rider/deliveries',
       ).replace(
-        queryParameters:
-            queryParameters.isEmpty
-                ? null
-                : queryParameters,
+        queryParameters: queryParameters.isEmpty ? null : queryParameters,
       );
 
-      final http.Response response =
-          await http
-              .get(
-                endpoint,
-                headers: {
-                  'Accept':
-                      'application/json',
-                  'Authorization':
-                      'Bearer $token',
-                },
-              )
-              .timeout(
-                const Duration(seconds: 35),
-              );
+      final http.Response response = await http.get(
+        endpoint,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 35),
+      );
 
-      final Map<String, dynamic> root =
-          RiderApi.decodeResponse(
+      final Map<String, dynamic> root = RiderApi.decodeResponse(
         response,
       );
 
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
           RiderApi.text(
             root['message'],
-            fallback:
-                'Unable to load assigned deliveries.',
+            fallback: 'Unable to load assigned deliveries.',
           ),
         );
       }
 
-      final Map<String, dynamic> data =
-          RiderApi.mapFromDynamic(
+      final Map<String, dynamic> data = RiderApi.mapFromDynamic(
         root['data'],
       );
 
-      final List<Map<String, dynamic>>
-          loadedDeliveries =
+      final List<Map<String, dynamic>> loadedDeliveries =
           RiderApi.listFromDynamic(
-        root['deliveries'] ??
-            data['deliveries'],
+        root['deliveries'] ?? data['deliveries'],
       );
 
       if (!mounted) {
@@ -1674,8 +1432,7 @@ class _RiderDeliveriesScreenState
       }
 
       setState(() {
-        deliveries =
-            loadedDeliveries;
+        deliveries = loadedDeliveries;
 
         isLoading = false;
         isRefreshing = false;
@@ -1691,8 +1448,7 @@ class _RiderDeliveriesScreenState
         isLoading = false;
         isRefreshing = false;
         hasError = true;
-        errorMessage =
-            'The server took too long to respond.';
+        errorMessage = 'The server took too long to respond.';
       });
     } on FormatException {
       if (!mounted) {
@@ -1703,8 +1459,7 @@ class _RiderDeliveriesScreenState
         isLoading = false;
         isRefreshing = false;
         hasError = true;
-        errorMessage =
-            'The server returned an invalid response.';
+        errorMessage = 'The server returned an invalid response.';
       });
     } catch (error) {
       if (!mounted) {
@@ -1715,9 +1470,7 @@ class _RiderDeliveriesScreenState
         isLoading = false;
         isRefreshing = false;
         hasError = true;
-        errorMessage = error
-            .toString()
-            .replaceFirst(
+        errorMessage = error.toString().replaceFirst(
               'Exception: ',
               '',
             );
@@ -1726,14 +1479,12 @@ class _RiderDeliveriesScreenState
   }
 
   Future<bool> performAction({
-    required Map<String, dynamic>
-        delivery,
+    required Map<String, dynamic> delivery,
     required String action,
     String? status,
     String? reason,
   }) async {
-    final String deliveryId =
-        RiderApi.text(
+    final String deliveryId = RiderApi.text(
       delivery['_id'],
     );
 
@@ -1747,8 +1498,7 @@ class _RiderDeliveriesScreenState
     }
 
     try {
-      final String token =
-          await RiderApi.getToken();
+      final String token = await RiderApi.getToken();
 
       if (token.isEmpty) {
         throw Exception(
@@ -1756,65 +1506,54 @@ class _RiderDeliveriesScreenState
         );
       }
 
-      final Uri endpoint =
-          action == 'STATUS'
-              ? Uri.parse(
-                  '${RiderApi.baseUrl}'
-                  '/rider/deliveries/'
-                  '$deliveryId/status',
-                )
-              : Uri.parse(
-                  '${RiderApi.baseUrl}'
-                  '/rider/deliveries/'
-                  '$deliveryId/'
-                  '${action.toLowerCase()}',
-                );
+      final Uri endpoint = action == 'STATUS'
+          ? Uri.parse(
+              '${RiderApi.baseUrl}'
+              '/rider/deliveries/'
+              '$deliveryId/status',
+            )
+          : Uri.parse(
+              '${RiderApi.baseUrl}'
+              '/rider/deliveries/'
+              '$deliveryId/'
+              '${action.toLowerCase()}',
+            );
 
-      final Map<String, dynamic> payload =
-          <String, dynamic>{};
+      final Map<String, dynamic> payload = <String, dynamic>{};
 
       if (status != null) {
         payload['status'] = status;
       }
 
-      if (reason != null &&
-          reason.trim().isNotEmpty) {
-        payload['reason'] =
-            reason.trim();
+      if (reason != null && reason.trim().isNotEmpty) {
+        payload['reason'] = reason.trim();
       }
 
-      final http.Response response =
-          await http
-              .patch(
-                endpoint,
-                headers: {
-                  'Accept':
-                      'application/json',
-                  'Content-Type':
-                      'application/json',
-                  'Authorization':
-                      'Bearer $token',
-                },
-                body: jsonEncode(
-                  payload,
-                ),
-              )
-              .timeout(
-                const Duration(seconds: 35),
-              );
+      final http.Response response = await http
+          .patch(
+            endpoint,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(
+              payload,
+            ),
+          )
+          .timeout(
+            const Duration(seconds: 35),
+          );
 
-      final Map<String, dynamic> root =
-          RiderApi.decodeResponse(
+      final Map<String, dynamic> root = RiderApi.decodeResponse(
         response,
       );
 
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
           RiderApi.text(
             root['message'],
-            fallback:
-                'Unable to update delivery.',
+            fallback: 'Unable to update delivery.',
           ),
         );
       }
@@ -1822,8 +1561,7 @@ class _RiderDeliveriesScreenState
       showMessage(
         RiderApi.text(
           root['message'],
-          fallback:
-              'Delivery updated successfully.',
+          fallback: 'Delivery updated successfully.',
         ),
       );
 
@@ -1848,9 +1586,7 @@ class _RiderDeliveriesScreenState
       return false;
     } catch (error) {
       showMessage(
-        error
-            .toString()
-            .replaceFirst(
+        error.toString().replaceFirst(
               'Exception: ',
               '',
             ),
@@ -1868,11 +1604,10 @@ class _RiderDeliveriesScreenState
         .replaceAll('_', ' ')
         .split(' ')
         .map(
-          (String word) =>
-              word.isEmpty
-                  ? word
-                  : '${word[0].toUpperCase()}'
-                      '${word.substring(1).toLowerCase()}',
+          (String word) => word.isEmpty
+              ? word
+              : '${word[0].toUpperCase()}'
+                  '${word.substring(1).toLowerCase()}',
         )
         .join(' ');
   }
@@ -1890,8 +1625,7 @@ class _RiderDeliveriesScreenState
       return 'Not available';
     }
 
-    final DateTime? date =
-        DateTime.tryParse(
+    final DateTime? date = DateTime.tryParse(
       value.toString(),
     );
 
@@ -1899,8 +1633,7 @@ class _RiderDeliveriesScreenState
       return value.toString();
     }
 
-    final DateTime local =
-        date.toLocal();
+    final DateTime local = date.toLocal();
 
     return '${local.day.toString().padLeft(2, '0')}/'
         '${local.month.toString().padLeft(2, '0')}/'
@@ -1938,30 +1671,25 @@ class _RiderDeliveriesScreenState
   String customerName(
     Map<String, dynamic> delivery,
   ) {
-    final Map<String, dynamic> customer =
-        RiderApi.mapFromDynamic(
+    final Map<String, dynamic> customer = RiderApi.mapFromDynamic(
       delivery['customerId'],
     );
 
     return RiderApi.text(
-      customer['fullName'] ??
-          delivery['senderName'],
-      fallback:
-          'ServicePay Customer',
+      customer['fullName'] ?? delivery['senderName'],
+      fallback: 'ServicePay Customer',
     );
   }
 
   String customerPhone(
     Map<String, dynamic> delivery,
   ) {
-    final Map<String, dynamic> customer =
-        RiderApi.mapFromDynamic(
+    final Map<String, dynamic> customer = RiderApi.mapFromDynamic(
       delivery['customerId'],
     );
 
     return RiderApi.text(
-      customer['phone'] ??
-          delivery['senderPhone'],
+      customer['phone'] ?? delivery['senderPhone'],
       fallback: 'Not available',
     );
   }
@@ -1970,8 +1698,7 @@ class _RiderDeliveriesScreenState
     Map<String, dynamic> delivery,
   ) {
     return RiderApi.text(
-      delivery['packageName'] ??
-          delivery['packageDescription'],
+      delivery['packageName'] ?? delivery['packageDescription'],
       fallback: 'Package',
     );
   }
@@ -1979,68 +1706,56 @@ class _RiderDeliveriesScreenState
   Future<void> rejectDelivery(
     Map<String, dynamic> delivery,
   ) async {
-    final TextEditingController
-        reasonController =
-        TextEditingController();
+    final TextEditingController reasonController = TextEditingController();
 
-    final bool confirmed =
-        await showDialog<bool>(
-              context: context,
-              builder: (
-                BuildContext dialogContext,
-              ) {
-                return AlertDialog(
-                  title: const Text(
-                    'Reject Delivery Job',
+    final bool confirmed = await showDialog<bool>(
+          context: context,
+          builder: (
+            BuildContext dialogContext,
+          ) {
+            return AlertDialog(
+              title: const Text(
+                'Reject Delivery Job',
+              ),
+              content: TextField(
+                controller: reasonController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for rejection',
+                  hintText: 'Enter your reason',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(
+                      dialogContext,
+                    ).pop(false);
+                  },
+                  child: const Text(
+                    'Cancel',
                   ),
-                  content: TextField(
-                    controller:
-                        reasonController,
-                    maxLines: 3,
-                    decoration:
-                        const InputDecoration(
-                      labelText:
-                          'Reason for rejection',
-                      hintText:
-                          'Enter your reason',
-                      border:
-                          OutlineInputBorder(),
-                    ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(
+                      dialogContext,
+                    ).pop(true);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(
-                          dialogContext,
-                        ).pop(false);
-                      },
-                      child: const Text(
-                        'Cancel',
-                      ),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(
-                          dialogContext,
-                        ).pop(true);
-                      },
-                      style:
-                          ElevatedButton
-                              .styleFrom(
-                        backgroundColor:
-                            Colors.red,
-                        foregroundColor:
-                            Colors.white,
-                      ),
-                      child: const Text(
-                        'Reject Job',
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ) ??
-            false;
+                  child: const Text(
+                    'Reject Job',
+                  ),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
 
     if (!confirmed) {
       reasonController.dispose();
@@ -2050,8 +1765,7 @@ class _RiderDeliveriesScreenState
     await performAction(
       delivery: delivery,
       action: 'REJECT',
-      reason:
-          reasonController.text.trim(),
+      reason: reasonController.text.trim(),
     );
 
     reasonController.dispose();
@@ -2092,23 +1806,21 @@ class _RiderDeliveriesScreenState
         return 'Update Delivery';
     }
   }
+
   void openDeliveryDetails(
     Map<String, dynamic> delivery,
   ) {
-    final String status =
-        RiderApi.text(
+    final String status = RiderApi.text(
       delivery['status'],
       fallback: 'ASSIGNED',
     ).toUpperCase();
 
-    final String? upcomingStatus =
-        nextStatus(status);
+    final String? upcomingStatus = nextStatus(status);
 
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor:
-          Colors.transparent,
+      backgroundColor: Colors.transparent,
       builder: (
         BuildContext sheetContext,
       ) {
@@ -2123,45 +1835,35 @@ class _RiderDeliveriesScreenState
           ) {
             return Container(
               constraints: BoxConstraints(
-                maxHeight:
-                    MediaQuery.sizeOf(
-                          context,
-                        ).height *
-                        0.92,
+                maxHeight: MediaQuery.sizeOf(
+                      context,
+                    ).height *
+                    0.92,
               ),
-              decoration:
-                  const BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Color(
                   0xFFF8FAFC,
                 ),
-                borderRadius:
-                    BorderRadius.vertical(
-                  top:
-                      Radius.circular(26),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(26),
                 ),
               ),
               child: Column(
                 children: [
                   Container(
-                    margin:
-                        const EdgeInsets.only(
+                    margin: const EdgeInsets.only(
                       top: 10,
                     ),
                     width: 46,
                     height: 5,
-                    decoration:
-                        BoxDecoration(
-                      color: Colors
-                          .grey.shade300,
-                      borderRadius:
-                          BorderRadius
-                              .circular(10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   Expanded(
                     child: ListView(
-                      padding:
-                          const EdgeInsets.all(
+                      padding: const EdgeInsets.all(
                         20,
                       ),
                       children: [
@@ -2170,24 +1872,19 @@ class _RiderDeliveriesScreenState
                             Container(
                               width: 54,
                               height: 54,
-                              decoration:
-                                  BoxDecoration(
+                              decoration: BoxDecoration(
                                 color: getStatusColor(
                                   status,
                                 ).withValues(
                                   alpha: 0.12,
                                 ),
-                                borderRadius:
-                                    BorderRadius
-                                        .circular(
+                                borderRadius: BorderRadius.circular(
                                   15,
                                 ),
                               ),
                               child: Icon(
-                                Icons
-                                    .local_shipping_rounded,
-                                color:
-                                    getStatusColor(
+                                Icons.local_shipping_rounded,
+                                color: getStatusColor(
                                   status,
                                 ),
                                 size: 30,
@@ -2198,23 +1895,16 @@ class _RiderDeliveriesScreenState
                             ),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     RiderApi.text(
-                                      delivery[
-                                          'trackingNumber'],
-                                      fallback:
-                                          'Delivery Job',
+                                      delivery['trackingNumber'],
+                                      fallback: 'Delivery Job',
                                     ),
-                                    style:
-                                        const TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 19,
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                   const SizedBox(
@@ -2222,27 +1912,21 @@ class _RiderDeliveriesScreenState
                                   ),
                                   Text(
                                     formatDate(
-                                      delivery[
-                                          'assignedAt'] ??
-                                          delivery[
-                                              'createdAt'],
+                                      delivery['assignedAt'] ??
+                                          delivery['createdAt'],
                                     ),
-                                    style:
-                                        const TextStyle(
-                                      color: Colors
-                                          .black54,
+                                    style: const TextStyle(
+                                      color: Colors.black54,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
                             _RiderStatusBadge(
-                              text:
-                                  formatStatus(
+                              text: formatStatus(
                                 status,
                               ),
-                              color:
-                                  getStatusColor(
+                              color: getStatusColor(
                                 status,
                               ),
                             ),
@@ -2252,26 +1936,19 @@ class _RiderDeliveriesScreenState
                           height: 20,
                         ),
                         _RiderDetailSection(
-                          title:
-                              'Customer Information',
+                          title: 'Customer Information',
                           children: [
                             _RiderDetailRow(
-                              icon: Icons
-                                  .person_outline,
-                              label:
-                                  'Customer',
-                              value:
-                                  customerName(
+                              icon: Icons.person_outline,
+                              label: 'Customer',
+                              value: customerName(
                                 delivery,
                               ),
                             ),
                             _RiderDetailRow(
-                              icon: Icons
-                                  .phone_outlined,
-                              label:
-                                  'Customer Phone',
-                              value:
-                                  customerPhone(
+                              icon: Icons.phone_outlined,
+                              label: 'Customer Phone',
+                              value: customerPhone(
                                 delivery,
                               ),
                             ),
@@ -2281,33 +1958,22 @@ class _RiderDeliveriesScreenState
                           height: 14,
                         ),
                         _RiderDetailSection(
-                          title:
-                              'Pickup and Destination',
+                          title: 'Pickup and Destination',
                           children: [
                             _RiderDetailRow(
-                              icon: Icons
-                                  .location_on_outlined,
-                              label:
-                                  'Pickup Address',
-                              value:
-                                  RiderApi.text(
-                                delivery[
-                                    'pickupAddress'],
-                                fallback:
-                                    'Not available',
+                              icon: Icons.location_on_outlined,
+                              label: 'Pickup Address',
+                              value: RiderApi.text(
+                                delivery['pickupAddress'],
+                                fallback: 'Not available',
                               ),
                             ),
                             _RiderDetailRow(
-                              icon:
-                                  Icons.flag_outlined,
-                              label:
-                                  'Delivery Address',
-                              value:
-                                  RiderApi.text(
-                                delivery[
-                                    'deliveryAddress'],
-                                fallback:
-                                    'Not available',
+                              icon: Icons.flag_outlined,
+                              label: 'Delivery Address',
+                              value: RiderApi.text(
+                                delivery['deliveryAddress'],
+                                fallback: 'Not available',
                               ),
                             ),
                           ],
@@ -2316,33 +1982,22 @@ class _RiderDeliveriesScreenState
                           height: 14,
                         ),
                         _RiderDetailSection(
-                          title:
-                              'Receiver Information',
+                          title: 'Receiver Information',
                           children: [
                             _RiderDetailRow(
-                              icon: Icons
-                                  .person_pin_outlined,
-                              label:
-                                  'Receiver Name',
-                              value:
-                                  RiderApi.text(
-                                delivery[
-                                    'receiverName'],
-                                fallback:
-                                    'Not available',
+                              icon: Icons.person_pin_outlined,
+                              label: 'Receiver Name',
+                              value: RiderApi.text(
+                                delivery['receiverName'],
+                                fallback: 'Not available',
                               ),
                             ),
                             _RiderDetailRow(
-                              icon: Icons
-                                  .phone_in_talk_outlined,
-                              label:
-                                  'Receiver Phone',
-                              value:
-                                  RiderApi.text(
-                                delivery[
-                                    'receiverPhone'],
-                                fallback:
-                                    'Not available',
+                              icon: Icons.phone_in_talk_outlined,
+                              label: 'Receiver Phone',
+                              value: RiderApi.text(
+                                delivery['receiverPhone'],
+                                fallback: 'Not available',
                               ),
                             ),
                           ],
@@ -2351,63 +2006,43 @@ class _RiderDeliveriesScreenState
                           height: 14,
                         ),
                         _RiderDetailSection(
-                          title:
-                              'Package Information',
+                          title: 'Package Information',
                           children: [
                             _RiderDetailRow(
-                              icon: Icons
-                                  .inventory_2_outlined,
-                              label:
-                                  'Package',
-                              value:
-                                  packageName(
+                              icon: Icons.inventory_2_outlined,
+                              label: 'Package',
+                              value: packageName(
                                 delivery,
                               ),
                             ),
                             _RiderDetailRow(
-                              icon: Icons
-                                  .description_outlined,
-                              label:
-                                  'Description',
-                              value:
-                                  RiderApi.text(
-                                delivery[
-                                    'packageDescription'],
-                                fallback:
-                                    'No description',
+                              icon: Icons.description_outlined,
+                              label: 'Description',
+                              value: RiderApi.text(
+                                delivery['packageDescription'],
+                                fallback: 'No description',
                               ),
                             ),
                             _RiderDetailRow(
-                              icon: Icons
-                                  .scale_outlined,
-                              label:
-                                  'Weight',
+                              icon: Icons.scale_outlined,
+                              label: 'Weight',
                               value:
                                   '${RiderApi.number(delivery['packageWeight']).toStringAsFixed(2)} kg',
                             ),
                             _RiderDetailRow(
-                              icon: Icons
-                                  .payments_outlined,
-                              label:
-                                  'Delivery Fee',
-                              value:
-                                  formatMoney(
-                                delivery[
-                                    'deliveryFee'],
+                              icon: Icons.payments_outlined,
+                              label: 'Delivery Fee',
+                              value: formatMoney(
+                                delivery['deliveryFee'],
                               ),
                             ),
                             _RiderDetailRow(
-                              icon: Icons
-                                  .account_balance_wallet_outlined,
-                              label:
-                                  'Payment Status',
-                              value:
-                                  formatStatus(
+                              icon: Icons.account_balance_wallet_outlined,
+                              label: 'Payment Status',
+                              value: formatStatus(
                                 RiderApi.text(
-                                  delivery[
-                                      'paymentStatus'],
-                                  fallback:
-                                      'UNPAID',
+                                  delivery['paymentStatus'],
+                                  fallback: 'UNPAID',
                                 ),
                               ),
                             ),
@@ -2416,199 +2051,28 @@ class _RiderDeliveriesScreenState
                         const SizedBox(
                           height: 20,
                         ),
-                        if (status ==
-                            'ASSIGNED') ...[
+                        if (status == 'ASSIGNED') ...[
                           Row(
                             children: [
                               Expanded(
-                                child:
-                                    OutlinedButton.icon(
-                                  onPressed:
-                                      isProcessing
-                                          ? null
-                                          : () async {
-                                              setSheetState(
-                                                () {
-                                                  isProcessing =
-                                                      true;
-                                                },
-                                              );
-
-                                              final bool
-                                                  success =
-                                                  await performAction(
-                                                delivery:
-                                                    delivery,
-                                                action:
-                                                    'REJECT',
-                                                reason:
-                                                    'Rejected by rider.',
-                                              );
-
-                                              if (!sheetContext
-                                                  .mounted) {
-                                                return;
-                                              }
-
-                                              if (success) {
-                                                Navigator.of(
-                                                  sheetContext,
-                                                ).pop();
-                                                return;
-                                              }
-
-                                              setSheetState(
-                                                () {
-                                                  isProcessing =
-                                                      false;
-                                                },
-                                              );
-                                            },
-                                  style:
-                                      OutlinedButton
-                                          .styleFrom(
-                                    foregroundColor:
-                                        Colors.red,
-                                    side:
-                                        const BorderSide(
-                                      color:
-                                          Colors.red,
-                                    ),
-                                    minimumSize:
-                                        const Size(
-                                      double
-                                          .infinity,
-                                      52,
-                                    ),
-                                  ),
-                                  icon:
-                                      const Icon(
-                                    Icons
-                                        .close_rounded,
-                                  ),
-                                  label:
-                                      const Text(
-                                    'Reject Job',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(
-                                width: 12,
-                              ),
-                              Expanded(
-                                child:
-                                    ElevatedButton.icon(
-                                  onPressed:
-                                      isProcessing
-                                          ? null
-                                          : () async {
-                                              setSheetState(
-                                                () {
-                                                  isProcessing =
-                                                      true;
-                                                },
-                                              );
-
-                                              final bool
-                                                  success =
-                                                  await performAction(
-                                                delivery:
-                                                    delivery,
-                                                action:
-                                                    'ACCEPT',
-                                              );
-
-                                              if (!sheetContext
-                                                  .mounted) {
-                                                return;
-                                              }
-
-                                              if (success) {
-                                                Navigator.of(
-                                                  sheetContext,
-                                                ).pop();
-                                                return;
-                                              }
-
-                                              setSheetState(
-                                                () {
-                                                  isProcessing =
-                                                      false;
-                                                },
-                                              );
-                                            },
-                                  style:
-                                      ElevatedButton
-                                          .styleFrom(
-                                    backgroundColor:
-                                        primaryGreen,
-                                    foregroundColor:
-                                        Colors.white,
-                                    minimumSize:
-                                        const Size(
-                                      double
-                                          .infinity,
-                                      52,
-                                    ),
-                                  ),
-                                  icon:
-                                      isProcessing
-                                          ? const SizedBox(
-                                              width:
-                                                  18,
-                                              height:
-                                                  18,
-                                              child:
-                                                  CircularProgressIndicator(
-                                                strokeWidth:
-                                                    2,
-                                                color:
-                                                    Colors.white,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons
-                                                  .check_rounded,
-                                            ),
-                                  label:
-                                      const Text(
-                                    'Accept Job',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ] else if (upcomingStatus !=
-                            null)
-                          SizedBox(
-                            width:
-                                double.infinity,
-                            child:
-                                ElevatedButton.icon(
-                              onPressed:
-                                  isProcessing
+                                child: OutlinedButton.icon(
+                                  onPressed: isProcessing
                                       ? null
                                       : () async {
                                           setSheetState(
                                             () {
-                                              isProcessing =
-                                                  true;
+                                              isProcessing = true;
                                             },
                                           );
 
-                                          final bool
-                                              success =
+                                          final bool success =
                                               await performAction(
-                                            delivery:
-                                                delivery,
-                                            action:
-                                                'STATUS',
-                                            status:
-                                                upcomingStatus,
+                                            delivery: delivery,
+                                            action: 'REJECT',
+                                            reason: 'Rejected by rider.',
                                           );
 
-                                          if (!sheetContext
-                                              .mounted) {
+                                          if (!sheetContext.mounted) {
                                             return;
                                           }
 
@@ -2621,43 +2085,148 @@ class _RiderDeliveriesScreenState
 
                                           setSheetState(
                                             () {
-                                              isProcessing =
-                                                  false;
+                                              isProcessing = false;
                                             },
                                           );
                                         },
-                              style:
-                                  ElevatedButton
-                                      .styleFrom(
-                                backgroundColor:
-                                    primaryGreen,
-                                foregroundColor:
-                                    Colors.white,
-                                minimumSize:
-                                    const Size(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    side: const BorderSide(
+                                      color: Colors.red,
+                                    ),
+                                    minimumSize: const Size(
+                                      double.infinity,
+                                      52,
+                                    ),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                  ),
+                                  label: const Text(
+                                    'Reject Job',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(
+                                width: 12,
+                              ),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: isProcessing
+                                      ? null
+                                      : () async {
+                                          setSheetState(
+                                            () {
+                                              isProcessing = true;
+                                            },
+                                          );
+
+                                          final bool success =
+                                              await performAction(
+                                            delivery: delivery,
+                                            action: 'ACCEPT',
+                                          );
+
+                                          if (!sheetContext.mounted) {
+                                            return;
+                                          }
+
+                                          if (success) {
+                                            Navigator.of(
+                                              sheetContext,
+                                            ).pop();
+                                            return;
+                                          }
+
+                                          setSheetState(
+                                            () {
+                                              isProcessing = false;
+                                            },
+                                          );
+                                        },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: primaryGreen,
+                                    foregroundColor: Colors.white,
+                                    minimumSize: const Size(
+                                      double.infinity,
+                                      52,
+                                    ),
+                                  ),
+                                  icon: isProcessing
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.check_rounded,
+                                        ),
+                                  label: const Text(
+                                    'Accept Job',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else if (upcomingStatus != null)
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: isProcessing
+                                  ? null
+                                  : () async {
+                                      setSheetState(
+                                        () {
+                                          isProcessing = true;
+                                        },
+                                      );
+
+                                      final bool success = await performAction(
+                                        delivery: delivery,
+                                        action: 'STATUS',
+                                        status: upcomingStatus,
+                                      );
+
+                                      if (!sheetContext.mounted) {
+                                        return;
+                                      }
+
+                                      if (success) {
+                                        Navigator.of(
+                                          sheetContext,
+                                        ).pop();
+                                        return;
+                                      }
+
+                                      setSheetState(
+                                        () {
+                                          isProcessing = false;
+                                        },
+                                      );
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primaryGreen,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(
                                   double.infinity,
                                   54,
                                 ),
                               ),
-                              icon:
-                                  isProcessing
-                                      ? const SizedBox(
-                                          width:
-                                              18,
-                                          height:
-                                              18,
-                                          child:
-                                              CircularProgressIndicator(
-                                            strokeWidth:
-                                                2,
-                                            color:
-                                                Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons
-                                              .arrow_forward_rounded,
-                                        ),
+                              icon: isProcessing
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.arrow_forward_rounded,
+                                    ),
                               label: Text(
                                 nextStatusLabel(
                                   upcomingStatus,
@@ -2665,49 +2234,33 @@ class _RiderDeliveriesScreenState
                               ),
                             ),
                           )
-                        else if (status ==
-                            'DELIVERED')
+                        else if (status == 'DELIVERED')
                           Container(
-                            padding:
-                                const EdgeInsets
-                                    .all(
+                            padding: const EdgeInsets.all(
                               16,
                             ),
-                            decoration:
-                                BoxDecoration(
-                              color: Colors
-                                  .green
-                                  .withValues(
-                                alpha:
-                                    0.10,
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(
+                                alpha: 0.10,
                               ),
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
+                              borderRadius: BorderRadius.circular(
                                 14,
                               ),
                             ),
-                            child:
-                                const Row(
+                            child: const Row(
                               children: [
                                 Icon(
-                                  Icons
-                                      .check_circle_rounded,
-                                  color:
-                                      Colors.green,
+                                  Icons.check_circle_rounded,
+                                  color: Colors.green,
                                 ),
                                 SizedBox(
                                   width: 10,
                                 ),
                                 Expanded(
-                                  child:
-                                      Text(
+                                  child: Text(
                                     'This delivery has been completed successfully.',
-                                    style:
-                                        TextStyle(
-                                      fontWeight:
-                                          FontWeight
-                                              .w700,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ),
@@ -2732,14 +2285,12 @@ class _RiderDeliveriesScreenState
   Widget buildDeliveryCard(
     Map<String, dynamic> delivery,
   ) {
-    final String status =
-        RiderApi.text(
+    final String status = RiderApi.text(
       delivery['status'],
       fallback: 'ASSIGNED',
     ).toUpperCase();
 
-    final bool isNewJob =
-        status == 'ASSIGNED';
+    final bool isNewJob = status == 'ASSIGNED';
 
     final Widget card = Card(
       elevation: isNewJob ? 6 : 1,
@@ -2748,14 +2299,10 @@ class _RiderDeliveriesScreenState
       ),
       color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: isNewJob
-              ? Colors.orange
-              : const Color(0xFFE2E8F0),
-          width:
-              isNewJob ? 2 : 1,
+          color: isNewJob ? Colors.orange : const Color(0xFFE2E8F0),
+          width: isNewJob ? 2 : 1,
         ),
       ),
       child: InkWell(
@@ -2764,41 +2311,32 @@ class _RiderDeliveriesScreenState
             delivery,
           );
         },
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         child: Padding(
           padding: const EdgeInsets.all(
             16,
           ),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Container(
                     width: 48,
                     height: 48,
-                    decoration:
-                        BoxDecoration(
-                      color:
-                          getStatusColor(
+                    decoration: BoxDecoration(
+                      color: getStatusColor(
                         status,
                       ).withValues(
                         alpha: 0.12,
                       ),
-                      borderRadius:
-                          BorderRadius
-                              .circular(14),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
                       isNewJob
-                          ? Icons
-                              .notifications_active_rounded
-                          : Icons
-                              .local_shipping_rounded,
-                      color:
-                          getStatusColor(
+                          ? Icons.notifications_active_rounded
+                          : Icons.local_shipping_rounded,
+                      color: getStatusColor(
                         status,
                       ),
                     ),
@@ -2808,23 +2346,16 @@ class _RiderDeliveriesScreenState
                   ),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           RiderApi.text(
-                            delivery[
-                                'trackingNumber'],
-                            fallback:
-                                'Delivery Job',
+                            delivery['trackingNumber'],
+                            fallback: 'Delivery Job',
                           ),
-                          style:
-                              const TextStyle(
+                          style: const TextStyle(
                             fontSize: 16,
-                            fontWeight:
-                                FontWeight
-                                    .bold,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(
@@ -2834,22 +2365,18 @@ class _RiderDeliveriesScreenState
                           customerName(
                             delivery,
                           ),
-                          style:
-                              const TextStyle(
-                            color:
-                                Colors.black54,
+                          style: const TextStyle(
+                            color: Colors.black54,
                           ),
                         ),
                       ],
                     ),
                   ),
                   _RiderStatusBadge(
-                    text:
-                        formatStatus(
+                    text: formatStatus(
                       status,
                     ),
-                    color:
-                        getStatusColor(
+                    color: getStatusColor(
                       status,
                     ),
                   ),
@@ -2859,30 +2386,22 @@ class _RiderDeliveriesScreenState
                 height: 14,
               ),
               _DeliveryAddressLine(
-                icon: Icons
-                    .location_on_outlined,
+                icon: Icons.location_on_outlined,
                 label: 'Pickup',
-                value:
-                    RiderApi.text(
-                  delivery[
-                      'pickupAddress'],
-                  fallback:
-                      'Not available',
+                value: RiderApi.text(
+                  delivery['pickupAddress'],
+                  fallback: 'Not available',
                 ),
               ),
               const SizedBox(
                 height: 8,
               ),
               _DeliveryAddressLine(
-                icon:
-                    Icons.flag_outlined,
+                icon: Icons.flag_outlined,
                 label: 'Destination',
-                value:
-                    RiderApi.text(
-                  delivery[
-                      'deliveryAddress'],
-                  fallback:
-                      'Not available',
+                value: RiderApi.text(
+                  delivery['deliveryAddress'],
+                  fallback: 'Not available',
                 ),
               ),
               const SizedBox(
@@ -2896,27 +2415,19 @@ class _RiderDeliveriesScreenState
                         delivery,
                       ),
                       maxLines: 1,
-                      overflow:
-                          TextOverflow
-                              .ellipsis,
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.w700,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
                   Text(
                     formatMoney(
-                      delivery[
-                          'deliveryFee'],
+                      delivery['deliveryFee'],
                     ),
-                    style:
-                        const TextStyle(
-                      color:
-                          primaryGreen,
-                      fontWeight:
-                          FontWeight.bold,
+                    style: const TextStyle(
+                      color: primaryGreen,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
@@ -2926,39 +2437,25 @@ class _RiderDeliveriesScreenState
                   height: 12,
                 ),
                 Container(
-                  width:
-                      double.infinity,
-                  padding:
-                      const EdgeInsets
-                          .symmetric(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 10,
                   ),
-                  decoration:
-                      BoxDecoration(
-                    color: Colors
-                        .orange
-                        .withValues(
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(
                       alpha: 0.10,
                     ),
-                    borderRadius:
-                        BorderRadius
-                            .circular(
+                    borderRadius: BorderRadius.circular(
                       12,
                     ),
                   ),
-                  child:
-                      const Text(
+                  child: const Text(
                     'New delivery job — tap to view and respond.',
-                    textAlign:
-                        TextAlign.center,
-                    style:
-                        TextStyle(
-                      color:
-                          Colors.orange,
-                      fontWeight:
-                          FontWeight
-                              .bold,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -2984,67 +2481,54 @@ class _RiderDeliveriesScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor:
-            Colors.white,
-        surfaceTintColor:
-            Colors.white,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         title: const Text(
           'My Deliveries',
           style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
+            fontWeight: FontWeight.bold,
           ),
         ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed:
-                isRefreshing
-                    ? null
-                    : () {
-                        loadDeliveries(
-                          refresh: true,
-                        );
-                      },
-            icon:
-                isRefreshing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child:
-                            CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(
-                        Icons
-                            .refresh_rounded,
-                      ),
+            onPressed: isRefreshing
+                ? null
+                : () {
+                    loadDeliveries(
+                      refresh: true,
+                    );
+                  },
+            icon: isRefreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(
+                    Icons.refresh_rounded,
+                  ),
           ),
         ],
       ),
       body: isLoading
           ? const Center(
-              child:
-                  CircularProgressIndicator(),
+              child: CircularProgressIndicator(),
             )
           : hasError
               ? Center(
                   child: Padding(
-                    padding:
-                        const EdgeInsets
-                            .all(24),
+                    padding: const EdgeInsets.all(24),
                     child: Column(
-                      mainAxisSize:
-                          MainAxisSize.min,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(
-                          Icons
-                              .cloud_off_rounded,
+                          Icons.cloud_off_rounded,
                           size: 60,
                           color: Colors.red,
                         ),
@@ -3053,23 +2537,17 @@ class _RiderDeliveriesScreenState
                         ),
                         Text(
                           errorMessage,
-                          textAlign:
-                              TextAlign
-                                  .center,
+                          textAlign: TextAlign.center,
                         ),
                         const SizedBox(
                           height: 14,
                         ),
                         ElevatedButton.icon(
-                          onPressed:
-                              loadDeliveries,
-                          icon:
-                              const Icon(
-                            Icons
-                                .refresh_rounded,
+                          onPressed: loadDeliveries,
+                          icon: const Icon(
+                            Icons.refresh_rounded,
                           ),
-                          label:
-                              const Text(
+                          label: const Text(
                             'Try Again',
                           ),
                         ),
@@ -3084,15 +2562,12 @@ class _RiderDeliveriesScreenState
                     );
                   },
                   child: ListView(
-                    padding:
-                        const EdgeInsets
-                            .all(16),
+                    padding: const EdgeInsets.all(16),
                     children: [
                       SizedBox(
                         height: 42,
                         child: ListView(
-                          scrollDirection:
-                              Axis.horizontal,
+                          scrollDirection: Axis.horizontal,
                           children: [
                             'ALL',
                             'ASSIGNED',
@@ -3104,47 +2579,31 @@ class _RiderDeliveriesScreenState
                             (
                               String status,
                             ) {
-                              final bool
-                                  selected =
-                                  selectedStatus ==
-                                      status;
+                              final bool selected = selectedStatus == status;
 
                               return Padding(
-                                padding:
-                                    const EdgeInsets
-                                        .only(
+                                padding: const EdgeInsets.only(
                                   right: 8,
                                 ),
-                                child:
-                                    ChoiceChip(
-                                  selected:
-                                      selected,
+                                child: ChoiceChip(
+                                  selected: selected,
                                   label: Text(
                                     formatStatus(
                                       status,
                                     ),
                                   ),
-                                  selectedColor:
-                                      primaryGreen,
-                                  backgroundColor:
-                                      Colors.white,
-                                  labelStyle:
-                                      TextStyle(
+                                  selectedColor: primaryGreen,
+                                  backgroundColor: Colors.white,
+                                  labelStyle: TextStyle(
                                     color: selected
-                                        ? Colors
-                                            .white
-                                        : Colors
-                                            .black54,
-                                    fontWeight:
-                                        FontWeight
-                                            .w700,
+                                        ? Colors.white
+                                        : Colors.black54,
+                                    fontWeight: FontWeight.w700,
                                   ),
-                                  onSelected:
-                                      (_) {
+                                  onSelected: (_) {
                                     setState(
                                       () {
-                                        selectedStatus =
-                                            status;
+                                        selectedStatus = status;
                                       },
                                     );
 
@@ -3159,17 +2618,13 @@ class _RiderDeliveriesScreenState
                       const SizedBox(
                         height: 16,
                       ),
-                      if (deliveries
-                          .isEmpty)
+                      if (deliveries.isEmpty)
                         const RiderEmptyScreen(
-                          title:
-                              'No Deliveries',
+                          title: 'No Deliveries',
                           message:
                               'Your assigned delivery jobs will appear here.',
-                          icon: Icons
-                              .local_shipping_outlined,
-                          showAppBar:
-                              false,
+                          icon: Icons.local_shipping_outlined,
+                          showAppBar: false,
                         )
                       else
                         ...deliveries.map(
@@ -3184,19 +2639,17 @@ class _RiderDeliveriesScreenState
     );
   }
 }
-class RiderEarningsScreen
-    extends StatefulWidget {
+
+class RiderEarningsScreen extends StatefulWidget {
   const RiderEarningsScreen({
     super.key,
   });
 
   @override
-  State<RiderEarningsScreen> createState() =>
-      _RiderEarningsScreenState();
+  State<RiderEarningsScreen> createState() => _RiderEarningsScreenState();
 }
 
-class _RiderEarningsScreenState
-    extends State<RiderEarningsScreen> {
+class _RiderEarningsScreenState extends State<RiderEarningsScreen> {
   bool isLoading = true;
 
   double totalEarnings = 0;
@@ -3219,8 +2672,7 @@ class _RiderEarningsScreenState
     }
 
     try {
-      final Map<String, dynamic> user =
-          await RiderApi.getProfile();
+      final Map<String, dynamic> user = await RiderApi.getProfile();
 
       await RiderApi.saveProfile(user);
 
@@ -3229,23 +2681,19 @@ class _RiderEarningsScreenState
       }
 
       setState(() {
-        totalEarnings =
-            RiderApi.number(
+        totalEarnings = RiderApi.number(
           user['totalRiderEarnings'],
         );
 
-        pendingSettlement =
-            RiderApi.number(
+        pendingSettlement = RiderApi.number(
           user['pendingRiderSettlement'],
         );
 
-        settledEarnings =
-            RiderApi.number(
+        settledEarnings = RiderApi.number(
           user['settledRiderEarnings'],
         );
 
-        completedDeliveries =
-            RiderApi.integer(
+        completedDeliveries = RiderApi.integer(
           user['totalCompletedDeliveries'],
         );
 
@@ -3277,11 +2725,9 @@ class _RiderEarningsScreenState
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(17),
+        borderRadius: BorderRadius.circular(17),
         border: Border.all(
-          color:
-              const Color(0xFFE2E8F0),
+          color: const Color(0xFFE2E8F0),
         ),
       ),
       child: Row(
@@ -3290,25 +2736,20 @@ class _RiderEarningsScreenState
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color:
-                  const Color(0xFF159447)
-                      .withValues(
+              color: const Color(0xFF159447).withValues(
                 alpha: 0.10,
               ),
-              borderRadius:
-                  BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(
               icon,
-              color:
-                  const Color(0xFF159447),
+              color: const Color(0xFF159447),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
@@ -3322,8 +2763,7 @@ class _RiderEarningsScreenState
                   value,
                   style: const TextStyle(
                     fontSize: 18,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -3339,8 +2779,7 @@ class _RiderEarningsScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
@@ -3354,8 +2793,7 @@ class _RiderEarningsScreenState
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed:
-                isLoading ? null : loadEarnings,
+            onPressed: isLoading ? null : loadEarnings,
             icon: const Icon(
               Icons.refresh_rounded,
             ),
@@ -3364,32 +2802,26 @@ class _RiderEarningsScreenState
       ),
       body: isLoading
           ? const Center(
-              child:
-                  CircularProgressIndicator(),
+              child: CircularProgressIndicator(),
             )
           : RefreshIndicator(
               onRefresh: loadEarnings,
               child: ListView(
-                padding:
-                    const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.all(22),
+                    padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
-                      gradient:
-                          const LinearGradient(
+                      gradient: const LinearGradient(
                         colors: [
                           Color(0xFF159447),
                           Color(0xFF0F766E),
                         ],
                       ),
-                      borderRadius:
-                          BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Total Rider Earnings',
@@ -3405,8 +2837,7 @@ class _RiderEarningsScreenState
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 28,
-                            fontWeight:
-                                FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -3421,33 +2852,61 @@ class _RiderEarningsScreenState
                   ),
                   const SizedBox(height: 16),
                   earningsCard(
-                    title:
-                        'Pending Settlement',
+                    title: 'Pending Settlement',
                     value: formatMoney(
                       pendingSettlement,
                     ),
-                    icon: Icons
-                        .hourglass_top_rounded,
+                    icon: Icons.hourglass_top_rounded,
                   ),
                   const SizedBox(height: 12),
                   earningsCard(
-                    title:
-                        'Settled Earnings',
+                    title: 'Settled Earnings',
                     value: formatMoney(
                       settledEarnings,
                     ),
-                    icon: Icons
-                        .check_circle_outline,
+                    icon: Icons.check_circle_outline,
                   ),
                   const SizedBox(height: 12),
                   earningsCard(
-                    title:
-                        'Completed Deliveries',
-                    value:
-                        completedDeliveries
-                            .toString(),
-                    icon: Icons
-                        .local_shipping_outlined,
+                    title: 'Completed Deliveries',
+                    value: completedDeliveries.toString(),
+                    icon: Icons.local_shipping_outlined,
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        await Navigator.of(context).push<void>(
+                          MaterialPageRoute(
+                            builder: (_) => const RiderWithdrawalScreen(),
+                          ),
+                        );
+
+                        if (!mounted) {
+                          return;
+                        }
+
+                        await loadEarnings();
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF159447),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.account_balance_rounded,
+                      ),
+                      label: const Text(
+                        'Withdraw Commission',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -3456,21 +2915,17 @@ class _RiderEarningsScreenState
   }
 }
 
-class RiderProfileScreen
-    extends StatefulWidget {
+class RiderProfileScreen extends StatefulWidget {
   const RiderProfileScreen({
     super.key,
   });
 
   @override
-  State<RiderProfileScreen> createState() =>
-      _RiderProfileScreenState();
+  State<RiderProfileScreen> createState() => _RiderProfileScreenState();
 }
 
-class _RiderProfileScreenState
-    extends State<RiderProfileScreen> {
-  String riderName =
-      'Delivery Rider';
+class _RiderProfileScreenState extends State<RiderProfileScreen> {
+  String riderName = 'Delivery Rider';
 
   String riderId = '';
   String phone = '';
@@ -3480,8 +2935,7 @@ class _RiderProfileScreenState
   String riderState = '';
   String riderLga = '';
 
-  String verificationStatus =
-      'PENDING';
+  String verificationStatus = 'PENDING';
 
   bool isLoading = true;
 
@@ -3499,8 +2953,7 @@ class _RiderProfileScreenState
     }
 
     try {
-      final Map<String, dynamic> user =
-          await RiderApi.getProfile();
+      final Map<String, dynamic> user = await RiderApi.getProfile();
 
       await RiderApi.saveProfile(user);
 
@@ -3509,51 +2962,40 @@ class _RiderProfileScreenState
       }
 
       setState(() {
-        riderName =
-            RiderApi.text(
+        riderName = RiderApi.text(
           user['fullName'],
           fallback: 'Delivery Rider',
         );
 
-        riderId =
-            RiderApi.text(
+        riderId = RiderApi.text(
           user['riderId'],
         );
 
-        phone =
-            RiderApi.text(
+        phone = RiderApi.text(
           user['phone'],
         );
 
-        email =
-            RiderApi.text(
+        email = RiderApi.text(
           user['email'],
         );
 
-        vehicleType =
-            RiderApi.text(
+        vehicleType = RiderApi.text(
           user['vehicleType'],
         ).replaceAll('_', ' ');
 
-        plateNumber =
-            RiderApi.text(
+        plateNumber = RiderApi.text(
           user['plateNumber'],
         );
 
-        riderState =
-            RiderApi.text(
-          user['riderState'] ??
-              user['state'],
+        riderState = RiderApi.text(
+          user['riderState'] ?? user['state'],
         );
 
-        riderLga =
-            RiderApi.text(
-          user['riderLga'] ??
-              user['lga'],
+        riderLga = RiderApi.text(
+          user['riderLga'] ?? user['lga'],
         );
 
-        verificationStatus =
-            RiderApi.text(
+        verificationStatus = RiderApi.text(
           user['riderVerificationStatus'],
           fallback: 'PENDING',
         ).toUpperCase();
@@ -3561,70 +3003,59 @@ class _RiderProfileScreenState
         isLoading = false;
       });
     } catch (_) {
-      final SharedPreferences prefs =
-          await SharedPreferences
-              .getInstance();
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        riderName =
-            prefs.getString(
-                  'user_name',
+        riderName = prefs.getString(
+              'user_name',
+            ) ??
+            'Delivery Rider';
+
+        riderId = prefs.getString(
+              'rider_id',
+            ) ??
+            '';
+
+        phone = prefs.getString(
+              'user_phone',
+            ) ??
+            '';
+
+        email = prefs.getString(
+              'user_email',
+            ) ??
+            '';
+
+        vehicleType = (prefs.getString(
+                  'rider_vehicle_type',
                 ) ??
-                'Delivery Rider';
+                '')
+            .replaceAll('_', ' ');
 
-        riderId =
-            prefs.getString(
-                  'rider_id',
+        plateNumber = prefs.getString(
+              'rider_plate_number',
+            ) ??
+            '';
+
+        riderState = prefs.getString(
+              'rider_state',
+            ) ??
+            '';
+
+        riderLga = prefs.getString(
+              'rider_lga',
+            ) ??
+            '';
+
+        verificationStatus = (prefs.getString(
+                  'rider_verification_status',
                 ) ??
-                '';
-
-        phone =
-            prefs.getString(
-                  'user_phone',
-                ) ??
-                '';
-
-        email =
-            prefs.getString(
-                  'user_email',
-                ) ??
-                '';
-
-        vehicleType =
-            (prefs.getString(
-                      'rider_vehicle_type',
-                    ) ??
-                    '')
-                .replaceAll('_', ' ');
-
-        plateNumber =
-            prefs.getString(
-                  'rider_plate_number',
-                ) ??
-                '';
-
-        riderState =
-            prefs.getString(
-                  'rider_state',
-                ) ??
-                '';
-
-        riderLga =
-            prefs.getString(
-                  'rider_lga',
-                ) ??
-                '';
-
-        verificationStatus =
-            (prefs.getString(
-                      'rider_verification_status',
-                    ) ??
-                    'PENDING')
-                .toUpperCase();
+                'PENDING')
+            .toUpperCase();
 
         isLoading = false;
       });
@@ -3634,8 +3065,7 @@ class _RiderProfileScreenState
   Future<void> logout(
     BuildContext context,
   ) async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     await prefs.clear();
 
@@ -3646,8 +3076,7 @@ class _RiderProfileScreenState
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const LoginScreen(),
+        builder: (_) => const LoginScreen(),
       ),
       (
         Route<dynamic> route,
@@ -3662,17 +3091,14 @@ class _RiderProfileScreenState
     required String value,
   }) {
     return ListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(
+      contentPadding: const EdgeInsets.symmetric(
         horizontal: 4,
       ),
       leading: CircleAvatar(
-        backgroundColor:
-            const Color(0xFFE8F5EC),
+        backgroundColor: const Color(0xFFE8F5EC),
         child: Icon(
           icon,
-          color:
-              const Color(0xFF159447),
+          color: const Color(0xFF159447),
         ),
       ),
       title: Text(
@@ -3683,9 +3109,7 @@ class _RiderProfileScreenState
         ),
       ),
       subtitle: Text(
-        value.trim().isEmpty
-            ? 'Not available'
-            : value,
+        value.trim().isEmpty ? 'Not available' : value,
         style: const TextStyle(
           fontWeight: FontWeight.w700,
         ),
@@ -3697,13 +3121,9 @@ class _RiderProfileScreenState
   Widget build(
     BuildContext context,
   ) {
-    final String initial =
-        riderName.trim().isEmpty
-            ? 'R'
-            : riderName
-                .trim()
-                .substring(0, 1)
-                .toUpperCase();
+    final String initial = riderName.trim().isEmpty
+        ? 'R'
+        : riderName.trim().substring(0, 1).toUpperCase();
 
     final String location = [
       riderLga,
@@ -3718,8 +3138,7 @@ class _RiderProfileScreenState
         .join(', ');
 
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
@@ -3733,8 +3152,7 @@ class _RiderProfileScreenState
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed:
-                isLoading ? null : loadProfile,
+            onPressed: isLoading ? null : loadProfile,
             icon: const Icon(
               Icons.refresh_rounded,
             ),
@@ -3743,22 +3161,18 @@ class _RiderProfileScreenState
       ),
       body: isLoading
           ? const Center(
-              child:
-                  CircularProgressIndicator(),
+              child: CircularProgressIndicator(),
             )
           : RefreshIndicator(
               onRefresh: loadProfile,
               child: ListView(
-                padding:
-                    const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius:
-                          BorderRadius.circular(
+                      borderRadius: BorderRadius.circular(
                         18,
                       ),
                     ),
@@ -3766,17 +3180,14 @@ class _RiderProfileScreenState
                       children: [
                         CircleAvatar(
                           radius: 38,
-                          backgroundColor:
-                              const Color(
+                          backgroundColor: const Color(
                             0xFFE6F4EA,
                           ),
                           child: Text(
                             initial,
-                            style:
-                                const TextStyle(
+                            style: const TextStyle(
                               fontSize: 28,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                               color: Color(
                                 0xFF159447,
                               ),
@@ -3788,26 +3199,20 @@ class _RiderProfileScreenState
                         ),
                         Text(
                           riderName,
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              const TextStyle(
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
                             fontSize: 20,
-                            fontWeight:
-                                FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (riderId
-                            .isNotEmpty) ...[
+                        if (riderId.isNotEmpty) ...[
                           const SizedBox(
                             height: 4,
                           ),
                           Text(
                             'Rider ID: $riderId',
-                            style:
-                                const TextStyle(
-                              color:
-                                  Colors.black54,
+                            style: const TextStyle(
+                              color: Colors.black54,
                             ),
                           ),
                         ],
@@ -3815,42 +3220,30 @@ class _RiderProfileScreenState
                           height: 10,
                         ),
                         Container(
-                          padding:
-                              const EdgeInsets
-                                  .symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 6,
                           ),
-                          decoration:
-                              BoxDecoration(
-                            color: verificationStatus ==
-                                    'VERIFIED'
-                                ? Colors.green
-                                    .withValues(
+                          decoration: BoxDecoration(
+                            color: verificationStatus == 'VERIFIED'
+                                ? Colors.green.withValues(
                                     alpha: 0.12,
                                   )
-                                : Colors.orange
-                                    .withValues(
+                                : Colors.orange.withValues(
                                     alpha: 0.12,
                                   ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
+                            borderRadius: BorderRadius.circular(
                               20,
                             ),
                           ),
                           child: Text(
                             verificationStatus,
                             style: TextStyle(
-                              color: verificationStatus ==
-                                      'VERIFIED'
-                                  ? Colors.green
-                                      .shade800
-                                  : Colors.orange
-                                      .shade800,
+                              color: verificationStatus == 'VERIFIED'
+                                  ? Colors.green.shade800
+                                  : Colors.orange.shade800,
                               fontSize: 12,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
@@ -3864,49 +3257,35 @@ class _RiderProfileScreenState
                     elevation: 0,
                     color: Colors.white,
                     child: Padding(
-                      padding:
-                          const EdgeInsets.all(
+                      padding: const EdgeInsets.all(
                         12,
                       ),
                       child: Column(
                         children: [
                           buildInfoTile(
-                            icon: Icons
-                                .phone_outlined,
-                            title:
-                                'Phone number',
+                            icon: Icons.phone_outlined,
+                            title: 'Phone number',
                             value: phone,
                           ),
                           buildInfoTile(
-                            icon: Icons
-                                .email_outlined,
-                            title:
-                                'Email address',
+                            icon: Icons.email_outlined,
+                            title: 'Email address',
                             value: email,
                           ),
                           buildInfoTile(
-                            icon: Icons
-                                .two_wheeler_outlined,
-                            title:
-                                'Vehicle type',
-                            value:
-                                vehicleType,
+                            icon: Icons.two_wheeler_outlined,
+                            title: 'Vehicle type',
+                            value: vehicleType,
                           ),
                           buildInfoTile(
-                            icon: Icons
-                                .confirmation_number_outlined,
-                            title:
-                                'Plate number',
-                            value:
-                                plateNumber,
+                            icon: Icons.confirmation_number_outlined,
+                            title: 'Plate number',
+                            value: plateNumber,
                           ),
                           buildInfoTile(
-                            icon: Icons
-                                .location_on_outlined,
-                            title:
-                                'Location',
-                            value:
-                                location,
+                            icon: Icons.location_on_outlined,
+                            title: 'Location',
+                            value: location,
                           ),
                         ],
                       ),
@@ -3919,22 +3298,18 @@ class _RiderProfileScreenState
                     elevation: 0,
                     color: Colors.white,
                     child: ListTile(
-                      leading:
-                          const Icon(
+                      leading: const Icon(
                         Icons.logout,
                         color: Colors.red,
                       ),
-                      title:
-                          const Text(
+                      title: const Text(
                         'Log out',
                         style: TextStyle(
                           color: Colors.red,
-                          fontWeight:
-                              FontWeight.w700,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      onTap: () =>
-                          logout(context),
+                      onTap: () => logout(context),
                     ),
                   ),
                   const SizedBox(
@@ -3947,8 +3322,7 @@ class _RiderProfileScreenState
   }
 }
 
-class RiderEmptyScreen
-    extends StatelessWidget {
+class RiderEmptyScreen extends StatelessWidget {
   const RiderEmptyScreen({
     required this.title,
     required this.message,
@@ -3968,19 +3342,15 @@ class RiderEmptyScreen
   ) {
     final Widget content = Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               width: 90,
               height: 90,
               decoration: BoxDecoration(
-                color:
-                    const Color(0xFF159447)
-                        .withValues(
+                color: const Color(0xFF159447).withValues(
                   alpha: 0.10,
                 ),
                 shape: BoxShape.circle,
@@ -3988,8 +3358,7 @@ class RiderEmptyScreen
               child: Icon(
                 icon,
                 size: 46,
-                color:
-                    const Color(0xFF159447),
+                color: const Color(0xFF159447),
               ),
             ),
             const SizedBox(height: 18),
@@ -3997,8 +3366,7 @@ class RiderEmptyScreen
               title,
               style: const TextStyle(
                 fontSize: 22,
-                fontWeight:
-                    FontWeight.bold,
+                fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
@@ -4023,8 +3391,7 @@ class RiderEmptyScreen
     }
 
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
@@ -4041,8 +3408,7 @@ class RiderEmptyScreen
   }
 }
 
-class _RiderStatusBadge
-    extends StatelessWidget {
+class _RiderStatusBadge extends StatelessWidget {
   const _RiderStatusBadge({
     required this.text,
     required this.color,
@@ -4056,8 +3422,7 @@ class _RiderStatusBadge
     BuildContext context,
   ) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: 9,
         vertical: 5,
       ),
@@ -4065,24 +3430,21 @@ class _RiderStatusBadge
         color: color.withValues(
           alpha: 0.12,
         ),
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         text,
         style: TextStyle(
           color: color,
           fontSize: 10,
-          fontWeight:
-              FontWeight.w800,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
   }
 }
 
-class _DeliveryAddressLine
-    extends StatelessWidget {
+class _DeliveryAddressLine extends StatelessWidget {
   const _DeliveryAddressLine({
     required this.icon,
     required this.label,
@@ -4098,14 +3460,12 @@ class _DeliveryAddressLine
     BuildContext context,
   ) {
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(
           icon,
           size: 18,
-          color:
-              const Color(0xFF159447),
+          color: const Color(0xFF159447),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -4120,8 +3480,7 @@ class _DeliveryAddressLine
                 TextSpan(
                   text: '$label: ',
                   style: const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 TextSpan(
@@ -4136,8 +3495,7 @@ class _DeliveryAddressLine
   }
 }
 
-class _RiderDetailSection
-    extends StatelessWidget {
+class _RiderDetailSection extends StatelessWidget {
   const _RiderDetailSection({
     required this.title,
     required this.children,
@@ -4152,27 +3510,22 @@ class _RiderDetailSection
   ) {
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color:
-              const Color(0xFFE2E8F0),
+          color: const Color(0xFFE2E8F0),
         ),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
             style: const TextStyle(
               fontSize: 15,
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 12),
@@ -4183,8 +3536,7 @@ class _RiderDetailSection
   }
 }
 
-class _RiderDetailRow
-    extends StatelessWidget {
+class _RiderDetailRow extends StatelessWidget {
   const _RiderDetailRow({
     required this.icon,
     required this.label,
@@ -4200,25 +3552,21 @@ class _RiderDetailRow
     BuildContext context,
   ) {
     return Padding(
-      padding:
-          const EdgeInsets.only(
+      padding: const EdgeInsets.only(
         bottom: 12,
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             icon,
             size: 19,
-            color:
-                const Color(0xFF159447),
+            color: const Color(0xFF159447),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
@@ -4231,8 +3579,7 @@ class _RiderDetailRow
                 Text(
                   value,
                   style: const TextStyle(
-                    fontWeight:
-                        FontWeight.w700,
+                    fontWeight: FontWeight.w700,
                     height: 1.4,
                   ),
                 ),
