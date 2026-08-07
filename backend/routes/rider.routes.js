@@ -102,4 +102,41 @@ router.get(
   riderWithdrawalController.getAllWithdrawals
 );
 
+
+/*
+ * ============================================================
+ * ADMIN RIDER WITHDRAWAL ACTIONS
+ * ============================================================
+ */
+
+router.patch(
+  "/admin/withdrawals/:id/approve",
+  protect,
+  riderWithdrawalController.approveWithdrawal
+);
+
+router.patch(
+  "/admin/withdrawals/:id/reject",
+  protect,
+  riderWithdrawalController.rejectWithdrawal
+);
+
+router.patch(
+  "/admin/withdrawals/:id/processing",
+  protect,
+  riderWithdrawalController.markWithdrawalProcessing
+);
+
+router.patch(
+  "/admin/withdrawals/:id/paid",
+  protect,
+  riderWithdrawalController.markWithdrawalPaid
+);
+
+router.patch(
+  "/admin/withdrawals/:id/failed",
+  protect,
+  riderWithdrawalController.markWithdrawalFailed
+);
+
 module.exports = router;
