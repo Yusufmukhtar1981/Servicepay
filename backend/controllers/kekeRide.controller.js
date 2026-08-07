@@ -593,7 +593,8 @@ exports.createRide = async (
         pickupLongitude:
           pickupLng,
 
-        maxDistanceMetres,
+        maxDistanceMetres:
+          maxSearchDistanceMetres,
       });
 
     const rideReference =
