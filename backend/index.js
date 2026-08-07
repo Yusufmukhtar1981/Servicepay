@@ -6,6 +6,12 @@ require("dotenv").config();
 
 const connectDB = require("./config/db");
 
+/*
+ * =====================================================
+ * ROUTES
+ * =====================================================
+ */
+
 const staffManagementRoutes = require(
   "./routes/staffManagement.routes"
 );
@@ -44,6 +50,13 @@ const deliveryRoutes = require(
 
 const riderRoutes = require(
   "./routes/rider.routes"
+);
+
+/*
+ * ServicePay Keke
+ */
+const kekeRideRoutes = require(
+  "./routes/kekeRide.routes"
 );
 
 const notificationRoutes = require(
@@ -90,23 +103,45 @@ const examPinRoutes = require(
   "./routes/examPin.routes"
 );
 
-const amanaRoutes = require("./routes/amana.routes");
+const amanaRoutes = require(
+  "./routes/amana.routes"
+);
 
 const adminAmanaRoutes = require(
   "./routes/adminAmana.routes"
 );
 
+/*
+ * =====================================================
+ * APP
+ * =====================================================
+ */
+
 const app = express();
+
+/*
+ * =====================================================
+ * DATABASE
+ * =====================================================
+ */
 
 connectDB();
 
+/*
+ * =====================================================
+ * SECURITY / MIDDLEWARE
+ * =====================================================
+ */
+
 app.use(helmet());
+
 app.use(cors());
 
 /*
- * Keep the original raw JSON payload.
- * SecureWaveNG uses it for HMAC-SHA256
- * webhook signature verification.
+ * Keep original raw JSON payload.
+ *
+ * SecureWaveNG uses rawBody for
+ * HMAC-SHA256 webhook signature verification.
  */
 app.use(
   express.json({
@@ -122,6 +157,12 @@ app.use(
   })
 );
 
+/*
+ * =====================================================
+ * HEALTH CHECK
+ * =====================================================
+ */
+
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
@@ -130,6 +171,25 @@ app.get("/", (req, res) => {
       "Servicepay Backend is running",
   });
 });
+
+app.get(
+  "/api/health",
+  (req, res) => {
+    res.status(200).json({
+      success: true,
+      status: "OK",
+      service: "ServicePay API",
+      timestamp:
+        new Date().toISOString(),
+    });
+  }
+);
+
+/*
+ * =====================================================
+ * PAYMENT / VTU
+ * =====================================================
+ */
 
 app.use(
   "/api/paystack",
@@ -142,35 +202,85 @@ app.use(
 );
 
 app.use(
+  "/api/securewave",
+  securewaveRoutes
+);
+
+/*
+ * =====================================================
+ * AUTH
+ * =====================================================
+ */
+
+app.use(
   "/api/auth",
   authRoutes
 );
+
+/*
+ * =====================================================
+ * TRANSFERS
+ * =====================================================
+ */
 
 app.use(
   "/api/transfer",
   transferRoutes
 );
 
-app.use("/api/amana", amanaRoutes);
+/*
+ * =====================================================
+ * SERVICEPAY AMANA
+ * =====================================================
+ */
+
+app.use(
+  "/api/amana",
+  amanaRoutes
+);
 
 app.use(
   "/api/admin/amana",
   adminAmanaRoutes
 );
 
-app.use(
-  "/api/securewave",
-  securewaveRoutes
-);
+/*
+ * =====================================================
+ * ID VERIFICATION
+ * =====================================================
+ */
 
 app.use(
   "/api/id-verification",
   idVerificationRoutes
 );
 
+/*
+ * =====================================================
+ * DELIVERY
+ * =====================================================
+ */
+
 app.use(
   "/api/delivery",
   deliveryRoutes
+);
+
+/*
+ * =====================================================
+ * RIDER
+ * =====================================================
+ *
+ * New standard:
+ * /api/riders
+ *
+ * Old route is kept so existing Rider
+ * screens will not break.
+ */
+
+app.use(
+  "/api/riders",
+  riderRoutes
 );
 
 app.use(
@@ -178,60 +288,161 @@ app.use(
   riderRoutes
 );
 
+/*
+ * =====================================================
+ * SERVICEPAY KEKE
+ * =====================================================
+ *
+ * Customer:
+ *
+ * POST /api/keke-rides
+ * GET  /api/keke-rides/active
+ * GET  /api/keke-rides/history
+ *
+ * Driver:
+ *
+ * GET  /api/keke-rides/driver/current
+ * POST /api/keke-rides/:rideId/accept
+ * POST /api/keke-rides/:rideId/arrived
+ * POST /api/keke-rides/:rideId/start
+ * POST /api/keke-rides/:rideId/complete
+ *
+ * Live Tracking:
+ *
+ * GET /api/keke-rides/:rideId/driver-location
+ */
+
+app.use(
+  "/api/keke-rides",
+  kekeRideRoutes
+);
+
+/*
+ * =====================================================
+ * NOTIFICATIONS
+ * =====================================================
+ */
+
 app.use(
   "/api/notifications",
   notificationRoutes
 );
+
+/*
+ * =====================================================
+ * ADMIN
+ * =====================================================
+ */
 
 app.use(
   "/api/admin",
   adminRoutes
 );
 
+/*
+ * =====================================================
+ * WALLET
+ * =====================================================
+ */
+
 app.use(
   "/api/wallet",
   walletRoutes
 );
+
+/*
+ * =====================================================
+ * MANUAL FUNDING
+ * =====================================================
+ */
 
 app.use(
   "/api/manual-funding",
   manualFundingRoutes
 );
 
+/*
+ * =====================================================
+ * ANNOUNCEMENTS
+ * =====================================================
+ */
+
 app.use(
   "/api/announcement",
   announcementRoutes
 );
+
+/*
+ * =====================================================
+ * TRANSACTIONS
+ * =====================================================
+ */
 
 app.use(
   "/api/transactions",
   transactionRoutes
 );
 
+/*
+ * =====================================================
+ * ELECTRICITY
+ * =====================================================
+ */
+
 app.use(
   "/api/electricity",
   electricityRoutes
 );
+
+/*
+ * =====================================================
+ * TRANSACTION PIN
+ * =====================================================
+ */
 
 app.use(
   "/api/transaction-pin",
   transactionPinRoutes
 );
 
+/*
+ * =====================================================
+ * MANAGEMENT
+ * =====================================================
+ */
+
 app.use(
   "/api/management",
   managementRoutes
 );
+
+/*
+ * =====================================================
+ * APP SETTINGS
+ * =====================================================
+ */
 
 app.use(
   "/api/settings",
   appSettingsRoutes
 );
 
+/*
+ * =====================================================
+ * STAFF MANAGEMENT
+ * =====================================================
+ */
+
 app.use(
   "/api/staff-management",
   staffManagementRoutes
 );
+
+/*
+ * =====================================================
+ * PRODUCT COMMISSIONS
+ * =====================================================
+ */
 
 app.use(
   "/api/admin/product-commissions",
@@ -239,35 +450,54 @@ app.use(
 );
 
 /*
- * Exam PIN routes:
- *
- * GET  /api/exam-pin/products
- * POST /api/exam-pin/buy
- * GET  /api/exam-pin/history
- * GET  /api/exam-pin/history/:id
+ * =====================================================
+ * EXAM PIN
+ * =====================================================
  */
+
 app.use(
   "/api/exam-pin",
   examPinRoutes
 );
 
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message:
-      `Route not found: ${req.method} ${req.originalUrl}`,
-  });
-});
+/*
+ * =====================================================
+ * 404
+ * =====================================================
+ */
 
 app.use(
-  (error, req, res, next) => {
+  (req, res) => {
+    res.status(404).json({
+      success: false,
+      message:
+        `Route not found: ${req.method} ${req.originalUrl}`,
+    });
+  }
+);
+
+/*
+ * =====================================================
+ * GLOBAL ERROR HANDLER
+ * =====================================================
+ */
+
+app.use(
+  (
+    error,
+    req,
+    res,
+    next
+  ) => {
     console.error(
       "Server error:",
       error
     );
 
     res
-      .status(error.status || 500)
+      .status(
+        error.status || 500
+      )
       .json({
         success: false,
         message:
@@ -277,6 +507,12 @@ app.use(
   }
 );
 
+/*
+ * =====================================================
+ * SERVER
+ * =====================================================
+ */
+
 const PORT =
   process.env.PORT || 3000;
 
@@ -285,7 +521,23 @@ app.listen(
   "0.0.0.0",
   () => {
     console.log(
-      `🚀 Server running on port ${PORT}`
+      `🚀 ServicePay server running on port ${PORT}`
+    );
+
+    console.log(
+      "🛺 ServicePay Keke enabled"
+    );
+
+    console.log(
+      "📍 Rider live location enabled"
+    );
+
+    console.log(
+      "🔎 Nearest Keke driver matching enabled"
+    );
+
+    console.log(
+      "🚕 Keke Ride API: /api/keke-rides"
     );
   }
 );

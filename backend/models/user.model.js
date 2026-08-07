@@ -32,10 +32,7 @@ const userSchema = new mongoose.Schema(
     },
 
     /*
-     * Transaction PIN is optional because existing
-     * users may not have created a PIN yet.
-     *
-     * It will be hashed before being saved.
+     * Transaction PIN
      */
     transactionPin: {
       type: String,
@@ -54,8 +51,7 @@ const userSchema = new mongoose.Schema(
     },
 
     /*
-     * Password reset fields.
-     * passwordResetToken stores only the hashed reset token.
+     * Password reset
      */
     passwordResetToken: {
       type: String,
@@ -75,8 +71,7 @@ const userSchema = new mongoose.Schema(
     },
 
     /*
-     * Internal ServicePay staff account.
-     * Specific duties and permissions come from staffRoleId.
+     * Internal ServicePay staff
      */
     isStaff: {
       type: Boolean,
@@ -134,7 +129,7 @@ const userSchema = new mongoose.Schema(
     },
 
     /*
-     * Main ServicePay account role.
+     * Main ServicePay role
      */
     role: {
       type: String,
@@ -188,9 +183,11 @@ const userSchema = new mongoose.Schema(
     },
 
     /*
-     * Delivery Rider details.
-     * These fields are mainly used when role is DELIVERY_RIDER.
+     * =====================================================
+     * DELIVERY RIDER / SERVICEPAY KEKE
+     * =====================================================
      */
+
     riderId: {
       type: String,
       trim: true,
@@ -254,6 +251,11 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    /*
+     * ONLINE  = available for new job
+     * OFFLINE = not accepting jobs
+     * BUSY    = currently handling a job
+     */
     availabilityStatus: {
       type: String,
       enum: [
@@ -311,6 +313,9 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    /*
+     * Rider statistics
+     */
     totalRiderEarnings: {
       type: Number,
       default: 0,
@@ -367,18 +372,61 @@ const userSchema = new mongoose.Schema(
     },
 
     /*
-     * Optional current rider location.
-     * We will activate live tracking later.
+     * =====================================================
+     * LIVE RIDER LOCATION
+     * =====================================================
+     *
+     * GeoJSON Point enables MongoDB to search for
+     * the nearest available driver.
+     *
+     * IMPORTANT:
+     * coordinates format is:
+     *
+     * [longitude, latitude]
+     *
+     * NOT:
+     * [latitude, longitude]
      */
     riderCurrentLocation: {
-      latitude: {
-        type: Number,
-        default: null,
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: undefined,
       },
 
-      longitude: {
-        type: Number,
-        default: null,
+      coordinates: {
+        type: [Number],
+        default: undefined,
+
+        validate: {
+          validator: function (value) {
+            if (value === undefined || value === null) {
+              return true;
+            }
+
+            if (
+              !Array.isArray(value) ||
+              value.length !== 2
+            ) {
+              return false;
+            }
+
+            const longitude = Number(value[0]);
+            const latitude = Number(value[1]);
+
+            return (
+              Number.isFinite(longitude) &&
+              Number.isFinite(latitude) &&
+              longitude >= -180 &&
+              longitude <= 180 &&
+              latitude >= -90 &&
+              latitude <= 90
+            );
+          },
+
+          message:
+            "Rider location must contain valid longitude and latitude.",
+        },
       },
 
       address: {
@@ -387,12 +435,55 @@ const userSchema = new mongoose.Schema(
         default: null,
       },
 
+      accuracy: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+
+      heading: {
+        type: Number,
+        default: null,
+        min: 0,
+        max: 360,
+      },
+
+      speed: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+
       updatedAt: {
         type: Date,
         default: null,
       },
     },
 
+    /*
+     * Used later to determine whether the driver's
+     * location is still fresh enough for matching.
+     */
+    riderLocationUpdatedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    /*
+     * Tracks the active Keke/delivery job.
+     */
+    riderCurrentJobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+
+    /*
+     * =====================================================
+     * WALLET
+     * =====================================================
+     */
     walletBalance: {
       type: Number,
       default: 0,
@@ -435,6 +526,11 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
+    /*
+     * =====================================================
+     * VIRTUAL ACCOUNT
+     * =====================================================
+     */
     virtualAccount: {
       provider: {
         type: String,
@@ -507,6 +603,9 @@ const userSchema = new mongoose.Schema(
       },
     },
 
+    /*
+     * Account status
+     */
     status: {
       type: String,
       enum: [
@@ -524,7 +623,13 @@ const userSchema = new mongoose.Schema(
 );
 
 /*
- * Unique virtual-account number index.
+ * =====================================================
+ * DATABASE INDEXES
+ * =====================================================
+ */
+
+/*
+ * Unique virtual account number.
  */
 userSchema.index(
   {
@@ -533,6 +638,7 @@ userSchema.index(
   {
     name: "virtualAccount.accountNumber_1",
     unique: true,
+
     partialFilterExpression: {
       "virtualAccount.accountNumber": {
         $type: "string",
@@ -543,7 +649,7 @@ userSchema.index(
 );
 
 /*
- * Unique SecureWaveNG customer reference index.
+ * Unique SecureWaveNG customer reference.
  */
 userSchema.index(
   {
@@ -552,6 +658,7 @@ userSchema.index(
   {
     name: "virtualAccount.customerReference_1",
     unique: true,
+
     partialFilterExpression: {
       "virtualAccount.customerReference": {
         $type: "string",
@@ -562,7 +669,7 @@ userSchema.index(
 );
 
 /*
- * Helps admin find available and verified riders quickly.
+ * Helps ServicePay find available verified riders.
  */
 userSchema.index({
   role: 1,
@@ -572,59 +679,106 @@ userSchema.index({
 });
 
 /*
- * Hash password before saving.
+ * =====================================================
+ * NEAREST DRIVER INDEX
+ * =====================================================
+ *
+ * MongoDB uses this 2dsphere index to find
+ * the Keke/driver nearest to the customer's
+ * pickup point.
  */
-userSchema.pre("save", async function () {
-  if (this.isModified("password")) {
-    this.password = await bcrypt.hash(
-      this.password,
-      12
-    );
-  }
+userSchema.index({
+  riderCurrentLocation: "2dsphere",
+});
 
-  /*
-   * Hash transaction PIN before saving.
-   */
-  if (
-    this.isModified("transactionPin") &&
-    this.transactionPin
-  ) {
-    const plainPin = String(
-      this.transactionPin
-    ).trim();
-
-    if (!/^\d{4}$/.test(plainPin)) {
-      throw new Error(
-        "Transaction PIN must contain exactly 4 digits."
+/*
+ * =====================================================
+ * PRE-SAVE
+ * =====================================================
+ */
+userSchema.pre(
+  "save",
+  async function () {
+    /*
+     * Hash login password.
+     */
+    if (this.isModified("password")) {
+      this.password = await bcrypt.hash(
+        this.password,
+        12
       );
     }
 
-    this.transactionPin = await bcrypt.hash(
-      plainPin,
-      12
-    );
+    /*
+     * Hash transaction PIN.
+     */
+    if (
+      this.isModified("transactionPin") &&
+      this.transactionPin
+    ) {
+      const plainPin = String(
+        this.transactionPin
+      ).trim();
 
-    this.transactionPinSet = true;
-    this.transactionPinUpdatedAt = new Date();
-  }
+      if (!/^\d{4}$/.test(plainPin)) {
+        throw new Error(
+          "Transaction PIN must contain exactly 4 digits."
+        );
+      }
 
-  /*
-   * Automatically set rider joining date.
-   */
-  if (
-    this.role === "DELIVERY_RIDER" &&
-    !this.riderJoinedAt
-  ) {
-    this.riderJoinedAt = new Date();
-  }
+      this.transactionPin =
+        await bcrypt.hash(
+          plainPin,
+          12
+        );
 
-  /*
-   * A non-rider account should not remain online.
-   */
-  if (this.role !== "DELIVERY_RIDER") {
-    this.availabilityStatus = "OFFLINE";
+      this.transactionPinSet = true;
+
+      this.transactionPinUpdatedAt =
+        new Date();
+    }
+
+    /*
+     * Automatically set rider joining date.
+     */
+    if (
+      this.role === "DELIVERY_RIDER" &&
+      !this.riderJoinedAt
+    ) {
+      this.riderJoinedAt = new Date();
+    }
+
+    /*
+     * A non-rider must never remain online.
+     */
+    if (
+      this.role !== "DELIVERY_RIDER"
+    ) {
+      this.availabilityStatus =
+        "OFFLINE";
+
+      this.riderCurrentJobId = null;
+    }
+
+    /*
+     * Update rider online timestamp.
+     */
+    if (
+      this.role === "DELIVERY_RIDER" &&
+      this.availabilityStatus ===
+        "ONLINE"
+    ) {
+      this.riderLastOnlineAt =
+        new Date();
+    }
   }
-});
+);
+
+/*
+ * =====================================================
+ * METHODS
+ * =====================================================
+ */
 
 /*
  * Compare login password.
@@ -661,7 +815,9 @@ userSchema.methods.compareTransactionPin =
  */
 userSchema.methods.setTransactionPin =
   function (newPin) {
-    const pin = String(newPin || "").trim();
+    const pin = String(
+      newPin || ""
+    ).trim();
 
     if (!/^\d{4}$/.test(pin)) {
       throw new Error(
@@ -670,24 +826,189 @@ userSchema.methods.setTransactionPin =
     }
 
     this.transactionPin = pin;
+
     this.transactionPinSet = true;
-    this.transactionPinUpdatedAt = new Date();
+
+    this.transactionPinUpdatedAt =
+      new Date();
   };
 
 /*
- * Check whether a rider can receive delivery jobs.
+ * Check if rider has a valid location.
+ */
+userSchema.methods.hasValidRiderLocation =
+  function () {
+    const location =
+      this.riderCurrentLocation;
+
+    if (!location) {
+      return false;
+    }
+
+    if (location.type !== "Point") {
+      return false;
+    }
+
+    if (
+      !Array.isArray(
+        location.coordinates
+      ) ||
+      location.coordinates.length !== 2
+    ) {
+      return false;
+    }
+
+    const longitude =
+      Number(
+        location.coordinates[0]
+      );
+
+    const latitude =
+      Number(
+        location.coordinates[1]
+      );
+
+    return (
+      Number.isFinite(longitude) &&
+      Number.isFinite(latitude) &&
+      longitude >= -180 &&
+      longitude <= 180 &&
+      latitude >= -90 &&
+      latitude <= 90
+    );
+  };
+
+/*
+ * Check whether rider can receive a normal
+ * ServicePay delivery job.
  */
 userSchema.methods.canReceiveDelivery =
   function () {
     return (
-      this.role === "DELIVERY_RIDER" &&
+      this.role ===
+        "DELIVERY_RIDER" &&
       this.status === "ACTIVE" &&
-      this.riderVerificationStatus === "VERIFIED" &&
-      this.availabilityStatus === "ONLINE"
+      this.riderVerificationStatus ===
+        "VERIFIED" &&
+      this.availabilityStatus ===
+        "ONLINE"
     );
   };
 
-module.exports = mongoose.model(
-  "User",
-  userSchema
-);
+/*
+ * Check whether rider can receive a
+ * ServicePay Keke ride request.
+ */
+userSchema.methods.canReceiveKekeRide =
+  function () {
+    return (
+      this.role ===
+        "DELIVERY_RIDER" &&
+      this.status === "ACTIVE" &&
+      this.riderVerificationStatus ===
+        "VERIFIED" &&
+      this.availabilityStatus ===
+        "ONLINE" &&
+      this.vehicleType ===
+        "TRICYCLE" &&
+      !this.riderCurrentJobId &&
+      this.hasValidRiderLocation()
+    );
+  };
+
+/*
+ * Update rider live location.
+ */
+userSchema.methods.setRiderLocation =
+  function ({
+    latitude,
+    longitude,
+    address = null,
+    accuracy = null,
+    heading = null,
+    speed = null,
+  }) {
+    const lat =
+      Number(latitude);
+
+    const lng =
+      Number(longitude);
+
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
+      throw new Error(
+        "Invalid rider latitude or longitude."
+      );
+    }
+
+    if (
+      lat < -90 ||
+      lat > 90
+    ) {
+      throw new Error(
+        "Invalid rider latitude."
+      );
+    }
+
+    if (
+      lng < -180 ||
+      lng > 180
+    ) {
+      throw new Error(
+        "Invalid rider longitude."
+      );
+    }
+
+    const now = new Date();
+
+    this.riderCurrentLocation = {
+      type: "Point",
+
+      coordinates: [
+        lng,
+        lat,
+      ],
+
+      address:
+        address || null,
+
+      accuracy:
+        accuracy === null ||
+        accuracy === undefined
+          ? null
+          : Number(accuracy),
+
+      heading:
+        heading === null ||
+        heading === undefined
+          ? null
+          : Number(heading),
+
+      speed:
+        speed === null ||
+        speed === undefined
+          ? null
+          : Math.max(
+              0,
+              Number(speed)
+            ),
+
+      updatedAt: now,
+    };
+
+    this.riderLocationUpdatedAt =
+      now;
+  };
+
+/*
+ * =====================================================
+ * EXPORT
+ * =====================================================
+ */
+module.exports =
+  mongoose.model(
+    "User",
+    userSchema
+  );

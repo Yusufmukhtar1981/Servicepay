@@ -1,166 +1,85 @@
 const express = require("express");
 
 const {
-  getRiderDeliveries,
-  getRiderDeliveryDetails,
-  acceptRiderDelivery,
-  rejectRiderDelivery,
-  updateRiderDeliveryStatus,
-} = require(
-  "../controllers/riderDelivery.controller"
-);
-
-const {
-  getCommissionSummary,
-  getMyWithdrawals,
-  getMyWithdrawalById,
-  createWithdrawalRequest,
-  getAllWithdrawals,
-  approveWithdrawal,
-  rejectWithdrawal,
-  markWithdrawalProcessing,
-  markWithdrawalPaid,
-  markWithdrawalFailed,
-} = require(
-  "../controllers/riderWithdrawal.controller"
-);
-
-const {
   protect,
-} = require(
-  "../middleware/auth.middleware"
+} = require("../middleware/auth.middleware");
+
+const riderController = require(
+  "../controllers/rider.controller"
 );
 
 const router = express.Router();
 
 /*
-|--------------------------------------------------------------------------
-| RIDER DELIVERIES
-|--------------------------------------------------------------------------
-*/
-
+ * =====================================================
+ * RIDER PROFILE
+ * =====================================================
+ *
+ * GET /api/riders/me
+ */
 router.get(
-  "/deliveries",
+  "/me",
   protect,
-  getRiderDeliveries
-);
-
-router.get(
-  "/deliveries/:id",
-  protect,
-  getRiderDeliveryDetails
-);
-
-router.patch(
-  "/deliveries/:id/accept",
-  protect,
-  acceptRiderDelivery
-);
-
-router.patch(
-  "/deliveries/:id/reject",
-  protect,
-  rejectRiderDelivery
-);
-
-router.patch(
-  "/deliveries/:id/status",
-  protect,
-  updateRiderDeliveryStatus
+  riderController.getMyRiderProfile
 );
 
 /*
-|--------------------------------------------------------------------------
-| RIDER COMMISSION
-|--------------------------------------------------------------------------
-|
-| GET /api/rider/commission-summary
-|
-*/
-
-router.get(
-  "/commission-summary",
-  protect,
-  getCommissionSummary
-);
-
-/*
-|--------------------------------------------------------------------------
-| RIDER WITHDRAWALS
-|--------------------------------------------------------------------------
-|
-| GET  /api/rider/withdrawals
-| GET  /api/rider/withdrawals/:id
-| POST /api/rider/withdrawals
-|
-*/
-
-router.get(
-  "/withdrawals",
-  protect,
-  getMyWithdrawals
-);
-
+ * =====================================================
+ * RIDER LIVE LOCATION
+ * =====================================================
+ *
+ * POST /api/riders/location
+ */
 router.post(
-  "/withdrawals",
+  "/location",
   protect,
-  createWithdrawalRequest
-);
-
-router.get(
-  "/withdrawals/:id",
-  protect,
-  getMyWithdrawalById
+  riderController.updateLocation
 );
 
 /*
-|--------------------------------------------------------------------------
-| HEAD OFFICE RIDER WITHDRAWAL MANAGEMENT
-|--------------------------------------------------------------------------
-|
-| GET   /api/rider/admin/withdrawals
-| PATCH /api/rider/admin/withdrawals/:id/approve
-| PATCH /api/rider/admin/withdrawals/:id/reject
-| PATCH /api/rider/admin/withdrawals/:id/processing
-| PATCH /api/rider/admin/withdrawals/:id/paid
-| PATCH /api/rider/admin/withdrawals/:id/failed
-|
-*/
+ * =====================================================
+ * RIDER AVAILABILITY
+ * =====================================================
+ *
+ * POST /api/riders/availability
+ */
+router.post(
+  "/availability",
+  protect,
+  riderController.updateAvailability
+);
 
+/*
+ * =====================================================
+ * RIDER STATUS
+ * =====================================================
+ *
+ * GET /api/riders/status
+ */
 router.get(
-  "/admin/withdrawals",
+  "/status",
   protect,
-  getAllWithdrawals
+  riderController.getRiderStatus
 );
 
-router.patch(
-  "/admin/withdrawals/:id/approve",
+/*
+ * =====================================================
+ * NEARBY KEKE DRIVERS
+ * =====================================================
+ *
+ * GET /api/riders/nearby-keke
+ *
+ * Example:
+ *
+ * /api/riders/nearby-keke
+ * ?latitude=12.0022
+ * &longitude=8.5920
+ * &radius=10000
+ */
+router.get(
+  "/nearby-keke",
   protect,
-  approveWithdrawal
-);
-
-router.patch(
-  "/admin/withdrawals/:id/reject",
-  protect,
-  rejectWithdrawal
-);
-
-router.patch(
-  "/admin/withdrawals/:id/processing",
-  protect,
-  markWithdrawalProcessing
-);
-
-router.patch(
-  "/admin/withdrawals/:id/paid",
-  protect,
-  markWithdrawalPaid
-);
-
-router.patch(
-  "/admin/withdrawals/:id/failed",
-  protect,
-  markWithdrawalFailed
+  riderController.findNearbyKekeDrivers
 );
 
 module.exports = router;
