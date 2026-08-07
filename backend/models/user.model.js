@@ -432,31 +432,31 @@ const userSchema = new mongoose.Schema(
       address: {
         type: String,
         trim: true,
-        default: null,
+        default: undefined,
       },
 
       accuracy: {
         type: Number,
-        default: null,
+        default: undefined,
         min: 0,
       },
 
       heading: {
         type: Number,
-        default: null,
+        default: undefined,
         min: 0,
         max: 360,
       },
 
       speed: {
         type: Number,
-        default: null,
+        default: undefined,
         min: 0,
       },
 
       updatedAt: {
         type: Date,
-        default: null,
+        default: undefined,
       },
     },
 
@@ -466,7 +466,7 @@ const userSchema = new mongoose.Schema(
      */
     riderLocationUpdatedAt: {
       type: Date,
-      default: null,
+      default: undefined,
       index: true,
     },
 
@@ -475,7 +475,7 @@ const userSchema = new mongoose.Schema(
      */
     riderCurrentJobId: {
       type: mongoose.Schema.Types.ObjectId,
-      default: null,
+      default: undefined,
       index: true,
     },
 
@@ -506,7 +506,7 @@ const userSchema = new mongoose.Schema(
     referredBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      default: null,
+      default: undefined,
     },
 
     totalEarnings: {
@@ -534,7 +534,7 @@ const userSchema = new mongoose.Schema(
     virtualAccount: {
       provider: {
         type: String,
-        default: null,
+        default: undefined,
         trim: true,
       },
 
@@ -546,19 +546,19 @@ const userSchema = new mongoose.Schema(
 
       accountName: {
         type: String,
-        default: null,
+        default: undefined,
         trim: true,
       },
 
       bankName: {
         type: String,
-        default: null,
+        default: undefined,
         trim: true,
       },
 
       bankCode: {
         type: String,
-        default: null,
+        default: undefined,
         trim: true,
       },
 
@@ -570,7 +570,7 @@ const userSchema = new mongoose.Schema(
 
       providerCustomerId: {
         type: String,
-        default: null,
+        default: undefined,
         trim: true,
       },
 
@@ -588,18 +588,18 @@ const userSchema = new mongoose.Schema(
 
       failureReason: {
         type: String,
-        default: null,
+        default: undefined,
         trim: true,
       },
 
       createdAt: {
         type: Date,
-        default: null,
+        default: undefined,
       },
 
       updatedAt: {
         type: Date,
-        default: null,
+        default: undefined,
       },
     },
 
