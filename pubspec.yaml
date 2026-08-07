@@ -12,9 +12,7 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-
   http: ^1.2.1
-
   shared_preferences: ^2.5.3
 
   firebase_core: ^4.12.1
@@ -27,21 +25,19 @@ dependencies:
   share_plus: ^13.3.0
   gal: ^2.3.3
   path_provider: ^2.1.6
-
   qr_flutter: ^4.1.0
 
   # =====================================================
   # SERVICEPAY KEKE
   # =====================================================
 
-  # Interactive OpenStreetMap map.
   flutter_map: ^8.3.1
-
-  # Latitude and longitude objects for flutter_map.
   latlong2: ^0.10.1
-
-  # Customer and driver GPS/current location.
   geolocator: ^14.0.2
+
+  # Works on Android and Web.
+  # Used for incoming Keke ride ringing.
+  audioplayers: ^6.4.0
 
 dev_dependencies:
   flutter_test:
