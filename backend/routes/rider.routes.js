@@ -8,6 +8,10 @@ const riderController = require(
   "../controllers/rider.controller"
 );
 
+const riderWithdrawalController = require(
+  "../controllers/riderWithdrawal.controller"
+);
+
 const router = express.Router();
 
 /*
@@ -80,6 +84,22 @@ router.get(
   "/nearby-keke",
   protect,
   riderController.findNearbyKekeDrivers
+);
+
+
+/*
+ * ============================================================
+ * ADMIN RIDER WITHDRAWALS
+ * ============================================================
+ *
+ * GET /api/rider/admin/withdrawals
+ *
+ * Controller performs Head Office authorization.
+ */
+router.get(
+  "/admin/withdrawals",
+  protect,
+  riderWithdrawalController.getAllWithdrawals
 );
 
 module.exports = router;
