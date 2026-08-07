@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -9,13 +10,17 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class KekeOrderScreen extends StatefulWidget {
-  const KekeOrderScreen({super.key});
+  const KekeOrderScreen({
+    super.key,
+  });
 
   @override
-  State<KekeOrderScreen> createState() => _KekeOrderScreenState();
+  State<KekeOrderScreen> createState() =>
+      _KekeOrderScreenState();
 }
 
-class _KekeOrderScreenState extends State<KekeOrderScreen> {
+class _KekeOrderScreenState
+    extends State<KekeOrderScreen> {
   static const String baseUrl =
       'https://api.servicepay.ng/api';
 
@@ -35,10 +40,12 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
 
   bool _isLoadingLocation = true;
   bool _isRequestingRide = false;
-  bool _isTrackingRide = false;
+  bool _isLoadingOtp = false;
 
   String _statusMessage =
       'Getting your current location...';
+
+  String? _rideOtp;
 
   LatLng? _pickupLocation;
   LatLng? _destinationLocation;
@@ -75,7 +82,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
     final SharedPreferences prefs =
         await SharedPreferences.getInstance();
 
-    const List<String> tokenKeys = <String>[
+    const List<String> tokenKeys =
+        <String>[
       'auth_token',
       'token',
       'access_token',
@@ -88,33 +96,75 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
       final String? value =
           prefs.getString(key);
 
-      if (value != null &&
-          value.trim().isNotEmpty) {
-        return value.trim();
+      if (value == null ||
+          value.trim().isEmpty) {
+        continue;
+      }
+
+      String token =
+          value.trim();
+
+      if (token
+          .toLowerCase()
+          .startsWith(
+            'bearer ',
+          )) {
+        token =
+            token.substring(7).trim();
+      }
+
+      if (token.isNotEmpty) {
+        return token;
       }
     }
 
     return null;
   }
 
+  String? _rideId(
+    Map<String, dynamic>? ride,
+  ) {
+    if (ride == null) {
+      return null;
+    }
+
+    final String value =
+        ride['_id']?.toString() ??
+            ride['id']?.toString() ??
+            '';
+
+    if (value.trim().isEmpty) {
+      return null;
+    }
+
+    return value.trim();
+  }
+
   Future<void> _loadCurrentLocation() async {
     try {
-      setState(() {
-        _isLoadingLocation = true;
-        _statusMessage =
-            'Getting your current location...';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = true;
+
+          _statusMessage =
+              'Getting your current location...';
+        });
+      }
 
       final bool enabled =
           await Geolocator
               .isLocationServiceEnabled();
 
       if (!enabled) {
-        setState(() {
-          _isLoadingLocation = false;
-          _statusMessage =
-              'Please turn on location service.';
-        });
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation =
+                false;
+
+            _statusMessage =
+                'Please turn on location service.';
+          });
+        }
 
         return;
       }
@@ -135,11 +185,15 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
           permission ==
               LocationPermission
                   .deniedForever) {
-        setState(() {
-          _isLoadingLocation = false;
-          _statusMessage =
-              'Location permission is required to order Keke.';
-        });
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation =
+                false;
+
+            _statusMessage =
+                'Location permission is required to order Keke.';
+          });
+        }
 
         return;
       }
@@ -160,30 +214,40 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         position.longitude,
       );
 
-      setState(() {
-        _pickupLocation = current;
+      if (mounted) {
+        setState(() {
+          _pickupLocation =
+              current;
 
-        _isLoadingLocation = false;
+          _isLoadingLocation =
+              false;
 
-        _statusMessage =
-            'Current location ready.';
-      });
+          _statusMessage =
+              'Current location ready.';
+        });
+      }
 
       WidgetsBinding.instance
-          .addPostFrameCallback((_) {
-        try {
-          _mapController.move(
-            current,
-            16,
-          );
-        } catch (_) {}
-      });
-    } catch (error) {
-      setState(() {
-        _isLoadingLocation = false;
-        _statusMessage =
-            'Unable to get current location.';
-      });
+          .addPostFrameCallback(
+        (_) {
+          try {
+            _mapController.move(
+              current,
+              16,
+            );
+          } catch (_) {}
+        },
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation =
+              false;
+
+          _statusMessage =
+              'Unable to get current location.';
+        });
+      }
     }
   }
 
@@ -202,7 +266,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         Uri.parse(
           '$baseUrl/keke-rides/active',
         ),
-        headers: <String, String>{
+        headers:
+            <String, String>{
           'Authorization':
               'Bearer $token',
           'Accept':
@@ -220,33 +285,58 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         response.body,
       );
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          decoded is Map<String, dynamic>) {
-        final dynamic ride =
-            decoded['ride'];
-
-        if (ride is Map) {
-          final Map<String, dynamic>
-              normalizedRide =
-              Map<String, dynamic>.from(
-            ride,
-          );
-
-          setState(() {
-            _activeRide =
-                normalizedRide;
-
-            _isTrackingRide = true;
-          });
-
-          _extractRideLocations(
-            normalizedRide,
-          );
-
-          _startRidePolling();
-        }
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded
+              is! Map<String, dynamic>) {
+        return;
       }
+
+      final dynamic ride =
+          decoded['ride'];
+
+      if (ride is! Map) {
+        return;
+      }
+
+      final Map<String, dynamic>
+          normalizedRide =
+          Map<String, dynamic>.from(
+        ride,
+      );
+
+      if (mounted) {
+        setState(() {
+          _activeRide =
+              normalizedRide;
+        });
+      }
+
+      _extractRideLocations(
+        normalizedRide,
+      );
+
+      final String status =
+          normalizedRide['status']
+                  ?.toString() ??
+              '';
+
+      final String? rideId =
+          _rideId(
+        normalizedRide,
+      );
+
+      if (rideId != null &&
+          <String>[
+            'DRIVER_ARRIVED',
+            'RIDE_STARTED',
+          ].contains(status)) {
+        await _loadRideOtp(
+          rideId,
+        );
+      }
+
+      _startRidePolling();
     } catch (_) {}
   }
 
@@ -302,7 +392,9 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         }
       }
 
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     } catch (_) {}
   }
 
@@ -314,8 +406,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
       const Duration(
         seconds: 5,
       ),
-      (_) {
-        _refreshRideAndDriver();
+      (_) async {
+        await _refreshRideAndDriver();
       },
     );
   }
@@ -326,16 +418,12 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         ride =
         _activeRide;
 
-    if (ride == null) {
-      return;
-    }
-
     final String? rideId =
-        ride['_id']?.toString() ??
-        ride['id']?.toString();
+        _rideId(
+      ride,
+    );
 
-    if (rideId == null ||
-        rideId.isEmpty) {
+    if (rideId == null) {
       return;
     }
 
@@ -346,6 +434,20 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
     await _loadDriverLocation(
       rideId,
     );
+
+    final String status =
+        _activeRide?['status']
+                ?.toString() ??
+            '';
+
+    if (<String>[
+      'DRIVER_ARRIVED',
+      'RIDE_STARTED',
+    ].contains(status)) {
+      await _loadRideOtp(
+        rideId,
+      );
+    }
   }
 
   Future<void> _loadRideDetails(
@@ -365,7 +467,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         Uri.parse(
           '$baseUrl/keke-rides/$rideId',
         ),
-        headers: <String, String>{
+        headers:
+            <String, String>{
           'Authorization':
               'Bearer $token',
           'Accept':
@@ -383,51 +486,61 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         response.body,
       );
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          decoded is Map<String, dynamic> &&
-          decoded['ride'] is Map) {
-        final Map<String, dynamic>
-            updatedRide =
-            Map<String, dynamic>.from(
-          decoded['ride'] as Map,
-        );
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded
+              is! Map<String, dynamic> ||
+          decoded['ride'] is! Map) {
+        return;
+      }
 
-        final String status =
-            updatedRide['status']
-                    ?.toString() ??
-                '';
+      final Map<String, dynamic>
+          updatedRide =
+          Map<String, dynamic>.from(
+        decoded['ride'] as Map,
+      );
+
+      final String status =
+          updatedRide['status']
+                  ?.toString() ??
+              '';
+
+      if (mounted) {
+        setState(() {
+          _activeRide =
+              updatedRide;
+        });
+      }
+
+      if (<String>[
+        'RIDE_COMPLETED',
+        'CANCELLED',
+        'NO_DRIVER_FOUND',
+      ].contains(status)) {
+        _ridePollingTimer?.cancel();
 
         if (mounted) {
           setState(() {
-            _activeRide =
-                updatedRide;
+            if (status !=
+                'RIDE_COMPLETED') {
+              _rideOtp = null;
+            }
           });
-        }
-
-        if (<String>[
-          'RIDE_COMPLETED',
-          'CANCELLED',
-          'NO_DRIVER_FOUND',
-        ].contains(status)) {
-          _ridePollingTimer
-              ?.cancel();
-
-          if (mounted) {
-            setState(() {
-              _isTrackingRide =
-                  false;
-            });
-          }
         }
       }
     } catch (_) {}
   }
 
-  Future<void> _loadDriverLocation(
+  Future<void> _loadRideOtp(
     String rideId,
   ) async {
+    if (_isLoadingOtp) {
+      return;
+    }
+
     try {
+      _isLoadingOtp = true;
+
       final String? token =
           await _getAuthToken();
 
@@ -439,9 +552,10 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
           await http
               .get(
         Uri.parse(
-          '$baseUrl/keke-rides/$rideId/driver-location',
+          '$baseUrl/keke-rides/$rideId/otp',
         ),
-        headers: <String, String>{
+        headers:
+            <String, String>{
           'Authorization':
               'Bearer $token',
           'Accept':
@@ -462,33 +576,105 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
           decoded is Map<String, dynamic>) {
-        final dynamic location =
-            decoded['location'];
+        final dynamic ride =
+            decoded['ride'];
 
-        if (location is Map) {
-          final double? latitude =
-              _toDouble(
-            location['latitude'],
-          );
+        if (ride is Map) {
+          final String otp =
+              ride['otp']
+                      ?.toString()
+                      .trim() ??
+                  '';
 
-          final double? longitude =
-              _toDouble(
-            location['longitude'],
-          );
-
-          if (latitude != null &&
-              longitude != null) {
-            if (mounted) {
-              setState(() {
-                _driverLocation =
-                    LatLng(
-                  latitude,
-                  longitude,
-                );
-              });
-            }
+          if (otp.isNotEmpty &&
+              mounted) {
+            setState(() {
+              _rideOtp =
+                  otp;
+            });
           }
         }
+      }
+    } catch (_) {
+      // Polling will try again.
+    } finally {
+      _isLoadingOtp = false;
+    }
+  }
+
+  Future<void> _loadDriverLocation(
+    String rideId,
+  ) async {
+    try {
+      final String? token =
+          await _getAuthToken();
+
+      if (token == null) {
+        return;
+      }
+
+      final http.Response response =
+          await http
+              .get(
+        Uri.parse(
+          '$baseUrl/keke-rides/$rideId/driver-location',
+        ),
+        headers:
+            <String, String>{
+          'Authorization':
+              'Bearer $token',
+          'Accept':
+              'application/json',
+        },
+      )
+              .timeout(
+        const Duration(
+          seconds: 20,
+        ),
+      );
+
+      final dynamic decoded =
+          jsonDecode(
+        response.body,
+      );
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded
+              is! Map<String, dynamic>) {
+        return;
+      }
+
+      final dynamic location =
+          decoded['location'];
+
+      if (location is! Map) {
+        return;
+      }
+
+      final double? latitude =
+          _toDouble(
+        location['latitude'],
+      );
+
+      final double? longitude =
+          _toDouble(
+        location['longitude'],
+      );
+
+      if (latitude == null ||
+          longitude == null) {
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _driverLocation =
+              LatLng(
+            latitude,
+            longitude,
+          );
+        });
       }
     } catch (_) {}
   }
@@ -512,6 +698,10 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
   Future<void> _selectDestination(
     LatLng point,
   ) async {
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
       _destinationLocation =
           point;
@@ -533,6 +723,25 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
   Future<void> _useCurrentLocation()
       async {
     await _loadCurrentLocation();
+  }
+
+  Future<void> _copyOtp() async {
+    final String otp =
+        _rideOtp?.trim() ?? '';
+
+    if (otp.isEmpty) {
+      return;
+    }
+
+    await Clipboard.setData(
+      ClipboardData(
+        text: otp,
+      ),
+    );
+
+    _showMessage(
+      'Ride OTP copied.',
+    );
   }
 
   Future<void> _requestKeke() async {
@@ -585,11 +794,18 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
     }
 
     try {
-      setState(() {
-        _isRequestingRide = true;
-        _statusMessage =
-            'Searching for nearest Keke driver...';
-      });
+      if (mounted) {
+        setState(() {
+          _isRequestingRide =
+              true;
+
+          _rideOtp =
+              null;
+
+          _statusMessage =
+              'Searching for nearest Keke driver...';
+        });
+      }
 
       final String? token =
           await _getAuthToken();
@@ -598,11 +814,6 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         _showMessage(
           'Please login again.',
         );
-
-        setState(() {
-          _isRequestingRide =
-              false;
-        });
 
         return;
       }
@@ -613,7 +824,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         Uri.parse(
           '$baseUrl/keke-rides',
         ),
-        headers: <String, String>{
+        headers:
+            <String, String>{
           'Authorization':
               'Bearer $token',
           'Content-Type':
@@ -621,20 +833,27 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
           'Accept':
               'application/json',
         },
-        body: jsonEncode(
+        body:
+            jsonEncode(
           <String, dynamic>{
             'pickupAddress':
                 pickupAddress,
+
             'pickupLatitude':
                 pickup.latitude,
+
             'pickupLongitude':
                 pickup.longitude,
+
             'destinationAddress':
                 destinationAddress,
+
             'destinationLatitude':
                 destination.latitude,
+
             'destinationLongitude':
                 destination.longitude,
+
             'paymentMethod':
                 'WALLET',
           },
@@ -653,7 +872,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
 
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
-          decoded is Map<String, dynamic>) {
+          decoded
+              is Map<String, dynamic>) {
         final dynamic ride =
             decoded['ride'];
 
@@ -664,20 +884,17 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
             ride,
           );
 
-          setState(() {
-            _activeRide =
-                normalizedRide;
+          if (mounted) {
+            setState(() {
+              _activeRide =
+                  normalizedRide;
 
-            _isTrackingRide =
-                normalizedRide[
-                        'status'] !=
-                    'NO_DRIVER_FOUND';
-
-            _statusMessage =
-                decoded['message']
-                        ?.toString() ??
-                    'Keke request created.';
-          });
+              _statusMessage =
+                  decoded['message']
+                          ?.toString() ??
+                      'Keke request created.';
+            });
+          }
 
           _startRidePolling();
 
@@ -687,32 +904,38 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                 'Keke request created.',
           );
         }
-      } else {
-        final String message =
-            decoded is Map
-                ? decoded['message']
-                        ?.toString() ??
-                    'Unable to request Keke.'
-                : 'Unable to request Keke.';
 
-        _showMessage(
-          message,
-        );
+        return;
+      }
 
+      final String message =
+          decoded is Map
+              ? decoded['message']
+                      ?.toString() ??
+                  'Unable to request Keke.'
+              : 'Unable to request Keke.';
+
+      if (mounted) {
         setState(() {
           _statusMessage =
               message;
         });
       }
-    } catch (error) {
+
+      _showMessage(
+        message,
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _statusMessage =
+              'Unable to request Keke.';
+        });
+      }
+
       _showMessage(
         'Unable to request Keke. Please try again.',
       );
-
-      setState(() {
-        _statusMessage =
-            'Unable to request Keke.';
-      });
     } finally {
       if (mounted) {
         setState(() {
@@ -722,19 +945,14 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
       }
     }
   }
-
   Future<void> _cancelRide() async {
-    final Map<String, dynamic>?
-        ride =
+    final Map<String, dynamic>? ride =
         _activeRide;
 
-    if (ride == null) {
-      return;
-    }
-
     final String? rideId =
-        ride['_id']?.toString() ??
-        ride['id']?.toString();
+        _rideId(
+      ride,
+    );
 
     if (rideId == null) {
       return;
@@ -754,13 +972,17 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         Uri.parse(
           '$baseUrl/keke-rides/$rideId/cancel',
         ),
-        headers: <String, String>{
+        headers:
+            <String, String>{
           'Authorization':
               'Bearer $token',
           'Content-Type':
               'application/json',
+          'Accept':
+              'application/json',
         },
-        body: jsonEncode(
+        body:
+            jsonEncode(
           <String, dynamic>{
             'reason':
                 'Cancelled by customer',
@@ -783,15 +1005,21 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         _ridePollingTimer
             ?.cancel();
 
-        setState(() {
-          _activeRide = null;
-          _driverLocation =
-              null;
-          _isTrackingRide =
-              false;
-          _statusMessage =
-              'Ride cancelled.';
-        });
+        if (mounted) {
+          setState(() {
+            _activeRide =
+                null;
+
+            _driverLocation =
+                null;
+
+            _rideOtp =
+                null;
+
+            _statusMessage =
+                'Ride cancelled.';
+          });
+        }
 
         _showMessage(
           decoded is Map
@@ -800,15 +1028,17 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                   'Ride cancelled.'
               : 'Ride cancelled.',
         );
-      } else {
-        _showMessage(
-          decoded is Map
-              ? decoded['message']
-                      ?.toString() ??
-                  'Unable to cancel ride.'
-              : 'Unable to cancel ride.',
-        );
+
+        return;
       }
+
+      _showMessage(
+        decoded is Map
+            ? decoded['message']
+                    ?.toString() ??
+                'Unable to cancel ride.'
+            : 'Unable to cancel ride.',
+      );
     } catch (_) {
       _showMessage(
         'Unable to cancel ride.',
@@ -824,12 +1054,18 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
     }
 
     ScaffoldMessenger.of(context)
-        .showSnackBar(
-      SnackBar(
-        content:
-            Text(message),
-      ),
-    );
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content:
+              Text(
+            message,
+          ),
+          behavior:
+              SnackBarBehavior
+                  .floating,
+        ),
+      );
   }
 
   List<Marker> _buildMarkers() {
@@ -841,12 +1077,15 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         Marker(
           point:
               _pickupLocation!,
-          width: 52,
-          height: 52,
+          width:
+              52,
+          height:
+              52,
           child:
               const _MapPin(
             icon:
-                Icons.person_pin_circle,
+                Icons
+                    .person_pin_circle,
             color:
                 primaryGreen,
           ),
@@ -860,12 +1099,15 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         Marker(
           point:
               _destinationLocation!,
-          width: 52,
-          height: 52,
+          width:
+              52,
+          height:
+              52,
           child:
               const _MapPin(
             icon:
-                Icons.location_on,
+                Icons
+                    .location_on,
             color:
                 Colors.red,
           ),
@@ -878,12 +1120,15 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         Marker(
           point:
               _driverLocation!,
-          width: 56,
-          height: 56,
+          width:
+              56,
+          height:
+              56,
           child:
               const _MapPin(
             icon:
-                Icons.electric_rickshaw,
+                Icons
+                    .electric_rickshaw,
             color:
                 Colors.orange,
           ),
@@ -939,7 +1184,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
             );
 
     return Scaffold(
-      appBar: AppBar(
+      appBar:
+          AppBar(
         title:
             const Text(
           'ServicePay Keke',
@@ -949,12 +1195,17 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         foregroundColor:
             Colors.white,
       ),
-      body: Column(
-        children: <Widget>[
+      body:
+          Column(
+        children:
+            <Widget>[
           Expanded(
-            flex: 6,
-            child: Stack(
-              children: <Widget>[
+            flex:
+                6,
+            child:
+                Stack(
+              children:
+                  <Widget>[
                 FlutterMap(
                   mapController:
                       _mapController,
@@ -977,7 +1228,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                       }
                     },
                   ),
-                  children: <Widget>[
+                  children:
+                      <Widget>[
                     TileLayer(
                       urlTemplate:
                           'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -991,10 +1243,13 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                   ],
                 ),
                 Positioned(
-                  top: 12,
-                  right: 12,
+                  top:
+                      12,
+                  right:
+                      12,
                   child:
-                      FloatingActionButton.small(
+                      FloatingActionButton
+                          .small(
                     heroTag:
                         'current_location',
                     backgroundColor:
@@ -1005,7 +1260,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                         _useCurrentLocation,
                     child:
                         const Icon(
-                      Icons.my_location,
+                      Icons
+                          .my_location,
                     ),
                   ),
                 ),
@@ -1028,9 +1284,11 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
             ),
           ),
           Expanded(
-            flex: 5,
+            flex:
+                5,
             child:
-                _activeRide == null
+                _activeRide ==
+                        null
                     ? _buildOrderPanel()
                     : _buildActiveRidePanel(),
           ),
@@ -1045,11 +1303,13 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
           const EdgeInsets.all(
         16,
       ),
-      child: Column(
+      child:
+          Column(
         crossAxisAlignment:
             CrossAxisAlignment
                 .stretch,
-        children: <Widget>[
+        children:
+            <Widget>[
           Text(
             _statusMessage,
             style:
@@ -1059,7 +1319,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
             ),
           ),
           const SizedBox(
-            height: 14,
+            height:
+                14,
           ),
           TextField(
             controller:
@@ -1072,14 +1333,16 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                   'Current Location',
               prefixIcon:
                   Icon(
-                Icons.trip_origin,
+                Icons
+                    .trip_origin,
               ),
               border:
                   OutlineInputBorder(),
             ),
           ),
           const SizedBox(
-            height: 12,
+            height:
+                12,
           ),
           TextField(
             controller:
@@ -1092,14 +1355,16 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                   'Enter destination then tap map',
               prefixIcon:
                   Icon(
-                Icons.location_on,
+                Icons
+                    .location_on,
               ),
               border:
                   OutlineInputBorder(),
             ),
           ),
           const SizedBox(
-            height: 10,
+            height:
+                10,
           ),
           Text(
             _destinationLocation ==
@@ -1116,10 +1381,12 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
             ),
           ),
           const SizedBox(
-            height: 18,
+            height:
+                18,
           ),
           SizedBox(
-            height: 52,
+            height:
+                52,
             child:
                 ElevatedButton.icon(
               onPressed:
@@ -1137,8 +1404,10 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
               icon:
                   _isRequestingRide
                       ? const SizedBox(
-                          width: 20,
-                          height: 20,
+                          width:
+                              20,
+                          height:
+                              20,
                           child:
                               CircularProgressIndicator(
                             strokeWidth:
@@ -1227,7 +1496,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
         ride['totalFare'];
 
     final String totalFare =
-        totalFareValue == null
+        totalFareValue ==
+                null
             ? '-'
             : totalFareValue
                 .toString();
@@ -1237,30 +1507,35 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
           const EdgeInsets.all(
         16,
       ),
-      child: Column(
+      child:
+          Column(
         crossAxisAlignment:
             CrossAxisAlignment
                 .stretch,
-        children: <Widget>[
+        children:
+            <Widget>[
           Row(
-            children: <Widget>[
+            children:
+                <Widget>[
               const Icon(
                 Icons
                     .electric_rickshaw,
                 color:
                     primaryGreen,
-                size: 30,
+                size:
+                    30,
               ),
               const SizedBox(
-                width: 10,
+                width:
+                    10,
               ),
               Expanded(
                 child:
                     Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
-                  children: <Widget>[
+                      CrossAxisAlignment.start,
+                  children:
+                      <Widget>[
                     Text(
                       _rideStatusLabel(
                         status,
@@ -1274,7 +1549,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                       ),
                     ),
                     const SizedBox(
-                      height: 2,
+                      height:
+                          2,
                     ),
                     Text(
                       ride['rideReference']
@@ -1289,16 +1565,20 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
             ],
           ),
           const SizedBox(
-            height: 16,
+            height:
+                16,
           ),
           Card(
-            child: Padding(
+            child:
+                Padding(
               padding:
                   const EdgeInsets.all(
                 14,
               ),
-              child: Column(
-                children: <Widget>[
+              child:
+                  Column(
+                children:
+                    <Widget>[
                   _InfoRow(
                     icon:
                         Icons.person,
@@ -1342,7 +1622,8 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
             ),
           ),
           const SizedBox(
-            height: 10,
+            height:
+                10,
           ),
           if (_driverLocation !=
               null)
@@ -1356,31 +1637,211 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                     FontWeight.w600,
               ),
             ),
+
+          /*
+           * =================================================
+           * RIDE OTP CARD
+           * =================================================
+           */
           if (status ==
-              'DRIVER_ARRIVED')
-            const Padding(
+              'DRIVER_ARRIVED') ...<Widget>[
+            const SizedBox(
+              height:
+                  14,
+            ),
+            Container(
               padding:
-                  EdgeInsets.only(
-                top: 12,
+                  const EdgeInsets.all(
+                18,
               ),
-              child:
-                  Text(
-                'Your driver has arrived. Give the Ride OTP to the driver before the journey starts.',
-                style:
-                    TextStyle(
-                  fontWeight:
-                      FontWeight.w600,
+              decoration:
+                  BoxDecoration(
+                color:
+                    const Color(
+                  0xFFEAF7F0,
+                ),
+                borderRadius:
+                    BorderRadius.circular(
+                  20,
+                ),
+                border:
+                    Border.all(
+                  color:
+                      primaryGreen.withValues(
+                    alpha:
+                        0.30,
+                  ),
                 ),
               ),
+              child:
+                  Column(
+                children:
+                    <Widget>[
+                  const Icon(
+                    Icons
+                        .verified_user_rounded,
+                    color:
+                        primaryGreen,
+                    size:
+                        34,
+                  ),
+                  const SizedBox(
+                    height:
+                        8,
+                  ),
+                  const Text(
+                    'Ride OTP',
+                    style:
+                        TextStyle(
+                      color:
+                          primaryGreen,
+                      fontWeight:
+                          FontWeight.w800,
+                      fontSize:
+                          16,
+                    ),
+                  ),
+                  const SizedBox(
+                    height:
+                        8,
+                  ),
+                  if (_rideOtp ==
+                      null)
+                    const Padding(
+                      padding:
+                          EdgeInsets.symmetric(
+                        vertical:
+                            12,
+                      ),
+                      child:
+                          CircularProgressIndicator(
+                        color:
+                            primaryGreen,
+                      ),
+                    )
+                  else ...<Widget>[
+                    SelectableText(
+                      _rideOtp!,
+                      style:
+                          const TextStyle(
+                        fontSize:
+                            38,
+                        fontWeight:
+                            FontWeight.w900,
+                        letterSpacing:
+                            10,
+                        color:
+                            Color(
+                          0xFF064E3B,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(
+                      height:
+                          10,
+                    ),
+                    const Text(
+                      'Give this 4-digit code to your driver before the ride starts.',
+                      textAlign:
+                          TextAlign.center,
+                      style:
+                          TextStyle(
+                        color:
+                            Color(
+                          0xFF475467,
+                        ),
+                        height:
+                            1.4,
+                      ),
+                    ),
+                    const SizedBox(
+                      height:
+                          12,
+                    ),
+                    OutlinedButton.icon(
+                      onPressed:
+                          _copyOtp,
+                      icon:
+                          const Icon(
+                        Icons.copy_rounded,
+                      ),
+                      label:
+                          const Text(
+                        'Copy OTP',
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
+          ],
+
+          if (status ==
+              'RIDE_STARTED') ...<Widget>[
+            const SizedBox(
+              height:
+                  14,
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.all(
+                16,
+              ),
+              decoration:
+                  BoxDecoration(
+                color:
+                    const Color(
+                  0xFFEAF7F0,
+                ),
+                borderRadius:
+                    BorderRadius.circular(
+                  18,
+                ),
+              ),
+              child:
+                  const Row(
+                children:
+                    <Widget>[
+                  Icon(
+                    Icons
+                        .route_rounded,
+                    color:
+                        primaryGreen,
+                  ),
+                  SizedBox(
+                    width:
+                        10,
+                  ),
+                  Expanded(
+                    child:
+                        Text(
+                      'Your ride is in progress. Driver location will continue updating on the map.',
+                      style:
+                          TextStyle(
+                        fontWeight:
+                            FontWeight.w600,
+                        height:
+                            1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           const SizedBox(
-            height: 16,
+            height:
+                16,
           ),
+
           if (!<String>[
             'RIDE_STARTED',
             'RIDE_COMPLETED',
             'CANCELLED',
-          ].contains(status))
+          ].contains(
+            status,
+          ))
             OutlinedButton.icon(
               onPressed:
                   _cancelRide,
@@ -1393,6 +1854,7 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
                 'Cancel Ride',
               ),
             ),
+
           if (status ==
                   'RIDE_COMPLETED' ||
               status ==
@@ -1400,17 +1862,23 @@ class _KekeOrderScreenState extends State<KekeOrderScreen> {
               status ==
                   'NO_DRIVER_FOUND')
             ElevatedButton(
-              onPressed: () {
+              onPressed:
+                  () {
                 _ridePollingTimer
                     ?.cancel();
 
                 setState(() {
                   _activeRide =
                       null;
+
                   _driverLocation =
                       null;
-                  _isTrackingRide =
-                      false;
+
+                  _rideOtp =
+                      null;
+
+                  _statusMessage =
+                      'Current location ready.';
                 });
               },
               style:
@@ -1455,7 +1923,8 @@ class _MapPin extends StatelessWidget {
         boxShadow:
             const <BoxShadow>[
           BoxShadow(
-            blurRadius: 8,
+            blurRadius:
+                8,
             color:
                 Colors.black26,
           ),
@@ -1491,22 +1960,28 @@ class _InfoRow extends StatelessWidget {
     return Padding(
       padding:
           const EdgeInsets.symmetric(
-        vertical: 7,
+        vertical:
+            7,
       ),
-      child: Row(
-        children: <Widget>[
+      child:
+          Row(
+        children:
+            <Widget>[
           Icon(
             icon,
-            size: 20,
+            size:
+                20,
             color:
                 _KekeOrderScreenState
                     .primaryGreen,
           ),
           const SizedBox(
-            width: 10,
+            width:
+                10,
           ),
           SizedBox(
-            width: 110,
+            width:
+                110,
             child:
                 Text(
               label,
