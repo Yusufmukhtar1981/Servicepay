@@ -10,6 +10,32 @@ const KekeRide = require(
 
 /*
  * =====================================================
+ * SERVICEPAY KEKE SETTINGS
+ * =====================================================
+ */
+
+/*
+ * Driver has 60 seconds to accept
+ * an incoming Keke ride request.
+ */
+const RIDE_OFFER_SECONDS = 60;
+
+/*
+ * Maximum initial search distance:
+ * 15 kilometres.
+ */
+const MAX_DRIVER_DISTANCE_METRES =
+  15000;
+
+/*
+ * Driver location must have been updated
+ * within the last 5 minutes.
+ */
+const DRIVER_LOCATION_FRESH_MINUTES =
+  5;
+
+/*
+ * =====================================================
  * HELPERS
  * =====================================================
  */
@@ -40,7 +66,8 @@ const generateRideReference = () => {
 const generateRideOtp = () => {
   return String(
     Math.floor(
-      1000 + Math.random() * 9000
+      1000 +
+        Math.random() * 9000
     )
   );
 };
@@ -57,16 +84,24 @@ const calculateDistanceKm = (
     (degree * Math.PI) / 180;
 
   const dLat =
-    toRadians(lat2 - lat1);
+    toRadians(
+      lat2 - lat1
+    );
 
   const dLng =
-    toRadians(lng2 - lng1);
+    toRadians(
+      lng2 - lng1
+    );
 
   const a =
     Math.sin(dLat / 2) *
       Math.sin(dLat / 2) +
-    Math.cos(toRadians(lat1)) *
-      Math.cos(toRadians(lat2)) *
+    Math.cos(
+      toRadians(lat1)
+    ) *
+      Math.cos(
+        toRadians(lat2)
+      ) *
       Math.sin(dLng / 2) *
       Math.sin(dLng / 2);
 
@@ -80,18 +115,27 @@ const calculateDistanceKm = (
   return earthRadiusKm * c;
 };
 
+/*
+ * =====================================================
+ * TEMPORARY KEKE FARE
+ * =====================================================
+ *
+ * Current test pricing:
+ *
+ * Base Fare   = ₦300
+ * Per KM      = ₦150
+ * Service Fee = ₦50
+ *
+ * We will later move this to Admin Settings.
+ */
 const calculateEstimatedFare = (
   distanceKm
 ) => {
-  /*
-   * Temporary ServicePay Keke pricing.
-   *
-   * We can later move this to
-   * Admin Settings.
-   */
-  const baseFare = 300;
+  const baseFare =
+    300;
 
-  const perKm = 150;
+  const perKm =
+    150;
 
   const distanceFare =
     Math.max(
@@ -99,7 +143,8 @@ const calculateEstimatedFare = (
       distanceKm
     ) * perKm;
 
-  const serviceFee = 50;
+  const serviceFee =
+    50;
 
   const totalFare =
     baseFare +
@@ -108,25 +153,34 @@ const calculateEstimatedFare = (
 
   return {
     baseFare:
-      Math.round(baseFare),
+      Math.round(
+        baseFare
+      ),
 
     distanceFare:
-      Math.round(distanceFare),
+      Math.round(
+        distanceFare
+      ),
 
     serviceFee:
-      Math.round(serviceFee),
+      Math.round(
+        serviceFee
+      ),
 
-    waitingFare: 0,
+    waitingFare:
+      0,
 
     totalFare:
-      Math.round(totalFare),
+      Math.round(
+        totalFare
+      ),
   };
 };
 
 const calculateEstimatedDuration =
   (distanceKm) => {
     /*
-     * Simple initial estimate:
+     * Initial estimate:
      * average Keke speed ~25 km/h.
      */
     if (
@@ -141,16 +195,21 @@ const calculateEstimatedDuration =
 
     return Math.max(
       1,
-      Math.ceil(hours * 60)
+      Math.ceil(
+        hours * 60
+      )
     );
   };
 
-const getFreshLocationCutoff = () => {
-  return new Date(
-    Date.now() -
-      5 * 60 * 1000
-  );
-};
+const getFreshLocationCutoff =
+  () => {
+    return new Date(
+      Date.now() -
+        DRIVER_LOCATION_FRESH_MINUTES *
+          60 *
+          1000
+    );
+  };
 
 /*
  * =====================================================
@@ -163,7 +222,8 @@ const findNearestKekeDriver =
     pickupLatitude,
     pickupLongitude,
     excludedDriverIds = [],
-    maxDistanceMetres = 15000,
+    maxDistanceMetres =
+      MAX_DRIVER_DISTANCE_METRES,
   }) => {
     const locationFreshAfter =
       getFreshLocationCutoff();
@@ -214,7 +274,8 @@ const findNearestKekeDriver =
       Array.isArray(
         excludedDriverIds
       ) &&
-      excludedDriverIds.length > 0
+      excludedDriverIds.length >
+        0
     ) {
       query._id = {
         $nin:
@@ -222,7 +283,9 @@ const findNearestKekeDriver =
       };
     }
 
-    return User.findOne(query);
+    return User.findOne(
+      query
+    );
   };
 
 /*
@@ -231,46 +294,42 @@ const findNearestKekeDriver =
  * =====================================================
  *
  * POST /api/keke-rides
- *
- * Body:
- *
- * {
- *   "pickupAddress": "Zoo Road, Kano",
- *   "pickupLatitude": 12.0022,
- *   "pickupLongitude": 8.5920,
- *
- *   "destinationAddress": "Farm Centre, Kano",
- *   "destinationLatitude": 11.9890,
- *   "destinationLongitude": 8.5650,
- *
- *   "paymentMethod": "WALLET"
- * }
  */
 exports.createRide = async (
   req,
   res
 ) => {
   try {
-    const customer = await User.findById(
-      req.user._id
-    );
+    const customer =
+      await User.findById(
+        req.user._id
+      );
 
     if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Customer account not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Customer account not found.",
+        });
     }
 
     if (
-      customer.status !== "ACTIVE"
+      customer.status !==
+      "ACTIVE"
     ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "Your account is not active.",
-      });
+      return res
+        .status(403)
+        .json({
+          success:
+            false,
+
+          message:
+            "Your account is not active.",
+        });
     }
 
     const {
@@ -282,7 +341,8 @@ exports.createRide = async (
       destinationLatitude,
       destinationLongitude,
 
-      paymentMethod = "WALLET",
+      paymentMethod =
+        "WALLET",
     } = req.body || {};
 
     const pickupLat =
@@ -309,46 +369,65 @@ exports.createRide = async (
       !pickupAddress ||
       !destinationAddress
     ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Pickup address and destination address are required.",
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          message:
+            "Pickup address and destination address are required.",
+        });
     }
 
     if (
       pickupLat === null ||
       pickupLng === null ||
-      destinationLat === null ||
-      destinationLng === null
+      destinationLat ===
+        null ||
+      destinationLng ===
+        null
     ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Valid pickup and destination coordinates are required.",
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          message:
+            "Valid pickup and destination coordinates are required.",
+        });
     }
 
     if (
       pickupLat < -90 ||
       pickupLat > 90 ||
-      destinationLat < -90 ||
-      destinationLat > 90 ||
+      destinationLat <
+        -90 ||
+      destinationLat >
+        90 ||
       pickupLng < -180 ||
       pickupLng > 180 ||
-      destinationLng < -180 ||
-      destinationLng > 180
+      destinationLng <
+        -180 ||
+      destinationLng >
+        180
     ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Invalid pickup or destination coordinates.",
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          message:
+            "Invalid pickup or destination coordinates.",
+        });
     }
 
     const normalizedPaymentMethod =
       String(
-        paymentMethod || "WALLET"
+        paymentMethod ||
+          "WALLET"
       )
         .trim()
         .toUpperCase();
@@ -361,16 +440,19 @@ exports.createRide = async (
         normalizedPaymentMethod
       )
     ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Payment method must be WALLET or CASH.",
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          message:
+            "Payment method must be WALLET or CASH.",
+        });
     }
 
     /*
-     * Prevent customer from creating
-     * another active ride.
+     * Prevent another active ride.
      */
     const existingRide =
       await KekeRide.findOne({
@@ -389,23 +471,28 @@ exports.createRide = async (
       });
 
     if (existingRide) {
-      return res.status(409).json({
-        success: false,
+      return res
+        .status(409)
+        .json({
+          success:
+            false,
 
-        message:
-          "You already have an active Keke ride.",
+          message:
+            "You already have an active Keke ride.",
 
-        ride: {
-          id:
-            existingRide._id,
+          ride: {
+            id:
+              existingRide._id,
 
-          reference:
-            existingRide.rideReference,
+            reference:
+              existingRide
+                .rideReference,
 
-          status:
-            existingRide.status,
-        },
-      });
+            status:
+              existingRide
+                .status,
+          },
+        });
     }
 
     const estimatedDistanceKm =
@@ -427,38 +514,41 @@ exports.createRide = async (
       );
 
     /*
-     * If wallet payment is selected,
-     * make sure customer has enough.
+     * Wallet balance check.
      *
-     * We are NOT debiting yet.
-     * Debit will happen at the
-     * proper payment stage.
+     * Money is not debited here.
      */
     if (
       normalizedPaymentMethod ===
         "WALLET" &&
       Number(
-        customer.walletBalance || 0
+        customer.walletBalance ||
+          0
       ) < fare.totalFare
     ) {
-      return res.status(400).json({
-        success: false,
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
 
-        message:
-          "Insufficient wallet balance for this ride.",
+          message:
+            "Insufficient wallet balance for this ride.",
 
-        requiredAmount:
-          fare.totalFare,
+          requiredAmount:
+            fare.totalFare,
 
-        walletBalance:
-          Number(
-            customer.walletBalance || 0
-          ),
-      });
+          walletBalance:
+            Number(
+              customer.walletBalance ||
+                0
+            ),
+        });
     }
 
     /*
-     * Find nearest online Keke driver.
+     * Find nearest AVAILABLE,
+     * VERIFIED and ONLINE Keke driver.
      */
     const nearestDriver =
       await findNearestKekeDriver({
@@ -469,7 +559,7 @@ exports.createRide = async (
           pickupLng,
 
         maxDistanceMetres:
-          15000,
+          MAX_DRIVER_DISTANCE_METRES,
       });
 
     const rideReference =
@@ -566,19 +656,25 @@ exports.createRide = async (
             : "NO_DRIVER_FOUND",
       });
 
+    /*
+     * ===================================================
+     * SEND OFFER TO NEAREST DRIVER
+     * ===================================================
+     */
     if (nearestDriver) {
       ride.assignDriver(
         nearestDriver
       );
 
       /*
-       * Driver has 20 seconds
-       * to respond initially.
+       * Driver now has 60 seconds
+       * to accept this ride.
        */
       ride.currentOfferExpiresAt =
         new Date(
           Date.now() +
-            20 * 1000
+            RIDE_OFFER_SECONDS *
+              1000
         );
 
       ride.offeredDriverIds.push(
@@ -588,8 +684,7 @@ exports.createRide = async (
       await ride.save();
 
       /*
-       * Reserve driver temporarily
-       * for this ride offer.
+       * Temporarily reserve the driver.
        */
       nearestDriver.riderCurrentJobId =
         ride._id;
@@ -597,7 +692,8 @@ exports.createRide = async (
       nearestDriver.availabilityStatus =
         "BUSY";
 
-      nearestDriver.totalAssignedDeliveries =
+      nearestDriver
+        .totalAssignedDeliveries =
         Number(
           nearestDriver
             .totalAssignedDeliveries ||
@@ -652,7 +748,8 @@ exports.createRide = async (
         ride.estimatedDistanceKm,
 
       estimatedDurationMinutes:
-        ride.estimatedDurationMinutes,
+        ride
+          .estimatedDurationMinutes,
 
       fare: {
         baseFare:
@@ -677,6 +774,11 @@ exports.createRide = async (
       paymentStatus:
         ride.paymentStatus,
 
+      offerDurationSeconds:
+        nearestDriver
+          ? RIDE_OFFER_SECONDS
+          : null,
+
       driver:
         nearestDriver
           ? {
@@ -684,39 +786,44 @@ exports.createRide = async (
                 nearestDriver._id,
 
               riderId:
-                nearestDriver.riderId ||
+                nearestDriver
+                  .riderId ||
                 null,
 
               fullName:
-                nearestDriver.fullName,
+                nearestDriver
+                  .fullName,
 
               phone:
                 nearestDriver.phone,
 
               vehicleType:
-                nearestDriver.vehicleType,
+                nearestDriver
+                  .vehicleType,
 
               plateNumber:
-                nearestDriver.plateNumber ||
+                nearestDriver
+                  .plateNumber ||
                 null,
 
               rating:
-                nearestDriver.riderRating ||
+                nearestDriver
+                  .riderRating ||
                 0,
 
               location:
                 nearestDriver
-                  .riderCurrentLocation
+                    .riderCurrentLocation
                   ? {
                       latitude:
                         nearestDriver
-                          .riderCurrentLocation
-                          .coordinates[1],
+                            .riderCurrentLocation
+                            .coordinates[1],
 
                       longitude:
                         nearestDriver
-                          .riderCurrentLocation
-                          .coordinates[0],
+                            .riderCurrentLocation
+                            .coordinates[0],
                     }
                   : null,
 
@@ -728,37 +835,47 @@ exports.createRide = async (
     };
 
     if (!nearestDriver) {
-      return res.status(201).json({
-        success: true,
+      return res
+        .status(201)
+        .json({
+          success:
+            true,
+
+          message:
+            "Keke ride created, but no nearby driver is currently available.",
+
+          ride:
+            responseRide,
+        });
+    }
+
+    return res
+      .status(201)
+      .json({
+        success:
+          true,
 
         message:
-          "Keke ride created, but no nearby driver is currently available.",
+          "Nearest Keke driver found. Driver has 60 seconds to respond.",
 
         ride:
           responseRide,
       });
-    }
-
-    return res.status(201).json({
-      success: true,
-
-      message:
-        "Nearest Keke driver found and ride request sent.",
-
-      ride:
-        responseRide,
-    });
   } catch (error) {
     console.error(
       "CREATE KEKE RIDE ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to create Keke ride.",
-    });
+    return res
+      .status(500)
+      .json({
+        success:
+          false,
+
+        message:
+          "Unable to create Keke ride.",
+      });
   }
 };
 
@@ -766,9 +883,8 @@ exports.createRide = async (
  * =====================================================
  * CUSTOMER - GET ACTIVE RIDE
  * =====================================================
- *
- * GET /api/keke-rides/active
  */
+
 exports.getCustomerActiveRide =
   async (
     req,
@@ -804,33 +920,48 @@ exports.getCustomerActiveRide =
             ].join(" ")
           )
           .sort({
-            createdAt: -1,
+            createdAt:
+              -1,
           });
 
       if (!ride) {
-        return res.status(200).json({
-          success: true,
-          ride: null,
-          message:
-            "No active Keke ride.",
-        });
+        return res
+          .status(200)
+          .json({
+            success:
+              true,
+
+            ride:
+              null,
+
+            message:
+              "No active Keke ride.",
+          });
       }
 
-      return res.status(200).json({
-        success: true,
-        ride,
-      });
+      return res
+        .status(200)
+        .json({
+          success:
+            true,
+
+          ride,
+        });
     } catch (error) {
       console.error(
         "GET ACTIVE KEKE RIDE ERROR:",
         error
       );
 
-      return res.status(500).json({
-        success: false,
-        message:
-          "Unable to load active Keke ride.",
-      });
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to load active Keke ride.",
+        });
     }
   };
 
@@ -838,9 +969,8 @@ exports.getCustomerActiveRide =
  * =====================================================
  * CUSTOMER - GET RIDE DETAILS
  * =====================================================
- *
- * GET /api/keke-rides/:rideId
  */
+
 exports.getRideDetails = async (
   req,
   res
@@ -870,15 +1000,21 @@ exports.getRideDetails = async (
         );
 
     if (!ride) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Keke ride not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Keke ride not found.",
+        });
     }
 
     const requesterId =
-      String(req.user._id);
+      String(
+        req.user._id
+      );
 
     const customerId =
       String(
@@ -916,34 +1052,45 @@ exports.getRideDetails = async (
       !isDriver &&
       !isAdmin
     ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "You are not allowed to view this ride.",
-      });
+      return res
+        .status(403)
+        .json({
+          success:
+            false,
+
+          message:
+            "You are not allowed to view this ride.",
+        });
     }
 
-    return res.status(200).json({
-      success: true,
-      ride,
-    });
+    return res
+      .status(200)
+      .json({
+        success:
+          true,
+
+        ride,
+      });
   } catch (error) {
     console.error(
       "GET KEKE RIDE DETAILS ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to load Keke ride details.",
-    });
+    return res
+      .status(500)
+      .json({
+        success:
+          false,
+
+        message:
+          "Unable to load Keke ride details.",
+      });
   }
 };
-
 /*
  * =====================================================
- * DRIVER - GET CURRENT RIDE OFFER/JOB
+ * DRIVER - GET CURRENT RIDE OFFER / JOB
  * =====================================================
  *
  * GET /api/keke-rides/driver/current
@@ -960,22 +1107,30 @@ exports.getDriverCurrentRide =
         );
 
       if (!driver) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Driver account not found.",
-        });
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Driver account not found.",
+          });
       }
 
       if (
         driver.role !==
         "DELIVERY_RIDER"
       ) {
-        return res.status(403).json({
-          success: false,
-          message:
-            "Only riders can access this endpoint.",
-        });
+        return res
+          .status(403)
+          .json({
+            success:
+              false,
+
+            message:
+              "Only riders can access this endpoint.",
+          });
       }
 
       const ride =
@@ -992,25 +1147,34 @@ exports.getDriverCurrentRide =
             ],
           },
         }).sort({
-          createdAt: -1,
+          createdAt:
+            -1,
         });
 
-      return res.status(200).json({
-        success: true,
-        ride:
-          ride || null,
-      });
+      return res
+        .status(200)
+        .json({
+          success:
+            true,
+
+          ride:
+            ride || null,
+        });
     } catch (error) {
       console.error(
         "GET DRIVER CURRENT KEKE RIDE ERROR:",
         error
       );
 
-      return res.status(500).json({
-        success: false,
-        message:
-          "Unable to load driver ride.",
-      });
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to load driver ride.",
+        });
     }
   };
 
@@ -1032,22 +1196,30 @@ exports.acceptRide = async (
       );
 
     if (!driver) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Driver account not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Driver account not found.",
+        });
     }
 
     if (
       driver.role !==
       "DELIVERY_RIDER"
     ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "Only riders can accept Keke rides.",
-      });
+      return res
+        .status(403)
+        .json({
+          success:
+            false,
+
+          message:
+            "Only riders can accept Keke rides.",
+        });
     }
 
     const ride =
@@ -1056,11 +1228,15 @@ exports.acceptRide = async (
       );
 
     if (!ride) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Keke ride not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Keke ride not found.",
+        });
     }
 
     if (
@@ -1071,36 +1247,46 @@ exports.acceptRide = async (
         driver._id
       )
     ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "This ride was not assigned to you.",
-      });
+      return res
+        .status(403)
+        .json({
+          success:
+            false,
+
+          message:
+            "This ride was not assigned to you.",
+        });
     }
 
     if (
       ride.status !==
       "DRIVER_ASSIGNED"
     ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          `Ride cannot be accepted while status is ${ride.status}.`,
-      });
+      return res
+        .status(409)
+        .json({
+          success:
+            false,
+
+          message:
+            `Ride cannot be accepted while status is ${ride.status}.`,
+        });
     }
 
     if (
-      ride
-        .currentOfferExpiresAt &&
+      ride.currentOfferExpiresAt &&
       new Date() >
-        ride
-          .currentOfferExpiresAt
+        ride.currentOfferExpiresAt
     ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "This ride offer has expired.",
-      });
+      return res
+        .status(409)
+        .json({
+          success:
+            false,
+
+          message:
+            "This ride offer has expired.",
+        });
     }
 
     ride.markDriverAccepted();
@@ -1122,49 +1308,59 @@ exports.acceptRide = async (
 
     await driver.save();
 
-    return res.status(200).json({
-      success: true,
+    return res
+      .status(200)
+      .json({
+        success:
+          true,
 
-      message:
-        "Keke ride accepted successfully.",
+        message:
+          "Keke ride accepted successfully.",
 
-      ride: {
-        id:
-          ride._id,
+        ride: {
+          id:
+            ride._id,
 
-        reference:
-          ride.rideReference,
+          reference:
+            ride.rideReference,
 
-        status:
-          ride.status,
+          status:
+            ride.status,
 
-        pickup:
-          ride.pickup,
+          pickup:
+            ride.pickup,
 
-        destination:
-          ride.destination,
+          destination:
+            ride.destination,
 
-        customerName:
-          ride.customerName,
+          customerName:
+            ride.customerName,
 
-        customerPhone:
-          ride.customerPhone,
+          customerPhone:
+            ride.customerPhone,
 
-        totalFare:
-          ride.totalFare,
-      },
-    });
+          totalFare:
+            ride.totalFare,
+
+          acceptedAt:
+            ride.driverAcceptedAt,
+        },
+      });
   } catch (error) {
     console.error(
       "ACCEPT KEKE RIDE ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to accept Keke ride.",
-    });
+    return res
+      .status(500)
+      .json({
+        success:
+          false,
+
+        message:
+          "Unable to accept Keke ride.",
+      });
   }
 };
 
@@ -1186,11 +1382,15 @@ exports.markArrived = async (
       );
 
     if (!ride) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Keke ride not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Keke ride not found.",
+        });
     }
 
     if (
@@ -1201,53 +1401,71 @@ exports.markArrived = async (
         req.user._id
       )
     ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "This ride is not assigned to you.",
-      });
+      return res
+        .status(403)
+        .json({
+          success:
+            false,
+
+          message:
+            "This ride is not assigned to you.",
+        });
     }
 
     if (
       ride.status !==
       "DRIVER_COMING"
     ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "Driver can only mark arrival while coming to pickup.",
-      });
+      return res
+        .status(409)
+        .json({
+          success:
+            false,
+
+          message:
+            "Driver can only mark arrival while coming to pickup.",
+        });
     }
 
     ride.markDriverArrived();
 
     await ride.save();
 
-    return res.status(200).json({
-      success: true,
+    return res
+      .status(200)
+      .json({
+        success:
+          true,
 
-      message:
-        "Driver arrival confirmed.",
+        message:
+          "Driver arrival confirmed.",
 
-      ride: {
-        id:
-          ride._id,
+        ride: {
+          id:
+            ride._id,
 
-        status:
-          ride.status,
-      },
-    });
+          status:
+            ride.status,
+
+          arrivedAt:
+            ride.driverArrivedAt,
+        },
+      });
   } catch (error) {
     console.error(
       "KEKE DRIVER ARRIVED ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to mark driver arrival.",
-    });
+    return res
+      .status(500)
+      .json({
+        success:
+          false,
+
+        message:
+          "Unable to mark driver arrival.",
+      });
   }
 };
 
@@ -1274,17 +1492,35 @@ exports.startRide = async (
     } = req.body || {};
 
     if (!otp) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Ride OTP is required.",
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          message:
+            "Ride OTP is required.",
+        });
     }
 
-    /*
-     * rideOtp is select:false
-     * so explicitly include it.
-     */
+    if (
+      !/^\d{4}$/.test(
+        String(
+          otp
+        ).trim()
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          message:
+            "Ride OTP must contain exactly 4 digits.",
+        });
+    }
+
     const ride =
       await KekeRide.findById(
         req.params.rideId
@@ -1293,11 +1529,15 @@ exports.startRide = async (
       );
 
     if (!ride) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Keke ride not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Keke ride not found.",
+        });
     }
 
     if (
@@ -1308,72 +1548,93 @@ exports.startRide = async (
         req.user._id
       )
     ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "This ride is not assigned to you.",
-      });
+      return res
+        .status(403)
+        .json({
+          success:
+            false,
+
+          message:
+            "This ride is not assigned to you.",
+        });
     }
 
     if (
       ride.status !==
       "DRIVER_ARRIVED"
     ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "Ride can only start after driver arrival.",
-      });
+      return res
+        .status(409)
+        .json({
+          success:
+            false,
+
+          message:
+            "Ride can only start after driver arrival.",
+        });
     }
 
     if (
       String(
         ride.rideOtp
       ) !==
-      String(otp).trim()
+      String(
+        otp
+      ).trim()
     ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Incorrect ride OTP.",
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          message:
+            "Incorrect ride OTP.",
+        });
     }
 
     ride.markRideStarted();
 
     await ride.save();
 
-    return res.status(200).json({
-      success: true,
+    return res
+      .status(200)
+      .json({
+        success:
+          true,
 
-      message:
-        "Keke ride started successfully.",
+        message:
+          "Keke ride started successfully.",
 
-      ride: {
-        id:
-          ride._id,
+        ride: {
+          id:
+            ride._id,
 
-        reference:
-          ride.rideReference,
+          reference:
+            ride.rideReference,
 
-        status:
-          ride.status,
+          status:
+            ride.status,
 
-        startedAt:
-          ride.rideStartedAt,
-      },
-    });
+          startedAt:
+            ride.rideStartedAt,
+        },
+      });
   } catch (error) {
     console.error(
       "START KEKE RIDE ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to start Keke ride.",
-    });
+    return res
+      .status(500)
+      .json({
+        success:
+          false,
+
+        message:
+          "Unable to start Keke ride.",
+      });
   }
 };
 
@@ -1395,11 +1656,15 @@ exports.completeRide = async (
       );
 
     if (!ride) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Keke ride not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Keke ride not found.",
+        });
     }
 
     if (
@@ -1410,22 +1675,30 @@ exports.completeRide = async (
         req.user._id
       )
     ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "This ride is not assigned to you.",
-      });
+      return res
+        .status(403)
+        .json({
+          success:
+            false,
+
+          message:
+            "This ride is not assigned to you.",
+        });
     }
 
     if (
       ride.status !==
       "RIDE_STARTED"
     ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "Only a started ride can be completed.",
-      });
+      return res
+        .status(409)
+        .json({
+          success:
+            false,
+
+          message:
+            "Only a started ride can be completed.",
+        });
     }
 
     const driver =
@@ -1442,15 +1715,21 @@ exports.completeRide = async (
       !driver ||
       !customer
     ) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Customer or driver account not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Customer or driver account not found.",
+        });
     }
 
     /*
+     * ===================================================
      * WALLET PAYMENT
+     * ===================================================
      */
     if (
       ride.paymentMethod ===
@@ -1464,21 +1743,25 @@ exports.completeRide = async (
             0
         ) <
         Number(
-          ride.totalFare || 0
+          ride.totalFare ||
+            0
         )
       ) {
-        return res.status(400).json({
-          success: false,
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
 
-          message:
-            "Customer wallet balance is insufficient to complete payment.",
+            message:
+              "Customer wallet balance is insufficient to complete payment.",
 
-          totalFare:
-            ride.totalFare,
+            totalFare:
+              ride.totalFare,
 
-          walletBalance:
-            customer.walletBalance,
-        });
+            walletBalance:
+              customer.walletBalance,
+          });
       }
 
       customer.walletBalance =
@@ -1487,15 +1770,15 @@ exports.completeRide = async (
             0
         ) -
         Number(
-          ride.totalFare || 0
+          ride.totalFare ||
+            0
         );
 
       /*
-       * Initial version:
-       * full fare goes to rider earnings.
+       * Temporary settlement:
+       * Full ride amount goes to rider earnings.
        *
-       * We will later split
-       * ServicePay commission.
+       * Later we will split ServicePay commission.
        */
       driver.totalRiderEarnings =
         Number(
@@ -1504,7 +1787,8 @@ exports.completeRide = async (
             0
         ) +
         Number(
-          ride.totalFare || 0
+          ride.totalFare ||
+            0
         );
 
       driver.pendingRiderSettlement =
@@ -1514,7 +1798,8 @@ exports.completeRide = async (
             0
         ) +
         Number(
-          ride.totalFare || 0
+          ride.totalFare ||
+            0
         );
 
       ride.paymentStatus =
@@ -1548,46 +1833,69 @@ exports.completeRide = async (
 
     await ride.save();
 
-    return res.status(200).json({
-      success: true,
+    return res
+      .status(200)
+      .json({
+        success:
+          true,
 
-      message:
-        "Keke ride completed successfully.",
+        message:
+          "Keke ride completed successfully.",
 
-      ride: {
-        id:
-          ride._id,
+        ride: {
+          id:
+            ride._id,
 
-        reference:
-          ride.rideReference,
+          reference:
+            ride.rideReference,
 
-        status:
-          ride.status,
+          status:
+            ride.status,
 
-        totalFare:
-          ride.totalFare,
+          totalFare:
+            ride.totalFare,
 
-        paymentMethod:
-          ride.paymentMethod,
+          paymentMethod:
+            ride.paymentMethod,
 
-        paymentStatus:
-          ride.paymentStatus,
+          paymentStatus:
+            ride.paymentStatus,
 
-        completedAt:
-          ride.rideCompletedAt,
-      },
-    });
+          completedAt:
+            ride.rideCompletedAt,
+        },
+
+        customer: {
+          walletBalance:
+            customer.walletBalance,
+        },
+
+        driver: {
+          totalRiderEarnings:
+            driver.totalRiderEarnings,
+
+          pendingRiderSettlement:
+            driver.pendingRiderSettlement,
+
+          availabilityStatus:
+            driver.availabilityStatus,
+        },
+      });
   } catch (error) {
     console.error(
       "COMPLETE KEKE RIDE ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to complete Keke ride.",
-    });
+    return res
+      .status(500)
+      .json({
+        success:
+          false,
+
+        message:
+          "Unable to complete Keke ride.",
+      });
   }
 };
 
@@ -1597,12 +1905,6 @@ exports.completeRide = async (
  * =====================================================
  *
  * POST /api/keke-rides/:rideId/cancel
- *
- * Body:
- *
- * {
- *   "reason": "Changed my mind"
- * }
  */
 exports.cancelRide = async (
   req,
@@ -1615,11 +1917,15 @@ exports.cancelRide = async (
       );
 
     if (!ride) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Keke ride not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success:
+            false,
+
+          message:
+            "Keke ride not found.",
+        });
     }
 
     if (
@@ -1630,11 +1936,15 @@ exports.cancelRide = async (
         req.user._id
       )
     ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "Only the customer who created this ride can cancel it.",
-      });
+      return res
+        .status(403)
+        .json({
+          success:
+            false,
+
+          message:
+            "Only the customer who created this ride can cancel it.",
+        });
     }
 
     if (
@@ -1646,11 +1956,15 @@ exports.cancelRide = async (
         ride.status
       )
     ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          `Ride cannot be cancelled while status is ${ride.status}.`,
-      });
+      return res
+        .status(409)
+        .json({
+          success:
+            false,
+
+          message:
+            `Ride cannot be cancelled while status is ${ride.status}.`,
+        });
     }
 
     const {
@@ -1670,7 +1984,8 @@ exports.cancelRide = async (
         if (
           driver.status ===
             "ACTIVE" &&
-          driver.riderVerificationStatus ===
+          driver
+            .riderVerificationStatus ===
             "VERIFIED"
         ) {
           driver.availabilityStatus =
@@ -1690,40 +2005,49 @@ exports.cancelRide = async (
 
       reason:
         reason
-          ? String(reason).trim()
+          ? String(
+              reason
+            ).trim()
           : "Cancelled by customer.",
     });
 
     await ride.save();
 
-    return res.status(200).json({
-      success: true,
+    return res
+      .status(200)
+      .json({
+        success:
+          true,
 
-      message:
-        "Keke ride cancelled successfully.",
+        message:
+          "Keke ride cancelled successfully.",
 
-      ride: {
-        id:
-          ride._id,
+        ride: {
+          id:
+            ride._id,
 
-        reference:
-          ride.rideReference,
+          reference:
+            ride.rideReference,
 
-        status:
-          ride.status,
-      },
-    });
+          status:
+            ride.status,
+        },
+      });
   } catch (error) {
     console.error(
       "CANCEL KEKE RIDE ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to cancel Keke ride.",
-    });
+    return res
+      .status(500)
+      .json({
+        success:
+          false,
+
+        message:
+          "Unable to cancel Keke ride.",
+      });
   }
 };
 
@@ -1733,9 +2057,6 @@ exports.cancelRide = async (
  * =====================================================
  *
  * GET /api/keke-rides/:rideId/driver-location
- *
- * The Flutter customer screen can call this
- * repeatedly until we add Socket.IO.
  */
 exports.getDriverLiveLocation =
   async (
@@ -1749,11 +2070,15 @@ exports.getDriverLiveLocation =
         );
 
       if (!ride) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Keke ride not found.",
-        });
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Keke ride not found.",
+          });
       }
 
       if (
@@ -1764,21 +2089,33 @@ exports.getDriverLiveLocation =
           req.user._id
         )
       ) {
-        return res.status(403).json({
-          success: false,
-          message:
-            "You are not allowed to track this driver.",
-        });
+        return res
+          .status(403)
+          .json({
+            success:
+              false,
+
+            message:
+              "You are not allowed to track this driver.",
+          });
       }
 
       if (!ride.driverId) {
-        return res.status(200).json({
-          success: true,
-          driverAssigned:
-            false,
-          location:
-            null,
-        });
+        return res
+          .status(200)
+          .json({
+            success:
+              true,
+
+            driverAssigned:
+              false,
+
+            location:
+              null,
+
+            rideStatus:
+              ride.status,
+          });
       }
 
       const driver =
@@ -1798,11 +2135,15 @@ exports.getDriverLiveLocation =
         );
 
       if (!driver) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Assigned driver not found.",
-        });
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Assigned driver not found.",
+          });
       }
 
       const coordinates =
@@ -1814,71 +2155,79 @@ exports.getDriverLiveLocation =
         Array.isArray(
           coordinates
         ) &&
-        coordinates.length === 2;
+        coordinates.length ===
+          2;
 
-      return res.status(200).json({
-        success: true,
+      return res
+        .status(200)
+        .json({
+          success:
+            true,
 
-        driverAssigned:
-          true,
+          driverAssigned:
+            true,
 
-        driver: {
-          id:
-            driver._id,
+          driver: {
+            id:
+              driver._id,
 
-          riderId:
-            driver.riderId ||
-            null,
+            riderId:
+              driver.riderId ||
+              null,
 
-          fullName:
-            driver.fullName,
+            fullName:
+              driver.fullName,
 
-          phone:
-            driver.phone,
+            phone:
+              driver.phone,
 
-          plateNumber:
-            driver.plateNumber ||
-            null,
+            plateNumber:
+              driver.plateNumber ||
+              null,
 
-          vehicleType:
-            driver.vehicleType ||
-            null,
+            vehicleType:
+              driver.vehicleType ||
+              null,
 
-          rating:
-            driver.riderRating ||
-            0,
-        },
+            rating:
+              driver.riderRating ||
+              0,
+          },
 
-        location:
-          hasLocation
-            ? {
-                latitude:
-                  coordinates[1],
+          location:
+            hasLocation
+              ? {
+                  latitude:
+                    coordinates[1],
 
-                longitude:
-                  coordinates[0],
+                  longitude:
+                    coordinates[0],
 
-                updatedAt:
-                  driver
-                    .riderLocationUpdatedAt ||
-                  null,
-              }
-            : null,
+                  updatedAt:
+                    driver
+                      .riderLocationUpdatedAt ||
+                    null,
+                }
+              : null,
 
-        rideStatus:
-          ride.status,
-      });
+          rideStatus:
+            ride.status,
+        });
     } catch (error) {
       console.error(
         "GET DRIVER LIVE LOCATION ERROR:",
         error
       );
 
-      return res.status(500).json({
-        success: false,
-        message:
-          "Unable to load driver location.",
-      });
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to load driver location.",
+        });
     }
   };
 
@@ -1901,31 +2250,41 @@ exports.getCustomerRideHistory =
             req.user._id,
         })
           .sort({
-            createdAt: -1,
+            createdAt:
+              -1,
           })
-          .limit(50)
+          .limit(
+            50
+          )
           .select(
             "-rideOtp"
           );
 
-      return res.status(200).json({
-        success: true,
+      return res
+        .status(200)
+        .json({
+          success:
+            true,
 
-        count:
-          rides.length,
+          count:
+            rides.length,
 
-        rides,
-      });
+          rides,
+        });
     } catch (error) {
       console.error(
         "GET KEKE RIDE HISTORY ERROR:",
         error
       );
 
-      return res.status(500).json({
-        success: false,
-        message:
-          "Unable to load Keke ride history.",
-      });
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to load Keke ride history.",
+        });
     }
   };
