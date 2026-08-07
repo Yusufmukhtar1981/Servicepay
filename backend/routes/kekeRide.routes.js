@@ -2,10 +2,16 @@ const express = require("express");
 
 const {
   protect,
-} = require("../middleware/auth.middleware");
+} = require(
+  "../middleware/auth.middleware"
+);
 
 const kekeRideController = require(
   "../controllers/kekeRide.controller"
+);
+
+const kekeRideOtpController = require(
+  "../controllers/kekeRideOtp.controller"
 );
 
 const router = express.Router();
@@ -33,7 +39,8 @@ router.post(
 router.get(
   "/active",
   protect,
-  kekeRideController.getCustomerActiveRide
+  kekeRideController
+    .getCustomerActiveRide
 );
 
 /*
@@ -46,7 +53,8 @@ router.get(
 router.get(
   "/history",
   protect,
-  kekeRideController.getCustomerRideHistory
+  kekeRideController
+    .getCustomerRideHistory
 );
 
 /*
@@ -59,7 +67,26 @@ router.get(
 router.get(
   "/driver/current",
   protect,
-  kekeRideController.getDriverCurrentRide
+  kekeRideController
+    .getDriverCurrentRide
+);
+
+/*
+ * =====================================================
+ * CUSTOMER - RIDE OTP
+ * =====================================================
+ *
+ * OTP is only returned to the customer
+ * who owns the ride and only after
+ * DRIVER_ARRIVED.
+ *
+ * GET /api/keke-rides/:rideId/otp
+ */
+router.get(
+  "/:rideId/otp",
+  protect,
+  kekeRideOtpController
+    .getRideOtp
 );
 
 /*
@@ -72,7 +99,8 @@ router.get(
 router.get(
   "/:rideId/driver-location",
   protect,
-  kekeRideController.getDriverLiveLocation
+  kekeRideController
+    .getDriverLiveLocation
 );
 
 /*
@@ -144,6 +172,8 @@ router.post(
  * =====================================================
  * CUSTOMER / DRIVER / ADMIN - RIDE DETAILS
  * =====================================================
+ *
+ * Keep this generic route LAST.
  *
  * GET /api/keke-rides/:rideId
  */
