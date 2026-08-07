@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'dashboard_screen.dart';
+import 'keke_driver_screen.dart';
 import 'profile_screen.dart';
 import 'transactions_screen.dart';
 import 'wallet_screen.dart';
@@ -22,17 +24,154 @@ class _MainNavigationState
 
   int currentIndex = 0;
 
-  final List<Widget> pages = const [
-    DashboardScreen(),
-    TransactionsScreen(),
-    WalletScreen(),
-    ProfileScreen(),
-  ];
+  bool isLoadingRole = true;
+
+  String userRole = 'CUSTOMER';
+
+  List<Widget> pages = <Widget>[];
+
+  @override
+  void initState() {
+    super.initState();
+
+    _loadUserRole();
+  }
+
+  Future<void> _loadUserRole() async {
+    try {
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+
+      String role =
+          preferences.getString(
+                'user_role',
+              ) ??
+              preferences.getString(
+                'role',
+              ) ??
+              'CUSTOMER';
+
+      role =
+          role.trim().toUpperCase();
+
+      if (role.isEmpty) {
+        role = 'CUSTOMER';
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        userRole = role;
+
+        pages = _buildPages(
+          role,
+        );
+
+        currentIndex = 0;
+
+        isLoadingRole = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        userRole = 'CUSTOMER';
+
+        pages = _buildPages(
+          'CUSTOMER',
+        );
+
+        currentIndex = 0;
+
+        isLoadingRole = false;
+      });
+    }
+  }
+
+  List<Widget> _buildPages(
+    String role,
+  ) {
+    /*
+     * =====================================================
+     * DELIVERY RIDER
+     * =====================================================
+     *
+     * Delivery riders use ServicePay Keke Driver
+     * as their main/home screen.
+     */
+    if (role == 'DELIVERY_RIDER') {
+      return const <Widget>[
+        KekeDriverScreen(),
+        TransactionsScreen(),
+        WalletScreen(),
+        ProfileScreen(),
+      ];
+    }
+
+    /*
+     * =====================================================
+     * NORMAL SERVICEPAY USERS
+     * =====================================================
+     *
+     * CUSTOMER
+     * AGENT / AGGREGATOR
+     * STATE_MANAGER
+     * ZONAL_MANAGER
+     * etc.
+     */
+    return const <Widget>[
+      DashboardScreen(),
+      TransactionsScreen(),
+      WalletScreen(),
+      ProfileScreen(),
+    ];
+  }
+
+  String get firstNavigationLabel {
+    if (userRole == 'DELIVERY_RIDER') {
+      return 'Keke';
+    }
+
+    return 'Home';
+  }
+
+  IconData get firstNavigationIcon {
+    if (userRole == 'DELIVERY_RIDER') {
+      return Icons.electric_rickshaw_outlined;
+    }
+
+    return Icons.home_outlined;
+  }
+
+  IconData get firstNavigationActiveIcon {
+    if (userRole == 'DELIVERY_RIDER') {
+      return Icons.electric_rickshaw_rounded;
+    }
+
+    return Icons.home_rounded;
+  }
 
   @override
   Widget build(
     BuildContext context,
   ) {
+    if (isLoadingRole) {
+      return const Scaffold(
+        backgroundColor: Color(
+          0xFFF7F9FB,
+        ),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: primaryGreen,
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       extendBody: false,
       body: IndexedStack(
@@ -66,7 +205,8 @@ class _MainNavigationState
                 0xFFE7EAEF,
               ),
             ),
-            boxShadow: const [
+            boxShadow:
+                const <BoxShadow>[
               BoxShadow(
                 color: Color(
                   0x24101828,
@@ -82,14 +222,15 @@ class _MainNavigationState
           child: Row(
             crossAxisAlignment:
                 CrossAxisAlignment.stretch,
-            children: [
+            children: <Widget>[
               buildNavigationItem(
                 index: 0,
                 icon:
-                    Icons.home_outlined,
+                    firstNavigationIcon,
                 activeIcon:
-                    Icons.home_rounded,
-                label: 'Home',
+                    firstNavigationActiveIcon,
+                label:
+                    firstNavigationLabel,
               ),
               buildNavigationItem(
                 index: 1,
@@ -97,7 +238,8 @@ class _MainNavigationState
                     .receipt_long_outlined,
                 activeIcon: Icons
                     .receipt_long_rounded,
-                label: 'Transactions',
+                label:
+                    'Transactions',
               ),
               buildNavigationItem(
                 index: 2,
@@ -105,7 +247,8 @@ class _MainNavigationState
                     .account_balance_wallet_outlined,
                 activeIcon: Icons
                     .account_balance_wallet_rounded,
-                label: 'Wallet',
+                label:
+                    'Wallet',
               ),
               buildNavigationItem(
                 index: 3,
@@ -113,7 +256,8 @@ class _MainNavigationState
                     .person_outline_rounded,
                 activeIcon:
                     Icons.person_rounded,
-                label: 'Profile',
+                label:
+                    'Profile',
               ),
             ],
           ),
@@ -154,7 +298,8 @@ class _MainNavigationState
                   const Duration(
                 milliseconds: 220,
               ),
-              curve: Curves.easeOut,
+              curve:
+                  Curves.easeOut,
               padding:
                   const EdgeInsets.symmetric(
                 horizontal: 2,
@@ -177,16 +322,20 @@ class _MainNavigationState
                     MainAxisSize.min,
                 mainAxisAlignment:
                     MainAxisAlignment.center,
-                children: [
+                children: <Widget>[
                   AnimatedContainer(
                     duration:
                         const Duration(
                       milliseconds: 220,
                     ),
                     width:
-                        selected ? 31 : 27,
+                        selected
+                            ? 31
+                            : 27,
                     height:
-                        selected ? 31 : 27,
+                        selected
+                            ? 31
+                            : 27,
                     decoration:
                         BoxDecoration(
                       color: selected
@@ -207,7 +356,9 @@ class _MainNavigationState
                               0xFF667085,
                             ),
                       size:
-                          selected ? 19 : 21,
+                          selected
+                              ? 19
+                              : 21,
                     ),
                   ),
                   const SizedBox(
@@ -224,10 +375,11 @@ class _MainNavigationState
                       overflow:
                           TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: label ==
-                                'Transactions'
-                            ? 9
-                            : 10,
+                        fontSize:
+                            label ==
+                                    'Transactions'
+                                ? 9
+                                : 10,
                         height: 1,
                         fontWeight:
                             selected
