@@ -12,6 +12,10 @@ const riderWithdrawalController = require(
   "../controllers/riderWithdrawal.controller"
 );
 
+const riderDeliveryController = require(
+  "../controllers/riderDelivery.controller"
+);
+
 const router = express.Router();
 
 /*
@@ -168,6 +172,25 @@ router.post(
   "/withdrawals",
   protect,
   riderWithdrawalController.createWithdrawalRequest
+);
+
+
+/*
+ * ============================================================
+ * RIDER DELIVERIES
+ * ============================================================
+ */
+
+router.get(
+  "/deliveries",
+  protect,
+  riderDeliveryController.getRiderDeliveries
+);
+
+router.get(
+  "/deliveries/:id",
+  protect,
+  riderDeliveryController.getRiderDeliveryDetails
 );
 
 module.exports = router;
