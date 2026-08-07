@@ -139,4 +139,35 @@ router.patch(
   riderWithdrawalController.markWithdrawalFailed
 );
 
+
+/*
+ * ============================================================
+ * RIDER WITHDRAWALS
+ * ============================================================
+ */
+
+router.get(
+  "/commission-summary",
+  protect,
+  riderWithdrawalController.getCommissionSummary
+);
+
+router.get(
+  "/withdrawals",
+  protect,
+  riderWithdrawalController.getMyWithdrawals
+);
+
+router.get(
+  "/withdrawals/:id",
+  protect,
+  riderWithdrawalController.getMyWithdrawalById
+);
+
+router.post(
+  "/withdrawals",
+  protect,
+  riderWithdrawalController.createWithdrawalRequest
+);
+
 module.exports = router;
