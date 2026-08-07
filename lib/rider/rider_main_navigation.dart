@@ -1208,7 +1208,133 @@ class _RiderDeliveriesScreenState
     );
 
     if (!isNewJob) {
-      return card;
+  
+    Widget actionArea = const SizedBox.shrink();
+
+    if (status == 'ASSIGNED') {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  await performAction(
+                    delivery: delivery,
+                    action: 'REJECT',
+                  );
+                },
+                icon: const Icon(
+                  Icons.close_rounded,
+                ),
+                label: const Text(
+                  'Reject',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(
+                    color: Colors.red,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(
+              width: 10,
+            ),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () async {
+                  await performAction(
+                    delivery: delivery,
+                    action: 'ACCEPT',
+                  );
+                },
+                icon: const Icon(
+                  Icons.check_rounded,
+                ),
+                label: const Text(
+                  'Accept Delivery',
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (status == 'ACCEPTED') {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () async {
+              await performAction(
+                delivery: delivery,
+                action: 'STATUS',
+                status: 'PICKED_UP',
+              );
+            },
+            icon: const Icon(
+              Icons.inventory_2_outlined,
+            ),
+            label: const Text(
+              'Mark Picked Up',
+            ),
+          ),
+        ),
+      );
+    } else if (status == 'PICKED_UP') {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () async {
+              await performAction(
+                delivery: delivery,
+                action: 'STATUS',
+                status: 'IN_TRANSIT',
+              );
+            },
+            icon: const Icon(
+              Icons.local_shipping_outlined,
+            ),
+            label: const Text(
+              'Start Transit',
+            ),
+          ),
+        ),
+      );
+    } else if (status == 'IN_TRANSIT') {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () async {
+              await performAction(
+                delivery: delivery,
+                action: 'STATUS',
+                status: 'DELIVERED',
+              );
+            },
+            icon: const Icon(
+              Icons.task_alt_rounded,
+            ),
+            label: const Text(
+              'Mark Delivered',
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        card,
+        actionArea,
+      ],
+    );
     }
 
     return ScaleTransition(
