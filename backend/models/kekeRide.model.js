@@ -52,6 +52,12 @@ const geoPointSchema =
 const kekeRideSchema =
   new mongoose.Schema(
     {
+      /*
+       * =================================================
+       * CUSTOMER / DRIVER
+       * =================================================
+       */
+
       customerId: {
         type:
           mongoose.Schema.Types.ObjectId,
@@ -117,7 +123,7 @@ const kekeRideSchema =
 
       /*
        * =================================================
-       * CUSTOMER
+       * CUSTOMER SNAPSHOT
        * =================================================
        */
 
@@ -173,6 +179,8 @@ const kekeRideSchema =
         rating: {
           type: Number,
           default: 0,
+          min: 0,
+          max: 5,
         },
       },
 
@@ -204,7 +212,7 @@ const kekeRideSchema =
 
       /*
        * =================================================
-       * DRIVER MATCHING
+       * DRIVER MATCHING / OFFER
        * =================================================
        */
 
@@ -314,7 +322,7 @@ const kekeRideSchema =
 
       /*
        * =================================================
-       * FARE
+       * REAL FARE
        * =================================================
        */
 
@@ -336,6 +344,13 @@ const kekeRideSchema =
         min: 0,
       },
 
+      /*
+       * Kept for backward compatibility.
+       *
+       * New Keke pricing currently uses
+       * ServicePay commission instead of
+       * a separate fixed service fee.
+       */
       serviceFee: {
         type: Number,
         default: 0,
@@ -347,6 +362,44 @@ const kekeRideSchema =
         default: 0,
         min: 0,
       },
+
+      /*
+       * =================================================
+       * SERVICEPAY COMMISSION SNAPSHOT
+       * =================================================
+       *
+       * These values are saved when the ride
+       * is created.
+       *
+       * This means if Head Office changes
+       * commission later, an existing ride
+       * keeps the pricing it started with.
+       */
+
+      servicePayCommissionPercent: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 100,
+      },
+
+      servicePayCommission: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      driverEarning: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      /*
+       * =================================================
+       * PAYMENT
+       * =================================================
+       */
 
       paymentMethod: {
         type: String,
@@ -379,15 +432,14 @@ const kekeRideSchema =
        * DRIVER LOCATION SNAPSHOT
        * =================================================
        *
-       * IMPORTANT:
+       * Live matching and live tracking use:
        *
-       * No 2dsphere index is needed here.
-       *
-       * Live driver matching uses:
        * User.riderCurrentLocation
        *
-       * Live customer tracking also reads
-       * User.riderCurrentLocation.
+       * This field is only an optional snapshot.
+       *
+       * IMPORTANT:
+       * No 2dsphere index here.
        */
 
       driverLastLocation: {
@@ -453,25 +505,17 @@ const kekeRideSchema =
  * =====================================================
  * GEO INDEXES
  * =====================================================
- *
- * Pickup and destination are always valid
- * GeoJSON Points when a ride is created.
  */
 
 kekeRideSchema.index({
-  "pickup.location": "2dsphere",
+  "pickup.location":
+    "2dsphere",
 });
 
 kekeRideSchema.index({
-  "destination.location": "2dsphere",
+  "destination.location":
+    "2dsphere",
 });
-
-/*
- * IMPORTANT:
- *
- * There is intentionally NO 2dsphere index
- * on driverLastLocation.
- */
 
 /*
  * =====================================================
@@ -495,14 +539,24 @@ kekeRideSchema.index({
   createdAt: -1,
 });
 
+kekeRideSchema.index({
+  paymentStatus: 1,
+  createdAt: -1,
+});
+
 /*
  * =====================================================
  * METHODS
  * =====================================================
  */
 
+/*
+ * Assign nearest driver.
+ */
 kekeRideSchema.methods.assignDriver =
-  function (driver) {
+  function (
+    driver
+  ) {
     this.driverId =
       driver._id;
 
@@ -511,22 +565,28 @@ kekeRideSchema.methods.assignDriver =
 
     this.driverSnapshot = {
       fullName:
-        driver.fullName || null,
+        driver.fullName ||
+        null,
 
       phone:
-        driver.phone || null,
+        driver.phone ||
+        null,
 
       riderId:
-        driver.riderId || null,
+        driver.riderId ||
+        null,
 
       plateNumber:
-        driver.plateNumber || null,
+        driver.plateNumber ||
+        null,
 
       vehicleType:
-        driver.vehicleType || null,
+        driver.vehicleType ||
+        null,
 
       rating:
-        driver.riderRating || 0,
+        driver.riderRating ||
+        0,
     };
 
     this.status =
@@ -536,6 +596,9 @@ kekeRideSchema.methods.assignDriver =
       new Date();
   };
 
+/*
+ * Driver accepts.
+ */
 kekeRideSchema.methods
   .markDriverAccepted =
   function () {
@@ -549,6 +612,9 @@ kekeRideSchema.methods
       null;
   };
 
+/*
+ * Driver arrives.
+ */
 kekeRideSchema.methods
   .markDriverArrived =
   function () {
@@ -559,6 +625,9 @@ kekeRideSchema.methods
       new Date();
   };
 
+/*
+ * Ride starts after OTP.
+ */
 kekeRideSchema.methods
   .markRideStarted =
   function () {
@@ -572,6 +641,9 @@ kekeRideSchema.methods
       new Date();
   };
 
+/*
+ * Ride completed.
+ */
 kekeRideSchema.methods
   .markRideCompleted =
   function () {
@@ -582,6 +654,9 @@ kekeRideSchema.methods
       new Date();
   };
 
+/*
+ * Cancel ride.
+ */
 kekeRideSchema.methods.cancelRide =
   function ({
     cancelledBy,

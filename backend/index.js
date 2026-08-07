@@ -53,10 +53,21 @@ const riderRoutes = require(
 );
 
 /*
- * ServicePay Keke
+ * ServicePay Keke Ride
  */
 const kekeRideRoutes = require(
   "./routes/kekeRide.routes"
+);
+
+/*
+ * ServicePay Keke Fare
+ */
+const kekeFareSettingRoutes = require(
+  "./routes/kekeFareSetting.routes"
+);
+
+const adminKekeFareSettingRoutes = require(
+  "./routes/adminKekeFareSetting.routes"
 );
 
 const notificationRoutes = require(
@@ -134,7 +145,6 @@ connectDB();
  */
 
 app.use(helmet());
-
 app.use(cors());
 
 /*
@@ -270,12 +280,6 @@ app.use(
  * =====================================================
  * RIDER
  * =====================================================
- *
- * New standard:
- * /api/riders
- *
- * Old route is kept so existing Rider
- * screens will not break.
  */
 
 app.use(
@@ -283,6 +287,9 @@ app.use(
   riderRoutes
 );
 
+/*
+ * Keep old route for existing screens.
+ */
 app.use(
   "/api/rider",
   riderRoutes
@@ -290,31 +297,42 @@ app.use(
 
 /*
  * =====================================================
- * SERVICEPAY KEKE
+ * SERVICEPAY KEKE RIDE
  * =====================================================
- *
- * Customer:
- *
- * POST /api/keke-rides
- * GET  /api/keke-rides/active
- * GET  /api/keke-rides/history
- *
- * Driver:
- *
- * GET  /api/keke-rides/driver/current
- * POST /api/keke-rides/:rideId/accept
- * POST /api/keke-rides/:rideId/arrived
- * POST /api/keke-rides/:rideId/start
- * POST /api/keke-rides/:rideId/complete
- *
- * Live Tracking:
- *
- * GET /api/keke-rides/:rideId/driver-location
  */
 
 app.use(
   "/api/keke-rides",
   kekeRideRoutes
+);
+
+/*
+ * =====================================================
+ * SERVICEPAY KEKE FARE
+ * =====================================================
+ *
+ * Customer / App:
+ *
+ * GET  /api/keke-fare
+ * POST /api/keke-fare/estimate
+ */
+
+app.use(
+  "/api/keke-fare",
+  kekeFareSettingRoutes
+);
+
+/*
+ * Head Office / Admin:
+ *
+ * GET    /api/admin/keke-fare
+ * POST   /api/admin/keke-fare
+ * DELETE /api/admin/keke-fare/:id
+ */
+
+app.use(
+  "/api/admin/keke-fare",
+  adminKekeFareSettingRoutes
 );
 
 /*
@@ -538,6 +556,14 @@ app.listen(
 
     console.log(
       "🚕 Keke Ride API: /api/keke-rides"
+    );
+
+    console.log(
+      "💰 Keke Fare API: /api/keke-fare"
+    );
+
+    console.log(
+      "⚙️ Admin Keke Fare API: /api/admin/keke-fare"
     );
   }
 );

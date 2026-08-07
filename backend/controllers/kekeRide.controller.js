@@ -8,31 +8,12 @@ const KekeRide = require(
   "../models/kekeRide.model"
 );
 
-/*
- * =====================================================
- * SERVICEPAY KEKE SETTINGS
- * =====================================================
- */
-
-/*
- * Driver has 60 seconds to accept
- * an incoming Keke ride request.
- */
-const RIDE_OFFER_SECONDS = 60;
-
-/*
- * Maximum initial search distance:
- * 15 kilometres.
- */
-const MAX_DRIVER_DISTANCE_METRES =
-  15000;
-
-/*
- * Driver location must have been updated
- * within the last 5 minutes.
- */
-const DRIVER_LOCATION_FRESH_MINUTES =
-  5;
+const {
+  getEffectiveFareSetting,
+  calculateFare,
+} = require(
+  "./kekeFareSetting.controller"
+);
 
 /*
  * =====================================================
@@ -40,8 +21,11 @@ const DRIVER_LOCATION_FRESH_MINUTES =
  * =====================================================
  */
 
-const toNumber = (value) => {
-  const number = Number(value);
+const toNumber = (
+  value
+) => {
+  const number =
+    Number(value);
 
   if (!Number.isFinite(number)) {
     return null;
@@ -50,139 +34,84 @@ const toNumber = (value) => {
   return number;
 };
 
-const generateRideReference = () => {
-  const stamp = Date.now()
-    .toString()
-    .slice(-8);
+const generateRideReference =
+  () => {
+    const stamp =
+      Date.now()
+        .toString()
+        .slice(-8);
 
-  const random = crypto
-    .randomBytes(3)
-    .toString("hex")
-    .toUpperCase();
+    const random =
+      crypto
+        .randomBytes(3)
+        .toString("hex")
+        .toUpperCase();
 
-  return `KEKE-${stamp}-${random}`;
-};
-
-const generateRideOtp = () => {
-  return String(
-    Math.floor(
-      1000 +
-        Math.random() * 9000
-    )
-  );
-};
-
-const calculateDistanceKm = (
-  lat1,
-  lng1,
-  lat2,
-  lng2
-) => {
-  const earthRadiusKm = 6371;
-
-  const toRadians = (degree) =>
-    (degree * Math.PI) / 180;
-
-  const dLat =
-    toRadians(
-      lat2 - lat1
-    );
-
-  const dLng =
-    toRadians(
-      lng2 - lng1
-    );
-
-  const a =
-    Math.sin(dLat / 2) *
-      Math.sin(dLat / 2) +
-    Math.cos(
-      toRadians(lat1)
-    ) *
-      Math.cos(
-        toRadians(lat2)
-      ) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-
-  const c =
-    2 *
-    Math.atan2(
-      Math.sqrt(a),
-      Math.sqrt(1 - a)
-    );
-
-  return earthRadiusKm * c;
-};
-
-/*
- * =====================================================
- * TEMPORARY KEKE FARE
- * =====================================================
- *
- * Current test pricing:
- *
- * Base Fare   = ₦300
- * Per KM      = ₦150
- * Service Fee = ₦50
- *
- * We will later move this to Admin Settings.
- */
-const calculateEstimatedFare = (
-  distanceKm
-) => {
-  const baseFare =
-    300;
-
-  const perKm =
-    150;
-
-  const distanceFare =
-    Math.max(
-      0,
-      distanceKm
-    ) * perKm;
-
-  const serviceFee =
-    50;
-
-  const totalFare =
-    baseFare +
-    distanceFare +
-    serviceFee;
-
-  return {
-    baseFare:
-      Math.round(
-        baseFare
-      ),
-
-    distanceFare:
-      Math.round(
-        distanceFare
-      ),
-
-    serviceFee:
-      Math.round(
-        serviceFee
-      ),
-
-    waitingFare:
-      0,
-
-    totalFare:
-      Math.round(
-        totalFare
-      ),
+    return `KEKE-${stamp}-${random}`;
   };
-};
+
+const generateRideOtp =
+  () => {
+    return String(
+      Math.floor(
+        1000 +
+          Math.random() * 9000
+      )
+    );
+  };
+
+const calculateDistanceKm =
+  (
+    lat1,
+    lng1,
+    lat2,
+    lng2
+  ) => {
+    const earthRadiusKm =
+      6371;
+
+    const toRadians =
+      (degree) =>
+        (degree * Math.PI) /
+        180;
+
+    const dLat =
+      toRadians(
+        lat2 - lat1
+      );
+
+    const dLng =
+      toRadians(
+        lng2 - lng1
+      );
+
+    const a =
+      Math.sin(dLat / 2) *
+        Math.sin(dLat / 2) +
+      Math.cos(
+        toRadians(lat1)
+      ) *
+        Math.cos(
+          toRadians(lat2)
+        ) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+
+    const c =
+      2 *
+      Math.atan2(
+        Math.sqrt(a),
+        Math.sqrt(1 - a)
+      );
+
+    return earthRadiusKm *
+      c;
+  };
 
 const calculateEstimatedDuration =
-  (distanceKm) => {
-    /*
-     * Initial estimate:
-     * average Keke speed ~25 km/h.
-     */
+  (
+    distanceKm
+  ) => {
     if (
       !distanceKm ||
       distanceKm <= 0
@@ -190,6 +119,10 @@ const calculateEstimatedDuration =
       return 0;
     }
 
+    /*
+     * Initial Keke average speed:
+     * around 25 km/h.
+     */
     const hours =
       distanceKm / 25;
 
@@ -205,7 +138,7 @@ const getFreshLocationCutoff =
   () => {
     return new Date(
       Date.now() -
-        DRIVER_LOCATION_FRESH_MINUTES *
+        5 *
           60 *
           1000
     );
@@ -222,8 +155,7 @@ const findNearestKekeDriver =
     pickupLatitude,
     pickupLongitude,
     excludedDriverIds = [],
-    maxDistanceMetres =
-      MAX_DRIVER_DISTANCE_METRES,
+    maxDistanceMetres,
   }) => {
     const locationFreshAfter =
       getFreshLocationCutoff();
@@ -294,7 +226,23 @@ const findNearestKekeDriver =
  * =====================================================
  *
  * POST /api/keke-rides
+ *
+ * Body:
+ *
+ * {
+ *   "pickupAddress": "Current Location",
+ *   "pickupLatitude": 12.0022,
+ *   "pickupLongitude": 8.5920,
+ *
+ *   "destinationAddress": "Farm Centre, Kano",
+ *   "destinationLatitude": 11.9890,
+ *   "destinationLongitude": 8.5650,
+ *
+ *   "paymentMethod": "WALLET",
+ *   "state": "Kano"
+ * }
  */
+
 exports.createRide = async (
   req,
   res
@@ -343,6 +291,8 @@ exports.createRide = async (
 
       paymentMethod =
         "WALLET",
+
+      state,
     } = req.body || {};
 
     const pickupLat =
@@ -452,7 +402,8 @@ exports.createRide = async (
     }
 
     /*
-     * Prevent another active ride.
+     * Prevent customer from creating
+     * another active Keke ride.
      */
     const existingRide =
       await KekeRide.findOne({
@@ -489,11 +440,16 @@ exports.createRide = async (
                 .rideReference,
 
             status:
-              existingRide
-                .status,
+              existingRide.status,
           },
         });
     }
+
+    /*
+     * ===================================================
+     * DISTANCE
+     * ===================================================
+     */
 
     const estimatedDistanceKm =
       calculateDistanceKm(
@@ -503,28 +459,105 @@ exports.createRide = async (
         destinationLng
       );
 
-    const fare =
-      calculateEstimatedFare(
-        estimatedDistanceKm
-      );
-
     const estimatedDurationMinutes =
       calculateEstimatedDuration(
         estimatedDistanceKm
       );
 
     /*
-     * Wallet balance check.
+     * ===================================================
+     * EFFECTIVE FARE SETTING
+     * ===================================================
      *
-     * Money is not debited here.
+     * Priority:
+     *
+     * request state
+     * -> customer state
+     * -> global pricing
      */
+
+    const pricingState =
+      String(
+        state ||
+          customer.state ||
+          ""
+      )
+        .trim();
+
+    const fareSetting =
+      await getEffectiveFareSetting({
+        state:
+          pricingState ||
+          null,
+      });
+
+    /*
+     * ===================================================
+     * REAL FARE CALCULATION
+     * ===================================================
+     *
+     * No waiting charge at order time.
+     */
+    const fare =
+      calculateFare({
+        distanceKm:
+          estimatedDistanceKm,
+
+        waitingMinutes:
+          0,
+
+        setting:
+          fareSetting,
+      });
+
+    /*
+     * Search radius comes from Admin fare settings.
+     */
+    const maxSearchDistanceMetres =
+      Math.max(
+        1,
+        Number(
+          fareSetting
+            .maxSearchDistanceKm ||
+            15
+        )
+      ) * 1000;
+
+    /*
+     * Driver offer time also comes
+     * from Admin fare settings.
+     */
+    const driverOfferSeconds =
+      Math.max(
+        10,
+        Number(
+          fareSetting
+            .driverOfferSeconds ||
+            60
+        )
+      );
+
+    /*
+     * ===================================================
+     * WALLET CHECK
+     * ===================================================
+     *
+     * No debit yet.
+     * We only make sure the customer
+     * can afford the estimated fare.
+     */
+
     if (
       normalizedPaymentMethod ===
         "WALLET" &&
       Number(
         customer.walletBalance ||
           0
-      ) < fare.totalFare
+      ) <
+        Number(
+          fare.totalFare ||
+            0
+        )
     ) {
       return res
         .status(400)
@@ -547,9 +580,11 @@ exports.createRide = async (
     }
 
     /*
-     * Find nearest AVAILABLE,
-     * VERIFIED and ONLINE Keke driver.
+     * ===================================================
+     * FIND NEAREST DRIVER
+     * ===================================================
      */
+
     const nearestDriver =
       await findNearestKekeDriver({
         pickupLatitude:
@@ -558,8 +593,7 @@ exports.createRide = async (
         pickupLongitude:
           pickupLng,
 
-        maxDistanceMetres:
-          MAX_DRIVER_DISTANCE_METRES,
+        maxDistanceMetres,
       });
 
     const rideReference =
@@ -567,6 +601,12 @@ exports.createRide = async (
 
     const rideOtp =
       generateRideOtp();
+
+    /*
+     * ===================================================
+     * CREATE RIDE
+     * ===================================================
+     */
 
     const ride =
       await KekeRide.create({
@@ -617,13 +657,15 @@ exports.createRide = async (
 
         estimatedDistanceKm:
           Number(
-            estimatedDistanceKm.toFixed(
-              2
-            )
+            estimatedDistanceKm
+              .toFixed(2)
           ),
 
         estimatedDurationMinutes,
 
+        /*
+         * Real pricing values.
+         */
         baseFare:
           fare.baseFare,
 
@@ -634,10 +676,28 @@ exports.createRide = async (
           fare.waitingFare,
 
         serviceFee:
-          fare.serviceFee,
+          0,
 
         totalFare:
           fare.totalFare,
+
+        /*
+         * Commission snapshot.
+         *
+         * These fields will be added to the
+         * model in the next step if not
+         * already present.
+         */
+        servicePayCommissionPercent:
+          fare
+            .servicePayCommissionPercent,
+
+        servicePayCommission:
+          fare
+            .servicePayCommission,
+
+        driverEarning:
+          fare.driverEarning,
 
         paymentMethod:
           normalizedPaymentMethod,
@@ -658,22 +718,19 @@ exports.createRide = async (
 
     /*
      * ===================================================
-     * SEND OFFER TO NEAREST DRIVER
+     * ASSIGN NEAREST DRIVER
      * ===================================================
      */
+
     if (nearestDriver) {
       ride.assignDriver(
         nearestDriver
       );
 
-      /*
-       * Driver now has 60 seconds
-       * to accept this ride.
-       */
       ride.currentOfferExpiresAt =
         new Date(
           Date.now() +
-            RIDE_OFFER_SECONDS *
+            driverOfferSeconds *
               1000
         );
 
@@ -684,7 +741,7 @@ exports.createRide = async (
       await ride.save();
 
       /*
-       * Temporarily reserve the driver.
+       * Reserve driver temporarily.
        */
       nearestDriver.riderCurrentJobId =
         ride._id;
@@ -702,6 +759,12 @@ exports.createRide = async (
 
       await nearestDriver.save();
     }
+
+    /*
+     * ===================================================
+     * RESPONSE
+     * ===================================================
+     */
 
     const responseRide = {
       id:
@@ -744,8 +807,38 @@ exports.createRide = async (
             .coordinates[0],
       },
 
+      pricing: {
+        scopeType:
+          fareSetting.scopeType,
+
+        state:
+          fareSetting.state,
+
+        baseFare:
+          fare.baseFare,
+
+        minimumFare:
+          fare.minimumFare,
+
+        pricePerKm:
+          fare.pricePerKm,
+
+        waitingFeePerMinute:
+          fare
+            .waitingFeePerMinute,
+
+        servicePayCommissionPercent:
+          fare
+            .servicePayCommissionPercent,
+
+        driverSharePercent:
+          100 -
+          fare
+            .servicePayCommissionPercent,
+      },
+
       estimatedDistanceKm:
-        ride.estimatedDistanceKm,
+        fare.distanceKm,
 
       estimatedDurationMinutes:
         ride
@@ -753,19 +846,23 @@ exports.createRide = async (
 
       fare: {
         baseFare:
-          ride.baseFare,
+          fare.baseFare,
 
         distanceFare:
-          ride.distanceFare,
-
-        serviceFee:
-          ride.serviceFee,
+          fare.distanceFare,
 
         waitingFare:
-          ride.waitingFare,
+          fare.waitingFare,
 
         totalFare:
-          ride.totalFare,
+          fare.totalFare,
+
+        servicePayCommission:
+          fare
+            .servicePayCommission,
+
+        driverEarning:
+          fare.driverEarning,
       },
 
       paymentMethod:
@@ -774,9 +871,9 @@ exports.createRide = async (
       paymentStatus:
         ride.paymentStatus,
 
-      offerDurationSeconds:
+      driverOfferSeconds:
         nearestDriver
-          ? RIDE_OFFER_SECONDS
+          ? driverOfferSeconds
           : null,
 
       driver:
@@ -786,13 +883,11 @@ exports.createRide = async (
                 nearestDriver._id,
 
               riderId:
-                nearestDriver
-                  .riderId ||
+                nearestDriver.riderId ||
                 null,
 
               fullName:
-                nearestDriver
-                  .fullName,
+                nearestDriver.fullName,
 
               phone:
                 nearestDriver.phone,
@@ -817,13 +912,13 @@ exports.createRide = async (
                   ? {
                       latitude:
                         nearestDriver
-                            .riderCurrentLocation
-                            .coordinates[1],
+                          .riderCurrentLocation
+                          .coordinates[1],
 
                       longitude:
                         nearestDriver
-                            .riderCurrentLocation
-                            .coordinates[0],
+                          .riderCurrentLocation
+                          .coordinates[0],
                     }
                   : null,
 
@@ -856,7 +951,7 @@ exports.createRide = async (
           true,
 
         message:
-          "Nearest Keke driver found. Driver has 60 seconds to respond.",
+          `Nearest Keke driver found. Driver has ${driverOfferSeconds} seconds to respond.`,
 
         ride:
           responseRide,
@@ -1092,9 +1187,8 @@ exports.getRideDetails = async (
  * =====================================================
  * DRIVER - GET CURRENT RIDE OFFER / JOB
  * =====================================================
- *
- * GET /api/keke-rides/driver/current
  */
+
 exports.getDriverCurrentRide =
   async (
     req,
@@ -1110,9 +1204,7 @@ exports.getDriverCurrentRide =
         return res
           .status(404)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               "Driver account not found.",
           });
@@ -1125,9 +1217,7 @@ exports.getDriverCurrentRide =
         return res
           .status(403)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               "Only riders can access this endpoint.",
           });
@@ -1147,16 +1237,13 @@ exports.getDriverCurrentRide =
             ],
           },
         }).sort({
-          createdAt:
-            -1,
+          createdAt: -1,
         });
 
       return res
         .status(200)
         .json({
-          success:
-            true,
-
+          success: true,
           ride:
             ride || null,
         });
@@ -1169,9 +1256,7 @@ exports.getDriverCurrentRide =
       return res
         .status(500)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Unable to load driver ride.",
         });
@@ -1182,9 +1267,8 @@ exports.getDriverCurrentRide =
  * =====================================================
  * DRIVER - ACCEPT RIDE
  * =====================================================
- *
- * POST /api/keke-rides/:rideId/accept
  */
+
 exports.acceptRide = async (
   req,
   res
@@ -1199,9 +1283,7 @@ exports.acceptRide = async (
       return res
         .status(404)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Driver account not found.",
         });
@@ -1214,9 +1296,7 @@ exports.acceptRide = async (
       return res
         .status(403)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Only riders can accept Keke rides.",
         });
@@ -1231,9 +1311,7 @@ exports.acceptRide = async (
       return res
         .status(404)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Keke ride not found.",
         });
@@ -1250,9 +1328,7 @@ exports.acceptRide = async (
       return res
         .status(403)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "This ride was not assigned to you.",
         });
@@ -1265,9 +1341,7 @@ exports.acceptRide = async (
       return res
         .status(409)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             `Ride cannot be accepted while status is ${ride.status}.`,
         });
@@ -1281,9 +1355,7 @@ exports.acceptRide = async (
       return res
         .status(409)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "This ride offer has expired.",
         });
@@ -1301,8 +1373,7 @@ exports.acceptRide = async (
 
     driver.totalAcceptedDeliveries =
       Number(
-        driver
-          .totalAcceptedDeliveries ||
+        driver.totalAcceptedDeliveries ||
           0
       ) + 1;
 
@@ -1311,8 +1382,7 @@ exports.acceptRide = async (
     return res
       .status(200)
       .json({
-        success:
-          true,
+        success: true,
 
         message:
           "Keke ride accepted successfully.",
@@ -1342,8 +1412,11 @@ exports.acceptRide = async (
           totalFare:
             ride.totalFare,
 
-          acceptedAt:
-            ride.driverAcceptedAt,
+          driverEarning:
+            ride.driverEarning,
+
+          servicePayCommission:
+            ride.servicePayCommission,
         },
       });
   } catch (error) {
@@ -1355,9 +1428,7 @@ exports.acceptRide = async (
     return res
       .status(500)
       .json({
-        success:
-          false,
-
+        success: false,
         message:
           "Unable to accept Keke ride.",
       });
@@ -1368,9 +1439,8 @@ exports.acceptRide = async (
  * =====================================================
  * DRIVER - MARK ARRIVED
  * =====================================================
- *
- * POST /api/keke-rides/:rideId/arrived
  */
+
 exports.markArrived = async (
   req,
   res
@@ -1385,9 +1455,7 @@ exports.markArrived = async (
       return res
         .status(404)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Keke ride not found.",
         });
@@ -1404,9 +1472,7 @@ exports.markArrived = async (
       return res
         .status(403)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "This ride is not assigned to you.",
         });
@@ -1419,9 +1485,7 @@ exports.markArrived = async (
       return res
         .status(409)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Driver can only mark arrival while coming to pickup.",
         });
@@ -1434,8 +1498,7 @@ exports.markArrived = async (
     return res
       .status(200)
       .json({
-        success:
-          true,
+        success: true,
 
         message:
           "Driver arrival confirmed.",
@@ -1460,9 +1523,7 @@ exports.markArrived = async (
     return res
       .status(500)
       .json({
-        success:
-          false,
-
+        success: false,
         message:
           "Unable to mark driver arrival.",
       });
@@ -1473,15 +1534,8 @@ exports.markArrived = async (
  * =====================================================
  * DRIVER - START RIDE WITH OTP
  * =====================================================
- *
- * POST /api/keke-rides/:rideId/start
- *
- * Body:
- *
- * {
- *   "otp": "1234"
- * }
  */
+
 exports.startRide = async (
   req,
   res
@@ -1495,9 +1549,7 @@ exports.startRide = async (
       return res
         .status(400)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Ride OTP is required.",
         });
@@ -1513,9 +1565,7 @@ exports.startRide = async (
       return res
         .status(400)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Ride OTP must contain exactly 4 digits.",
         });
@@ -1532,9 +1582,7 @@ exports.startRide = async (
       return res
         .status(404)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Keke ride not found.",
         });
@@ -1551,9 +1599,7 @@ exports.startRide = async (
       return res
         .status(403)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "This ride is not assigned to you.",
         });
@@ -1566,9 +1612,7 @@ exports.startRide = async (
       return res
         .status(409)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Ride can only start after driver arrival.",
         });
@@ -1585,9 +1629,7 @@ exports.startRide = async (
       return res
         .status(400)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Incorrect ride OTP.",
         });
@@ -1600,8 +1642,7 @@ exports.startRide = async (
     return res
       .status(200)
       .json({
-        success:
-          true,
+        success: true,
 
         message:
           "Keke ride started successfully.",
@@ -1629,9 +1670,7 @@ exports.startRide = async (
     return res
       .status(500)
       .json({
-        success:
-          false,
-
+        success: false,
         message:
           "Unable to start Keke ride.",
       });
@@ -1642,9 +1681,8 @@ exports.startRide = async (
  * =====================================================
  * DRIVER - COMPLETE RIDE
  * =====================================================
- *
- * POST /api/keke-rides/:rideId/complete
  */
+
 exports.completeRide = async (
   req,
   res
@@ -1659,9 +1697,7 @@ exports.completeRide = async (
       return res
         .status(404)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Keke ride not found.",
         });
@@ -1678,9 +1714,7 @@ exports.completeRide = async (
       return res
         .status(403)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "This ride is not assigned to you.",
         });
@@ -1693,9 +1727,7 @@ exports.completeRide = async (
       return res
         .status(409)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Only a started ride can be completed.",
         });
@@ -1718,9 +1750,7 @@ exports.completeRide = async (
       return res
         .status(404)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Customer or driver account not found.",
         });
@@ -1728,9 +1758,90 @@ exports.completeRide = async (
 
     /*
      * ===================================================
+     * FINAL COMMISSION VALUES
+     * ===================================================
+     *
+     * These values were snapshotted when
+     * the ride was created.
+     */
+
+    const totalFare =
+      Math.max(
+        0,
+        Number(
+          ride.totalFare ||
+            0
+        )
+      );
+
+    const commissionPercent =
+      Math.min(
+        100,
+        Math.max(
+          0,
+          Number(
+            ride
+              .servicePayCommissionPercent ||
+              0
+          )
+        )
+      );
+
+    let servicePayCommission =
+      Number(
+        ride.servicePayCommission ||
+          0
+      );
+
+    let driverEarning =
+      Number(
+        ride.driverEarning ||
+          0
+      );
+
+    /*
+     * Backward compatibility for old rides
+     * created before commission fields existed.
+     */
+    if (
+      servicePayCommission <=
+        0 &&
+      commissionPercent >
+        0
+    ) {
+      servicePayCommission =
+        Math.round(
+          totalFare *
+            (
+              commissionPercent /
+              100
+            )
+        );
+    }
+
+    if (
+      driverEarning <= 0
+    ) {
+      driverEarning =
+        Math.max(
+          0,
+          totalFare -
+            servicePayCommission
+        );
+    }
+
+    ride.servicePayCommission =
+      servicePayCommission;
+
+    ride.driverEarning =
+      driverEarning;
+
+    /*
+     * ===================================================
      * WALLET PAYMENT
      * ===================================================
      */
+
     if (
       ride.paymentMethod ===
         "WALLET" &&
@@ -1742,65 +1853,52 @@ exports.completeRide = async (
           customer.walletBalance ||
             0
         ) <
-        Number(
-          ride.totalFare ||
-            0
-        )
+        totalFare
       ) {
         return res
           .status(400)
           .json({
-            success:
-              false,
+            success: false,
 
             message:
               "Customer wallet balance is insufficient to complete payment.",
 
-            totalFare:
-              ride.totalFare,
+            totalFare,
 
             walletBalance:
-              customer.walletBalance,
+              Number(
+                customer.walletBalance ||
+                  0
+              ),
           });
       }
 
+      /*
+       * Debit customer the full ride fare.
+       */
       customer.walletBalance =
         Number(
           customer.walletBalance ||
             0
         ) -
-        Number(
-          ride.totalFare ||
-            0
-        );
+        totalFare;
 
       /*
-       * Temporary settlement:
-       * Full ride amount goes to rider earnings.
-       *
-       * Later we will split ServicePay commission.
+       * Rider gets ONLY driver share.
        */
       driver.totalRiderEarnings =
         Number(
-          driver
-            .totalRiderEarnings ||
+          driver.totalRiderEarnings ||
             0
         ) +
-        Number(
-          ride.totalFare ||
-            0
-        );
+        driverEarning;
 
       driver.pendingRiderSettlement =
         Number(
-          driver
-            .pendingRiderSettlement ||
+          driver.pendingRiderSettlement ||
             0
         ) +
-        Number(
-          ride.totalFare ||
-            0
-        );
+        driverEarning;
 
       ride.paymentStatus =
         "PAID";
@@ -1810,6 +1908,19 @@ exports.completeRide = async (
       ride.paymentMethod ===
         "CASH"
     ) {
+      /*
+       * For CASH:
+       *
+       * Customer physically pays the driver.
+       *
+       * We still record the fare and commission,
+       * but we do NOT add driverEarning to
+       * pending settlement because ServicePay
+       * did not collect the cash.
+       *
+       * Later we can build a commission debt /
+       * driver wallet deduction system for CASH.
+       */
       ride.paymentStatus =
         "PAID";
     }
@@ -1824,8 +1935,7 @@ exports.completeRide = async (
 
     driver.totalCompletedDeliveries =
       Number(
-        driver
-          .totalCompletedDeliveries ||
+        driver.totalCompletedDeliveries ||
           0
       ) + 1;
 
@@ -1836,8 +1946,7 @@ exports.completeRide = async (
     return res
       .status(200)
       .json({
-        success:
-          true,
+        success: true,
 
         message:
           "Keke ride completed successfully.",
@@ -1852,8 +1961,15 @@ exports.completeRide = async (
           status:
             ride.status,
 
-          totalFare:
-            ride.totalFare,
+          totalFare,
+
+          servicePayCommissionPercent:
+            ride
+              .servicePayCommissionPercent,
+
+          servicePayCommission,
+
+          driverEarning,
 
           paymentMethod:
             ride.paymentMethod,
@@ -1875,7 +1991,8 @@ exports.completeRide = async (
             driver.totalRiderEarnings,
 
           pendingRiderSettlement:
-            driver.pendingRiderSettlement,
+            driver
+              .pendingRiderSettlement,
 
           availabilityStatus:
             driver.availabilityStatus,
@@ -1890,9 +2007,7 @@ exports.completeRide = async (
     return res
       .status(500)
       .json({
-        success:
-          false,
-
+        success: false,
         message:
           "Unable to complete Keke ride.",
       });
@@ -1903,9 +2018,8 @@ exports.completeRide = async (
  * =====================================================
  * CUSTOMER - CANCEL RIDE
  * =====================================================
- *
- * POST /api/keke-rides/:rideId/cancel
  */
+
 exports.cancelRide = async (
   req,
   res
@@ -1920,9 +2034,7 @@ exports.cancelRide = async (
       return res
         .status(404)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Keke ride not found.",
         });
@@ -1939,9 +2051,7 @@ exports.cancelRide = async (
       return res
         .status(403)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Only the customer who created this ride can cancel it.",
         });
@@ -1959,9 +2069,7 @@ exports.cancelRide = async (
       return res
         .status(409)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             `Ride cannot be cancelled while status is ${ride.status}.`,
         });
@@ -1971,7 +2079,9 @@ exports.cancelRide = async (
       reason,
     } = req.body || {};
 
-    if (ride.driverId) {
+    if (
+      ride.driverId
+    ) {
       const driver =
         await User.findById(
           ride.driverId
@@ -2016,8 +2126,7 @@ exports.cancelRide = async (
     return res
       .status(200)
       .json({
-        success:
-          true,
+        success: true,
 
         message:
           "Keke ride cancelled successfully.",
@@ -2042,9 +2151,7 @@ exports.cancelRide = async (
     return res
       .status(500)
       .json({
-        success:
-          false,
-
+        success: false,
         message:
           "Unable to cancel Keke ride.",
       });
@@ -2055,9 +2162,8 @@ exports.cancelRide = async (
  * =====================================================
  * CUSTOMER - GET DRIVER LIVE LOCATION
  * =====================================================
- *
- * GET /api/keke-rides/:rideId/driver-location
  */
+
 exports.getDriverLiveLocation =
   async (
     req,
@@ -2073,9 +2179,7 @@ exports.getDriverLiveLocation =
         return res
           .status(404)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               "Keke ride not found.",
           });
@@ -2092,20 +2196,19 @@ exports.getDriverLiveLocation =
         return res
           .status(403)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               "You are not allowed to track this driver.",
           });
       }
 
-      if (!ride.driverId) {
+      if (
+        !ride.driverId
+      ) {
         return res
           .status(200)
           .json({
-            success:
-              true,
+            success: true,
 
             driverAssigned:
               false,
@@ -2138,9 +2241,7 @@ exports.getDriverLiveLocation =
         return res
           .status(404)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               "Assigned driver not found.",
           });
@@ -2161,8 +2262,7 @@ exports.getDriverLiveLocation =
       return res
         .status(200)
         .json({
-          success:
-            true,
+          success: true,
 
           driverAssigned:
             true,
@@ -2222,9 +2322,7 @@ exports.getDriverLiveLocation =
       return res
         .status(500)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Unable to load driver location.",
         });
@@ -2235,9 +2333,8 @@ exports.getDriverLiveLocation =
  * =====================================================
  * CUSTOMER - RIDE HISTORY
  * =====================================================
- *
- * GET /api/keke-rides/history
  */
+
 exports.getCustomerRideHistory =
   async (
     req,
@@ -2250,12 +2347,9 @@ exports.getCustomerRideHistory =
             req.user._id,
         })
           .sort({
-            createdAt:
-              -1,
+            createdAt: -1,
           })
-          .limit(
-            50
-          )
+          .limit(50)
           .select(
             "-rideOtp"
           );
@@ -2263,8 +2357,7 @@ exports.getCustomerRideHistory =
       return res
         .status(200)
         .json({
-          success:
-            true,
+          success: true,
 
           count:
             rides.length,
@@ -2280,9 +2373,7 @@ exports.getCustomerRideHistory =
       return res
         .status(500)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             "Unable to load Keke ride history.",
         });
