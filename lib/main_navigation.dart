@@ -13,18 +13,15 @@ class MainNavigation extends StatefulWidget {
   });
 
   @override
-  State<MainNavigation> createState() =>
-      _MainNavigationState();
+  State<MainNavigation> createState() => _MainNavigationState();
 }
 
-class _MainNavigationState
-    extends State<MainNavigation> {
-  static const Color primaryGreen =
-      Color(0xFF08783E);
+class _MainNavigationState extends State<MainNavigation> {
+  static const Color primaryGreen = Color(0xFF08783E);
 
   int currentIndex = 0;
 
-  bool isLoadingRole = true;
+  bool isLoadingRole = false;
 
   String userRole = 'CUSTOMER';
 
@@ -34,6 +31,10 @@ class _MainNavigationState
   void initState() {
     super.initState();
 
+    // Show customer dashboard immediately.
+    // Role loading can continue in the background.
+    pages = _buildPages('CUSTOMER');
+
     _loadUserRole();
   }
 
@@ -42,17 +43,15 @@ class _MainNavigationState
       final SharedPreferences preferences =
           await SharedPreferences.getInstance();
 
-      String role =
+      String role = preferences.getString(
+            'user_role',
+          ) ??
           preferences.getString(
-                'user_role',
-              ) ??
-              preferences.getString(
-                'role',
-              ) ??
-              'CUSTOMER';
+            'role',
+          ) ??
+          'CUSTOMER';
 
-      role =
-          role.trim().toUpperCase();
+      role = role.trim().toUpperCase();
 
       if (role.isEmpty) {
         role = 'CUSTOMER';
@@ -180,8 +179,7 @@ class _MainNavigationState
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        minimum:
-            const EdgeInsets.fromLTRB(
+        minimum: const EdgeInsets.fromLTRB(
           10,
           0,
           10,
@@ -189,15 +187,13 @@ class _MainNavigationState
         ),
         child: Container(
           height: 78,
-          padding:
-              const EdgeInsets.symmetric(
+          padding: const EdgeInsets.symmetric(
             horizontal: 7,
             vertical: 6,
           ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius:
-                BorderRadius.circular(
+            borderRadius: BorderRadius.circular(
               22,
             ),
             border: Border.all(
@@ -205,8 +201,7 @@ class _MainNavigationState
                 0xFFE7EAEF,
               ),
             ),
-            boxShadow:
-                const <BoxShadow>[
+            boxShadow: const <BoxShadow>[
               BoxShadow(
                 color: Color(
                   0x24101828,
@@ -220,44 +215,31 @@ class _MainNavigationState
             ],
           ),
           child: Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               buildNavigationItem(
                 index: 0,
-                icon:
-                    firstNavigationIcon,
-                activeIcon:
-                    firstNavigationActiveIcon,
-                label:
-                    firstNavigationLabel,
+                icon: firstNavigationIcon,
+                activeIcon: firstNavigationActiveIcon,
+                label: firstNavigationLabel,
               ),
               buildNavigationItem(
                 index: 1,
-                icon: Icons
-                    .receipt_long_outlined,
-                activeIcon: Icons
-                    .receipt_long_rounded,
-                label:
-                    'Transactions',
+                icon: Icons.receipt_long_outlined,
+                activeIcon: Icons.receipt_long_rounded,
+                label: 'Transactions',
               ),
               buildNavigationItem(
                 index: 2,
-                icon: Icons
-                    .account_balance_wallet_outlined,
-                activeIcon: Icons
-                    .account_balance_wallet_rounded,
-                label:
-                    'Wallet',
+                icon: Icons.account_balance_wallet_outlined,
+                activeIcon: Icons.account_balance_wallet_rounded,
+                label: 'Wallet',
               ),
               buildNavigationItem(
                 index: 3,
-                icon: Icons
-                    .person_outline_rounded,
-                activeIcon:
-                    Icons.person_rounded,
-                label:
-                    'Profile',
+                icon: Icons.person_outline_rounded,
+                activeIcon: Icons.person_rounded,
+                label: 'Profile',
               ),
             ],
           ),
@@ -272,13 +254,11 @@ class _MainNavigationState
     required IconData activeIcon,
     required String label,
   }) {
-    final bool selected =
-        currentIndex == index;
+    final bool selected = currentIndex == index;
 
     return Expanded(
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
+        padding: const EdgeInsets.symmetric(
           horizontal: 2,
         ),
         child: Material(
@@ -289,102 +269,68 @@ class _MainNavigationState
                 currentIndex = index;
               });
             },
-            borderRadius:
-                BorderRadius.circular(
+            borderRadius: BorderRadius.circular(
               18,
             ),
             child: AnimatedContainer(
-              duration:
-                  const Duration(
+              duration: const Duration(
                 milliseconds: 220,
               ),
-              curve:
-                  Curves.easeOut,
-              padding:
-                  const EdgeInsets.symmetric(
+              curve: Curves.easeOut,
+              padding: const EdgeInsets.symmetric(
                 horizontal: 2,
                 vertical: 5,
               ),
-              decoration:
-                  BoxDecoration(
+              decoration: BoxDecoration(
                 color: selected
                     ? const Color(
                         0xFFEAF7F0,
                       )
                     : Colors.transparent,
-                borderRadius:
-                    BorderRadius.circular(
+                borderRadius: BorderRadius.circular(
                   18,
                 ),
               ),
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   AnimatedContainer(
-                    duration:
-                        const Duration(
+                    duration: const Duration(
                       milliseconds: 220,
                     ),
-                    width:
-                        selected
-                            ? 31
-                            : 27,
-                    height:
-                        selected
-                            ? 31
-                            : 27,
-                    decoration:
-                        BoxDecoration(
-                      color: selected
-                          ? primaryGreen
-                          : Colors.transparent,
-                      shape:
-                          BoxShape.circle,
+                    width: selected ? 31 : 27,
+                    height: selected ? 31 : 27,
+                    decoration: BoxDecoration(
+                      color: selected ? primaryGreen : Colors.transparent,
+                      shape: BoxShape.circle,
                     ),
-                    alignment:
-                        Alignment.center,
+                    alignment: Alignment.center,
                     child: Icon(
-                      selected
-                          ? activeIcon
-                          : icon,
+                      selected ? activeIcon : icon,
                       color: selected
                           ? Colors.white
                           : const Color(
                               0xFF667085,
                             ),
-                      size:
-                          selected
-                              ? 19
-                              : 21,
+                      size: selected ? 19 : 21,
                     ),
                   ),
                   const SizedBox(
                     height: 3,
                   ),
                   SizedBox(
-                    width:
-                        double.infinity,
+                    width: double.infinity,
                     child: Text(
                       label,
                       maxLines: 1,
-                      textAlign:
-                          TextAlign.center,
-                      overflow:
-                          TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize:
-                            label ==
-                                    'Transactions'
-                                ? 9
-                                : 10,
+                        fontSize: label == 'Transactions' ? 9 : 10,
                         height: 1,
                         fontWeight:
-                            selected
-                                ? FontWeight.w800
-                                : FontWeight.w600,
+                            selected ? FontWeight.w800 : FontWeight.w600,
                         color: selected
                             ? primaryGreen
                             : const Color(
