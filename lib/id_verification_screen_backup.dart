@@ -1813,8 +1813,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
 }
 
 class VerifiedNinCard extends StatelessWidget {
-  static const Color primaryGreen = Color(0xFF08783F);
-  static const Color deepGreen = Color(0xFF064B2A);
+  static const Color primaryGreen = Color(0xFF149B8F);
 
   final String surname;
   final String givenNames;
@@ -1840,25 +1839,13 @@ class VerifiedNinCard extends StatelessWidget {
   });
 
   String get qrData {
-    if (reference.trim().isNotEmpty) {
-      return 'SERVICEPAY:NIN_VERIFICATION:${reference.trim()}';
+    final String cleanReference = reference.trim();
+
+    if (cleanReference.isNotEmpty) {
+      return 'SERVICEPAY:NIN_VERIFICATION:$cleanReference';
     }
 
     return 'SERVICEPAY:NIN_VERIFICATION:$nin';
-  }
-
-  String get shortGender {
-    final String clean = gender.trim().toUpperCase();
-
-    if (clean.startsWith('M')) {
-      return 'M';
-    }
-
-    if (clean.startsWith('F')) {
-      return 'F';
-    }
-
-    return clean;
   }
 
   @override
@@ -1866,16 +1853,27 @@ class VerifiedNinCard extends StatelessWidget {
     return AspectRatio(
       aspectRatio: 1.58,
       child: Container(
-        clipBehavior: Clip.antiAlias,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFFF9FFF9),
+              Color(0xFFDDEFD8),
+              Color(0xFFF6FAE9),
+            ],
+          ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: const Color(0xFF70A77B),
-            width: 1.3,
+            color: const Color(0xFF82B98F),
+            width: 1.2,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.10),
+              color: Colors.black.withValues(
+                alpha: 0.10,
+              ),
               blurRadius: 16,
               offset: const Offset(0, 7),
             ),
@@ -1883,648 +1881,292 @@ class VerifiedNinCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            const Positioned.fill(
-              child: ColoredBox(
-                color: Color(0xFFF4FBF1),
-              ),
-            ),
-
-            Positioned.fill(
-              child: CustomPaint(
-                painter: NinCardSecurityPainter(),
-              ),
-            ),
-
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: Center(
-                  child: NinCardBackgroundEmblem(),
-                ),
-              ),
-            ),
-
             Positioned(
-              left: -45,
-              top: 40,
-              child: Transform.rotate(
-                angle: -0.40,
-                child: Text(
-                  'SERVICEPAY',
-                  style: TextStyle(
-                    color: deepGreen.withValues(alpha: 0.055),
-                    fontSize: 48,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 6,
-                  ),
+              right: -20,
+              bottom: -35,
+              child: Icon(
+                Icons.verified_user_rounded,
+                size: 150,
+                color: primaryGreen.withValues(
+                  alpha: 0.05,
                 ),
               ),
             ),
-
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 7),
-              child: Column(
-                children: [
-                  const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'FEDERAL REPUBLIC OF NIGERIA',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: deepGreen,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
+            Column(
+              children: [
+                const Text(
+                  'FEDERAL REPUBLIC OF NIGERIA',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF123D30),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
                   ),
-
-                  const SizedBox(height: 1),
-
-                  const Text(
-                    'SERVICEPAY VERIFIED DIGITAL NIN SLIP',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF17251C),
-                      fontSize: 7,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.7,
-                    ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'SERVICEPAY VERIFIED NIN SLIP',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: primaryGreen,
+                    fontSize: 8,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.9,
                   ),
-
-                  const SizedBox(height: 3),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 70,
-                        height: 1,
-                        color: primaryGreen.withValues(alpha: 0.45),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 5),
-                        child: Icon(
-                          Icons.verified_user_rounded,
-                          size: 11,
-                          color: primaryGreen,
-                        ),
-                      ),
-                      Container(
-                        width: 70,
-                        height: 1,
-                        color: primaryGreen.withValues(alpha: 0.45),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Column(
                       children: [
-                        SizedBox(
+                        IdentityPhoto(
+                          photoValue: photoValue,
+                        ),
+                        const SizedBox(
+                          height: 5,
+                        ),
+                        Container(
                           width: 82,
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: IdentityPhoto(
-                                  photoValue: photoValue,
-                                ),
-                              ),
-
-                              const SizedBox(height: 4),
-
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.80),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: const Color(0xFFAACDB1),
-                                  ),
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 7,
-                                      backgroundColor: primaryGreen,
-                                      child: Text(
-                                        'S',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(width: 3),
-                                    Flexible(
-                                      child: Text(
-                                        'ServicePay',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Color(0xFF17251C),
-                                          fontSize: 7,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 3,
+                            horizontal: 4,
                           ),
-                        ),
-
-                        const SizedBox(width: 8),
-
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              NinCardDataField(
-                                label: 'SURNAME/NOM',
-                                value: surname.toUpperCase(),
-                                large: true,
-                              ),
-
-                              const SizedBox(height: 5),
-
-                              NinCardDataField(
-                                label: 'GIVEN NAMES/PRENOMS',
-                                value: givenNames.toUpperCase(),
-                                large: true,
-                              ),
-
-                              const Spacer(),
-
-                              Row(
-                                children: [
-                                  Expanded(
-                                    flex: 2,
-                                    child: NinCardDataField(
-                                      label: 'DATE OF BIRTH',
-                                      subLabel: 'DATE DE NAISSANCE',
-                                      value: dateOfBirth,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Expanded(
-                                    child: NinCardDataField(
-                                      label: 'SEX/SEXE',
-                                      value: shortGender,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                          decoration: BoxDecoration(
+                            color: primaryGreen,
+                            borderRadius: BorderRadius.circular(
+                              5,
+                            ),
                           ),
-                        ),
-
-                        const SizedBox(width: 7),
-
-                        SizedBox(
-                          width: 70,
-                          child: Column(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(7),
-                                  border: Border.all(
-                                    color: const Color(0xFF88B792),
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    QrImageView(
-                                      data: qrData,
-                                      version: QrVersions.auto,
-                                      size: 55,
-                                      padding: EdgeInsets.zero,
-                                      gapless: true,
-                                      errorCorrectionLevel:
-                                          QrErrorCorrectLevel.M,
-                                    ),
-                                    const SizedBox(height: 1),
-                                    const Text(
-                                      'SCAN TO VERIFY',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: deepGreen,
-                                        fontSize: 5,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              const Spacer(),
-
-                              const Text(
-                                'NATIONALITY',
-                                style: TextStyle(
-                                  color: deepGreen,
-                                  fontSize: 5.5,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-
-                              const Text(
-                                'NGA',
-                                style: TextStyle(
-                                  color: Color(0xFF162219),
-                                  fontSize: 13,
-                                  height: 1,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-
-                              const SizedBox(height: 3),
-
-                              const Text(
-                                'ISSUE DATE',
-                                style: TextStyle(
-                                  color: deepGreen,
-                                  fontSize: 5.5,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  verificationDate,
-                                  style: const TextStyle(
-                                    color: Color(0xFF162219),
-                                    fontSize: 7,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 5),
-
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFDEF1DE).withValues(alpha: 0.88),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: const Color(0xFF9BC9A2),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'National Identification Number (NIN)',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: deepGreen,
-                            fontSize: 7,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 1),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
                           child: Text(
-                            nin,
+                            slipType.toUpperCase(),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: Color(0xFF063D21),
-                              fontSize: 22,
+                              color: Colors.white,
+                              fontSize: 6.5,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 3.2,
                             ),
                           ),
                         ),
                       ],
                     ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CardField(
+                            label: 'SURNAME',
+                            value: surname.toUpperCase(),
+                            large: true,
+                          ),
+                          const SizedBox(
+                            height: 5,
+                          ),
+                          CardField(
+                            label: 'GIVEN NAMES',
+                            value: givenNames.toUpperCase(),
+                            large: true,
+                          ),
+                          const SizedBox(
+                            height: 6,
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: CardField(
+                                  label: 'DATE OF BIRTH',
+                                  value: dateOfBirth,
+                                ),
+                              ),
+                              const SizedBox(
+                                width: 6,
+                              ),
+                              Expanded(
+                                child: CardField(
+                                  label: 'SEX',
+                                  value: gender.toUpperCase(),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(
+                            height: 7,
+                          ),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(
+                                alpha: 0.78,
+                              ),
+                              borderRadius: BorderRadius.circular(
+                                8,
+                              ),
+                              border: Border.all(
+                                color: const Color(
+                                  0xFFB7D7BD,
+                                ),
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'NATIONAL IDENTIFICATION NUMBER',
+                                  style: TextStyle(
+                                    color: Color(
+                                      0xFF314C3E,
+                                    ),
+                                    fontSize: 6.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  height: 1,
+                                ),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    nin,
+                                    style: const TextStyle(
+                                      color: Color(
+                                        0xFF101B15,
+                                      ),
+                                      fontSize: 21,
+                                      letterSpacing: 2.4,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 58,
+                      padding: const EdgeInsets.all(
+                        4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(
+                          8,
+                        ),
+                        border: Border.all(
+                          color: const Color(
+                            0xFF9CC6A5,
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          QrImageView(
+                            data: qrData,
+                            version: QrVersions.auto,
+                            size: 48,
+                            padding: EdgeInsets.zero,
+                            gapless: true,
+                            errorCorrectionLevel: QrErrorCorrectLevel.M,
+                          ),
+                          const SizedBox(
+                            height: 2,
+                          ),
+                          const Text(
+                            'SCAN TO VERIFY',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: primaryGreen,
+                              fontSize: 5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 4,
                   ),
-
-                  const SizedBox(height: 3),
-
-                  Row(
+                  decoration: BoxDecoration(
+                    color: const Color(
+                      0xFFEAF5E9,
+                    ),
+                    borderRadius: BorderRadius.circular(
+                      7,
+                    ),
+                  ),
+                  child: Row(
                     children: [
                       const Icon(
                         Icons.verified_rounded,
                         color: primaryGreen,
-                        size: 10,
+                        size: 13,
                       ),
-                      const SizedBox(width: 3),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          reference.trim().isEmpty
-                              ? 'Verified via ServicePay'
-                              : 'SERVICEPAY REF: $reference',
+                          reference.isEmpty
+                              ? 'Verified through ServicePay'
+                              : 'REFERENCE: $reference',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF496451),
-                            fontSize: 5.5,
+                            color: Color(
+                              0xFF405D4B,
+                            ),
+                            fontSize: 6.5,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
                       const SizedBox(width: 5),
                       Text(
-                        slipType.toUpperCase(),
+                        verificationDate,
                         style: const TextStyle(
-                          color: deepGreen,
-                          fontSize: 5.5,
-                          fontWeight: FontWeight.w900,
+                          color: Color(
+                            0xFF405D4B,
+                          ),
+                          fontSize: 6.5,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: 1),
-
-                  const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'SERVICEPAY IDENTITY VERIFICATION SLIP • NOT AN OFFICIAL NIMC-ISSUED IDENTITY CARD',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFF657069),
-                        fontSize: 4.4,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.12,
-                      ),
-                    ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'ServicePay verification slip — not a replacement for an official NIMC-issued document.',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Color(0xFF6B756D),
+                    fontSize: 5.5,
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class NinCardBackgroundEmblem extends StatelessWidget {
-  const NinCardBackgroundEmblem({
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const Color emblemColor = Color(0xFF0B6F38);
-
-    return Opacity(
-      opacity: 0.17,
-      child: SizedBox(
-        width: 165,
-        height: 165,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: 145,
-              height: 145,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: emblemColor,
-                  width: 2.2,
-                ),
-              ),
-            ),
-
-            Container(
-              width: 122,
-              height: 122,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: emblemColor,
-                  width: 1,
-                ),
-              ),
-            ),
-
-            const Icon(
-              Icons.shield_outlined,
-              size: 92,
-              color: emblemColor,
-            ),
-
-            const Positioned(
-              top: 11,
-              child: Icon(
-                Icons.star_rounded,
-                size: 31,
-                color: emblemColor,
-              ),
-            ),
-
-            const Positioned(
-              left: 8,
-              child: Icon(
-                Icons.chevron_right_rounded,
-                size: 55,
-                color: emblemColor,
-              ),
-            ),
-
-            const Positioned(
-              right: 8,
-              child: Icon(
-                Icons.chevron_left_rounded,
-                size: 55,
-                color: emblemColor,
-              ),
-            ),
-
-            const Positioned(
-              bottom: 20,
-              child: Text(
-                'NIGERIA',
-                style: TextStyle(
-                  color: emblemColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2.2,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class NinCardSecurityPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint linePaint = Paint()
-      ..color = const Color(0xFF168548).withValues(alpha: 0.085)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.65;
-
-    final Paint faintPaint = Paint()
-      ..color = const Color(0xFF168548).withValues(alpha: 0.05)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.55;
-
-    for (double y = 6; y < size.height; y += 11) {
-      final Path path = Path();
-
-      path.moveTo(0, y);
-
-      path.cubicTo(
-        size.width * 0.18,
-        y - 10,
-        size.width * 0.33,
-        y + 10,
-        size.width * 0.50,
-        y,
-      );
-
-      path.cubicTo(
-        size.width * 0.68,
-        y - 10,
-        size.width * 0.84,
-        y + 10,
-        size.width,
-        y,
-      );
-
-      canvas.drawPath(path, linePaint);
-    }
-
-    for (double radius = 18; radius <= 115; radius += 11) {
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(
-            size.width * 0.12,
-            size.height * 0.22,
-          ),
-          width: radius * 2,
-          height: radius * 1.15,
-        ),
-        faintPaint,
-      );
-
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(
-            size.width * 0.90,
-            size.height * 0.75,
-          ),
-          width: radius * 2,
-          height: radius * 1.05,
-        ),
-        faintPaint,
-      );
-    }
-
-    for (double x = -20; x < size.width + 20; x += 17) {
-      final Path path = Path();
-
-      path.moveTo(x, 0);
-
-      path.quadraticBezierTo(
-        x + 17,
-        size.height / 2,
-        x,
-        size.height,
-      );
-
-      canvas.drawPath(path, faintPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(
-    covariant CustomPainter oldDelegate,
-  ) {
-    return false;
-  }
-}
-
-class NinCardDataField extends StatelessWidget {
-  final String label;
-  final String? subLabel;
-  final String value;
-  final bool large;
-
-  const NinCardDataField({
-    super.key,
-    required this.label,
-    required this.value,
-    this.subLabel,
-    this.large = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Color(0xFF0B6636),
-            fontSize: 6.2,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-
-        if (subLabel != null)
-          Text(
-            subLabel!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF6C756E),
-              fontSize: 5,
-              height: 1,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-
-        const SizedBox(height: 1),
-
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            style: TextStyle(
-              color: const Color(0xFF151D17),
-              fontSize: large ? 11.5 : 9,
-              height: 1.05,
-              fontWeight: FontWeight.w900,
-              letterSpacing: large ? 0.5 : 0,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -29,8 +29,6 @@ const generateDeliveryPaymentReference = () => {
 exports.createDelivery = async (req, res) => {
   try {
     const {
-      pickupState,
-      deliveryState,
       pickupAddress,
       deliveryAddress,
       senderName,
@@ -43,8 +41,6 @@ exports.createDelivery = async (req, res) => {
     } = req.body;
 
     if (
-      !pickupState ||
-      !deliveryState ||
       !pickupAddress ||
       !deliveryAddress ||
       !senderName ||
@@ -76,15 +72,6 @@ exports.createDelivery = async (req, res) => {
     const delivery = await Delivery.create({
       customerId: req.user._id,
       trackingNumber: generateTrackingNumber(),
-
-      pickupState:
-        req.deliveryCoverage?.pickupStateCode ||
-        String(pickupState).trim().toUpperCase(),
-
-      deliveryState:
-        req.deliveryCoverage?.deliveryStateCode ||
-        String(deliveryState).trim().toUpperCase(),
-
       pickupAddress: pickupAddress.trim(),
       deliveryAddress: deliveryAddress.trim(),
       senderName: senderName.trim(),

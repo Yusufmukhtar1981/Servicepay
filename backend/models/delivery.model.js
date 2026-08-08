@@ -1,311 +1,325 @@
 const mongoose = require("mongoose");
 
-const deliverySchema = new mongoose.Schema(
-  {
-    customerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+const deliverySchema =
+  new mongoose.Schema(
+    {
+      customerId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
 
-    trackingNumber: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-    },
+      trackingNumber: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true,
+      },
 
-    pickupAddress: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      /*
+       * Pickup state and destination state are
+       * stored separately from the full addresses.
+       *
+       * They are nullable for backward compatibility
+       * with deliveries created before State Coverage
+       * was introduced.
+       *
+       * All new delivery requests will be required
+       * to supply them in the controller.
+       */
+      pickupState: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: null,
+        index: true,
+      },
 
-    deliveryAddress: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      deliveryState: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: null,
+        index: true,
+      },
 
-    senderName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      pickupAddress: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    senderPhone: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      deliveryAddress: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    receiverName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      senderName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    receiverPhone: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      senderPhone: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    packageName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      receiverName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    packageDescription: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      receiverPhone: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    packageWeight: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+      packageName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    /*
-     * Total amount charged for the delivery.
-     */
-    deliveryFee: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+      packageDescription: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    paymentStatus: {
-      type: String,
-      enum: [
-        "UNPAID",
-        "PAID",
-        "REFUNDED",
-      ],
-      default: "UNPAID",
-      index: true,
-    },
+      packageWeight: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
 
-    paidAt: {
-      type: Date,
-      default: null,
-    },
+      /*
+       * Total amount charged for the delivery.
+       */
+      deliveryFee: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
 
-    refundedAt: {
-      type: Date,
-      default: null,
-    },
+      paymentStatus: {
+        type: String,
+        enum: [
+          "UNPAID",
+          "PAID",
+          "REFUNDED",
+        ],
+        default: "UNPAID",
+        index: true,
+      },
 
-    /*
-     * Commission can be calculated as:
-     *
-     * PERCENTAGE:
-     * deliveryFee × riderCommissionValue / 100
-     *
-     * FIXED:
-     * riderCommissionValue
-     */
-    riderCommissionType: {
-      type: String,
-      enum: [
-        "PERCENTAGE",
-        "FIXED",
-      ],
-      default: "PERCENTAGE",
-    },
+      paidAt: {
+        type: Date,
+        default: null,
+      },
 
-    riderCommissionValue: {
-      type: Number,
-      default: 80,
-      min: 0,
-    },
+      refundedAt: {
+        type: Date,
+        default: null,
+      },
 
-    /*
-     * Locked calculated amounts for this delivery.
-     *
-     * These values will not change later even if
-     * the global commission setting changes.
-     */
-    riderCommissionAmount: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+      /*
+       * Commission can be calculated as:
+       *
+       * PERCENTAGE:
+       * deliveryFee × riderCommissionValue / 100
+       *
+       * FIXED:
+       * riderCommissionValue
+       */
+      riderCommissionType: {
+        type: String,
+        enum: [
+          "PERCENTAGE",
+          "FIXED",
+        ],
+        default: "PERCENTAGE",
+      },
 
-    servicepayProfit: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+      riderCommissionValue: {
+        type: Number,
+        default: 80,
+        min: 0,
+      },
 
-    commissionCalculatedAt: {
-      type: Date,
-      default: null,
-    },
+      /*
+       * Locked calculated amounts for this delivery.
+       */
+      riderCommissionAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
 
-    /*
-     * PENDING:
-     * Price/commission exists but rider has not
-     * earned it yet.
-     *
-     * CREDITED:
-     * Rider completed delivery and earnings were
-     * added to pending settlement.
-     *
-     * SETTLED:
-     * Head Office paid/settled the rider.
-     *
-     * CANCELLED:
-     * Delivery was cancelled or commission removed.
-     */
-    riderCommissionStatus: {
-      type: String,
-      enum: [
-        "PENDING",
-        "CREDITED",
-        "SETTLED",
-        "CANCELLED",
-      ],
-      default: "PENDING",
-      index: true,
-    },
+      servicepayProfit: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
 
-    /*
-     * Prevents crediting the same delivery twice.
-     */
-    riderCommissionCredited: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
+      commissionCalculatedAt: {
+        type: Date,
+        default: null,
+      },
 
-    riderCommissionCreditedAt: {
-      type: Date,
-      default: null,
-    },
+      riderCommissionStatus: {
+        type: String,
+        enum: [
+          "PENDING",
+          "CREDITED",
+          "SETTLED",
+          "CANCELLED",
+        ],
+        default: "PENDING",
+        index: true,
+      },
 
-    riderCommissionSettledAt: {
-      type: Date,
-      default: null,
-    },
+      /*
+       * Prevents crediting the same delivery twice.
+       */
+      riderCommissionCredited: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
 
-    riderCommissionSettledBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
+      riderCommissionCreditedAt: {
+        type: Date,
+        default: null,
+      },
 
-    settlementReference: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      riderCommissionSettledAt: {
+        type: Date,
+        default: null,
+      },
 
-    status: {
-      type: String,
-      enum: [
-        "PENDING",
-        "ASSIGNED",
-        "ACCEPTED",
-        "PICKED_UP",
-        "IN_TRANSIT",
-        "DELIVERED",
-        "CANCELLED",
-        "FAILED",
-      ],
-      default: "PENDING",
-      index: true,
-    },
+      riderCommissionSettledBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
 
-    assignedRiderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-      index: true,
-    },
+      settlementReference: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    riderName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      status: {
+        type: String,
+        enum: [
+          "PENDING",
+          "ASSIGNED",
+          "ACCEPTED",
+          "PICKED_UP",
+          "IN_TRANSIT",
+          "DELIVERED",
+          "CANCELLED",
+          "FAILED",
+        ],
+        default: "PENDING",
+        index: true,
+      },
 
-    riderPhone: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      assignedRiderId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+        index: true,
+      },
 
-    assignedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
+      riderName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    assignedAt: {
-      type: Date,
-      default: null,
-    },
+      riderPhone: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    riderAcceptedAt: {
-      type: Date,
-      default: null,
-    },
+      assignedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
 
-    riderRejectedAt: {
-      type: Date,
-      default: null,
-    },
+      assignedAt: {
+        type: Date,
+        default: null,
+      },
 
-    riderRejectionReason: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      riderAcceptedAt: {
+        type: Date,
+        default: null,
+      },
 
-    adminNote: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      riderRejectedAt: {
+        type: Date,
+        default: null,
+      },
 
-    acceptedAt: {
-      type: Date,
-      default: null,
-    },
+      riderRejectionReason: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    pickedUpAt: {
-      type: Date,
-      default: null,
-    },
+      adminNote: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    inTransitAt: {
-      type: Date,
-      default: null,
-    },
+      acceptedAt: {
+        type: Date,
+        default: null,
+      },
 
-    deliveredAt: {
-      type: Date,
-      default: null,
-    },
+      pickedUpAt: {
+        type: Date,
+        default: null,
+      },
 
-    cancelledAt: {
-      type: Date,
-      default: null,
-    },
+      inTransitAt: {
+        type: Date,
+        default: null,
+      },
 
-    failedAt: {
-      type: Date,
-      default: null,
+      deliveredAt: {
+        type: Date,
+        default: null,
+      },
+
+      cancelledAt: {
+        type: Date,
+        default: null,
+      },
+
+      failedAt: {
+        type: Date,
+        default: null,
+      },
     },
-  },
-  {
-    timestamps: true,
-  }
-);
+    {
+      timestamps: true,
+    }
+  );
 
 /*
  * Rider delivery lookup.
@@ -313,6 +327,32 @@ const deliverySchema = new mongoose.Schema(
 deliverySchema.index({
   assignedRiderId: 1,
   status: 1,
+  createdAt: -1,
+});
+
+/*
+ * State delivery and coverage reporting.
+ */
+deliverySchema.index({
+  pickupState: 1,
+  deliveryState: 1,
+  status: 1,
+  createdAt: -1,
+});
+
+/*
+ * Pickup-state delivery lookup.
+ */
+deliverySchema.index({
+  pickupState: 1,
+  createdAt: -1,
+});
+
+/*
+ * Destination-state delivery lookup.
+ */
+deliverySchema.index({
+  deliveryState: 1,
   createdAt: -1,
 });
 
@@ -394,8 +434,10 @@ deliverySchema.methods.calculateCommission =
 
     return {
       deliveryFee,
+
       riderCommissionAmount:
         this.riderCommissionAmount,
+
       servicepayProfit:
         this.servicepayProfit,
     };

@@ -18,6 +18,7 @@ dependencies:
   firebase_core: ^4.12.1
   firebase_auth: ^6.5.6
   cloud_firestore: ^6.7.1
+  firebase_messaging: ^16.4.2
 
   url_launcher: ^6.3.2
 
@@ -35,8 +36,7 @@ dependencies:
   latlong2: ^0.10.1
   geolocator: ^14.0.2
 
-  # Works on Android and Web.
-  # Used for incoming Keke ride ringing.
+  # Incoming ride ringing while Rider screen is open.
   audioplayers: ^6.4.0
 
 dev_dependencies:

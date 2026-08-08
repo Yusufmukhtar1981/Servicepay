@@ -13,14 +13,82 @@ const {
   setDeliveryFee,
   updateDeliveryStatus,
   updatePaymentStatus,
-} = require("../controllers/delivery.controller");
+} = require(
+  "../controllers/delivery.controller"
+);
+
+const {
+  getDeliveryCoverage,
+  getLiveDeliveryCoverage,
+  getAdminDeliveryCoverage,
+  updateDeliveryCoverage,
+  bulkUpdateDeliveryCoverage,
+  validateDeliveryCoverage,
+} = require(
+  "../controllers/deliveryCoverage.controller"
+);
 
 const {
   protect,
-} = require("../middleware/auth.middleware");
+} = require(
+  "../middleware/auth.middleware"
+);
 
-// Customer routes
-router.post("/", protect, createDelivery);
+/*
+|--------------------------------------------------------------------------
+| PUBLIC DELIVERY COVERAGE
+|--------------------------------------------------------------------------
+|
+| These routes must remain above /:id.
+|
+*/
+
+router.get(
+  "/coverage",
+  getDeliveryCoverage
+);
+
+router.get(
+  "/coverage/live",
+  getLiveDeliveryCoverage
+);
+
+/*
+|--------------------------------------------------------------------------
+| HEAD OFFICE DELIVERY COVERAGE MANAGEMENT
+|--------------------------------------------------------------------------
+*/
+
+router.get(
+  "/coverage/admin",
+  protect,
+  getAdminDeliveryCoverage
+);
+
+router.patch(
+  "/coverage/admin/bulk/update",
+  protect,
+  bulkUpdateDeliveryCoverage
+);
+
+router.patch(
+  "/coverage/admin/:stateCode",
+  protect,
+  updateDeliveryCoverage
+);
+
+/*
+|--------------------------------------------------------------------------
+| CUSTOMER DELIVERY ROUTES
+|--------------------------------------------------------------------------
+*/
+
+router.post(
+  "/",
+  protect,
+  validateDeliveryCoverage,
+  createDelivery
+);
 
 router.get(
   "/my",
@@ -45,13 +113,21 @@ router.put(
   cancelDelivery
 );
 
+/*
+ * Keep this below all named routes.
+ */
 router.get(
   "/:id",
   protect,
   getDeliveryById
 );
 
-// Admin routes
+/*
+|--------------------------------------------------------------------------
+| ADMIN DELIVERY ROUTES
+|--------------------------------------------------------------------------
+*/
+
 router.get(
   "/",
   protect,
