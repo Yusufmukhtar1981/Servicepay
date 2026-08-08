@@ -1893,7 +1893,7 @@ class VerifiedNinCard extends StatelessWidget {
               child: IgnorePointer(
                 child: Center(
                   child: Opacity(
-                    opacity: 0.18,
+                    opacity: 0.30,
                     child: Image.asset(
                       'assets/images/nigeria_coat_of_arms.png',
                       width: 210,
@@ -1952,6 +1952,7 @@ class VerifiedNinCard extends StatelessWidget {
                               alignment: Alignment.center,
                               child: Text(
                                 'FEDERAL REPUBLIC OF NIGERIA',
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: green,
                                   fontSize: 14.2,
