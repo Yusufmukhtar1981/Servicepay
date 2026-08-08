@@ -1902,7 +1902,7 @@ class VerifiedNinCard extends StatelessWidget {
               left: 118,
               top: 39,
               child: Opacity(
-                opacity: 0.095,
+                opacity: 0.20,
                 child: SizedBox(
                   width: 185,
                   height: 170,
@@ -2473,7 +2473,7 @@ class NigeriaInspiredWatermarkPainter extends CustomPainter {
     final Paint paint = Paint()
       ..color = const Color(0xFF08783F)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.8;
+      ..strokeWidth = 4.2;
 
     final Offset c = Offset(
       size.width / 2,
