@@ -1876,22 +1876,6 @@ class VerifiedNinCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Nigeria Coat of Arms watermark
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Center(
-                  child: Opacity(
-                    opacity: 0.10,
-                    child: Image.asset(
-                      'assets/images/nigeria_coat_of_arms.png',
-                      width: 210,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
             const Positioned.fill(
               child: ColoredBox(
                 color: Color(0xFFF3F9E9),
@@ -1901,6 +1885,22 @@ class VerifiedNinCard extends StatelessWidget {
             Positioned.fill(
               child: CustomPaint(
                 painter: ServicePayNinSecurityPainter(),
+              ),
+            ),
+
+            // Nigeria Coat of Arms watermark
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Opacity(
+                    opacity: 0.18,
+                    child: Image.asset(
+                      'assets/images/nigeria_coat_of_arms.png',
+                      width: 210,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
               ),
             ),
 
