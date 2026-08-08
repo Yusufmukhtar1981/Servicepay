@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_screen.dart';
 import 'transaction_pin_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -15,6 +16,29 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  Future<void> openServicePayWhatsApp() async {
+    const phone = '2348026114645';
+    const message =
+        'Hello ServicePay Support, I need assistance with my account.';
+
+    final uri = Uri.parse(
+      'https://wa.me/$phone?text=${Uri.encodeComponent(message)}',
+    );
+
+    final opened = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to open WhatsApp. Please try again.'),
+        ),
+      );
+    }
+  }
+
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static const Color primaryGreen = Color(0xFF2E7D32);
@@ -693,6 +717,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             title: 'Change Password',
                             subtitle: 'Update your account password',
                             onTap: openChangePassword,
+                          ),
+                          _ProfileActionTile(
+                            icon: Icons.chat_rounded,
+                            title: 'WhatsApp Support',
+                            subtitle:
+                                '08026114645 • Chat with ServicePay Support',
+                            iconColor: const Color(0xFF25D366),
+                            onTap: openServicePayWhatsApp,
                           ),
                           _ProfileActionTile(
                             icon: Icons.logout_rounded,
