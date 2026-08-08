@@ -1813,10 +1813,11 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
 }
 
 
+
 class VerifiedNinCard extends StatelessWidget {
-  static const Color green = Color(0xFF08783F);
-  static const Color deepGreen = Color(0xFF07552D);
-  static const Color darkText = Color(0xFF17211A);
+  static const Color green = Color(0xFF0A7A3F);
+  static const Color deepGreen = Color(0xFF07512D);
+  static const Color darkText = Color(0xFF171D19);
 
   final String surname;
   final String givenNames;
@@ -1845,29 +1846,26 @@ class VerifiedNinCard extends StatelessWidget {
     if (reference.trim().isNotEmpty) {
       return 'SERVICEPAY:NIN_VERIFICATION:${reference.trim()}';
     }
-
     return 'SERVICEPAY:NIN_VERIFICATION:$nin';
   }
 
   String get sexCode {
     final String value = gender.trim().toUpperCase();
-
     if (value.startsWith('M')) return 'M';
     if (value.startsWith('F')) return 'F';
-
     return value;
   }
 
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
-      aspectRatio: 1.62,
+      aspectRatio: 1.60,
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: const Color(0xFF8BAA8D),
+            color: const Color(0xFF8EAD91),
             width: 1.1,
           ),
           boxShadow: [
@@ -1880,12 +1878,9 @@ class VerifiedNinCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            /*
-             * MAIN SECURITY BACKGROUND
-             */
             const Positioned.fill(
               child: ColoredBox(
-                color: Color(0xFFF5FAE9),
+                color: Color(0xFFF3F9E9),
               ),
             ),
 
@@ -1895,81 +1890,44 @@ class VerifiedNinCard extends StatelessWidget {
               ),
             ),
 
-            /*
-             * CENTRAL NIGERIA-INSPIRED WATERMARK
-             */
             Positioned(
-              left: 118,
-              top: 39,
+              left: 95,
+              top: 35,
               child: Opacity(
-                opacity: 0.20,
+                opacity: 0.18,
                 child: SizedBox(
-                  width: 185,
-                  height: 170,
+                  width: 215,
+                  height: 180,
                   child: CustomPaint(
-                    painter: NigeriaInspiredWatermarkPainter(),
+                    painter: NigeriaThemeWatermarkPainter(),
                   ),
                 ),
               ),
             ),
 
-            /*
-             * FAINT SERIAL TEXT
-             */
             Positioned(
-              left: -15,
-              bottom: 30,
+              left: -10,
+              bottom: 34,
               child: Transform.rotate(
-                angle: -0.48,
+                angle: -0.44,
                 child: Text(
                   reference.isNotEmpty
                       ? reference
-                      : 'SERVICEPAY VERIFIED IDENTITY',
+                      : 'SERVICEPAY VERIFIED',
                   style: TextStyle(
-                    color: green.withValues(alpha: 0.10),
-                    fontSize: 14,
+                    color: green.withValues(alpha: 0.11),
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 2,
+                    letterSpacing: 2.3,
                   ),
                 ),
               ),
             ),
 
-            /*
-             * LARGE SERVICEPAY WATERMARK
-             */
-            Positioned(
-              left: 105,
-              top: 70,
-              child: Transform.rotate(
-                angle: -0.45,
-                child: Text(
-                  'SERVICEPAY',
-                  style: TextStyle(
-                    color: deepGreen.withValues(alpha: 0.045),
-                    fontSize: 43,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 5,
-                  ),
-                ),
-              ),
-            ),
-
-            /*
-             * CARD CONTENT
-             */
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                11,
-                8,
-                11,
-                7,
-              ),
+              padding: const EdgeInsets.fromLTRB(12, 9, 12, 7),
               child: Column(
                 children: [
-                  /*
-                   * HEADER
-                   */
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1984,9 +1942,9 @@ class VerifiedNinCard extends StatelessWidget {
                                 'FEDERAL REPUBLIC OF NIGERIA',
                                 style: TextStyle(
                                   color: green,
-                                  fontSize: 13.7,
+                                  fontSize: 14.2,
                                   fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.25,
+                                  letterSpacing: 0.15,
                                 ),
                               ),
                             ),
@@ -1994,8 +1952,8 @@ class VerifiedNinCard extends StatelessWidget {
                             Text(
                               'SERVICEPAY VERIFIED DIGITAL NIN SLIP',
                               style: TextStyle(
-                                color: darkText,
-                                fontSize: 7.1,
+                                color: const Color(0xFF171D19),
+                                fontSize: 7.3,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 0.45,
                               ),
@@ -2016,7 +1974,7 @@ class VerifiedNinCard extends StatelessWidget {
                           'SERVICEPAY',
                           style: TextStyle(
                             color: deepGreen,
-                            fontSize: 5.6,
+                            fontSize: 5.4,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -2024,29 +1982,23 @@ class VerifiedNinCard extends StatelessWidget {
                     ],
                   ),
 
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 8),
 
-                  /*
-                   * MAIN BODY
-                   */
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        /*
-                         * PHOTO
-                         */
                         SizedBox(
-                          width: 89,
+                          width: 96,
                           child: Column(
                             children: [
                               Expanded(
                                 child: Container(
                                   clipBehavior: Clip.antiAlias,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFE4E8E3),
+                                    color: const Color(0xFFE0E4E0),
                                     border: Border.all(
-                                      color: const Color(0xFF9CB49E),
+                                      color: const Color(0xFF8FAE93),
                                     ),
                                   ),
                                   child: IdentityPhoto(
@@ -2059,8 +2011,8 @@ class VerifiedNinCard extends StatelessWidget {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Container(
-                                    width: 17,
-                                    height: 19,
+                                    width: 18,
+                                    height: 20,
                                     alignment: Alignment.center,
                                     decoration: BoxDecoration(
                                       color: green,
@@ -2070,7 +2022,7 @@ class VerifiedNinCard extends StatelessWidget {
                                       'S',
                                       style: TextStyle(
                                         color: Colors.white,
-                                        fontSize: 10,
+                                        fontSize: 10.5,
                                         fontWeight: FontWeight.w900,
                                       ),
                                     ),
@@ -2079,8 +2031,8 @@ class VerifiedNinCard extends StatelessWidget {
                                   const Text(
                                     'ServicePay',
                                     style: TextStyle(
-                                      color: darkText,
-                                      fontSize: 8,
+                                      color: const Color(0xFF171D19),
+                                      fontSize: 8.4,
                                       fontWeight: FontWeight.w900,
                                     ),
                                   ),
@@ -2092,9 +2044,6 @@ class VerifiedNinCard extends StatelessWidget {
 
                         const SizedBox(width: 12),
 
-                        /*
-                         * PERSON DETAILS
-                         */
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2105,7 +2054,7 @@ class VerifiedNinCard extends StatelessWidget {
                                 large: true,
                               ),
 
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 9),
 
                               ServicePayNinField(
                                 label: 'GIVEN NAMES/PRENOMS',
@@ -2125,7 +2074,7 @@ class VerifiedNinCard extends StatelessWidget {
                                       value: dateOfBirth,
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
+                                  const SizedBox(width: 12),
                                   Expanded(
                                     child: ServicePayNinField(
                                       label: 'SEX/SEXE',
@@ -2138,21 +2087,18 @@ class VerifiedNinCard extends StatelessWidget {
                           ),
                         ),
 
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 11),
 
-                        /*
-                         * QR / COUNTRY / DATE
-                         */
                         SizedBox(
-                          width: 78,
+                          width: 82,
                           child: Column(
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(3.5),
+                                padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.94),
+                                  color: Colors.white.withValues(alpha: 0.96),
                                   border: Border.all(
-                                    color: const Color(0xFF9BAD9D),
+                                    color: const Color(0xFF8DAF91),
                                   ),
                                 ),
                                 child: Column(
@@ -2160,7 +2106,7 @@ class VerifiedNinCard extends StatelessWidget {
                                     QrImageView(
                                       data: qrData,
                                       version: QrVersions.auto,
-                                      size: 65,
+                                      size: 68,
                                       padding: EdgeInsets.zero,
                                       gapless: true,
                                       errorCorrectionLevel:
@@ -2169,6 +2115,7 @@ class VerifiedNinCard extends StatelessWidget {
                                     const SizedBox(height: 1),
                                     const Text(
                                       'SCAN TO VERIFY',
+                                      textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: deepGreen,
                                         fontSize: 5.2,
@@ -2183,18 +2130,18 @@ class VerifiedNinCard extends StatelessWidget {
 
                               const Text(
                                 'NATIONALITY',
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: Color(0xFF526658),
+                                  color: Color(0xFF56695B),
                                   fontSize: 5.3,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-
                               const Text(
                                 'NGA',
                                 style: TextStyle(
-                                  color: darkText,
-                                  fontSize: 14,
+                                  color: const Color(0xFF171D19),
+                                  fontSize: 14.5,
                                   height: 1.0,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -2205,19 +2152,18 @@ class VerifiedNinCard extends StatelessWidget {
                               const Text(
                                 'ISSUE DATE',
                                 style: TextStyle(
-                                  color: Color(0xFF526658),
+                                  color: Color(0xFF56695B),
                                   fontSize: 5.3,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-
                               FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(
                                   verificationDate,
                                   style: const TextStyle(
-                                    color: darkText,
-                                    fontSize: 7.2,
+                                    color: const Color(0xFF171D19),
+                                    fontSize: 7.4,
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
@@ -2229,11 +2175,8 @@ class VerifiedNinCard extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 7),
 
-                  /*
-                   * NIN SECTION
-                   */
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -2241,10 +2184,10 @@ class VerifiedNinCard extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.38),
+                      color: Colors.white.withValues(alpha: 0.30),
                       border: Border(
                         top: BorderSide(
-                          color: deepGreen.withValues(alpha: 0.20),
+                          color: deepGreen.withValues(alpha: 0.22),
                         ),
                       ),
                     ),
@@ -2254,8 +2197,8 @@ class VerifiedNinCard extends StatelessWidget {
                           'National Identification Number (NIN)',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: darkText,
-                            fontSize: 7.1,
+                            color: const Color(0xFF171D19),
+                            fontSize: 7.4,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -2265,10 +2208,10 @@ class VerifiedNinCard extends StatelessWidget {
                           child: Text(
                             nin,
                             style: const TextStyle(
-                              color: Color(0xFF2C3A30),
-                              fontSize: 23,
+                              color: Color(0xFF27372D),
+                              fontSize: 24,
                               fontWeight: FontWeight.w800,
-                              letterSpacing: 3.5,
+                              letterSpacing: 3.7,
                             ),
                           ),
                         ),
@@ -2278,9 +2221,6 @@ class VerifiedNinCard extends StatelessWidget {
 
                   const SizedBox(height: 3),
 
-                  /*
-                   * FOOTER
-                   */
                   Row(
                     children: [
                       const Icon(
@@ -2297,7 +2237,7 @@ class VerifiedNinCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF516257),
+                            color: Color(0xFF526258),
                             fontSize: 5.1,
                             fontWeight: FontWeight.w700,
                           ),
@@ -2340,123 +2280,116 @@ class VerifiedNinCard extends StatelessWidget {
 class ServicePayNinSecurityPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final Paint greenLine = Paint()
-      ..color = const Color(0xFF267F45).withValues(alpha: 0.075)
+    final Paint primary = Paint()
+      ..color = const Color(0xFF1D8246).withValues(alpha: 0.10)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.55;
 
-    final Paint lighterLine = Paint()
-      ..color = const Color(0xFF6B9A61).withValues(alpha: 0.055)
+    final Paint fine = Paint()
+      ..color = const Color(0xFF7AA36F).withValues(alpha: 0.08)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.45;
+      ..strokeWidth = 0.42;
 
-    /*
-     * DENSE WAVES
-     */
-    for (double y = -5; y < size.height + 10; y += 7.5) {
-      final Path p = Path();
+    for (double y = -8; y < size.height + 10; y += 6.5) {
+      final Path p = Path()
+        ..moveTo(0, y)
+        ..cubicTo(
+          size.width * 0.16,
+          y - 13,
+          size.width * 0.34,
+          y + 13,
+          size.width * 0.50,
+          y,
+        )
+        ..cubicTo(
+          size.width * 0.68,
+          y - 12,
+          size.width * 0.84,
+          y + 12,
+          size.width,
+          y,
+        );
 
-      p.moveTo(0, y);
-
-      p.cubicTo(
-        size.width * 0.18,
-        y - 12,
-        size.width * 0.33,
-        y + 12,
-        size.width * 0.50,
-        y,
-      );
-
-      p.cubicTo(
-        size.width * 0.68,
-        y - 11,
-        size.width * 0.83,
-        y + 11,
-        size.width,
-        y,
-      );
-
-      canvas.drawPath(p, greenLine);
+      canvas.drawPath(p, primary);
     }
 
-    /*
-     * LEFT GUILLOCHE
-     */
-    for (double radius = 18; radius <= 128; radius += 7) {
+    for (double radius = 14; radius <= 135; radius += 6) {
       canvas.drawOval(
         Rect.fromCenter(
           center: Offset(
-            size.width * 0.06,
-            size.height * 0.30,
+            size.width * 0.07,
+            size.height * 0.27,
           ),
-          width: radius * 2.2,
-          height: radius * 1.2,
+          width: radius * 2.35,
+          height: radius * 1.15,
         ),
-        lighterLine,
+        fine,
       );
     }
 
-    /*
-     * RIGHT GUILLOCHE
-     */
-    for (double radius = 15; radius <= 115; radius += 7) {
+    for (double radius = 12; radius <= 125; radius += 6) {
       canvas.drawOval(
         Rect.fromCenter(
           center: Offset(
-            size.width * 0.94,
-            size.height * 0.70,
+            size.width * 0.93,
+            size.height * 0.69,
           ),
-          width: radius * 2.1,
-          height: radius * 1.1,
+          width: radius * 2.25,
+          height: radius * 1.12,
         ),
-        lighterLine,
+        fine,
       );
     }
 
-    /*
-     * FINE VERTICAL CURVES
-     */
-    for (double x = -30; x <= size.width + 30; x += 13) {
-      final Path p = Path();
+    for (double x = -40; x < size.width + 40; x += 11) {
+      final Path p = Path()
+        ..moveTo(x, 0)
+        ..quadraticBezierTo(
+          x + 25,
+          size.height * 0.48,
+          x,
+          size.height,
+        );
 
-      p.moveTo(x, 0);
-
-      p.quadraticBezierTo(
-        x + 25,
-        size.height * 0.5,
-        x,
-        size.height,
-      );
-
-      canvas.drawPath(p, lighterLine);
+      canvas.drawPath(p, fine);
     }
 
-    /*
-     * BOTTOM CURVED BAND
-     */
-    final Paint band = Paint()
-      ..color = const Color(0xFF0C7439).withValues(alpha: 0.045)
+    final Paint patch = Paint()
+      ..color = const Color(0xFF0C7439).withValues(alpha: 0.055)
       ..style = PaintingStyle.fill;
 
-    final Path bottomBand = Path()
-      ..moveTo(0, size.height * 0.78)
+    final Path topPatch = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width * 0.30, 0)
       ..quadraticBezierTo(
-        size.width * 0.30,
+        size.width * 0.20,
+        size.height * 0.12,
+        0,
+        size.height * 0.08,
+      )
+      ..close();
+
+    canvas.drawPath(topPatch, patch);
+
+    final Path bottomPatch = Path()
+      ..moveTo(0, size.height * 0.82)
+      ..quadraticBezierTo(
+        size.width * 0.24,
         size.height * 0.70,
-        size.width * 0.55,
-        size.height * 0.82,
+        size.width * 0.47,
+        size.height * 0.84,
       )
       ..quadraticBezierTo(
-        size.width * 0.80,
-        size.height * 0.93,
+        size.width * 0.73,
+        size.height * 0.97,
         size.width,
-        size.height * 0.76,
+        size.height * 0.79,
       )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
 
-    canvas.drawPath(bottomBand, band);
+    canvas.drawPath(bottomPatch, patch);
   }
 
   @override
@@ -2467,96 +2400,102 @@ class ServicePayNinSecurityPainter extends CustomPainter {
   }
 }
 
-class NigeriaInspiredWatermarkPainter extends CustomPainter {
+class NigeriaThemeWatermarkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final Paint paint = Paint()
-      ..color = const Color(0xFF08783F)
+    final Paint stroke = Paint()
+      ..color = const Color(0xFF0A743A)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.2;
+      ..strokeWidth = 3.2;
+
+    final Paint lightStroke = Paint()
+      ..color = const Color(0xFF0A743A)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6;
 
     final Offset c = Offset(
       size.width / 2,
       size.height / 2,
     );
 
-    /*
-     * OUTER RINGS
-     */
     canvas.drawOval(
       Rect.fromCenter(
         center: c,
-        width: size.width * 0.86,
+        width: size.width * 0.90,
         height: size.height * 0.82,
       ),
-      paint,
+      lightStroke,
     );
 
     canvas.drawOval(
       Rect.fromCenter(
         center: c,
-        width: size.width * 0.67,
-        height: size.height * 0.66,
+        width: size.width * 0.76,
+        height: size.height * 0.70,
       ),
-      paint,
+      lightStroke,
     );
 
-    /*
-     * CENTRAL SHIELD
-     */
-    final Path shield = Path()
-      ..moveTo(c.dx, c.dy - 48)
-      ..lineTo(c.dx + 37, c.dy - 31)
-      ..lineTo(c.dx + 31, c.dy + 20)
+    final Path centerShield = Path()
+      ..moveTo(c.dx, c.dy - 52)
+      ..lineTo(c.dx + 40, c.dy - 32)
+      ..lineTo(c.dx + 34, c.dy + 16)
       ..quadraticBezierTo(
-        c.dx + 14,
-        c.dy + 46,
+        c.dx + 20,
+        c.dy + 45,
         c.dx,
-        c.dy + 55,
+        c.dy + 58,
       )
       ..quadraticBezierTo(
-        c.dx - 14,
-        c.dy + 46,
-        c.dx - 31,
-        c.dy + 20,
+        c.dx - 20,
+        c.dy + 45,
+        c.dx - 34,
+        c.dy + 16,
       )
-      ..lineTo(c.dx - 37, c.dy - 31)
+      ..lineTo(c.dx - 40, c.dy - 32)
       ..close();
 
-    canvas.drawPath(shield, paint);
+    canvas.drawPath(centerShield, stroke);
 
-    /*
-     * SUPPORTING CURVES
-     */
-    final Path left = Path()
-      ..moveTo(c.dx - 39, c.dy - 22)
+    final Path leftCurve = Path()
+      ..moveTo(c.dx - 42, c.dy - 24)
       ..quadraticBezierTo(
-        c.dx - 80,
+        c.dx - 85,
         c.dy - 5,
-        c.dx - 59,
-        c.dy + 47,
+        c.dx - 66,
+        c.dy + 52,
       );
 
-    canvas.drawPath(left, paint);
-
-    final Path right = Path()
-      ..moveTo(c.dx + 39, c.dy - 22)
+    final Path rightCurve = Path()
+      ..moveTo(c.dx + 42, c.dy - 24)
       ..quadraticBezierTo(
-        c.dx + 80,
+        c.dx + 85,
         c.dy - 5,
-        c.dx + 59,
-        c.dy + 47,
+        c.dx + 66,
+        c.dy + 52,
       );
 
-    canvas.drawPath(right, paint);
+    canvas.drawPath(leftCurve, stroke);
+    canvas.drawPath(rightCurve, stroke);
 
-    /*
-     * STAR-LIKE TOP MARK
-     */
-    canvas.drawCircle(
-      Offset(c.dx, c.dy - 64),
-      8,
-      paint,
+    final Path topMark = Path()
+      ..moveTo(c.dx, c.dy - 75)
+      ..lineTo(c.dx + 8, c.dy - 60)
+      ..lineTo(c.dx - 8, c.dy - 60)
+      ..close();
+
+    canvas.drawPath(topMark, stroke);
+
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(c.dx, c.dy + 48),
+        width: 105,
+        height: 38,
+      ),
+      0.2,
+      2.75,
+      false,
+      stroke,
     );
   }
 
@@ -2591,8 +2530,8 @@ class ServicePayNinField extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            color: Color(0xFF526658),
-            fontSize: 6.3,
+            color: Color(0xFF56695B),
+            fontSize: 6.4,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -2603,8 +2542,8 @@ class ServicePayNinField extends StatelessWidget {
           child: Text(
             value,
             style: TextStyle(
-              color: const Color(0xFF17211A),
-              fontSize: large ? 12.8 : 9.5,
+              color: const Color(0xFF171D19),
+              fontSize: large ? 13.2 : 9.6,
               height: 1.0,
               fontWeight: large
                   ? FontWeight.w800
@@ -2617,7 +2556,6 @@ class ServicePayNinField extends StatelessWidget {
     );
   }
 }
-
 class IdentityPhoto extends StatelessWidget {
   final String photoValue;
 
