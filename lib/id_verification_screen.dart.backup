@@ -1812,6 +1812,8 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
   }
 }
 
+
+
 class VerifiedNinCard extends StatelessWidget {
   static const Color green = Color(0xFF0A7A3F);
   static const Color deepGreen = Color(0xFF07512D);
@@ -1876,22 +1878,6 @@ class VerifiedNinCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Nigeria Coat of Arms watermark
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Center(
-                  child: Opacity(
-                    opacity: 0.10,
-                    child: Image.asset(
-                      'assets/images/nigeria_coat_of_arms.png',
-                      width: 210,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
             const Positioned.fill(
               child: ColoredBox(
                 color: Color(0xFFF3F9E9),
@@ -1925,7 +1911,9 @@ class VerifiedNinCard extends StatelessWidget {
               child: Transform.rotate(
                 angle: -0.44,
                 child: Text(
-                  reference.isNotEmpty ? reference : 'SERVICEPAY VERIFIED',
+                  reference.isNotEmpty
+                      ? reference
+                      : 'SERVICEPAY VERIFIED',
                   style: TextStyle(
                     color: green.withValues(alpha: 0.11),
                     fontSize: 13,
@@ -1949,7 +1937,7 @@ class VerifiedNinCard extends StatelessWidget {
                           children: [
                             FittedBox(
                               fit: BoxFit.scaleDown,
-                              alignment: Alignment.center,
+                              alignment: Alignment.centerLeft,
                               child: Text(
                                 'FEDERAL REPUBLIC OF NIGERIA',
                                 style: TextStyle(
@@ -1993,7 +1981,9 @@ class VerifiedNinCard extends StatelessWidget {
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 8),
+
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2051,7 +2041,9 @@ class VerifiedNinCard extends StatelessWidget {
                             ],
                           ),
                         ),
+
                         const SizedBox(width: 12),
+
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2061,13 +2053,17 @@ class VerifiedNinCard extends StatelessWidget {
                                 value: surname.toUpperCase(),
                                 large: true,
                               ),
+
                               const SizedBox(height: 9),
+
                               ServicePayNinField(
                                 label: 'GIVEN NAMES/PRENOMS',
                                 value: givenNames.toUpperCase(),
                                 large: true,
                               ),
+
                               const Spacer(),
+
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
@@ -2090,7 +2086,9 @@ class VerifiedNinCard extends StatelessWidget {
                             ],
                           ),
                         ),
+
                         const SizedBox(width: 11),
+
                         SizedBox(
                           width: 82,
                           child: Column(
@@ -2127,7 +2125,9 @@ class VerifiedNinCard extends StatelessWidget {
                                   ],
                                 ),
                               ),
+
                               const Spacer(),
+
                               const Text(
                                 'NATIONALITY',
                                 textAlign: TextAlign.center,
@@ -2146,7 +2146,9 @@ class VerifiedNinCard extends StatelessWidget {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
+
                               const SizedBox(height: 5),
+
                               const Text(
                                 'ISSUE DATE',
                                 style: TextStyle(
@@ -2172,7 +2174,9 @@ class VerifiedNinCard extends StatelessWidget {
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 7),
+
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -2214,7 +2218,9 @@ class VerifiedNinCard extends StatelessWidget {
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 3),
+
                   Row(
                     children: [
                       const Icon(
@@ -2247,7 +2253,9 @@ class VerifiedNinCard extends StatelessWidget {
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 1),
+
                   const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
@@ -2537,7 +2545,9 @@ class ServicePayNinField extends StatelessWidget {
               color: const Color(0xFF171D19),
               fontSize: large ? 13.2 : 9.6,
               height: 1.0,
-              fontWeight: large ? FontWeight.w800 : FontWeight.w700,
+              fontWeight: large
+                  ? FontWeight.w800
+                  : FontWeight.w700,
               letterSpacing: large ? 0.25 : 0,
             ),
           ),
@@ -2546,7 +2556,6 @@ class ServicePayNinField extends StatelessWidget {
     );
   }
 }
-
 class IdentityPhoto extends StatelessWidget {
   final String photoValue;
 
