@@ -26,10 +26,7 @@ const generateDeliveryPaymentReference = () => {
 };
 
 // Customer ya kirkiri delivery request
-// ServicePay Delivery launch policy:
-// Flat fee = N1,500.
-// Customer wallet is charged automatically before
-// the delivery request is created.
+// ServicePay Delivery: fixed ₦1,500 automatic wallet charge.
 exports.createDelivery = async (req, res) => {
   const session = await mongoose.startSession();
 
@@ -84,41 +81,39 @@ exports.createDelivery = async (req, res) => {
     session.startTransaction();
 
     /*
-     * Debit atomically.
-     *
-     * The $gte condition means:
-     * - wallet below N1,500 => no debit
-     * - no delivery is created
-     * - no negative wallet balance
+     * Atomic wallet debit.
+     * If wallet is below ₦1,500, MongoDB updates nothing.
      */
-    const updatedUser = await User.findOneAndUpdate(
-      {
-        _id: req.user._id,
-        status: "ACTIVE",
-        walletBalance: {
-          $gte: deliveryFee,
+    const updatedUser =
+      await User.findOneAndUpdate(
+        {
+          _id: req.user._id,
+          status: "ACTIVE",
+          walletBalance: {
+            $gte: deliveryFee,
+          },
         },
-      },
-      {
-        $inc: {
-          walletBalance: -deliveryFee,
-          totalTransactions: 1,
+        {
+          $inc: {
+            walletBalance: -deliveryFee,
+            totalTransactions: 1,
+          },
         },
-      },
-      {
-        new: true,
-        session,
-      }
-    );
+        {
+          new: true,
+          session,
+        }
+      );
 
     if (!updatedUser) {
       await session.abortTransaction();
 
-      const currentUser = await User.findById(
-        req.user._id
-      ).select(
-        "walletBalance status"
-      );
+      const currentUser =
+        await User.findById(
+          req.user._id
+        ).select(
+          "walletBalance status"
+        );
 
       if (!currentUser) {
         return res.status(404).json({
@@ -129,7 +124,7 @@ exports.createDelivery = async (req, res) => {
       }
 
       if (
-        String(currentUser.status)
+        String(currentUser.status || "")
           .toUpperCase() !== "ACTIVE"
       ) {
         return res.status(403).json({
@@ -141,10 +136,12 @@ exports.createDelivery = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        code: "INSUFFICIENT_WALLET_BALANCE",
+        code:
+          "INSUFFICIENT_WALLET_BALANCE",
         message:
           "Insufficient wallet balance. You need ₦1,500 to request a delivery. Please fund your wallet and try again.",
-        requiredAmount: deliveryFee,
+        requiredAmount:
+          deliveryFee,
         walletBalance:
           Number(
             currentUser.walletBalance || 0
@@ -155,83 +152,112 @@ exports.createDelivery = async (req, res) => {
     const trackingNumber =
       generateTrackingNumber();
 
-    const paymentReference =
+    const reference =
       generateDeliveryPaymentReference();
 
     /*
-     * Because the wallet debit and Delivery.create()
-     * use the same MongoDB transaction, failure here
-     * rolls the debit back.
+     * Create delivery inside same transaction.
+     * If this fails, wallet debit rolls back.
      */
-    const deliveries = await Delivery.create(
-      [
+    const created =
+      await Delivery.create(
+        [
+          {
+            customerId:
+              req.user._id,
+
+            trackingNumber,
+
+            pickupState:
+              req.deliveryCoverage
+                ?.pickupStateCode ||
+              String(
+                pickupState
+              )
+                .trim()
+                .toUpperCase(),
+
+            deliveryState:
+              req.deliveryCoverage
+                ?.deliveryStateCode ||
+              String(
+                deliveryState
+              )
+                .trim()
+                .toUpperCase(),
+
+            pickupAddress:
+              String(
+                pickupAddress
+              ).trim(),
+
+            deliveryAddress:
+              String(
+                deliveryAddress
+              ).trim(),
+
+            senderName:
+              String(
+                senderName
+              ).trim(),
+
+            senderPhone:
+              String(
+                senderPhone
+              ).trim(),
+
+            receiverName:
+              String(
+                receiverName
+              ).trim(),
+
+            receiverPhone:
+              String(
+                receiverPhone
+              ).trim(),
+
+            packageName:
+              String(
+                packageName
+              ).trim(),
+
+            packageDescription:
+              String(
+                packageDescription || ""
+              ).trim(),
+
+            packageWeight:
+              parsedWeight,
+
+            deliveryFee:
+              1500,
+
+            paymentStatus:
+              "PAID",
+
+            paidAt:
+              new Date(),
+
+            status:
+              "PENDING",
+          },
+        ],
         {
-          customerId: req.user._id,
-          trackingNumber,
+          session,
+        }
+      );
 
-          pickupState:
-            req.deliveryCoverage
-              ?.pickupStateCode ||
-            String(pickupState)
-              .trim()
-              .toUpperCase(),
+    const delivery =
+      created[0];
 
-          deliveryState:
-            req.deliveryCoverage
-              ?.deliveryStateCode ||
-            String(deliveryState)
-              .trim()
-              .toUpperCase(),
-
-          pickupAddress:
-            String(pickupAddress).trim(),
-
-          deliveryAddress:
-            String(deliveryAddress).trim(),
-
-          senderName:
-            String(senderName).trim(),
-
-          senderPhone:
-            String(senderPhone).trim(),
-
-          receiverName:
-            String(receiverName).trim(),
-
-          receiverPhone:
-            String(receiverPhone).trim(),
-
-          packageName:
-            String(packageName).trim(),
-
-          packageDescription:
-            packageDescription?.trim() || "",
-
-          packageWeight:
-            parsedWeight,
-
-          deliveryFee,
-
-          paymentStatus: "PAID",
-
-          paidAt: new Date(),
-
-          status: "PENDING",
-        },
-      ],
-      {
-        session,
-      }
-    );
-
-    const delivery = deliveries[0];
-
+    /*
+     * Record the automatic wallet debit.
+     */
     const transactions =
       await Transaction.create(
         [
           {
-            reference:
-              paymentReference,
+            reference,
 
             customerId:
               updatedUser._id,
@@ -241,11 +267,13 @@ exports.createDelivery = async (req, res) => {
               null,
 
             stateManagerId:
-              updatedUser.stateManagerId ||
+              updatedUser
+                .stateManagerId ||
               null,
 
             zonalManagerId:
-              updatedUser.zonalManagerId ||
+              updatedUser
+                .zonalManagerId ||
               null,
 
             serviceType:
@@ -267,10 +295,8 @@ exports.createDelivery = async (req, res) => {
             zonalManagerCommission: 0,
 
             /*
-             * Rider/company split is settled when
-             * delivery is completed:
-             * Rider = N600
-             * ServicePay = N900.
+             * Final company/rider split is locked
+             * when delivery is completed.
              */
             servicepayProfit: 0,
 
@@ -283,14 +309,11 @@ exports.createDelivery = async (req, res) => {
 
               trackingNumber,
 
-              packageName:
-                delivery.packageName,
+              paymentMode:
+                "AUTOMATIC_WALLET_DEBIT",
 
               paymentStatus:
                 "PAID",
-
-              paymentMode:
-                "AUTOMATIC_WALLET_DEBIT",
 
               deliveryFee:
                 1500,
@@ -314,7 +337,7 @@ exports.createDelivery = async (req, res) => {
       success: true,
 
       message:
-        "Delivery request created and ₦1,500 deducted from your wallet successfully.",
+        "Delivery request submitted successfully. ₦1,500 has been deducted from your wallet.",
 
       delivery,
 
@@ -327,14 +350,19 @@ exports.createDelivery = async (req, res) => {
         ),
 
       payment: {
-        amount: 1500,
-        status: "PAID",
-        reference:
-          paymentReference,
+        status:
+          "PAID",
+
+        amount:
+          1500,
+
+        reference,
       },
     });
   } catch (error) {
-    if (session.inTransaction()) {
+    if (
+      session.inTransaction()
+    ) {
       await session.abortTransaction();
     }
 
@@ -343,24 +371,12 @@ exports.createDelivery = async (req, res) => {
       error
     );
 
-    if (
-      error?.code === 112 ||
-      error?.errorLabels?.includes(
-        "TransientTransactionError"
-      )
-    ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "This delivery request is already being processed. Please wait and try again.",
-      });
-    }
-
     return res.status(500).json({
       success: false,
       message:
         "Unable to create delivery request.",
-      error: error.message,
+      error:
+        error.message,
     });
   } finally {
     await session.endSession();
