@@ -10,8 +10,7 @@ import '../login_screen.dart';
 import 'rider_withdrawal_screen.dart';
 
 class RiderApi {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static Map<String, dynamic> mapFromDynamic(
     dynamic value,
@@ -25,8 +24,7 @@ class RiderApi {
     return <String, dynamic>{};
   }
 
-  static List<Map<String, dynamic>>
-      listFromDynamic(
+  static List<Map<String, dynamic>> listFromDynamic(
     dynamic value,
   ) {
     if (value is! List) {
@@ -36,8 +34,7 @@ class RiderApi {
     return value
         .whereType<Map>()
         .map(
-          (Map item) =>
-              Map<String, dynamic>.from(
+          (Map item) => Map<String, dynamic>.from(
             item,
           ),
         )
@@ -48,12 +45,9 @@ class RiderApi {
     dynamic value, {
     String fallback = '',
   }) {
-    final String result =
-        value?.toString().trim() ?? '';
+    final String result = value?.toString().trim() ?? '';
 
-    return result.isEmpty
-        ? fallback
-        : result;
+    return result.isEmpty ? fallback : result;
   }
 
   static int integer(
@@ -74,19 +68,16 @@ class RiderApi {
         0;
   }
 
-  static Map<String, dynamic>
-      decodeResponse(
+  static Map<String, dynamic> decodeResponse(
     http.Response response,
   ) {
-    final String body =
-        response.body.trim();
+    final String body = response.body.trim();
 
     if (body.isEmpty) {
       return <String, dynamic>{};
     }
 
-    final dynamic decoded =
-        jsonDecode(
+    final dynamic decoded = jsonDecode(
       body,
     );
 
@@ -95,14 +86,10 @@ class RiderApi {
     );
   }
 
-  static Future<String>
-      getToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences
-            .getInstance();
+  static Future<String> getToken() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    const List<String> tokenKeys =
-        <String>[
+    const List<String> tokenKeys = <String>[
       'auth_token',
       'token',
       'access_token',
@@ -111,19 +98,13 @@ class RiderApi {
       'jwt',
     ];
 
-    for (final String key
-        in tokenKeys) {
-      String token =
-          prefs.getString(key)?.trim() ??
-              '';
+    for (final String key in tokenKeys) {
+      String token = prefs.getString(key)?.trim() ?? '';
 
-      if (token
-          .toLowerCase()
-          .startsWith(
+      if (token.toLowerCase().startsWith(
             'bearer ',
           )) {
-        token =
-            token.substring(7).trim();
+        token = token.substring(7).trim();
       }
 
       if (token.isNotEmpty) {
@@ -143,10 +124,8 @@ class RiderApi {
    *
    * GET /api/riders/me
    */
-  static Future<Map<String, dynamic>>
-      getProfile() async {
-    final String token =
-        await getToken();
+  static Future<Map<String, dynamic>> getProfile() async {
+    final String token = await getToken();
 
     if (token.isEmpty) {
       throw Exception(
@@ -154,54 +133,43 @@ class RiderApi {
       );
     }
 
-    final http.Response response =
-        await http
-            .get(
+    final http.Response response = await http.get(
       Uri.parse(
         '$baseUrl/riders/me',
       ),
       headers: <String, String>{
-        'Accept':
-            'application/json',
-        'Authorization':
-            'Bearer $token',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
       },
-    )
-            .timeout(
+    ).timeout(
       const Duration(
         seconds: 35,
       ),
     );
 
-    final Map<String, dynamic> root =
-        decodeResponse(
+    final Map<String, dynamic> root = decodeResponse(
       response,
     );
 
-    if (response.statusCode < 200 ||
-        response.statusCode >= 300) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         text(
           root['message'],
-          fallback:
-              'Unable to load rider profile.',
+          fallback: 'Unable to load rider profile.',
         ),
       );
     }
 
-    Map<String, dynamic> rider =
-        mapFromDynamic(
+    Map<String, dynamic> rider = mapFromDynamic(
       root['rider'],
     );
 
     if (rider.isEmpty) {
-      final Map<String, dynamic> data =
-          mapFromDynamic(
+      final Map<String, dynamic> data = mapFromDynamic(
         root['data'],
       );
 
-      rider =
-          mapFromDynamic(
+      rider = mapFromDynamic(
         data['rider'],
       );
     }
@@ -223,35 +191,25 @@ class RiderApi {
   static Future<void> saveProfile(
     Map<String, dynamic> rider,
   ) async {
-    final SharedPreferences prefs =
-        await SharedPreferences
-            .getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    final String riderName =
-        text(
+    final String riderName = text(
       rider['fullName'],
-      fallback:
-          'Delivery Rider',
+      fallback: 'Delivery Rider',
     );
 
-    final String riderId =
-        text(
+    final String riderId = text(
       rider['riderId'],
     );
 
-    final String verificationStatus =
-        text(
-      rider['verificationStatus'] ??
-          rider['riderVerificationStatus'],
-      fallback:
-          'PENDING',
+    final String verificationStatus = text(
+      rider['verificationStatus'] ?? rider['riderVerificationStatus'],
+      fallback: 'PENDING',
     ).toUpperCase();
 
-    final String availabilityStatus =
-        text(
+    final String availabilityStatus = text(
       rider['availabilityStatus'],
-      fallback:
-          'OFFLINE',
+      fallback: 'OFFLINE',
     ).toUpperCase();
 
     await prefs.setString(
@@ -295,8 +253,7 @@ class RiderApi {
 
     await prefs.setBool(
       'rider_is_online',
-      availabilityStatus ==
-          'ONLINE',
+      availabilityStatus == 'ONLINE',
     );
 
     await prefs.setString(
@@ -316,16 +273,14 @@ class RiderApi {
     await prefs.setString(
       'rider_state',
       text(
-        rider['state'] ??
-            rider['riderState'],
+        rider['state'] ?? rider['riderState'],
       ),
     );
 
     await prefs.setString(
       'rider_lga',
       text(
-        rider['lga'] ??
-            rider['riderLga'],
+        rider['lga'] ?? rider['riderLga'],
       ),
     );
   }
@@ -341,20 +296,16 @@ class RiderApi {
  * 3. Earnings
  * 4. Profile
  */
-class RiderMainNavigation
-    extends StatefulWidget {
+class RiderMainNavigation extends StatefulWidget {
   const RiderMainNavigation({
     super.key,
   });
 
   @override
-  State<RiderMainNavigation>
-      createState() =>
-          _RiderMainNavigationState();
+  State<RiderMainNavigation> createState() => _RiderMainNavigationState();
 }
 
-class _RiderMainNavigationState
-    extends State<RiderMainNavigation> {
+class _RiderMainNavigationState extends State<RiderMainNavigation> {
   int currentIndex = 0;
 
   late final List<Widget> pages;
@@ -377,81 +328,54 @@ class _RiderMainNavigationState
   ) {
     return Scaffold(
       body: IndexedStack(
-        index:
-            currentIndex,
-        children:
-            pages,
+        index: currentIndex,
+        children: pages,
       ),
-      bottomNavigationBar:
-          NavigationBar(
-        selectedIndex:
-            currentIndex,
-        onDestinationSelected:
-            (
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: currentIndex,
+        onDestinationSelected: (
           int index,
         ) {
           setState(() {
-            currentIndex =
-                index;
+            currentIndex = index;
           });
         },
-        destinations:
-            const <NavigationDestination>[
+        destinations: const <NavigationDestination>[
           NavigationDestination(
-            icon:
-                Icon(
-              Icons
-                  .electric_rickshaw_outlined,
+            icon: Icon(
+              Icons.electric_rickshaw_outlined,
             ),
-            selectedIcon:
-                Icon(
-              Icons
-                  .electric_rickshaw_rounded,
+            selectedIcon: Icon(
+              Icons.electric_rickshaw_rounded,
             ),
-            label:
-                'Keke',
+            label: 'Keke',
           ),
           NavigationDestination(
-            icon:
-                Icon(
-              Icons
-                  .local_shipping_outlined,
+            icon: Icon(
+              Icons.local_shipping_outlined,
             ),
-            selectedIcon:
-                Icon(
-              Icons
-                  .local_shipping_rounded,
+            selectedIcon: Icon(
+              Icons.local_shipping_rounded,
             ),
-            label:
-                'Deliveries',
+            label: 'Deliveries',
           ),
           NavigationDestination(
-            icon:
-                Icon(
-              Icons
-                  .account_balance_wallet_outlined,
+            icon: Icon(
+              Icons.account_balance_wallet_outlined,
             ),
-            selectedIcon:
-                Icon(
-              Icons
-                  .account_balance_wallet_rounded,
+            selectedIcon: Icon(
+              Icons.account_balance_wallet_rounded,
             ),
-            label:
-                'Earnings',
+            label: 'Earnings',
           ),
           NavigationDestination(
-            icon:
-                Icon(
-              Icons
-                  .person_outline,
+            icon: Icon(
+              Icons.person_outline,
             ),
-            selectedIcon:
-                Icon(
-              Icons
-                  .person_rounded,
+            selectedIcon: Icon(
+              Icons.person_rounded,
             ),
-            label:
-                'Profile',
+            label: 'Profile',
           ),
         ],
       ),
@@ -467,35 +391,26 @@ class _RiderMainNavigationState
  * This screen keeps the existing ServicePay
  * delivery business separate from Keke rides.
  */
-class RiderDeliveriesScreen
-    extends StatefulWidget {
+class RiderDeliveriesScreen extends StatefulWidget {
   const RiderDeliveriesScreen({
     super.key,
   });
 
   @override
-  State<RiderDeliveriesScreen>
-      createState() =>
-          _RiderDeliveriesScreenState();
+  State<RiderDeliveriesScreen> createState() => _RiderDeliveriesScreenState();
 }
 
-class _RiderDeliveriesScreenState
-    extends State<RiderDeliveriesScreen>
+class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
     with SingleTickerProviderStateMixin {
-  static const Color primaryGreen =
-      Color(
+  static const Color primaryGreen = Color(
     0xFF159447,
   );
 
-  late final AnimationController
-      pulseController;
+  late final AnimationController pulseController;
 
-  late final Animation<double>
-      pulseAnimation;
+  late final Animation<double> pulseAnimation;
 
-  List<Map<String, dynamic>>
-      deliveries =
-      <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> deliveries = <Map<String, dynamic>>[];
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -508,34 +423,25 @@ class _RiderDeliveriesScreenState
   void initState() {
     super.initState();
 
-    pulseController =
-        AnimationController(
-      vsync:
-          this,
-      duration:
-          const Duration(
+    pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(
         milliseconds: 850,
       ),
     );
 
-    pulseAnimation =
-        Tween<double>(
-      begin:
-          0.98,
-      end:
-          1.02,
+    pulseAnimation = Tween<double>(
+      begin: 0.98,
+      end: 1.02,
     ).animate(
       CurvedAnimation(
-        parent:
-            pulseController,
-        curve:
-            Curves.easeInOut,
+        parent: pulseController,
+        curve: Curves.easeInOut,
       ),
     );
 
     pulseController.repeat(
-      reverse:
-          true,
+      reverse: true,
     );
 
     loadDeliveries();
@@ -560,18 +466,11 @@ class _RiderDeliveriesScreenState
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content:
-              Text(
+          content: Text(
             message,
           ),
-          behavior:
-              SnackBarBehavior
-                  .floating,
-          backgroundColor:
-              isError
-                  ? Colors
-                      .red.shade700
-                  : primaryGreen,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? Colors.red.shade700 : primaryGreen,
         ),
       );
   }
@@ -582,25 +481,19 @@ class _RiderDeliveriesScreenState
     if (mounted) {
       setState(() {
         if (refresh) {
-          isRefreshing =
-              true;
+          isRefreshing = true;
         } else {
-          isLoading =
-              true;
+          isLoading = true;
         }
 
-        hasError =
-            false;
+        hasError = false;
 
-        errorMessage =
-            '';
+        errorMessage = '';
       });
     }
 
     try {
-      final String token =
-          await RiderApi
-              .getToken();
+      final String token = await RiderApi.getToken();
 
       if (token.isEmpty) {
         throw Exception(
@@ -608,73 +501,50 @@ class _RiderDeliveriesScreenState
         );
       }
 
-      final Map<String, String>
-          queryParameters =
-          <String, String>{};
+      final Map<String, String> queryParameters = <String, String>{};
 
-      if (selectedStatus !=
-          'ALL') {
-        queryParameters[
-                'status'] =
-            selectedStatus;
+      if (selectedStatus != 'ALL') {
+        queryParameters['status'] = selectedStatus;
       }
 
-      final Uri endpoint =
-          Uri.parse(
+      final Uri endpoint = Uri.parse(
         '${RiderApi.baseUrl}/rider/deliveries',
       ).replace(
-        queryParameters:
-            queryParameters.isEmpty
-                ? null
-                : queryParameters,
+        queryParameters: queryParameters.isEmpty ? null : queryParameters,
       );
 
-      final http.Response response =
-          await http
-              .get(
+      final http.Response response = await http.get(
         endpoint,
-        headers:
-            <String, String>{
-          'Accept':
-              'application/json',
-          'Authorization':
-              'Bearer $token',
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
         },
-      )
-              .timeout(
+      ).timeout(
         const Duration(
           seconds: 35,
         ),
       );
 
-      final Map<String, dynamic>
-          root =
-          RiderApi.decodeResponse(
+      final Map<String, dynamic> root = RiderApi.decodeResponse(
         response,
       );
 
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
           RiderApi.text(
             root['message'],
-            fallback:
-                'Unable to load assigned deliveries.',
+            fallback: 'Unable to load assigned deliveries.',
           ),
         );
       }
 
-      final Map<String, dynamic>
-          data =
-          RiderApi.mapFromDynamic(
+      final Map<String, dynamic> data = RiderApi.mapFromDynamic(
         root['data'],
       );
 
-      final List<Map<String, dynamic>>
-          loadedDeliveries =
+      final List<Map<String, dynamic>> loadedDeliveries =
           RiderApi.listFromDynamic(
-        root['deliveries'] ??
-            data['deliveries'],
+        root['deliveries'] ?? data['deliveries'],
       );
 
       if (!mounted) {
@@ -682,20 +552,15 @@ class _RiderDeliveriesScreenState
       }
 
       setState(() {
-        deliveries =
-            loadedDeliveries;
+        deliveries = loadedDeliveries;
 
-        isLoading =
-            false;
+        isLoading = false;
 
-        isRefreshing =
-            false;
+        isRefreshing = false;
 
-        hasError =
-            false;
+        hasError = false;
 
-        errorMessage =
-            '';
+        errorMessage = '';
       });
     } on TimeoutException {
       if (!mounted) {
@@ -703,17 +568,13 @@ class _RiderDeliveriesScreenState
       }
 
       setState(() {
-        isLoading =
-            false;
+        isLoading = false;
 
-        isRefreshing =
-            false;
+        isRefreshing = false;
 
-        hasError =
-            true;
+        hasError = true;
 
-        errorMessage =
-            'The server took too long to respond.';
+        errorMessage = 'The server took too long to respond.';
       });
     } on FormatException {
       if (!mounted) {
@@ -721,17 +582,13 @@ class _RiderDeliveriesScreenState
       }
 
       setState(() {
-        isLoading =
-            false;
+        isLoading = false;
 
-        isRefreshing =
-            false;
+        isRefreshing = false;
 
-        hasError =
-            true;
+        hasError = true;
 
-        errorMessage =
-            'The server returned an invalid response.';
+        errorMessage = 'The server returned an invalid response.';
       });
     } catch (error) {
       if (!mounted) {
@@ -739,52 +596,41 @@ class _RiderDeliveriesScreenState
       }
 
       setState(() {
-        isLoading =
-            false;
+        isLoading = false;
 
-        isRefreshing =
-            false;
+        isRefreshing = false;
 
-        hasError =
-            true;
+        hasError = true;
 
-        errorMessage =
-            error
-                .toString()
-                .replaceFirst(
-                  'Exception: ',
-                  '',
-                );
+        errorMessage = error.toString().replaceFirst(
+              'Exception: ',
+              '',
+            );
       });
     }
   }
 
   Future<bool> performAction({
-    required Map<String, dynamic>
-        delivery,
+    required Map<String, dynamic> delivery,
     required String action,
     String? status,
     String? reason,
   }) async {
-    final String deliveryId =
-        RiderApi.text(
+    final String deliveryId = RiderApi.text(
       delivery['_id'],
     );
 
     if (deliveryId.isEmpty) {
       showMessage(
         'Invalid delivery ID.',
-        isError:
-            true,
+        isError: true,
       );
 
       return false;
     }
 
     try {
-      final String token =
-          await RiderApi
-              .getToken();
+      final String token = await RiderApi.getToken();
 
       if (token.isEmpty) {
         throw Exception(
@@ -792,67 +638,51 @@ class _RiderDeliveriesScreenState
         );
       }
 
-      final Uri endpoint =
-          action == 'STATUS'
-              ? Uri.parse(
-                  '${RiderApi.baseUrl}/rider/deliveries/$deliveryId/status',
-                )
-              : Uri.parse(
-                  '${RiderApi.baseUrl}/rider/deliveries/$deliveryId/${action.toLowerCase()}',
-                );
+      final Uri endpoint = action == 'STATUS'
+          ? Uri.parse(
+              '${RiderApi.baseUrl}/rider/deliveries/$deliveryId/status',
+            )
+          : Uri.parse(
+              '${RiderApi.baseUrl}/rider/deliveries/$deliveryId/${action.toLowerCase()}',
+            );
 
-      final Map<String, dynamic>
-          payload =
-          <String, dynamic>{};
+      final Map<String, dynamic> payload = <String, dynamic>{};
 
       if (status != null) {
-        payload['status'] =
-            status;
+        payload['status'] = status;
       }
 
-      if (reason != null &&
-          reason.trim().isNotEmpty) {
-        payload['reason'] =
-            reason.trim();
+      if (reason != null && reason.trim().isNotEmpty) {
+        payload['reason'] = reason.trim();
       }
 
-      final http.Response response =
-          await http
-              .patch(
-        endpoint,
-        headers:
-            <String, String>{
-          'Accept':
-              'application/json',
-          'Content-Type':
-              'application/json',
-          'Authorization':
-              'Bearer $token',
-        },
-        body:
-            jsonEncode(
-          payload,
-        ),
-      )
-              .timeout(
-        const Duration(
-          seconds: 35,
-        ),
-      );
+      final http.Response response = await http
+          .patch(
+            endpoint,
+            headers: <String, String>{
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(
+              payload,
+            ),
+          )
+          .timeout(
+            const Duration(
+              seconds: 35,
+            ),
+          );
 
-      final Map<String, dynamic>
-          root =
-          RiderApi.decodeResponse(
+      final Map<String, dynamic> root = RiderApi.decodeResponse(
         response,
       );
 
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
           RiderApi.text(
             root['message'],
-            fallback:
-                'Unable to update delivery.',
+            fallback: 'Unable to update delivery.',
           ),
         );
       }
@@ -860,43 +690,36 @@ class _RiderDeliveriesScreenState
       showMessage(
         RiderApi.text(
           root['message'],
-          fallback:
-              'Delivery updated successfully.',
+          fallback: 'Delivery updated successfully.',
         ),
       );
 
       await loadDeliveries(
-        refresh:
-            true,
+        refresh: true,
       );
 
       return true;
     } on TimeoutException {
       showMessage(
         'The server took too long to respond.',
-        isError:
-            true,
+        isError: true,
       );
 
       return false;
     } on FormatException {
       showMessage(
         'The server returned an invalid response.',
-        isError:
-            true,
+        isError: true,
       );
 
       return false;
     } catch (error) {
       showMessage(
-        error
-            .toString()
-            .replaceFirst(
+        error.toString().replaceFirst(
               'Exception: ',
               '',
             ),
-        isError:
-            true,
+        isError: true,
       );
 
       return false;
@@ -932,17 +755,13 @@ class _RiderDeliveriesScreenState
   String customerName(
     Map<String, dynamic> delivery,
   ) {
-    final Map<String, dynamic>
-        customer =
-        RiderApi.mapFromDynamic(
+    final Map<String, dynamic> customer = RiderApi.mapFromDynamic(
       delivery['customerId'],
     );
 
     return RiderApi.text(
-      customer['fullName'] ??
-          delivery['senderName'],
-      fallback:
-          'ServicePay Customer',
+      customer['fullName'] ?? delivery['senderName'],
+      fallback: 'ServicePay Customer',
     );
   }
 
@@ -950,11 +769,8 @@ class _RiderDeliveriesScreenState
     Map<String, dynamic> delivery,
   ) {
     return RiderApi.text(
-      delivery['packageName'] ??
-          delivery[
-              'packageDescription'],
-      fallback:
-          'Package',
+      delivery['packageName'] ?? delivery['packageDescription'],
+      fallback: 'Package',
     );
   }
 
@@ -989,215 +805,150 @@ class _RiderDeliveriesScreenState
   Widget buildDeliveryCard(
     Map<String, dynamic> delivery,
   ) {
-    final String status =
-        RiderApi.text(
+    final String status = RiderApi.text(
       delivery['status'],
-      fallback:
-          'ASSIGNED',
+      fallback: 'ASSIGNED',
     ).toUpperCase();
 
-    final bool isNewJob =
-        status == 'ASSIGNED';
+    final bool isNewJob = status == 'ASSIGNED';
 
-    final Widget card =
-        Card(
-      elevation:
-          isNewJob ? 6 : 1,
-      margin:
-          const EdgeInsets.only(
+    final Widget card = Card(
+      elevation: isNewJob ? 6 : 1,
+      margin: const EdgeInsets.only(
         bottom: 14,
       ),
-      color:
-          Colors.white,
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(
           18,
         ),
-        side:
-            BorderSide(
-          color:
-              isNewJob
-                  ? Colors.orange
-                  : const Color(
-                      0xFFE2E8F0,
-                    ),
-          width:
-              isNewJob ? 2 : 1,
+        side: BorderSide(
+          color: isNewJob
+              ? Colors.orange
+              : const Color(
+                  0xFFE2E8F0,
+                ),
+          width: isNewJob ? 2 : 1,
         ),
       ),
-      child:
-          Padding(
-        padding:
-            const EdgeInsets.all(
+      child: Padding(
+        padding: const EdgeInsets.all(
           16,
         ),
-        child:
-            Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children:
-              <Widget>[
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
             Row(
-              children:
-                  <Widget>[
+              children: <Widget>[
                 Container(
-                  width:
-                      48,
-                  height:
-                      48,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        getStatusColor(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: getStatusColor(
                       status,
                     ).withValues(
-                      alpha:
-                          0.12,
+                      alpha: 0.12,
                     ),
-                    borderRadius:
-                        BorderRadius.circular(
+                    borderRadius: BorderRadius.circular(
                       14,
                     ),
                   ),
-                  child:
-                      Icon(
+                  child: Icon(
                     isNewJob
-                        ? Icons
-                            .notifications_active_rounded
-                        : Icons
-                            .local_shipping_rounded,
-                    color:
-                        getStatusColor(
+                        ? Icons.notifications_active_rounded
+                        : Icons.local_shipping_rounded,
+                    color: getStatusColor(
                       status,
                     ),
                   ),
                 ),
                 const SizedBox(
-                  width:
-                      12,
+                  width: 12,
                 ),
                 Expanded(
-                  child:
-                      Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children:
-                        <Widget>[
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
                       Text(
                         RiderApi.text(
-                          delivery[
-                              'trackingNumber'],
-                          fallback:
-                              'Delivery Job',
+                          delivery['trackingNumber'],
+                          fallback: 'Delivery Job',
                         ),
-                        style:
-                            const TextStyle(
-                          fontSize:
-                              16,
-                          fontWeight:
-                              FontWeight.bold,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(
-                        height:
-                            3,
+                        height: 3,
                       ),
                       Text(
                         customerName(
                           delivery,
                         ),
-                        style:
-                            const TextStyle(
-                          color:
-                              Colors.black54,
+                        style: const TextStyle(
+                          color: Colors.black54,
                         ),
                       ),
                     ],
                   ),
                 ),
                 _RiderStatusBadge(
-                  text:
-                      formatStatus(
+                  text: formatStatus(
                     status,
                   ),
-                  color:
-                      getStatusColor(
+                  color: getStatusColor(
                     status,
                   ),
                 ),
               ],
             ),
             const SizedBox(
-              height:
-                  14,
+              height: 14,
             ),
             _DeliveryAddressLine(
-              icon:
-                  Icons.location_on_outlined,
-              label:
-                  'Pickup',
-              value:
-                  RiderApi.text(
-                delivery[
-                    'pickupAddress'],
-                fallback:
-                    'Not available',
+              icon: Icons.location_on_outlined,
+              label: 'Pickup',
+              value: RiderApi.text(
+                delivery['pickupAddress'],
+                fallback: 'Not available',
               ),
             ),
             const SizedBox(
-              height:
-                  8,
+              height: 8,
             ),
             _DeliveryAddressLine(
-              icon:
-                  Icons.flag_outlined,
-              label:
-                  'Destination',
-              value:
-                  RiderApi.text(
-                delivery[
-                    'deliveryAddress'],
-                fallback:
-                    'Not available',
+              icon: Icons.flag_outlined,
+              label: 'Destination',
+              value: RiderApi.text(
+                delivery['deliveryAddress'],
+                fallback: 'Not available',
               ),
             ),
             const SizedBox(
-              height:
-                  12,
+              height: 12,
             ),
             Row(
-              children:
-                  <Widget>[
+              children: <Widget>[
                 Expanded(
-                  child:
-                      Text(
+                  child: Text(
                     packageName(
                       delivery,
                     ),
-                    maxLines:
-                        1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight.w700,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
                 Text(
                   formatMoney(
-                    delivery[
-                        'deliveryFee'],
+                    delivery['deliveryFee'],
                   ),
-                  style:
-                      const TextStyle(
-                    color:
-                        primaryGreen,
-                    fontWeight:
-                        FontWeight.bold,
+                  style: const TextStyle(
+                    color: primaryGreen,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -1208,140 +959,139 @@ class _RiderDeliveriesScreenState
     );
 
     if (!isNewJob) {
-  
-    Widget actionArea = const SizedBox.shrink();
+      Widget actionArea = const SizedBox.shrink();
 
-    if (status == 'ASSIGNED') {
-      actionArea = Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  await performAction(
-                    delivery: delivery,
-                    action: 'REJECT',
-                  );
-                },
-                icon: const Icon(
-                  Icons.close_rounded,
-                ),
-                label: const Text(
-                  'Reject',
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(
-                    color: Colors.red,
+      if (status == 'ASSIGNED' ||
+          status == 'ASSIGNED_TO_RIDER' ||
+          status == 'RIDER_ASSIGNED') {
+        actionArea = Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await performAction(
+                      delivery: delivery,
+                      action: 'REJECT',
+                    );
+                  },
+                  icon: const Icon(
+                    Icons.close_rounded,
+                  ),
+                  label: const Text(
+                    'Reject',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(
+                      color: Colors.red,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(
-              width: 10,
-            ),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: () async {
-                  await performAction(
-                    delivery: delivery,
-                    action: 'ACCEPT',
-                  );
-                },
-                icon: const Icon(
-                  Icons.check_rounded,
-                ),
-                label: const Text(
-                  'Accept Delivery',
+              const SizedBox(
+                width: 10,
+              ),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    await performAction(
+                      delivery: delivery,
+                      action: 'ACCEPT',
+                    );
+                  },
+                  icon: const Icon(
+                    Icons.check_rounded,
+                  ),
+                  label: const Text(
+                    'Accept Delivery',
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      );
-    } else if (status == 'ACCEPTED') {
-      actionArea = Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () async {
-              await performAction(
-                delivery: delivery,
-                action: 'STATUS',
-                status: 'PICKED_UP',
-              );
-            },
-            icon: const Icon(
-              Icons.inventory_2_outlined,
-            ),
-            label: const Text(
-              'Mark Picked Up',
+            ],
+          ),
+        );
+      } else if (status == 'ACCEPTED') {
+        actionArea = Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () async {
+                await performAction(
+                  delivery: delivery,
+                  action: 'STATUS',
+                  status: 'PICKED_UP',
+                );
+              },
+              icon: const Icon(
+                Icons.inventory_2_outlined,
+              ),
+              label: const Text(
+                'Mark Picked Up',
+              ),
             ),
           ),
-        ),
-      );
-    } else if (status == 'PICKED_UP') {
-      actionArea = Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () async {
-              await performAction(
-                delivery: delivery,
-                action: 'STATUS',
-                status: 'IN_TRANSIT',
-              );
-            },
-            icon: const Icon(
-              Icons.local_shipping_outlined,
-            ),
-            label: const Text(
-              'Start Transit',
-            ),
-          ),
-        ),
-      );
-    } else if (status == 'IN_TRANSIT') {
-      actionArea = Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () async {
-              await performAction(
-                delivery: delivery,
-                action: 'STATUS',
-                status: 'DELIVERED',
-              );
-            },
-            icon: const Icon(
-              Icons.task_alt_rounded,
-            ),
-            label: const Text(
-              'Mark Delivered',
+        );
+      } else if (status == 'PICKED_UP') {
+        actionArea = Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () async {
+                await performAction(
+                  delivery: delivery,
+                  action: 'STATUS',
+                  status: 'IN_TRANSIT',
+                );
+              },
+              icon: const Icon(
+                Icons.local_shipping_outlined,
+              ),
+              label: const Text(
+                'Start Transit',
+              ),
             ),
           ),
-        ),
-      );
-    }
+        );
+      } else if (status == 'IN_TRANSIT') {
+        actionArea = Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () async {
+                await performAction(
+                  delivery: delivery,
+                  action: 'STATUS',
+                  status: 'DELIVERED',
+                );
+              },
+              icon: const Icon(
+                Icons.task_alt_rounded,
+              ),
+              label: const Text(
+                'Mark Delivered',
+              ),
+            ),
+          ),
+        );
+      }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        card,
-        actionArea,
-      ],
-    );
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          card,
+          actionArea,
+        ],
+      );
     }
 
     return ScaleTransition(
-      scale:
-          pulseAnimation,
-      child:
-          card,
+      scale: pulseAnimation,
+      child: card,
     );
   }
 
@@ -1350,242 +1100,179 @@ class _RiderDeliveriesScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(
+      backgroundColor: const Color(
         0xFFF5F7FA,
       ),
-      appBar:
-          AppBar(
-        automaticallyImplyLeading:
-            false,
-        backgroundColor:
-            Colors.white,
-        surfaceTintColor:
-            Colors.white,
-        title:
-            const Text(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: const Text(
           'My Deliveries',
-          style:
-              TextStyle(
-            fontWeight:
-                FontWeight.bold,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
           ),
         ),
-        actions:
-            <Widget>[
+        actions: <Widget>[
           IconButton(
-            tooltip:
-                'Refresh',
-            onPressed:
-                isRefreshing
-                    ? null
-                    : () {
-                        loadDeliveries(
-                          refresh:
-                              true,
-                        );
-                      },
-            icon:
-                isRefreshing
-                    ? const SizedBox(
-                        width:
-                            20,
-                        height:
-                            20,
-                        child:
-                            CircularProgressIndicator(
-                          strokeWidth:
-                              2,
-                        ),
-                      )
-                    : const Icon(
-                        Icons
-                            .refresh_rounded,
-                      ),
+            tooltip: 'Refresh',
+            onPressed: isRefreshing
+                ? null
+                : () {
+                    loadDeliveries(
+                      refresh: true,
+                    );
+                  },
+            icon: isRefreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(
+                    Icons.refresh_rounded,
+                  ),
           ),
         ],
       ),
-      body:
-          isLoading
-              ? const Center(
-                  child:
-                      CircularProgressIndicator(),
-                )
-              : hasError
-                  ? Center(
-                      child:
-                          Padding(
-                        padding:
-                            const EdgeInsets.all(
-                          24,
-                        ),
-                        child:
-                            Column(
-                          mainAxisSize:
-                              MainAxisSize.min,
-                          children:
-                              <Widget>[
-                            const Icon(
-                              Icons
-                                  .cloud_off_rounded,
-                              size:
-                                  60,
-                              color:
-                                  Colors.red,
-                            ),
-                            const SizedBox(
-                              height:
-                                  14,
-                            ),
-                            Text(
-                              errorMessage,
-                              textAlign:
-                                  TextAlign.center,
-                            ),
-                            const SizedBox(
-                              height:
-                                  14,
-                            ),
-                            ElevatedButton.icon(
-                              onPressed:
-                                  loadDeliveries,
-                              icon:
-                                  const Icon(
-                                Icons
-                                    .refresh_rounded,
-                              ),
-                              label:
-                                  const Text(
-                                'Try Again',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh:
-                          () {
-                        return loadDeliveries(
-                          refresh:
-                              true,
-                        );
-                      },
-                      child:
-                          ListView(
-                        padding:
-                            const EdgeInsets.all(
-                          16,
-                        ),
-                        children:
-                            <Widget>[
-                          SizedBox(
-                            height:
-                                42,
-                            child:
-                                ListView(
-                              scrollDirection:
-                                  Axis.horizontal,
-                              children:
-                                  <String>[
-                                'ALL',
-                                'ASSIGNED',
-                                'ACCEPTED',
-                                'PICKED_UP',
-                                'IN_TRANSIT',
-                                'DELIVERED',
-                              ].map(
-                                (
-                                  String status,
-                                ) {
-                                  final bool selected =
-                                      selectedStatus == status;
-
-                                  return Padding(
-                                    padding:
-                                        const EdgeInsets.only(
-                                      right:
-                                          8,
-                                    ),
-                                    child:
-                                        ChoiceChip(
-                                      selected:
-                                          selected,
-                                      label:
-                                          Text(
-                                        formatStatus(
-                                          status,
-                                        ),
-                                      ),
-                                      selectedColor:
-                                          primaryGreen,
-                                      backgroundColor:
-                                          Colors.white,
-                                      labelStyle:
-                                          TextStyle(
-                                        color:
-                                            selected
-                                                ? Colors.white
-                                                : Colors.black54,
-                                        fontWeight:
-                                            FontWeight.w700,
-                                      ),
-                                      onSelected:
-                                          (_) {
-                                        setState(() {
-                                          selectedStatus =
-                                              status;
-                                        });
-
-                                        loadDeliveries();
-                                      },
-                                    ),
-                                  );
-                                },
-                              ).toList(),
-                            ),
-                          ),
-                          const SizedBox(
-                            height:
-                                16,
-                          ),
-                          if (deliveries.isEmpty)
-                            const RiderEmptyScreen(
-                              title:
-                                  'No Deliveries',
-                              message:
-                                  'Your assigned delivery jobs will appear here.',
-                              icon:
-                                  Icons.local_shipping_outlined,
-                              showAppBar:
-                                  false,
-                            )
-                          else
-                            ...deliveries.map(
-                              buildDeliveryCard,
-                            ),
-                          const SizedBox(
-                            height:
-                                30,
-                          ),
-                        ],
-                      ),
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : hasError
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(
+                      24,
                     ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(
+                          Icons.cloud_off_rounded,
+                          size: 60,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(
+                          height: 14,
+                        ),
+                        Text(
+                          errorMessage,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(
+                          height: 14,
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: loadDeliveries,
+                          icon: const Icon(
+                            Icons.refresh_rounded,
+                          ),
+                          label: const Text(
+                            'Try Again',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: () {
+                    return loadDeliveries(
+                      refresh: true,
+                    );
+                  },
+                  child: ListView(
+                    padding: const EdgeInsets.all(
+                      16,
+                    ),
+                    children: <Widget>[
+                      SizedBox(
+                        height: 42,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: <String>[
+                            'ALL',
+                            'ASSIGNED',
+                            'ACCEPTED',
+                            'PICKED_UP',
+                            'IN_TRANSIT',
+                            'DELIVERED',
+                          ].map(
+                            (
+                              String status,
+                            ) {
+                              final bool selected = selectedStatus == status;
+
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  right: 8,
+                                ),
+                                child: ChoiceChip(
+                                  selected: selected,
+                                  label: Text(
+                                    formatStatus(
+                                      status,
+                                    ),
+                                  ),
+                                  selectedColor: primaryGreen,
+                                  backgroundColor: Colors.white,
+                                  labelStyle: TextStyle(
+                                    color: selected
+                                        ? Colors.white
+                                        : Colors.black54,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  onSelected: (_) {
+                                    setState(() {
+                                      selectedStatus = status;
+                                    });
+
+                                    loadDeliveries();
+                                  },
+                                ),
+                              );
+                            },
+                          ).toList(),
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 16,
+                      ),
+                      if (deliveries.isEmpty)
+                        const RiderEmptyScreen(
+                          title: 'No Deliveries',
+                          message:
+                              'Your assigned delivery jobs will appear here.',
+                          icon: Icons.local_shipping_outlined,
+                          showAppBar: false,
+                        )
+                      else
+                        ...deliveries.map(
+                          buildDeliveryCard,
+                        ),
+                      const SizedBox(
+                        height: 30,
+                      ),
+                    ],
+                  ),
+                ),
     );
   }
 }
+
 class RiderEarningsScreen extends StatefulWidget {
   const RiderEarningsScreen({
     super.key,
   });
 
   @override
-  State<RiderEarningsScreen> createState() =>
-      _RiderEarningsScreenState();
+  State<RiderEarningsScreen> createState() => _RiderEarningsScreenState();
 }
 
-class _RiderEarningsScreenState
-    extends State<RiderEarningsScreen> {
+class _RiderEarningsScreenState extends State<RiderEarningsScreen> {
   bool isLoading = true;
 
   double totalEarnings = 0;
@@ -1608,8 +1295,7 @@ class _RiderEarningsScreenState
     }
 
     try {
-      final Map<String, dynamic> rider =
-          await RiderApi.getProfile();
+      final Map<String, dynamic> rider = await RiderApi.getProfile();
 
       await RiderApi.saveProfile(
         rider,
@@ -1620,23 +1306,19 @@ class _RiderEarningsScreenState
       }
 
       setState(() {
-        totalEarnings =
-            RiderApi.number(
+        totalEarnings = RiderApi.number(
           rider['totalRiderEarnings'],
         );
 
-        pendingSettlement =
-            RiderApi.number(
+        pendingSettlement = RiderApi.number(
           rider['pendingRiderSettlement'],
         );
 
-        settledEarnings =
-            RiderApi.number(
+        settledEarnings = RiderApi.number(
           rider['settledRiderEarnings'],
         );
 
-        completedDeliveries =
-            RiderApi.integer(
+        completedDeliveries = RiderApi.integer(
           rider['totalCompletedDeliveries'],
         );
 
@@ -1665,91 +1347,64 @@ class _RiderEarningsScreenState
     required IconData icon,
   }) {
     return Container(
-      padding:
-          const EdgeInsets.all(
+      padding: const EdgeInsets.all(
         17,
       ),
-      decoration:
-          BoxDecoration(
-        color:
-            Colors.white,
-        borderRadius:
-            BorderRadius.circular(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(
           17,
         ),
-        border:
-            Border.all(
-          color:
-              const Color(
+        border: Border.all(
+          color: const Color(
             0xFFE2E8F0,
           ),
         ),
       ),
-      child:
-          Row(
-        children:
-            <Widget>[
+      child: Row(
+        children: <Widget>[
           Container(
-            width:
-                46,
-            height:
-                46,
-            decoration:
-                BoxDecoration(
-              color:
-                  const Color(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: const Color(
                 0xFF159447,
               ).withValues(
-                alpha:
-                    0.10,
+                alpha: 0.10,
               ),
-              borderRadius:
-                  BorderRadius.circular(
+              borderRadius: BorderRadius.circular(
                 13,
               ),
             ),
-            child:
-                Icon(
+            child: Icon(
               icon,
-              color:
-                  const Color(
+              color: const Color(
                 0xFF159447,
               ),
             ),
           ),
           const SizedBox(
-            width:
-                12,
+            width: 12,
           ),
           Expanded(
-            child:
-                Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children:
-                  <Widget>[
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
                 Text(
                   title,
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.black54,
-                    fontSize:
-                        12,
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
                   ),
                 ),
                 const SizedBox(
-                  height:
-                      4,
+                  height: 4,
                 ),
                 Text(
                   value,
-                  style:
-                      const TextStyle(
-                    fontSize:
-                        18,
-                    fontWeight:
-                        FontWeight.bold,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -1765,240 +1420,168 @@ class _RiderEarningsScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(
+      backgroundColor: const Color(
         0xFFF5F7FA,
       ),
-      appBar:
-          AppBar(
-        automaticallyImplyLeading:
-            false,
-        backgroundColor:
-            Colors.white,
-        surfaceTintColor:
-            Colors.white,
-        title:
-            const Text(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: const Text(
           'Rider Earnings',
-          style:
-              TextStyle(
-            fontWeight:
-                FontWeight.bold,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
           ),
         ),
-        actions:
-            <Widget>[
+        actions: <Widget>[
           IconButton(
-            tooltip:
-                'Refresh',
-            onPressed:
-                isLoading
-                    ? null
-                    : loadEarnings,
-            icon:
-                const Icon(
-              Icons
-                  .refresh_rounded,
+            tooltip: 'Refresh',
+            onPressed: isLoading ? null : loadEarnings,
+            icon: const Icon(
+              Icons.refresh_rounded,
             ),
           ),
         ],
       ),
-      body:
-          isLoading
-              ? const Center(
-                  child:
-                      CircularProgressIndicator(),
-                )
-              : RefreshIndicator(
-                  onRefresh:
-                      loadEarnings,
-                  child:
-                      ListView(
-                    padding:
-                        const EdgeInsets.all(
-                      16,
-                    ),
-                    children:
-                        <Widget>[
-                      Container(
-                        padding:
-                            const EdgeInsets.all(
-                          22,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          gradient:
-                              const LinearGradient(
-                            colors:
-                                <Color>[
-                              Color(
-                                0xFF159447,
-                              ),
-                              Color(
-                                0xFF0F766E,
-                              ),
-                            ],
-                          ),
-                          borderRadius:
-                              BorderRadius.circular(
-                            20,
-                          ),
-                        ),
-                        child:
-                            Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children:
-                              <Widget>[
-                            const Text(
-                              'Total Rider Earnings',
-                              style:
-                                  TextStyle(
-                                color:
-                                    Colors.white70,
-                              ),
-                            ),
-                            const SizedBox(
-                              height:
-                                  8,
-                            ),
-                            Text(
-                              formatMoney(
-                                totalEarnings,
-                              ),
-                              style:
-                                  const TextStyle(
-                                color:
-                                    Colors.white,
-                                fontSize:
-                                    28,
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(
-                              height:
-                                  10,
-                            ),
-                            Text(
-                              '$completedDeliveries completed deliveries',
-                              style:
-                                  const TextStyle(
-                                color:
-                                    Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(
-                        height:
-                            16,
-                      ),
-                      earningsCard(
-                        title:
-                            'Pending Settlement',
-                        value:
-                            formatMoney(
-                          pendingSettlement,
-                        ),
-                        icon:
-                            Icons
-                                .hourglass_top_rounded,
-                      ),
-                      const SizedBox(
-                        height:
-                            12,
-                      ),
-                      earningsCard(
-                        title:
-                            'Settled Earnings',
-                        value:
-                            formatMoney(
-                          settledEarnings,
-                        ),
-                        icon:
-                            Icons
-                                .check_circle_outline,
-                      ),
-                      const SizedBox(
-                        height:
-                            12,
-                      ),
-                      earningsCard(
-                        title:
-                            'Completed Deliveries',
-                        value:
-                            completedDeliveries
-                                .toString(),
-                        icon:
-                            Icons
-                                .local_shipping_outlined,
-                      ),
-                      const SizedBox(
-                        height:
-                            18,
-                      ),
-                      SizedBox(
-                        width:
-                            double.infinity,
-                        height:
-                            54,
-                        child:
-                            FilledButton.icon(
-                          onPressed:
-                              () async {
-                            await Navigator.of(
-                              context,
-                            ).push<void>(
-                              MaterialPageRoute<void>(
-                                builder:
-                                    (_) =>
-                                        const RiderWithdrawalScreen(),
-                              ),
-                            );
-
-                            if (!mounted) {
-                              return;
-                            }
-
-                            await loadEarnings();
-                          },
-                          style:
-                              FilledButton.styleFrom(
-                            backgroundColor:
-                                const Color(
-                              0xFF159447,
-                            ),
-                            shape:
-                                RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(
-                                14,
-                              ),
-                            ),
-                          ),
-                          icon:
-                              const Icon(
-                            Icons
-                                .account_balance_rounded,
-                          ),
-                          label:
-                              const Text(
-                            'Withdraw Commission',
-                            style:
-                                TextStyle(
-                              fontSize:
-                                  16,
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : RefreshIndicator(
+              onRefresh: loadEarnings,
+              child: ListView(
+                padding: const EdgeInsets.all(
+                  16,
                 ),
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.all(
+                      22,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: <Color>[
+                          Color(
+                            0xFF159447,
+                          ),
+                          Color(
+                            0xFF0F766E,
+                          ),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(
+                        20,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        const Text(
+                          'Total Rider Earnings',
+                          style: TextStyle(
+                            color: Colors.white70,
+                          ),
+                        ),
+                        const SizedBox(
+                          height: 8,
+                        ),
+                        Text(
+                          formatMoney(
+                            totalEarnings,
+                          ),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(
+                          height: 10,
+                        ),
+                        Text(
+                          '$completedDeliveries completed deliveries',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 16,
+                  ),
+                  earningsCard(
+                    title: 'Pending Settlement',
+                    value: formatMoney(
+                      pendingSettlement,
+                    ),
+                    icon: Icons.hourglass_top_rounded,
+                  ),
+                  const SizedBox(
+                    height: 12,
+                  ),
+                  earningsCard(
+                    title: 'Settled Earnings',
+                    value: formatMoney(
+                      settledEarnings,
+                    ),
+                    icon: Icons.check_circle_outline,
+                  ),
+                  const SizedBox(
+                    height: 12,
+                  ),
+                  earningsCard(
+                    title: 'Completed Deliveries',
+                    value: completedDeliveries.toString(),
+                    icon: Icons.local_shipping_outlined,
+                  ),
+                  const SizedBox(
+                    height: 18,
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        await Navigator.of(
+                          context,
+                        ).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const RiderWithdrawalScreen(),
+                          ),
+                        );
+
+                        if (!mounted) {
+                          return;
+                        }
+
+                        await loadEarnings();
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(
+                          0xFF159447,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            14,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.account_balance_rounded,
+                      ),
+                      label: const Text(
+                        'Withdraw Commission',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }
@@ -2009,14 +1592,11 @@ class RiderProfileScreen extends StatefulWidget {
   });
 
   @override
-  State<RiderProfileScreen> createState() =>
-      _RiderProfileScreenState();
+  State<RiderProfileScreen> createState() => _RiderProfileScreenState();
 }
 
-class _RiderProfileScreenState
-    extends State<RiderProfileScreen> {
-  String riderName =
-      'Delivery Rider';
+class _RiderProfileScreenState extends State<RiderProfileScreen> {
+  String riderName = 'Delivery Rider';
 
   String riderId = '';
   String phone = '';
@@ -2026,8 +1606,7 @@ class _RiderProfileScreenState
   String riderState = '';
   String riderLga = '';
 
-  String verificationStatus =
-      'PENDING';
+  String verificationStatus = 'PENDING';
 
   bool isLoading = true;
 
@@ -2045,8 +1624,7 @@ class _RiderProfileScreenState
     }
 
     try {
-      final Map<String, dynamic> rider =
-          await RiderApi.getProfile();
+      final Map<String, dynamic> rider = await RiderApi.getProfile();
 
       await RiderApi.saveProfile(
         rider,
@@ -2057,136 +1635,108 @@ class _RiderProfileScreenState
       }
 
       setState(() {
-        riderName =
-            RiderApi.text(
+        riderName = RiderApi.text(
           rider['fullName'],
-          fallback:
-              'Delivery Rider',
+          fallback: 'Delivery Rider',
         );
 
-        riderId =
-            RiderApi.text(
+        riderId = RiderApi.text(
           rider['riderId'],
         );
 
-        phone =
-            RiderApi.text(
+        phone = RiderApi.text(
           rider['phone'],
         );
 
-        email =
-            RiderApi.text(
+        email = RiderApi.text(
           rider['email'],
         );
 
-        vehicleType =
-            RiderApi.text(
+        vehicleType = RiderApi.text(
           rider['vehicleType'],
         ).replaceAll(
           '_',
           ' ',
         );
 
-        plateNumber =
-            RiderApi.text(
+        plateNumber = RiderApi.text(
           rider['plateNumber'],
         );
 
-        riderState =
-            RiderApi.text(
-          rider['state'] ??
-              rider['riderState'],
+        riderState = RiderApi.text(
+          rider['state'] ?? rider['riderState'],
         );
 
-        riderLga =
-            RiderApi.text(
-          rider['lga'] ??
-              rider['riderLga'],
+        riderLga = RiderApi.text(
+          rider['lga'] ?? rider['riderLga'],
         );
 
-        verificationStatus =
-            RiderApi.text(
-          rider['verificationStatus'] ??
-              rider[
-                  'riderVerificationStatus'],
-          fallback:
-              'PENDING',
+        verificationStatus = RiderApi.text(
+          rider['verificationStatus'] ?? rider['riderVerificationStatus'],
+          fallback: 'PENDING',
         ).toUpperCase();
 
-        isLoading =
-            false;
+        isLoading = false;
       });
     } catch (_) {
-      final SharedPreferences prefs =
-          await SharedPreferences
-              .getInstance();
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        riderName =
-            prefs.getString(
-                  'user_name',
-                ) ??
-                'Delivery Rider';
+        riderName = prefs.getString(
+              'user_name',
+            ) ??
+            'Delivery Rider';
 
-        riderId =
-            prefs.getString(
-                  'rider_id',
-                ) ??
-                '';
+        riderId = prefs.getString(
+              'rider_id',
+            ) ??
+            '';
 
-        phone =
-            prefs.getString(
-                  'user_phone',
-                ) ??
-                '';
+        phone = prefs.getString(
+              'user_phone',
+            ) ??
+            '';
 
-        email =
-            prefs.getString(
-                  'user_email',
-                ) ??
-                '';
+        email = prefs.getString(
+              'user_email',
+            ) ??
+            '';
 
-        vehicleType =
-            (prefs.getString(
-                      'rider_vehicle_type',
-                    ) ??
-                    '')
-                .replaceAll(
+        vehicleType = (prefs.getString(
+                  'rider_vehicle_type',
+                ) ??
+                '')
+            .replaceAll(
           '_',
           ' ',
         );
 
-        plateNumber =
-            prefs.getString(
-                  'rider_plate_number',
+        plateNumber = prefs.getString(
+              'rider_plate_number',
+            ) ??
+            '';
+
+        riderState = prefs.getString(
+              'rider_state',
+            ) ??
+            '';
+
+        riderLga = prefs.getString(
+              'rider_lga',
+            ) ??
+            '';
+
+        verificationStatus = (prefs.getString(
+                  'rider_verification_status',
                 ) ??
-                '';
+                'PENDING')
+            .toUpperCase();
 
-        riderState =
-            prefs.getString(
-                  'rider_state',
-                ) ??
-                '';
-
-        riderLga =
-            prefs.getString(
-                  'rider_lga',
-                ) ??
-                '';
-
-        verificationStatus =
-            (prefs.getString(
-                      'rider_verification_status',
-                    ) ??
-                    'PENDING')
-                .toUpperCase();
-
-        isLoading =
-            false;
+        isLoading = false;
       });
     }
   }
@@ -2194,9 +1744,7 @@ class _RiderProfileScreenState
   Future<void> logout(
     BuildContext context,
   ) async {
-    final SharedPreferences prefs =
-        await SharedPreferences
-            .getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     await prefs.clear();
 
@@ -2207,9 +1755,7 @@ class _RiderProfileScreenState
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute<void>(
-        builder:
-            (_) =>
-                const LoginScreen(),
+        builder: (_) => const LoginScreen(),
       ),
       (
         Route<dynamic> route,
@@ -2224,46 +1770,31 @@ class _RiderProfileScreenState
     required String value,
   }) {
     return ListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(
-        horizontal:
-            4,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 4,
       ),
-      leading:
-          CircleAvatar(
-        backgroundColor:
-            const Color(
+      leading: CircleAvatar(
+        backgroundColor: const Color(
           0xFFE8F5EC,
         ),
-        child:
-            Icon(
+        child: Icon(
           icon,
-          color:
-              const Color(
+          color: const Color(
             0xFF159447,
           ),
         ),
       ),
-      title:
-          Text(
+      title: Text(
         title,
-        style:
-            const TextStyle(
-          color:
-              Colors.black54,
-          fontSize:
-              12,
+        style: const TextStyle(
+          color: Colors.black54,
+          fontSize: 12,
         ),
       ),
-      subtitle:
-          Text(
-        value.trim().isEmpty
-            ? 'Not available'
-            : value,
-        style:
-            const TextStyle(
-          fontWeight:
-              FontWeight.w700,
+      subtitle: Text(
+        value.trim().isEmpty ? 'Not available' : value,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -2273,314 +1804,219 @@ class _RiderProfileScreenState
   Widget build(
     BuildContext context,
   ) {
-    final String initial =
-        riderName.trim().isEmpty
-            ? 'R'
-            : riderName
-                .trim()
-                .substring(
-                  0,
-                  1,
-                )
-                .toUpperCase();
+    final String initial = riderName.trim().isEmpty
+        ? 'R'
+        : riderName
+            .trim()
+            .substring(
+              0,
+              1,
+            )
+            .toUpperCase();
 
-    final String location =
-        <String>[
+    final String location = <String>[
       riderLga,
       riderState,
     ]
-            .where(
-              (
-                String item,
-              ) =>
-                  item.trim().isNotEmpty,
-            )
-            .join(
-              ', ',
-            );
+        .where(
+          (
+            String item,
+          ) =>
+              item.trim().isNotEmpty,
+        )
+        .join(
+          ', ',
+        );
 
     return Scaffold(
-      backgroundColor:
-          const Color(
+      backgroundColor: const Color(
         0xFFF5F7FA,
       ),
-      appBar:
-          AppBar(
-        automaticallyImplyLeading:
-            false,
-        backgroundColor:
-            Colors.white,
-        surfaceTintColor:
-            Colors.white,
-        title:
-            const Text(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: const Text(
           'Rider Profile',
-          style:
-              TextStyle(
-            fontWeight:
-                FontWeight.bold,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
           ),
         ),
-        actions:
-            <Widget>[
+        actions: <Widget>[
           IconButton(
-            tooltip:
-                'Refresh',
-            onPressed:
-                isLoading
-                    ? null
-                    : loadProfile,
-            icon:
-                const Icon(
-              Icons
-                  .refresh_rounded,
+            tooltip: 'Refresh',
+            onPressed: isLoading ? null : loadProfile,
+            icon: const Icon(
+              Icons.refresh_rounded,
             ),
           ),
         ],
       ),
-      body:
-          isLoading
-              ? const Center(
-                  child:
-                      CircularProgressIndicator(),
-                )
-              : RefreshIndicator(
-                  onRefresh:
-                      loadProfile,
-                  child:
-                      ListView(
-                    padding:
-                        const EdgeInsets.all(
-                      16,
-                    ),
-                    children:
-                        <Widget>[
-                      Container(
-                        padding:
-                            const EdgeInsets.all(
-                          20,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          color:
-                              Colors.white,
-                          borderRadius:
-                              BorderRadius.circular(
-                            18,
-                          ),
-                        ),
-                        child:
-                            Column(
-                          children:
-                              <Widget>[
-                            CircleAvatar(
-                              radius:
-                                  38,
-                              backgroundColor:
-                                  const Color(
-                                0xFFE6F4EA,
-                              ),
-                              child:
-                                  Text(
-                                initial,
-                                style:
-                                    const TextStyle(
-                                  fontSize:
-                                      28,
-                                  fontWeight:
-                                      FontWeight.bold,
-                                  color:
-                                      Color(
-                                    0xFF159447,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(
-                              height:
-                                  12,
-                            ),
-                            Text(
-                              riderName,
-                              textAlign:
-                                  TextAlign.center,
-                              style:
-                                  const TextStyle(
-                                fontSize:
-                                    20,
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            ),
-                            if (riderId.isNotEmpty) ...<Widget>[
-                              const SizedBox(
-                                height:
-                                    4,
-                              ),
-                              Text(
-                                'Rider ID: $riderId',
-                                style:
-                                    const TextStyle(
-                                  color:
-                                      Colors.black54,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(
-                              height:
-                                  10,
-                            ),
-                            Container(
-                              padding:
-                                  const EdgeInsets.symmetric(
-                                horizontal:
-                                    12,
-                                vertical:
-                                    6,
-                              ),
-                              decoration:
-                                  BoxDecoration(
-                                color:
-                                    verificationStatus ==
-                                            'VERIFIED'
-                                        ? Colors.green.withValues(
-                                            alpha:
-                                                0.12,
-                                          )
-                                        : Colors.orange.withValues(
-                                            alpha:
-                                                0.12,
-                                          ),
-                                borderRadius:
-                                    BorderRadius.circular(
-                                  20,
-                                ),
-                              ),
-                              child:
-                                  Text(
-                                verificationStatus,
-                                style:
-                                    TextStyle(
-                                  color:
-                                      verificationStatus ==
-                                              'VERIFIED'
-                                          ? Colors.green.shade800
-                                          : Colors.orange.shade800,
-                                  fontSize:
-                                      12,
-                                  fontWeight:
-                                      FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(
-                        height:
-                            16,
-                      ),
-                      Card(
-                        elevation:
-                            0,
-                        color:
-                            Colors.white,
-                        child:
-                            Padding(
-                          padding:
-                              const EdgeInsets.all(
-                            12,
-                          ),
-                          child:
-                              Column(
-                            children:
-                                <Widget>[
-                              buildInfoTile(
-                                icon:
-                                    Icons.phone_outlined,
-                                title:
-                                    'Phone number',
-                                value:
-                                    phone,
-                              ),
-                              buildInfoTile(
-                                icon:
-                                    Icons.email_outlined,
-                                title:
-                                    'Email address',
-                                value:
-                                    email,
-                              ),
-                              buildInfoTile(
-                                icon:
-                                    Icons.electric_rickshaw_outlined,
-                                title:
-                                    'Vehicle type',
-                                value:
-                                    vehicleType,
-                              ),
-                              buildInfoTile(
-                                icon:
-                                    Icons.confirmation_number_outlined,
-                                title:
-                                    'Plate number',
-                                value:
-                                    plateNumber,
-                              ),
-                              buildInfoTile(
-                                icon:
-                                    Icons.location_on_outlined,
-                                title:
-                                    'Location',
-                                value:
-                                    location,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(
-                        height:
-                            16,
-                      ),
-                      Card(
-                        elevation:
-                            0,
-                        color:
-                            Colors.white,
-                        child:
-                            ListTile(
-                          leading:
-                              const Icon(
-                            Icons.logout,
-                            color:
-                                Colors.red,
-                          ),
-                          title:
-                              const Text(
-                            'Log out',
-                            style:
-                                TextStyle(
-                              color:
-                                  Colors.red,
-                              fontWeight:
-                                  FontWeight.w700,
-                            ),
-                          ),
-                          onTap:
-                              () =>
-                                  logout(
-                            context,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(
-                        height:
-                            30,
-                      ),
-                    ],
-                  ),
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : RefreshIndicator(
+              onRefresh: loadProfile,
+              child: ListView(
+                padding: const EdgeInsets.all(
+                  16,
                 ),
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.all(
+                      20,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(
+                        18,
+                      ),
+                    ),
+                    child: Column(
+                      children: <Widget>[
+                        CircleAvatar(
+                          radius: 38,
+                          backgroundColor: const Color(
+                            0xFFE6F4EA,
+                          ),
+                          child: Text(
+                            initial,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Color(
+                                0xFF159447,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(
+                          height: 12,
+                        ),
+                        Text(
+                          riderName,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (riderId.isNotEmpty) ...<Widget>[
+                          const SizedBox(
+                            height: 4,
+                          ),
+                          Text(
+                            'Rider ID: $riderId',
+                            style: const TextStyle(
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(
+                          height: 10,
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: verificationStatus == 'VERIFIED'
+                                ? Colors.green.withValues(
+                                    alpha: 0.12,
+                                  )
+                                : Colors.orange.withValues(
+                                    alpha: 0.12,
+                                  ),
+                            borderRadius: BorderRadius.circular(
+                              20,
+                            ),
+                          ),
+                          child: Text(
+                            verificationStatus,
+                            style: TextStyle(
+                              color: verificationStatus == 'VERIFIED'
+                                  ? Colors.green.shade800
+                                  : Colors.orange.shade800,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 16,
+                  ),
+                  Card(
+                    elevation: 0,
+                    color: Colors.white,
+                    child: Padding(
+                      padding: const EdgeInsets.all(
+                        12,
+                      ),
+                      child: Column(
+                        children: <Widget>[
+                          buildInfoTile(
+                            icon: Icons.phone_outlined,
+                            title: 'Phone number',
+                            value: phone,
+                          ),
+                          buildInfoTile(
+                            icon: Icons.email_outlined,
+                            title: 'Email address',
+                            value: email,
+                          ),
+                          buildInfoTile(
+                            icon: Icons.electric_rickshaw_outlined,
+                            title: 'Vehicle type',
+                            value: vehicleType,
+                          ),
+                          buildInfoTile(
+                            icon: Icons.confirmation_number_outlined,
+                            title: 'Plate number',
+                            value: plateNumber,
+                          ),
+                          buildInfoTile(
+                            icon: Icons.location_on_outlined,
+                            title: 'Location',
+                            value: location,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 16,
+                  ),
+                  Card(
+                    elevation: 0,
+                    color: Colors.white,
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.logout,
+                        color: Colors.red,
+                      ),
+                      title: const Text(
+                        'Log out',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      onTap: () => logout(
+                        context,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 30,
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }
@@ -2603,76 +2039,52 @@ class RiderEmptyScreen extends StatelessWidget {
   Widget build(
     BuildContext context,
   ) {
-    final Widget content =
-        Center(
-      child:
-          Padding(
-        padding:
-            const EdgeInsets.all(
+    final Widget content = Center(
+      child: Padding(
+        padding: const EdgeInsets.all(
           24,
         ),
-        child:
-            Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
-          children:
-              <Widget>[
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
             Container(
-              width:
-                  90,
-              height:
-                  90,
-              decoration:
-                  BoxDecoration(
-                color:
-                    const Color(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                color: const Color(
                   0xFF159447,
                 ).withValues(
-                  alpha:
-                      0.10,
+                  alpha: 0.10,
                 ),
-                shape:
-                    BoxShape.circle,
+                shape: BoxShape.circle,
               ),
-              child:
-                  Icon(
+              child: Icon(
                 icon,
-                size:
-                    46,
-                color:
-                    const Color(
+                size: 46,
+                color: const Color(
                   0xFF159447,
                 ),
               ),
             ),
             const SizedBox(
-              height:
-                  18,
+              height: 18,
             ),
             Text(
               title,
-              style:
-                  const TextStyle(
-                fontSize:
-                    22,
-                fontWeight:
-                    FontWeight.bold,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(
-              height:
-                  8,
+              height: 8,
             ),
             Text(
               message,
-              textAlign:
-                  TextAlign.center,
-              style:
-                  const TextStyle(
-                color:
-                    Colors.black54,
-                height:
-                    1.5,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.black54,
+                height: 1.5,
               ),
             ),
           ],
@@ -2682,38 +2094,27 @@ class RiderEmptyScreen extends StatelessWidget {
 
     if (!showAppBar) {
       return SizedBox(
-        height:
-            360,
-        child:
-            content,
+        height: 360,
+        child: content,
       );
     }
 
     return Scaffold(
-      backgroundColor:
-          const Color(
+      backgroundColor: const Color(
         0xFFF5F7FA,
       ),
-      appBar:
-          AppBar(
-        automaticallyImplyLeading:
-            false,
-        backgroundColor:
-            Colors.white,
-        surfaceTintColor:
-            Colors.white,
-        title:
-            Text(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: Text(
           title,
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.bold,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
-      body:
-          content,
+      body: content,
     );
   }
 }
@@ -2732,36 +2133,24 @@ class _RiderStatusBadge extends StatelessWidget {
     BuildContext context,
   ) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal:
-            9,
-        vertical:
-            5,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 9,
+        vertical: 5,
       ),
-      decoration:
-          BoxDecoration(
-        color:
-            color.withValues(
-          alpha:
-              0.12,
+      decoration: BoxDecoration(
+        color: color.withValues(
+          alpha: 0.12,
         ),
-        borderRadius:
-            BorderRadius.circular(
+        borderRadius: BorderRadius.circular(
           20,
         ),
       ),
-      child:
-          Text(
+      child: Text(
         text,
-        style:
-            TextStyle(
-          color:
-              color,
-          fontSize:
-              10,
-          fontWeight:
-              FontWeight.w800,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -2784,51 +2173,35 @@ class _DeliveryAddressLine extends StatelessWidget {
     BuildContext context,
   ) {
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children:
-          <Widget>[
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
         Icon(
           icon,
-          size:
-              18,
-          color:
-              const Color(
+          size: 18,
+          color: const Color(
             0xFF159447,
           ),
         ),
         const SizedBox(
-          width:
-              8,
+          width: 8,
         ),
         Expanded(
-          child:
-              RichText(
-            text:
-                TextSpan(
-              style:
-                  const TextStyle(
-                color:
-                    Colors.black87,
-                fontSize:
-                    13,
-                height:
-                    1.4,
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 13,
+                height: 1.4,
               ),
-              children:
-                  <InlineSpan>[
+              children: <InlineSpan>[
                 TextSpan(
-                  text:
-                      '$label: ',
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
+                  text: '$label: ',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 TextSpan(
-                  text:
-                      value,
+                  text: value,
                 ),
               ],
             ),
