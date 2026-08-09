@@ -95,7 +95,7 @@ exports.createDelivery = async (req, res) => {
       packageDescription:
         packageDescription?.trim() || "",
       packageWeight: parsedWeight,
-      deliveryFee: 0,
+      deliveryFee: 1500,
       paymentStatus: "UNPAID",
       status: "PENDING",
     });
@@ -708,9 +708,7 @@ exports.setDeliveryFee = async (
   res
 ) => {
   try {
-    const deliveryFee = Number(
-      req.body.deliveryFee
-    );
+    const deliveryFee = 1500;
 
     if (
       Number.isNaN(deliveryFee) ||

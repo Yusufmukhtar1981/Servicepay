@@ -186,7 +186,7 @@ const deliveryCoverageSchema =
        */
       isLive: {
         type: Boolean,
-        default: false,
+        default: true,
         index: true,
       },
 

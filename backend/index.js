@@ -567,3 +567,12 @@ app.listen(
     );
   }
 );
+
+/*
+ * =========================================================
+ * SERVICEPAY DELIVERY LAUNCH MIGRATION
+ * Activates all existing states LIVE once after MongoDB
+ * connects. A database marker prevents it from running twice.
+ * =========================================================
+ */
+require("./scripts/activateAllDeliveryStatesOnce")();

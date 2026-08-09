@@ -103,7 +103,7 @@ const deliverySchema =
        */
       deliveryFee: {
         type: Number,
-        default: 0,
+        default: 1500,
         min: 0,
       },
 
@@ -397,9 +397,7 @@ deliverySchema.methods.calculateCommission =
       riderCommissionAmount =
         commissionValue;
     } else {
-      riderCommissionAmount =
-        deliveryFee *
-        (commissionValue / 100);
+      riderCommissionAmount = deliveryFee * 0.40;
     }
 
     /*
