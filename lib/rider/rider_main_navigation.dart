@@ -1078,19 +1078,21 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
         );
       }
 
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          card,
-          actionArea,
-        ],
-      );
-    }
+      
+final Widget visibleCard = isNewJob
+    ? ScaleTransition(
+        scale: pulseAnimation,
+        child: card,
+      )
+    : card;
 
-    return ScaleTransition(
-      scale: pulseAnimation,
-      child: card,
-    );
+return Column(
+  mainAxisSize: MainAxisSize.min,
+  children: <Widget>[
+    visibleCard,
+    actionArea,
+  ],
+);
   }
 
   @override
