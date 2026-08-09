@@ -1097,12 +1097,26 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
       );
     }
 
+    final Widget tappableCard = InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => RiderDeliveryDetailsPage(
+              delivery: delivery,
+            ),
+          ),
+        );
+      },
+      child: card,
+    );
+
     final Widget visibleCard = isAssigned
         ? ScaleTransition(
             scale: pulseAnimation,
-            child: card,
+            child: tappableCard,
           )
-        : card;
+        : tappableCard;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2037,6 +2051,258 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
             ),
     );
   }
+}
+
+class RiderDeliveryDetailsPage extends StatelessWidget {
+  const RiderDeliveryDetailsPage({
+    required this.delivery,
+    super.key,
+  });
+
+  final Map<String, dynamic> delivery;
+
+  String textValue(
+    dynamic value, {
+    String fallback = '-',
+  }) {
+    final String valueText = (value ?? '').toString().trim();
+    return valueText.isEmpty ? fallback : valueText;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String trackingNumber =
+        textValue(delivery['trackingNumber'], fallback: 'Delivery Details');
+
+    final String status =
+        textValue(delivery['status'], fallback: 'ASSIGNED').toUpperCase();
+
+    final String customer = textValue(
+      delivery['customerName'] ??
+          delivery['customer']?['fullName'] ??
+          delivery['customer']?['name'],
+    );
+
+    final String phone = textValue(
+      delivery['customerPhone'] ?? delivery['customer']?['phone'],
+    );
+
+    final String pickup = textValue(delivery['pickupAddress']);
+
+    final String destination = textValue(delivery['deliveryAddress']);
+
+    final String package = textValue(
+      delivery['packageName'] ??
+          delivery['packageType'] ??
+          delivery['itemDescription'] ??
+          delivery['description'],
+    );
+
+    final String note = textValue(
+      delivery['note'] ?? delivery['notes'] ?? delivery['deliveryNote'],
+    );
+
+    final String fee = textValue(delivery['deliveryFee'], fallback: '1500');
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        title: const Text(
+          'Delivery Details',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: <Widget>[
+          Card(
+            elevation: 0,
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    trackingNumber,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF7F0),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      status.replaceAll('_', ' '),
+                      style: const TextStyle(
+                        color: Color(0xFF08783E),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _RiderDetailCard(
+            title: 'Customer',
+            rows: <_RiderDetailRow>[
+              _RiderDetailRow(
+                icon: Icons.person_outline,
+                label: 'Name',
+                value: customer,
+              ),
+              _RiderDetailRow(
+                icon: Icons.phone_outlined,
+                label: 'Phone',
+                value: phone,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _RiderDetailCard(
+            title: 'Route',
+            rows: <_RiderDetailRow>[
+              _RiderDetailRow(
+                icon: Icons.location_on_outlined,
+                label: 'Pickup',
+                value: pickup,
+              ),
+              _RiderDetailRow(
+                icon: Icons.flag_outlined,
+                label: 'Destination',
+                value: destination,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _RiderDetailCard(
+            title: 'Order',
+            rows: <_RiderDetailRow>[
+              _RiderDetailRow(
+                icon: Icons.inventory_2_outlined,
+                label: 'Package',
+                value: package,
+              ),
+              _RiderDetailRow(
+                icon: Icons.notes_outlined,
+                label: 'Note',
+                value: note,
+              ),
+              _RiderDetailRow(
+                icon: Icons.payments_outlined,
+                label: 'Delivery Fee',
+                value: '₦$fee',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RiderDetailCard extends StatelessWidget {
+  const _RiderDetailCard({
+    required this.title,
+    required this.rows,
+  });
+
+  final String title;
+  final List<_RiderDetailRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 14),
+            ...rows.map(
+              (row) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Icon(
+                      row.icon,
+                      size: 22,
+                      color: const Color(0xFF08783E),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            row.label,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            row.value,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RiderDetailRow {
+  const _RiderDetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
 }
 
 class RiderEmptyScreen extends StatelessWidget {
