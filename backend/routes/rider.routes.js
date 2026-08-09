@@ -193,4 +193,29 @@ router.get(
   riderDeliveryController.getRiderDeliveryDetails
 );
 
+
+/*
+ * =========================================================
+ * RIDER DELIVERY ACTIONS
+ * =========================================================
+ */
+
+router.patch(
+  "/deliveries/:id/accept",
+  protect,
+  riderDeliveryController.acceptRiderDelivery
+);
+
+router.patch(
+  "/deliveries/:id/reject",
+  protect,
+  riderDeliveryController.rejectRiderDelivery
+);
+
+router.patch(
+  "/deliveries/:id/status",
+  protect,
+  riderDeliveryController.updateRiderDeliveryStatus
+);
+
 module.exports = router;
