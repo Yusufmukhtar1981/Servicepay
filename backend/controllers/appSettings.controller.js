@@ -556,6 +556,18 @@ exports.updateAdminSettings = async (
     |--------------------------------------------------------------------------
     */
 
+    settings.services.kekeNapep =
+      toBoolean(
+        services.kekeNapep,
+        settings.services.kekeNapep
+      );
+
+    settings.services.amana =
+      toBoolean(
+        services.amana,
+        settings.services.amana
+      );
+
     settings.services.airtime =
       toBoolean(
         services.airtime,

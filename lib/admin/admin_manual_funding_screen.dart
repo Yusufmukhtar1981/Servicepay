@@ -12,10 +12,8 @@ class AdminManualFundingScreen extends StatefulWidget {
       _AdminManualFundingScreenState();
 }
 
-class _AdminManualFundingScreenState
-    extends State<AdminManualFundingScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+class _AdminManualFundingScreenState extends State<AdminManualFundingScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -40,8 +38,7 @@ class _AdminManualFundingScreenState
   }
 
   Future<String?> _getToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     return prefs.getString('auth_token');
   }
@@ -64,12 +61,9 @@ class _AdminManualFundingScreenState
   }) {
     if (data is Map) {
       final dynamic message =
-          data['message'] ??
-          data['error'] ??
-          data['detail'];
+          data['message'] ?? data['error'] ?? data['detail'];
 
-      if (message != null &&
-          message.toString().trim().isNotEmpty) {
+      if (message != null && message.toString().trim().isNotEmpty) {
         return message.toString();
       }
     }
@@ -120,28 +114,21 @@ class _AdminManualFundingScreenState
         const Duration(seconds: 30),
       );
 
-      final dynamic decoded =
-          _decodeResponse(response.body);
+      final dynamic decoded = _decodeResponse(response.body);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300) {
-        final dynamic requests =
-            decoded is Map
-                ? decoded['requests']
-                : null;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final dynamic requests = decoded is Map ? decoded['requests'] : null;
 
         if (!mounted) return;
 
         setState(() {
-          allRequests =
-              requests is List ? requests : [];
+          allRequests = requests is List ? requests : [];
         });
       } else {
         _showMessage(
           _extractMessage(
             decoded,
-            fallback:
-                'Unable to load manual funding requests.',
+            fallback: 'Unable to load manual funding requests.',
           ),
           isError: true,
         );
@@ -164,8 +151,7 @@ class _AdminManualFundingScreenState
   Future<void> _approveRequest(
     dynamic request,
   ) async {
-    final String requestId =
-        _requestId(request);
+    final String requestId = _requestId(request);
 
     if (requestId.isEmpty) {
       _showMessage(
@@ -175,8 +161,7 @@ class _AdminManualFundingScreenState
       return;
     }
 
-    final String? adminNote =
-        await _showReviewDialog(
+    final String? adminNote = await _showReviewDialog(
       title: 'Approve Funding',
       message:
           'Confirm that the payment has entered the company bank account before approving.',
@@ -198,8 +183,7 @@ class _AdminManualFundingScreenState
   Future<void> _rejectRequest(
     dynamic request,
   ) async {
-    final String requestId =
-        _requestId(request);
+    final String requestId = _requestId(request);
 
     if (requestId.isEmpty) {
       _showMessage(
@@ -209,11 +193,9 @@ class _AdminManualFundingScreenState
       return;
     }
 
-    final String? adminNote =
-        await _showReviewDialog(
+    final String? adminNote = await _showReviewDialog(
       title: 'Reject Funding',
-      message:
-          'Enter the reason for rejecting this funding request.',
+      message: 'Enter the reason for rejecting this funding request.',
       buttonText: 'Reject Request',
       approve: false,
     );
@@ -260,29 +242,28 @@ class _AdminManualFundingScreenState
         return;
       }
 
-      final http.Response response =
-          await http.patch(
-        Uri.parse(
-          '$baseUrl/manual-funding/admin/requests/'
-          '$requestId/$action',
-        ),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'adminNote': adminNote.trim(),
-        }),
-      ).timeout(
-        const Duration(seconds: 30),
-      );
+      final http.Response response = await http
+          .patch(
+            Uri.parse(
+              '$baseUrl/manual-funding/admin/requests/'
+              '$requestId/$action',
+            ),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'adminNote': adminNote.trim(),
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 30),
+          );
 
-      final dynamic decoded =
-          _decodeResponse(response.body);
+      final dynamic decoded = _decodeResponse(response.body);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         _showMessage(
           action == 'approve'
               ? 'Funding request approved. Customer wallet has been credited.'
@@ -319,17 +300,415 @@ class _AdminManualFundingScreenState
     }
   }
 
+  Future<void> _showServiceControlDialog() async {
+    final String? token = await _getToken();
+
+    if (token == null || token.trim().isEmpty) {
+      _showMessage(
+        'Admin login token is unavailable.',
+        isError: true,
+      );
+      return;
+    }
+
+    try {
+      final http.Response response = await http.get(
+        Uri.parse(
+          '$baseUrl/app-settings/admin',
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final dynamic decoded = _decodeResponse(
+        response.body,
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        _showMessage(
+          _extractMessage(
+            decoded,
+            fallback: 'Unable to load service settings.',
+          ),
+          isError: true,
+        );
+        return;
+      }
+
+      dynamic settings = decoded is Map ? decoded['settings'] : null;
+
+      settings ??= decoded is Map && decoded['data'] is Map
+          ? decoded['data']['settings']
+          : null;
+
+      final Map<dynamic, dynamic> rawServices =
+          settings is Map && settings['services'] is Map
+              ? settings['services'] as Map
+              : <dynamic, dynamic>{};
+
+      final Map<String, String> labels = <String, String>{
+        'kekeNapep': 'Keke Napep',
+        'amana': 'ServicePay Amana',
+        'airtime': 'Airtime',
+        'data': 'Data',
+        'electricity': 'Electricity',
+        'cableTv': 'Cable TV',
+        'examPin': 'Exam PIN',
+        'ninVerification': 'NIN Verification',
+        'delivery': 'Delivery',
+        'walletFunding': 'Wallet Funding',
+        'servicepayTransfer': 'ServicePay Transfer',
+        'bankTransfer': 'Bank Transfer',
+        'flightBooking': 'Flight Booking',
+        'notifications': 'Notifications',
+      };
+
+      final Map<String, bool> values = <String, bool>{
+        for (final String key in labels.keys) key: rawServices[key] != false,
+      };
+
+      if (!mounted) return;
+
+      final Map<String, bool>? result = await showDialog<Map<String, bool>>(
+        context: context,
+        builder: (
+          BuildContext dialogContext,
+        ) {
+          return StatefulBuilder(
+            builder: (
+              BuildContext context,
+              void Function(
+                void Function(),
+              ) setLocalState,
+            ) {
+              return AlertDialog(
+                title: const Text(
+                  'Service Control',
+                ),
+                content: SizedBox(
+                  width: 500,
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: labels.entries.map(
+                      (entry) {
+                        return SwitchListTile(
+                          title: Text(
+                            entry.value,
+                          ),
+                          subtitle: Text(
+                            values[entry.key] == true
+                                ? 'Customers can see this service'
+                                : 'Hidden from customer dashboard',
+                          ),
+                          value: values[entry.key] == true,
+                          onChanged: (bool value) {
+                            setLocalState(
+                              () {
+                                values[entry.key] = value;
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ).toList(),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(
+                      dialogContext,
+                    ),
+                    child: const Text(
+                      'Cancel',
+                    ),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(
+                      dialogContext,
+                      Map<String, bool>.from(
+                        values,
+                      ),
+                    ),
+                    child: const Text(
+                      'Save',
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (result == null) {
+        return;
+      }
+
+      final http.Response saveResponse = await http.put(
+        Uri.parse(
+          '$baseUrl/app-settings/admin',
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'reason': 'Head Office service visibility update',
+          'services': result,
+        }),
+      );
+
+      final dynamic saveDecoded = _decodeResponse(
+        saveResponse.body,
+      );
+
+      if (saveResponse.statusCode >= 200 && saveResponse.statusCode < 300) {
+        _showMessage(
+          'Service availability updated successfully.',
+          isError: false,
+        );
+      } else {
+        _showMessage(
+          _extractMessage(
+            saveDecoded,
+            fallback: 'Unable to update service availability.',
+          ),
+          isError: true,
+        );
+      }
+    } catch (_) {
+      _showMessage(
+        'Unable to update service settings.',
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _showWalletAdjustmentDialog() async {
+    final TextEditingController customerController = TextEditingController();
+
+    final TextEditingController amountController = TextEditingController();
+
+    final TextEditingController reasonController = TextEditingController();
+
+    String action = 'CREDIT';
+
+    final Map<String, String>? result = await showDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (
+        BuildContext dialogContext,
+      ) {
+        return StatefulBuilder(
+          builder: (
+            BuildContext context,
+            void Function(
+              void Function(),
+            ) setLocalState,
+          ) {
+            return AlertDialog(
+              title: const Text(
+                'Adjust Customer Wallet',
+              ),
+              content: SizedBox(
+                width: 460,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: customerController,
+                      decoration: const InputDecoration(
+                        labelText: 'Customer phone, email or ID',
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 14,
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue: action,
+                      decoration: const InputDecoration(
+                        labelText: 'Action',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'CREDIT',
+                          child: Text(
+                            'Credit Wallet',
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'DEBIT',
+                          child: Text(
+                            'Debit Wallet',
+                          ),
+                        ),
+                      ],
+                      onChanged: (String? value) {
+                        if (value == null) {
+                          return;
+                        }
+
+                        setLocalState(
+                          () {
+                            action = value;
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(
+                      height: 14,
+                    ),
+                    TextField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Amount',
+                        prefixText: '₦ ',
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 14,
+                    ),
+                    TextField(
+                      controller: reasonController,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Reason',
+                        hintText: 'Example: Correction of customer wallet',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                  ),
+                  child: const Text(
+                    'Cancel',
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(
+                      dialogContext,
+                      {
+                        'identifier': customerController.text.trim(),
+                        'amount': amountController.text.trim(),
+                        'reason': reasonController.text.trim(),
+                        'action': action,
+                      },
+                    );
+                  },
+                  child: Text(
+                    action == 'CREDIT' ? 'Credit' : 'Debit',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    customerController.dispose();
+    amountController.dispose();
+    reasonController.dispose();
+
+    if (result == null) {
+      return;
+    }
+
+    final double? amount = double.tryParse(
+      result['amount'] ?? '',
+    );
+
+    if ((result['identifier'] ?? '').isEmpty ||
+        amount == null ||
+        amount <= 0 ||
+        (result['reason'] ?? '').length < 5) {
+      _showMessage(
+        'Enter customer, valid amount and a clear reason.',
+        isError: true,
+      );
+      return;
+    }
+
+    final String? token = await _getToken();
+
+    if (token == null || token.trim().isEmpty) {
+      _showMessage(
+        'Admin login token is unavailable.',
+        isError: true,
+      );
+      return;
+    }
+
+    try {
+      final http.Response response = await http.post(
+        Uri.parse(
+          '$baseUrl/admin/wallet-adjustment',
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'identifier': result['identifier'],
+          'action': result['action'],
+          'amount': amount,
+          'reason': result['reason'],
+        }),
+      );
+
+      final dynamic decoded = _decodeResponse(
+        response.body,
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final dynamic customer = decoded is Map ? decoded['customer'] : null;
+
+        final dynamic balance =
+            customer is Map ? customer['walletBalance'] : null;
+
+        _showMessage(
+          '${_extractMessage(decoded, fallback: 'Wallet adjusted successfully.')}'
+          '${balance != null ? ' New balance: ₦$balance' : ''}',
+          isError: false,
+        );
+      } else {
+        _showMessage(
+          _extractMessage(
+            decoded,
+            fallback: 'Unable to adjust customer wallet.',
+          ),
+          isError: true,
+        );
+      }
+    } catch (_) {
+      _showMessage(
+        'Unable to adjust customer wallet.',
+        isError: true,
+      );
+    }
+  }
+
   Future<String?> _showReviewDialog({
     required String title,
     required String message,
     required String buttonText,
     required bool approve,
   }) async {
-    final TextEditingController controller =
-        TextEditingController();
+    final TextEditingController controller = TextEditingController();
 
-    final String? result =
-        await showDialog<String>(
+    final String? result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (
@@ -337,8 +716,7 @@ class _AdminManualFundingScreenState
       ) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(22),
           ),
           title: Text(
             title,
@@ -348,8 +726,7 @@ class _AdminManualFundingScreenState
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 message,
@@ -363,15 +740,13 @@ class _AdminManualFundingScreenState
                 controller: controller,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: approve
-                      ? 'Admin note (optional)'
-                      : 'Rejection reason',
+                  labelText:
+                      approve ? 'Admin note (optional)' : 'Rejection reason',
                   hintText: approve
                       ? 'Example: Payment confirmed'
                       : 'Explain why this request was rejected',
                   border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
               ),
@@ -394,9 +769,8 @@ class _AdminManualFundingScreenState
                 );
               },
               style: FilledButton.styleFrom(
-                backgroundColor: approve
-                    ? const Color(0xFF059669)
-                    : const Color(0xFFDC2626),
+                backgroundColor:
+                    approve ? const Color(0xFF059669) : const Color(0xFFDC2626),
               ),
               child: Text(buttonText),
             ),
@@ -415,18 +789,13 @@ class _AdminManualFundingScreenState
       return '';
     }
 
-    return (
-      request['_id'] ??
-      request['id'] ??
-      ''
-    ).toString();
+    return (request['_id'] ?? request['id'] ?? '').toString();
   }
 
   Map<dynamic, dynamic> _customer(
     dynamic request,
   ) {
-    if (request is Map &&
-        request['user'] is Map) {
+    if (request is Map && request['user'] is Map) {
       return request['user'] as Map;
     }
 
@@ -434,34 +803,22 @@ class _AdminManualFundingScreenState
   }
 
   String _customerName(dynamic request) {
-    final Map<dynamic, dynamic> user =
-        _customer(request);
+    final Map<dynamic, dynamic> user = _customer(request);
 
-    return (
-      user['fullName'] ??
-      user['name'] ??
-      'Servicepay Customer'
-    ).toString();
+    return (user['fullName'] ?? user['name'] ?? 'Servicepay Customer')
+        .toString();
   }
 
   String _customerPhone(dynamic request) {
-    final Map<dynamic, dynamic> user =
-        _customer(request);
+    final Map<dynamic, dynamic> user = _customer(request);
 
-    return (
-      user['phone'] ??
-      ''
-    ).toString();
+    return (user['phone'] ?? '').toString();
   }
 
   String _customerEmail(dynamic request) {
-    final Map<dynamic, dynamic> user =
-        _customer(request);
+    final Map<dynamic, dynamic> user = _customer(request);
 
-    return (
-      user['email'] ??
-      ''
-    ).toString();
+    return (user['email'] ?? '').toString();
   }
 
   String _field(
@@ -472,10 +829,7 @@ class _AdminManualFundingScreenState
       return '';
     }
 
-    return (
-      request[key] ??
-      ''
-    ).toString();
+    return (request[key] ?? '').toString();
   }
 
   double _amount(dynamic request) {
@@ -496,30 +850,21 @@ class _AdminManualFundingScreenState
   }
 
   String _formatMoney(double amount) {
-    final String fixed =
-        amount.toStringAsFixed(2);
+    final String fixed = amount.toStringAsFixed(2);
 
-    final List<String> parts =
-        fixed.split('.');
+    final List<String> parts = fixed.split('.');
 
     final String whole = parts.first;
     final String decimal = parts.last;
 
-    final StringBuffer output =
-        StringBuffer();
+    final StringBuffer output = StringBuffer();
 
-    for (
-      int index = 0;
-      index < whole.length;
-      index++
-    ) {
+    for (int index = 0; index < whole.length; index++) {
       output.write(whole[index]);
 
-      final int remaining =
-          whole.length - index - 1;
+      final int remaining = whole.length - index - 1;
 
-      if (remaining > 0 &&
-          remaining % 3 == 0) {
+      if (remaining > 0 && remaining % 3 == 0) {
         output.write(',');
       }
     }
@@ -533,30 +878,17 @@ class _AdminManualFundingScreenState
     }
 
     try {
-      final DateTime date =
-          DateTime.parse(
-            value.toString(),
-          ).toLocal();
+      final DateTime date = DateTime.parse(
+        value.toString(),
+      ).toLocal();
 
-      final String day =
-          date.day
-              .toString()
-              .padLeft(2, '0');
+      final String day = date.day.toString().padLeft(2, '0');
 
-      final String month =
-          date.month
-              .toString()
-              .padLeft(2, '0');
+      final String month = date.month.toString().padLeft(2, '0');
 
-      final String hour =
-          date.hour
-              .toString()
-              .padLeft(2, '0');
+      final String hour = date.hour.toString().padLeft(2, '0');
 
-      final String minute =
-          date.minute
-              .toString()
-              .padLeft(2, '0');
+      final String minute = date.minute.toString().padLeft(2, '0');
 
       return '$day/$month/${date.year}, '
           '$hour:$minute';
@@ -602,11 +934,9 @@ class _AdminManualFundingScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: isError
-              ? const Color(0xFFDC2626)
-              : const Color(0xFF059669),
-          behavior:
-              SnackBarBehavior.floating,
+          backgroundColor:
+              isError ? const Color(0xFFDC2626) : const Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
         ),
       );
   }
@@ -614,13 +944,10 @@ class _AdminManualFundingScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor:
-            const Color(0xFFF5F7FA),
-        surfaceTintColor:
-            Colors.transparent,
+        backgroundColor: const Color(0xFFF5F7FA),
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         title: const Text(
           'Manual Funding',
@@ -631,6 +958,20 @@ class _AdminManualFundingScreenState
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Service Control',
+            onPressed: _showServiceControlDialog,
+            icon: const Icon(
+              Icons.tune_rounded,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Credit / Debit Customer',
+            onPressed: _showWalletAdjustmentDialog,
+            icon: const Icon(
+              Icons.account_balance_wallet_rounded,
+            ),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: isRefreshing
@@ -644,11 +985,9 @@ class _AdminManualFundingScreenState
                 ? const SizedBox(
                     width: 21,
                     height: 21,
-                    child:
-                        CircularProgressIndicator(
+                    child: CircularProgressIndicator(
                       strokeWidth: 2.3,
-                      color:
-                          Color(0xFF0F766E),
+                      color: Color(0xFF0F766E),
                     ),
                   )
                 : const Icon(
@@ -664,17 +1003,13 @@ class _AdminManualFundingScreenState
           Expanded(
             child: isLoading
                 ? const Center(
-                    child:
-                        CircularProgressIndicator(
-                      color:
-                          Color(0xFF0F766E),
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF0F766E),
                     ),
                   )
                 : RefreshIndicator(
-                    color:
-                        const Color(0xFF0F766E),
-                    onRefresh: () =>
-                        _loadRequests(
+                    color: const Color(0xFF0F766E),
+                    onRefresh: () => _loadRequests(
                       refresh: true,
                     ),
                     child: _buildBody(),
@@ -695,25 +1030,21 @@ class _AdminManualFundingScreenState
         ),
         scrollDirection: Axis.horizontal,
         itemCount: statuses.length,
-        separatorBuilder: (_, __) =>
-            const SizedBox(width: 8),
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (
           BuildContext context,
           int index,
         ) {
-          final String status =
-              statuses[index];
+          final String status = statuses[index];
 
-          final bool selected =
-              status == selectedStatus;
+          final bool selected = status == selectedStatus;
 
           return ChoiceChip(
             label: Text(status),
             selected: selected,
             showCheckmark: false,
             onSelected: (_) {
-              if (status ==
-                  selectedStatus) {
+              if (status == selectedStatus) {
                 return;
               }
 
@@ -723,18 +1054,14 @@ class _AdminManualFundingScreenState
 
               _loadRequests();
             },
-            selectedColor:
-                const Color(0xFF0F766E),
+            selectedColor: const Color(0xFF0F766E),
             backgroundColor: Colors.white,
             side: BorderSide(
-              color: selected
-                  ? const Color(0xFF0F766E)
-                  : const Color(0xFFE2E8F0),
+              color:
+                  selected ? const Color(0xFF0F766E) : const Color(0xFFE2E8F0),
             ),
             labelStyle: TextStyle(
-              color: selected
-                  ? Colors.white
-                  : const Color(0xFF475569),
+              color: selected ? Colors.white : const Color(0xFF475569),
               fontWeight: FontWeight.w700,
               fontSize: 12,
             ),
@@ -747,54 +1074,44 @@ class _AdminManualFundingScreenState
   Widget _buildBody() {
     if (allRequests.isEmpty) {
       return ListView(
-        physics:
-            const AlwaysScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(24),
         children: [
           const SizedBox(height: 80),
           Container(
-            padding:
-                const EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
               horizontal: 24,
               vertical: 38,
             ),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color:
-                    const Color(0xFFE8EDF3),
+                color: const Color(0xFFE8EDF3),
               ),
             ),
             child: const Column(
               children: [
                 Icon(
-                  Icons
-                      .account_balance_wallet_outlined,
-                  color:
-                      Color(0xFF94A3B8),
+                  Icons.account_balance_wallet_outlined,
+                  color: Color(0xFF94A3B8),
                   size: 48,
                 ),
                 SizedBox(height: 15),
                 Text(
                   'No funding requests',
                   style: TextStyle(
-                    color:
-                        Color(0xFF0F172A),
+                    color: Color(0xFF0F172A),
                     fontSize: 17,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 SizedBox(height: 6),
                 Text(
                   'Customer manual funding requests will appear here.',
-                  textAlign:
-                      TextAlign.center,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    color:
-                        Color(0xFF64748B),
+                    color: Color(0xFF64748B),
                     height: 1.5,
                   ),
                 ),
@@ -810,14 +1127,10 @@ class _AdminManualFundingScreenState
         BuildContext context,
         BoxConstraints constraints,
       ) {
-        final double horizontalPadding =
-            constraints.maxWidth >= 800
-                ? 30
-                : 16;
+        final double horizontalPadding = constraints.maxWidth >= 800 ? 30 : 16;
 
         return ListView.separated(
-          physics:
-              const AlwaysScrollableScrollPhysics(),
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.fromLTRB(
             horizontalPadding,
             8,
@@ -825,8 +1138,7 @@ class _AdminManualFundingScreenState
             30,
           ),
           itemCount: allRequests.length,
-          separatorBuilder: (_, __) =>
-              const SizedBox(height: 14),
+          separatorBuilder: (_, __) => const SizedBox(height: 14),
           itemBuilder: (
             BuildContext context,
             int index,
@@ -843,37 +1155,26 @@ class _AdminManualFundingScreenState
   Widget _buildRequestCard(
     dynamic request,
   ) {
-    final String requestId =
-        _requestId(request);
+    final String requestId = _requestId(request);
 
-    final String status =
-        _field(request, 'status')
-            .toUpperCase();
+    final String status = _field(request, 'status').toUpperCase();
 
-    final String senderName =
-        _field(request, 'senderName');
+    final String senderName = _field(request, 'senderName');
 
-    final String senderBank =
-        _field(request, 'senderBank');
+    final String senderBank = _field(request, 'senderBank');
 
-    final String reference =
-        _field(
-          request,
-          'paymentReference',
-        );
+    final String reference = _field(
+      request,
+      'paymentReference',
+    );
 
-    final String note =
-        _field(request, 'note');
+    final String note = _field(request, 'note');
 
-    final String adminNote =
-        _field(request, 'adminNote');
+    final String adminNote = _field(request, 'adminNote');
 
-    final bool processing =
-        isProcessing &&
-        processingRequestId == requestId;
+    final bool processing = isProcessing && processingRequestId == requestId;
 
-    final Color statusColor =
-        _statusColor(status);
+    final Color statusColor = _statusColor(status);
 
     return Center(
       child: ConstrainedBox(
@@ -884,40 +1185,32 @@ class _AdminManualFundingScreenState
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius:
-                BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color:
-                  const Color(0xFFE8EDF3),
+              color: const Color(0xFFE8EDF3),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black
-                    .withValues(alpha: 0.035),
+                color: Colors.black.withValues(alpha: 0.035),
                 blurRadius: 14,
-                offset:
-                    const Offset(0, 5),
+                offset: const Offset(0, 5),
               ),
             ],
           ),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
-                      color: statusColor
-                          .withValues(
+                      color: statusColor.withValues(
                         alpha: 0.10,
                       ),
-                      borderRadius:
-                          BorderRadius.circular(
+                      borderRadius: BorderRadius.circular(
                         16,
                       ),
                     ),
@@ -929,22 +1222,16 @@ class _AdminManualFundingScreenState
                   const SizedBox(width: 13),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           _customerName(
                             request,
                           ),
-                          style:
-                              const TextStyle(
-                            color:
-                                Color(0xFF0F172A),
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
                             fontSize: 16,
-                            fontWeight:
-                                FontWeight
-                                    .w800,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -958,10 +1245,8 @@ class _AdminManualFundingScreenState
                               : _customerEmail(
                                   request,
                                 ),
-                          style:
-                              const TextStyle(
-                            color:
-                                Color(0xFF64748B),
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
                             fontSize: 12,
                           ),
                         ),
@@ -969,30 +1254,24 @@ class _AdminManualFundingScreenState
                     ),
                   ),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor
-                          .withValues(
+                      color: statusColor.withValues(
                         alpha: 0.10,
                       ),
-                      borderRadius:
-                          BorderRadius.circular(
+                      borderRadius: BorderRadius.circular(
                         30,
                       ),
                     ),
                     child: Text(
-                      status.isEmpty
-                          ? 'PENDING'
-                          : status,
+                      status.isEmpty ? 'PENDING' : status,
                       style: TextStyle(
                         color: statusColor,
                         fontSize: 10,
-                        fontWeight:
-                            FontWeight.w800,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -1023,9 +1302,7 @@ class _AdminManualFundingScreenState
               _detailRow(
                 'Submitted',
                 _formatDate(
-                  request is Map
-                      ? request['createdAt']
-                      : null,
+                  request is Map ? request['createdAt'] : null,
                 ),
               ),
               if (note.isNotEmpty)
@@ -1042,20 +1319,16 @@ class _AdminManualFundingScreenState
                 const SizedBox(height: 18),
                 if (processing)
                   const Center(
-                    child:
-                        CircularProgressIndicator(
-                      color:
-                          Color(0xFF0F766E),
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF0F766E),
                     ),
                   )
                 else
                   Row(
                     children: [
                       Expanded(
-                        child:
-                            OutlinedButton.icon(
-                          onPressed: () =>
-                              _rejectRequest(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _rejectRequest(
                             request,
                           ),
                           icon: const Icon(
@@ -1064,21 +1337,16 @@ class _AdminManualFundingScreenState
                           label: const Text(
                             'Reject',
                           ),
-                          style:
-                              OutlinedButton.styleFrom(
-                            foregroundColor:
-                                const Color(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(
                               0xFFDC2626,
                             ),
-                            side:
-                                const BorderSide(
+                            side: const BorderSide(
                               color: Color(
                                 0xFFDC2626,
                               ),
                             ),
-                            padding:
-                                const EdgeInsets
-                                    .symmetric(
+                            padding: const EdgeInsets.symmetric(
                               vertical: 13,
                             ),
                           ),
@@ -1088,28 +1356,21 @@ class _AdminManualFundingScreenState
                         width: 12,
                       ),
                       Expanded(
-                        child:
-                            FilledButton.icon(
-                          onPressed: () =>
-                              _approveRequest(
+                        child: FilledButton.icon(
+                          onPressed: () => _approveRequest(
                             request,
                           ),
                           icon: const Icon(
-                            Icons
-                                .check_rounded,
+                            Icons.check_rounded,
                           ),
                           label: const Text(
                             'Approve',
                           ),
-                          style:
-                              FilledButton.styleFrom(
-                            backgroundColor:
-                                const Color(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(
                               0xFF059669,
                             ),
-                            padding:
-                                const EdgeInsets
-                                    .symmetric(
+                            padding: const EdgeInsets.symmetric(
                               vertical: 13,
                             ),
                           ),
@@ -1134,11 +1395,9 @@ class _AdminManualFundingScreenState
     }
 
     return Padding(
-      padding:
-          const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 112,

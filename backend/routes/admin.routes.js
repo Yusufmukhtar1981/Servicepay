@@ -43,6 +43,12 @@ const {
   requirePermission,
 } = require("../middleware/staffPermission.middleware");
 
+const {
+  adjustCustomerWallet,
+} = require(
+  "../controllers/adminWalletAdjustment.controller"
+);
+
 const router = express.Router();
 
 const MANAGEMENT_ROLES = [
@@ -394,6 +400,20 @@ router.patch(
   protect,
   adminOnly("HEAD_OFFICE"),
   updateDeliveryPrice
+);
+
+
+/*
+|--------------------------------------------------------------------------
+| HEAD OFFICE CUSTOMER WALLET ADJUSTMENT
+|--------------------------------------------------------------------------
+*/
+
+router.post(
+  "/wallet-adjustment",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  adjustCustomerWallet
 );
 
 module.exports = router;

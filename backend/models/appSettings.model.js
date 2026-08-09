@@ -41,6 +41,16 @@ const servicesSchema =
       /*
        * Complete service availability.
        */
+      kekeNapep: {
+        type: Boolean,
+        default: true,
+      },
+
+      amana: {
+        type: Boolean,
+        default: true,
+      },
+
       airtime: {
         type: Boolean,
         default: true,

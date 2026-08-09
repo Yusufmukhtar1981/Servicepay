@@ -24,22 +24,17 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() =>
-      _DashboardScreenState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen =
-      Color(0xFF08783E);
+  static const Color primaryGreen = Color(0xFF08783E);
 
-  static const Color softGreen =
-      Color(0xFFEAF7F0);
+  static const Color softGreen = Color(0xFFEAF7F0);
 
-  final TextEditingController searchController =
-      TextEditingController();
+  final TextEditingController searchController = TextEditingController();
 
   String userName = 'Customer';
   double walletBalance = 0;
@@ -51,6 +46,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool hideBalance = false;
 
   String searchQuery = '';
+
+  Map<String, bool> serviceAvailability = <String, bool>{
+    'kekeNapep': true,
+    'amana': true,
+    'airtime': true,
+    'data': true,
+    'electricity': true,
+    'cableTv': true,
+    'examPin': true,
+    'ninVerification': true,
+    'delivery': true,
+    'flightBooking': true,
+    'walletFunding': true,
+    'bankTransfer': true,
+    'servicepayTransfer': true,
+  };
 
   @override
   void initState() {
@@ -77,8 +88,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
 
     for (final String key in tokenKeys) {
-      final String? value =
-          preferences.getString(key);
+      final String? value = preferences.getString(key);
 
       if (value == null || value.trim().isEmpty) {
         continue;
@@ -115,42 +125,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final SharedPreferences preferences =
           await SharedPreferences.getInstance();
 
-      final String savedName =
-          preferences.getString('user_name') ??
-              preferences.getString('full_name') ??
-              preferences.getString('name') ??
-              'Customer';
+      final String savedName = preferences.getString('user_name') ??
+          preferences.getString('full_name') ??
+          preferences.getString('name') ??
+          'Customer';
 
-      final double savedBalance =
-          preferences.getDouble('wallet_balance') ?? 0;
+      final double savedBalance = preferences.getDouble('wallet_balance') ?? 0;
 
       if (mounted) {
         setState(() {
-          userName = savedName.trim().isEmpty
-              ? 'Customer'
-              : savedName.trim();
+          userName = savedName.trim().isEmpty ? 'Customer' : savedName.trim();
 
           walletBalance = savedBalance;
         });
       }
 
-      final String? token =
-          await getSavedAuthToken(preferences);
+      await _loadServiceAvailability();
+
+      final String? token = await getSavedAuthToken(preferences);
 
       if (token == null || token.isEmpty) {
         return;
       }
 
-      final http.Response response =
-          await http
-              .get(
+      final http.Response response = await http.get(
         Uri.parse('$baseUrl/wallet'),
         headers: <String, String>{
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
-      )
-              .timeout(
+      ).timeout(
         const Duration(seconds: 30),
       );
 
@@ -158,37 +162,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
       }
 
-      final dynamic decoded =
-          jsonDecode(response.body);
+      final dynamic decoded = jsonDecode(response.body);
 
       if (decoded is! Map) {
         return;
       }
 
-      final Map<String, dynamic> data =
-          Map<String, dynamic>.from(decoded);
+      final Map<String, dynamic> data = Map<String, dynamic>.from(decoded);
 
-      dynamic rawBalance =
-          data['walletBalance'] ?? data['balance'];
+      dynamic rawBalance = data['walletBalance'] ?? data['balance'];
 
       if (data['data'] is Map) {
-        final Map<String, dynamic> nested =
-            Map<String, dynamic>.from(
+        final Map<String, dynamic> nested = Map<String, dynamic>.from(
           data['data'] as Map,
         );
 
-        rawBalance ??=
-            nested['walletBalance'] ??
-                nested['balance'];
+        rawBalance ??= nested['walletBalance'] ?? nested['balance'];
       }
 
-      final double freshBalance =
-          rawBalance is num
-              ? rawBalance.toDouble()
-              : double.tryParse(
-                    rawBalance?.toString() ?? '',
-                  ) ??
-                  walletBalance;
+      final double freshBalance = rawBalance is num
+          ? rawBalance.toDouble()
+          : double.tryParse(
+                rawBalance?.toString() ?? '',
+              ) ??
+              walletBalance;
 
       await preferences.setDouble(
         'wallet_balance',
@@ -212,6 +209,97 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _loadServiceAvailability() async {
+    try {
+      final http.Response response = await http.get(
+        Uri.parse(
+          '$baseUrl/app-settings/public',
+        ),
+        headers: const <String, String>{
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 20),
+      );
+
+      if (response.statusCode != 200) {
+        return;
+      }
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      if (decoded is! Map) {
+        return;
+      }
+
+      dynamic settings = decoded['settings'];
+
+      settings ??= decoded['data'] is Map ? decoded['data']['settings'] : null;
+
+      if (settings is! Map) {
+        return;
+      }
+
+      final dynamic rawServices = settings['services'];
+
+      if (rawServices is! Map) {
+        return;
+      }
+
+      final Map<String, bool> fresh = Map<String, bool>.from(
+        serviceAvailability,
+      );
+
+      for (final String key in fresh.keys.toList()) {
+        if (rawServices[key] is bool) {
+          fresh[key] = rawServices[key] == true;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          serviceAvailability = fresh;
+        });
+      }
+    } catch (_) {
+      // Keep last/default visibility values.
+    }
+  }
+
+  String? _serviceKeyForTitle(
+    String title,
+  ) {
+    const Map<String, String> map = <String, String>{
+      'Keke Napep': 'kekeNapep',
+      'ServicePay Amana': 'amana',
+      'Airtime': 'airtime',
+      'Data': 'data',
+      'Electricity': 'electricity',
+      'Cable TV': 'cableTv',
+      'Exam PIN': 'examPin',
+      'NIN Verification': 'ninVerification',
+      'Delivery': 'delivery',
+      'Flight Booking': 'flightBooking',
+      'Wallet Funding': 'walletFunding',
+      'Bank Transfer': 'bankTransfer',
+      'ServicePay Transfer': 'servicepayTransfer',
+    };
+
+    return map[title];
+  }
+
+  bool _isServiceVisible(
+    String title,
+  ) {
+    final String? key = _serviceKeyForTitle(title);
+
+    if (key == null) {
+      return true;
+    }
+
+    return serviceAvailability[key] != false;
+  }
+
   String firstName() {
     final String trimmed = userName.trim();
 
@@ -227,29 +315,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String formatMoney(double amount) {
-    final String value =
-        amount.toStringAsFixed(2);
+    final String value = amount.toStringAsFixed(2);
 
-    final List<String> parts =
-        value.split('.');
+    final List<String> parts = value.split('.');
 
     final String whole = parts.first;
 
-    final StringBuffer formatted =
-        StringBuffer();
+    final StringBuffer formatted = StringBuffer();
 
-    for (int index = 0;
-        index < whole.length;
-        index++) {
-      final int remaining =
-          whole.length - index;
+    for (int index = 0; index < whole.length; index++) {
+      final int remaining = whole.length - index;
 
       formatted.write(
         whole[index],
       );
 
-      if (remaining > 1 &&
-          remaining % 3 == 1) {
+      if (remaining > 1 && remaining % 3 == 1) {
         formatted.write(',');
       }
     }
@@ -285,8 +366,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.volunteer_activism_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'amana family support food school fees medical assistance',
+        keywords: 'amana family support food school fees medical assistance',
         onTap: () {
           openScreen(
             const AmanaScreen(),
@@ -334,8 +414,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.live_tv_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'cable tv dstv gotv startimes',
+        keywords: 'cable tv dstv gotv startimes',
         onTap: () {
           openScreen(
             const CableScreen(),
@@ -347,8 +426,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.workspace_premium_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'exam pin waec neco jamb',
+        keywords: 'exam pin waec neco jamb',
         onTap: () {
           openScreen(
             const ExamPinScreen(),
@@ -365,8 +443,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.fingerprint_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'nin verification identity',
+        keywords: 'nin verification identity',
         onTap: () {
           openScreen(
             const IdVerificationScreen(),
@@ -378,8 +455,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.local_shipping_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'delivery logistics courier',
+        keywords: 'delivery logistics courier',
         onTap: () {
           openScreen(
             const LogisticsScreen(),
@@ -391,8 +467,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.flight_takeoff_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'flight booking airline travel',
+        keywords: 'flight booking airline travel',
         onTap: () {
           openScreen(
             const FlightBookingScreen(),
@@ -404,8 +479,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.account_balance_wallet_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'wallet funding fund wallet deposit',
+        keywords: 'wallet funding fund wallet deposit',
         onTap: () {
           openScreen(
             const WalletScreen(),
@@ -417,8 +491,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.account_balance_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'bank transfer send money',
+        keywords: 'bank transfer send money',
         onTap: () {
           openScreen(
             const BankTransferScreen(),
@@ -430,8 +503,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.send_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
-        keywords:
-            'servicepay transfer send money',
+        keywords: 'servicepay transfer send money',
         onTap: () {
           openScreen(
             const TransferScreen(),
@@ -444,20 +516,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<_DashboardService> filtered(
     List<_DashboardService> services,
   ) {
-    final String query =
-        searchQuery.trim().toLowerCase();
+    final List<_DashboardService> visible = services
+        .where(
+          (_DashboardService service) => _isServiceVisible(
+            service.title,
+          ),
+        )
+        .toList();
+
+    final String query = searchQuery.trim().toLowerCase();
 
     if (query.isEmpty) {
-      return services;
+      return visible;
     }
 
-    return services.where(
+    return visible.where(
       (_DashboardService service) {
         final String searchable =
-            '${service.title} ${service.keywords}'
-                .toLowerCase();
+            '${service.title} ${service.keywords}'.toLowerCase();
 
-        return searchable.contains(query);
+        return searchable.contains(
+          query,
+        );
       },
     ).toList();
   }
@@ -535,9 +615,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         shape: BoxShape.circle,
                       ),
                       child: Text(
-                        unreadNotifications > 9
-                            ? '9+'
-                            : '$unreadNotifications',
+                        unreadNotifications > 9 ? '9+' : '$unreadNotifications',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 10,
@@ -562,9 +640,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               child: Center(
                 child: Text(
-                  firstName()
-                      .substring(0, 1)
-                      .toUpperCase(),
+                  firstName().substring(0, 1).toUpperCase(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 19,
@@ -576,8 +652,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(width: 13),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
                     'Hello, ${firstName()}',
@@ -634,6 +709,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
     );
   }
+
   Widget buildWalletCard() {
     return Container(
       decoration: BoxDecoration(
@@ -684,8 +760,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 16,
               ),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Row(
                     children: <Widget>[
@@ -704,8 +779,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             hideBalance = !hideBalance;
                           });
                         },
-                        borderRadius:
-                            BorderRadius.circular(30),
+                        borderRadius: BorderRadius.circular(30),
                         child: Padding(
                           padding: const EdgeInsets.all(4),
                           child: Icon(
@@ -721,9 +795,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   const SizedBox(height: 15),
                   Text(
-                    hideBalance
-                        ? '₦ ••••••••'
-                        : formatMoney(walletBalance),
+                    hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -743,8 +815,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: Colors.white.withValues(
                         alpha: 0.10,
                       ),
-                      borderRadius:
-                          BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(30),
                       border: Border.all(
                         color: Colors.white.withValues(
                           alpha: 0.18,
@@ -862,8 +933,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 margin: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
                   color: softGreen,
-                  borderRadius:
-                      BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(
                   Icons.tune_rounded,
@@ -903,8 +973,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             width: 1.5,
           ),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(
+        contentPadding: const EdgeInsets.symmetric(
           vertical: 18,
         ),
       ),
@@ -912,6 +981,98 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget buildQuickActions() {
+    final List<Widget> items = <Widget>[];
+
+    void addItem({
+      required String feature,
+      required IconData icon,
+      required String label,
+      required VoidCallback onTap,
+    }) {
+      if (serviceAvailability[feature] == false) {
+        return;
+      }
+
+      if (items.isNotEmpty) {
+        items.add(
+          _quickDivider(),
+        );
+      }
+
+      items.add(
+        Expanded(
+          child: _QuickAction(
+            icon: icon,
+            label: label,
+            onTap: onTap,
+          ),
+        ),
+      );
+    }
+
+    addItem(
+      feature: 'walletFunding',
+      icon: Icons.account_balance_wallet_rounded,
+      label: 'Fund Wallet',
+      onTap: () {
+        openScreen(
+          const WalletScreen(),
+        );
+      },
+    );
+
+    addItem(
+      feature: 'bankTransfer',
+      icon: Icons.account_balance_rounded,
+      label: 'Bank Transfer',
+      onTap: () {
+        openScreen(
+          const BankTransferScreen(),
+        );
+      },
+    );
+
+    // Transactions is not a service switch.
+    if (items.isNotEmpty) {
+      items.add(
+        _quickDivider(),
+      );
+    }
+
+    items.add(
+      Expanded(
+        child: _QuickAction(
+          icon: Icons.receipt_long_rounded,
+          label: 'Transactions',
+          onTap: () {
+            openScreen(
+              const TransactionsScreen(),
+            );
+          },
+        ),
+      ),
+    );
+
+    if (serviceAvailability['ninVerification'] != false) {
+      items.add(
+        _quickDivider(),
+      );
+
+      items.add(
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.badge_rounded,
+            label: 'Verify ID',
+            onTap: () {
+              openScreen(
+                const IdVerificationScreen(),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 10,
@@ -932,55 +1093,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       child: Row(
-        children: <Widget>[
-          Expanded(
-            child: _QuickAction(
-              icon: Icons.account_balance_wallet_rounded,
-              label: 'Fund Wallet',
-              onTap: () {
-                openScreen(
-                  const WalletScreen(),
-                );
-              },
-            ),
-          ),
-          _quickDivider(),
-          Expanded(
-            child: _QuickAction(
-              icon: Icons.account_balance_rounded,
-              label: 'Bank Transfer',
-              onTap: () {
-                openScreen(
-                  const BankTransferScreen(),
-                );
-              },
-            ),
-          ),
-          _quickDivider(),
-          Expanded(
-            child: _QuickAction(
-              icon: Icons.receipt_long_rounded,
-              label: 'Transactions',
-              onTap: () {
-                openScreen(
-                  const TransactionsScreen(),
-                );
-              },
-            ),
-          ),
-          _quickDivider(),
-          Expanded(
-            child: _QuickAction(
-              icon: Icons.badge_rounded,
-              label: 'Verify ID',
-              onTap: () {
-                openScreen(
-                  const IdVerificationScreen(),
-                );
-              },
-            ),
-          ),
-        ],
+        children: items,
       ),
     );
   }
@@ -994,8 +1107,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget buildPopularServices() {
-    final List<_DashboardService> services =
-        filtered(
+    final List<_DashboardService> services = filtered(
       popularServices(),
     );
 
@@ -1004,8 +1116,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         const _SectionHeader(
           title: 'Popular Services',
@@ -1019,8 +1130,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.only(
               right: 3,
             ),
-            separatorBuilder: (_, __) =>
-                const SizedBox(width: 11),
+            separatorBuilder: (_, __) => const SizedBox(width: 11),
             itemBuilder: (
               BuildContext context,
               int index,
@@ -1039,8 +1149,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget buildMoreServices() {
-    final List<_DashboardService> services =
-        filtered(
+    final List<_DashboardService> services = filtered(
       moreServices(),
     );
 
@@ -1049,8 +1158,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         const _SectionHeader(
           title: 'More Services',
@@ -1064,44 +1172,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.only(
               right: 3,
             ),
-            separatorBuilder: (_, __) =>
-                const SizedBox(width: 11),
+            separatorBuilder: (_, __) => const SizedBox(width: 11),
             itemBuilder: (
               BuildContext context,
               int index,
             ) {
-              final _DashboardService service =
-                  services[index];
+              final _DashboardService service = services[index];
 
               return Material(
                 color: Colors.white,
-                borderRadius:
-                    BorderRadius.circular(19),
+                borderRadius: BorderRadius.circular(19),
                 child: InkWell(
                   onTap: service.onTap,
-                  borderRadius:
-                      BorderRadius.circular(19),
+                  borderRadius: BorderRadius.circular(19),
                   child: Container(
                     width: 145,
-                    padding:
-                        const EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      borderRadius:
-                          BorderRadius.circular(19),
+                      borderRadius: BorderRadius.circular(19),
                       border: Border.all(
-                        color:
-                            const Color(
+                        color: const Color(
                           0xFFE7EAEF,
                         ),
                       ),
-                      boxShadow:
-                          const <BoxShadow>[
+                      boxShadow: const <BoxShadow>[
                         BoxShadow(
-                          color:
-                              Color(
+                          color: Color(
                             0x0B101828,
                           ),
                           blurRadius: 12,
@@ -1110,25 +1209,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                     child: Column(
-                      mainAxisAlignment:
-                          MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: <Widget>[
                         Container(
                           width: 43,
                           height: 43,
                           decoration: BoxDecoration(
-                            color:
-                                service
-                                    .backgroundColor,
-                            borderRadius:
-                                BorderRadius.circular(
+                            color: service.backgroundColor,
+                            borderRadius: BorderRadius.circular(
                               14,
                             ),
                           ),
                           child: Icon(
                             service.icon,
-                            color:
-                                service.iconColor,
+                            color: service.iconColor,
                             size: 24,
                           ),
                         ),
@@ -1136,19 +1230,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Text(
                           service.title,
                           maxLines: 1,
-                          overflow:
-                              TextOverflow.ellipsis,
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              const TextStyle(
-                            color:
-                                Color(
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(
                               0xFF1D2939,
                             ),
                             fontSize: 12,
-                            fontWeight:
-                                FontWeight.w800,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ],
@@ -1168,13 +1257,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return const SizedBox.shrink();
     }
 
-    final bool hasPopular =
-        filtered(
+    final bool hasPopular = filtered(
       popularServices(),
     ).isNotEmpty;
 
-    final bool hasMore =
-        filtered(
+    final bool hasMore = filtered(
       moreServices(),
     ).isNotEmpty;
 
@@ -1247,8 +1334,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color:
-                        Colors.white.withValues(
+                    color: Colors.white.withValues(
                       alpha: 0.07,
                     ),
                     width: 27,
@@ -1265,36 +1351,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: 73,
                   height: 109,
                   decoration: BoxDecoration(
-                    gradient:
-                        const LinearGradient(
-                      begin:
-                          Alignment.topLeft,
-                      end:
-                          Alignment.bottomRight,
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                       colors: <Color>[
                         Color(0xFF17C86B),
                         Color(0xFF006B3B),
                       ],
                     ),
-                    borderRadius:
-                        BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color:
-                          Colors.white.withValues(
+                      color: Colors.white.withValues(
                         alpha: 0.40,
                       ),
                       width: 2,
                     ),
-                    boxShadow:
-                        const <BoxShadow>[
+                    boxShadow: const <BoxShadow>[
                       BoxShadow(
-                        color:
-                            Color(
+                        color: Color(
                           0x66000000,
                         ),
                         blurRadius: 16,
-                        offset:
-                            Offset(0, 9),
+                        offset: Offset(0, 9),
                       ),
                     ],
                   ),
@@ -1304,10 +1382,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 39,
-                        fontWeight:
-                            FontWeight.w900,
-                        fontStyle:
-                            FontStyle.italic,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
                   ),
@@ -1345,41 +1421,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
               left: 21,
               top: 20,
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
                     'One Platform,',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 21,
-                      fontWeight:
-                          FontWeight.w900,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                   Text(
                     'Many Solutions',
                     style: TextStyle(
-                      color:
-                          Color(
+                      color: Color(
                         0xFF91EE96,
                       ),
                       fontSize: 22,
-                      fontWeight:
-                          FontWeight.w900,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                   SizedBox(height: 10),
                   Text(
                     'Fast. Secure. Reliable.',
                     style: TextStyle(
-                      color:
-                          Color(
+                      color: Color(
                         0xFFD9F5E4,
                       ),
                       fontSize: 13,
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -1405,8 +1475,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF7F9FB),
+      backgroundColor: const Color(0xFFF7F9FB),
       body: SafeArea(
         child: RefreshIndicator(
           color: primaryGreen,
@@ -1416,10 +1485,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             );
           },
           child: ListView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding:
-                const EdgeInsets.fromLTRB(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
               15,
               14,
               15,
@@ -1434,8 +1501,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   backgroundColor: softGreen,
                   minHeight: 2,
                 ),
-              if (isLoading)
-                const SizedBox(height: 10),
+              if (isLoading) const SizedBox(height: 10),
               buildWalletCard(),
               const SizedBox(height: 13),
               buildSearchBar(),
@@ -1449,22 +1515,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 18),
               buildMoreServices(),
               buildEmptySearch(),
-              if (searchQuery.trim().isEmpty)
-                const SizedBox(height: 18),
-              if (searchQuery.trim().isEmpty)
-                buildPromoBanner(),
+              if (searchQuery.trim().isEmpty) const SizedBox(height: 18),
+              if (searchQuery.trim().isEmpty) buildPromoBanner(),
               if (isRefreshing)
                 const Padding(
-                  padding:
-                      EdgeInsets.only(
+                  padding: EdgeInsets.only(
                     top: 20,
                   ),
                   child: Center(
                     child: Text(
                       'Refreshing dashboard...',
                       style: TextStyle(
-                        color:
-                            Color(
+                        color: Color(
                           0xFF667085,
                         ),
                       ),
@@ -1497,8 +1559,7 @@ class _DashboardService {
   });
 }
 
-class _WalletAction
-    extends StatelessWidget {
+class _WalletAction extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
@@ -1515,11 +1576,9 @@ class _WalletAction
   ) {
     return InkWell(
       onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(14),
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
+        padding: const EdgeInsets.symmetric(
           vertical: 5,
           horizontal: 2,
         ),
@@ -1530,16 +1589,13 @@ class _WalletAction
               height: 42,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius:
-                    BorderRadius.circular(
+                borderRadius: BorderRadius.circular(
                   13,
                 ),
               ),
               child: Icon(
                 icon,
-                color:
-                    _DashboardScreenState
-                        .primaryGreen,
+                color: _DashboardScreenState.primaryGreen,
                 size: 22,
               ),
             ),
@@ -1548,13 +1604,11 @@ class _WalletAction
               label,
               maxLines: 2,
               textAlign: TextAlign.center,
-              overflow:
-                  TextOverflow.ellipsis,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 11,
-                fontWeight:
-                    FontWeight.w700,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -1564,8 +1618,7 @@ class _WalletAction
   }
 }
 
-class _QuickAction
-    extends StatelessWidget {
+class _QuickAction extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
@@ -1582,11 +1635,9 @@ class _QuickAction
   ) {
     return InkWell(
       onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(15),
+      borderRadius: BorderRadius.circular(15),
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
+        padding: const EdgeInsets.symmetric(
           horizontal: 4,
         ),
         child: Column(
@@ -1595,19 +1646,14 @@ class _QuickAction
               width: 45,
               height: 45,
               decoration: BoxDecoration(
-                color:
-                    _DashboardScreenState
-                        .softGreen,
-                borderRadius:
-                    BorderRadius.circular(
+                color: _DashboardScreenState.softGreen,
+                borderRadius: BorderRadius.circular(
                   14,
                 ),
               ),
               child: Icon(
                 icon,
-                color:
-                    _DashboardScreenState
-                        .primaryGreen,
+                color: _DashboardScreenState.primaryGreen,
                 size: 24,
               ),
             ),
@@ -1616,13 +1662,11 @@ class _QuickAction
               label,
               maxLines: 2,
               textAlign: TextAlign.center,
-              overflow:
-                  TextOverflow.ellipsis,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Color(0xFF344054),
                 fontSize: 11,
-                fontWeight:
-                    FontWeight.w700,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -1632,8 +1676,7 @@ class _QuickAction
   }
 }
 
-class _SectionHeader
-    extends StatelessWidget {
+class _SectionHeader extends StatelessWidget {
   final String title;
 
   const _SectionHeader({
@@ -1652,35 +1695,28 @@ class _SectionHeader
             style: const TextStyle(
               fontSize: 19,
               color: Color(0xFF101828),
-              fontWeight:
-                  FontWeight.w900,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ),
         const Text(
           'View All',
           style: TextStyle(
-            color:
-                _DashboardScreenState
-                    .primaryGreen,
-            fontWeight:
-                FontWeight.w800,
+            color: _DashboardScreenState.primaryGreen,
+            fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(width: 4),
         const Icon(
           Icons.chevron_right_rounded,
-          color:
-              _DashboardScreenState
-                  .primaryGreen,
+          color: _DashboardScreenState.primaryGreen,
         ),
       ],
     );
   }
 }
 
-class _PopularServiceCard
-    extends StatelessWidget {
+class _PopularServiceCard extends StatelessWidget {
   final _DashboardService service;
 
   const _PopularServiceCard({
@@ -1693,34 +1729,27 @@ class _PopularServiceCard
   ) {
     return Material(
       color: Colors.white,
-      borderRadius:
-          BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: service.onTap,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(
+          padding: const EdgeInsets.symmetric(
             horizontal: 8,
             vertical: 9,
           ),
           decoration: BoxDecoration(
-            borderRadius:
-                BorderRadius.circular(
+            borderRadius: BorderRadius.circular(
               20,
             ),
             border: Border.all(
-              color:
-                  const Color(
+              color: const Color(
                 0xFFE7EAEF,
               ),
             ),
-            boxShadow:
-                const <BoxShadow>[
+            boxShadow: const <BoxShadow>[
               BoxShadow(
-                color:
-                    Color(
+                color: Color(
                   0x0D101828,
                 ),
                 blurRadius: 13,
@@ -1729,17 +1758,14 @@ class _PopularServiceCard
             ],
           ),
           child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Container(
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color:
-                      service.backgroundColor,
-                  borderRadius:
-                      BorderRadius.circular(
+                  color: service.backgroundColor,
+                  borderRadius: BorderRadius.circular(
                     15,
                   ),
                 ),
@@ -1753,19 +1779,15 @@ class _PopularServiceCard
               Text(
                 service.title,
                 maxLines: 2,
-                textAlign:
-                    TextAlign.center,
-                overflow:
-                    TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color:
-                      Color(
+                  color: Color(
                     0xFF1D2939,
                   ),
                   fontSize: 11,
                   height: 1.15,
-                  fontWeight:
-                      FontWeight.w700,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
