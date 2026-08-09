@@ -11,7 +11,7 @@ const Delivery = require("../models/delivery.model");
 | Commission is credited only when:
 |
 | 1. Delivery status is DELIVERED
-| 2. Payment status is PAID
+| 2. Delivery has a valid delivery fee
 | 3. A rider is assigned
 | 4. Commission has not been credited before
 |
@@ -58,15 +58,6 @@ const creditRiderCommissionIfEligible =
             return;
           }
 
-          if (
-            String(delivery.paymentStatus)
-              .toUpperCase() !==
-            "PAID"
-          ) {
-            result.reason =
-              "PAYMENT_NOT_CONFIRMED";
-            return;
-          }
 
           if (!delivery.assignedRiderId) {
             result.reason =
@@ -175,7 +166,6 @@ const creditRiderCommissionIfEligible =
 
                 status: "DELIVERED",
 
-                paymentStatus: "PAID",
               },
               {
                 $set: {

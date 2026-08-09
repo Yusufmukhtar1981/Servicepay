@@ -576,3 +576,10 @@ app.listen(
  * =========================================================
  */
 require("./scripts/activateAllDeliveryStatesOnce")();
+
+
+/*
+ * One-time Rider commission backfill.
+ * Idempotent through database migration marker.
+ */
+require("./scripts/backfillDeliveredRiderCommissionsOnce")();

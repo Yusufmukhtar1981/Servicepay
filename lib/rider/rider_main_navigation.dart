@@ -2092,6 +2092,14 @@ class RiderDeliveryDetailsPage extends StatelessWidget {
           (customerData is Map ? customerData['phone'] : null),
     );
 
+    final String receiverName = textValue(
+      delivery['receiverName'],
+    );
+
+    final String receiverPhone = textValue(
+      delivery['receiverPhone'],
+    );
+
     final String pickup = textValue(delivery['pickupAddress']);
 
     final String destination = textValue(delivery['deliveryAddress']);
@@ -2177,6 +2185,22 @@ class RiderDeliveryDetailsPage extends StatelessWidget {
                 icon: Icons.phone_outlined,
                 label: 'Phone',
                 value: phone,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _RiderDetailCard(
+            title: 'Receiver',
+            rows: <_RiderDetailRow>[
+              _RiderDetailRow(
+                icon: Icons.person_pin_outlined,
+                label: 'Receiver Name',
+                value: receiverName,
+              ),
+              _RiderDetailRow(
+                icon: Icons.phone_in_talk_outlined,
+                label: 'Receiver Phone',
+                value: receiverPhone,
               ),
             ],
           ),
