@@ -26,7 +26,13 @@ const generateDeliveryPaymentReference = () => {
 };
 
 // Customer ya kirkiri delivery request
+// ServicePay Delivery launch policy:
+// Flat fee = N1,500.
+// Customer wallet is charged automatically before
+// the delivery request is created.
 exports.createDelivery = async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
     const {
       pickupState,
@@ -73,44 +79,282 @@ exports.createDelivery = async (req, res) => {
       });
     }
 
-    const delivery = await Delivery.create({
-      customerId: req.user._id,
-      trackingNumber: generateTrackingNumber(),
+    const deliveryFee = 1500;
 
-      pickupState:
-        req.deliveryCoverage?.pickupStateCode ||
-        String(pickupState).trim().toUpperCase(),
+    session.startTransaction();
 
-      deliveryState:
-        req.deliveryCoverage?.deliveryStateCode ||
-        String(deliveryState).trim().toUpperCase(),
+    /*
+     * Debit atomically.
+     *
+     * The $gte condition means:
+     * - wallet below N1,500 => no debit
+     * - no delivery is created
+     * - no negative wallet balance
+     */
+    const updatedUser = await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        status: "ACTIVE",
+        walletBalance: {
+          $gte: deliveryFee,
+        },
+      },
+      {
+        $inc: {
+          walletBalance: -deliveryFee,
+          totalTransactions: 1,
+        },
+      },
+      {
+        new: true,
+        session,
+      }
+    );
 
-      pickupAddress: pickupAddress.trim(),
-      deliveryAddress: deliveryAddress.trim(),
-      senderName: senderName.trim(),
-      senderPhone: senderPhone.trim(),
-      receiverName: receiverName.trim(),
-      receiverPhone: receiverPhone.trim(),
-      packageName: packageName.trim(),
-      packageDescription:
-        packageDescription?.trim() || "",
-      packageWeight: parsedWeight,
-      deliveryFee: 1500,
-      paymentStatus: "UNPAID",
-      status: "PENDING",
-    });
+    if (!updatedUser) {
+      await session.abortTransaction();
+
+      const currentUser = await User.findById(
+        req.user._id
+      ).select(
+        "walletBalance status"
+      );
+
+      if (!currentUser) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Customer account not found.",
+        });
+      }
+
+      if (
+        String(currentUser.status)
+          .toUpperCase() !== "ACTIVE"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Your account is not active.",
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        code: "INSUFFICIENT_WALLET_BALANCE",
+        message:
+          "Insufficient wallet balance. You need ₦1,500 to request a delivery. Please fund your wallet and try again.",
+        requiredAmount: deliveryFee,
+        walletBalance:
+          Number(
+            currentUser.walletBalance || 0
+          ),
+      });
+    }
+
+    const trackingNumber =
+      generateTrackingNumber();
+
+    const paymentReference =
+      generateDeliveryPaymentReference();
+
+    /*
+     * Because the wallet debit and Delivery.create()
+     * use the same MongoDB transaction, failure here
+     * rolls the debit back.
+     */
+    const deliveries = await Delivery.create(
+      [
+        {
+          customerId: req.user._id,
+          trackingNumber,
+
+          pickupState:
+            req.deliveryCoverage
+              ?.pickupStateCode ||
+            String(pickupState)
+              .trim()
+              .toUpperCase(),
+
+          deliveryState:
+            req.deliveryCoverage
+              ?.deliveryStateCode ||
+            String(deliveryState)
+              .trim()
+              .toUpperCase(),
+
+          pickupAddress:
+            String(pickupAddress).trim(),
+
+          deliveryAddress:
+            String(deliveryAddress).trim(),
+
+          senderName:
+            String(senderName).trim(),
+
+          senderPhone:
+            String(senderPhone).trim(),
+
+          receiverName:
+            String(receiverName).trim(),
+
+          receiverPhone:
+            String(receiverPhone).trim(),
+
+          packageName:
+            String(packageName).trim(),
+
+          packageDescription:
+            packageDescription?.trim() || "",
+
+          packageWeight:
+            parsedWeight,
+
+          deliveryFee,
+
+          paymentStatus: "PAID",
+
+          paidAt: new Date(),
+
+          status: "PENDING",
+        },
+      ],
+      {
+        session,
+      }
+    );
+
+    const delivery = deliveries[0];
+
+    const transactions =
+      await Transaction.create(
+        [
+          {
+            reference:
+              paymentReference,
+
+            customerId:
+              updatedUser._id,
+
+            agentId:
+              updatedUser.agentId ||
+              null,
+
+            stateManagerId:
+              updatedUser.stateManagerId ||
+              null,
+
+            zonalManagerId:
+              updatedUser.zonalManagerId ||
+              null,
+
+            serviceType:
+              "DELIVERY",
+
+            provider:
+              "SERVICEPAY_LOGISTICS",
+
+            phone:
+              String(
+                receiverPhone
+              ).trim(),
+
+            amount:
+              deliveryFee,
+
+            agentCommission: 0,
+            stateManagerCommission: 0,
+            zonalManagerCommission: 0,
+
+            /*
+             * Rider/company split is settled when
+             * delivery is completed:
+             * Rider = N600
+             * ServicePay = N900.
+             */
+            servicepayProfit: 0,
+
+            status:
+              "SUCCESSFUL",
+
+            providerResponse: {
+              deliveryId:
+                delivery._id,
+
+              trackingNumber,
+
+              packageName:
+                delivery.packageName,
+
+              paymentStatus:
+                "PAID",
+
+              paymentMode:
+                "AUTOMATIC_WALLET_DEBIT",
+
+              deliveryFee:
+                1500,
+
+              riderShare:
+                600,
+
+              servicepayShare:
+                900,
+            },
+          },
+        ],
+        {
+          session,
+        }
+      );
+
+    await session.commitTransaction();
 
     return res.status(201).json({
       success: true,
+
       message:
-        "Delivery request created successfully.",
+        "Delivery request created and ₦1,500 deducted from your wallet successfully.",
+
       delivery,
+
+      transaction:
+        transactions[0],
+
+      walletBalance:
+        Number(
+          updatedUser.walletBalance || 0
+        ),
+
+      payment: {
+        amount: 1500,
+        status: "PAID",
+        reference:
+          paymentReference,
+      },
     });
   } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     console.error(
       "Create delivery error:",
       error
     );
+
+    if (
+      error?.code === 112 ||
+      error?.errorLabels?.includes(
+        "TransientTransactionError"
+      )
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This delivery request is already being processed. Please wait and try again.",
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -118,6 +362,8 @@ exports.createDelivery = async (req, res) => {
         "Unable to create delivery request.",
       error: error.message,
     });
+  } finally {
+    await session.endSession();
   }
 };
 
