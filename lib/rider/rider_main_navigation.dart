@@ -810,12 +810,12 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
       fallback: 'ASSIGNED',
     ).toUpperCase();
 
-    final bool isNewJob = status == 'ASSIGNED';
+    final bool isAssigned = status.contains('ASSIGN');
 
     final Widget card = Card(
-      elevation: isNewJob ? 6 : 1,
+      elevation: isAssigned ? 6 : 1,
       margin: const EdgeInsets.only(
-        bottom: 14,
+        bottom: 8,
       ),
       color: Colors.white,
       shape: RoundedRectangleBorder(
@@ -823,12 +823,12 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
           18,
         ),
         side: BorderSide(
-          color: isNewJob
+          color: isAssigned
               ? Colors.orange
               : const Color(
                   0xFFE2E8F0,
                 ),
-          width: isNewJob ? 2 : 1,
+          width: isAssigned ? 2 : 1,
         ),
       ),
       child: Padding(
@@ -854,7 +854,7 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
                     ),
                   ),
                   child: Icon(
-                    isNewJob
+                    isAssigned
                         ? Icons.notifications_active_rounded
                         : Icons.local_shipping_rounded,
                     color: getStatusColor(
@@ -958,141 +958,159 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
       ),
     );
 
-    if (status.toUpperCase().contains('ASSIGN') || !isNewJob) {
-      Widget actionArea = const SizedBox.shrink();
+    Widget actionArea = const SizedBox.shrink();
 
-      if (status.toUpperCase().contains('ASSIGN')) {
-        actionArea = Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    await performAction(
-                      delivery: delivery,
-                      action: 'REJECT',
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.close_rounded,
-                  ),
-                  label: const Text(
-                    'Reject',
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(
-                      color: Colors.red,
-                    ),
+    if (isAssigned) {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(
+          12,
+          0,
+          12,
+          14,
+        ),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  await performAction(
+                    delivery: delivery,
+                    action: 'REJECT',
+                  );
+                },
+                icon: const Icon(
+                  Icons.close_rounded,
+                ),
+                label: const Text(
+                  'Reject',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(
+                    color: Colors.red,
                   ),
                 ),
               ),
-              const SizedBox(
-                width: 10,
-              ),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    await performAction(
-                      delivery: delivery,
-                      action: 'ACCEPT',
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.check_rounded,
-                  ),
-                  label: const Text(
-                    'Accept Delivery',
-                  ),
+            ),
+            const SizedBox(
+              width: 10,
+            ),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () async {
+                  await performAction(
+                    delivery: delivery,
+                    action: 'ACCEPT',
+                  );
+                },
+                icon: const Icon(
+                  Icons.check_rounded,
+                ),
+                label: const Text(
+                  'Accept Delivery',
                 ),
               ),
-            ],
-          ),
-        );
-      } else if (status == 'ACCEPTED') {
-        actionArea = Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () async {
-                await performAction(
-                  delivery: delivery,
-                  action: 'STATUS',
-                  status: 'PICKED_UP',
-                );
-              },
-              icon: const Icon(
-                Icons.inventory_2_outlined,
-              ),
-              label: const Text(
-                'Mark Picked Up',
-              ),
+            ),
+          ],
+        ),
+      );
+    } else if (status == 'ACCEPTED') {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(
+          12,
+          0,
+          12,
+          14,
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () async {
+              await performAction(
+                delivery: delivery,
+                action: 'STATUS',
+                status: 'PICKED_UP',
+              );
+            },
+            icon: const Icon(
+              Icons.inventory_2_outlined,
+            ),
+            label: const Text(
+              'Mark Picked Up',
             ),
           ),
-        );
-      } else if (status == 'PICKED_UP') {
-        actionArea = Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () async {
-                await performAction(
-                  delivery: delivery,
-                  action: 'STATUS',
-                  status: 'IN_TRANSIT',
-                );
-              },
-              icon: const Icon(
-                Icons.local_shipping_outlined,
-              ),
-              label: const Text(
-                'Start Transit',
-              ),
+        ),
+      );
+    } else if (status == 'PICKED_UP') {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(
+          12,
+          0,
+          12,
+          14,
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () async {
+              await performAction(
+                delivery: delivery,
+                action: 'STATUS',
+                status: 'IN_TRANSIT',
+              );
+            },
+            icon: const Icon(
+              Icons.local_shipping_outlined,
+            ),
+            label: const Text(
+              'Start Transit',
             ),
           ),
-        );
-      } else if (status == 'IN_TRANSIT') {
-        actionArea = Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () async {
-                await performAction(
-                  delivery: delivery,
-                  action: 'STATUS',
-                  status: 'DELIVERED',
-                );
-              },
-              icon: const Icon(
-                Icons.task_alt_rounded,
-              ),
-              label: const Text(
-                'Mark Delivered',
-              ),
+        ),
+      );
+    } else if (status == 'IN_TRANSIT') {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(
+          12,
+          0,
+          12,
+          14,
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () async {
+              await performAction(
+                delivery: delivery,
+                action: 'STATUS',
+                status: 'DELIVERED',
+              );
+            },
+            icon: const Icon(
+              Icons.task_alt_rounded,
+            ),
+            label: const Text(
+              'Mark Delivered',
             ),
           ),
-        );
-      }
+        ),
+      );
+    }
 
-      
-final Widget visibleCard = isNewJob
-    ? ScaleTransition(
-        scale: pulseAnimation,
-        child: card,
-      )
-    : card;
+    final Widget visibleCard = isAssigned
+        ? ScaleTransition(
+            scale: pulseAnimation,
+            child: card,
+          )
+        : card;
 
-return Column(
-  mainAxisSize: MainAxisSize.min,
-  children: <Widget>[
-    visibleCard,
-    actionArea,
-  ],
-);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        visibleCard,
+        actionArea,
+      ],
+    );
   }
 
   @override
