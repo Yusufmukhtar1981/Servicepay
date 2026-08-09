@@ -2077,14 +2077,19 @@ class RiderDeliveryDetailsPage extends StatelessWidget {
     final String status =
         textValue(delivery['status'], fallback: 'ASSIGNED').toUpperCase();
 
+    final dynamic customerData = delivery['customerId'] ?? delivery['customer'];
+
     final String customer = textValue(
       delivery['customerName'] ??
-          delivery['customer']?['fullName'] ??
-          delivery['customer']?['name'],
+          (customerData is Map
+              ? customerData['fullName'] ?? customerData['name']
+              : null),
     );
 
     final String phone = textValue(
-      delivery['customerPhone'] ?? delivery['customer']?['phone'],
+      delivery['customerPhone'] ??
+          delivery['senderPhone'] ??
+          (customerData is Map ? customerData['phone'] : null),
     );
 
     final String pickup = textValue(delivery['pickupAddress']);
