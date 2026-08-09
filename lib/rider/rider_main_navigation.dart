@@ -958,7 +958,7 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
       ),
     );
 
-    if (!isNewJob) {
+    if (status.toUpperCase().contains('ASSIGN') || !isNewJob) {
       Widget actionArea = const SizedBox.shrink();
 
       if (status.toUpperCase().contains('ASSIGN')) {
