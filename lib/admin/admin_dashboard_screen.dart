@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'admin_manual_funding_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_notifications_screen.dart';
@@ -430,6 +431,149 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildHeadOfficeControlCenter() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        16,
+      ),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFFE5E7EB),
+        ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0D000000),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _buildHeadOfficeControlCenter(),
+          const Row(
+            children: <Widget>[
+              Icon(
+                Icons.admin_panel_settings_rounded,
+                color: Color(0xFF08783E),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Head Office Control Center',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Manage customer services and wallet adjustments.',
+            style: TextStyle(
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _headOfficeControlButton(
+                  icon: Icons.tune_rounded,
+                  title: 'Service Control',
+                  subtitle: 'Turn customer features ON or OFF',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AdminManualFundingScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _headOfficeControlButton(
+                  icon: Icons.account_balance_wallet_rounded,
+                  title: 'Customer Wallet',
+                  subtitle: 'Credit or debit customer balance',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AdminManualFundingScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _headOfficeControlButton({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: const Color(0xFFF0FDF4),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF08783E),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(
+                  icon,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.black54,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
