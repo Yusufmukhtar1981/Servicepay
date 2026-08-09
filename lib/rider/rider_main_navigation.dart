@@ -961,9 +961,7 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
     if (!isNewJob) {
       Widget actionArea = const SizedBox.shrink();
 
-      if (status == 'ASSIGNED' ||
-          status == 'ASSIGNED_TO_RIDER' ||
-          status == 'RIDER_ASSIGNED') {
+      if (status.toUpperCase().contains('ASSIGN')) {
         actionArea = Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           child: Row(
