@@ -101,91 +101,110 @@ const loadStaffRole = async (req, res, next) => {
   }
 };
 
-const requirePermission = (...requiredPermissions) => {
-  const needed = requiredPermissions
-    .flat()
-    .map((permission) =>
-      String(permission || "").trim()
-    )
-    .filter(Boolean);
-
+const requirePermission = (permission) => {
   return (req, res, next) => {
-    if (!req.staffAccess) {
+    try {
+      if (!req.staffAccess) {
+        return res.status(500).json({
+          success: false,
+          message: "Staff permission context was not loaded.",
+        });
+      }
+
+      if (req.staffAccess.isHeadOffice) {
+        return next();
+      }
+
+      const needed = String(permission || "").trim();
+
+      if (!needed) {
+        return res.status(500).json({
+          success: false,
+          message: "Required permission was not configured.",
+        });
+      }
+
+      const granted = new Set(
+        normalizePermissionList(
+          req.staffAccess.permissions || []
+        )
+      );
+
+      if (!granted.has(needed)) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "You do not have permission to perform this action.",
+          requiredPermission: needed,
+        });
+      }
+
+      return next();
+    } catch (error) {
+      console.error("REQUIRE PERMISSION ERROR:", error);
+
       return res.status(500).json({
         success: false,
-        message:
-          "Staff permission context was not loaded.",
+        message: "Unable to verify staff permission.",
       });
     }
-
-    if (req.staffAccess.isHeadOffice) {
-      return next();
-    }
-
-    const granted = new Set(
-      normalizePermissionList(
-        req.staffAccess.permissions
-      )
-    );
-
-    const allowed = needed.every(
-      (permission) => granted.has(permission)
-    );
-
-    if (!allowed) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "You do not have permission to perform this action.",
-        requiredPermissions: needed,
-      });
-    }
-
-    return next();
   };
 };
 
-const requireAnyPermission = (...requiredPermissions) => {
-  const needed = requiredPermissions
+const requireAnyPermission = (...permissions) => {
+  const needed = permissions
     .flat()
-    .map((permission) =>
-      String(permission || "").trim()
-    )
+    .map((value) => String(value || "").trim())
     .filter(Boolean);
 
   return (req, res, next) => {
-    if (!req.staffAccess) {
+    try {
+      if (!req.staffAccess) {
+        return res.status(500).json({
+          success: false,
+          message: "Staff permission context was not loaded.",
+        });
+      }
+
+      if (req.staffAccess.isHeadOffice) {
+        return next();
+      }
+
+      if (needed.length == 0) {
+        return res.status(500).json({
+          success: false,
+          message: "Required permission was not configured.",
+        });
+      }
+
+      const granted = new Set(
+        normalizePermissionList(
+          req.staffAccess.permissions || []
+        )
+      );
+
+      const allowed = needed.some(
+        (permission) => granted.has(permission)
+      );
+
+      if (!allowed) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "You do not have permission to perform this action.",
+          requiredAnyPermission: needed,
+        });
+      }
+
+      return next();
+    } catch (error) {
+      console.error("REQUIRE ANY PERMISSION ERROR:", error);
+
       return res.status(500).json({
         success: false,
-        message:
-          "Staff permission context was not loaded.",
+        message: "Unable to verify staff permission.",
       });
     }
-
-    if (req.staffAccess.isHeadOffice) {
-      return next();
-    }
-
-    const granted = new Set(
-      normalizePermissionList(
-        req.staffAccess.permissions
-      )
-    );
-
-    const allowed = needed.some(
-      (permission) => granted.has(permission)
-    );
-
-    if (!allowed) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "You do not have permission to perform this action.",
-        requiredAnyPermission: needed,
-      });
-    }
-
-    return next();
   };
 };
 
