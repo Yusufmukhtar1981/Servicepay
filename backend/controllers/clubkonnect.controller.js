@@ -3,6 +3,7 @@ const crypto = require("crypto");
 
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
+const DataPriceOverride = require("../models/dataPriceOverride.model");
 const { distributeCommission } = require("../services/commission.service");
 
 const AIRTIME_URL = "https://www.nellobytesystems.com/APIAirtimeV1.asp";
@@ -400,6 +401,71 @@ const normalizeDataPlan = (rawPlan, requestedNetwork) => {
   };
 };
 
+
+const fetchNormalizedDataPlans = async (
+  networkCode,
+  credentials
+) => {
+  const response = await axios.get(
+    DATA_PLANS_URL,
+    {
+      params: {
+        UserID: credentials.userId,
+      },
+      timeout: 45000,
+      validateStatus: () => true,
+    }
+  );
+
+  if (
+    response.status < 200 ||
+    response.status >= 300
+  ) {
+    throw new Error(
+      "Unable to retrieve data plans from the provider."
+    );
+  }
+
+  const parsed =
+    parseProviderResponse(
+      response.data
+    );
+
+  const rawPlans =
+    collectPlanObjects(parsed);
+
+  return rawPlans
+    .map(
+      (plan) =>
+        normalizeDataPlan(
+          plan,
+          networkCode
+        )
+    )
+    .filter(
+      (plan) =>
+        plan !== null &&
+        plan.price > 0
+    )
+    .filter(
+      (plan, index, array) =>
+        array.findIndex(
+          (item) =>
+            item.code === plan.code &&
+            item.networkCode ===
+              plan.networkCode
+        ) === index
+    )
+    .sort(
+      (a, b) =>
+        a.price - b.price
+    );
+};
+
+exports.fetchNormalizedDataPlans =
+  fetchNormalizedDataPlans;
+
+
 const refundCustomer = async ({
   customerId,
   amount,
@@ -433,114 +499,104 @@ exports.getDataPlans = async (req, res) => {
     if (!credentials.valid) {
       return res.status(503).json({
         success: false,
-        message: "ClubKonnect credentials are not configured on the server.",
+        message:
+          "ClubKonnect credentials are not configured on the server.",
       });
     }
 
-    const networkCode = normalizeNetwork(
-      req.params.network || req.query.network,
-    );
+    const networkCode =
+      normalizeNetwork(
+        req.params.network ||
+          req.query.network
+      );
 
     if (!networkCode) {
       return res.status(400).json({
         success: false,
-        message: "Select MTN, Glo, Airtel or 9mobile.",
+        message:
+          "Select MTN, Glo, Airtel or 9mobile.",
       });
     }
 
-    const response = await axios.get(DATA_PLANS_URL, {
-      params: {
-        UserID: credentials.userId,
-      },
-      timeout: 45000,
-      validateStatus: () => true,
-    });
+    const providerPlans =
+      await fetchNormalizedDataPlans(
+        networkCode,
+        credentials
+      );
 
-    console.log("CLUBKONNECT DATA PLANS RAW RESPONSE:", {
-      httpStatus: response.status,
-      networkCode,
-      data: response.data,
-    });
+    const overrides =
+      await DataPriceOverride.find({
+        networkCode,
+        active: true,
+      }).lean();
 
-    if (response.status < 200 || response.status >= 300) {
-      return res.status(502).json({
-        success: false,
-        message: "Unable to retrieve data plans from the provider.",
-        providerResponse: response.data,
-      });
-    }
+    const overrideMap =
+      new Map(
+        overrides.map(
+          (item) => [
+            String(item.planCode),
+            item,
+          ]
+        )
+      );
 
-    const parsed = parseProviderResponse(response.data);
+    const plans =
+      providerPlans.map(
+        (plan) => {
+          const override =
+            overrideMap.get(
+              String(plan.code)
+            );
 
-    const rawPlans = collectPlanObjects(parsed);
+          const sellingPrice =
+            override &&
+            Number(
+              override.sellingPrice
+            ) > 0
+              ? Number(
+                  override.sellingPrice
+                )
+              : Number(
+                  plan.price
+                );
 
-    console.log("CLUBKONNECT EXTRACTED PLAN OBJECTS:", {
-      networkCode,
-      count: rawPlans.length,
-      plans: rawPlans,
-    });
-
-    const plans = rawPlans
-      .map((plan) => normalizeDataPlan(plan, networkCode))
-      .filter((plan) => plan !== null)
-      .filter((plan) => plan.price > 0)
-      .filter(
-        (plan, index, array) =>
-          array.findIndex(
-            (item) =>
-              item.code === plan.code && item.networkCode === plan.networkCode,
-          ) === index,
-      )
-      .sort((first, second) => {
-        return first.price - second.price;
-      });
-
-    console.log("CLUBKONNECT NORMALIZED DATA PLANS:", {
-      networkCode,
-      count: plans.length,
-      plans,
-    });
-
-    if (plans.length === 0) {
-      return res.status(502).json({
-        success: false,
-        message: "The provider returned no usable data plans for this network.",
-        network: {
-          code: networkCode,
-          name: NETWORK_NAMES[networkCode],
-        },
-        debug: {
-          extractedCount: rawPlans.length,
-          providerType: Array.isArray(parsed) ? "array" : typeof parsed,
-        },
-        providerResponse: parsed,
-      });
-    }
+          return {
+            ...plan,
+            price: sellingPrice,
+            sellingPrice,
+          };
+        }
+      );
 
     return res.status(200).json({
       success: true,
-      message: "Data plans retrieved successfully.",
+      message:
+        "Data plans retrieved successfully.",
       network: {
         code: networkCode,
-        name: NETWORK_NAMES[networkCode],
+        name:
+          NETWORK_NAMES[
+            networkCode
+          ],
       },
       count: plans.length,
       plans,
     });
   } catch (error) {
-    console.error("GET DATA PLANS ERROR:", {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
-    });
+    console.error(
+      "GET DATA PLANS ERROR:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Unable to retrieve data plans.",
-      error: error.response?.data || error.message,
+      message:
+        "Unable to retrieve data plans.",
+      error: error.message,
     });
   }
 };
+
 
 exports.buyAirtime = async (req, res) => {
   let transaction = null;
@@ -776,7 +832,7 @@ exports.buyData = async (req, res) => {
       });
     }
 
-    const { network, phone, planCode, dataPlan, amount } = req.body;
+    const { network, phone, planCode, dataPlan } = req.body;
 
     const networkCode = normalizeNetwork(network);
 
@@ -784,7 +840,46 @@ exports.buyData = async (req, res) => {
 
     const selectedPlan = String(planCode || dataPlan || "").trim();
 
-    const dataAmount = Number(amount);
+    const providerPlans =
+      await fetchNormalizedDataPlans(
+        networkCode,
+        credentials
+      );
+
+    const providerPlan =
+      providerPlans.find(
+        (plan) =>
+          String(plan.code) ===
+          selectedPlan
+      );
+
+    if (!providerPlan) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "The selected data plan is no longer available. Please refresh and try again.",
+      });
+    }
+
+    const override =
+      await DataPriceOverride.findOne({
+        networkCode,
+        planCode: selectedPlan,
+        active: true,
+      }).lean();
+
+    const providerPrice =
+      Number(providerPlan.price);
+
+    const dataAmount =
+      override &&
+      Number(
+        override.sellingPrice
+      ) > 0
+        ? Number(
+            override.sellingPrice
+          )
+        : providerPrice;
 
     if (!networkCode) {
       return res.status(400).json({
