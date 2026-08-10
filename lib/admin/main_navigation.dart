@@ -4,6 +4,8 @@ import 'admin_dashboard_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 
+import 'admin_airtime_to_cash_screen.dart';
+
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
 
@@ -27,6 +29,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         ),
       ),
     ),
+    AdminAirtimeToCashScreen(),
   ];
 
   @override
@@ -92,6 +95,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
               Icons.admin_panel_settings_rounded,
             ),
             label: 'Profile',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.currency_exchange_outlined,
+            ),
+            activeIcon: Icon(
+              Icons.currency_exchange_rounded,
+            ),
+            label: 'Airtime Cash',
           ),
         ],
       ),

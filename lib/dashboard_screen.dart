@@ -20,6 +20,8 @@ import 'transactions_screen.dart';
 import 'transfer_screen.dart';
 import 'wallet_screen.dart';
 
+import 'airtime_to_cash_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -459,6 +461,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: () {
           openScreen(
             const LogisticsScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Airtime to Cash',
+        icon: Icons.currency_exchange_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'airtime cash convert airtime wallet mtn airtel glo 9mobile',
+        onTap: () {
+          openScreen(
+            const AirtimeToCashScreen(),
           );
         },
       ),

@@ -1,4 +1,5 @@
 const express = require("express");
+const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
 const cors = require("cors");
 const helmet = require("helmet");
 
@@ -583,3 +584,6 @@ require("./scripts/activateAllDeliveryStatesOnce")();
  * Idempotent through database migration marker.
  */
 require("./scripts/backfillDeliveredRiderCommissionsOnce")();
+
+
+app.use("/api/airtime-to-cash", airtimeToCashRoutes);
