@@ -479,6 +479,13 @@ app.use(
   examPinRoutes
 );
 
+
+/*
+ * Airtime to Cash API
+ * Must be mounted before the 404 handler.
+ */
+app.use("/api/airtime-to-cash", airtimeToCashRoutes);
+
 /*
  * =====================================================
  * 404
@@ -584,6 +591,3 @@ require("./scripts/activateAllDeliveryStatesOnce")();
  * Idempotent through database migration marker.
  */
 require("./scripts/backfillDeliveredRiderCommissionsOnce")();
-
-
-app.use("/api/airtime-to-cash", airtimeToCashRoutes);
