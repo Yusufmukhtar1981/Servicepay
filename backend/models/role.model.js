@@ -98,7 +98,7 @@ roleSchema.index({
   status: 1,
 });
 
-roleSchema.pre("save", function normalizeRole(next) {
+roleSchema.pre("save", function normalizeRole() {
   if (this.name) {
     this.name = String(this.name)
       .trim()
@@ -113,7 +113,7 @@ roleSchema.pre("save", function normalizeRole(next) {
     ];
   }
 
-  next();
+
 });
 
 module.exports = mongoose.model(
