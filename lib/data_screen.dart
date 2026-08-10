@@ -10,19 +10,23 @@ class DataScreen extends StatefulWidget {
 }
 
 class _DataScreenState extends State<DataScreen> {
+  static const Color primaryGreen = Color(0xFF08783E);
+
+  static const Color softGreen = Color(0xFFEAF7F0);
+
   final TextEditingController phoneController = TextEditingController();
 
-  final List<String> networks = const [
+  final List<String> networks = const <String>[
     'MTN',
+    'Airtel',
     'Glo',
     '9mobile',
-    'Airtel',
   ];
 
   String selectedNetwork = 'MTN';
-  String selectedPlanCode = '';
+  String selectedCategory = 'All';
 
-  List<Map<String, dynamic>> dataPlans = [];
+  List<Map<String, dynamic>> dataPlans = <Map<String, dynamic>>[];
 
   bool isLoadingPlans = true;
   bool isBuyingData = false;
@@ -41,26 +45,7 @@ class _DataScreenState extends State<DataScreen> {
     super.dispose();
   }
 
-  bool get isBusy {
-    return isLoadingPlans || isBuyingData;
-  }
-
-  Map<String, dynamic>? get selectedPlan {
-    if (dataPlans.isEmpty || selectedPlanCode.isEmpty) {
-      return null;
-    }
-
-    for (final Map<String, dynamic> plan in dataPlans) {
-      final String code =
-          plan['code']?.toString() ?? plan['id']?.toString() ?? '';
-
-      if (code == selectedPlanCode) {
-        return plan;
-      }
-    }
-
-    return dataPlans.first;
-  }
+  bool get isBusy => isLoadingPlans || isBuyingData;
 
   double parseAmount(dynamic amount) {
     final String value =
@@ -79,20 +64,146 @@ class _DataScreenState extends State<DataScreen> {
     return value.toStringAsFixed(2);
   }
 
-  String getPlanCode(Map<String, dynamic> plan) {
+  String getPlanCode(
+    Map<String, dynamic> plan,
+  ) {
     return plan['code']?.toString().trim() ??
         plan['id']?.toString().trim() ??
         '';
   }
 
-  String getPlanName(Map<String, dynamic> plan) {
+  String getPlanName(
+    Map<String, dynamic> plan,
+  ) {
     return plan['name']?.toString().trim() ??
         plan['description']?.toString().trim() ??
         'Data Plan';
   }
 
+  String getCategory(
+    Map<String, dynamic> plan,
+  ) {
+    final String name = getPlanName(plan).toUpperCase();
+
+    if (name.contains('SME')) {
+      return 'SME';
+    }
+
+    if (name.contains('AWOOF')) {
+      return 'Awoof';
+    }
+
+    if (name.contains('DIRECT')) {
+      return 'Direct';
+    }
+
+    return 'Other';
+  }
+
+  String getBundleSize(
+    Map<String, dynamic> plan,
+  ) {
+    final String name = getPlanName(plan);
+
+    final RegExp pattern = RegExp(
+      r'(\d+(?:\.\d+)?)\s*(MB|GB|TB)',
+      caseSensitive: false,
+    );
+
+    final RegExpMatch? match = pattern.firstMatch(name);
+
+    if (match == null) {
+      return name;
+    }
+
+    final String number = match.group(1) ?? '';
+
+    final String unit = (match.group(2) ?? '').toUpperCase();
+
+    return '$number $unit';
+  }
+
+  String getValidity(
+    Map<String, dynamic> plan,
+  ) {
+    final String name = getPlanName(plan);
+
+    final RegExp dayPattern = RegExp(
+      r'(\d+)\s*day',
+      caseSensitive: false,
+    );
+
+    final RegExpMatch? dayMatch = dayPattern.firstMatch(name);
+
+    if (dayMatch != null) {
+      final String days = dayMatch.group(1) ?? '';
+
+      return '$days Day${days == '1' ? '' : 's'}';
+    }
+
+    if (name.toUpperCase().contains('WEEKLY')) {
+      return 'Weekly';
+    }
+
+    if (name.toUpperCase().contains('MONTHLY')) {
+      return 'Monthly';
+    }
+
+    if (name.toUpperCase().contains('DAILY')) {
+      return 'Daily';
+    }
+
+    return '';
+  }
+
   bool isValidPhone(String phone) {
-    return RegExp(r'^0\d{10}$').hasMatch(phone);
+    return RegExp(
+      r'^0\d{10}$',
+    ).hasMatch(phone);
+  }
+
+  List<String> get categories {
+    final Set<String> found = dataPlans.map(getCategory).toSet();
+
+    final List<String> result = <String>['All'];
+
+    for (final String item in const <String>[
+      'SME',
+      'Awoof',
+      'Direct',
+      'Other',
+    ]) {
+      if (found.contains(item)) {
+        result.add(item);
+      }
+    }
+
+    return result;
+  }
+
+  List<Map<String, dynamic>> get visiblePlans {
+    final List<Map<String, dynamic>> result = selectedCategory == 'All'
+        ? List<Map<String, dynamic>>.from(
+            dataPlans,
+          )
+        : dataPlans
+            .where(
+              (Map<String, dynamic> plan) =>
+                  getCategory(plan) == selectedCategory,
+            )
+            .toList();
+
+    result.sort(
+      (
+        Map<String, dynamic> a,
+        Map<String, dynamic> b,
+      ) =>
+          parseAmount(a['price']).compareTo(
+        parseAmount(b['price']),
+      ),
+    );
+
+    return result;
   }
 
   void showMessage(
@@ -107,7 +218,7 @@ class _DataScreenState extends State<DataScreen> {
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: isError ? Colors.red : Colors.green,
+          backgroundColor: isError ? Colors.red.shade700 : primaryGreen,
         ),
       );
   }
@@ -118,8 +229,8 @@ class _DataScreenState extends State<DataScreen> {
     setState(() {
       isLoadingPlans = true;
       plansError = '';
-      dataPlans = [];
-      selectedPlanCode = '';
+      dataPlans = <Map<String, dynamic>>[];
+      selectedCategory = 'All';
     });
 
     try {
@@ -133,72 +244,55 @@ class _DataScreenState extends State<DataScreen> {
         setState(() {
           plansError =
               result['message']?.toString() ?? 'Unable to load data plans.';
-          dataPlans = [];
-          selectedPlanCode = '';
         });
-
         return;
       }
 
       final dynamic rawPlans = result['plans'];
 
-      final List<Map<String, dynamic>> plans = [];
+      final List<Map<String, dynamic>> plans = <Map<String, dynamic>>[];
 
       if (rawPlans is List) {
         for (final dynamic item in rawPlans) {
-          if (item is Map<String, dynamic>) {
-            plans.add(
-              Map<String, dynamic>.from(item),
-            );
-          } else if (item is Map) {
-            plans.add(
-              Map<String, dynamic>.from(item),
-            );
+          if (item is Map) {
+            final Map<String, dynamic> plan = Map<String, dynamic>.from(item);
+
+            if (getPlanCode(plan).isNotEmpty &&
+                parseAmount(plan['price']) > 0) {
+              plans.add(plan);
+            }
           }
         }
       }
 
-      plans.removeWhere((Map<String, dynamic> plan) {
-        final String code = getPlanCode(plan);
-        final double price = parseAmount(plan['price']);
-
-        return code.isEmpty || price <= 0;
-      });
-
-      if (plans.isEmpty) {
-        setState(() {
-          plansError = 'No active data plans were returned for '
-              '$selectedNetwork.';
-          dataPlans = [];
-          selectedPlanCode = '';
-        });
-
-        return;
-      }
-
       plans.sort(
         (
-          Map<String, dynamic> first,
-          Map<String, dynamic> second,
-        ) {
-          return parseAmount(first['price']).compareTo(
-            parseAmount(second['price']),
-          );
-        },
+          Map<String, dynamic> a,
+          Map<String, dynamic> b,
+        ) =>
+            parseAmount(a['price']).compareTo(
+          parseAmount(b['price']),
+        ),
       );
+
+      if (!mounted) return;
 
       setState(() {
         dataPlans = plans;
-        selectedPlanCode = getPlanCode(plans.first);
-        plansError = '';
+
+        if (plans.isEmpty) {
+          plansError =
+              'No active data plans were returned for $selectedNetwork.';
+        }
       });
     } catch (error) {
       if (!mounted) return;
 
       setState(() {
-        plansError = error.toString().replaceFirst('Exception: ', '');
-        dataPlans = [];
-        selectedPlanCode = '';
+        plansError = error.toString().replaceFirst(
+              'Exception: ',
+              '',
+            );
       });
     } finally {
       if (mounted) {
@@ -209,59 +303,12 @@ class _DataScreenState extends State<DataScreen> {
     }
   }
 
-  Future<bool> confirmPurchase({
-    required String phone,
-    required String planName,
-    required double price,
-  }) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            'Confirm data purchase',
-          ),
-          content: Text(
-            'Purchase $planName $selectedNetwork data '
-            'for ₦${formatAmount(price)} on $phone?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Confirm'),
-            ),
-          ],
-        );
-      },
-    );
-
-    return confirmed == true;
-  }
-
-  Future<void> buyData() async {
+  Future<void> buyPlan(
+    Map<String, dynamic> plan,
+  ) async {
     if (isBusy) return;
 
     final String phone = phoneController.text.trim();
-
-    final Map<String, dynamic>? plan = selectedPlan;
 
     if (!isValidPhone(phone)) {
       showMessage(
@@ -271,35 +318,81 @@ class _DataScreenState extends State<DataScreen> {
       return;
     }
 
-    if (plan == null) {
-      showMessage(
-        'Please select a valid data plan.',
-        isError: true,
-      );
-      return;
-    }
+    final String code = getPlanCode(plan);
 
-    final String planCode = getPlanCode(plan);
-
-    final String planName = getPlanName(plan);
+    final String name = getPlanName(plan);
 
     final double price = parseAmount(plan['price']);
 
-    if (planCode.isEmpty || price <= 0) {
+    if (code.isEmpty || price <= 0) {
       showMessage(
-        'The selected data plan is invalid.',
+        'This data plan is invalid.',
         isError: true,
       );
       return;
     }
 
-    final bool confirmed = await confirmPurchase(
-      phone: phone,
-      planName: planName,
-      price: price,
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            'Confirm Data Purchase',
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                getBundleSize(plan),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(name),
+              const SizedBox(height: 14),
+              Text(
+                'Network: $selectedNetwork',
+              ),
+              Text(
+                'Phone: $phone',
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '₦${formatAmount(price)}',
+                style: const TextStyle(
+                  color: primaryGreen,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                false,
+              ),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                true,
+              ),
+              child: const Text('Buy Data'),
+            ),
+          ],
+        );
+      },
     );
 
-    if (!confirmed || !mounted) return;
+    if (confirmed != true || !mounted) {
+      return;
+    }
 
     setState(() {
       isBuyingData = true;
@@ -309,7 +402,10 @@ class _DataScreenState extends State<DataScreen> {
       final Map<String, dynamic> result = await ApiService.buyData(
         network: selectedNetwork,
         phone: phone,
-        planCode: planCode,
+        planCode: code,
+
+        // Backward compatibility only.
+        // Backend now determines real selling price.
         amount: price,
       );
 
@@ -317,28 +413,26 @@ class _DataScreenState extends State<DataScreen> {
 
       final bool success = result['success'] == true;
 
-      final String message = result['message']?.toString() ??
+      String message = result['message']?.toString() ??
           result['response_description']?.toString() ??
           result['description']?.toString() ??
           result['error']?.toString() ??
-          (success ? 'Data purchase was successful.' : 'Data purchase failed.');
+          (success ? 'Data purchase successful.' : 'Data purchase failed.');
 
       final String reference = result['reference']?.toString() ?? '';
 
       final String status = result['status']?.toString().toUpperCase() ?? '';
 
-      String finalMessage = message;
-
       if (!success && status == 'REFUNDED') {
-        finalMessage = '$finalMessage Your wallet has been refunded.';
+        message = '$message Your wallet has been refunded.';
       }
 
       if (reference.isNotEmpty) {
-        finalMessage = '$finalMessage Reference: $reference';
+        message = '$message Reference: $reference';
       }
 
       showMessage(
-        finalMessage,
+        message,
         isError: !success,
       );
 
@@ -346,10 +440,11 @@ class _DataScreenState extends State<DataScreen> {
         phoneController.clear();
       }
     } catch (error) {
-      if (!mounted) return;
-
       showMessage(
-        error.toString().replaceFirst('Exception: ', ''),
+        error.toString().replaceFirst(
+              'Exception: ',
+              '',
+            ),
         isError: true,
       );
     } finally {
@@ -361,291 +456,360 @@ class _DataScreenState extends State<DataScreen> {
     }
   }
 
-  Widget buildPlansSection() {
-    if (isLoadingPlans) {
-      return Container(
-        height: 58,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.grey.shade400,
-          ),
+  Widget buildNetworkSelector() {
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: networks.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (
+          BuildContext context,
+          int index,
+        ) {
+          final String network = networks[index];
+
+          final bool selected = selectedNetwork == network;
+
+          return ChoiceChip(
+            label: Text(network),
+            selected: selected,
+            selectedColor: primaryGreen,
+            backgroundColor: Colors.white,
+            side: BorderSide(
+              color: selected ? primaryGreen : Colors.grey.shade300,
+            ),
+            labelStyle: TextStyle(
+              color: selected ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.w700,
+            ),
+            onSelected: isBusy
+                ? null
+                : (_) async {
+                    if (selected) return;
+
+                    setState(() {
+                      selectedNetwork = network;
+                    });
+
+                    await loadDataPlans();
+                  },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget buildCategorySelector() {
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: categories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 7),
+        itemBuilder: (
+          BuildContext context,
+          int index,
+        ) {
+          final String category = categories[index];
+
+          return FilterChip(
+            label: Text(category),
+            selected: selectedCategory == category,
+            selectedColor: softGreen,
+            checkmarkColor: primaryGreen,
+            onSelected: (_) {
+              setState(() {
+                selectedCategory = category;
+              });
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget buildPlanCard(
+    Map<String, dynamic> plan,
+  ) {
+    final String name = getPlanName(plan);
+
+    final String bundle = getBundleSize(plan);
+
+    final String category = getCategory(plan);
+
+    final String validity = getValidity(plan);
+
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      margin: const EdgeInsets.only(
+        bottom: 12,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: Colors.grey.shade200,
         ),
-        child: const Center(
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: isBuyingData ? null : () => buyPlan(plan),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
+            children: <Widget>[
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: softGreen,
+                  borderRadius: BorderRadius.circular(
+                    15,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.signal_cellular_alt_rounded,
+                  color: primaryGreen,
                 ),
               ),
-              SizedBox(width: 12),
-              Text('Loading live data plans...'),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      bundle,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 3,
+                    ),
+                    Text(
+                      [
+                        category,
+                        validity,
+                      ]
+                          .where(
+                            (String value) => value.isNotEmpty,
+                          )
+                          .join(' • '),
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 4,
+                    ),
+                    Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Text(
+                    '₦${formatAmount(plan['price'])}',
+                    style: const TextStyle(
+                      color: primaryGreen,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 8,
+                  ),
+                  FilledButton(
+                    onPressed: isBuyingData ? null : () => buyPlan(plan),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                      ),
+                    ),
+                    child: const Text('Buy'),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
-      );
-    }
-
-    if (plansError.isNotEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.red.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.red.shade200,
-          ),
-        ),
-        child: Column(
-          children: [
-            const Icon(
-              Icons.error_outline,
-              color: Colors.red,
-              size: 32,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              plansError,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.red,
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: loadDataPlans,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Try Again'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return DropdownButtonFormField<String>(
-      key: ValueKey<String>(
-        '$selectedNetwork-$selectedPlanCode',
       ),
-      initialValue: selectedPlanCode.isEmpty ? null : selectedPlanCode,
-      isExpanded: true,
-      decoration: InputDecoration(
-        prefixIcon: const Icon(
-          Icons.data_usage_outlined,
-        ),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      items: dataPlans.map(
-        (Map<String, dynamic> plan) {
-          final String code = getPlanCode(plan);
-
-          final String name = getPlanName(plan);
-
-          final String price = formatAmount(plan['price']);
-
-          return DropdownMenuItem<String>(
-            value: code,
-            child: Text(
-              '$name - ₦$price',
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        },
-      ).toList(),
-      onChanged: isBuyingData
-          ? null
-          : (String? value) {
-              if (value == null) return;
-
-              setState(() {
-                selectedPlanCode = value;
-              });
-            },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final Map<String, dynamic>? plan = selectedPlan;
-
-    final String buttonText;
-
-    if (isLoadingPlans) {
-      buttonText = 'Loading Plans...';
-    } else if (plan == null) {
-      buttonText = 'Select Data Plan';
-    } else {
-      buttonText = 'Buy ${getPlanName(plan)} - '
-          '₦${formatAmount(plan['price'])}';
-    }
+    final List<Map<String, dynamic>> displayed = visiblePlans;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF6F8FA),
       appBar: AppBar(
-        backgroundColor: Colors.green,
+        backgroundColor: primaryGreen,
         foregroundColor: Colors.white,
         title: const Text(
           'Buy Data',
           style: TextStyle(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w800,
           ),
         ),
-        actions: [
+        actions: <Widget>[
           IconButton(
+            tooltip: 'Refresh',
             onPressed: isBusy ? null : loadDataPlans,
-            tooltip: 'Refresh plans',
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: loadDataPlans,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 600,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+      body: Column(
+        children: <Widget>[
+          Container(
+            width: double.infinity,
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              14,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                TextField(
+                  controller: phoneController,
+                  enabled: !isBuyingData,
+                  maxLength: 11,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Beneficiary Phone Number',
+                    hintText: '08012345678',
+                    counterText: '',
+                    prefixIcon: const Icon(
+                      Icons.phone_android_rounded,
+                    ),
+                    filled: true,
+                    fillColor: const Color(
+                      0xFFF8FAFC,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(
+                        14,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  height: 14,
+                ),
+                const Text(
+                  'Network',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(
+                  height: 8,
+                ),
+                buildNetworkSelector(),
+                if (!isLoadingPlans && dataPlans.isNotEmpty) ...[
+                  const SizedBox(
+                    height: 14,
+                  ),
                   const Text(
-                    'Select Network',
+                    'Data Type',
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedNetwork,
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(
-                        Icons.sim_card_outlined,
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: networks.map(
-                      (String network) {
-                        return DropdownMenuItem<String>(
-                          value: network,
-                          child: Text(network),
-                        );
-                      },
-                    ).toList(),
-                    onChanged: isBusy
-                        ? null
-                        : (String? value) async {
-                            if (value == null || value == selectedNetwork) {
-                              return;
-                            }
-
-                            setState(() {
-                              selectedNetwork = value;
-                            });
-
-                            await loadDataPlans();
-                          },
+                  const SizedBox(
+                    height: 8,
                   ),
-                  const SizedBox(height: 22),
-                  const Text(
-                    'Select Data Plan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  buildPlansSection(),
-                  const SizedBox(height: 22),
-                  const Text(
-                    'Phone Number',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: phoneController,
-                    enabled: !isBusy,
-                    maxLength: 11,
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                      hintText: '08012345678',
-                      prefixIcon: const Icon(
-                        Icons.phone_outlined,
-                      ),
-                      counterText: '',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: isBusy || plan == null || plansError.isNotEmpty
-                          ? null
-                          : buyData,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: isBuyingData
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(
-                              buttonText,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Data plans and prices are loaded live '
-                    'from the service provider.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 13,
-                    ),
-                  ),
+                  buildCategorySelector(),
                 ],
-              ),
+              ],
             ),
           ),
-        ),
+          Expanded(
+            child: isLoadingPlans
+                ? const Center(
+                    child: CircularProgressIndicator(),
+                  )
+                : plansError.isNotEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(
+                            24,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                size: 46,
+                                color: Colors.red,
+                              ),
+                              const SizedBox(
+                                height: 12,
+                              ),
+                              Text(
+                                plansError,
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(
+                                height: 14,
+                              ),
+                              FilledButton.icon(
+                                onPressed: loadDataPlans,
+                                icon: const Icon(
+                                  Icons.refresh_rounded,
+                                ),
+                                label: const Text(
+                                  'Try Again',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : displayed.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No plans found in this category.',
+                            ),
+                          )
+                        : RefreshIndicator(
+                            onRefresh: loadDataPlans,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(
+                                16,
+                              ),
+                              itemCount: displayed.length,
+                              itemBuilder: (
+                                BuildContext context,
+                                int index,
+                              ) =>
+                                  buildPlanCard(
+                                displayed[index],
+                              ),
+                            ),
+                          ),
+          ),
+        ],
       ),
     );
   }
