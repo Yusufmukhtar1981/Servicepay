@@ -10,8 +10,7 @@ class DataScreen extends StatefulWidget {
 }
 
 class _DataScreenState extends State<DataScreen> {
-  final TextEditingController phoneController =
-      TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
 
   final List<String> networks = const [
     'MTN',
@@ -47,17 +46,13 @@ class _DataScreenState extends State<DataScreen> {
   }
 
   Map<String, dynamic>? get selectedPlan {
-    if (dataPlans.isEmpty ||
-        selectedPlanCode.isEmpty) {
+    if (dataPlans.isEmpty || selectedPlanCode.isEmpty) {
       return null;
     }
 
-    for (final Map<String, dynamic> plan
-        in dataPlans) {
+    for (final Map<String, dynamic> plan in dataPlans) {
       final String code =
-          plan['code']?.toString() ??
-              plan['id']?.toString() ??
-              '';
+          plan['code']?.toString() ?? plan['id']?.toString() ?? '';
 
       if (code == selectedPlanCode) {
         return plan;
@@ -68,11 +63,8 @@ class _DataScreenState extends State<DataScreen> {
   }
 
   double parseAmount(dynamic amount) {
-    final String value = amount
-        .toString()
-        .replaceAll('₦', '')
-        .replaceAll(',', '')
-        .trim();
+    final String value =
+        amount.toString().replaceAll('₦', '').replaceAll(',', '').trim();
 
     return double.tryParse(value) ?? 0;
   }
@@ -115,8 +107,7 @@ class _DataScreenState extends State<DataScreen> {
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor:
-              isError ? Colors.red : Colors.green,
+          backgroundColor: isError ? Colors.red : Colors.green,
         ),
       );
   }
@@ -132,8 +123,7 @@ class _DataScreenState extends State<DataScreen> {
     });
 
     try {
-      final Map<String, dynamic> result =
-          await ApiService.getDataPlans(
+      final Map<String, dynamic> result = await ApiService.getDataPlans(
         network: selectedNetwork,
       );
 
@@ -142,8 +132,7 @@ class _DataScreenState extends State<DataScreen> {
       if (result['success'] != true) {
         setState(() {
           plansError =
-              result['message']?.toString() ??
-                  'Unable to load data plans.';
+              result['message']?.toString() ?? 'Unable to load data plans.';
           dataPlans = [];
           selectedPlanCode = '';
         });
@@ -171,16 +160,14 @@ class _DataScreenState extends State<DataScreen> {
 
       plans.removeWhere((Map<String, dynamic> plan) {
         final String code = getPlanCode(plan);
-        final double price =
-            parseAmount(plan['price']);
+        final double price = parseAmount(plan['price']);
 
         return code.isEmpty || price <= 0;
       });
 
       if (plans.isEmpty) {
         setState(() {
-          plansError =
-              'No active data plans were returned for '
+          plansError = 'No active data plans were returned for '
               '$selectedNetwork.';
           dataPlans = [];
           selectedPlanCode = '';
@@ -194,8 +181,7 @@ class _DataScreenState extends State<DataScreen> {
           Map<String, dynamic> first,
           Map<String, dynamic> second,
         ) {
-          return parseAmount(first['price'])
-              .compareTo(
+          return parseAmount(first['price']).compareTo(
             parseAmount(second['price']),
           );
         },
@@ -203,17 +189,14 @@ class _DataScreenState extends State<DataScreen> {
 
       setState(() {
         dataPlans = plans;
-        selectedPlanCode =
-            getPlanCode(plans.first);
+        selectedPlanCode = getPlanCode(plans.first);
         plansError = '';
       });
     } catch (error) {
       if (!mounted) return;
 
       setState(() {
-        plansError = error
-            .toString()
-            .replaceFirst('Exception: ', '');
+        plansError = error.toString().replaceFirst('Exception: ', '');
         dataPlans = [];
         selectedPlanCode = '';
       });
@@ -231,8 +214,7 @@ class _DataScreenState extends State<DataScreen> {
     required String planName,
     required double price,
   }) async {
-    final bool? confirmed =
-        await showDialog<bool>(
+    final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
@@ -277,11 +259,9 @@ class _DataScreenState extends State<DataScreen> {
   Future<void> buyData() async {
     if (isBusy) return;
 
-    final String phone =
-        phoneController.text.trim();
+    final String phone = phoneController.text.trim();
 
-    final Map<String, dynamic>? plan =
-        selectedPlan;
+    final Map<String, dynamic>? plan = selectedPlan;
 
     if (!isValidPhone(phone)) {
       showMessage(
@@ -299,14 +279,11 @@ class _DataScreenState extends State<DataScreen> {
       return;
     }
 
-    final String planCode =
-        getPlanCode(plan);
+    final String planCode = getPlanCode(plan);
 
-    final String planName =
-        getPlanName(plan);
+    final String planName = getPlanName(plan);
 
-    final double price =
-        parseAmount(plan['price']);
+    final double price = parseAmount(plan['price']);
 
     if (planCode.isEmpty || price <= 0) {
       showMessage(
@@ -316,8 +293,7 @@ class _DataScreenState extends State<DataScreen> {
       return;
     }
 
-    final bool confirmed =
-        await confirmPurchase(
+    final bool confirmed = await confirmPurchase(
       phone: phone,
       planName: planName,
       price: price,
@@ -330,8 +306,7 @@ class _DataScreenState extends State<DataScreen> {
     });
 
     try {
-      final Map<String, dynamic> result =
-          await ApiService.buyData(
+      final Map<String, dynamic> result = await ApiService.buyData(
         network: selectedNetwork,
         phone: phone,
         planCode: planCode,
@@ -340,38 +315,26 @@ class _DataScreenState extends State<DataScreen> {
 
       if (!mounted) return;
 
-      final bool success =
-          result['success'] == true;
+      final bool success = result['success'] == true;
 
-      final String message =
-          result['message']?.toString() ??
-              result['response_description']
-                  ?.toString() ??
-              result['description']?.toString() ??
-              result['error']?.toString() ??
-              (success
-                  ? 'Data purchase was successful.'
-                  : 'Data purchase failed.');
+      final String message = result['message']?.toString() ??
+          result['response_description']?.toString() ??
+          result['description']?.toString() ??
+          result['error']?.toString() ??
+          (success ? 'Data purchase was successful.' : 'Data purchase failed.');
 
-      final String reference =
-          result['reference']?.toString() ?? '';
+      final String reference = result['reference']?.toString() ?? '';
 
-      final String status =
-          result['status']
-                  ?.toString()
-                  .toUpperCase() ??
-              '';
+      final String status = result['status']?.toString().toUpperCase() ?? '';
 
       String finalMessage = message;
 
       if (!success && status == 'REFUNDED') {
-        finalMessage =
-            '$finalMessage Your wallet has been refunded.';
+        finalMessage = '$finalMessage Your wallet has been refunded.';
       }
 
       if (reference.isNotEmpty) {
-        finalMessage =
-            '$finalMessage Reference: $reference';
+        finalMessage = '$finalMessage Reference: $reference';
       }
 
       showMessage(
@@ -386,9 +349,7 @@ class _DataScreenState extends State<DataScreen> {
       if (!mounted) return;
 
       showMessage(
-        error
-            .toString()
-            .replaceFirst('Exception: ', ''),
+        error.toString().replaceFirst('Exception: ', ''),
         isError: true,
       );
     } finally {
@@ -470,10 +431,7 @@ class _DataScreenState extends State<DataScreen> {
       key: ValueKey<String>(
         '$selectedNetwork-$selectedPlanCode',
       ),
-      initialValue:
-          selectedPlanCode.isEmpty
-              ? null
-              : selectedPlanCode,
+      initialValue: selectedPlanCode.isEmpty ? null : selectedPlanCode,
       isExpanded: true,
       decoration: InputDecoration(
         prefixIcon: const Icon(
@@ -487,14 +445,11 @@ class _DataScreenState extends State<DataScreen> {
       ),
       items: dataPlans.map(
         (Map<String, dynamic> plan) {
-          final String code =
-              getPlanCode(plan);
+          final String code = getPlanCode(plan);
 
-          final String name =
-              getPlanName(plan);
+          final String name = getPlanName(plan);
 
-          final String price =
-              formatAmount(plan['price']);
+          final String price = formatAmount(plan['price']);
 
           return DropdownMenuItem<String>(
             value: code,
@@ -519,8 +474,7 @@ class _DataScreenState extends State<DataScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final Map<String, dynamic>? plan =
-        selectedPlan;
+    final Map<String, dynamic>? plan = selectedPlan;
 
     final String buttonText;
 
@@ -529,14 +483,12 @@ class _DataScreenState extends State<DataScreen> {
     } else if (plan == null) {
       buttonText = 'Select Data Plan';
     } else {
-      buttonText =
-          'Buy ${getPlanName(plan)} - '
+      buttonText = 'Buy ${getPlanName(plan)} - '
           '₦${formatAmount(plan['price'])}';
     }
 
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
@@ -548,8 +500,7 @@ class _DataScreenState extends State<DataScreen> {
         ),
         actions: [
           IconButton(
-            onPressed:
-                isBusy ? null : loadDataPlans,
+            onPressed: isBusy ? null : loadDataPlans,
             tooltip: 'Refresh plans',
             icon: const Icon(Icons.refresh),
           ),
@@ -558,8 +509,7 @@ class _DataScreenState extends State<DataScreen> {
       body: RefreshIndicator(
         onRefresh: loadDataPlans,
         child: SingleChildScrollView(
-          physics:
-              const AlwaysScrollableScrollPhysics(),
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20),
           child: Center(
             child: ConstrainedBox(
@@ -567,8 +517,7 @@ class _DataScreenState extends State<DataScreen> {
                 maxWidth: 600,
               ),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
                     'Select Network',
@@ -587,8 +536,7 @@ class _DataScreenState extends State<DataScreen> {
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     items: networks.map(
@@ -602,9 +550,7 @@ class _DataScreenState extends State<DataScreen> {
                     onChanged: isBusy
                         ? null
                         : (String? value) async {
-                            if (value == null ||
-                                value ==
-                                    selectedNetwork) {
+                            if (value == null || value == selectedNetwork) {
                               return;
                             }
 
@@ -638,8 +584,7 @@ class _DataScreenState extends State<DataScreen> {
                     controller: phoneController,
                     enabled: !isBusy,
                     maxLength: 11,
-                    keyboardType:
-                        TextInputType.phone,
+                    keyboardType: TextInputType.phone,
                     decoration: InputDecoration(
                       hintText: '08012345678',
                       prefixIcon: const Icon(
@@ -649,8 +594,7 @@ class _DataScreenState extends State<DataScreen> {
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
@@ -658,41 +602,31 @@ class _DataScreenState extends State<DataScreen> {
                   SizedBox(
                     height: 52,
                     child: ElevatedButton(
-                      onPressed:
-                          isBusy ||
-                                  plan == null ||
-                                  plansError.isNotEmpty
-                              ? null
-                              : buyData,
-                      style:
-                          ElevatedButton.styleFrom(
-                        backgroundColor:
-                            Colors.green,
-                        foregroundColor:
-                            Colors.white,
+                      onPressed: isBusy || plan == null || plansError.isNotEmpty
+                          ? null
+                          : buyData,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       child: isBuyingData
                           ? const SizedBox(
                               width: 24,
                               height: 24,
-                              child:
-                                  CircularProgressIndicator(
+                              child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
                                 color: Colors.white,
                               ),
                             )
                           : Text(
                               buttonText,
-                              textAlign:
-                                  TextAlign.center,
+                              textAlign: TextAlign.center,
                               style: const TextStyle(
                                 fontSize: 16,
-                                fontWeight:
-                                    FontWeight.bold,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                     ),
