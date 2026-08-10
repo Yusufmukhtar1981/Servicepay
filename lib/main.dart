@@ -6,6 +6,9 @@ import 'firebase_options.dart';
 import 'login_screen.dart';
 import 'reset_password_screen.dart';
 
+import 'package:flutter/foundation.dart';
+import 'public_website_screen.dart';
+
 /*
  * =====================================================
  * FIREBASE BACKGROUND MESSAGE HANDLER
@@ -22,8 +25,7 @@ Future<void> firebaseMessagingBackgroundHandler(
   RemoteMessage message,
 ) async {
   await Firebase.initializeApp(
-    options:
-        DefaultFirebaseOptions.currentPlatform,
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
   debugPrint(
@@ -43,8 +45,7 @@ Future<void> main() async {
    * Initialize Firebase for Android + Web.
    */
   await Firebase.initializeApp(
-    options:
-        DefaultFirebaseOptions.currentPlatform,
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
   /*
@@ -65,8 +66,7 @@ Future<void> main() async {
    * ServicePay VAPID public key.
    */
   try {
-    await FirebaseMessaging.instance
-        .requestPermission(
+    await FirebaseMessaging.instance.requestPermission(
       alert: true,
       badge: true,
       sound: true,
@@ -136,47 +136,29 @@ Future<void> main() async {
  * SERVICEPAY APP
  * =====================================================
  */
-class ServicePayApp
-    extends StatelessWidget {
+class ServicePayApp extends StatelessWidget {
   const ServicePayApp({
     super.key,
   });
 
   Widget getInitialScreen() {
-    final Uri currentUri =
-        Uri.base;
+    final Uri currentUri = Uri.base;
 
-    final String path =
-        currentUri.path.toLowerCase();
+    final String path = currentUri.path.toLowerCase();
 
     final String resetMode =
-        currentUri
-                .queryParameters[
-                    'reset-password']
-                ?.toLowerCase() ??
-            '';
+        currentUri.queryParameters['reset-password']?.toLowerCase() ?? '';
 
-    final String mode =
-        currentUri
-                .queryParameters[
-                    'mode']
-                ?.toLowerCase() ??
-            '';
+    final String mode = currentUri.queryParameters['mode']?.toLowerCase() ?? '';
 
-    final String token =
-        currentUri
-                .queryParameters[
-                    'token']
-                ?.trim() ??
-            '';
+    final String token = currentUri.queryParameters['token']?.trim() ?? '';
 
-    final bool isResetPasswordLink =
-        path == '/reset-password' ||
-            path.endsWith(
-              '/reset-password/',
-            ) ||
-            resetMode == 'true' ||
-            mode == 'reset-password';
+    final bool isResetPasswordLink = path == '/reset-password' ||
+        path.endsWith(
+          '/reset-password/',
+        ) ||
+        resetMode == 'true' ||
+        mode == 'reset-password';
 
     if (isResetPasswordLink) {
       return ResetPasswordScreen(
@@ -193,24 +175,19 @@ class ServicePayApp
   ) {
     return MaterialApp(
       title: 'ServicePay',
-      debugShowCheckedModeBanner:
-          false,
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme:
-            ColorScheme.fromSeed(
-          seedColor:
-              const Color(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(
             0xFF159447,
           ),
         ),
         useMaterial3: true,
-        scaffoldBackgroundColor:
-            const Color(
+        scaffoldBackgroundColor: const Color(
           0xFFF7F9F8,
         ),
       ),
-      home:
-          getInitialScreen(),
+      home: kIsWeb ? const PublicWebsiteScreen() : getInitialScreen(),
     );
   }
 }
