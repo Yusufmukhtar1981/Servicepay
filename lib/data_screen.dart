@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'services/api_service.dart';
+import 'receipt_screen.dart';
 
 class DataScreen extends StatefulWidget {
   const DataScreen({super.key});
@@ -437,7 +438,103 @@ class _DataScreenState extends State<DataScreen> {
       );
 
       if (success) {
+        final String receiptPhone = phone;
+        final String receiptNetwork = selectedNetwork;
+
+        final String receiptPlan = result['planName']?.toString() ??
+            result['plan_name']?.toString() ??
+            result['dataPlan']?.toString() ??
+            result['data_plan']?.toString() ??
+            code.toString();
+
+        final String receiptAmount = result['amountCharged']?.toString() ??
+            result['amount_charged']?.toString() ??
+            result['amount']?.toString() ??
+            price.toString();
+
+        final String receiptReference = reference.isNotEmpty
+            ? reference
+            : 'SP-DATA-${DateTime.now().millisecondsSinceEpoch}';
+
+        final String receiptStatus = status.isNotEmpty ? status : 'SUCCESSFUL';
+
+        final DateTime now = DateTime.now();
+
+        final String receiptDate = '${now.day.toString().padLeft(2, '0')}/'
+            '${now.month.toString().padLeft(2, '0')}/'
+            '${now.year} '
+            '${now.hour.toString().padLeft(2, '0')}:'
+            '${now.minute.toString().padLeft(2, '0')}';
+
         phoneController.clear();
+
+        if (!mounted) return;
+
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext dialogContext) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              icon: const Icon(
+                Icons.check_circle_rounded,
+                color: primaryGreen,
+                size: 60,
+              ),
+              title: const Text(
+                'Data Purchase Successful',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: Text(
+                'Your $receiptNetwork data purchase for '
+                '$receiptPhone was successful.',
+                textAlign: TextAlign.center,
+              ),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Done'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ReceiptScreen(
+                          serviceName: 'Data Purchase',
+                          amount: receiptAmount,
+                          status: receiptStatus,
+                          reference: receiptReference,
+                          date: receiptDate,
+                          details: {
+                            'Network': receiptNetwork,
+                            'Phone Number': receiptPhone,
+                            'Data Plan': receiptPlan,
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(
+                    Icons.receipt_long_rounded,
+                  ),
+                  label: const Text(
+                    'View Receipt',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
       }
     } catch (error) {
       showMessage(
