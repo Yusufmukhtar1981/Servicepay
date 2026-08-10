@@ -220,8 +220,8 @@ exports.adjustCustomerWallet = async (
 
           action:
             action === "CREDIT"
-              ? "CUSTOMER_WALLET_CREDIT"
-              : "CUSTOMER_WALLET_DEBIT",
+              ? "WALLET_CREDITED"
+              : "WALLET_DEBITED",
 
           reason,
 

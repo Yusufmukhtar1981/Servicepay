@@ -213,7 +213,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final http.Response response = await http.get(
         Uri.parse(
-          '$baseUrl/app-settings/public',
+          '$baseUrl/settings/public',
         ),
         headers: const <String, String>{
           'Accept': 'application/json',
