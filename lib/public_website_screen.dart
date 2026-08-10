@@ -864,7 +864,7 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
                 }
 
                 return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: mission),
                     const SizedBox(width: 18),
@@ -1280,7 +1280,7 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
           }
 
           return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: supportCard,
