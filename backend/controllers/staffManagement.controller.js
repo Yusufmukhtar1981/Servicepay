@@ -166,51 +166,99 @@ exports.getRoles = async (req, res) => {
 
 exports.updateRole = async (req, res) => {
   try {
-    const role = await Role.findById(
-      req.params.roleId
-    );
+    const roleId =
+      req.params.id ||
+      req.params.roleId ||
+      req.body.roleId ||
+      req.body.id;
+
+    if (!roleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Staff role ID is required.",
+      });
+    }
+
+    const role = await Role.findById(roleId);
 
     if (!role) {
       return res.status(404).json({
         success: false,
-        message: "Staff role was not found.",
+        message: "Staff role not found.",
       });
     }
 
     const {
+      name,
       displayName,
       department,
       description,
       permissions,
       status,
-    } = req.body || {};
+    } = req.body;
+
+    if (name !== undefined && name !== null) {
+      const normalizedName = normalizeRoleName(name);
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message: "A valid role name is required.",
+        });
+      }
+
+      const duplicateRole = await Role.findOne({
+        _id: { $ne: role._id },
+        name: normalizedName,
+      });
+
+      if (duplicateRole) {
+        return res.status(409).json({
+          success: false,
+          message: "Another staff role already uses this role name.",
+        });
+      }
+
+      role.name = normalizedName;
+    }
 
     if (displayName !== undefined) {
-      role.displayName = String(displayName).trim();
+      role.displayName = String(displayName || "").trim();
     }
 
     if (department !== undefined) {
-      role.department = String(department)
-        .trim()
-        .toUpperCase();
+      role.department = String(department || "").trim().toUpperCase();
     }
 
     if (description !== undefined) {
-      role.description = String(description).trim();
+      role.description = String(description || "").trim();
     }
 
     if (permissions !== undefined) {
-      role.permissions =
-        normalizePermissions(permissions);
+      if (!Array.isArray(permissions)) {
+        return res.status(400).json({
+          success: false,
+          message: "Permissions must be provided as a list.",
+        });
+      }
+
+      role.permissions = normalizePermissions(permissions);
     }
 
     if (status !== undefined) {
-      role.status = String(status)
+      const normalizedStatus = String(status || "")
         .trim()
         .toUpperCase();
-    }
 
-    role.updatedBy = req.user._id;
+      if (!["ACTIVE", "INACTIVE"].includes(normalizedStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid staff role status.",
+        });
+      }
+
+      role.status = normalizedStatus;
+    }
 
     await role.save();
 
@@ -220,11 +268,13 @@ exports.updateRole = async (req, res) => {
       role: publicRole(role),
     });
   } catch (error) {
-    console.error("Update staff role error:", error);
+    console.error("UPDATE STAFF ROLE ERROR:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Unable to update the staff role.",
+      message:
+        error?.message ||
+        "Unable to update the staff role.",
     });
   }
 };
