@@ -30,6 +30,8 @@ import 'group_wallet_screen.dart';
 
 import 'withdrawal_screen.dart';
 
+import 'referral_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -631,171 +633,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget buildHeader() {
-    return Column(
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            SizedBox(
-              width: 165,
-              height: 58,
-              child: Image.asset(
-                'assets/image/servicepay_logo.png',
-                fit: BoxFit.contain,
-                alignment: Alignment.centerLeft,
-                filterQuality: FilterQuality.high,
-                errorBuilder: (
-                  BuildContext context,
-                  Object error,
-                  StackTrace? stackTrace,
-                ) {
-                  return const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'ServicePay',
-                      style: TextStyle(
-                        color: Color(0xFF064E2F),
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const Spacer(),
-            Stack(
-              clipBehavior: Clip.none,
-              children: <Widget>[
-                IconButton(
-                  onPressed: () {
-                    openScreen(
-                      const NotificationsScreen(),
-                    );
-                  },
-                  style: IconButton.styleFrom(
-                    backgroundColor: softGreen,
-                    foregroundColor: primaryGreen,
-                    minimumSize: const Size(
-                      45,
-                      45,
-                    ),
-                  ),
-                  icon: const Icon(
-                    Icons.notifications_none_rounded,
-                    size: 25,
-                  ),
-                ),
-                if (unreadNotifications > 0)
-                  Positioned(
-                    right: -1,
-                    top: -4,
-                    child: Container(
-                      constraints: const BoxConstraints(
-                        minWidth: 20,
-                        minHeight: 20,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                      ),
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF16A34A),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        unreadNotifications > 9 ? '9+' : '$unreadNotifications',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 13),
-        Row(
-          children: <Widget>[
-            Container(
-              width: 46,
-              height: 46,
-              decoration: const BoxDecoration(
-                color: primaryGreen,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  firstName().substring(0, 1).toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Hello, ${firstName()}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF101828),
-                      fontSize: 19,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  const Text(
-                    'Welcome back! Glad to see you.',
-                    style: TextStyle(
-                      color: Color(0xFF667085),
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 9,
-              ),
-              decoration: BoxDecoration(
-                color: softGreen,
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(
-                    Icons.verified_user_outlined,
-                    color: primaryGreen,
-                    size: 18,
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    'Verified',
-                    style: TextStyle(
-                      color: primaryGreen,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+    return buildPremiumHeader();
   }
 
   Widget buildWalletCard() {
@@ -1485,7 +1323,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final displayName =
         userName.trim().isEmpty ? 'ServicePay User' : userName.trim();
 
-    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'S';
+    final firstName = displayName.split(RegExp(r'\s+')).first.trim();
+
+    final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'S';
 
     final hour = DateTime.now().hour;
 
@@ -1496,22 +1336,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : 'Good evening';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        18,
-        14,
-        18,
-        8,
-      ),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
       child: Row(
         children: <Widget>[
           Container(
-            width: 42,
-            height: 42,
+            width: 40,
+            height: 40,
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: const Color(0xFFEAF7F0),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(13),
             ),
-            padding: const EdgeInsets.all(7),
             child: Image.asset(
               'assets/image/servicepay_logo.png',
               fit: BoxFit.contain,
@@ -1523,6 +1358,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 return const Icon(
                   Icons.account_balance_wallet_rounded,
                   color: Color(0xFF08783E),
+                  size: 22,
                 );
               },
             ),
@@ -1533,64 +1369,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  '$greeting,',
+                  greeting,
                   style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF7A8981),
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w600,
+                    color: Color(0xFF7A8981),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  displayName,
+                  firstName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 18,
-                    color: Color(0xFF16231D),
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.35,
+                    color: Color(0xFF17231D),
                   ),
                 ),
               ],
             ),
           ),
           InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             onTap: () {
               openScreen(
                 const NotificationsScreen(),
               );
             },
             child: Container(
-              width: 42,
-              height: 42,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(13),
                 border: Border.all(
-                  color: const Color(0xFFE8EEEB),
+                  color: const Color(0xFFE7ECE9),
                 ),
               ),
               child: const Icon(
                 Icons.notifications_none_rounded,
-                color: Color(0xFF1C3B2E),
-                size: 22,
+                color: Color(0xFF355B49),
+                size: 21,
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 9),
           GestureDetector(
             onTap:
                 isUploadingProfilePhoto ? null : _showProfilePhotoSourceSheet,
             child: Stack(
               clipBehavior: Clip.none,
               children: <Widget>[
-                buildPremiumHeader(),
-                const SizedBox(height: 4),
                 Container(
-                  width: 46,
-                  height: 46,
+                  width: 44,
+                  height: 44,
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: const Color(0xFFEAF7F0),
@@ -1600,33 +1436,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     boxShadow: const <BoxShadow>[
                       BoxShadow(
-                        color: Color(0x14000000),
-                        blurRadius: 12,
-                        offset: Offset(0, 5),
+                        color: Color(0x12000000),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  alignment: Alignment.center,
-                  child: profilePhotoUrl.isNotEmpty
+                  child: profilePhotoUrl.trim().isNotEmpty
                       ? Image.network(
                           profilePhotoUrl,
-                          width: 46,
-                          height: 46,
+                          width: 44,
+                          height: 44,
                           fit: BoxFit.cover,
                           errorBuilder: (
                             context,
                             error,
                             stackTrace,
                           ) {
-                            return Center(
-                              child: Text(
-                                initial,
-                                style: const TextStyle(
-                                  color: Color(0xFF08783E),
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
-                                ),
+                            return Text(
+                              initial,
+                              style: const TextStyle(
+                                color: Color(0xFF08783E),
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
                               ),
                             );
                           },
@@ -1635,7 +1467,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           initial,
                           style: const TextStyle(
                             color: Color(0xFF08783E),
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -1644,8 +1476,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   right: -2,
                   bottom: -2,
                   child: Container(
-                    width: 20,
-                    height: 20,
+                    width: 19,
+                    height: 19,
                     decoration: BoxDecoration(
                       color: const Color(0xFF08783E),
                       shape: BoxShape.circle,
@@ -1654,11 +1486,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         width: 2,
                       ),
                     ),
-                    child: const Icon(
-                      Icons.camera_alt_rounded,
-                      color: Colors.white,
-                      size: 11,
-                    ),
+                    child: isUploadingProfilePhoto
+                        ? const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.camera_alt_rounded,
+                            color: Colors.white,
+                            size: 10,
+                          ),
                   ),
                 ),
               ],
@@ -1676,218 +1516,188 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: const Color(0xFFE9EFEC),
             ),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x08000000),
-                blurRadius: 18,
-                offset: Offset(0, 7),
-              ),
-            ],
           ),
           child: buildSearchBar(),
         ),
-        const SizedBox(height: 20),
-        const Row(
+        const SizedBox(height: 15),
+        Row(
           children: <Widget>[
-            Expanded(
+            const Expanded(
               child: Text(
                 'Quick Actions',
                 style: TextStyle(
-                  fontSize: 19,
+                  fontSize: 17,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: -0.35,
-                  color: Color(0xFF16231D),
+                  letterSpacing: -0.25,
+                  color: Color(0xFF17231D),
                 ),
               ),
             ),
             Text(
               'Everyday banking',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF7A8981),
+                color: const Color(0xFF728078).withValues(alpha: 0.90),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 9),
         Container(
           padding: const EdgeInsets.symmetric(
-            horizontal: 6,
-            vertical: 12,
+            horizontal: 4,
+            vertical: 8,
           ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: const Color(0xFFE9EFEC),
             ),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x09000000),
-                blurRadius: 22,
-                offset: Offset(0, 8),
-              ),
-            ],
           ),
           child: buildQuickActions(),
         ),
-        const SizedBox(height: 25),
-        Row(
-          children: <Widget>[
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Services',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.45,
-                      color: Color(0xFF16231D),
-                    ),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    'Everything you need, in one place',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF748078),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAF7F0),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: const Icon(
-                Icons.grid_view_rounded,
-                color: Color(0xFF08783E),
-                size: 20,
-              ),
-            ),
-          ],
+        const SizedBox(height: 18),
+        const Text(
+          'All Services',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.3,
+            color: Color(0xFF17231D),
+          ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.fromLTRB(
-            8,
-            12,
-            8,
-            14,
+            7,
+            9,
+            7,
+            10,
           ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: const Color(0xFFE9EFEC),
             ),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x08000000),
-                blurRadius: 24,
-                offset: Offset(0, 8),
-              ),
-            ],
           ),
           child: buildAllServicesCompact(),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
               colors: <Color>[
-                Color(0xFF073F2D),
-                Color(0xFF08783E),
+                Color(0xFF075C3A),
+                Color(0xFF159653),
               ],
             ),
             boxShadow: const <BoxShadow>[
               BoxShadow(
-                color: Color(0x2208783E),
-                blurRadius: 24,
-                offset: Offset(0, 10),
+                color: Color(0x1C08783E),
+                blurRadius: 18,
+                offset: Offset(0, 8),
               ),
             ],
           ),
-          child: Row(
-            children: <Widget>[
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(
-                    alpha: 0.14,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              15,
+              13,
+              10,
+              13,
+            ),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 45,
+                  height: 45,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(
+                      alpha: 0.14,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  child: const Icon(
+                    Icons.card_giftcard_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.card_giftcard_rounded,
-                  color: Colors.white,
-                  size: 27,
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Invite friends to ServicePay',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'Share your referral code and grow your ServicePay network.',
+                        style: TextStyle(
+                          color: Color(0xFFD9EFE5),
+                          fontSize: 10.8,
+                          height: 1.3,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      'Invite friends to ServicePay',
-                      style: TextStyle(
+                const SizedBox(width: 7),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () {
+                      openScreen(
+                        const ReferralScreen(),
+                      );
+                    },
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.arrow_forward_ios_rounded,
                         color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
+                        size: 18,
                       ),
                     ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Share your referral code and grow your ServicePay network.',
-                      style: TextStyle(
-                        color: Color(0xFFD9EFE5),
-                        height: 1.35,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: Colors.white,
-                size: 17,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
+        const SizedBox(height: 12),
       ],
     );
   }
 
   Widget buildAllServicesCompact() {
-    final List<_DashboardService> combined = [
+    final List<_DashboardService> combined = <_DashboardService>[
       ...filtered(popularServices()),
       ...filtered(moreServices()),
     ];
 
-    final Map<String, _DashboardService> unique = {};
+    final Map<String, _DashboardService> unique = <String, _DashboardService>{};
 
     for (final service in combined) {
       unique[service.title] = service;
@@ -1899,128 +1709,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 14,
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      itemCount: services.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        crossAxisSpacing: 7,
+        mainAxisSpacing: 8,
+        childAspectRatio: 0.80,
       ),
-      padding: const EdgeInsets.fromLTRB(
-        10,
-        14,
-        10,
-        12,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: const Color(0xFFF0F2F1),
-        ),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x09000000),
-            blurRadius: 18,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 5,
-            ),
-            child: Text(
-              'All Services',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.3,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: services.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-              childAspectRatio: 0.84,
-            ),
-            itemBuilder: (context, index) {
-              final service = services[index];
+      itemBuilder: (
+        BuildContext context,
+        int index,
+      ) {
+        final _DashboardService service = services[index];
 
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: service.onTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 9,
-                    ),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: service.onTap,
+            borderRadius: BorderRadius.circular(17),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(
+                4,
+                9,
+                4,
+                6,
+              ),
+              decoration: BoxDecoration(
+                color: service.backgroundColor,
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(
+                  color: Colors.black.withValues(
+                    alpha: 0.025,
+                  ),
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: service.backgroundColor,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: Colors.black.withValues(
-                          alpha: 0.025,
+                      color: Colors.white.withValues(
+                        alpha: 0.72,
+                      ),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Icon(
+                      service.icon,
+                      color: service.iconColor,
+                      size: 23,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        service.title,
+                        maxLines: 2,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.3,
+                          height: 1.06,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF34463D),
                         ),
                       ),
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(
-                              alpha: 0.92,
-                            ),
-                            borderRadius: BorderRadius.circular(
-                              15,
-                            ),
-                            boxShadow: const <BoxShadow>[
-                              BoxShadow(
-                                color: Color(0x08000000),
-                                blurRadius: 8,
-                                offset: Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            service.icon,
-                            color: service.iconColor,
-                            size: 29,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          service.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            height: 1.08,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF252A2D),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
-                ),
-              );
-            },
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
