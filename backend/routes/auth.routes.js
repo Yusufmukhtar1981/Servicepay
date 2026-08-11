@@ -4,6 +4,7 @@ const {
   registerUser,
   loginUser,
   getProfile,
+  getMyReferral,
   updateProfile,
   changePassword,
   forgotPassword,
@@ -65,6 +66,13 @@ router.patch(
   "/rider/availability",
   protect,
   updateRiderAvailability
+);
+
+
+router.get(
+  "/referral",
+  protect,
+  getMyReferral
 );
 
 module.exports = router;

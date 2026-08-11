@@ -1502,3 +1502,107 @@ exports.updateRiderAvailability =
     }
   };
 
+
+/*
+ * ============================================================
+ * MY REFERRAL CODE
+ * ============================================================
+ */
+exports.getMyReferral = async (req, res) => {
+  try {
+    const userId =
+      req.user?._id ||
+      req.user?.id;
+
+    let user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    if (
+      String(user.role || "").toUpperCase() !==
+      "CUSTOMER"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Referral codes are available to customers only.",
+      });
+    }
+
+    /*
+     * Existing customers may not yet have a code.
+     * Generate one lazily and safely.
+     */
+    if (!user.referralCode) {
+      let saved = false;
+
+      for (
+        let attempt = 0;
+        attempt < 20;
+        attempt += 1
+      ) {
+        const code =
+          user.generateReferralCode();
+
+        const exists =
+          await User.exists({
+            referralCode: code,
+          });
+
+        if (exists) {
+          continue;
+        }
+
+        user.referralCode = code;
+
+        try {
+          await user.save();
+          saved = true;
+          break;
+        } catch (error) {
+          if (error?.code === 11000) {
+            user.referralCode = undefined;
+            continue;
+          }
+
+          throw error;
+        }
+      }
+
+      if (!saved) {
+        return res.status(500).json({
+          success: false,
+          message:
+            "Unable to generate referral code.",
+        });
+      }
+    }
+
+    const referredCount =
+      await User.countDocuments({
+        referredBy: user._id,
+      });
+
+    return res.json({
+      success: true,
+      referralCode: user.referralCode,
+      referredCount,
+    });
+  } catch (error) {
+    console.error(
+      "GET REFERRAL ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to load referral code.",
+    });
+  }
+};

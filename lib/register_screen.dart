@@ -10,36 +10,23 @@ class RegisterScreen extends StatefulWidget {
   });
 
   @override
-  State<RegisterScreen> createState() =>
-      _RegisterScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState
-    extends State<RegisterScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+class _RegisterScreenState extends State<RegisterScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryColor =
-      Color(0xFF0F766E);
+  static const Color primaryColor = Color(0xFF0F766E);
 
-  final TextEditingController
-      fullNameController =
-      TextEditingController();
+  final TextEditingController fullNameController = TextEditingController();
 
-  final TextEditingController
-      phoneController =
-      TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
 
-  final TextEditingController
-      emailController =
-      TextEditingController();
+  final TextEditingController emailController = TextEditingController();
 
-  final TextEditingController
-      passwordController =
-      TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
 
-  final TextEditingController
-      confirmPasswordController =
+  final TextEditingController confirmPasswordController =
       TextEditingController();
 
   bool hidePassword = true;
@@ -71,39 +58,28 @@ class _RegisterScreenState
           content: Text(
             message,
           ),
-          behavior:
-              SnackBarBehavior.floating,
-          duration:
-              const Duration(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(
             seconds: 4,
           ),
-          backgroundColor:
-              isError
-                  ? Colors.red.shade700
-                  : primaryColor,
+          backgroundColor: isError ? Colors.red.shade700 : primaryColor,
         ),
       );
   }
 
   bool validateFields() {
-    final String fullName =
-        fullNameController.text.trim();
+    final String fullName = fullNameController.text.trim();
 
-    final String phone =
-        phoneController.text
-            .replaceAll(
-              RegExp(r'\D'),
-              '',
-            );
+    final String phone = phoneController.text.replaceAll(
+      RegExp(r'\D'),
+      '',
+    );
 
-    final String email =
-        emailController.text.trim();
+    final String email = emailController.text.trim();
 
-    final String password =
-        passwordController.text;
+    final String password = passwordController.text;
 
-    final String confirmPassword =
-        confirmPasswordController.text;
+    final String confirmPassword = confirmPasswordController.text;
 
     if (fullName.isEmpty ||
         phone.isEmpty ||
@@ -117,8 +93,7 @@ class _RegisterScreenState
       return false;
     }
 
-    if (fullName.length < 3 ||
-        !fullName.contains(' ')) {
+    if (fullName.length < 3 || !fullName.contains(' ')) {
       showMessage(
         'Please enter your full name.',
       );
@@ -134,8 +109,7 @@ class _RegisterScreenState
       return false;
     }
 
-    final RegExp emailPattern =
-        RegExp(
+    final RegExp emailPattern = RegExp(
       r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
     );
 
@@ -157,8 +131,7 @@ class _RegisterScreenState
       return false;
     }
 
-    if (password !=
-        confirmPassword) {
+    if (password != confirmPassword) {
       showMessage(
         'Passwords do not match.',
       );
@@ -181,54 +154,37 @@ class _RegisterScreenState
     });
 
     try {
-      final Uri endpoint =
-          Uri.parse(
+      final Uri endpoint = Uri.parse(
         '$baseUrl/auth/register',
       );
 
-      final String phone =
-          phoneController.text
-              .replaceAll(
-                RegExp(r'\D'),
-                '',
-              );
+      final String phone = phoneController.text.replaceAll(
+        RegExp(r'\D'),
+        '',
+      );
 
-      final http.Response response =
-          await http
-              .post(
-                endpoint,
-                headers: const {
-                  'Content-Type':
-                      'application/json',
-                  'Accept':
-                      'application/json',
-                },
-                body: jsonEncode({
-                  'fullName':
-                      fullNameController
-                          .text
-                          .trim(),
-                  'phone': phone,
-                  'email':
-                      emailController
-                          .text
-                          .trim()
-                          .toLowerCase(),
-                  'password':
-                      passwordController
-                          .text,
-                  'role':
-                      'CUSTOMER',
-                }),
-              )
-              .timeout(
-                const Duration(
-                  seconds: 30,
-                ),
-              );
+      final http.Response response = await http
+          .post(
+            endpoint,
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'fullName': fullNameController.text.trim(),
+              'phone': phone,
+              'email': emailController.text.trim().toLowerCase(),
+              'password': passwordController.text,
+              'role': 'CUSTOMER',
+            }),
+          )
+          .timeout(
+            const Duration(
+              seconds: 30,
+            ),
+          );
 
-      final String responseBody =
-          response.body.trim();
+      final String responseBody = response.body.trim();
 
       if (responseBody.isEmpty) {
         showMessage(
@@ -238,8 +194,7 @@ class _RegisterScreenState
         return;
       }
 
-      final dynamic decodedResponse =
-          jsonDecode(
+      final dynamic decodedResponse = jsonDecode(
         responseBody,
       );
 
@@ -251,23 +206,15 @@ class _RegisterScreenState
         return;
       }
 
-      final Map<String, dynamic> result =
-          Map<String, dynamic>.from(
+      final Map<String, dynamic> result = Map<String, dynamic>.from(
         decodedResponse,
       );
 
-      final String serverMessage =
-          result['message']
-                  ?.toString()
-                  .trim() ??
-              '';
+      final String serverMessage = result['message']?.toString().trim() ?? '';
 
-      final bool success =
-          response.statusCode >= 200 &&
-              response.statusCode < 300 &&
-              (result['success'] == true ||
-                  result['success'] ==
-                      null);
+      final bool success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          (result['success'] == true || result['success'] == null);
 
       if (!success) {
         showMessage(
@@ -337,8 +284,7 @@ class _RegisterScreenState
       child: Image.asset(
         'assets/image/servicepay_logo.png',
         fit: BoxFit.contain,
-        filterQuality:
-            FilterQuality.high,
+        filterQuality: FilterQuality.high,
         gaplessPlayback: true,
         errorBuilder: (
           BuildContext context,
@@ -352,12 +298,10 @@ class _RegisterScreenState
           return const Center(
             child: Text(
               'ServicePay',
-              textAlign:
-                  TextAlign.center,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 32,
-                fontWeight:
-                    FontWeight.w900,
+                fontWeight: FontWeight.w900,
                 color: primaryColor,
               ),
             ),
@@ -381,52 +325,38 @@ class _RegisterScreenState
       ),
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor:
-          const Color(
+      fillColor: const Color(
         0xFFF8FAFC,
       ),
-      border:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
       ),
-      enabledBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide:
-            const BorderSide(
-          color:
-              Color(
+        borderSide: const BorderSide(
+          color: Color(
             0xFFE2E8F0,
           ),
         ),
       ),
-      focusedBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide:
-            const BorderSide(
-          color:
-              primaryColor,
+        borderSide: const BorderSide(
+          color: primaryColor,
           width: 2,
         ),
       ),
-      errorBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide:
-            const BorderSide(
+        borderSide: const BorderSide(
           color: Colors.red,
         ),
       ),
@@ -438,261 +368,178 @@ class _RegisterScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(
+      backgroundColor: const Color(
         0xFFF4F7F9,
       ),
       appBar: AppBar(
-        title:
-            const Text(
+        title: const Text(
           'Create account',
           style: TextStyle(
-            fontWeight:
-                FontWeight.w700,
+            fontWeight: FontWeight.w700,
           ),
         ),
         centerTitle: true,
-        backgroundColor:
-            Colors.white,
-        foregroundColor:
-            const Color(
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(
           0xFF172033,
         ),
         elevation: 0,
-        surfaceTintColor:
-            Colors.white,
+        surfaceTintColor: Colors.white,
       ),
       body: SafeArea(
-        child:
-            SingleChildScrollView(
-          padding:
-              const EdgeInsets.all(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(
             22,
           ),
           child: Center(
-            child:
-                ConstrainedBox(
-              constraints:
-                  const BoxConstraints(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
                 maxWidth: 460,
               ),
-              child:
-                  Container(
-                decoration:
-                    BoxDecoration(
-                  color:
-                      Colors.white,
-                  borderRadius:
-                      BorderRadius.circular(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(
                     26,
                   ),
-                  border:
-                      Border.all(
-                    color:
-                        const Color(
+                  border: Border.all(
+                    color: const Color(
                       0xFFE2E8F0,
                     ),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color:
-                          Colors.black.withValues(
-                        alpha:
-                            0.07,
+                      color: Colors.black.withValues(
+                        alpha: 0.07,
                       ),
-                      blurRadius:
-                          24,
-                      offset:
-                          const Offset(
+                      blurRadius: 24,
+                      offset: const Offset(
                         0,
                         10,
                       ),
                     ),
                   ],
                 ),
-                child:
-                    Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
                     28,
                     20,
                     28,
                     30,
                   ),
-                  child:
-                      AutofillGroup(
-                    child:
-                        Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.stretch,
+                  child: AutofillGroup(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Center(
-                          child:
-                              buildServicePayLogo(),
+                          child: buildServicePayLogo(),
                         ),
                         const SizedBox(
-                          height:
-                              2,
+                          height: 2,
                         ),
                         const Text(
                           'Join ServicePay',
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              TextStyle(
-                            fontSize:
-                                25,
-                            fontWeight:
-                                FontWeight.w800,
-                            color:
-                                Color(
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 25,
+                            fontWeight: FontWeight.w800,
+                            color: Color(
                               0xFF172033,
                             ),
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              7,
+                          height: 7,
                         ),
                         Text(
                           'Create your customer account and access everyday services.',
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              TextStyle(
-                            fontSize:
-                                14,
-                            height:
-                                1.45,
-                            color:
-                                Colors.grey.shade600,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.45,
+                            color: Colors.grey.shade600,
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              26,
+                          height: 26,
                         ),
                         TextField(
-                          controller:
-                              fullNameController,
-                          textInputAction:
-                              TextInputAction.next,
-                          textCapitalization:
-                              TextCapitalization.words,
-                          autofillHints:
-                              const [
+                          controller: fullNameController,
+                          textInputAction: TextInputAction.next,
+                          textCapitalization: TextCapitalization.words,
+                          autofillHints: const [
                             AutofillHints.name,
                           ],
-                          enabled:
-                              !isLoading,
-                          decoration:
-                              buildInputDecoration(
-                            label:
-                                'Full name',
-                            hint:
-                                'Enter your full name',
-                            icon:
-                                Icons.person_outline_rounded,
+                          enabled: !isLoading,
+                          decoration: buildInputDecoration(
+                            label: 'Full name',
+                            hint: 'Enter your full name',
+                            icon: Icons.person_outline_rounded,
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              16,
+                          height: 16,
                         ),
                         TextField(
-                          controller:
-                              phoneController,
-                          keyboardType:
-                              TextInputType.phone,
-                          textInputAction:
-                              TextInputAction.next,
-                          autofillHints:
-                              const [
+                          controller: phoneController,
+                          keyboardType: TextInputType.phone,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [
                             AutofillHints.telephoneNumber,
                           ],
-                          enabled:
-                              !isLoading,
-                          decoration:
-                              buildInputDecoration(
-                            label:
-                                'Phone number',
-                            hint:
-                                '08012345678',
-                            icon:
-                                Icons.phone_outlined,
+                          enabled: !isLoading,
+                          decoration: buildInputDecoration(
+                            label: 'Phone number',
+                            hint: '08012345678',
+                            icon: Icons.phone_outlined,
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              16,
+                          height: 16,
                         ),
                         TextField(
-                          controller:
-                              emailController,
-                          keyboardType:
-                              TextInputType.emailAddress,
-                          textInputAction:
-                              TextInputAction.next,
-                          autofillHints:
-                              const [
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [
                             AutofillHints.email,
                           ],
-                          enabled:
-                              !isLoading,
-                          decoration:
-                              buildInputDecoration(
-                            label:
-                                'Email address',
-                            hint:
-                                'customer@example.com',
-                            icon:
-                                Icons.email_outlined,
+                          enabled: !isLoading,
+                          decoration: buildInputDecoration(
+                            label: 'Email address',
+                            hint: 'customer@example.com',
+                            icon: Icons.email_outlined,
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              16,
+                          height: 16,
                         ),
                         TextField(
-                          controller:
-                              passwordController,
-                          obscureText:
-                              hidePassword,
-                          textInputAction:
-                              TextInputAction.next,
-                          autofillHints:
-                              const [
+                          controller: passwordController,
+                          obscureText: hidePassword,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [
                             AutofillHints.newPassword,
                           ],
-                          enabled:
-                              !isLoading,
-                          decoration:
-                              buildInputDecoration(
-                            label:
-                                'Password',
-                            hint:
-                                'Minimum 6 characters',
-                            icon:
-                                Icons.lock_outline_rounded,
-                            suffixIcon:
-                                IconButton(
-                              tooltip:
-                                  hidePassword
-                                      ? 'Show password'
-                                      : 'Hide password',
-                              onPressed:
-                                  isLoading
-                                      ? null
-                                      : () {
-                                          setState(
-                                            () {
-                                              hidePassword =
-                                                  !hidePassword;
-                                            },
-                                          );
+                          enabled: !isLoading,
+                          decoration: buildInputDecoration(
+                            label: 'Password',
+                            hint: 'Minimum 6 characters',
+                            icon: Icons.lock_outline_rounded,
+                            suffixIcon: IconButton(
+                              tooltip: hidePassword
+                                  ? 'Show password'
+                                  : 'Hide password',
+                              onPressed: isLoading
+                                  ? null
+                                  : () {
+                                      setState(
+                                        () {
+                                          hidePassword = !hidePassword;
                                         },
-                              icon:
-                                  Icon(
+                                      );
+                                    },
+                              icon: Icon(
                                 hidePassword
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
@@ -701,55 +548,40 @@ class _RegisterScreenState
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              16,
+                          height: 16,
                         ),
                         TextField(
-                          controller:
-                              confirmPasswordController,
-                          obscureText:
-                              hideConfirmPassword,
-                          textInputAction:
-                              TextInputAction.done,
-                          autofillHints:
-                              const [
+                          controller: confirmPasswordController,
+                          obscureText: hideConfirmPassword,
+                          textInputAction: TextInputAction.done,
+                          autofillHints: const [
                             AutofillHints.newPassword,
                           ],
-                          enabled:
-                              !isLoading,
-                          onSubmitted:
-                              (_) {
+                          enabled: !isLoading,
+                          onSubmitted: (_) {
                             if (!isLoading) {
                               registerCustomer();
                             }
                           },
-                          decoration:
-                              buildInputDecoration(
-                            label:
-                                'Confirm password',
-                            hint:
-                                'Re-enter your password',
-                            icon:
-                                Icons.lock_reset_rounded,
-                            suffixIcon:
-                                IconButton(
-                              tooltip:
-                                  hideConfirmPassword
-                                      ? 'Show password'
-                                      : 'Hide password',
-                              onPressed:
-                                  isLoading
-                                      ? null
-                                      : () {
-                                          setState(
-                                            () {
-                                              hideConfirmPassword =
-                                                  !hideConfirmPassword;
-                                            },
-                                          );
+                          decoration: buildInputDecoration(
+                            label: 'Confirm password',
+                            hint: 'Re-enter your password',
+                            icon: Icons.lock_reset_rounded,
+                            suffixIcon: IconButton(
+                              tooltip: hideConfirmPassword
+                                  ? 'Show password'
+                                  : 'Hide password',
+                              onPressed: isLoading
+                                  ? null
+                                  : () {
+                                      setState(
+                                        () {
+                                          hideConfirmPassword =
+                                              !hideConfirmPassword;
                                         },
-                              icon:
-                                  Icon(
+                                      );
+                                    },
+                              icon: Icon(
                                 hideConfirmPassword
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
@@ -758,144 +590,98 @@ class _RegisterScreenState
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              24,
+                          height: 24,
                         ),
                         SizedBox(
-                          height:
-                              54,
-                          child:
-                              ElevatedButton(
-                            onPressed:
-                                isLoading
-                                    ? null
-                                    : registerCustomer,
-                            style:
-                                ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  primaryColor,
-                              foregroundColor:
-                                  Colors.white,
-                              disabledBackgroundColor:
-                                  primaryColor.withValues(
-                                alpha:
-                                    0.45,
+                          height: 54,
+                          child: ElevatedButton(
+                            onPressed: isLoading ? null : registerCustomer,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: primaryColor.withValues(
+                                alpha: 0.45,
                               ),
-                              elevation:
-                                  0,
-                              shape:
-                                  RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
                                   14,
                                 ),
                               ),
                             ),
-                            child:
-                                isLoading
-                                    ? const SizedBox(
-                                        width:
-                                            24,
-                                        height:
-                                            24,
-                                        child:
-                                            CircularProgressIndicator(
-                                          strokeWidth:
-                                              2.5,
-                                          color:
-                                              Colors.white,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Create account',
-                                        style:
-                                            TextStyle(
-                                          fontSize:
-                                              17,
-                                          fontWeight:
-                                              FontWeight.bold,
-                                        ),
-                                      ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Create account',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              14,
+                          height: 14,
                         ),
                         TextButton(
-                          onPressed:
-                              isLoading
-                                  ? null
-                                  : () {
-                                      Navigator.pop(
-                                        context,
-                                      );
-                                    },
-                          child:
-                              const Text(
+                          onPressed: isLoading
+                              ? null
+                              : () {
+                                  Navigator.pop(
+                                    context,
+                                  );
+                                },
+                          child: const Text(
                             'Already have an account? Sign in',
-                            style:
-                                TextStyle(
-                              color:
-                                  primaryColor,
-                              fontWeight:
-                                  FontWeight.w700,
+                            style: TextStyle(
+                              color: primaryColor,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              10,
+                          height: 10,
                         ),
                         Container(
-                          padding:
-                              const EdgeInsets.all(
+                          padding: const EdgeInsets.all(
                             13,
                           ),
-                          decoration:
-                              BoxDecoration(
-                            color:
-                                primaryColor.withValues(
-                              alpha:
-                                  0.07,
+                          decoration: BoxDecoration(
+                            color: primaryColor.withValues(
+                              alpha: 0.07,
                             ),
-                            borderRadius:
-                                BorderRadius.circular(
+                            borderRadius: BorderRadius.circular(
                               13,
                             ),
                           ),
-                          child:
-                              const Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                          child: const Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
                                 Icons.security_rounded,
-                                color:
-                                    primaryColor,
-                                size:
-                                    20,
+                                color: primaryColor,
+                                size: 20,
                               ),
                               SizedBox(
-                                width:
-                                    9,
+                                width: 9,
                               ),
                               Expanded(
-                                child:
-                                    Text(
+                                child: Text(
                                   'Your information is protected and used only to provide ServicePay services.',
-                                  style:
-                                      TextStyle(
-                                    fontSize:
-                                        12,
-                                    height:
-                                        1.45,
-                                    color:
-                                        Color(
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    height: 1.45,
+                                    color: Color(
                                       0xFF334155,
                                     ),
-                                    fontWeight:
-                                        FontWeight.w600,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -903,21 +689,15 @@ class _RegisterScreenState
                           ),
                         ),
                         const SizedBox(
-                          height:
-                              15,
+                          height: 15,
                         ),
                         Text(
                           'One Platform, Many Solutions.',
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              TextStyle(
-                            fontSize:
-                                12,
-                            color:
-                                Colors.grey.shade600,
-                            fontWeight:
-                                FontWeight.w700,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],

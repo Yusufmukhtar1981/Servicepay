@@ -8,6 +8,8 @@ import 'login_screen.dart';
 import 'transaction_pin_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'referral_screen.dart';
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -717,6 +719,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             title: 'Change Password',
                             subtitle: 'Update your account password',
                             onTap: openChangePassword,
+                          ),
+                          _ProfileActionTile(
+                            icon: Icons.card_giftcard_rounded,
+                            title: 'My Referral',
+                            subtitle: 'View, copy and share your referral code',
+                            iconColor: const Color(0xFF08783E),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ReferralScreen(),
+                                ),
+                              );
+                            },
                           ),
                           _ProfileActionTile(
                             icon: Icons.chat_rounded,
