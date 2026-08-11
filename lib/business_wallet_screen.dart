@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'business_wallet_transaction_receipt_screen.dart';
+
 class BusinessWalletScreen extends StatefulWidget {
   const BusinessWalletScreen({super.key});
 
@@ -1329,6 +1331,20 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
     );
   }
 
+  void openTransactionReceipt(
+    Map<String, dynamic> transaction,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BusinessWalletTransactionReceiptScreen(
+          transaction: transaction,
+          businessName: businessName,
+          businessWalletId: businessWalletId,
+        ),
+      ),
+    );
+  }
+
   Widget buildTransactionCard(
     Map<String, dynamic> item,
   ) {
@@ -1631,7 +1647,17 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                     )
                   else
                     ...transactions.map(
-                      buildTransactionCard,
+                      (item) => InkWell(
+                        onTap: () => openTransactionReceipt(
+                          item,
+                        ),
+                        borderRadius: BorderRadius.circular(
+                          17,
+                        ),
+                        child: buildTransactionCard(
+                          item,
+                        ),
+                      ),
                     ),
                 ],
               ),
