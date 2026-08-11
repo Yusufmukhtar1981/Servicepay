@@ -1514,7 +1514,18 @@ exports.getMyReferral = async (req, res) => {
       req.user?._id ||
       req.user?.id;
 
-    let user = await User.findById(userId);
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    let user = await User.findById(userId)
+      .select(
+        "_id fullName role status referralCode"
+      )
+      .lean();
 
     if (!user) {
       return res.status(404).json({
@@ -1524,8 +1535,9 @@ exports.getMyReferral = async (req, res) => {
     }
 
     if (
-      String(user.role || "").toUpperCase() !==
-      "CUSTOMER"
+      String(user.role || "")
+        .trim()
+        .toUpperCase() !== "CUSTOMER"
     ) {
       return res.status(403).json({
         success: false,
@@ -1535,38 +1547,108 @@ exports.getMyReferral = async (req, res) => {
     }
 
     /*
-     * Existing customers may not yet have a code.
-     * Generate one lazily and safely.
+     * Existing customers created before Referral V1
+     * may not yet have a referral code.
+     *
+     * Use an atomic update instead of user.save()
+     * so we do not trigger unrelated User pre-save logic.
      */
     if (!user.referralCode) {
-      let saved = false;
+      let referralCode = "";
+
+      const rawName =
+        String(user.fullName || "USER")
+          .replace(/[^A-Za-z0-9]/g, "")
+          .toUpperCase();
+
+      const prefix =
+        rawName
+          .substring(0, 4)
+          .padEnd(4, "X");
+
+      let generated = false;
 
       for (
         let attempt = 0;
-        attempt < 20;
+        attempt < 30;
         attempt += 1
       ) {
-        const code =
-          user.generateReferralCode();
+        const random =
+          Math.random()
+            .toString(36)
+            .substring(2, 6)
+            .toUpperCase();
 
-        const exists =
-          await User.exists({
-            referralCode: code,
-          });
-
-        if (exists) {
-          continue;
-        }
-
-        user.referralCode = code;
+        const candidate =
+          `SP-${prefix}-${random}`;
 
         try {
-          await user.save();
-          saved = true;
+          const updated =
+            await User.findOneAndUpdate(
+              {
+                _id: userId,
+                $or: [
+                  {
+                    referralCode: {
+                      $exists: false,
+                    },
+                  },
+                  {
+                    referralCode: null,
+                  },
+                  {
+                    referralCode: "",
+                  },
+                ],
+              },
+              {
+                $set: {
+                  referralCode:
+                    candidate,
+                },
+              },
+              {
+                new: true,
+                runValidators: false,
+              }
+            )
+              .select(
+                "_id referralCode"
+              )
+              .lean();
+
+          /*
+           * Another request may already have
+           * created the referral code.
+           */
+          if (!updated) {
+            const existing =
+              await User.findById(userId)
+                .select(
+                  "_id referralCode"
+                )
+                .lean();
+
+            if (
+              existing?.referralCode
+            ) {
+              referralCode =
+                existing.referralCode;
+
+              generated = true;
+              break;
+            }
+
+            continue;
+          }
+
+          referralCode =
+            updated.referralCode;
+
+          generated = true;
           break;
         } catch (error) {
           if (error?.code === 11000) {
-            user.referralCode = undefined;
             continue;
           }
 
@@ -1574,23 +1656,29 @@ exports.getMyReferral = async (req, res) => {
         }
       }
 
-      if (!saved) {
+      if (!generated) {
         return res.status(500).json({
           success: false,
           message:
             "Unable to generate referral code.",
         });
       }
+
+      user = {
+        ...user,
+        referralCode,
+      };
     }
 
     const referredCount =
       await User.countDocuments({
-        referredBy: user._id,
+        referredBy: userId,
       });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      referralCode: user.referralCode,
+      referralCode:
+        user.referralCode,
       referredCount,
     });
   } catch (error) {
