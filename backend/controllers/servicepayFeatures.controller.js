@@ -41,7 +41,7 @@ exports.createPaymentLink = async (req, res) => {
       message: "Payment link created.",
       paymentLink: item,
       url:
-        `https://servicepay.ng/pay/${item.code}`,
+        `https://servicepay.ng/?pay=${item.code}`,
     });
   } catch (error) {
     console.error("CREATE PAYMENT LINK:", error);

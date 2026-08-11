@@ -8,7 +8,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'feature_transaction_pin_dialog.dart';
 
 class PayByLinkScreen extends StatefulWidget {
-  const PayByLinkScreen({super.key});
+  final String? initialPaymentCode;
+
+  const PayByLinkScreen({
+    super.key,
+    this.initialPaymentCode,
+  });
 
   @override
   State<PayByLinkScreen> createState() => _PayByLinkScreenState();
@@ -35,6 +40,13 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
   @override
   void initState() {
     super.initState();
+
+    final initialCode = widget.initialPaymentCode?.trim();
+
+    if (initialCode != null && initialCode.isNotEmpty) {
+      payCodeController.text = initialCode;
+    }
+
     loadLinks();
   }
 
@@ -443,7 +455,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
             controller: payCodeController,
             decoration: const InputDecoration(
               labelText: 'Payment Link / Code',
-              hintText: 'servicepay.ng/pay/ABC123',
+              hintText: 'servicepay.ng/?pay=ABC123',
               prefixIcon: Icon(
                 Icons.link_rounded,
               ),
@@ -507,7 +519,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
 
                       await Clipboard.setData(
                         ClipboardData(
-                          text: 'https://servicepay.ng/pay/$code',
+                          text: 'https://servicepay.ng/?pay=$code',
                         ),
                       );
 

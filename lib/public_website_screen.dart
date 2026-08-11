@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 
+import 'pay_by_link_screen.dart';
+
 class PublicWebsiteScreen extends StatefulWidget {
   const PublicWebsiteScreen({super.key});
 
@@ -12,6 +14,33 @@ class PublicWebsiteScreen extends StatefulWidget {
 }
 
 class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openPublicPaymentLink();
+    });
+  }
+
+  void _openPublicPaymentLink() {
+    final code = Uri.base.queryParameters['pay']?.trim();
+
+    if (code == null || code.isEmpty) {
+      return;
+    }
+
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PayByLinkScreen(
+          initialPaymentCode: code,
+        ),
+      ),
+    );
+  }
+
   static const Color primaryGreen = Color(0xFF08783E);
   static const Color darkGreen = Color(0xFF055C30);
   static const Color softGreen = Color(0xFFEAF7F0);
