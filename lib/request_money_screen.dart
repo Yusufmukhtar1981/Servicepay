@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'feature_transaction_pin_dialog.dart';
+
 class RequestMoneyScreen extends StatefulWidget {
   const RequestMoneyScreen({super.key});
 
@@ -179,6 +181,105 @@ class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
     }
   }
 
+  Future<void> payRequest(
+    Map<String, dynamic> item,
+  ) async {
+    final id = item['_id']?.toString() ?? '';
+
+    if (id.isEmpty) return;
+
+    final pin = await showFeatureTransactionPinDialog(
+      context,
+      title: 'Pay Money Request',
+      message:
+          'You are about to pay ₦${item['amount'] ?? 0}. Enter your transaction PIN.',
+    );
+
+    if (pin == null) return;
+
+    try {
+      final token = await getToken();
+
+      final response = await http.post(
+        Uri.parse(
+          '$baseUrl/servicepay-features/money-requests/$id/pay',
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'transactionPin': pin,
+        }),
+      );
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      final data = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+
+      showMessage(
+        data['message']?.toString() ?? 'Payment completed.',
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true) {
+        await loadRequests();
+      }
+    } catch (_) {
+      showMessage(
+        'Unable to complete payment.',
+      );
+    }
+  }
+
+  Future<void> declineRequest(
+    Map<String, dynamic> item,
+  ) async {
+    final id = item['_id']?.toString() ?? '';
+
+    if (id.isEmpty) return;
+
+    try {
+      final token = await getToken();
+
+      final response = await http.post(
+        Uri.parse(
+          '$baseUrl/servicepay-features/money-requests/$id/decline',
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({}),
+      );
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      final data = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+
+      showMessage(
+        data['message']?.toString() ?? 'Request declined.',
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true) {
+        await loadRequests();
+      }
+    } catch (_) {
+      showMessage(
+        'Unable to decline request.',
+      );
+    }
+  }
+
   void showMessage(String message) {
     if (!mounted) return;
 
@@ -268,21 +369,70 @@ class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
             const Text('No requests yet.')
           else
             ...requests.map(
-              (item) => Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.request_page_rounded,
-                    color: primaryGreen,
+              (item) {
+                final status = item['status']?.toString() ?? 'PENDING';
+
+                final requestedFrom = item['requestedFrom'] is Map
+                    ? Map<String, dynamic>.from(
+                        item['requestedFrom'],
+                      )
+                    : <String, dynamic>{};
+
+                final requester = item['requester'] is Map
+                    ? Map<String, dynamic>.from(
+                        item['requester'],
+                      )
+                    : <String, dynamic>{};
+
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(
+                            Icons.request_page_rounded,
+                            color: primaryGreen,
+                          ),
+                          title: Text(
+                            '₦${item['amount'] ?? 0}',
+                          ),
+                          subtitle: Text(
+                            '${item['note'] ?? ''}\n'
+                            'From: ${requester['fullName'] ?? '-'}\n'
+                            'To: ${requestedFrom['fullName'] ?? '-'}\n'
+                            'Status: $status',
+                          ),
+                          isThreeLine: true,
+                        ),
+                        if (status == 'PENDING')
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => declineRequest(item),
+                                  child: const Text('Decline'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: () => payRequest(item),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: primaryGreen,
+                                  ),
+                                  child: const Text('Pay'),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
-                  title: Text(
-                    '₦${item['amount'] ?? 0}',
-                  ),
-                  subtitle: Text(
-                    '${item['note'] ?? ''}\n${item['status'] ?? 'PENDING'}',
-                  ),
-                  isThreeLine: true,
-                ),
-              ),
+                );
+              },
             ),
         ],
       ),

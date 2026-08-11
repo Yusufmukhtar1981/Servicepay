@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'feature_transaction_pin_dialog.dart';
+
 class GroupWalletScreen extends StatefulWidget {
   const GroupWalletScreen({super.key});
 
@@ -177,6 +179,242 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
           isSubmitting = false;
         });
       }
+    }
+  }
+
+  Future<void> addMember(
+    Map<String, dynamic> group,
+  ) async {
+    final id = group['_id']?.toString() ?? '';
+    if (id.isEmpty) return;
+
+    final controller = TextEditingController();
+
+    final phone = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Add Group Member'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'ServicePay Phone Number',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = controller.text.trim();
+                if (value.isEmpty) return;
+                Navigator.pop(dialogContext, value);
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (phone == null || phone.isEmpty) return;
+
+    try {
+      final token = await getToken();
+
+      final response = await http.post(
+        Uri.parse(
+          '$baseUrl/servicepay-features/groups/$id/members',
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'phone': phone,
+        }),
+      );
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      final data = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+
+      showMessage(
+        data['message']?.toString() ?? 'Member added.',
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true) {
+        await loadGroups();
+      }
+    } catch (_) {
+      showMessage(
+        'Unable to add member.',
+      );
+    }
+  }
+
+  Future<void> contribute(
+    Map<String, dynamic> group,
+  ) async {
+    final id = group['_id']?.toString() ?? '';
+    if (id.isEmpty) return;
+
+    final pin = await showFeatureTransactionPinDialog(
+      context,
+      title: 'Ajo Contribution',
+      message:
+          'Contribute ₦${group['contributionAmount'] ?? 0} to ${group['name'] ?? 'this group'}.',
+    );
+
+    if (pin == null) return;
+
+    try {
+      final token = await getToken();
+
+      final response = await http.post(
+        Uri.parse(
+          '$baseUrl/servicepay-features/groups/$id/contribute',
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'transactionPin': pin,
+        }),
+      );
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      final data = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+
+      showMessage(
+        data['message']?.toString() ?? 'Contribution completed.',
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true) {
+        await loadGroups();
+      }
+    } catch (_) {
+      showMessage(
+        'Unable to complete contribution.',
+      );
+    }
+  }
+
+  Future<void> showContributionHistory(
+    Map<String, dynamic> group,
+  ) async {
+    final id = group['_id']?.toString() ?? '';
+    if (id.isEmpty) return;
+
+    try {
+      final token = await getToken();
+
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/servicepay-features/groups/$id/contributions',
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      final data = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+
+      final raw = data['contributions'];
+
+      final contributions = raw is List
+          ? raw
+              .whereType<Map>()
+              .map(
+                (item) => Map<String, dynamic>.from(item),
+              )
+              .toList()
+          : <Map<String, dynamic>>[];
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(
+              '${group['name'] ?? 'Group'} Contributions',
+            ),
+            content: SizedBox(
+              width: 420,
+              child: contributions.isEmpty
+                  ? const Text(
+                      'No contributions yet.',
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: contributions.length,
+                      itemBuilder: (context, index) {
+                        final item = contributions[index];
+
+                        final member = item['member'] is Map
+                            ? Map<String, dynamic>.from(
+                                item['member'],
+                              )
+                            : <String, dynamic>{};
+
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(
+                            Icons.payments_rounded,
+                            color: primaryGreen,
+                          ),
+                          title: Text(
+                            '₦${item['amount'] ?? 0}',
+                          ),
+                          subtitle: Text(
+                            '${member['fullName'] ?? member['phone'] ?? 'Member'}\\n'
+                            '${item['reference'] ?? ''}',
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                },
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (_) {
+      showMessage(
+        'Unable to load contribution history.',
+      );
     }
   }
 

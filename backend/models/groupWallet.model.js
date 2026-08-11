@@ -50,6 +50,12 @@ const groupWalletSchema = new mongoose.Schema(
       },
     ],
 
+    totalCollected: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     status: {
       type: String,
       enum: ["ACTIVE", "CLOSED"],

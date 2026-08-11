@@ -58,3 +58,41 @@ router.get(
 );
 
 module.exports = router;
+
+/*
+ * Secure transactional feature routes.
+ */
+router.post(
+  "/money-requests/:id/pay",
+  controller.payMoneyRequest
+);
+
+router.post(
+  "/money-requests/:id/decline",
+  controller.declineMoneyRequest
+);
+
+router.get(
+  "/payment-links/:code",
+  controller.getPaymentLinkByCode
+);
+
+router.post(
+  "/payment-links/:code/pay",
+  controller.payPaymentLink
+);
+
+router.post(
+  "/groups/:id/members",
+  controller.addGroupMember
+);
+
+router.post(
+  "/groups/:id/contribute",
+  controller.contributeToGroup
+);
+
+router.get(
+  "/groups/:id/contributions",
+  controller.groupContributions
+);

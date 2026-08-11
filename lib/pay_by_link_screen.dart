@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'feature_transaction_pin_dialog.dart';
+
 class PayByLinkScreen extends StatefulWidget {
   const PayByLinkScreen({super.key});
 
@@ -23,6 +25,8 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
 
   final descriptionController = TextEditingController();
 
+  final payCodeController = TextEditingController();
+
   bool isLoading = true;
   bool isSubmitting = false;
 
@@ -39,6 +43,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
     titleController.dispose();
     amountController.dispose();
     descriptionController.dispose();
+    payCodeController.dispose();
     super.dispose();
   }
 
@@ -225,6 +230,117 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
     }
   }
 
+  Future<void> payLinkByCode() async {
+    final raw = payCodeController.text.trim();
+
+    if (raw.isEmpty) {
+      showMessage(
+        'Enter a ServicePay payment link or payment code.',
+      );
+      return;
+    }
+
+    String code = raw.trim();
+
+    if (code.contains('/pay/')) {
+      code = code.split('/pay/').last;
+    }
+
+    code = code.split('?').first.replaceAll('/', '').trim().toUpperCase();
+
+    if (code.isEmpty) {
+      showMessage(
+        'Invalid payment link or payment code.',
+      );
+      return;
+    }
+
+    try {
+      final token = await getToken();
+
+      final detailsResponse = await http.get(
+        Uri.parse(
+          '$baseUrl/servicepay-features/payment-links/$code',
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      final dynamic detailsDecoded = jsonDecode(detailsResponse.body);
+
+      final detailsData = detailsDecoded is Map
+          ? Map<String, dynamic>.from(
+              detailsDecoded,
+            )
+          : <String, dynamic>{};
+
+      if (detailsResponse.statusCode < 200 ||
+          detailsResponse.statusCode >= 300 ||
+          detailsData['success'] != true ||
+          detailsData['paymentLink'] is! Map) {
+        showMessage(
+          detailsData['message']?.toString() ?? 'Payment link not found.',
+        );
+        return;
+      }
+
+      final paymentLink = Map<String, dynamic>.from(
+        detailsData['paymentLink'],
+      );
+
+      if (!mounted) return;
+
+      final pin = await showFeatureTransactionPinDialog(
+        context,
+        title: 'Pay Merchant',
+        message: '${paymentLink['title'] ?? 'Payment'}\n'
+            'Amount: ₦${paymentLink['amount'] ?? 0}\n\n'
+            'Enter your transaction PIN to continue.',
+      );
+
+      if (pin == null) return;
+
+      final response = await http.post(
+        Uri.parse(
+          '$baseUrl/servicepay-features/payment-links/$code/pay',
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'transactionPin': pin,
+        }),
+      );
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      final data = decoded is Map
+          ? Map<String, dynamic>.from(
+              decoded,
+            )
+          : <String, dynamic>{};
+
+      showMessage(
+        data['message']?.toString() ?? 'Payment completed.',
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true) {
+        payCodeController.clear();
+        await loadLinks();
+      }
+    } catch (_) {
+      showMessage(
+        'Unable to complete payment.',
+      );
+    }
+  }
+
   void showMessage(String message) {
     if (!mounted) return;
 
@@ -306,6 +422,54 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
               isSubmitting ? 'Creating...' : 'Create Payment Link',
             ),
           ),
+          const Divider(),
+          const SizedBox(height: 22),
+          const Text(
+            'Pay a ServicePay Link',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Paste a payment link sent to you or enter the payment code.',
+            style: TextStyle(
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: payCodeController,
+            decoration: const InputDecoration(
+              labelText: 'Payment Link / Code',
+              hintText: 'servicepay.ng/pay/ABC123',
+              prefixIcon: Icon(
+                Icons.link_rounded,
+              ),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: payLinkByCode,
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryGreen,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 15,
+                ),
+              ),
+              icon: const Icon(
+                Icons.payments_rounded,
+              ),
+              label: const Text(
+                'Pay Link',
+              ),
+            ),
+          ),
+          const SizedBox(height: 30),
           const SizedBox(height: 30),
           const Text(
             'Your Payment Links',
