@@ -23,6 +23,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
   String referralCode = '';
   int referredCount = 0;
 
+  List<Map<String, dynamic>> referrals = <Map<String, dynamic>>[];
+
   @override
   void initState() {
     super.initState();
@@ -54,8 +56,20 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Future<void> loadReferral() async {
+    if (mounted) {
+      setState(() {
+        isLoading = true;
+      });
+    }
+
     try {
       final token = await getToken();
+
+      if (token == null || token.isEmpty) {
+        throw Exception(
+          'Authentication token not found.',
+        );
+      }
 
       final response = await http.get(
         Uri.parse(
@@ -78,26 +92,73 @@ class _ReferralScreenState extends State<ReferralScreen> {
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
           data['success'] == true) {
-        referralCode = data['referralCode']?.toString() ?? '';
+        final code = data['referralCode']?.toString().trim() ?? '';
 
-        referredCount = int.tryParse(
+        final count = int.tryParse(
               data['referredCount']?.toString() ?? '0',
             ) ??
             0;
+
+        final rawReferrals = data['referrals'];
+
+        final parsedReferrals = rawReferrals is List
+            ? rawReferrals
+                .whereType<Map>()
+                .map(
+                  (item) => Map<String, dynamic>.from(
+                    item,
+                  ),
+                )
+                .toList()
+            : <Map<String, dynamic>>[];
+
+        if (!mounted) return;
+
+        setState(() {
+          referralCode = code;
+          referredCount = count;
+          referrals = parsedReferrals;
+          isLoading = false;
+        });
+
+        return;
       }
-    } catch (_) {
-      // UI will show retry state.
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            data['message']?.toString() ??
+                'Unable to load referral information.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to load referral information. Pull down to retry.',
+          ),
+        ),
+      );
     }
-
-    if (!mounted) return;
-
-    setState(() {
-      isLoading = false;
-    });
   }
 
   Future<void> copyCode() async {
-    if (referralCode.isEmpty) return;
+    if (referralCode.isEmpty) {
+      return;
+    }
 
     await Clipboard.setData(
       ClipboardData(
@@ -117,7 +178,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Future<void> shareCode() async {
-    if (referralCode.isEmpty) return;
+    if (referralCode.isEmpty) {
+      return;
+    }
 
     await SharePlus.instance.share(
       ShareParams(
@@ -128,11 +191,152 @@ class _ReferralScreenState extends State<ReferralScreen> {
     );
   }
 
+  String joinedDate(
+    dynamic rawDate,
+  ) {
+    final value = rawDate?.toString().trim() ?? '';
+
+    if (value.isEmpty) {
+      return 'Joined ServicePay';
+    }
+
+    try {
+      final date = DateTime.parse(value).toLocal();
+
+      final day = date.day.toString().padLeft(
+            2,
+            '0',
+          );
+
+      final month = date.month.toString().padLeft(
+            2,
+            '0',
+          );
+
+      return 'Joined $day/$month/${date.year}';
+    } catch (_) {
+      return 'Joined ServicePay';
+    }
+  }
+
+  Widget buildReferralCard(
+    Map<String, dynamic> item,
+  ) {
+    final name = item['fullName']?.toString().trim() ?? '';
+
+    final displayName = name.isEmpty ? 'ServicePay User' : name;
+
+    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'S';
+
+    final status = item['status']?.toString().trim().toUpperCase() ?? 'ACTIVE';
+
+    return Container(
+      margin: const EdgeInsets.only(
+        bottom: 10,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(
+          18,
+        ),
+        border: Border.all(
+          color: const Color(
+            0xFFF0F2F1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 23,
+            backgroundColor: const Color(
+              0xFFEAF7F0,
+            ),
+            child: Text(
+              initial,
+              style: const TextStyle(
+                color: primaryGreen,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
+            ),
+          ),
+          const SizedBox(
+            width: 12,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(
+                  height: 4,
+                ),
+                Text(
+                  joinedDate(
+                    item['joinedAt'],
+                  ),
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 9,
+              vertical: 5,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(
+                0xFFEAF7F0,
+              ),
+              borderRadius: BorderRadius.circular(
+                20,
+              ),
+            ),
+            child: Text(
+              status,
+              style: const TextStyle(
+                color: primaryGreen,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
+      backgroundColor: const Color(
+        0xFFF8FAF9,
+      ),
       appBar: AppBar(
-        title: const Text('My Referral'),
+        backgroundColor: const Color(
+          0xFFF8FAF9,
+        ),
+        elevation: 0,
+        title: const Text(
+          'My Referral',
+        ),
       ),
       body: isLoading
           ? const Center(
@@ -141,8 +345,12 @@ class _ReferralScreenState extends State<ReferralScreen> {
           : RefreshIndicator(
               onRefresh: loadReferral,
               child: ListView(
-                padding: const EdgeInsets.all(
-                  20,
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(
+                  18,
+                  12,
+                  18,
+                  30,
                 ),
                 children: [
                   Container(
@@ -171,7 +379,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         const Icon(
                           Icons.card_giftcard_rounded,
                           color: Colors.white,
-                          size: 46,
+                          size: 44,
                         ),
                         const SizedBox(
                           height: 12,
@@ -190,15 +398,16 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         ),
                         SelectableText(
                           referralCode.isEmpty ? 'Unavailable' : referralCode,
+                          textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 28,
-                            letterSpacing: 1.3,
+                            fontSize: 27,
+                            letterSpacing: 1.2,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
                         const SizedBox(
-                          height: 8,
+                          height: 9,
                         ),
                         Text(
                           '$referredCount successful referral${referredCount == 1 ? '' : 's'}',
@@ -210,7 +419,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     ),
                   ),
                   const SizedBox(
-                    height: 18,
+                    height: 16,
                   ),
                   Row(
                     children: [
@@ -226,7 +435,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         ),
                       ),
                       const SizedBox(
-                        width: 12,
+                        width: 10,
                       ),
                       Expanded(
                         child: FilledButton.icon(
@@ -245,37 +454,122 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     ],
                   ),
                   const SizedBox(
-                    height: 22,
+                    height: 26,
                   ),
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Your Referrals',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 11,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(
+                            0xFFEAF7F0,
+                          ),
+                          borderRadius: BorderRadius.circular(
+                            20,
+                          ),
+                        ),
+                        child: Text(
+                          '$referredCount',
+                          style: const TextStyle(
+                            color: primaryGreen,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(
+                    height: 12,
+                  ),
+                  if (referrals.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(
                         18,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(
+                          18,
+                        ),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFF0F2F1,
+                          ),
+                        ),
+                      ),
+                      child: const Row(
                         children: [
-                          Text(
-                            'How it works',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
+                          Icon(
+                            Icons.group_add_outlined,
+                            color: primaryGreen,
                           ),
                           SizedBox(
-                            height: 10,
+                            width: 12,
                           ),
-                          Text(
-                            '1. Share your unique ServicePay referral code.\n'
-                            '2. Your friend enters the code while registering.\n'
-                            '3. ServicePay records the referral automatically.\n'
-                            '4. Referral rewards can be added when the reward programme becomes active.',
-                            style: TextStyle(
-                              height: 1.6,
+                          Expanded(
+                            child: Text(
+                              'No referrals yet. Share your code to invite people to ServicePay.',
                             ),
                           ),
                         ],
                       ),
+                    )
+                  else
+                    ...referrals.map(
+                      buildReferralCard,
+                    ),
+                  const SizedBox(
+                    height: 24,
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(
+                      18,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(
+                        18,
+                      ),
+                      border: Border.all(
+                        color: const Color(
+                          0xFFF0F2F1,
+                        ),
+                      ),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'How it works',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(
+                          height: 10,
+                        ),
+                        Text(
+                          '1. Share your unique ServicePay referral code.\n'
+                          '2. Your friend enters the code while registering.\n'
+                          '3. ServicePay records the referral automatically.\n'
+                          '4. Referral rewards can be added when the reward programme becomes active.',
+                          style: TextStyle(
+                            height: 1.6,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

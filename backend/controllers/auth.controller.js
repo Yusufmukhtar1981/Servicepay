@@ -1670,16 +1670,38 @@ exports.getMyReferral = async (req, res) => {
       };
     }
 
-    const referredCount =
-      await User.countDocuments({
+    const referrals =
+      await User.find({
         referredBy: userId,
-      });
+        role: "CUSTOMER",
+      })
+        .select(
+          "_id fullName createdAt status"
+        )
+        .sort({
+          createdAt: -1,
+        })
+        .lean();
+
+    const referredCount =
+      referrals.length;
 
     return res.status(200).json({
       success: true,
       referralCode:
         user.referralCode,
       referredCount,
+      referrals: referrals.map(
+        (item) => ({
+          id: item._id,
+          fullName:
+            item.fullName || "ServicePay User",
+          status:
+            item.status || "ACTIVE",
+          joinedAt:
+            item.createdAt,
+        })
+      ),
     });
   } catch (error) {
     console.error(
