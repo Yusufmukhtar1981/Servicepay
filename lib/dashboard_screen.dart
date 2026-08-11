@@ -22,6 +22,12 @@ import 'wallet_screen.dart';
 
 import 'airtime_to_cash_screen.dart';
 
+import 'pay_by_link_screen.dart';
+import 'request_money_screen.dart';
+import 'business_wallet_screen.dart';
+import 'community_agent_locator_screen.dart';
+import 'group_wallet_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -473,6 +479,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: () {
           openScreen(
             const AirtimeToCashScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Pay-by-Link',
+        icon: Icons.link_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'merchant payment link pay by link',
+        onTap: () {
+          openScreen(
+            const PayByLinkScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Request Money',
+        icon: Icons.request_page_rounded,
+        iconColor: const Color(0xFF2563EB),
+        backgroundColor: const Color(0xFFEFF6FF),
+        keywords: 'request money collect payment',
+        onTap: () {
+          openScreen(
+            const RequestMoneyScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Business Wallet',
+        icon: Icons.storefront_rounded,
+        iconColor: const Color(0xFF7C3AED),
+        backgroundColor: const Color(0xFFF5F3FF),
+        keywords: 'business wallet sme merchant',
+        onTap: () {
+          openScreen(
+            const BusinessWalletScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Agent Locator',
+        icon: Icons.location_on_rounded,
+        iconColor: const Color(0xFFEA580C),
+        backgroundColor: const Color(0xFFFFF7ED),
+        keywords: 'agent locator aggregator nearby',
+        onTap: () {
+          openScreen(
+            const CommunityAgentLocatorScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Group Wallet / Ajo',
+        icon: Icons.groups_rounded,
+        iconColor: const Color(0xFF0F766E),
+        backgroundColor: const Color(0xFFF0FDFA),
+        keywords: 'group wallet ajo contribution savings',
+        onTap: () {
+          openScreen(
+            const GroupWalletScreen(),
           );
         },
       ),

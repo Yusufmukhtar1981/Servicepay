@@ -1,4 +1,5 @@
 const express = require("express");
+const servicepayFeaturesRoutes = require("./routes/servicepayFeatures.routes");
 const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -485,6 +486,10 @@ app.use(
  * Must be mounted before the 404 handler.
  */
 app.use("/api/airtime-to-cash", airtimeToCashRoutes);
+
+
+/* ServicePay Feature Hub V1 */
+app.use("/api/servicepay-features", servicepayFeaturesRoutes);
 
 /*
  * =====================================================
