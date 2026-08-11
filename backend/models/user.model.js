@@ -490,6 +490,12 @@ const userSchema = new mongoose.Schema(
       min: 0,
     },
 
+  withdrawalLockedBalance: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
     commissionBalance: {
       type: Number,
       default: 0,

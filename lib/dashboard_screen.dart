@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'airtime_screen.dart';
 import 'amana_screen.dart';
-import 'bank_transfer_screen.dart';
 import 'cable_screen.dart';
 import 'data_screen.dart';
 import 'electricity_screen.dart';
@@ -27,6 +26,8 @@ import 'request_money_screen.dart';
 import 'business_wallet_screen.dart';
 import 'community_agent_locator_screen.dart';
 import 'group_wallet_screen.dart';
+
+import 'withdrawal_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -289,7 +290,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'Delivery': 'delivery',
       'Flight Booking': 'flightBooking',
       'Wallet Funding': 'walletFunding',
-      'Bank Transfer': 'bankTransfer',
+      'Withdrawal': 'bankTransfer',
       'ServicePay Transfer': 'servicepayTransfer',
     };
 
@@ -567,14 +568,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
       ),
       _DashboardService(
-        title: 'Bank Transfer',
-        icon: Icons.account_balance_rounded,
+        title: 'Withdrawal',
+        icon: Icons.account_balance_wallet_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFEAF7F0),
         keywords: 'bank transfer send money',
         onTap: () {
           openScreen(
-            const BankTransferScreen(),
+            const WithdrawalScreen(),
           );
         },
       ),
@@ -946,11 +947,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _walletDivider(),
                       Expanded(
                         child: _WalletAction(
-                          icon: Icons.account_balance_rounded,
-                          label: 'Bank Transfer',
+                          icon: Icons.account_balance_wallet_rounded,
+                          label: 'Withdrawal',
                           onTap: () {
                             openScreen(
-                              const BankTransferScreen(),
+                              const WithdrawalScreen(),
                             );
                           },
                         ),
@@ -1103,11 +1104,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     addItem(
       feature: 'bankTransfer',
-      icon: Icons.account_balance_rounded,
-      label: 'Bank Transfer',
+      icon: Icons.account_balance_wallet_rounded,
+      label: 'Withdrawal',
       onTap: () {
         openScreen(
-          const BankTransferScreen(),
+          const WithdrawalScreen(),
         );
       },
     );
@@ -1183,6 +1184,123 @@ class _DashboardScreenState extends State<DashboardScreen> {
       width: 1,
       height: 55,
       color: const Color(0xFFE4E7EC),
+    );
+  }
+
+  Widget buildAllServicesCompact() {
+    final List<_DashboardService> combined = [
+      ...filtered(popularServices()),
+      ...filtered(moreServices()),
+    ];
+
+    final Map<String, _DashboardService> unique = {};
+
+    for (final service in combined) {
+      unique[service.title] = service;
+    }
+
+    final services = unique.values.toList();
+
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: 14,
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        10,
+        12,
+        10,
+        10,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFF0F2F1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: 4,
+            ),
+            child: Text(
+              'All Services',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: services.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              crossAxisSpacing: 6,
+              mainAxisSpacing: 6,
+              childAspectRatio: 0.92,
+            ),
+            itemBuilder: (context, index) {
+              final service = services[index];
+
+              return InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: service.onTap,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 3,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: service.backgroundColor,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(
+                            alpha: 0.88,
+                          ),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          service.icon,
+                          color: service.iconColor,
+                          size: 21,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        service.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          height: 1.05,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -1588,15 +1706,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 16),
               buildQuickActions(),
               const SizedBox(height: 18),
-              buildPopularServices(),
+              buildAllServicesCompact(),
               if (filtered(
                 popularServices(),
               ).isNotEmpty)
                 const SizedBox(height: 18),
-              buildMoreServices(),
+              const SizedBox.shrink(),
               buildEmptySearch(),
               if (searchQuery.trim().isEmpty) const SizedBox(height: 18),
-              if (searchQuery.trim().isEmpty) buildPromoBanner(),
+              if (searchQuery.trim().isEmpty) const SizedBox.shrink(),
               if (isRefreshing)
                 const Padding(
                   padding: EdgeInsets.only(

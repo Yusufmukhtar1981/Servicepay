@@ -1,4 +1,5 @@
 const express = require("express");
+const withdrawalRoutes = require("./routes/withdrawal.routes");
 const servicepayFeaturesRoutes = require("./routes/servicepayFeatures.routes");
 const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
 const cors = require("cors");
@@ -509,6 +510,9 @@ app.use(
 
 /*
  * =====================================================
+
+app.use("/api/withdrawals", withdrawalRoutes);
+
  * GLOBAL ERROR HANDLER
  * =====================================================
  */
