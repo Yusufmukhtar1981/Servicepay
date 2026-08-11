@@ -1211,89 +1211,115 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       padding: const EdgeInsets.fromLTRB(
         10,
+        14,
+        10,
         12,
-        10,
-        10,
       ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: const Color(0xFFF0F2F1),
         ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x09000000),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: 4,
+              horizontal: 5,
             ),
             child: Text(
               'All Services',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w900,
+                letterSpacing: -0.3,
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: services.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 4,
-              crossAxisSpacing: 6,
-              mainAxisSpacing: 6,
-              childAspectRatio: 0.92,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 0.84,
             ),
             itemBuilder: (context, index) {
               final service = services[index];
 
-              return InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: service.onTap,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 3,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: service.backgroundColor,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(
-                            alpha: 0.88,
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(18),
+                  onTap: service.onTap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: service.backgroundColor,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.black.withValues(
+                          alpha: 0.025,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(
+                              alpha: 0.92,
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              15,
+                            ),
+                            boxShadow: const <BoxShadow>[
+                              BoxShadow(
+                                color: Color(0x08000000),
+                                blurRadius: 8,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
                           ),
-                          shape: BoxShape.circle,
+                          child: Icon(
+                            service.icon,
+                            color: service.iconColor,
+                            size: 29,
+                          ),
                         ),
-                        child: Icon(
-                          service.icon,
-                          color: service.iconColor,
-                          size: 21,
+                        const SizedBox(height: 8),
+                        Text(
+                          service.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            height: 1.08,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF252A2D),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        service.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 10.5,
-                          height: 1.05,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
