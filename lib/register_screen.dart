@@ -519,6 +519,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           height: 16,
                         ),
                         TextField(
+                          controller: referralCodeController,
+                          textCapitalization: TextCapitalization.characters,
+                          textInputAction: TextInputAction.next,
+                          decoration: buildInputDecoration(
+                            label: 'Referral Code (Optional)',
+                            hint: 'e.g. SP-SALI-XBZE',
+                            icon: Icons.card_giftcard_rounded,
+                          ),
+                        ),
+                        const SizedBox(
+                          height: 16,
+                        ),
+                        TextField(
                           controller: passwordController,
                           obscureText: hidePassword,
                           textInputAction: TextInputAction.next,
