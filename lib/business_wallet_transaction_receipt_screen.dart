@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gal/gal.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
 
-class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
+class BusinessWalletTransactionReceiptScreen extends StatefulWidget {
   final Map<String, dynamic> transaction;
   final String businessName;
   final String businessWalletId;
@@ -13,29 +16,46 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
     required this.businessWalletId,
   });
 
+  @override
+  State<BusinessWalletTransactionReceiptScreen> createState() =>
+      _BusinessWalletTransactionReceiptScreenState();
+}
+
+class _BusinessWalletTransactionReceiptScreenState
+    extends State<BusinessWalletTransactionReceiptScreen> {
   static const Color primaryGreen = Color(0xFF08783E);
 
-  double _toDouble(dynamic value) {
+  final ScreenshotController screenshotController = ScreenshotController();
+
+  bool isProcessing = false;
+
+  Map<String, dynamic> get transaction => widget.transaction;
+
+  String get businessName => widget.businessName;
+
+  String get businessWalletId => widget.businessWalletId;
+
+  double toDouble(dynamic value) {
     return double.tryParse(
           value?.toString() ?? '',
         ) ??
         0;
   }
 
-  String _money(dynamic value) {
-    return '₦${_toDouble(value).toStringAsFixed(2)}';
+  String money(dynamic value) {
+    return '₦${toDouble(value).toStringAsFixed(2)}';
   }
 
-  String _text(
+  String textValue(
     dynamic value, {
     String fallback = '-',
   }) {
-    final result = value?.toString().trim() ?? '';
+    final valueText = value?.toString().trim() ?? '';
 
-    return result.isEmpty ? fallback : result;
+    return valueText.isEmpty ? fallback : valueText;
   }
 
-  String _dateTime(dynamic value) {
+  String formatDateTime(dynamic value) {
     final raw = value?.toString().trim() ?? '';
 
     if (raw.isEmpty) {
@@ -61,7 +81,7 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
     }
   }
 
-  Map<String, dynamic> get _metadata {
+  Map<String, dynamic> get metadata {
     final value = transaction['metadata'];
 
     if (value is Map) {
@@ -73,57 +93,67 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
     return <String, dynamic>{};
   }
 
-  bool get _isCredit {
-    final direction = _text(
-      transaction['direction'],
-      fallback: '',
-    ).toUpperCase();
-
-    return direction == 'CREDIT';
+  bool get isCredit {
+    return textValue(
+          transaction['direction'],
+          fallback: '',
+        ).toUpperCase() ==
+        'CREDIT';
   }
 
-  String get _status {
-    return _text(
+  String get status {
+    return textValue(
       transaction['status'],
       fallback: 'SUCCESSFUL',
     ).toUpperCase();
   }
 
-  String get _receiptText {
+  String get receiptText {
     final buffer = StringBuffer();
 
-    buffer.writeln('SERVICEPAY BUSINESS WALLET RECEIPT');
+    buffer.writeln(
+      'SERVICEPAY BUSINESS WALLET RECEIPT',
+    );
     buffer.writeln('');
+
     buffer.writeln(
       'Business: ${businessName.isEmpty ? 'ServicePay Business' : businessName}',
     );
+
     buffer.writeln(
       'Business ID: ${businessWalletId.isEmpty ? '-' : businessWalletId}',
     );
+
     buffer.writeln(
-      'Transaction: ${_text(transaction['narration'], fallback: 'Business transaction')}',
-    );
-    buffer.writeln(
-      'Amount: ${_money(transaction['amount'])}',
-    );
-    buffer.writeln(
-      'Type: ${_text(transaction['type'])}',
-    );
-    buffer.writeln(
-      'Direction: ${_text(transaction['direction'])}',
-    );
-    buffer.writeln(
-      'Status: $_status',
-    );
-    buffer.writeln(
-      'Reference: ${_text(transaction['reference'])}',
-    );
-    buffer.writeln(
-      'Date: ${_dateTime(transaction['createdAt'])}',
+      'Description: ${textValue(transaction['narration'], fallback: 'Business transaction')}',
     );
 
-    final counterparty = _text(
-      _metadata['counterpartyBusinessWalletId'],
+    buffer.writeln(
+      'Amount: ${money(transaction['amount'])}',
+    );
+
+    buffer.writeln(
+      'Type: ${textValue(transaction['type'])}',
+    );
+
+    buffer.writeln(
+      'Direction: ${textValue(transaction['direction'])}',
+    );
+
+    buffer.writeln(
+      'Status: $status',
+    );
+
+    buffer.writeln(
+      'Reference: ${textValue(transaction['reference'])}',
+    );
+
+    buffer.writeln(
+      'Date: ${formatDateTime(transaction['createdAt'])}',
+    );
+
+    final counterparty = textValue(
+      metadata['counterpartyBusinessWalletId'],
       fallback: '',
     );
 
@@ -133,25 +163,36 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
       );
     }
 
-    final bankName = _text(
-      _metadata['bankName'],
+    final bank = textValue(
+      metadata['bankName'],
       fallback: '',
     );
 
-    if (bankName.isNotEmpty) {
+    if (bank.isNotEmpty) {
       buffer.writeln(
-        'Bank: $bankName',
+        'Bank: $bank',
       );
     }
 
-    final accountNumber = _text(
-      _metadata['accountNumber'],
+    final accountNumber = textValue(
+      metadata['accountNumber'],
       fallback: '',
     );
 
     if (accountNumber.isNotEmpty) {
       buffer.writeln(
         'Account Number: $accountNumber',
+      );
+    }
+
+    final accountName = textValue(
+      metadata['accountName'],
+      fallback: '',
+    );
+
+    if (accountName.isNotEmpty) {
+      buffer.writeln(
+        'Account Name: $accountName',
       );
     }
 
@@ -163,16 +204,25 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
     return buffer.toString();
   }
 
-  Future<void> _copyReceipt(
-    BuildContext context,
-  ) async {
+  Future<Uint8List?> captureReceipt() async {
+    try {
+      return await screenshotController.capture(
+        delay: const Duration(milliseconds: 150),
+        pixelRatio: 2.5,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> copyReceipt() async {
     await Clipboard.setData(
       ClipboardData(
-        text: _receiptText,
+        text: receiptText,
       ),
     );
 
-    if (!context.mounted) {
+    if (!mounted) {
       return;
     }
 
@@ -185,7 +235,127 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
     );
   }
 
-  Widget _detailRow(
+  Future<void> shareReceipt() async {
+    if (isProcessing) {
+      return;
+    }
+
+    setState(() {
+      isProcessing = true;
+    });
+
+    try {
+      final bytes = await captureReceipt();
+
+      if (bytes == null) {
+        throw Exception(
+          'Unable to capture receipt.',
+        );
+      }
+
+      final reference = textValue(
+        transaction['reference'],
+        fallback: 'receipt',
+      ).replaceAll(
+        RegExp(r'[^A-Za-z0-9_-]'),
+        '_',
+      );
+
+      await SharePlus.instance.share(
+        ShareParams(
+          text: 'ServicePay Business Wallet Receipt',
+          files: <XFile>[
+            XFile.fromData(
+              bytes,
+              mimeType: 'image/png',
+              name: 'servicepay_$reference.png',
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst(
+                  'Exception: ',
+                  '',
+                ),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> downloadReceipt() async {
+    if (isProcessing) {
+      return;
+    }
+
+    setState(() {
+      isProcessing = true;
+    });
+
+    try {
+      final bytes = await captureReceipt();
+
+      if (bytes == null) {
+        throw Exception(
+          'Unable to capture receipt.',
+        );
+      }
+
+      await Gal.putImageBytes(
+        bytes,
+        album: 'ServicePay',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Receipt saved successfully.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst(
+                  'Exception: ',
+                  '',
+                ),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Widget detailRow(
     String label,
     String value,
   ) {
@@ -202,7 +372,9 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
               label,
               style: const TextStyle(
                 fontSize: 12,
-                color: Color(0xFF718078),
+                color: Color(
+                  0xFF718078,
+                ),
               ),
             ),
           ),
@@ -213,7 +385,9 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF26362E),
+                color: Color(
+                  0xFF26362E,
+                ),
               ),
             ),
           ),
@@ -222,53 +396,284 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
     );
   }
 
-  @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final narration = _text(
+  Widget buildReceiptCard() {
+    final narration = textValue(
       transaction['narration'],
       fallback: 'Business transaction',
     );
 
-    final reference = _text(
+    final reference = textValue(
       transaction['reference'],
     );
 
-    final type = _text(
+    final type = textValue(
       transaction['type'],
     );
 
-    final direction = _text(
+    final direction = textValue(
       transaction['direction'],
     );
 
-    final balanceBefore = transaction['balanceBefore'];
-
-    final balanceAfter = transaction['balanceAfter'];
-
-    final counterparty = _text(
-      _metadata['counterpartyBusinessWalletId'],
+    final counterparty = textValue(
+      metadata['counterpartyBusinessWalletId'],
       fallback: '',
     );
 
-    final bankName = _text(
-      _metadata['bankName'],
+    final bank = textValue(
+      metadata['bankName'],
       fallback: '',
     );
 
-    final accountNumber = _text(
-      _metadata['accountNumber'],
+    final accountNumber = textValue(
+      metadata['accountNumber'],
       fallback: '',
     );
 
-    final accountName = _text(
-      _metadata['accountName'],
+    final accountName = textValue(
+      metadata['accountName'],
       fallback: '',
     );
 
+    return Container(
+      color: const Color(
+        0xFFF7F9F8,
+      ),
+      padding: const EdgeInsets.all(
+        18,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(
+          22,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(
+            24,
+          ),
+          border: Border.all(
+            color: const Color(
+              0xFFE7ECE9,
+            ),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const <Widget>[
+                Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: primaryGreen,
+                  size: 25,
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'ServicePay',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Color(
+                      0xFF17231D,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: 58,
+              height: 58,
+              decoration: const BoxDecoration(
+                color: Color(
+                  0xFFEAF7F0,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isCredit ? Icons.south_west_rounded : Icons.north_east_rounded,
+                color: primaryGreen,
+                size: 29,
+              ),
+            ),
+            const SizedBox(
+              height: 14,
+            ),
+            Text(
+              isCredit ? 'Money Received' : 'Money Sent',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Color(
+                  0xFF66756E,
+                ),
+              ),
+            ),
+            const SizedBox(
+              height: 6,
+            ),
+            Text(
+              money(
+                transaction['amount'],
+              ),
+              style: const TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.w900,
+                color: Color(
+                  0xFF17231D,
+                ),
+              ),
+            ),
+            const SizedBox(
+              height: 11,
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 7,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(
+                  0xFFEAF7F0,
+                ),
+                borderRadius: BorderRadius.circular(
+                  100,
+                ),
+              ),
+              child: Text(
+                status,
+                style: const TextStyle(
+                  color: primaryGreen,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(
+              height: 20,
+            ),
+            const Divider(),
+            detailRow(
+              'Business',
+              businessName.isEmpty ? 'ServicePay Business' : businessName,
+            ),
+            detailRow(
+              'Business ID',
+              businessWalletId.isEmpty ? '-' : businessWalletId,
+            ),
+            detailRow(
+              'Description',
+              narration,
+            ),
+            detailRow(
+              'Type',
+              type,
+            ),
+            detailRow(
+              'Direction',
+              direction,
+            ),
+            detailRow(
+              'Reference',
+              reference,
+            ),
+            detailRow(
+              'Date & Time',
+              formatDateTime(
+                transaction['createdAt'],
+              ),
+            ),
+            if (counterparty.isNotEmpty)
+              detailRow(
+                'Counterparty ID',
+                counterparty,
+              ),
+            if (bank.isNotEmpty)
+              detailRow(
+                'Bank',
+                bank,
+              ),
+            if (accountNumber.isNotEmpty)
+              detailRow(
+                'Account Number',
+                accountNumber,
+              ),
+            if (accountName.isNotEmpty)
+              detailRow(
+                'Account Name',
+                accountName,
+              ),
+            if (transaction['balanceBefore'] != null)
+              detailRow(
+                'Balance Before',
+                money(
+                  transaction['balanceBefore'],
+                ),
+              ),
+            if (transaction['balanceAfter'] != null)
+              detailRow(
+                'Balance After',
+                money(
+                  transaction['balanceAfter'],
+                ),
+              ),
+            const SizedBox(
+              height: 8,
+            ),
+            const Divider(),
+            const SizedBox(
+              height: 10,
+            ),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(
+                  Icons.verified_user_rounded,
+                  color: primaryGreen,
+                  size: 18,
+                ),
+                SizedBox(
+                  width: 7,
+                ),
+                Flexible(
+                  child: Text(
+                    'Secured by ServicePay',
+                    style: TextStyle(
+                      color: Color(
+                        0xFF607068,
+                      ),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(
+              height: 8,
+            ),
+            const Text(
+              'One Platform, Many Solutions.',
+              style: TextStyle(
+                fontSize: 10.5,
+                color: Color(
+                  0xFF7A8780,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: const Color(
+        0xFFF7F9F8,
+      ),
       appBar: AppBar(
         title: const Text(
           'Transaction Receipt',
@@ -276,238 +681,77 @@ class BusinessWalletTransactionReceiptScreen extends StatelessWidget {
             fontWeight: FontWeight.w800,
           ),
         ),
-        backgroundColor: const Color(0xFFF7F9F8),
+        backgroundColor: const Color(
+          0xFFF7F9F8,
+        ),
         surfaceTintColor: Colors.transparent,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
-          18,
+          0,
           8,
-          18,
+          0,
           30,
         ),
         children: <Widget>[
-          Container(
-            padding: const EdgeInsets.all(
-              22,
+          Screenshot(
+            controller: screenshotController,
+            child: buildReceiptCard(),
+          ),
+          const SizedBox(
+            height: 14,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 18,
             ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(
-                24,
-              ),
-              border: Border.all(
-                color: const Color(
-                  0xFFE7ECE9,
-                ),
-              ),
-            ),
-            child: Column(
+            child: Row(
               children: <Widget>[
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: const Color(
-                      0xFFEAF7F0,
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: isProcessing ? null : shareReceipt,
+                    icon: const Icon(
+                      Icons.share_rounded,
                     ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isCredit
-                        ? Icons.south_west_rounded
-                        : Icons.north_east_rounded,
-                    color: primaryGreen,
-                    size: 29,
-                  ),
-                ),
-                const SizedBox(
-                  height: 14,
-                ),
-                Text(
-                  _isCredit ? 'Money Received' : 'Money Sent',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Color(
-                      0xFF66756E,
+                    label: const Text(
+                      'Share',
                     ),
                   ),
                 ),
                 const SizedBox(
-                  height: 6,
+                  width: 10,
                 ),
-                Text(
-                  _money(
-                    transaction['amount'],
-                  ),
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    color: Color(
-                      0xFF17231D,
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                    ),
+                    onPressed: isProcessing ? null : downloadReceipt,
+                    icon: const Icon(
+                      Icons.download_rounded,
+                    ),
+                    label: const Text(
+                      'Download',
                     ),
                   ),
-                ),
-                const SizedBox(
-                  height: 11,
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(
-                      0xFFEAF7F0,
-                    ),
-                    borderRadius: BorderRadius.circular(
-                      100,
-                    ),
-                  ),
-                  child: Text(
-                    _status,
-                    style: const TextStyle(
-                      color: primaryGreen,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(
-                  height: 20,
-                ),
-                const Divider(),
-                _detailRow(
-                  'Business',
-                  businessName.isEmpty ? 'ServicePay Business' : businessName,
-                ),
-                _detailRow(
-                  'Business ID',
-                  businessWalletId.isEmpty ? '-' : businessWalletId,
-                ),
-                _detailRow(
-                  'Description',
-                  narration,
-                ),
-                _detailRow(
-                  'Type',
-                  type,
-                ),
-                _detailRow(
-                  'Direction',
-                  direction,
-                ),
-                _detailRow(
-                  'Reference',
-                  reference,
-                ),
-                _detailRow(
-                  'Date & Time',
-                  _dateTime(
-                    transaction['createdAt'],
-                  ),
-                ),
-                if (counterparty.isNotEmpty)
-                  _detailRow(
-                    'Counterparty ID',
-                    counterparty,
-                  ),
-                if (bankName.isNotEmpty)
-                  _detailRow(
-                    'Bank',
-                    bankName,
-                  ),
-                if (accountNumber.isNotEmpty)
-                  _detailRow(
-                    'Account Number',
-                    accountNumber,
-                  ),
-                if (accountName.isNotEmpty)
-                  _detailRow(
-                    'Account Name',
-                    accountName,
-                  ),
-                if (balanceBefore != null)
-                  _detailRow(
-                    'Balance Before',
-                    _money(
-                      balanceBefore,
-                    ),
-                  ),
-                if (balanceAfter != null)
-                  _detailRow(
-                    'Balance After',
-                    _money(
-                      balanceAfter,
-                    ),
-                  ),
-                const SizedBox(
-                  height: 8,
-                ),
-                const Divider(),
-                const SizedBox(
-                  height: 10,
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    const Icon(
-                      Icons.verified_user_rounded,
-                      color: primaryGreen,
-                      size: 18,
-                    ),
-                    const SizedBox(
-                      width: 7,
-                    ),
-                    const Flexible(
-                      child: Text(
-                        'Secured by ServicePay',
-                        style: TextStyle(
-                          color: Color(
-                            0xFF607068,
-                          ),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
-              ),
-              onPressed: () => _copyReceipt(
-                context,
-              ),
+          const SizedBox(
+            height: 10,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 18,
+            ),
+            child: TextButton.icon(
+              onPressed: copyReceipt,
               icon: const Icon(
                 Icons.copy_rounded,
               ),
               label: const Text(
-                'Copy Receipt',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Center(
-            child: Text(
-              'ServicePay • One Platform, Many Solutions.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                color: Color(
-                  0xFF7A8780,
-                ),
+                'Copy Receipt Text',
               ),
             ),
           ),
