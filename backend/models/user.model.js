@@ -494,6 +494,23 @@ const userSchema = new mongoose.Schema(
    * BUSINESS WALLET
    * ==========================================================
    */
+  businessWalletId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    index: true,
+  },
+
+  businessName: {
+    type: String,
+    default: "",
+    trim: true,
+    maxlength: 120,
+  },
+
+
 
   businessWalletBalance: {
     type: Number,

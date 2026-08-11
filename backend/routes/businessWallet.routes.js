@@ -28,4 +28,23 @@ router.post(
   controller.moveBusinessToPersonal
 );
 
+
+router.post(
+  "/profile",
+  protect,
+  controller.setupBusinessWalletIdentity
+);
+
+router.post(
+  "/resolve",
+  protect,
+  controller.resolveBusinessBeneficiary
+);
+
+router.post(
+  "/transfer",
+  protect,
+  controller.transferBusinessToBusiness
+);
+
 module.exports = router;
