@@ -418,6 +418,98 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
     }
   }
 
+  void showGroupActions(
+    Map<String, dynamic> group,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              8,
+              18,
+              24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  group['name']?.toString() ?? 'Ajo Group',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Contribution: ₦${group['contributionAmount'] ?? 0}',
+                  style: const TextStyle(
+                    color: Colors.black54,
+                  ),
+                ),
+                Text(
+                  'Total Collected: ₦${group['totalCollected'] ?? 0}',
+                  style: const TextStyle(
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(sheetContext);
+                    addMember(group);
+                  },
+                  icon: const Icon(
+                    Icons.person_add_alt_1_rounded,
+                  ),
+                  label: const Text(
+                    'Add Member',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(sheetContext);
+                    showContributionHistory(group);
+                  },
+                  icon: const Icon(
+                    Icons.history_rounded,
+                  ),
+                  label: const Text(
+                    'History',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(sheetContext);
+                    contribute(group);
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 15,
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.payments_rounded,
+                  ),
+                  label: const Text(
+                    'Contribute Now',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void showMessage(String message) {
     if (!mounted) return;
 
@@ -549,6 +641,7 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
             ...groups.map(
               (group) => Card(
                 child: ListTile(
+                  onTap: () => showGroupActions(group),
                   leading: const Icon(
                     Icons.groups_rounded,
                     color: primaryGreen,
@@ -558,7 +651,9 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
                   ),
                   subtitle: Text(
                     '₦${group['contributionAmount'] ?? 0} • '
-                    '${group['frequency'] ?? 'MONTHLY'}',
+                    '${group['frequency'] ?? 'MONTHLY'}\n'
+                    'Total Collected: ₦${group['totalCollected'] ?? 0}\n'
+                    'Tap to manage group',
                   ),
                   trailing: Text(
                     group['status']?.toString() ?? 'ACTIVE',
