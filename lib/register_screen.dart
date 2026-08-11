@@ -22,6 +22,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   final TextEditingController phoneController = TextEditingController();
 
+  final TextEditingController referralCodeController = TextEditingController();
+
   final TextEditingController emailController = TextEditingController();
 
   final TextEditingController passwordController = TextEditingController();
@@ -35,6 +37,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
+    referralCodeController.dispose();
     fullNameController.dispose();
     phoneController.dispose();
     emailController.dispose();
@@ -175,6 +178,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               'phone': phone,
               'email': emailController.text.trim().toLowerCase(),
               'password': passwordController.text,
+              'referralCode': referralCodeController.text.trim().toUpperCase(),
               'role': 'CUSTOMER',
             }),
           )
