@@ -502,6 +502,12 @@ app.use("/api/servicepay-features", servicepayFeaturesRoutes);
  * =====================================================
  */
 
+
+app.use(
+  "/api/business-wallet",
+  businessWalletRoutes
+);
+
 app.use(
   (req, res) => {
     res.status(404).json({
@@ -520,14 +526,6 @@ app.use("/api/withdrawals", withdrawalRoutes);
  * GLOBAL ERROR HANDLER
  * =====================================================
  */
-
-
-
-app.use(
-  "/api/business-wallet",
-  businessWalletRoutes
-);
-
 app.use(
   (
     error,
