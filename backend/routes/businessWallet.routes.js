@@ -47,4 +47,41 @@ router.post(
   controller.transferBusinessToBusiness
 );
 
+
+router.post(
+  "/withdrawals",
+  protect,
+  controller.requestBusinessWithdrawal
+);
+
+router.get(
+  "/withdrawals",
+  protect,
+  controller.getMyBusinessWithdrawals
+);
+
+router.get(
+  "/admin/withdrawals",
+  protect,
+  controller.adminListBusinessWithdrawals
+);
+
+router.patch(
+  "/admin/withdrawals/:id/approve",
+  protect,
+  controller.adminApproveBusinessWithdrawal
+);
+
+router.patch(
+  "/admin/withdrawals/:id/reject",
+  protect,
+  controller.adminRejectBusinessWithdrawal
+);
+
+router.patch(
+  "/admin/withdrawals/:id/paid",
+  protect,
+  controller.adminMarkBusinessWithdrawalPaid
+);
+
 module.exports = router;

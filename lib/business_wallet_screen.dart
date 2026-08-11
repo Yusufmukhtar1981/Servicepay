@@ -30,6 +30,8 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
 
   List<Map<String, dynamic>> transactions = <Map<String, dynamic>>[];
 
+  List<Map<String, dynamic>> withdrawals = <Map<String, dynamic>>[];
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +150,8 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
 
       final rawTransactions = data['transactions'];
 
+      final rawWithdrawals = data['withdrawals'];
+
       if (!mounted) return;
 
       setState(() {
@@ -175,6 +179,17 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
 
         transactions = rawTransactions is List
             ? rawTransactions
+                .whereType<Map>()
+                .map(
+                  (item) => Map<String, dynamic>.from(
+                    item,
+                  ),
+                )
+                .toList()
+            : <Map<String, dynamic>>[];
+
+        withdrawals = rawWithdrawals is List
+            ? rawWithdrawals
                 .whereType<Map>()
                 .map(
                   (item) => Map<String, dynamic>.from(
@@ -881,6 +896,356 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
     }
   }
 
+  Future<void> showWithdrawalRequestSheet() async {
+    if (availableBalance < 100) {
+      showMessage(
+        'Minimum available Business Wallet balance is ₦100.',
+        error: true,
+      );
+      return;
+    }
+
+    final amountController = TextEditingController();
+    final bankController = TextEditingController();
+    final accountNumberController = TextEditingController();
+    final accountNameController = TextEditingController();
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              8,
+              20,
+              MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'Withdrawal Request',
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Available: ${money(availableBalance)}',
+                    style: const TextStyle(
+                      color: Color(0xFF718078),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Amount',
+                      prefixText: '₦ ',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: bankController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Bank Name',
+                      hintText: 'e.g. Access Bank',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: accountNumberController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 10,
+                    decoration: const InputDecoration(
+                      labelText: 'Account Number',
+                      counterText: '',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: accountNameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Account Name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF8E7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'The requested amount will be locked until Head Office approves, rejects, or completes the payout.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.4,
+                        color: Color(0xFF725F27),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: primaryGreen,
+                      ),
+                      onPressed: () {
+                        final amount = double.tryParse(
+                          amountController.text.trim(),
+                        );
+
+                        final bank = bankController.text.trim();
+
+                        final accountNumber =
+                            accountNumberController.text.trim();
+
+                        final accountName = accountNameController.text.trim();
+
+                        if (amount == null || amount < 100) {
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Minimum withdrawal amount is ₦100.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (amount > availableBalance) {
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Amount exceeds available Business Wallet balance.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (bank.isEmpty ||
+                            !RegExp(r'^\d{10}$').hasMatch(accountNumber) ||
+                            accountName.length < 2) {
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please enter valid bank account details.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        Navigator.pop(
+                          sheetContext,
+                          <String, dynamic>{
+                            'amount': amount,
+                            'bankName': bank,
+                            'accountNumber': accountNumber,
+                            'accountName': accountName,
+                          },
+                        );
+                      },
+                      child: const Text(
+                        'Submit Withdrawal Request',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    amountController.dispose();
+    bankController.dispose();
+    accountNumberController.dispose();
+    accountNameController.dispose();
+
+    if (result == null) return;
+
+    await requestBusinessWithdrawal(result);
+  }
+
+  Future<void> requestBusinessWithdrawal(
+    Map<String, dynamic> request,
+  ) async {
+    if (isSubmitting) return;
+
+    setState(() {
+      isSubmitting = true;
+    });
+
+    try {
+      final token = await getToken();
+
+      final response = await http
+          .post(
+            Uri.parse(
+              '$baseUrl/business-wallet/withdrawals',
+            ),
+            headers: <String, String>{
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(request),
+          )
+          .timeout(
+            const Duration(seconds: 40),
+          );
+
+      Map<String, dynamic> data = <String, dynamic>{};
+
+      try {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map) {
+          data = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          data['success'] != true) {
+        throw Exception(
+          data['message']?.toString() ?? 'Unable to submit withdrawal request.',
+        );
+      }
+
+      showMessage(
+        data['message']?.toString() ??
+            'Withdrawal request submitted successfully.',
+      );
+
+      await loadWallet();
+    } catch (error) {
+      showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+        error: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Widget buildWithdrawalCard(
+    Map<String, dynamic> item,
+  ) {
+    final status = item['status']?.toString().toUpperCase() ?? 'PENDING';
+
+    final bank = item['bankName']?.toString() ?? '';
+
+    final number = item['accountNumber']?.toString() ?? '';
+
+    final reference = item['reference']?.toString() ?? '';
+
+    Color statusColor;
+    IconData statusIcon;
+
+    switch (status) {
+      case 'PAID':
+        statusColor = primaryGreen;
+        statusIcon = Icons.check_circle_rounded;
+        break;
+
+      case 'APPROVED':
+        statusColor = const Color(0xFFB7791F);
+        statusIcon = Icons.verified_rounded;
+        break;
+
+      case 'REJECTED':
+        statusColor = Colors.red.shade700;
+        statusIcon = Icons.cancel_rounded;
+        break;
+
+      default:
+        statusColor = const Color(0xFF64746C);
+        statusIcon = Icons.schedule_rounded;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(
+          color: const Color(0xFFEDF1EF),
+        ),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            statusIcon,
+            color: statusColor,
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '$bank • $number',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$status${reference.isNotEmpty ? ' • $reference' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    color: Color(0xFF7A8780),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            money(item['amount']),
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF26362E),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget buildBusinessProfileCard() {
     final configured = businessWalletId.isNotEmpty;
 
@@ -1196,7 +1561,29 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  _WideActionCard(
+                    icon: Icons.account_balance_rounded,
+                    title: 'Withdraw',
+                    subtitle: 'Request payout to your bank account',
+                    onTap: isSubmitting ? null : showWithdrawalRequestSheet,
+                  ),
                   const SizedBox(height: 24),
+                  if (withdrawals.isNotEmpty) ...[
+                    const Text(
+                      'Withdrawal Requests',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF17231D),
+                      ),
+                    ),
+                    const SizedBox(height: 11),
+                    ...withdrawals.map(
+                      buildWithdrawalCard,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   const Text(
                     'Recent Business Transactions',
                     style: TextStyle(
@@ -1309,6 +1696,82 @@ class _ActionCard extends StatelessWidget {
                   fontSize: 11.5,
                   fontWeight: FontWeight.w800,
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WideActionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+
+  const _WideActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 15,
+            vertical: 13,
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 43,
+                height: 43,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF7F0),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  icon,
+                  color: const Color(0xFF08783E),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 10.8,
+                        color: Color(0xFF718078),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: Color(0xFF08783E),
               ),
             ],
           ),
