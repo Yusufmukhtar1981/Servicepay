@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,6 +38,11 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  final ImagePicker _profileImagePicker = ImagePicker();
+
+  String profilePhotoUrl = '';
+  bool isUploadingProfilePhoto = false;
+
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static const Color primaryGreen = Color(0xFF08783E);
@@ -75,6 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedProfilePhoto();
     loadDashboard();
   }
 
@@ -821,7 +828,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               top: -58,
               child: Container(
                 width: 220,
-                height: 220,
+                height: 190,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
@@ -1184,6 +1191,693 @@ class _DashboardScreenState extends State<DashboardScreen> {
       width: 1,
       height: 55,
       color: const Color(0xFFE4E7EC),
+    );
+  }
+
+  Future<void> _loadSavedProfilePhoto() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final saved = prefs.getString('profile_photo_url')?.trim() ?? '';
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      profilePhotoUrl = saved;
+    });
+  }
+
+  Future<String> _getProfilePhotoToken() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    const keys = <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
+
+    for (final key in keys) {
+      final value = prefs.getString(key)?.trim() ?? '';
+
+      if (value.isEmpty) {
+        continue;
+      }
+
+      return value
+          .replaceFirst(
+            RegExp(
+              r'^Bearer\s+',
+              caseSensitive: false,
+            ),
+            '',
+          )
+          .trim();
+    }
+
+    return '';
+  }
+
+  Future<void> _showProfilePhotoSourceSheet() async {
+    if (isUploadingProfilePhoto || !mounted) {
+      return;
+    }
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              8,
+              18,
+              20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Profile photo',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF16231D),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                const Text(
+                  'Choose how you want to add your photo.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF748078),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ListTile(
+                  leading: const Icon(
+                    Icons.photo_library_rounded,
+                    color: Color(0xFF08783E),
+                  ),
+                  title: const Text(
+                    'Choose from gallery',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                      ImageSource.gallery,
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.camera_alt_rounded,
+                    color: Color(0xFF08783E),
+                  ),
+                  title: const Text(
+                    'Take a photo',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                      ImageSource.camera,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (source == null || !mounted) {
+      return;
+    }
+
+    await _pickAndUploadProfilePhoto(source);
+  }
+
+  Future<void> _pickAndUploadProfilePhoto(
+    ImageSource source,
+  ) async {
+    try {
+      final picked = await _profileImagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1200,
+        maxHeight: 1200,
+      );
+
+      if (picked == null) {
+        return;
+      }
+
+      final token = await _getProfilePhotoToken();
+
+      if (token.isEmpty) {
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Session expired. Please log in again.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isUploadingProfilePhoto = true;
+      });
+
+      final bytes = await picked.readAsBytes();
+
+      final request = http.MultipartRequest(
+        'PATCH',
+        Uri.parse(
+          '$baseUrl/auth/profile/photo',
+        ),
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'photo',
+          bytes,
+          filename: picked.name.isEmpty ? 'profile_photo.jpg' : picked.name,
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(
+            const Duration(seconds: 60),
+          );
+
+      final response = await http.Response.fromStream(
+        streamedResponse,
+      );
+
+      Map<String, dynamic> data = <String, dynamic>{};
+
+      try {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map) {
+          data = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true;
+
+      if (!success) {
+        if (!mounted) {
+          return;
+        }
+
+        final message = data['message']?.toString().trim() ?? '';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              message.isNotEmpty ? message : 'Unable to update profile photo.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      final newUrl = data['profilePhotoUrl']?.toString().trim() ?? '';
+
+      if (newUrl.isEmpty) {
+        throw Exception(
+          'Profile photo URL missing from server.',
+        );
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString(
+        'profile_photo_url',
+        newUrl,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        profilePhotoUrl = newUrl;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Profile photo updated successfully.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to upload profile photo. Please try again.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isUploadingProfilePhoto = false;
+        });
+      }
+    }
+  }
+
+  Widget buildPremiumHeader() {
+    final displayName =
+        userName.trim().isEmpty ? 'ServicePay User' : userName.trim();
+
+    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'S';
+
+    final hour = DateTime.now().hour;
+
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        18,
+        14,
+        18,
+        8,
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF7F0),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            padding: const EdgeInsets.all(7),
+            child: Image.asset(
+              'assets/image/servicepay_logo.png',
+              fit: BoxFit.contain,
+              errorBuilder: (
+                context,
+                error,
+                stackTrace,
+              ) {
+                return const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: Color(0xFF08783E),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '$greeting,',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF7A8981),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    color: Color(0xFF16231D),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              openScreen(
+                const NotificationsScreen(),
+              );
+            },
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: const Color(0xFFE8EEEB),
+                ),
+              ),
+              child: const Icon(
+                Icons.notifications_none_rounded,
+                color: Color(0xFF1C3B2E),
+                size: 22,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap:
+                isUploadingProfilePhoto ? null : _showProfilePhotoSourceSheet,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                buildPremiumHeader(),
+                const SizedBox(height: 4),
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFEAF7F0),
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 2,
+                    ),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x14000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
+                  child: profilePhotoUrl.isNotEmpty
+                      ? Image.network(
+                          profilePhotoUrl,
+                          width: 46,
+                          height: 46,
+                          fit: BoxFit.cover,
+                          errorBuilder: (
+                            context,
+                            error,
+                            stackTrace,
+                          ) {
+                            return Center(
+                              child: Text(
+                                initial,
+                                style: const TextStyle(
+                                  color: Color(0xFF08783E),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : Text(
+                          initial,
+                          style: const TextStyle(
+                            color: Color(0xFF08783E),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF08783E),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt_rounded,
+                      color: Colors.white,
+                      size: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPremiumServiceHub() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x08000000),
+                blurRadius: 18,
+                offset: Offset(0, 7),
+              ),
+            ],
+          ),
+          child: buildSearchBar(),
+        ),
+        const SizedBox(height: 20),
+        const Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                'Quick Actions',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.35,
+                  color: Color(0xFF16231D),
+                ),
+              ),
+            ),
+            Text(
+              'Everyday banking',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF7A8981),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 6,
+            vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x09000000),
+                blurRadius: 22,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: buildQuickActions(),
+        ),
+        const SizedBox(height: 25),
+        Row(
+          children: <Widget>[
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Services',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.45,
+                      color: Color(0xFF16231D),
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Everything you need, in one place',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF748078),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF7F0),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: const Icon(
+                Icons.grid_view_rounded,
+                color: Color(0xFF08783E),
+                size: 20,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.fromLTRB(
+            8,
+            12,
+            8,
+            14,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x08000000),
+                blurRadius: 24,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: buildAllServicesCompact(),
+        ),
+        const SizedBox(height: 24),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFF073F2D),
+                Color(0xFF08783E),
+              ],
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x2208783E),
+                blurRadius: 24,
+                offset: Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(
+                    alpha: 0.14,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.card_giftcard_rounded,
+                  color: Colors.white,
+                  size: 27,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Invite friends to ServicePay',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Share your referral code and grow your ServicePay network.',
+                      style: TextStyle(
+                        color: Color(0xFFD9EFE5),
+                        height: 1.35,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.white,
+                size: 17,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1728,11 +2422,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (isLoading) const SizedBox(height: 10),
               buildWalletCard(),
               const SizedBox(height: 13),
-              buildSearchBar(),
-              const SizedBox(height: 16),
-              buildQuickActions(),
-              const SizedBox(height: 18),
-              buildAllServicesCompact(),
+              buildPremiumServiceHub(),
               if (filtered(
                 popularServices(),
               ).isNotEmpty)

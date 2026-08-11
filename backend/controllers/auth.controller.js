@@ -2,6 +2,15 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+
+const { v2: cloudinary } = require("cloudinary");
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 const { sendEmail } = require("../services/email.service");
 
 const generateToken = (userId) => {
@@ -1716,3 +1725,133 @@ exports.getMyReferral = async (req, res) => {
     });
   }
 };
+
+
+/*
+ * ============================================================
+ * CUSTOMER PROFILE PHOTO
+ * ============================================================
+ */
+
+exports.updateProfilePhoto = async (req, res) => {
+  try {
+    const userId =
+      req.user?._id ||
+      req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    if (
+      !process.env.CLOUDINARY_CLOUD_NAME ||
+      !process.env.CLOUDINARY_API_KEY ||
+      !process.env.CLOUDINARY_API_SECRET
+    ) {
+      return res.status(503).json({
+        success: false,
+        message:
+          "Profile photo storage is not configured yet.",
+      });
+    }
+
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select an image.",
+      });
+    }
+
+    if (
+      !String(req.file.mimetype || "")
+        .toLowerCase()
+        .startsWith("image/")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Only image files are allowed.",
+      });
+    }
+
+    const uploadResult = await new Promise(
+      (resolve, reject) => {
+        const stream =
+          cloudinary.uploader.upload_stream(
+            {
+              folder: "servicepay/profile-photos",
+              public_id: `user_${userId}`,
+              overwrite: true,
+              resource_type: "image",
+              transformation: [
+                {
+                  width: 700,
+                  height: 700,
+                  crop: "fill",
+                  gravity: "auto",
+                  quality: "auto",
+                  fetch_format: "auto",
+                },
+              ],
+            },
+            (error, result) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+
+              resolve(result);
+            },
+          );
+
+        stream.end(req.file.buffer);
+      },
+    );
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          profilePhotoUrl:
+            uploadResult.secure_url,
+          profilePhotoPublicId:
+            uploadResult.public_id,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    ).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User account not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Profile photo updated successfully.",
+      profilePhotoUrl:
+        user.profilePhotoUrl || "",
+      user,
+    });
+  } catch (error) {
+    console.error(
+      "Profile photo upload error:",
+      error,
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to update profile photo right now.",
+    });
+  }
+};
+

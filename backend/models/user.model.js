@@ -501,6 +501,23 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+  /*
+   * Customer profile photo.
+   * The actual image lives in Cloudinary.
+   */
+  profilePhotoUrl: {
+    type: String,
+    default: undefined,
+    trim: true,
+  },
+
+  profilePhotoPublicId: {
+    type: String,
+    default: undefined,
+    trim: true,
+  },
+
+
 
     referralCode: {
       type: String,
