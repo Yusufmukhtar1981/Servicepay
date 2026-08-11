@@ -489,6 +489,25 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+  /*
+   * ==========================================================
+   * BUSINESS WALLET
+   * ==========================================================
+   */
+
+  businessWalletBalance: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
+  businessWalletLockedBalance: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
+
 
   withdrawalLockedBalance: {
     type: Number,

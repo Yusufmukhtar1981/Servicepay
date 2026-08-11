@@ -9,6 +9,10 @@ require("dotenv").config();
 
 const connectDB = require("./config/db");
 
+const businessWalletRoutes = require(
+  "./routes/businessWallet.routes"
+);
+
 /*
  * =====================================================
  * ROUTES
@@ -516,6 +520,13 @@ app.use("/api/withdrawals", withdrawalRoutes);
  * GLOBAL ERROR HANDLER
  * =====================================================
  */
+
+
+
+app.use(
+  "/api/business-wallet",
+  businessWalletRoutes
+);
 
 app.use(
   (
