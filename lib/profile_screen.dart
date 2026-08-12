@@ -9,6 +9,7 @@ import 'transaction_pin_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'referral_screen.dart';
+import 'kyc_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -713,6 +714,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ? 'Your transaction PIN is active'
                                 : 'Create a 4-digit PIN for transactions',
                             onTap: openTransactionPin,
+                          ),
+                          _ProfileActionTile(
+                            icon: Icons.verified_user_outlined,
+                            title: 'KYC Verification',
+                            subtitle:
+                                'Verify your identity and account information',
+                            iconColor: const Color(0xFF08783E),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const KycScreen(),
+                                ),
+                              );
+                            },
                           ),
                           _ProfileActionTile(
                             icon: Icons.lock_outline_rounded,
