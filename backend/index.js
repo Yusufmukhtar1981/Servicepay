@@ -1,4 +1,6 @@
 const express = require("express");
+
+const adminRoleUsersRoutes = require("./routes/adminRoleUsers.routes");
 const withdrawalRoutes = require("./routes/withdrawal.routes");
 const servicepayFeaturesRoutes = require("./routes/servicepayFeatures.routes");
 const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
@@ -559,6 +561,8 @@ app.use(
 
 const PORT =
   process.env.PORT || 3000;
+
+app.use("/api/admin/role-users", adminRoleUsersRoutes);
 
 app.listen(
   PORT,
