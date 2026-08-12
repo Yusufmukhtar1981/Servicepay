@@ -27,6 +27,7 @@ class _KycScreenState extends State<KycScreen> {
   String gender = '';
   String status = 'NOT_STARTED';
   String level = 'TIER_1';
+  String requestedLevel = 'TIER_1';
   String rejectionReason = '';
 
   bool isLoading = true;
@@ -162,6 +163,7 @@ class _KycScreenState extends State<KycScreen> {
         'address': addressController.text.trim(),
         'state': stateController.text.trim(),
         'lga': lgaController.text.trim(),
+        'requestedLevel': requestedLevel,
       };
 
       final response = await http.post(
@@ -261,6 +263,160 @@ class _KycScreenState extends State<KycScreen> {
     return '$day/$month/${date.year}';
   }
 
+  Widget _buildTierSelector() {
+    String limitText(String tier) {
+      switch (tier) {
+        case 'TIER_2':
+          return '₦200,000 per transaction • ₦1,000,000 daily';
+        case 'TIER_3':
+          return '₦1,000,000 per transaction • ₦5,000,000 daily';
+        default:
+          return '₦50,000 per transaction • ₦200,000 daily';
+      }
+    }
+
+    Widget tierTile({
+      required String tier,
+      required String title,
+      required String description,
+      required IconData icon,
+    }) {
+      final selected = requestedLevel == tier;
+
+      return InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: isSubmitting
+            ? null
+            : () {
+                setState(() {
+                  requestedLevel = tier;
+                });
+              },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected ? const Color(0xFF08783E) : Colors.grey.shade300,
+              width: selected ? 2 : 1,
+            ),
+            color: selected ? const Color(0xFFEAF7F0) : Colors.white,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color:
+                      selected ? const Color(0xFF08783E) : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: selected ? Colors.white : const Color(0xFF08783E),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      description,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      limitText(tier),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF08783E),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: selected ? const Color(0xFF08783E) : Colors.grey,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Choose KYC Tier',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Select the verification level you want to apply for.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 14),
+            tierTile(
+              tier: 'TIER_1',
+              title: 'Tier 1',
+              description: 'Basic identity verification.',
+              icon: Icons.verified_user_outlined,
+            ),
+            tierTile(
+              tier: 'TIER_2',
+              title: 'Tier 2',
+              description: 'Enhanced identity verification.',
+              icon: Icons.shield_outlined,
+            ),
+            tierTile(
+              tier: 'TIER_3',
+              title: 'Tier 3',
+              description: 'Full identity and address verification.',
+              icon: Icons.workspace_premium_outlined,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xFF08783E);
@@ -306,6 +462,7 @@ class _KycScreenState extends State<KycScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              _buildTierSelector(),
                               const Text(
                                 'Verification Status',
                                 style: TextStyle(

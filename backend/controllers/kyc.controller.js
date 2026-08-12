@@ -1,6 +1,47 @@
 const KycProfile = require("../models/kycProfile.model");
 const User = require("../models/user.model");
 
+const normalizeRequestedKycLevel = (value) => {
+  const level = String(value || "TIER_1")
+    .trim()
+    .toUpperCase();
+
+  if (["TIER_1", "TIER_2", "TIER_3"].includes(level)) {
+    return level;
+  }
+
+  return "TIER_1";
+};
+
+const SERVICEPAY_KYC_LIMITS = {
+  TIER_1: {
+    perTransaction: Number(
+      process.env.KYC_TIER1_PER_TRANSACTION || 50000
+    ),
+    daily: Number(
+      process.env.KYC_TIER1_DAILY_LIMIT || 200000
+    ),
+  },
+  TIER_2: {
+    perTransaction: Number(
+      process.env.KYC_TIER2_PER_TRANSACTION || 200000
+    ),
+    daily: Number(
+      process.env.KYC_TIER2_DAILY_LIMIT || 1000000
+    ),
+  },
+  TIER_3: {
+    perTransaction: Number(
+      process.env.KYC_TIER3_PER_TRANSACTION || 1000000
+    ),
+    daily: Number(
+      process.env.KYC_TIER3_DAILY_LIMIT || 5000000
+    ),
+  },
+};
+
+
+
 const getOrCreateProfile = async (userId) => {
   let profile = await KycProfile.findOne({
     user: userId,
@@ -57,6 +98,10 @@ exports.getMyKycStatus = async (req, res) => {
     return res.status(200).json({
       success: true,
       kyc: profile,
+      servicepayLimits:
+        SERVICEPAY_KYC_LIMITS[
+          normalizeRequestedKycLevel(profile.level)
+        ],
     });
   } catch (error) {
     console.error("GET KYC STATUS ERROR:", error);
@@ -147,6 +192,13 @@ exports.submitMyKyc = async (req, res) => {
         profile.proofOfAddressUrl ||
         ""
     ).trim();
+
+    profile.level = normalizeRequestedKycLevel(
+      req.body.requestedLevel ||
+      req.body.level ||
+      profile.level ||
+      "TIER_1"
+    );
 
     profile.status = "PENDING";
     profile.submittedAt = new Date();
