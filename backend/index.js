@@ -512,6 +512,9 @@ app.use(
 
 app.use("/api/admin/role-users", adminRoleUsersRoutes);
 
+const kycRoutes = require("./routes/kyc.routes");
+const adminKycRoutes = require("./routes/adminKyc.routes");
+
 app.use("/api/kyc", kycRoutes);
 
 app.use("/api/admin/kyc", adminKycRoutes);
@@ -619,5 +622,3 @@ require("./scripts/activateAllDeliveryStatesOnce")();
  * Idempotent through database migration marker.
  */
 require("./scripts/backfillDeliveredRiderCommissionsOnce")();
-const kycRoutes = require("./routes/kyc.routes");
-const adminKycRoutes = require("./routes/adminKyc.routes");
