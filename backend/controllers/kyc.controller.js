@@ -1,5 +1,9 @@
 const KycProfile = require("../models/kycProfile.model");
 const User = require("../models/user.model");
+const {
+  validateDocumentsForTier,
+} = require("./kycDocument.controller");
+
 
 const normalizeRequestedKycLevel = (value) => {
   const level = String(value || "TIER_1")
@@ -205,7 +209,39 @@ exports.submitMyKyc = async (req, res) => {
       profile.level || "TIER_1"
     );
 
-    profile.status = "PENDING";
+    /*
+   * SERVICEPAY KYC DOCUMENT REQUIREMENTS
+   *
+   * Tier 1:
+   * Basic KYC information.
+   *
+   * Tier 2:
+   * Government ID + Selfie.
+   *
+   * Tier 3:
+   * Government ID + Selfie + Proof of Address.
+   */
+  const documentCheck =
+    validateDocumentsForTier(
+      profile,
+      profile.requestedLevel ||
+        profile.level ||
+        "TIER_1"
+    );
+
+  if (!documentCheck.valid) {
+    return res.status(400).json({
+      success: false,
+      message: documentCheck.message,
+      code: "KYC_DOCUMENTS_REQUIRED",
+      requestedLevel:
+        profile.requestedLevel ||
+        profile.level ||
+        "TIER_1",
+    });
+  }
+
+profile.status = "PENDING";
     profile.submittedAt = new Date();
     profile.rejectionReason = "";
 

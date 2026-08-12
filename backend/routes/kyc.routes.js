@@ -1,3 +1,15 @@
+const {
+  uploadKycDocument,
+} = require("../controllers/kycDocument.controller");
+
+const kycDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+  },
+});
+
+const multer = require("multer");
 const express = require("express");
 
 const {
@@ -28,6 +40,24 @@ router.post(
   "/submit",
   protect,
   kycController.submitMyKyc
+);
+
+
+/*
+ * KYC supporting-document upload
+ *
+ * multipart field: document
+ *
+ * documentType:
+ * SELFIE
+ * ID_DOCUMENT
+ * PROOF_OF_ADDRESS
+ */
+router.post(
+  "/document/upload",
+  protect,
+  kycDocumentUpload.single("document"),
+  uploadKycDocument
 );
 
 module.exports = router;

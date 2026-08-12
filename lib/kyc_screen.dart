@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 
 class KycScreen extends StatefulWidget {
   const KycScreen({super.key});
@@ -28,6 +29,16 @@ class _KycScreenState extends State<KycScreen> {
   String status = 'NOT_STARTED';
   String level = 'TIER_1';
   String requestedLevel = 'TIER_1';
+
+  String selfieUrl = '';
+  String idDocumentUrl = '';
+  String proofOfAddressUrl = '';
+
+  bool uploadingSelfie = false;
+  bool uploadingIdDocument = false;
+  bool uploadingProofOfAddress = false;
+
+  final ImagePicker _kycImagePicker = ImagePicker();
   String rejectionReason = '';
 
   bool isLoading = true;
@@ -144,6 +155,29 @@ class _KycScreenState extends State<KycScreen> {
       return;
     }
 
+    if ((requestedLevel == 'TIER_2' || requestedLevel == 'TIER_3') &&
+        idDocumentUrl.isEmpty) {
+      _showMessage(
+        'Please upload your Government ID.',
+      );
+      return;
+    }
+
+    if ((requestedLevel == 'TIER_2' || requestedLevel == 'TIER_3') &&
+        selfieUrl.isEmpty) {
+      _showMessage(
+        'Please take and upload your selfie.',
+      );
+      return;
+    }
+
+    if (requestedLevel == 'TIER_3' && proofOfAddressUrl.isEmpty) {
+      _showMessage(
+        'Please upload your proof of address.',
+      );
+      return;
+    }
+
     setState(() => isSubmitting = true);
 
     try {
@@ -212,6 +246,370 @@ class _KycScreenState extends State<KycScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _uploadKycDocument(
+    String documentType,
+  ) async {
+    if (isSubmitting) {
+      return;
+    }
+
+    final bool isSelfie = documentType == 'SELFIE';
+
+    final ImageSource source =
+        isSelfie ? ImageSource.camera : ImageSource.gallery;
+
+    try {
+      final picked = await _kycImagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+
+      if (picked == null) {
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          if (documentType == 'SELFIE') {
+            uploadingSelfie = true;
+          } else if (documentType == 'ID_DOCUMENT') {
+            uploadingIdDocument = true;
+          } else if (documentType == 'PROOF_OF_ADDRESS') {
+            uploadingProofOfAddress = true;
+          }
+        });
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+
+      final token = prefs.getString('auth_token') ?? '';
+
+      if (token.isEmpty) {
+        _showMessage(
+          'Your login session has expired. Please log in again.',
+        );
+        return;
+      }
+
+      final uri = Uri.parse(
+        '$baseUrl/kyc/document/upload',
+      );
+
+      final request = http.MultipartRequest(
+        'POST',
+        uri,
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+
+      request.fields['documentType'] = documentType;
+
+      final bytes = await picked.readAsBytes();
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'document',
+          bytes,
+          filename: picked.name,
+        ),
+      );
+
+      final streamed = await request.send();
+
+      final response = await http.Response.fromStream(
+        streamed,
+      );
+
+      dynamic body;
+
+      try {
+        body = jsonDecode(response.body);
+      } catch (_) {
+        body = <String, dynamic>{};
+      }
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          body is Map &&
+          body['success'] == true) {
+        final dynamic document = body['document'];
+
+        String uploadedUrl = '';
+
+        if (document is Map) {
+          uploadedUrl = (document['url'] ??
+                  document['secureUrl'] ??
+                  document['documentUrl'] ??
+                  '')
+              .toString();
+        }
+
+        final dynamic kyc = body['kyc'];
+
+        if (kyc is Map) {
+          if (documentType == 'SELFIE') {
+            uploadedUrl = (kyc['selfieUrl'] ?? uploadedUrl).toString();
+          } else if (documentType == 'ID_DOCUMENT') {
+            uploadedUrl = (kyc['idDocumentUrl'] ?? uploadedUrl).toString();
+          } else if (documentType == 'PROOF_OF_ADDRESS') {
+            uploadedUrl = (kyc['proofOfAddressUrl'] ?? uploadedUrl).toString();
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            if (documentType == 'SELFIE') {
+              selfieUrl = uploadedUrl.isEmpty ? 'UPLOADED' : uploadedUrl;
+            } else if (documentType == 'ID_DOCUMENT') {
+              idDocumentUrl = uploadedUrl.isEmpty ? 'UPLOADED' : uploadedUrl;
+            } else if (documentType == 'PROOF_OF_ADDRESS') {
+              proofOfAddressUrl =
+                  uploadedUrl.isEmpty ? 'UPLOADED' : uploadedUrl;
+            }
+          });
+        }
+
+        _showMessage(
+          documentType == 'SELFIE'
+              ? 'Selfie uploaded successfully.'
+              : documentType == 'ID_DOCUMENT'
+                  ? 'Government ID uploaded successfully.'
+                  : 'Proof of address uploaded successfully.',
+        );
+
+        return;
+      }
+
+      _showMessage(
+        body is Map
+            ? (body['message'] ?? 'Unable to upload document.').toString()
+            : 'Unable to upload document.',
+      );
+    } catch (_) {
+      _showMessage(
+        'Unable to upload document. Please try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (documentType == 'SELFIE') {
+            uploadingSelfie = false;
+          } else if (documentType == 'ID_DOCUMENT') {
+            uploadingIdDocument = false;
+          } else if (documentType == 'PROOF_OF_ADDRESS') {
+            uploadingProofOfAddress = false;
+          }
+        });
+      }
+    }
+  }
+
+  bool get _tierRequiresIdentityDocuments {
+    return requestedLevel == 'TIER_2' || requestedLevel == 'TIER_3';
+  }
+
+  bool get _tierRequiresProofOfAddress {
+    return requestedLevel == 'TIER_3';
+  }
+
+  Widget _buildKycDocumentsSection() {
+    if (requestedLevel == 'TIER_1') {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(
+        top: 18,
+        bottom: 10,
+      ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAF8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF08783E).withValues(alpha: 0.18),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.folder_copy_outlined,
+                color: Color(0xFF08783E),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Required Verification Documents',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            requestedLevel == 'TIER_3'
+                ? 'Tier 3 requires a Government ID, selfie and proof of address.'
+                : 'Tier 2 requires a Government ID and selfie.',
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF667085),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (_tierRequiresIdentityDocuments)
+            _kycDocumentTile(
+              title: 'Government ID',
+              subtitle:
+                  'Upload NIN slip/card, National ID, Driver’s Licence or International Passport.',
+              icon: Icons.badge_outlined,
+              uploaded: idDocumentUrl.isNotEmpty,
+              loading: uploadingIdDocument,
+              buttonText: idDocumentUrl.isNotEmpty ? 'Replace ID' : 'Upload ID',
+              onTap: () => _uploadKycDocument(
+                'ID_DOCUMENT',
+              ),
+            ),
+          if (_tierRequiresIdentityDocuments) const SizedBox(height: 12),
+          if (_tierRequiresIdentityDocuments)
+            _kycDocumentTile(
+              title: 'Selfie',
+              subtitle: 'Take a clear live selfie showing your full face.',
+              icon: Icons.face_retouching_natural_outlined,
+              uploaded: selfieUrl.isNotEmpty,
+              loading: uploadingSelfie,
+              buttonText:
+                  selfieUrl.isNotEmpty ? 'Retake Selfie' : 'Take Selfie',
+              onTap: () => _uploadKycDocument(
+                'SELFIE',
+              ),
+            ),
+          if (_tierRequiresProofOfAddress) const SizedBox(height: 12),
+          if (_tierRequiresProofOfAddress)
+            _kycDocumentTile(
+              title: 'Proof of Address',
+              subtitle:
+                  'Upload a recent utility bill, bank statement or other acceptable proof of residence.',
+              icon: Icons.home_work_outlined,
+              uploaded: proofOfAddressUrl.isNotEmpty,
+              loading: uploadingProofOfAddress,
+              buttonText: proofOfAddressUrl.isNotEmpty
+                  ? 'Replace Document'
+                  : 'Upload Document',
+              onTap: () => _uploadKycDocument(
+                'PROOF_OF_ADDRESS',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kycDocumentTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool uploaded,
+    required bool loading,
+    required String buttonText,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: uploaded ? const Color(0xFF22A06B) : const Color(0xFFE4E7EC),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF7F0),
+                  borderRadius: BorderRadius.circular(
+                    12,
+                  ),
+                ),
+                child: Icon(
+                  uploaded ? Icons.check_circle_rounded : icon,
+                  color: const Color(0xFF08783E),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      uploaded ? 'Uploaded successfully' : subtitle,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.35,
+                        color: uploaded
+                            ? const Color(
+                                0xFF08783E,
+                              )
+                            : const Color(
+                                0xFF667085,
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: loading ? null : onTap,
+              icon: loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Icon(
+                      uploaded
+                          ? Icons.refresh_rounded
+                          : Icons.upload_file_rounded,
+                    ),
+              label: Text(
+                loading ? 'Uploading...' : buttonText,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -463,6 +861,7 @@ class _KycScreenState extends State<KycScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               _buildTierSelector(),
+                              _buildKycDocumentsSection(),
                               const Text(
                                 'Verification Status',
                                 style: TextStyle(
