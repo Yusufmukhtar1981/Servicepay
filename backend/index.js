@@ -512,6 +512,8 @@ app.use(
 
 app.use("/api/admin/role-users", adminRoleUsersRoutes);
 
+app.use("/api/kyc", kycRoutes);
+
 app.use(
   (req, res) => {
     res.status(404).json({
@@ -615,3 +617,4 @@ require("./scripts/activateAllDeliveryStatesOnce")();
  * Idempotent through database migration marker.
  */
 require("./scripts/backfillDeliveredRiderCommissionsOnce")();
+const kycRoutes = require("./routes/kyc.routes");
