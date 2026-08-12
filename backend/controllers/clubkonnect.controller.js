@@ -1135,7 +1135,41 @@ exports.buyData = async (req, res) => {
 
     walletDebited = true;
 
-    transaction = await Transaction.create({
+    
+    /*
+     * ============================================================
+     * SERVICEPAY_CORE_LEDGER_DATA_DEBIT_V1
+     * ============================================================
+     */
+    const dataOpeningBalance =
+      Number(customer.walletBalance || 0) + Number(dataAmount);
+
+    const dataClosingBalance =
+      Number(customer.walletBalance || 0);
+
+    const dataLedgerReference =
+      generateReference("DATA_LEDGER");
+
+    await postDebit({
+      userId: customer._id,
+      amount: dataAmount,
+      openingBalance: dataOpeningBalance,
+      closingBalance: dataClosingBalance,
+      service: "DATA",
+      reference: dataLedgerReference,
+      idempotencyKey:
+        `DATA:${dataLedgerReference}:DEBIT`,
+      narration:
+        `Data purchase to ${mobileNumber}`,
+      metadata: {
+        network: networkCode,
+        phone: mobileNumber,
+        planCode: selectedPlan,
+        provider: "CLUBKONNECT",
+      },
+    });
+
+transaction = await Transaction.create({
       reference: generateReference("DATA"),
       customerId: customer._id,
       agentId: customer.agentId,
