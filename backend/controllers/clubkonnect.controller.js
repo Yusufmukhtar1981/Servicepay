@@ -477,10 +477,23 @@ const refundCustomer = async ({
   amount,
   transactionId,
   providerResponse,
+  serviceType = "AIRTIME",
 }) => {
+  const normalizedServiceType =
+    String(serviceType || "AIRTIME")
+      .trim()
+      .toUpperCase() === "DATA"
+      ? "DATA"
+      : "AIRTIME";
+
+  const reversalService =
+    normalizedServiceType === "DATA"
+      ? "DATA_REVERSAL"
+      : "AIRTIME_REVERSAL";
+
   /*
    * =====================================================
-   * SERVICEPAY_CORE_LEDGER_AIRTIME_REVERSAL_V1
+   * SERVICEPAY_CORE_LEDGER_GENERIC_REVERSAL_V1
    * =====================================================
    */
 
@@ -568,7 +581,7 @@ const refundCustomer = async ({
         user: customerId,
         reference:
           refundTransaction.reference,
-        service: "AIRTIME",
+        service: normalizedServiceType,
         direction: "DEBIT",
       });
 
@@ -581,15 +594,17 @@ const refundCustomer = async ({
         closingBalance:
           refundClosingBalance,
         service:
-          "AIRTIME_REVERSAL",
+      normalizedServiceType === "DATA"
+        ? "DATA_REVERSAL"
+        : "AIRTIME_REVERSAL",
         reference:
           refundTransaction.reference,
         idempotencyKey:
-          `AIRTIME:${refundTransaction.reference}:REVERSAL:CREDIT`,
+          `${normalizedServiceType}:${refundTransaction.reference}:REVERSAL:CREDIT`,
         transactionId:
           refundTransaction._id,
         narration:
-          "Airtime purchase refund",
+          `${normalizedServiceType} purchase refund`,
         metadata: {
           originalLedgerEntry:
             String(originalDebit._id),
@@ -1168,6 +1183,7 @@ exports.buyData = async (req, res) => {
         amount: dataAmount,
         transactionId: transaction._id,
         providerResponse,
+        serviceType: "DATA",
       });
 
       walletDebited = false;
@@ -1245,7 +1261,8 @@ exports.buyData = async (req, res) => {
           providerResponse: error.response?.data || {
             message: error.message,
           },
-        });
+        serviceType: "DATA",
+      });
 
         return res.status(500).json({
           success: false,
