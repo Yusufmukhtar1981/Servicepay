@@ -61,7 +61,6 @@ const ledgerEntrySchema = new mongoose.Schema(
       required: true,
       trim: true,
       unique: true,
-      index: true,
     },
 
     transactionId: {
