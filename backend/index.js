@@ -510,6 +510,8 @@ app.use(
   businessWalletRoutes
 );
 
+app.use("/api/admin/role-users", adminRoleUsersRoutes);
+
 app.use(
   (req, res) => {
     res.status(404).json({
@@ -562,7 +564,7 @@ app.use(
 const PORT =
   process.env.PORT || 3000;
 
-app.use("/api/admin/role-users", adminRoleUsersRoutes);
+
 
 app.listen(
   PORT,
