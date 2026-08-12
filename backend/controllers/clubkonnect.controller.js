@@ -1,4 +1,10 @@
 const axios = require("axios");
+
+const {
+  postDebit,
+  postCredit,
+} = require("../services/ledger.service");
+
 const crypto = require("crypto");
 
 const User = require("../models/user.model");
@@ -472,22 +478,129 @@ const refundCustomer = async ({
   transactionId,
   providerResponse,
 }) => {
-  const updatedCustomer = await User.findByIdAndUpdate(
-    customerId,
-    {
-      $inc: {
-        walletBalance: amount,
+  /*
+   * =====================================================
+   * SERVICEPAY_CORE_LEDGER_AIRTIME_REVERSAL_V1
+   * =====================================================
+   */
+
+  const refundTransaction =
+    await Transaction.findById(
+      transactionId
+    );
+
+  if (!refundTransaction) {
+    throw new Error(
+      "Transaction to refund was not found."
+    );
+  }
+
+  /*
+   * Application-level duplicate refund protection.
+   */
+  if (
+    String(refundTransaction.status || "")
+      .toUpperCase() === "REFUNDED"
+  ) {
+    return User.findById(customerId);
+  }
+
+  const customerBeforeRefund =
+    await User.findById(customerId)
+      .select("walletBalance");
+
+  if (!customerBeforeRefund) {
+    throw new Error(
+      "Customer to refund was not found."
+    );
+  }
+
+  const refundOpeningBalance =
+    Number(
+      customerBeforeRefund.walletBalance || 0
+    );
+
+  const refundAmount =
+    Number(amount);
+
+  const updatedCustomer =
+    await User.findByIdAndUpdate(
+      customerId,
+      {
+        $inc: {
+          walletBalance:
+            refundAmount,
+        },
       },
-    },
+      {
+        new: true,
+      }
+    );
+
+  const refundClosingBalance =
+    Number(
+      updatedCustomer?.walletBalance || 0
+    );
+
+  await Transaction.findByIdAndUpdate(
+    transactionId,
     {
-      new: true,
-    },
+      status: "REFUNDED",
+      providerResponse,
+    }
   );
 
-  await Transaction.findByIdAndUpdate(transactionId, {
-    status: "REFUNDED",
-    providerResponse,
-  });
+  /*
+   * Only create reversal when the original service
+   * is AIRTIME and an Airtime DEBIT ledger exists.
+   */
+  if (
+    String(
+      refundTransaction.serviceType || ""
+    ).toUpperCase() === "AIRTIME"
+  ) {
+    const LedgerEntry = require(
+      "../models/ledgerEntry.model"
+    );
+
+    const originalDebit =
+      await LedgerEntry.findOne({
+        user: customerId,
+        reference:
+          refundTransaction.reference,
+        service: "AIRTIME",
+        direction: "DEBIT",
+      });
+
+    if (originalDebit) {
+      await postCredit({
+        userId: customerId,
+        amount: refundAmount,
+        openingBalance:
+          refundOpeningBalance,
+        closingBalance:
+          refundClosingBalance,
+        service:
+          "AIRTIME_REVERSAL",
+        reference:
+          refundTransaction.reference,
+        idempotencyKey:
+          `AIRTIME:${refundTransaction.reference}:REVERSAL:CREDIT`,
+        transactionId:
+          refundTransaction._id,
+        narration:
+          "Airtime purchase refund",
+        metadata: {
+          originalLedgerEntry:
+            String(originalDebit._id),
+          provider:
+            "CLUBKONNECT",
+          reason:
+            "Provider purchase failed after wallet debit",
+        },
+      });
+    }
+  }
 
   return updatedCustomer;
 };
@@ -699,6 +812,59 @@ exports.buyAirtime = async (req, res) => {
       amount: airtimeAmount,
       status: "PENDING",
     });
+
+    /*
+     * =====================================================
+     * SERVICEPAY_CORE_LEDGER_AIRTIME_DEBIT_V1
+     * =====================================================
+     * Wallet has already been debited at this point.
+     * Record the financial movement before calling provider.
+     */
+
+    const airtimeClosingBalance =
+      Number(customer.walletBalance || 0);
+
+    const airtimeOpeningBalance =
+      Number(
+        (
+          airtimeClosingBalance +
+          airtimeAmount
+        ).toFixed(2)
+      );
+
+    const airtimeDebitLedger =
+      await postDebit({
+        userId: customer._id,
+        amount: airtimeAmount,
+        openingBalance:
+          airtimeOpeningBalance,
+        closingBalance:
+          airtimeClosingBalance,
+        service: "AIRTIME",
+        reference:
+          transaction.reference,
+        idempotencyKey:
+          `AIRTIME:${transaction.reference}:DEBIT`,
+        transactionId:
+          transaction._id,
+        narration:
+          `Airtime purchase to ${mobileNumber}`,
+        metadata: {
+          network:
+            networkCode,
+          phone:
+            mobileNumber,
+          provider:
+            "CLUBKONNECT",
+        },
+      });
+
+    if (airtimeDebitLedger.duplicate) {
+      throw new Error(
+        "Duplicate Airtime debit ledger detected."
+      );
+    }
+
 
     const response = await axios.get(AIRTIME_URL, {
       params: {
