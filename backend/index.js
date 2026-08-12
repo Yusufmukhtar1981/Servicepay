@@ -514,6 +514,8 @@ app.use("/api/admin/role-users", adminRoleUsersRoutes);
 
 app.use("/api/kyc", kycRoutes);
 
+app.use("/api/admin/kyc", adminKycRoutes);
+
 app.use(
   (req, res) => {
     res.status(404).json({
@@ -618,3 +620,4 @@ require("./scripts/activateAllDeliveryStatesOnce")();
  */
 require("./scripts/backfillDeliveredRiderCommissionsOnce")();
 const kycRoutes = require("./routes/kyc.routes");
+const adminKycRoutes = require("./routes/adminKyc.routes");
