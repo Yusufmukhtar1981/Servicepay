@@ -1,5 +1,18 @@
 const KycProfile = require("../models/kycProfile.model");
 
+const normalizeRequestedKycLevel = (value) => {
+  const level = String(value || "TIER_1")
+    .trim()
+    .toUpperCase();
+
+  if (["TIER_1", "TIER_2", "TIER_3"].includes(level)) {
+    return level;
+  }
+
+  return "TIER_1";
+};
+
+
 const ALLOWED_STATUS = new Set([
   "PENDING",
   "UNDER_REVIEW",
@@ -148,6 +161,20 @@ exports.updateKycStatus = async (req, res) => {
     }
 
     profile.status = status;
+
+    /*
+     * Only Admin VERIFIED status can promote the customer's
+     * approved KYC tier.
+     */
+    if (status === "VERIFIED") {
+      profile.level = normalizeRequestedKycLevel(
+        profile.requestedLevel ||
+        profile.level ||
+        "TIER_1"
+      );
+
+      profile.requestedLevel = profile.level;
+    }
 
     if (status === "REJECTED") {
       profile.rejectionReason = rejectionReason;

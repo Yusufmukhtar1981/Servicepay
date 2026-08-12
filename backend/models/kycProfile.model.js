@@ -16,6 +16,13 @@ const kycProfileSchema = new mongoose.Schema(
       default: "TIER_1",
       index: true,
     },
+  requestedLevel: {
+    type: String,
+    enum: ["TIER_1", "TIER_2", "TIER_3"],
+    default: "TIER_1",
+    index: true,
+  },
+
 
     status: {
       type: String,

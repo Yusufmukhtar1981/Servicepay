@@ -229,6 +229,34 @@ const postDebit = async ({
   metadata = {},
   session = null,
 }) => {
+
+  /*
+   * SERVICEPAY_KYC_LIMIT_GUARD_V1
+   *
+   * Disabled by default.
+   * Enable in Render only after testing:
+   *
+   * KYC_LIMIT_ENFORCEMENT_ENABLED=true
+   */
+  const kycLimitEnforcementEnabled =
+    String(
+      process.env.KYC_LIMIT_ENFORCEMENT_ENABLED || "false"
+    )
+      .trim()
+      .toLowerCase() === "true";
+
+  if (kycLimitEnforcementEnabled) {
+    const {
+      checkDebitLimit,
+    } = require("./kycTier.service");
+
+    await checkDebitLimit({
+      userId,
+      amount,
+    });
+  }
+
+
   return postLedgerEntry({
     userId,
     direction: "DEBIT",

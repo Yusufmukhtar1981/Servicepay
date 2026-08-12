@@ -193,11 +193,16 @@ exports.submitMyKyc = async (req, res) => {
         ""
     ).trim();
 
-    profile.level = normalizeRequestedKycLevel(
+    profile.requestedLevel = normalizeRequestedKycLevel(
       req.body.requestedLevel ||
       req.body.level ||
+      profile.requestedLevel ||
       profile.level ||
       "TIER_1"
+    );
+
+    profile.level = normalizeRequestedKycLevel(
+      profile.level || "TIER_1"
     );
 
     profile.status = "PENDING";
