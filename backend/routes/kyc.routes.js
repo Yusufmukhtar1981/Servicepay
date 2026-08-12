@@ -1,3 +1,4 @@
+const multer = require("multer");
 const {
   uploadKycDocument,
 } = require("../controllers/kycDocument.controller");
@@ -8,10 +9,7 @@ const kycDocumentUpload = multer({
     fileSize: 8 * 1024 * 1024,
   },
 });
-
-const multer = require("multer");
 const express = require("express");
-
 const {
   protect,
 } = require("../middleware/auth.middleware");
