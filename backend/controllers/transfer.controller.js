@@ -1,4 +1,10 @@
 const mongoose = require("mongoose");
+
+const {
+  postDebit,
+  postCredit,
+} = require("../services/ledger.service");
+
 const crypto = require("crypto");
 
 const User = require("../models/user.model");
@@ -526,6 +532,105 @@ exports.transfer = async (
 
     const savedTransaction =
       senderTransactions[0];
+
+    /*
+     * =====================================================
+     * SERVICEPAY_CORE_LEDGER_TRANSFER_V1
+     * =====================================================
+     * Wallet debit + credit + ledger entries all live inside
+     * the same MongoDB session.
+     *
+     * If any ledger write fails, the complete transfer rolls
+     * back before commit.
+     */
+
+    const senderClosingBalance =
+      Number(updatedSender.walletBalance);
+
+    const senderOpeningBalance =
+      Number(
+        (
+          senderClosingBalance +
+          Number(amount)
+        ).toFixed(2)
+      );
+
+    const receiverClosingBalance =
+      Number(updatedReceiver.walletBalance);
+
+    const receiverOpeningBalance =
+      Number(
+        (
+          receiverClosingBalance -
+          Number(amount)
+        ).toFixed(2)
+      );
+
+    await postDebit({
+      userId: updatedSender._id,
+      amount,
+      openingBalance:
+        senderOpeningBalance,
+      closingBalance:
+        senderClosingBalance,
+      service:
+        "SERVICEPAY_TRANSFER",
+      reference,
+      idempotencyKey:
+        `TRANSFER:${reference}:SENDER:DEBIT`,
+      transactionId:
+        savedTransaction._id,
+      relatedUser:
+        updatedReceiver._id,
+      narration:
+        `Transfer to ${updatedReceiver.fullName}`,
+      metadata: {
+        transferId:
+          savedTransfer?._id
+            ? String(savedTransfer._id)
+            : null,
+        senderPhone:
+          updatedSender.phone,
+        receiverPhone:
+          updatedReceiver.phone,
+        transferType:
+          "SERVICEPAY_TO_SERVICEPAY",
+      },
+      session,
+    });
+
+    await postCredit({
+      userId: updatedReceiver._id,
+      amount,
+      openingBalance:
+        receiverOpeningBalance,
+      closingBalance:
+        receiverClosingBalance,
+      service:
+        "SERVICEPAY_TRANSFER",
+      reference,
+      idempotencyKey:
+        `TRANSFER:${reference}:RECEIVER:CREDIT`,
+      transactionId:
+        savedTransaction._id,
+      relatedUser:
+        updatedSender._id,
+      narration:
+        `Transfer from ${updatedSender.fullName}`,
+      metadata: {
+        transferId:
+          savedTransfer?._id
+            ? String(savedTransfer._id)
+            : null,
+        senderPhone:
+          updatedSender.phone,
+        receiverPhone:
+          updatedReceiver.phone,
+        transferType:
+          "SERVICEPAY_TO_SERVICEPAY",
+      },
+      session,
+    });
 
     await session.commitTransaction();
 
