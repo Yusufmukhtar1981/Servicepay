@@ -1,5 +1,10 @@
 const mongoose = require("mongoose");
 
+const {
+  postCredit,
+} = require("../services/ledger.service");
+
+
 const ManualFunding = require(
   "../models/manualfunding.model"
 );
@@ -304,6 +309,64 @@ exports.approveManualFundingRequest = async (
     await fundingRequest.save({
       session,
     });
+
+    /*
+     * =====================================================
+     * SERVICEPAY_CORE_LEDGER_MANUAL_FUNDING_V1
+     * =====================================================
+     * Manual Funding approval and ledger CREDIT happen
+     * inside the same MongoDB transaction.
+     *
+     * If ledger posting fails, wallet funding rolls back.
+     */
+
+    const manualFundingAmount =
+      Number(fundingRequest.amount || 0);
+
+    const manualFundingReference =
+      String(
+        fundingRequest.paymentReference ||
+        fundingRequest._id
+      ).trim();
+
+    const manualFundingLedger =
+      await postCredit({
+        userId: customer._id,
+        amount: manualFundingAmount,
+        openingBalance: balanceBefore,
+        closingBalance: balanceAfter,
+        service: "MANUAL_FUNDING",
+        reference:
+          manualFundingReference,
+        idempotencyKey:
+          `MANUAL_FUNDING:${fundingRequest._id}:CREDIT`,
+        relatedUser: adminId || null,
+        narration:
+          "Manual wallet funding approved",
+        metadata: {
+          fundingRequestId:
+            String(fundingRequest._id),
+          paymentReference:
+            manualFundingReference,
+          reviewedBy:
+            adminId
+              ? String(adminId)
+              : null,
+          source:
+            "ADMIN_MANUAL_FUNDING",
+        },
+        session,
+      });
+
+    /*
+     * If an old ledger entry already exists for this exact
+     * funding request, never allow another wallet credit.
+     */
+    if (manualFundingLedger.duplicate) {
+      throw new Error(
+        "Duplicate manual funding ledger detected."
+      );
+    }
 
     await session.commitTransaction();
 
