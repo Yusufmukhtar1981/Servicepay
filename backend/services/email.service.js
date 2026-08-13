@@ -1,163 +1,300 @@
-const https = require("https");
+const nodemailer = require('nodemailer');
 
-const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+const {
+  welcomeEmail,
+  transactionEmail,
+  walletEmail,
+  kycEmail,
+  withdrawalEmail,
+  empowermentEmail,
+  securityEmail,
+} = require('../templates/emailTemplates');
 
-const requiredEnvironmentVariables = [
-  "BREVO_API_KEY",
-  "BREVO_SENDER_EMAIL",
-];
+let transporter = null;
 
-const getMissingEnvironmentVariables = () =>
-  requiredEnvironmentVariables.filter(
-    (name) =>
-      !process.env[name] ||
-      String(process.env[name]).trim() === ""
+const emailEnabled = () =>
+  Boolean(
+    process.env.SMTP_HOST &&
+    process.env.SMTP_PORT &&
+    process.env.SMTP_USER &&
+    process.env.SMTP_PASS
   );
 
-const sendBrevoRequest = (payload) =>
-  new Promise((resolve, reject) => {
-    const apiKey = String(
-      process.env.BREVO_API_KEY || ""
-    ).trim();
+const getTransporter = () => {
+  if (!emailEnabled()) {
+    return null;
+  }
 
-    const body = JSON.stringify(payload);
-
-    const request = https.request(
-      BREVO_API_URL,
-      {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "api-key": apiKey,
-          "content-type": "application/json",
-          "content-length": Buffer.byteLength(body),
-        },
-        timeout: 30000,
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure:
+        String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
       },
-      (response) => {
-        let responseBody = "";
-
-        response.on("data", (chunk) => {
-          responseBody += chunk;
-        });
-
-        response.on("end", () => {
-          let parsedResponse = {};
-
-          try {
-            parsedResponse = responseBody
-              ? JSON.parse(responseBody)
-              : {};
-          } catch (_) {
-            parsedResponse = {
-              message: responseBody,
-            };
-          }
-
-          if (
-            response.statusCode >= 200 &&
-            response.statusCode < 300
-          ) {
-            return resolve(parsedResponse);
-          }
-
-          const error = new Error(
-            parsedResponse.message ||
-              `Brevo returned status ${response.statusCode}.`
-          );
-
-          error.statusCode = response.statusCode;
-          error.response = parsedResponse;
-
-          return reject(error);
-        });
-      }
-    );
-
-    request.on("timeout", () => {
-      request.destroy(
-        new Error("Brevo email request timed out.")
-      );
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
     });
+  }
 
-    request.on("error", reject);
-
-    request.write(body);
-    request.end();
-  });
+  return transporter;
+};
 
 const sendEmail = async ({
   to,
   subject,
-  text,
   html,
+  text,
 }) => {
-  const missingVariables =
-    getMissingEnvironmentVariables();
+  try {
+    if (!to) {
+      console.log('[EMAIL] Skipped: recipient email missing');
+      return {
+        success: false,
+        skipped: true,
+        reason: 'RECIPIENT_MISSING',
+      };
+    }
 
-  if (missingVariables.length > 0) {
-    throw new Error(
-      `Missing Brevo configuration: ${missingVariables.join(
-        ", "
-      )}`
+    const mailer = getTransporter();
+
+    if (!mailer) {
+      console.log(
+        `[EMAIL] Skipped for ${to}: SMTP environment variables are not configured`
+      );
+
+      return {
+        success: false,
+        skipped: true,
+        reason: 'SMTP_NOT_CONFIGURED',
+      };
+    }
+
+    const fromName =
+      process.env.SMTP_FROM_NAME || 'ServicePay';
+
+    const fromEmail =
+      process.env.SMTP_FROM_EMAIL ||
+      process.env.SMTP_USER;
+
+    const info = await mailer.sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to,
+      subject,
+      text,
+      html,
+      replyTo:
+        process.env.SMTP_REPLY_TO ||
+        process.env.SMTP_FROM_EMAIL ||
+        process.env.SMTP_USER,
+    });
+
+    console.log(
+      `[EMAIL] Sent successfully to ${to}: ${info.messageId}`
     );
+
+    return {
+      success: true,
+      messageId: info.messageId,
+    };
+  } catch (error) {
+    console.error('[EMAIL] Send failed:', error.message);
+
+    return {
+      success: false,
+      error: error.message,
+    };
   }
+};
 
-  const recipient = String(to || "")
-    .trim()
-    .toLowerCase();
+const sendWelcomeEmail = async ({
+  email,
+  name,
+}) => {
+  const content = welcomeEmail({ name });
 
-  if (!recipient) {
-    throw new Error("Email recipient is required.");
-  }
+  return sendEmail({
+    to: email,
+    ...content,
+  });
+};
 
-  const senderEmail = String(
-    process.env.BREVO_SENDER_EMAIL
-  )
-    .trim()
-    .toLowerCase();
+const sendTransactionEmail = async ({
+  email,
+  name,
+  type,
+  amount,
+  reference,
+  status,
+  date,
+}) => {
+  const content = transactionEmail({
+    name,
+    type,
+    amount,
+    reference,
+    status,
+    date,
+  });
 
-  const senderName = String(
-    process.env.BREVO_SENDER_NAME || "ServicePay"
-  ).trim();
+  return sendEmail({
+    to: email,
+    ...content,
+  });
+};
 
-  return sendBrevoRequest({
-    sender: {
-      name: senderName,
-      email: senderEmail,
-    },
-    to: [
-      {
-        email: recipient,
-      },
-    ],
-    subject,
-    textContent: text,
-    htmlContent: html,
+const sendWalletEmail = async ({
+  email,
+  name,
+  type,
+  amount,
+  balance,
+  reference,
+  status,
+}) => {
+  const content = walletEmail({
+    name,
+    type,
+    amount,
+    balance,
+    reference,
+    status,
+  });
+
+  return sendEmail({
+    to: email,
+    ...content,
+  });
+};
+
+const sendKycEmail = async ({
+  email,
+  name,
+  tier,
+  status,
+  reason,
+}) => {
+  const content = kycEmail({
+    name,
+    tier,
+    status,
+    reason,
+  });
+
+  return sendEmail({
+    to: email,
+    ...content,
+  });
+};
+
+const sendWithdrawalEmail = async ({
+  email,
+  name,
+  amount,
+  reference,
+  status,
+  reason,
+}) => {
+  const content = withdrawalEmail({
+    name,
+    amount,
+    reference,
+    status,
+    reason,
+  });
+
+  return sendEmail({
+    to: email,
+    ...content,
+  });
+};
+
+const sendEmpowermentEmail = async ({
+  email,
+  name,
+  programName,
+  amount,
+  reference,
+  status,
+  message,
+}) => {
+  const content = empowermentEmail({
+    name,
+    programName,
+    amount,
+    reference,
+    status,
+    message,
+  });
+
+  return sendEmail({
+    to: email,
+    ...content,
+  });
+};
+
+const sendSecurityEmail = async ({
+  email,
+  name,
+  action,
+  date,
+}) => {
+  const content = securityEmail({
+    name,
+    action,
+    date,
+  });
+
+  return sendEmail({
+    to: email,
+    ...content,
   });
 };
 
 const verifyEmailConnection = async () => {
-  const missingVariables =
-    getMissingEnvironmentVariables();
+  try {
+    const mailer = getTransporter();
 
-  if (missingVariables.length > 0) {
+    if (!mailer) {
+      return {
+        success: false,
+        reason: 'SMTP_NOT_CONFIGURED',
+      };
+    }
+
+    await mailer.verify();
+
+    console.log('[EMAIL] SMTP connection verified');
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    console.error(
+      '[EMAIL] SMTP verification failed:',
+      error.message
+    );
+
     return {
       success: false,
-      message: `Missing Brevo configuration: ${missingVariables.join(
-        ", "
-      )}`,
+      error: error.message,
     };
   }
-
-  return {
-    success: true,
-    message:
-      "Brevo API configuration is available.",
-  };
 };
 
 module.exports = {
+  emailEnabled,
   sendEmail,
+  sendWelcomeEmail,
+  sendTransactionEmail,
+  sendWalletEmail,
+  sendKycEmail,
+  sendWithdrawalEmail,
+  sendEmpowermentEmail,
+  sendSecurityEmail,
   verifyEmailConnection,
 };
