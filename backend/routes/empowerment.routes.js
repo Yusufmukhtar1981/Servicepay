@@ -6,6 +6,7 @@ const {
 
 const {
   createOrganization,
+  listOrganizations,
   createProgram,
   addBeneficiary,
   listPrograms,
@@ -34,6 +35,11 @@ router.use(protect);
 router.post(
   "/organizations",
   createOrganization
+);
+
+router.get(
+  "/organizations",
+  listOrganizations
 );
 
 router.post(

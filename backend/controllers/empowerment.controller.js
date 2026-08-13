@@ -68,6 +68,30 @@ const createOrganization = async (req, res) => {
   }
 };
 
+
+const listOrganizations = async (req, res) => {
+  try {
+    const organizations = await EmpowermentOrganization.find({})
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: organizations.length,
+      organizations,
+    });
+  } catch (error) {
+    console.error(
+      "LIST EMPOWERMENT ORGANIZATIONS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load empowerment organizations.",
+    });
+  }
+};
+
 const createProgram = async (req, res) => {
   try {
     const {
@@ -1600,6 +1624,7 @@ const getEmpowermentAuditTrail = async (req, res) => {
 };
 
 module.exports = {
+  listOrganizations,
   createOrganization,
   createProgram,
   addBeneficiary,
