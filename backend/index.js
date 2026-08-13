@@ -522,6 +522,58 @@ app.use("/api/kyc", kycRoutes);
 
 app.use("/api/admin/kyc", adminKycRoutes);
 
+
+
+/* SERVICEPAY RESEND ONE-TIME TEST */
+let servicePayEmailTestUsed = false;
+
+app.get('/api/internal/resend-email-test-20260814', async (req, res) => {
+  if (servicePayEmailTestUsed) {
+    return res.status(410).json({
+      success: false,
+      message: 'ServicePay email test has already been used.'
+    });
+  }
+
+  servicePayEmailTestUsed = true;
+
+  try {
+    const {
+      sendWelcomeEmail
+    } = require('./services/email.service');
+
+    const result = await sendWelcomeEmail({
+      email: 'yumpay1@gmail.com',
+      name: 'Yusif Muntari'
+    });
+
+    if (!result.success) {
+      servicePayEmailTestUsed = false;
+
+      return res.status(500).json({
+        success: false,
+        message: 'ServicePay Resend test email could not be sent.',
+        emailResult: result
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'ServicePay Resend test email sent successfully.'
+    });
+  } catch (error) {
+    servicePayEmailTestUsed = false;
+
+    console.error('[RESEND EMAIL TEST]', error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+
 app.use(
   (req, res) => {
     res.status(404).json({
