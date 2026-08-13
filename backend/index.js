@@ -625,3 +625,40 @@ require("./scripts/activateAllDeliveryStatesOnce")();
  * Idempotent through database migration marker.
  */
 require("./scripts/backfillDeliveredRiderCommissionsOnce")();
+
+/* =========================================================
+ * TEMPORARY SERVICEPAY EMAIL TEST
+ * Remove after SMTP test is completed successfully.
+ * ========================================================= */
+app.get('/api/internal/servicepay-email-test-20260813', async (req, res) => {
+  try {
+    const {
+      sendWelcomeEmail,
+    } = require('./services/email.service');
+
+    const result = await sendWelcomeEmail({
+      email: 'yumpay1@gmail.com',
+      name: 'Yusif Muntari',
+    });
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'ServicePay test email could not be sent.',
+        emailResult: result,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'ServicePay test email sent successfully to yumpay1@gmail.com',
+    });
+  } catch (error) {
+    console.error('[EMAIL TEST]', error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
