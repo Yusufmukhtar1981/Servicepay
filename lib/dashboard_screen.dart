@@ -13,7 +13,6 @@ import 'electricity_screen.dart';
 import 'exam_pin_screen.dart';
 import 'flight_booking_screen.dart';
 import 'id_verification_screen.dart';
-import 'keke_order_screen.dart';
 import 'logistics_screen.dart';
 import 'notifications_screen.dart';
 import 'transactions_screen.dart';
@@ -31,6 +30,8 @@ import 'group_wallet_screen.dart';
 import 'withdrawal_screen.dart';
 
 import 'referral_screen.dart';
+
+import 'empowerment_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -456,6 +457,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<_DashboardService> moreServices() {
     return <_DashboardService>[
+      _DashboardService(
+        title: 'Empowerment',
+        icon: Icons.volunteer_activism_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'empowerment program grant support beneficiary',
+        onTap: () {
+          openScreen(
+            const EmpowermentScreen(),
+          );
+        },
+      ),
       _DashboardService(
         title: 'NIN Verification',
         icon: Icons.fingerprint_rounded,
@@ -992,6 +1005,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onTap: () {
               openScreen(
                 const IdVerificationScreen(),
+              );
+            },
+          ),
+        ),
+      );
+
+      items.add(
+        _quickDivider(),
+      );
+
+      items.add(
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.volunteer_activism_rounded,
+            label: 'Empowerment',
+            onTap: () {
+              openScreen(
+                const EmpowermentScreen(),
               );
             },
           ),
