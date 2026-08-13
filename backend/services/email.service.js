@@ -1,4 +1,4 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const {
   welcomeEmail,
@@ -10,38 +10,21 @@ const {
   securityEmail,
 } = require('../templates/emailTemplates');
 
-let transporter = null;
+let resendClient = null;
 
 const emailEnabled = () =>
-  Boolean(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_PORT &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS
-  );
+  Boolean(process.env.RESEND_API_KEY);
 
-const getTransporter = () => {
+const getResend = () => {
   if (!emailEnabled()) {
     return null;
   }
 
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure:
-        String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
-    });
+  if (!resendClient) {
+    resendClient = new Resend(process.env.RESEND_API_KEY);
   }
 
-  return transporter;
+  return resendClient;
 };
 
 const sendEmail = async ({
@@ -53,6 +36,7 @@ const sendEmail = async ({
   try {
     if (!to) {
       console.log('[EMAIL] Skipped: recipient email missing');
+
       return {
         success: false,
         skipped: true,
@@ -60,49 +44,77 @@ const sendEmail = async ({
       };
     }
 
-    const mailer = getTransporter();
+    const resend = getResend();
 
-    if (!mailer) {
+    if (!resend) {
       console.log(
-        `[EMAIL] Skipped for ${to}: SMTP environment variables are not configured`
+        `[EMAIL] Skipped for ${to}: RESEND_API_KEY is not configured`
       );
 
       return {
         success: false,
         skipped: true,
-        reason: 'SMTP_NOT_CONFIGURED',
+        reason: 'RESEND_NOT_CONFIGURED',
       };
     }
 
     const fromName =
-      process.env.SMTP_FROM_NAME || 'ServicePay';
+      process.env.EMAIL_FROM_NAME ||
+      process.env.SMTP_FROM_NAME ||
+      'ServicePay';
 
     const fromEmail =
+      process.env.EMAIL_FROM_ADDRESS ||
       process.env.SMTP_FROM_EMAIL ||
-      process.env.SMTP_USER;
+      'support@servicepay.ng';
 
-    const info = await mailer.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
-      to,
+    const replyTo =
+      process.env.EMAIL_REPLY_TO ||
+      process.env.SMTP_REPLY_TO ||
+      'support@servicepay.ng';
+
+    const payload = {
+      from: `${fromName} <${fromEmail}>`,
+      to: [to],
       subject,
-      text,
       html,
-      replyTo:
-        process.env.SMTP_REPLY_TO ||
-        process.env.SMTP_FROM_EMAIL ||
-        process.env.SMTP_USER,
-    });
+      replyTo,
+    };
+
+    if (text) {
+      payload.text = text;
+    }
+
+    const { data, error } =
+      await resend.emails.send(payload);
+
+    if (error) {
+      console.error(
+        '[EMAIL] Resend send failed:',
+        error
+      );
+
+      return {
+        success: false,
+        error:
+          error.message ||
+          JSON.stringify(error),
+      };
+    }
 
     console.log(
-      `[EMAIL] Sent successfully to ${to}: ${info.messageId}`
+      `[EMAIL] Sent successfully to ${to}: ${data?.id || 'NO_ID'}`
     );
 
     return {
       success: true,
-      messageId: info.messageId,
+      messageId: data?.id || null,
     };
   } catch (error) {
-    console.error('[EMAIL] Send failed:', error.message);
+    console.error(
+      '[EMAIL] Send failed:',
+      error.message
+    );
 
     return {
       success: false,
@@ -256,34 +268,17 @@ const sendSecurityEmail = async ({
 };
 
 const verifyEmailConnection = async () => {
-  try {
-    const mailer = getTransporter();
-
-    if (!mailer) {
-      return {
-        success: false,
-        reason: 'SMTP_NOT_CONFIGURED',
-      };
-    }
-
-    await mailer.verify();
-
-    console.log('[EMAIL] SMTP connection verified');
-
-    return {
-      success: true,
-    };
-  } catch (error) {
-    console.error(
-      '[EMAIL] SMTP verification failed:',
-      error.message
-    );
-
+  if (!emailEnabled()) {
     return {
       success: false,
-      error: error.message,
+      reason: 'RESEND_NOT_CONFIGURED',
     };
   }
+
+  return {
+    success: true,
+    provider: 'RESEND',
+  };
 };
 
 module.exports = {
