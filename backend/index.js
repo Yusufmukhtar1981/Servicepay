@@ -153,6 +153,8 @@ connectDB();
  * =====================================================
  */
 
+const empowermentRoutes = require("./routes/empowerment.routes");
+
 app.use(helmet());
 app.use(cors());
 
@@ -492,6 +494,7 @@ app.use(
  * Airtime to Cash API
  * Must be mounted before the 404 handler.
  */
+app.use("/api/empowerment", empowermentRoutes);
 app.use("/api/airtime-to-cash", airtimeToCashRoutes);
 
 
