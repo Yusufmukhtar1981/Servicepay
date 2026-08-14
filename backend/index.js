@@ -523,6 +523,19 @@ app.use("/api/kyc", kycRoutes);
 
 app.use("/api/admin/kyc", adminKycRoutes);
 
+
+/* ServicePay public email logo */
+app.get('/api/public/servicepay-logo.png', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(
+    require('path').join(
+      __dirname,
+      'public',
+      'servicepay-logo.png'
+    )
+  );
+});
+
 app.use(
   (req, res) => {
     res.status(404).json({

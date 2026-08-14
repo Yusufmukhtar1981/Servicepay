@@ -76,7 +76,7 @@ const baseTemplate = ({
 <tr>
 <td style="background:#08783E;padding:28px 30px;text-align:center;">
   <img
-    src="https://servicepay.ng/assets/assets/image/servicepay_logo_fixed.png"
+    src="https://api.servicepay.ng/api/public/servicepay-logo.png"
     alt="ServicePay"
     width="170"
     style="display:block;margin:0 auto 12px auto;max-width:170px;height:auto;border:0;"
