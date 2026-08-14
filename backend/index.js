@@ -1,3 +1,4 @@
+require('./services/emailAutomation.service');
 const express = require("express");
 
 const adminRoleUsersRoutes = require("./routes/adminRoleUsers.routes");
