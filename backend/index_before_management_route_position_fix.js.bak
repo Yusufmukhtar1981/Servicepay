@@ -195,9 +195,6 @@ app.use(
 
 app.use('/api/admin/cards', adminCardRoutes);
 
-// ServicePay management routes
-app.use('/api/management', managementRoutes);
-
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -206,6 +203,7 @@ app.use((req, res) => {
   });
 });
 
+app.use('/api/management', managementRoutes);
 app.use(
   (error, req, res, next) => {
     console.error(
