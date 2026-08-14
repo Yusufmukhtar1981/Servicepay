@@ -867,7 +867,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Expanded(
                       child: _WalletAction(
                         icon: Icons.account_balance_wallet_rounded,
-                        label: 'Withdraw',
+                        label: 'Withdrawal',
                         onTap: () {
                           openScreen(const WithdrawalScreen());
                         },
@@ -877,7 +877,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Expanded(
                       child: _WalletAction(
                         icon: Icons.add_card_rounded,
-                        label: 'Fund Wallet',
+                        label: 'Wallet',
                         onTap: () {
                           openScreen(const WalletScreen());
                         },
@@ -1008,7 +1008,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     addItem(
       feature: 'walletFunding',
       icon: Icons.account_balance_wallet_rounded,
-      label: 'Fund Wallet',
+      label: 'Wallet',
       onTap: () {
         openScreen(
           const WalletScreen(),
@@ -1922,6 +1922,190 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // ===== SERVICEPAY MODERN HOME SERVICES =====
+
+  // ===== SERVICEPAY HOME BANNERS =====
+  Widget buildHomeBanners() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Column(
+            children: [
+              // Promo banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFEAF8EF),
+                      Color(0xFFF6FCF8),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFDDEFE4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Promo Deals',
+                            style: TextStyle(
+                              color: primaryGreen,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Enjoy amazing offers on your favorite ServicePay services.',
+                            style: TextStyle(
+                              color: Color(0xFF536159),
+                              fontSize: 12,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: primaryGreen,
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: const Text(
+                              'View Deals',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 82,
+                      height: 82,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.card_giftcard_rounded,
+                        size: 48,
+                        color: primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Referral banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFEAF3FF),
+                      Color(0xFFF7FAFF),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFDCE9F8),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Refer & Earn',
+                            style: TextStyle(
+                              color: Color(0xFF1764B0),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Invite friends to ServicePay and enjoy referral rewards.',
+                            style: TextStyle(
+                              color: Color(0xFF536159),
+                              fontSize: 12,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1764B0),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: const Text(
+                              'Refer Now',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 82,
+                      height: 82,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.group_add_rounded,
+                        size: 47,
+                        color: Color(0xFF1764B0),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget buildModernHomeServices() {
     final all = <_DashboardService>[
       ...filtered(popularServices()),
@@ -2496,6 +2680,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               buildWalletCard(),
               const SizedBox(height: 13),
               buildModernHomeServices(),
+              buildHomeBanners(),
               if (filtered(
                 popularServices(),
               ).isNotEmpty)
@@ -2558,47 +2743,36 @@ class _WalletAction extends StatelessWidget {
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: 5,
-          horizontal: 2,
-        ),
-        child: Column(
-          children: <Widget>[
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(
-                  13,
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: SizedBox(
+          height: 82,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 27,
+                color: const Color(0xFF08783E),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF26342D),
                 ),
               ),
-              child: Icon(
-                icon,
-                color: _DashboardScreenState.primaryGreen,
-                size: 22,
-              ),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              label,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
