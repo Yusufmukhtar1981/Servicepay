@@ -245,3 +245,83 @@ exports.getMyProfile = async (
     },
   });
 };
+
+
+/*
+ * Customer-facing Partner profile.
+ * Uses the normal ServicePay login token.
+ * API Secret is intentionally never returned here.
+ */
+exports.getCustomerPartnerProfile = async (req, res) => {
+  try {
+    const user = req.user || {};
+    const userId = user._id || user.id;
+
+    const orConditions = [];
+
+    if (userId) {
+      orConditions.push({ userId });
+    }
+
+    if (user.email) {
+      orConditions.push({
+        email: String(user.email).trim().toLowerCase(),
+      });
+    }
+
+    if (user.phone) {
+      orConditions.push({
+        phone: String(user.phone).trim(),
+      });
+    }
+
+    if (!orConditions.length) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unable to identify logged-in customer.',
+      });
+    }
+
+    const partner = await Partner.findOne({
+      $or: orConditions,
+    }).select('+apiKey -apiSecretHash');
+
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner account not found for this customer.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      partner: {
+        id: partner._id,
+        businessName: partner.businessName,
+        contactName: partner.contactName,
+        email: partner.email,
+        phone: partner.phone,
+        status: partner.status,
+        apiKey: partner.apiKey || '',
+        permissions: Array.isArray(partner.permissions)
+          ? partner.permissions
+          : [],
+        walletBalance: Number(partner.walletBalance || 0),
+        dailyLimit: Number(partner.dailyLimit || 0),
+        dailySpent: Number(partner.dailySpent || 0),
+      },
+    });
+  } catch (error) {
+    console.error(
+      'Customer Partner profile error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        'Unable to load Partner API profile.',
+    });
+  }
+};

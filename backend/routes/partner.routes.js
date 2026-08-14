@@ -1,4 +1,6 @@
 const express = require('express');
+const { protect } = require('../middleware/auth.middleware');
+
 
 const {
   partnerAuth,
@@ -27,5 +29,13 @@ router.get(
   partnerAuth,
   partnerBalanceController.getBalance
 );
+
+
+router.get(
+  '/me',
+  protect,
+  partnerController.getCustomerPartnerProfile
+);
+
 
 module.exports = router;
