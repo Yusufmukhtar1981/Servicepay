@@ -93,7 +93,7 @@ const cardSchema = new mongoose.Schema(
 
     requestReference: {
       type: String,
-      
+      unique: true,
       index: true,
     },
 
