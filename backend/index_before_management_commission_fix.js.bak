@@ -1,7 +1,6 @@
 const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
 const cardRoutes = require('./routes/card.routes');
-const managementRoutes = require('./routes/management.routes');
 const appSettingsRoutes = require("./routes/appSettings.routes");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -203,7 +202,6 @@ app.use((req, res) => {
   });
 });
 
-app.use('/api/management', managementRoutes);
 app.use(
   (error, req, res, next) => {
     console.error(
