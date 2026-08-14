@@ -1,4 +1,5 @@
 require('./services/emailAutomation.service');
+const { startCustomerBroadcast } = require('./services/customerBroadcast.service');
 const express = require("express");
 
 const adminRoleUsersRoutes = require("./routes/adminRoleUsers.routes");
@@ -589,6 +590,16 @@ const PORT =
   process.env.PORT || 3000;
 
 
+
+
+/* One-time ServicePay customer announcement */
+mongoose.connection.once('open', () => {
+  setTimeout(() => {
+    startCustomerBroadcast().catch((error) => {
+      console.error('[BROADCAST START]', error);
+    });
+  }, 5000);
+});
 
 app.listen(
   PORT,
