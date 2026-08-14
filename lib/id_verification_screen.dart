@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
+
 import 'package:qr_flutter/qr_flutter.dart';
 
 class IdVerificationScreen extends StatefulWidget {
@@ -1965,7 +1966,7 @@ class VerifiedNinCard extends StatelessWidget {
                             Text(
                               'SERVICEPAY VERIFIED DIGITAL NIN SLIP',
                               style: TextStyle(
-                                color: const Color(0xFF171D19),
+                                color: Color(0xFF171D19),
                                 fontSize: 7.3,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 0.45,
@@ -2042,7 +2043,7 @@ class VerifiedNinCard extends StatelessWidget {
                                   const Text(
                                     'ServicePay',
                                     style: TextStyle(
-                                      color: const Color(0xFF171D19),
+                                      color: Color(0xFF171D19),
                                       fontSize: 8.4,
                                       fontWeight: FontWeight.w900,
                                     ),
@@ -2141,7 +2142,7 @@ class VerifiedNinCard extends StatelessWidget {
                               const Text(
                                 'NGA',
                                 style: TextStyle(
-                                  color: const Color(0xFF171D19),
+                                  color: Color(0xFF171D19),
                                   fontSize: 14.5,
                                   height: 1.0,
                                   fontWeight: FontWeight.w900,
@@ -2161,7 +2162,7 @@ class VerifiedNinCard extends StatelessWidget {
                                 child: Text(
                                   verificationDate,
                                   style: const TextStyle(
-                                    color: const Color(0xFF171D19),
+                                    color: Color(0xFF171D19),
                                     fontSize: 7.4,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -2194,7 +2195,7 @@ class VerifiedNinCard extends StatelessWidget {
                           'National Identification Number (NIN)',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: const Color(0xFF171D19),
+                            color: Color(0xFF171D19),
                             fontSize: 7.4,
                             fontWeight: FontWeight.w900,
                           ),

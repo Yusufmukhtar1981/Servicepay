@@ -4,20 +4,16 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Duration requestTimeout =
-      Duration(seconds: 60);
+  static const Duration requestTimeout = Duration(seconds: 60);
 
-  static Future<Map<String, dynamic>>
-      getDataPlans({
+  static Future<Map<String, dynamic>> getDataPlans({
     required String network,
   }) async {
     final String token = await _getAuthToken();
 
-    final String selectedNetwork =
-        network.trim();
+    final String selectedNetwork = network.trim();
 
     if (selectedNetwork.isEmpty) {
       throw Exception(
@@ -30,55 +26,46 @@ class ApiService {
       '${Uri.encodeComponent(selectedNetwork)}',
     );
 
-    final http.Response response =
-        await http
-            .get(
-              uri,
-              headers: {
-                'Accept': 'application/json',
-                'Authorization':
-                    'Bearer $token',
-              },
-            )
-            .timeout(requestTimeout);
+    final http.Response response = await http.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(requestTimeout);
 
     return _handleResponse(response);
   }
 
-  static Future<Map<String, dynamic>>
-      buyAirtime({
+  static Future<Map<String, dynamic>> buyAirtime({
     required String network,
     required String phone,
     required String amount,
   }) async {
     final String token = await _getAuthToken();
 
-    final http.Response response =
-        await http
-            .post(
-              Uri.parse(
-                '$baseUrl/clubkonnect/airtime',
-              ),
-              headers: {
-                'Content-Type':
-                    'application/json',
-                'Accept': 'application/json',
-                'Authorization':
-                    'Bearer $token',
-              },
-              body: jsonEncode({
-                'network': network.trim(),
-                'phone': phone.trim(),
-                'amount': amount.trim(),
-              }),
-            )
-            .timeout(requestTimeout);
+    final http.Response response = await http
+        .post(
+          Uri.parse(
+            '$baseUrl/clubkonnect/airtime',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'network': network.trim(),
+            'phone': phone.trim(),
+            'amount': amount.trim(),
+          }),
+        )
+        .timeout(requestTimeout);
 
     return _handleResponse(response);
   }
 
-  static Future<Map<String, dynamic>>
-      buyData({
+  static Future<Map<String, dynamic>> buyData({
     required String network,
     required String phone,
     required String planCode,
@@ -86,38 +73,32 @@ class ApiService {
   }) async {
     final String token = await _getAuthToken();
 
-    final http.Response response =
-        await http
-            .post(
-              Uri.parse(
-                '$baseUrl/clubkonnect/data',
-              ),
-              headers: {
-                'Content-Type':
-                    'application/json',
-                'Accept': 'application/json',
-                'Authorization':
-                    'Bearer $token',
-              },
-              body: jsonEncode({
-                'network': network.trim(),
-                'phone': phone.trim(),
-                'planCode':
-                    planCode.trim(),
-                'amount': amount,
-              }),
-            )
-            .timeout(requestTimeout);
+    final http.Response response = await http
+        .post(
+          Uri.parse(
+            '$baseUrl/clubkonnect/data',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'network': network.trim(),
+            'phone': phone.trim(),
+            'planCode': planCode.trim(),
+            'amount': amount,
+          }),
+        )
+        .timeout(requestTimeout);
 
     return _handleResponse(response);
   }
 
   static Future<String> _getAuthToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    final String? token =
-        prefs.getString('auth_token')?.trim();
+    final String? token = prefs.getString('auth_token')?.trim();
 
     if (token == null || token.isEmpty) {
       throw Exception(
@@ -129,33 +110,27 @@ class ApiService {
     return token;
   }
 
-  static Map<String, dynamic>
-      _handleResponse(
+  static Map<String, dynamic> _handleResponse(
     http.Response response,
   ) {
     Map<String, dynamic> result;
 
     try {
-      final dynamic decoded =
-          jsonDecode(response.body);
+      final dynamic decoded = jsonDecode(response.body);
 
       if (decoded is Map<String, dynamic>) {
-        result =
-            Map<String, dynamic>.from(decoded);
+        result = Map<String, dynamic>.from(decoded);
       } else if (decoded is Map) {
-        result =
-            Map<String, dynamic>.from(decoded);
+        result = Map<String, dynamic>.from(decoded);
       } else {
         result = {
           'success': false,
-          'message':
-              'The server returned an invalid response.',
+          'message': 'The server returned an invalid response.',
           'data': decoded,
         };
       }
     } catch (_) {
-      final String responseText =
-          response.body.trim();
+      final String responseText = response.body.trim();
 
       result = {
         'success': false,
@@ -165,23 +140,18 @@ class ApiService {
       };
     }
 
-    result['httpStatus'] =
-        response.statusCode;
+    result['httpStatus'] = response.statusCode;
 
-    if (response.statusCode >= 200 &&
-        response.statusCode < 300) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return result;
     }
 
     result['success'] = false;
 
-    final String? currentMessage =
-        result['message']?.toString().trim();
+    final String? currentMessage = result['message']?.toString().trim();
 
-    if (currentMessage == null ||
-        currentMessage.isEmpty) {
-      result['message'] =
-          _defaultErrorMessage(
+    if (currentMessage == null || currentMessage.isEmpty) {
+      result['message'] = _defaultErrorMessage(
         response.statusCode,
       );
     }

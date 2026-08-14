@@ -650,244 +650,188 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget buildWalletCard() {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(27),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            Color(0xFF00482C),
+            Color(0xFF08783E),
+            Color(0xFF12A85B),
+          ],
+        ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x38004E2C),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(27),
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              right: -50,
+              top: -58,
+              child: Container(
+                width: 220,
+                height: 190,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[
-                      Color(0xFF079A55),
-                      Color(0xFF08783E),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                      alpha: 0.07,
+                    ),
+                    width: 27,
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                19,
+                18,
+                19,
+                16,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      const Text(
+                        'Wallet Balance',
+                        style: TextStyle(
+                          color: Color(0xFFD9F7E6),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            hideBalance = !hideBalance;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(30),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(
+                            hideBalance
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const <BoxShadow>[
-                    BoxShadow(
-                      color: Color(0x2208783E),
-                      blurRadius: 18,
-                      offset: Offset(0, 8),
+                  const SizedBox(height: 15),
+                  Text(
+                    hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 30,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1.4,
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.shield_outlined,
-                          color: Colors.white70,
-                          size: 18,
+                  ),
+                  const SizedBox(height: 15),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: 0.10,
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(
+                        color: Colors.white.withValues(
+                          alpha: 0.18,
                         ),
-                        const SizedBox(width: 7),
-                        const Text(
-                          'Available Balance',
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(
+                          Icons.shield_outlined,
+                          color: Color(0xFFB7F7D2),
+                          size: 17,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Secured & Protected',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(width: 5),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () {
-                            setState(() {
-                              hideBalance = !hideBalance;
-                            });
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: Icon(
-                              hideBalance
-                                  ? Icons.visibility_off_rounded
-                                  : Icons.visibility_rounded,
-                              color: Colors.white70,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () {
-                            openScreen(const WalletScreen());
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 4,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Wallet',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                SizedBox(width: 2),
-                                Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
                       ],
                     ),
-                    const SizedBox(height: 11),
-                    Text(
-                      hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 19),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 7,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.18),
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.lock_outline_rounded,
-                                color: Colors.white70,
-                                size: 15,
-                              ),
-                              SizedBox(width: 5),
-                              Text(
-                                'Secured & Protected',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Spacer(),
-                        Material(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(30),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(30),
-                            onTap: () {
-                              openScreen(const WalletScreen());
-                            },
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.add_rounded,
-                                    color: primaryGreen,
-                                    size: 18,
-                                  ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'Add Money',
-                                    style: TextStyle(
-                                      color: primaryGreen,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: const Color(0xFFE7EEE9),
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _WalletAction(
-                        icon: Icons.swap_horiz_rounded,
-                        label: 'Transfer',
-                        onTap: () {
-                          openScreen(const TransferScreen());
-                        },
-                      ),
+                  const SizedBox(height: 17),
+                  Divider(
+                    height: 1,
+                    color: Colors.white.withValues(
+                      alpha: 0.17,
                     ),
-                    _walletDivider(),
-                    Expanded(
-                      child: _WalletAction(
-                        icon: Icons.account_balance_wallet_rounded,
-                        label: 'Withdrawal',
-                        onTap: () {
-                          openScreen(const WithdrawalScreen());
-                        },
+                  ),
+                  const SizedBox(height: 17),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _WalletAction(
+                          icon: Icons.add_circle_outline,
+                          label: 'Fund Wallet',
+                          onTap: () {
+                            openScreen(
+                              const WalletScreen(),
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                    _walletDivider(),
-                    Expanded(
-                      child: _WalletAction(
-                        icon: Icons.add_card_rounded,
-                        label: 'Wallet',
-                        onTap: () {
-                          openScreen(const WalletScreen());
-                        },
+                      _walletDivider(),
+                      Expanded(
+                        child: _WalletAction(
+                          icon: Icons.account_balance_wallet_rounded,
+                          label: 'Withdrawal',
+                          onTap: () {
+                            openScreen(
+                              const WithdrawalScreen(),
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                      _walletDivider(),
+                      Expanded(
+                        child: _WalletAction(
+                          icon: Icons.send_rounded,
+                          label: 'ServicePay Transfer',
+                          onTap: () {
+                            openScreen(
+                              const TransferScreen(),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1008,7 +952,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     addItem(
       feature: 'walletFunding',
       icon: Icons.account_balance_wallet_rounded,
-      label: 'Wallet',
+      label: 'Fund Wallet',
       onTap: () {
         openScreen(
           const WalletScreen(),
@@ -1921,433 +1865,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ===== SERVICEPAY MODERN HOME SERVICES =====
-
-  // ===== SERVICEPAY HOME BANNERS =====
-  Widget buildHomeBanners() {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-          child: Column(
-            children: [
-              // Promo banner
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Color(0xFFEAF8EF),
-                      Color(0xFFF6FCF8),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFFDDEFE4),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Promo Deals',
-                            style: TextStyle(
-                              color: primaryGreen,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          const Text(
-                            'Enjoy amazing offers on your favorite ServicePay services.',
-                            style: TextStyle(
-                              color: Color(0xFF536159),
-                              fontSize: 12,
-                              height: 1.35,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => _ServicePayAllServicesScreen(
-                                    services: <_DashboardService>[
-                                      ...popularServices(),
-                                      ...moreServices(),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: primaryGreen,
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                              child: const Text(
-                                'View Deals',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      width: 82,
-                      height: 82,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.75),
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.card_giftcard_rounded,
-                        size: 48,
-                        color: primaryGreen,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Referral banner
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Color(0xFFEAF3FF),
-                      Color(0xFFF7FAFF),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFFDCE9F8),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Refer & Earn',
-                            style: TextStyle(
-                              color: Color(0xFF1764B0),
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          const Text(
-                            'Invite friends to ServicePay and enjoy referral rewards.',
-                            style: TextStyle(
-                              color: Color(0xFF536159),
-                              fontSize: 12,
-                              height: 1.35,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const ReferralScreen(),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1764B0),
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                              child: const Text(
-                                'Refer Now',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      width: 82,
-                      height: 82,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.78),
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.group_add_rounded,
-                        size: 47,
-                        color: Color(0xFF1764B0),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget buildModernHomeServices() {
-    final all = <_DashboardService>[
-      ...filtered(popularServices()),
-      ...filtered(moreServices()),
-    ];
-
-    final unique = <String, _DashboardService>{};
-    for (final service in all) {
-      unique.putIfAbsent(service.title.toLowerCase(), () => service);
-    }
-
-    final services = unique.values.toList();
-
-    _DashboardService? findService(List<String> names) {
-      for (final name in names) {
-        for (final service in services) {
-          if (service.title.toLowerCase().contains(name.toLowerCase())) {
-            return service;
-          }
-        }
-      }
-      return null;
-    }
-
-    final preferred = <_DashboardService?>[
-      findService(['Airtime']),
-      findService(['Data']),
-      findService(['Electricity']),
-      findService(['Cable']),
-      findService(['Delivery']),
-      findService(['NIN']),
-      findService(['Empowerment']),
-    ];
-
-    final selected = <_DashboardService>[];
-
-    for (final service in preferred) {
-      if (service != null &&
-          !selected.any(
-            (item) => item.title.toLowerCase() == service.title.toLowerCase(),
-          )) {
-        selected.add(service);
-      }
-    }
-
-    for (final service in services) {
-      if (selected.length >= 7) break;
-
-      if (!selected.any(
-        (item) => item.title.toLowerCase() == service.title.toLowerCase(),
-      )) {
-        selected.add(service);
-      }
-    }
-
-    if (selected.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.fromLTRB(14, 17, 14, 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: const Color(0xFFE7EEE9),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Services',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF16231C),
-                      ),
-                    ),
-                  ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => _ServicePayAllServicesScreen(
-                            services: services,
-                          ),
-                        ),
-                      );
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 5,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'All Services',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: primaryGreen,
-                            ),
-                          ),
-                          SizedBox(width: 2),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            size: 18,
-                            color: primaryGreen,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: selected.length + 1,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  mainAxisExtent: 92,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 10,
-                ),
-                itemBuilder: (context, index) {
-                  if (index == selected.length) {
-                    return _modernHomeServiceItem(
-                      icon: Icons.grid_view_rounded,
-                      title: 'More',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => _ServicePayAllServicesScreen(
-                              services: services,
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  }
-
-                  final service = selected[index];
-
-                  return _modernHomeServiceItem(
-                    icon: service.icon,
-                    title: service.title,
-                    onTap: service.onTap,
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _modernHomeServiceItem({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Column(
-          children: [
-            Container(
-              width: 47,
-              height: 47,
-              decoration: BoxDecoration(
-                color: softGreen,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                icon,
-                size: 24,
-                color: primaryGreen,
-              ),
-            ),
-            const SizedBox(height: 7),
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 10.8,
-                  height: 1.08,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF536159),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget buildMoreServices() {
     final List<_DashboardService> services = filtered(
       moreServices(),
@@ -2704,8 +2221,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (isLoading) const SizedBox(height: 10),
               buildWalletCard(),
               const SizedBox(height: 13),
-              buildModernHomeServices(),
-              buildHomeBanners(),
+              buildPremiumServiceHub(),
               if (filtered(
                 popularServices(),
               ).isNotEmpty)
@@ -2768,36 +2284,47 @@ class _WalletAction extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: SizedBox(
-          height: 82,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 27,
-                color: const Color(0xFF08783E),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF26342D),
+  Widget build(
+    BuildContext context,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: 5,
+          horizontal: 2,
+        ),
+        child: Column(
+          children: <Widget>[
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(
+                  13,
                 ),
               ),
-            ],
-          ),
+              child: Icon(
+                icon,
+                color: _DashboardScreenState.primaryGreen,
+                size: 22,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              label,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );

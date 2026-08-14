@@ -1980,12 +1980,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => _ServicePayAllServicesScreen(
-                                    services: <_DashboardService>[
-                                      ...popularServices(),
-                                      ...moreServices(),
-                                    ],
-                                  ),
+                                  builder: (_) =>
+                                      const _ServicePayAllServicesScreen(),
                                 ),
                               );
                             },

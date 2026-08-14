@@ -10,11 +10,9 @@ class AirtimeScreen extends StatefulWidget {
 }
 
 class _AirtimeScreenState extends State<AirtimeScreen> {
-  final TextEditingController phoneController =
-      TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
 
-  final TextEditingController amountController =
-      TextEditingController();
+  final TextEditingController amountController = TextEditingController();
 
   final List<String> networks = [
     'MTN',
@@ -47,14 +45,11 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   }
 
   Future<void> buyAirtime() async {
-    final String phone =
-        phoneController.text.trim();
+    final String phone = phoneController.text.trim();
 
-    final String amountText =
-        amountController.text.trim();
+    final String amountText = amountController.text.trim();
 
-    final double? amount =
-        double.tryParse(amountText);
+    final double? amount = double.tryParse(amountText);
 
     if (phone.isEmpty || amountText.isEmpty) {
       showMessage(
@@ -63,8 +58,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       return;
     }
 
-    if (!RegExp(r'^[0-9]{11}$').hasMatch(phone) ||
-        !phone.startsWith('0')) {
+    if (!RegExp(r'^[0-9]{11}$').hasMatch(phone) || !phone.startsWith('0')) {
       showMessage(
         'Please enter a valid 11-digit phone number.',
       );
@@ -78,8 +72,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       return;
     }
 
-    final bool? confirmed =
-        await showDialog<bool>(
+    final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
@@ -125,8 +118,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     });
 
     try {
-      final Map<String, dynamic> result =
-          await ApiService.buyAirtime(
+      final Map<String, dynamic> result = await ApiService.buyAirtime(
         network: selectedNetwork,
         phone: phone,
         amount: amountText,
@@ -134,18 +126,15 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
       if (!mounted) return;
 
-      final bool success =
-          result['success'] == true;
+      final bool success = result['success'] == true;
 
-      final String message =
-          result['message']?.toString() ??
-              result['response_description']
-                  ?.toString() ??
-              result['description']?.toString() ??
-              result['error']?.toString() ??
-              (success
-                  ? 'Airtime purchase was successful.'
-                  : 'Airtime purchase failed.');
+      final String message = result['message']?.toString() ??
+          result['response_description']?.toString() ??
+          result['description']?.toString() ??
+          result['error']?.toString() ??
+          (success
+              ? 'Airtime purchase was successful.'
+              : 'Airtime purchase failed.');
 
       if (success) {
         showMessage(message);
@@ -153,31 +142,24 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         phoneController.clear();
         amountController.clear();
       } else {
-        final String? reference =
-            result['reference']?.toString();
+        final String? reference = result['reference']?.toString();
 
-        final String? status =
-            result['status']?.toString();
+        final String? status = result['status']?.toString();
 
         String finalMessage = message;
 
         if (status == 'REFUNDED') {
-          finalMessage =
-              '$message Your wallet has been refunded.';
+          finalMessage = '$message Your wallet has been refunded.';
         }
 
-        if (reference != null &&
-            reference.isNotEmpty) {
-          finalMessage =
-              '$finalMessage Reference: $reference';
+        if (reference != null && reference.isNotEmpty) {
+          finalMessage = '$finalMessage Reference: $reference';
         }
 
         showMessage(finalMessage);
       }
     } catch (error) {
-      final String message = error
-          .toString()
-          .replaceFirst('Exception: ', '');
+      final String message = error.toString().replaceFirst('Exception: ', '');
 
       showMessage(message);
     } finally {
@@ -192,8 +174,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
@@ -212,8 +193,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
               maxWidth: 600,
             ),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Select Network',
@@ -232,14 +212,12 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   items: networks
                       .map(
-                        (String network) =>
-                            DropdownMenuItem<String>(
+                        (String network) => DropdownMenuItem<String>(
                           value: network,
                           child: Text(network),
                         ),
@@ -267,8 +245,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 TextField(
                   controller: phoneController,
                   enabled: !isLoading,
-                  keyboardType:
-                      TextInputType.phone,
+                  keyboardType: TextInputType.phone,
                   maxLength: 11,
                   decoration: InputDecoration(
                     hintText: '08012345678',
@@ -279,8 +256,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
@@ -296,9 +272,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 TextField(
                   controller: amountController,
                   enabled: !isLoading,
-                  keyboardType:
-                      const TextInputType
-                          .numberWithOptions(
+                  keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
                   decoration: InputDecoration(
@@ -310,8 +284,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
@@ -320,25 +293,19 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed:
-                        isLoading ? null : buyAirtime,
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          Colors.green,
-                      foregroundColor:
-                          Colors.white,
+                    onPressed: isLoading ? null : buyAirtime,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     child: isLoading
                         ? const SizedBox(
                             width: 24,
                             height: 24,
-                            child:
-                                CircularProgressIndicator(
+                            child: CircularProgressIndicator(
                               strokeWidth: 2.5,
                               color: Colors.white,
                             ),
@@ -347,8 +314,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                             'Buy Airtime',
                             style: TextStyle(
                               fontSize: 17,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                   ),

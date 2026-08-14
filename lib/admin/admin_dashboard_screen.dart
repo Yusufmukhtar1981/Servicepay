@@ -434,6 +434,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildHeadOfficeControlCenter() {
     return Container(
       margin: const EdgeInsets.fromLTRB(
