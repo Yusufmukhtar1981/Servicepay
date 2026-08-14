@@ -2,6 +2,7 @@ const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
 
 const partnerRoutes = require("./routes/partner.routes");
+const partnerApplicationRoutes = require("./routes/partnerApplication.routes");
 const adminPartnerRoutes = require("./routes/adminPartner.routes");
 const cardRoutes = require('./routes/card.routes');
 const managementRoutes = require('./routes/management.routes');
@@ -77,6 +78,8 @@ const transactionPinRoutes = require(
 const app = express();
 
 connectDB();
+const adminPartnerApplicationRoutes = require("./routes/adminPartnerApplication.routes");
+
 
 app.use(helmet());
 app.use(cors());
@@ -188,7 +191,7 @@ app.use("/api/settings", appSettingsRoutes);
 app.use('/api/cards', cardRoutes);
 
 const productCommissionRoutes = require(
-  "./routes/productCommission.routes"
+"./routes/productCommission.routes"
 );
 
 app.use(
@@ -208,8 +211,9 @@ app.use('/api/riders', riderRoutes);
 
 
 app.use("/api/partner", partnerRoutes);
+app.use("/api/partner-applications", partnerApplicationRoutes);
 app.use("/api/admin/partners", adminPartnerRoutes);
-
+app.use("/api/admin/partner-applications", adminPartnerApplicationRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
