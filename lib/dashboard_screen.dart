@@ -34,6 +34,8 @@ import 'referral_screen.dart';
 import 'empowerment_screen.dart';
 import 'cards_screen.dart';
 
+import 'partner_application_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -1084,6 +1086,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
       items.add(
         _quickDivider(),
       );
+
+      items.add(
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.handshake_rounded,
+            label: 'Partner API',
+            onTap: () {
+              openScreen(
+                const PartnerApplicationScreen(),
+              );
+            },
+          ),
+        ),
+      );
+
+      if (items.isNotEmpty) {
+        items.add(
+          _quickDivider(),
+        );
+      }
 
       items.add(
         Expanded(
