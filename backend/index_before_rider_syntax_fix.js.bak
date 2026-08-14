@@ -11,9 +11,9 @@ require("dotenv").config();
 const connectDB = require("./config/db");
 
 const paystackRoutes = require(
+const riderRoutes = require('./routes/rider.routes');
   "./routes/paystack.routes"
 );
-const riderRoutes = require("./routes/rider.routes");
 
 const clubkonnectRoutes = require(
   "./routes/clubkonnect.routes"

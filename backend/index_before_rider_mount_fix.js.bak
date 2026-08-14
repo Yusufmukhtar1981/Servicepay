@@ -13,7 +13,6 @@ const connectDB = require("./config/db");
 const paystackRoutes = require(
   "./routes/paystack.routes"
 );
-const riderRoutes = require("./routes/rider.routes");
 
 const clubkonnectRoutes = require(
   "./routes/clubkonnect.routes"
@@ -181,6 +180,7 @@ app.use(
   transactionPinRoutes
 );
 
+
 app.use("/api/settings", appSettingsRoutes);
 app.use('/api/cards', cardRoutes);
 
@@ -197,11 +197,6 @@ app.use('/api/admin/cards', adminCardRoutes);
 
 // ServicePay management routes
 app.use('/api/management', managementRoutes);
-
-
-/* ServicePay Rider API */
-app.use('/api/rider', riderRoutes);
-app.use('/api/riders', riderRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
