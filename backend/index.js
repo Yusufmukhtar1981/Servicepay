@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 require('./services/emailAutomation.service');
 const { startCustomerBroadcast } = require('./services/customerBroadcast.service');
 const express = require("express");
