@@ -21,6 +21,295 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
   final phoneController = TextEditingController();
 
   bool loading = true;
+
+  Map<String, dynamic>? partnerProfile;
+  bool loadingPartnerProfile = false;
+  String partnerProfileError = '';
+
+  String get partnerApiKey => (partnerProfile?['apiKey'] ?? '').toString();
+
+  List<dynamic> get partnerPermissions {
+    final value = partnerProfile?['permissions'];
+    return value is List ? value : <dynamic>[];
+  }
+
+  double _partnerNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  Future<void> _loadPartnerProfile() async {
+    if (loadingPartnerProfile) return;
+
+    if (mounted) {
+      setState(() {
+        loadingPartnerProfile = true;
+        partnerProfileError = '';
+      });
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token =
+          prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+
+      if (token.isEmpty) {
+        throw Exception('Login session not found.');
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/partner/me'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        decoded = null;
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map
+            ? (decoded['message'] ?? 'Unable to load Partner API profile.')
+            : 'Unable to load Partner API profile.';
+        throw Exception(message.toString());
+      }
+
+      final Map<String, dynamic> body =
+          decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+
+      final dynamic rawPartner = body['partner'] ?? body['data'] ?? body;
+
+      if (rawPartner is! Map) {
+        throw Exception('Partner API profile was not returned.');
+      }
+
+      if (mounted) {
+        setState(() {
+          partnerProfile = Map<String, dynamic>.from(rawPartner as Map);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          partnerProfileError = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          loadingPartnerProfile = false;
+        });
+      }
+    }
+  }
+
+  Widget _partnerApiProfileCard() {
+    if (loadingPartnerProfile && partnerProfile == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 18),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (partnerProfileError.isNotEmpty && partnerProfile == null) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 14),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3F2),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFFFC9C5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              partnerProfileError,
+              style: const TextStyle(
+                color: Color(0xFFB42318),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _loadPartnerProfile,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (partnerProfile == null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: OutlinedButton.icon(
+          onPressed: _loadPartnerProfile,
+          icon: const Icon(Icons.key_rounded),
+          label: const Text('Load API Credentials'),
+        ),
+      );
+    }
+
+    final wallet = _partnerNumber(partnerProfile?['walletBalance']);
+    final dailyLimit = _partnerNumber(partnerProfile?['dailyLimit']);
+    final dailySpent = _partnerNumber(partnerProfile?['dailySpent']);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFF08783E).withValues(alpha: 0.22),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.vpn_key_rounded,
+                color: Color(0xFF08783E),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Partner API Access',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                  color: Color(0xFF153B2A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'API Key',
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 5),
+          SelectableText(
+            partnerApiKey.isEmpty
+                ? 'API Key has not been generated yet.'
+                : partnerApiKey,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 18,
+            runSpacing: 12,
+            children: [
+              _partnerMetric(
+                'Wallet',
+                '₦${wallet.toStringAsFixed(2)}',
+              ),
+              _partnerMetric(
+                'Daily Limit',
+                '₦${dailyLimit.toStringAsFixed(2)}',
+              ),
+              _partnerMetric(
+                'Daily Spent',
+                '₦${dailySpent.toStringAsFixed(2)}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Approved Services',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF334155),
+            ),
+          ),
+          const SizedBox(height: 9),
+          if (partnerPermissions.isEmpty)
+            const Text(
+              'No permissions assigned yet.',
+              style: TextStyle(color: Color(0xFF64748B)),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: partnerPermissions
+                  .map(
+                    (permission) => Chip(
+                      label: Text(
+                        permission.toString(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          const SizedBox(height: 12),
+          const Text(
+            'For security, your API Secret is shown only when credentials are generated or regenerated. Never share it publicly.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _partnerMetric(String label, String value) {
+    return SizedBox(
+      width: 125,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   bool submitting = false;
 
   Map<String, dynamic>? application;
@@ -284,6 +573,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
             ),
           ),
           if (status == 'APPROVED') ...[
+            _partnerApiProfileCard(),
             const SizedBox(height: 12),
             const Text(
               'API credentials are issued securely after approval. Keep your API Secret private.',
@@ -331,6 +621,19 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
   @override
   Widget build(BuildContext context) {
     const green = Color(0xFF08783E);
+
+    if (status == 'APPROVED' &&
+        partnerProfile == null &&
+        !loadingPartnerProfile) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            status == 'APPROVED' &&
+            partnerProfile == null &&
+            !loadingPartnerProfile) {
+          _loadPartnerProfile();
+        }
+      });
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
