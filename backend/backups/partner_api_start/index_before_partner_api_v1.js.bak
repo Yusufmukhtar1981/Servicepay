@@ -1,8 +1,5 @@
 const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
-
-const partnerRoutes = require("./routes/partner.routes");
-const adminPartnerRoutes = require("./routes/adminPartner.routes");
 const cardRoutes = require('./routes/card.routes');
 const managementRoutes = require('./routes/management.routes');
 const appSettingsRoutes = require("./routes/appSettings.routes");
@@ -205,10 +202,6 @@ app.use('/api/management', managementRoutes);
 /* ServicePay Rider API */
 app.use('/api/rider', riderRoutes);
 app.use('/api/riders', riderRoutes);
-
-
-app.use("/api/partner", partnerRoutes);
-app.use("/api/admin/partners", adminPartnerRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
