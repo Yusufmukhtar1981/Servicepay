@@ -180,4 +180,9 @@ router.patch(
   partnerController.regenerateCredentials
 );
 
+router.post(
+  '/:id/regenerate-credentials',
+  partnerController.regenerateCredentials
+);
+
 module.exports = router;
