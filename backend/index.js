@@ -595,9 +595,11 @@ const PORT =
 /* One-time ServicePay customer announcement */
 mongoose.connection.once('open', () => {
   setTimeout(() => {
-    startCustomerBroadcast().catch((error) => {
+    /* Customer startup broadcast disabled to prevent server crash.
+startCustomerBroadcast().catch((error) => {
       console.error('[BROADCAST START]', error);
     });
+*/
   }, 5000);
 });
 
