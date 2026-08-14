@@ -2177,7 +2177,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       findService(['Delivery']),
       findService(['NIN']),
       findService(['Empowerment']),
-      findService(['Cards']),
     ];
 
     final selected = <_DashboardService>[];
