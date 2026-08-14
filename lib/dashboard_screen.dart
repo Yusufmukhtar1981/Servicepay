@@ -558,6 +558,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
       ),
       _DashboardService(
+        title: 'Partner API',
+        icon: Icons.api_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'partner api developer integration merchant business',
+        onTap: () {
+          openScreen(
+            const PartnerApplicationScreen(),
+          );
+        },
+      ),
+      _DashboardService(
         title: 'Agent Locator',
         icon: Icons.location_on_rounded,
         iconColor: const Color(0xFFEA580C),
@@ -3049,6 +3061,10 @@ class _ServicePayAllServicesScreenState
   }
 
   String _categoryFor(String title) {
+    if (title == 'Partner API') {
+      return 'Business Services';
+    }
+
     final t = title.toLowerCase();
 
     if (t.contains('airtime') ||
