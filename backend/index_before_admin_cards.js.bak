@@ -1,4 +1,3 @@
-const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
 const cardRoutes = require('./routes/card.routes');
 const appSettingsRoutes = require("./routes/appSettings.routes");
@@ -191,8 +190,6 @@ app.use(
   "/api/admin/product-commissions",
   productCommissionRoutes
 );
-
-app.use('/api/admin/cards', adminCardRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

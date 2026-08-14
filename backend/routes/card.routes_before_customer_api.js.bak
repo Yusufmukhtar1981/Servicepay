@@ -1,0 +1,19 @@
+const express = require('express');
+
+const {
+  protect,
+} = require('../middleware/auth.middleware');
+
+const cardController = require('../controllers/card.controller');
+
+const router = express.Router();
+
+router.use(protect);
+
+router.post('/request', cardController.requestCard);
+router.get('/my-cards', cardController.myCards);
+router.get('/:id', cardController.getCard);
+router.patch('/:id/freeze', cardController.freezeCard);
+router.patch('/:id/unfreeze', cardController.unfreezeCard);
+
+module.exports = router;
