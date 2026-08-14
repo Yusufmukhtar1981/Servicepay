@@ -142,6 +142,56 @@ exports.createPartner = async (
   }
 };
 
+
+exports.regenerateCredentials = async (req, res) => {
+  try {
+    const partner = await Partner.findById(req.params.id);
+
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found.',
+      });
+    }
+
+    const apiKey = generateApiKey();
+    const apiSecret = generateApiSecret();
+
+    partner.apiKey = apiKey;
+    partner.apiSecretHash = hashSecret(apiSecret);
+    partner.lastUsedAt = null;
+
+    await partner.save();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'API credentials regenerated successfully. Save the API Secret now because it will not be shown again.',
+      partner: {
+        id: partner._id,
+        businessName: partner.businessName,
+        contactName: partner.contactName,
+        email: partner.email,
+        status: partner.status,
+      },
+      credentials: {
+        apiKey,
+        apiSecret,
+      },
+    });
+  } catch (error) {
+    console.error('Regenerate Partner API credentials error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        'Unable to regenerate Partner API credentials.',
+    });
+  }
+};
+
+
 exports.getPartners = async (
   req,
   res

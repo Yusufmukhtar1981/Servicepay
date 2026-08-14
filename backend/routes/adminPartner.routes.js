@@ -174,4 +174,10 @@ router.get(
   adminPartnerWalletController.getWalletAdjustments
 );
 
+
+router.patch(
+  '/:id/regenerate-credentials',
+  partnerController.regenerateCredentials
+);
+
 module.exports = router;
