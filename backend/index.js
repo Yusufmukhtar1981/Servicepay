@@ -80,6 +80,12 @@ const app = express();
 connectDB();
 const adminPartnerApplicationRoutes = require("./routes/adminPartnerApplication.routes");
 
+const empowermentRoutes = require("./routes/empowerment.routes");
+const servicepayFeaturesRoutes = require("./routes/servicepayFeatures.routes");
+const businessWalletRoutes = require("./routes/businessWallet.routes");
+const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
+
+
 
 app.use(helmet());
 app.use(cors());
@@ -214,6 +220,12 @@ app.use("/api/partner", partnerRoutes);
 app.use("/api/partner-applications", partnerApplicationRoutes);
 app.use("/api/admin/partners", adminPartnerRoutes);
 app.use("/api/admin/partner-applications", adminPartnerApplicationRoutes);
+/* ServicePay restored API modules */
+app.use("/api/empowerment", empowermentRoutes);
+app.use("/api/servicepay-features", servicepayFeaturesRoutes);
+app.use("/api/business-wallet", businessWalletRoutes);
+app.use("/api/airtime-to-cash", airtimeToCashRoutes);
+
 app.use((req, res) => {
   res.status(404).json({
     success: false,
