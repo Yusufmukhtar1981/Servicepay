@@ -85,6 +85,11 @@ const servicepayFeaturesRoutes = require("./routes/servicepayFeatures.routes");
 const businessWalletRoutes = require("./routes/businessWallet.routes");
 const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
 
+const adminKycRoutes = require("./routes/adminKyc.routes");
+const kycRoutes = require("./routes/kyc.routes");
+const staffManagementRoutes = require("./routes/staffManagement.routes");
+
+
 
 
 app.use(helmet());
@@ -225,6 +230,11 @@ app.use("/api/empowerment", empowermentRoutes);
 app.use("/api/servicepay-features", servicepayFeaturesRoutes);
 app.use("/api/business-wallet", businessWalletRoutes);
 app.use("/api/airtime-to-cash", airtimeToCashRoutes);
+
+/* KYC and Staff Management API modules */
+app.use("/api/admin/kyc", adminKycRoutes);
+app.use("/api/kyc", kycRoutes);
+app.use("/api/staff-management", staffManagementRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
