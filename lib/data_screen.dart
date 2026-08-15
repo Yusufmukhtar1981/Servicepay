@@ -400,7 +400,65 @@ class _DataScreenState extends State<DataScreen> {
     });
 
     try {
+      final TextEditingController transactionPinController =
+          TextEditingController();
+
+      final String? transactionPin = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Enter Transaction PIN'),
+            content: TextField(
+              controller: transactionPinController,
+              autofocus: true,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              decoration: const InputDecoration(
+                labelText: '4-digit PIN',
+                hintText: '••••',
+                counterText: '',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(
+                    transactionPinController.text.trim(),
+                  );
+                },
+                child: const Text('Confirm'),
+              ),
+            ],
+          );
+        },
+      );
+
+      transactionPinController.dispose();
+
+      if (transactionPin == null) {
+        return;
+      }
+
+      if (!RegExp(r'^\d{4}$').hasMatch(transactionPin)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enter a valid 4-digit Transaction PIN.'),
+            ),
+          );
+        }
+        return;
+      }
+
       final Map<String, dynamic> result = await ApiService.buyData(
+        transactionPin: transactionPin,
         network: selectedNetwork,
         phone: phone,
         planCode: code,

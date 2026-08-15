@@ -41,6 +41,7 @@ class ApiService {
     required String network,
     required String phone,
     required String amount,
+    required String transactionPin,
   }) async {
     final String token = await _getAuthToken();
 
@@ -58,6 +59,7 @@ class ApiService {
             'network': network.trim(),
             'phone': phone.trim(),
             'amount': amount.trim(),
+            'transactionPin': transactionPin,
           }),
         )
         .timeout(requestTimeout);
@@ -70,6 +72,7 @@ class ApiService {
     required String phone,
     required String planCode,
     required num amount,
+    required String transactionPin,
   }) async {
     final String token = await _getAuthToken();
 
@@ -88,6 +91,7 @@ class ApiService {
             'phone': phone.trim(),
             'planCode': planCode.trim(),
             'amount': amount,
+            'transactionPin': transactionPin,
           }),
         )
         .timeout(requestTimeout);
