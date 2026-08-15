@@ -1151,6 +1151,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
+    final preferredOrder = <String>[
+      'KYC',
+      'Empowerment',
+      'Transfer',
+      'Withdrawal',
+    ];
+
+    final visibleItems = <Widget>[];
+
+    for (final wantedLabel in preferredOrder) {
+      for (final item in items) {
+        if (item is Expanded &&
+            item.child is _QuickAction &&
+            (item.child as _QuickAction).label == wantedLabel) {
+          visibleItems.add(item);
+          break;
+        }
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 10,
@@ -1170,12 +1190,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: items,
-        ),
+      child: Row(
+        children: visibleItems,
       ),
     );
   }
