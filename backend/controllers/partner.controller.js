@@ -284,7 +284,7 @@ exports.getCustomerPartnerProfile = async (req, res) => {
 
     const partner = await Partner.findOne({
       $or: orConditions,
-    }).select('+apiKey -apiSecretHash');
+    }).select('+apiKey');
 
     if (!partner) {
       return res.status(404).json({
