@@ -1024,7 +1024,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       items.add(
-        Expanded(
+        SizedBox(
+          width: 82,
           child: _QuickAction(
             icon: icon,
             label: label,
@@ -1075,7 +1076,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     items.add(
-      Expanded(
+      SizedBox(
+        width: 82,
         child: _QuickAction(
           icon: Icons.receipt_long_rounded,
           label: 'Transactions',
@@ -1094,7 +1096,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
 
       items.add(
-        Expanded(
+        SizedBox(
+          width: 82,
           child: _QuickAction(
             icon: Icons.badge_rounded,
             label: 'Verify ID',
@@ -1112,7 +1115,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
 
       items.add(
-        Expanded(
+        SizedBox(
+          width: 82,
           child: _QuickAction(
             icon: Icons.handshake_rounded,
             label: 'Partner API',
@@ -1132,7 +1136,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       items.add(
-        Expanded(
+        SizedBox(
+          width: 82,
           child: _QuickAction(
             icon: Icons.volunteer_activism_rounded,
             label: 'Empowerment',
@@ -1165,8 +1170,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      child: Row(
-        children: items,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: items,
+        ),
       ),
     );
   }
