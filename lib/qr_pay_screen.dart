@@ -495,6 +495,7 @@ class _QrPaymentSheetState extends State<_QrPaymentSheet> {
         },
         body: jsonEncode(
           <String, dynamic>{
+            'receiverPhone': widget.receiverPhone.trim(),
             'phone': widget.receiverPhone.trim(),
             'beneficiaryPhone': widget.receiverPhone.trim(),
             'recipientPhone': widget.receiverPhone.trim(),
