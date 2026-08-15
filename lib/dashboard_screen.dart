@@ -32,6 +32,7 @@ import 'withdrawal_screen.dart';
 import 'referral_screen.dart';
 
 import 'empowerment_screen.dart';
+import 'kyc_screen.dart';
 import 'cards_screen.dart';
 
 import 'partner_application_screen.dart';
@@ -1051,6 +1052,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onTap: () {
         openScreen(
           const WithdrawalScreen(),
+        );
+      },
+    );
+
+    addItem(
+      feature: 'kyc',
+      icon: Icons.verified_user_rounded,
+      label: 'KYC',
+      onTap: () {
+        openScreen(
+          const KycScreen(),
         );
       },
     );
