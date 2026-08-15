@@ -260,7 +260,7 @@ exports.getCustomerPartnerProfile = async (req, res) => {
     const orConditions = [];
 
     if (userId) {
-      orConditions.push({ userId });
+      orConditions.push({ createdBy: userId });
     }
 
     if (user.email) {
