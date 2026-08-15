@@ -54,15 +54,15 @@ router.get(
 
 router.post(
   "/airtime",
-  require("../middleware/transactionPin.middleware").requireTransactionPin,
   protect,
+  require("../middleware/transactionPin.middleware").requireTransactionPin,
   buyAirtime
 );
 
 router.post(
   "/data",
-  require("../middleware/transactionPin.middleware").requireTransactionPin,
   protect,
+  require("../middleware/transactionPin.middleware").requireTransactionPin,
   buyData
 );
 
