@@ -5,6 +5,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:http/http.dart' as http;
+
 class QrPayScreen extends StatefulWidget {
   const QrPayScreen({super.key});
 
@@ -432,10 +434,11 @@ class _QrPaymentSheetState extends State<_QrPaymentSheet> {
     super.dispose();
   }
 
-  void _continuePayment() {
-    final amount = double.tryParse(
-      amountController.text.replaceAll(',', '').trim(),
-    );
+  Future<void> _continuePayment() async {
+    final amountText = amountController.text.trim().replaceAll(',', '');
+
+    final amount = double.tryParse(amountText);
+    final pin = pinController.text.trim();
 
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -446,7 +449,7 @@ class _QrPaymentSheetState extends State<_QrPaymentSheet> {
       return;
     }
 
-    if (pinController.text.trim().length != 4) {
+    if (pin.length != 4) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Enter your 4-digit transaction PIN.'),
@@ -455,35 +458,107 @@ class _QrPaymentSheetState extends State<_QrPaymentSheet> {
       return;
     }
 
-    /*
-     * IMPORTANT:
-     * The QR scanner and payment confirmation UI are now active.
-     *
-     * Connect this point to the existing ServicePay-to-ServicePay
-     * transfer method/API already used by TransferScreen.
-     *
-     * Receiver information:
-     * widget.receiverId
-     * widget.receiverPhone
-     *
-     * Payment:
-     * amount
-     * pinController.text.trim()
-     *
-     * We deliberately do not create a second wallet-transfer API here,
-     * so QR Pay uses the same secure ledger/transfer flow as the existing
-     * ServicePay-to-ServicePay transfer.
-     */
-
-    Navigator.pop(context);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'QR verified for ${widget.receiverName}. Transfer connection is ready for the existing ServicePay transfer API.',
+    if (widget.receiverPhone.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Receiver phone number is missing.'),
         ),
-      ),
-    );
+      );
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final token =
+          prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+
+      if (token.isEmpty) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your session has expired. Please login again.'),
+          ),
+        );
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse(
+          'https://api.servicepay.ng/api/transfer/servicepay',
+        ),
+        headers: <String, String>{
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(
+          <String, dynamic>{
+            'phone': widget.receiverPhone.trim(),
+            'beneficiaryPhone': widget.receiverPhone.trim(),
+            'recipientPhone': widget.receiverPhone.trim(),
+            'amount': amount,
+            'transactionPin': pin,
+            'pin': pin,
+          },
+        ),
+      );
+
+      Map<String, dynamic> data = <String, dynamic>{};
+
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          data = decoded;
+        } else if (decoded is Map) {
+          data = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+
+      if (!mounted) return;
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] != false;
+
+      if (!success) {
+        final message = data['message']?.toString() ??
+            data['error']?.toString() ??
+            'Payment failed. Please try again.';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+          ),
+        );
+        return;
+      }
+
+      final receiverName = widget.receiverName.trim().isEmpty
+          ? 'ServicePay customer'
+          : widget.receiverName.trim();
+
+      Navigator.of(context).pop();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '₦${amount.toStringAsFixed(2)} sent successfully to $receiverName.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to complete payment. Check your connection and try again.',
+          ),
+        ),
+      );
+    }
   }
 
   @override
