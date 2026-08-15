@@ -88,6 +88,7 @@ const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
 const adminKycRoutes = require("./routes/adminKyc.routes");
 const kycRoutes = require("./routes/kyc.routes");
 const staffManagementRoutes = require("./routes/staffManagement.routes");
+const adminRoleUsersRoutes = require("./routes/adminRoleUsers.routes");
 
 
 
@@ -235,6 +236,7 @@ app.use("/api/airtime-to-cash", airtimeToCashRoutes);
 app.use("/api/admin/kyc", adminKycRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/staff-management", staffManagementRoutes);
+app.use("/api/admin/role-users", adminRoleUsersRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
