@@ -37,6 +37,8 @@ import 'cards_screen.dart';
 
 import 'partner_application_screen.dart';
 
+import 'qr_pay_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -471,6 +473,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: () {
           openScreen(
             const CardsScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'QR Pay',
+        icon: Icons.qr_code_scanner_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'qr pay scan receive servicepay payment transfer',
+        onTap: () {
+          openScreen(
+            const QrPayScreen(),
           );
         },
       ),
