@@ -2,6 +2,7 @@ const MarketplaceOrder = require('../models/marketplaceOrder.model');
 const MarketplaceProduct = require('../models/marketplace.model');
 const MarketplaceMerchant = require('../models/marketplaceMerchant.model');
 
+const User = require('../models/user.model');
 exports.listProducts = async (req, res) => {
   try {
     const {
@@ -495,7 +496,63 @@ exports.createOrder = async (req, res) => {
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        order = await MarketplaceOrder.create({
+        
+    /*
+     * ============================================================
+     * MARKETPLACE_WALLET_DEBIT_V1
+     * Atomic ServicePay Marketplace wallet debit.
+     * ============================================================
+     */
+    const marketplaceDebitAmount = Number(totalAmount);
+
+    if (
+      !Number.isFinite(marketplaceDebitAmount) ||
+      marketplaceDebitAmount <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_MARKETPLACE_AMOUNT',
+        message: 'Invalid Marketplace order amount.',
+      });
+    }
+
+    const marketplaceCustomerId = req.user._id;
+
+    if (!marketplaceCustomerId) {
+      return res.status(401).json({
+        success: false,
+        code: 'MARKETPLACE_AUTH_REQUIRED',
+        message: 'Authentication is required.',
+      });
+    }
+
+    const marketplaceDebitedUser = await User.findOneAndUpdate(
+      {
+        _id: marketplaceCustomerId,
+        walletBalance: { $gte: marketplaceDebitAmount },
+      },
+      {
+        $inc: {
+          walletBalance: -marketplaceDebitAmount,
+        },
+      },
+      {
+        new: true,
+      }
+    );
+
+    if (!marketplaceDebitedUser) {
+      return res.status(400).json({
+        success: false,
+        code: 'INSUFFICIENT_WALLET_BALANCE',
+        message: 'Insufficient wallet balance for this Marketplace order.',
+      });
+    }
+
+    const marketplaceBalanceAfter =
+      Number(marketplaceDebitedUser.walletBalance || 0);
+
+order = await MarketplaceOrder.create({
           orderReference:
             generateMarketplaceOrderReference(),
 
@@ -561,6 +618,35 @@ exports.createOrder = async (req, res) => {
       order,
     });
   } catch (error) {
+
+      /*
+       * MARKETPLACE_WALLET_REFUND_V1
+       * Restore wallet when order creation fails after debit.
+       */
+      try {
+        if (
+          typeof marketplaceDebitAmount !== 'undefined' &&
+          marketplaceDebitAmount > 0 &&
+          typeof marketplaceCustomerId !== 'undefined' &&
+          marketplaceCustomerId
+        ) {
+          await User.updateOne(
+            { _id: marketplaceCustomerId },
+            {
+              $inc: {
+                walletBalance: marketplaceDebitAmount,
+              },
+            }
+          );
+        }
+      } catch (marketplaceRefundError) {
+        console.error(
+          'MARKETPLACE_WALLET_REFUND_ERROR',
+          marketplaceRefundError
+        );
+      }
+
+
     console.error(
       'MARKETPLACE_CREATE_ORDER_ERROR',
       error
