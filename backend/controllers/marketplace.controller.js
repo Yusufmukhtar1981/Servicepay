@@ -552,7 +552,56 @@ exports.createOrder = async (req, res) => {
     const marketplaceBalanceAfter =
       Number(marketplaceDebitedUser.walletBalance || 0);
 
+
+    // SERVICEPAY MARKETPLACE SELLER ORDER LINK
+    const marketplaceSellerIds = [
+      ...new Set(
+        products
+          .map((product) =>
+            String(
+              product.seller ||
+              product.sellerId ||
+              product.user ||
+              product.userId ||
+              product.owner ||
+              product.createdBy ||
+              ''
+            )
+          )
+          .filter(Boolean)
+      ),
+    ];
+
+    const marketplaceMerchantIds = [
+      ...new Set(
+        products
+          .map((product) =>
+            String(
+              product.merchant ||
+              product.merchantId ||
+              product.store ||
+              product.storeId ||
+              ''
+            )
+          )
+          .filter(Boolean)
+      ),
+    ];
+
+    const marketplaceSellerId =
+      marketplaceSellerIds.length === 1
+        ? marketplaceSellerIds[0]
+        : undefined;
+
+    const marketplaceMerchantId =
+      marketplaceMerchantIds.length === 1
+        ? marketplaceMerchantIds[0]
+        : undefined;
+
 order = await MarketplaceOrder.create({
+      seller: marketplaceSellerId,
+      merchant: marketplaceMerchantId,
+
           orderReference:
             generateMarketplaceOrderReference(),
 
