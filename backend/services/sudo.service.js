@@ -50,11 +50,16 @@ async function sudoRequest(config) {
     const status = error.response?.status || 500;
     const data = error.response?.data || null;
 
-    const message =
-      data?.message ||
-      data?.error ||
-      error.message ||
+    const rawMessage =
+      data?.message ??
+      data?.error ??
+      error.message ??
       "Sudo API request failed";
+
+    const message =
+      typeof rawMessage === "string"
+        ? rawMessage
+        : JSON.stringify(rawMessage, null, 2);
 
     const sudoError = new Error(message);
     sudoError.status = status;
