@@ -93,6 +93,7 @@ const adminRoleUsersRoutes = require("./routes/adminRoleUsers.routes");
 
 
 
+const sudoRoutes = require("./routes/sudo.routes");
 app.use(helmet());
 app.use(cors());
 
@@ -238,6 +239,7 @@ app.use("/api/kyc", kycRoutes);
 app.use("/api/staff-management", staffManagementRoutes);
 app.use("/api/admin/role-users", adminRoleUsersRoutes);
 
+app.use("/api/sudo", sudoRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
