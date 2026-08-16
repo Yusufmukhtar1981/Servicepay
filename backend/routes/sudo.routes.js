@@ -58,4 +58,11 @@ router.get(
   sudoController.getCustomerCards
 );
 
+
+router.get(
+  "/card-programs",
+  protect,
+  sudoController.getCardPrograms
+);
+
 module.exports = router;

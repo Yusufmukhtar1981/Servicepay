@@ -101,7 +101,17 @@ async function getCustomerCards(customerId, params = {}) {
   });
 }
 
+
+async function getCardPrograms(params = {}) {
+  return sudoRequest({
+    method: "GET",
+    url: "/card-programs",
+    params,
+  });
+}
+
 module.exports = {
+  getCardPrograms,
   sudoClient,
   sudoRequest,
   getCustomers,

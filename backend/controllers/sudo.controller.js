@@ -118,3 +118,22 @@ exports.getCustomerCards = async (req, res) => {
     return sendError(res, error);
   }
 };
+
+
+exports.getCardPrograms = async (req, res) => {
+  try {
+    const data = await sudoService.getCardPrograms(req.query || {});
+
+    return res.status(200).json({
+      success: true,
+      message: "Sudo card programs fetched successfully.",
+      data,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Unable to fetch Sudo card programs.",
+      error: error.data || null,
+    });
+  }
+};
