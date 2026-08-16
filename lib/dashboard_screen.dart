@@ -671,6 +671,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         },
       ),
+      _DashboardService(
+        title: 'Marketplace',
+        icon: Icons.storefront_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'marketplace shopping merchant store shop mini apps',
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Marketplace is available in ServicePay Mini Apps.',
+              ),
+            ),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Transport',
+        icon: Icons.directions_car_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'transport mobility car ride travel mini apps',
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Transport is available in ServicePay Mini Apps.',
+              ),
+            ),
+          );
+        },
+      ),
     ];
   }
 
