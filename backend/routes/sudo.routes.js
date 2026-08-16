@@ -79,4 +79,17 @@ router.post(
   sudoController.createOrMapCard
 );
 
+
+router.get(
+  "/accounts",
+  protect,
+  sudoController.getAccounts
+);
+
+router.get(
+  "/funding-sources",
+  protect,
+  sudoController.getFundingSources
+);
+
 module.exports = router;

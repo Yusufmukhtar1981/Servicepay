@@ -140,3 +140,23 @@ async function createOrMapCard(payload) {
 }
 
 module.exports.createOrMapCard = createOrMapCard;
+
+
+async function getAccounts(params = {}) {
+  return sudoRequest({
+    method: "GET",
+    url: "/accounts",
+    params,
+  });
+}
+
+async function getFundingSources(params = {}) {
+  return sudoRequest({
+    method: "GET",
+    url: "/funding-sources",
+    params,
+  });
+}
+
+module.exports.getAccounts = getAccounts;
+module.exports.getFundingSources = getFundingSources;

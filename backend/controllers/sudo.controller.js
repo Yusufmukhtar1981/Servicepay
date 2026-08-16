@@ -222,3 +222,54 @@ exports.createOrMapCard = async (req, res) => {
     });
   }
 };
+
+
+exports.getAccounts = async (req, res) => {
+  try {
+    const data = await sudoService.getAccounts(req.query || {});
+    return res.status(200).json({
+      success: true,
+      message: "Sudo accounts fetched successfully.",
+      data,
+    });
+  } catch (error) {
+    const status =
+      error?.status ||
+      error?.response?.status ||
+      500;
+
+    return res.status(status).json({
+      success: false,
+      message:
+        error?.message ||
+        error?.response?.data?.message ||
+        "Unable to fetch Sudo accounts.",
+      error: error?.response?.data || null,
+    });
+  }
+};
+
+exports.getFundingSources = async (req, res) => {
+  try {
+    const data = await sudoService.getFundingSources(req.query || {});
+    return res.status(200).json({
+      success: true,
+      message: "Sudo funding sources fetched successfully.",
+      data,
+    });
+  } catch (error) {
+    const status =
+      error?.status ||
+      error?.response?.status ||
+      500;
+
+    return res.status(status).json({
+      success: false,
+      message:
+        error?.message ||
+        error?.response?.data?.message ||
+        "Unable to fetch Sudo funding sources.",
+      error: error?.response?.data || null,
+    });
+  }
+};
