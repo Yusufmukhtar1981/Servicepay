@@ -49,6 +49,11 @@ const {
   "../controllers/adminWalletAdjustment.controller"
 );
 
+
+const adminMarketplaceController = require(
+  '../controllers/adminMarketplace.controller'
+);
+
 const router = express.Router();
 
 const MANAGEMENT_ROLES = [
@@ -414,6 +419,48 @@ router.post(
   protect,
   adminOnly("HEAD_OFFICE"),
   adjustCustomerWallet
+);
+
+
+/*
+ * ============================================================
+ * MARKETPLACE PRODUCT MODERATION — HEAD OFFICE ONLY
+ * ============================================================
+ */
+
+router.get(
+  '/marketplace/products',
+  protect,
+  adminOnly('HEAD_OFFICE'),
+  adminMarketplaceController.listMarketplaceProducts
+);
+
+router.patch(
+  '/marketplace/products/:id/status',
+  protect,
+  adminOnly('HEAD_OFFICE'),
+  adminMarketplaceController.updateMarketplaceProductStatus
+);
+
+router.patch(
+  '/marketplace/products/:id/approve',
+  protect,
+  adminOnly('HEAD_OFFICE'),
+  adminMarketplaceController.approveMarketplaceProduct
+);
+
+router.patch(
+  '/marketplace/products/:id/reject',
+  protect,
+  adminOnly('HEAD_OFFICE'),
+  adminMarketplaceController.rejectMarketplaceProduct
+);
+
+router.patch(
+  '/marketplace/products/:id/suspend',
+  protect,
+  adminOnly('HEAD_OFFICE'),
+  adminMarketplaceController.suspendMarketplaceProduct
 );
 
 module.exports = router;
