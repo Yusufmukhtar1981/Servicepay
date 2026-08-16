@@ -130,3 +130,13 @@ async function generateTestCard() {
 }
 
 module.exports.generateTestCard = generateTestCard;
+
+async function createOrMapCard(payload) {
+  return sudoRequest({
+    method: "POST",
+    url: "/cards",
+    data: payload,
+  });
+}
+
+module.exports.createOrMapCard = createOrMapCard;

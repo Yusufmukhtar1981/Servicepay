@@ -72,4 +72,11 @@ router.post(
   sudoController.generateTestCard
 );
 
+
+router.post(
+  "/cards/map",
+  protect,
+  sudoController.createOrMapCard
+);
+
 module.exports = router;

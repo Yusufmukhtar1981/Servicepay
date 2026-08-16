@@ -156,3 +156,69 @@ exports.generateTestCard = async (req, res) => {
     });
   }
 };
+
+exports.createOrMapCard = async (req, res) => {
+  try {
+    const {
+      customerId,
+      number,
+      type = "physical",
+      currency = "NGN",
+      status = "active",
+      programId,
+      metadata = {},
+    } = req.body || {};
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Sudo customerId is required.",
+      });
+    }
+
+    if (!number && !programId) {
+      return res.status(400).json({
+        success: false,
+        message: "Card number or programId is required.",
+      });
+    }
+
+    const payload = {
+      customerId,
+      status,
+      metadata,
+    };
+
+    if (number) {
+      payload.number = String(number).trim();
+      payload.type = type;
+      payload.currency = currency;
+    }
+
+    if (programId) {
+      payload.programId = programId;
+    }
+
+    const data = await sudoService.createOrMapCard(payload);
+
+    return res.status(201).json({
+      success: true,
+      message: "Sudo card mapped to customer successfully.",
+      data,
+    });
+  } catch (error) {
+    const status =
+      error?.status ||
+      error?.response?.status ||
+      500;
+
+    return res.status(status).json({
+      success: false,
+      message:
+        error?.message ||
+        error?.response?.data?.message ||
+        "Unable to map Sudo card.",
+      error: error?.response?.data || null,
+    });
+  }
+};
