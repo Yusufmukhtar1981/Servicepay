@@ -41,6 +41,8 @@ import 'qr_pay_screen.dart';
 
 import 'mini_apps_screen.dart';
 
+import 'marketplace/marketplace_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -678,12 +680,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: const Color(0xFFEAF7F0),
         keywords: 'marketplace shopping merchant store shop mini apps',
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Marketplace is available in ServicePay Mini Apps.',
-              ),
-            ),
+          openScreen(
+            const MarketplaceScreen(),
           );
         },
       ),

@@ -1,0 +1,262 @@
+const MarketplaceProduct = require('../models/marketplace.model');
+const MarketplaceMerchant = require('../models/marketplaceMerchant.model');
+
+exports.listProducts = async (req, res) => {
+  try {
+    const {
+      q = '',
+      category = '',
+      state = '',
+      page = 1,
+      limit = 30,
+    } = req.query;
+
+    const filter = {
+      status: 'ACTIVE',
+    };
+
+    if (category) {
+      filter.category = category;
+    }
+
+    if (state) {
+      filter.state = state;
+    }
+
+    if (q) {
+      filter.$text = {
+        $search: q,
+      };
+    }
+
+    const safeLimit = Math.min(Number(limit) || 30, 100);
+    const safePage = Math.max(Number(page) || 1, 1);
+
+    const [products, total] = await Promise.all([
+      MarketplaceProduct.find(filter)
+        .sort({
+          featured: -1,
+          createdAt: -1,
+        })
+        .skip((safePage - 1) * safeLimit)
+        .limit(safeLimit)
+        .lean(),
+
+      MarketplaceProduct.countDocuments(filter),
+    ]);
+
+    return res.json({
+      success: true,
+      products,
+      total,
+      page: safePage,
+      limit: safeLimit,
+    });
+  } catch (error) {
+    console.error('MARKETPLACE_LIST_ERROR', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load Marketplace products.',
+    });
+  }
+};
+
+exports.createProduct = async (req, res) => {
+  try {
+    const {
+      title,
+      description = '',
+      category = 'General',
+      price,
+      stock = 0,
+      imageUrl = '',
+      state = '',
+      lga = '',
+    } = req.body;
+
+    if (!title || price === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Product title and price are required.',
+      });
+    }
+
+    const merchantName =
+      req.user.fullName ||
+      req.user.name ||
+      req.user.businessName ||
+      'ServicePay Merchant';
+
+    const product = await MarketplaceProduct.create({
+      merchant: req.user._id,
+      merchantName,
+      title,
+      description,
+      category,
+      price: Number(price),
+      stock: Number(stock || 0),
+      imageUrl,
+      state,
+      lga,
+      status: 'PENDING',
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Product submitted for approval.',
+      product,
+    });
+  } catch (error) {
+    console.error('MARKETPLACE_CREATE_ERROR', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to create Marketplace product.',
+    });
+  }
+};
+
+exports.myProducts = async (req, res) => {
+  try {
+    const products = await MarketplaceProduct.find({
+      merchant: req.user._id,
+    })
+      .sort({
+        createdAt: -1,
+      })
+      .lean();
+
+    return res.json({
+      success: true,
+      products,
+    });
+  } catch (error) {
+    console.error('MARKETPLACE_MY_PRODUCTS_ERROR', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load your products.',
+    });
+  }
+};
+
+
+exports.registerMerchant = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      });
+    }
+
+    const {
+      storeName,
+      businessName,
+      phone,
+      email,
+      state,
+      lga,
+      address,
+      description,
+      logoUrl,
+    } = req.body || {};
+
+    if (!String(storeName || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Store name is required.',
+      });
+    }
+
+    const merchant = await MarketplaceMerchant.findOneAndUpdate(
+      { user: userId },
+      {
+        $set: {
+          storeName: String(storeName).trim(),
+          businessName: String(businessName || '').trim(),
+          phone: String(phone || req.user.phone || '').trim(),
+          email: String(email || req.user.email || '').trim().toLowerCase(),
+          state: String(state || '').trim(),
+          lga: String(lga || '').trim(),
+          address: String(address || '').trim(),
+          description: String(description || '').trim(),
+          logoUrl: String(logoUrl || '').trim(),
+        },
+        $setOnInsert: {
+          user: userId,
+          status: 'ACTIVE',
+          verified: false,
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+        runValidators: true,
+      },
+    ).lean();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Marketplace merchant profile saved successfully.',
+      merchant,
+    });
+  } catch (error) {
+    console.error('MARKETPLACE_REGISTER_MERCHANT_ERROR', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to save Marketplace merchant profile.',
+    });
+  }
+};
+
+exports.myMerchantProfile = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+
+    const merchant = await MarketplaceMerchant.findOne({
+      user: userId,
+    }).lean();
+
+    return res.status(200).json({
+      success: true,
+      merchant: merchant || null,
+    });
+  } catch (error) {
+    console.error('MARKETPLACE_MY_MERCHANT_ERROR', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load Marketplace merchant profile.',
+    });
+  }
+};
+
+exports.myProducts = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+
+    const products = await MarketplaceProduct.find({
+      merchant: userId,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+  } catch (error) {
+    console.error('MARKETPLACE_MY_PRODUCTS_ERROR', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load your Marketplace products.',
+    });
+  }
+};

@@ -1,0 +1,65 @@
+const express = require("express");
+
+const {
+  protect,
+} = require("../middleware/auth.middleware");
+
+const {
+  createOrganization,
+  createProgram,
+  addBeneficiary,
+  listPrograms,
+  listBeneficiaries,
+  updateOrganizationStatus,
+  updateProgramStatus,
+  updateBeneficiaryStatus,
+} = require(
+  "../controllers/empowerment.controller"
+);
+
+const router = express.Router();
+
+router.use(protect);
+
+router.post(
+  "/organizations",
+  createOrganization
+);
+
+router.post(
+  "/programs",
+  createProgram
+);
+
+router.get(
+  "/programs",
+  listPrograms
+);
+
+router.post(
+  "/beneficiaries",
+  addBeneficiary
+);
+
+router.get(
+  "/programs/:programId/beneficiaries",
+  listBeneficiaries
+);
+
+
+router.patch(
+  "/organizations/:id/status",
+  updateOrganizationStatus
+);
+
+router.patch(
+  "/programs/:id/status",
+  updateProgramStatus
+);
+
+router.patch(
+  "/beneficiaries/:id/status",
+  updateBeneficiaryStatus
+);
+
+module.exports = router;

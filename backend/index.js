@@ -1,3 +1,4 @@
+const marketplaceRoutes = require('./routes/marketplace.routes');
 const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
 
@@ -202,6 +203,7 @@ app.use(
   transactionPinRoutes
 );
 
+app.use('/api/marketplace', marketplaceRoutes);
 app.use("/api/settings", appSettingsRoutes);
 app.use('/api/cards', cardRoutes);
 
