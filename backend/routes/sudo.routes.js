@@ -65,4 +65,11 @@ router.get(
   sudoController.getCardPrograms
 );
 
+
+router.post(
+  "/cards/simulator/generate",
+  protect,
+  sudoController.generateTestCard
+);
+
 module.exports = router;

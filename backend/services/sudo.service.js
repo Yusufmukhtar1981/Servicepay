@@ -121,3 +121,12 @@ module.exports = {
   getCards,
   getCustomerCards,
 };
+
+async function generateTestCard() {
+  return sudoRequest({
+    method: "GET",
+    url: "/cards/simulator/generate",
+  });
+}
+
+module.exports.generateTestCard = generateTestCard;

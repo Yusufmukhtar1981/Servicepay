@@ -137,3 +137,22 @@ exports.getCardPrograms = async (req, res) => {
     });
   }
 };
+
+
+exports.generateTestCard = async (req, res) => {
+  try {
+    const data = await sudoService.generateTestCard();
+
+    return res.status(200).json({
+      success: true,
+      message: "Sudo test card generated successfully.",
+      data,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Unable to generate Sudo test card.",
+      error: error.data || null,
+    });
+  }
+};
