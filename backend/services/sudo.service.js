@@ -182,3 +182,14 @@ async function createFundingSource(payload) {
 }
 
 module.exports.createFundingSource = createFundingSource;
+
+
+async function createCardProgram(payload) {
+  return sudoRequest({
+    method: "POST",
+    url: "/card-programs",
+    data: payload,
+  });
+}
+
+module.exports.createCardProgram = createCardProgram;

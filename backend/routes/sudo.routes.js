@@ -98,4 +98,12 @@ router.get(
   sudoController.getFundingSources
 );
 
+
+
+router.post(
+  "/card-programs",
+  protect,
+  sudoController.createCardProgram
+);
+
 module.exports = router;

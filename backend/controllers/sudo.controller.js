@@ -363,3 +363,95 @@ exports.createFundingSource = async (req, res) => {
     });
   }
 };
+
+
+exports.createCardProgram = async (req, res) => {
+  try {
+    const {
+      name,
+      reference,
+      description,
+      status,
+      debitAccountId,
+      fundingSourceId,
+      issuerCountry,
+      currency,
+      cardBrand,
+      cardType,
+      spendingControls,
+    } = req.body || {};
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: "Card program name is required.",
+      });
+    }
+
+    if (!debitAccountId) {
+      return res.status(400).json({
+        success: false,
+        message: "debitAccountId is required.",
+      });
+    }
+
+    if (!fundingSourceId) {
+      return res.status(400).json({
+        success: false,
+        message: "fundingSourceId is required.",
+      });
+    }
+
+    const payload = {
+      name,
+      description:
+        description || "ServicePay Virtual Card Program",
+      status: status || "active",
+      debitAccountId,
+      fundingSourceId,
+      issuerCountry: issuerCountry || "NGA",
+      currency: currency || "NGN",
+    };
+
+    if (reference) {
+      payload.reference = reference;
+    }
+
+    if (cardBrand) {
+      payload.cardBrand = cardBrand;
+    }
+
+    if (cardType) {
+      payload.cardType = cardType;
+    }
+
+    if (spendingControls) {
+      payload.spendingControls = spendingControls;
+    }
+
+    const data =
+      await sudoService.createCardProgram(payload);
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "Sudo card program created successfully.",
+      data,
+    });
+  } catch (error) {
+    const status =
+      error?.status ||
+      error?.response?.status ||
+      500;
+
+    return res.status(status).json({
+      success: false,
+      message:
+        error?.message ||
+        error?.response?.data?.message ||
+        "Unable to create Sudo card program.",
+      error:
+        error?.response?.data || null,
+    });
+  }
+};
