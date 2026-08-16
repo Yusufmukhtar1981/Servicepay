@@ -80,6 +80,12 @@ router.post(
 );
 
 
+router.post(
+  "/accounts",
+  protect,
+  sudoController.createAccount
+);
+
 router.get(
   "/accounts",
   protect,

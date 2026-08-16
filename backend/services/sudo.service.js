@@ -160,3 +160,14 @@ async function getFundingSources(params = {}) {
 
 module.exports.getAccounts = getAccounts;
 module.exports.getFundingSources = getFundingSources;
+
+
+async function createAccount(payload) {
+  return sudoRequest({
+    method: "POST",
+    url: "/accounts",
+    data: payload,
+  });
+}
+
+module.exports.createAccount = createAccount;

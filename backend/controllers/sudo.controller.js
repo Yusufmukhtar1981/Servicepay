@@ -273,3 +273,58 @@ exports.getFundingSources = async (req, res) => {
     });
   }
 };
+
+
+exports.createAccount = async (req, res) => {
+  try {
+    const {
+      customerId,
+      currency = "NGN",
+      accountType = "Savings",
+    } = req.body || {};
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required.",
+      });
+    }
+
+    const data = await sudoService.createAccount({
+      type: "account",
+      currency,
+      accountType,
+      customerId,
+    });
+
+    const innerStatus = data?.statusCode || data?.status || 200;
+
+    if (innerStatus >= 400) {
+      return res.status(innerStatus).json({
+        success: false,
+        message: data?.message || "Unable to create Sudo account.",
+        data,
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Sudo account created successfully.",
+      data,
+    });
+  } catch (error) {
+    const status =
+      error?.status ||
+      error?.response?.status ||
+      500;
+
+    return res.status(status).json({
+      success: false,
+      message:
+        error?.message ||
+        error?.response?.data?.message ||
+        "Unable to create Sudo account.",
+      error: error?.response?.data || null,
+    });
+  }
+};
