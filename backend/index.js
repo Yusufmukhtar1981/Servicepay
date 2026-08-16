@@ -94,6 +94,8 @@ const adminRoleUsersRoutes = require("./routes/adminRoleUsers.routes");
 
 
 const sudoRoutes = require("./routes/sudo.routes");
+const miniAppRoutes = require("./routes/miniApp.routes");
+
 app.use(helmet());
 app.use(cors());
 
@@ -239,6 +241,7 @@ app.use("/api/kyc", kycRoutes);
 app.use("/api/staff-management", staffManagementRoutes);
 app.use("/api/admin/role-users", adminRoleUsersRoutes);
 
+app.use("/api/mini-apps", miniAppRoutes);
 app.use("/api/sudo", sudoRoutes);
 app.use((req, res) => {
   res.status(404).json({

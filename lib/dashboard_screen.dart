@@ -39,6 +39,8 @@ import 'partner_application_screen.dart';
 
 import 'qr_pay_screen.dart';
 
+import 'mini_apps_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -473,6 +475,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: () {
           openScreen(
             const CardsScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Mini Apps',
+        icon: Icons.credit_card_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords:
+            'card cards atm physical virtual debit payment servicepay card',
+        onTap: () {
+          openScreen(
+            const MiniAppsScreen(),
           );
         },
       ),
