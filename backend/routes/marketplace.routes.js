@@ -74,4 +74,20 @@ router.get(
   marketplaceController.getOrder
 );
 
+
+
+/* SERVICEPAY_MARKETPLACE_SELLER_ORDER_ROUTES_V1 */
+router.get(
+  '/seller/orders',
+  protect,
+  marketplaceController.mySellerOrders
+);
+
+router.patch(
+  '/seller/orders/:orderId/status',
+  protect,
+  marketplaceController.updateSellerOrderStatus
+);
+
+
 module.exports = router;

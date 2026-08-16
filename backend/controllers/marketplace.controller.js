@@ -742,3 +742,283 @@ exports.getOrder = async (req, res) => {
     });
   }
 };
+
+
+/* SERVICEPAY_MARKETPLACE_SELLER_SETTLEMENT_V1 */
+
+/**
+ * Seller / Store Owner - My Marketplace Orders
+ *
+ * Finds the authenticated user's Marketplace merchant profile,
+ * then returns orders belonging to that merchant/store.
+ */
+exports.mySellerOrders = async (req, res) => {
+  try {
+    const sellerUserId = req.user?._id || req.user?.id;
+
+    if (!sellerUserId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required.',
+      });
+    }
+
+    const merchant = await MarketplaceMerchant.findOne({
+      $or: [
+        { user: sellerUserId },
+        { owner: sellerUserId },
+        { userId: sellerUserId },
+        { ownerId: sellerUserId },
+        { createdBy: sellerUserId },
+      ],
+    });
+
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Marketplace store profile not found.',
+      });
+    }
+
+    const orders = await MarketplaceOrder.find({
+      $or: [
+        { merchant: merchant._id },
+        { merchantId: merchant._id },
+        { seller: merchant._id },
+        { store: merchant._id },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      merchant,
+      count: orders.length,
+      orders,
+    });
+  } catch (error) {
+    console.error('MARKETPLACE_SELLER_ORDERS_ERROR', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load Marketplace store orders.',
+    });
+  }
+};
+
+
+/**
+ * Seller order status update + automatic settlement.
+ *
+ * Seller can move the order through processing stages.
+ * Wallet settlement happens ONCE when order becomes
+ * DELIVERED or COMPLETED.
+ */
+exports.updateSellerOrderStatus = async (req, res) => {
+  try {
+    const sellerUserId = req.user?._id || req.user?.id;
+    const orderId = req.params.orderId || req.params.id;
+
+    const requestedStatus = String(
+      req.body?.status || req.body?.orderStatus || ''
+    ).trim().toUpperCase();
+
+    const allowedStatuses = new Set([
+      'PENDING',
+      'ACCEPTED',
+      'PROCESSING',
+      'SHIPPED',
+      'OUT_FOR_DELIVERY',
+      'DELIVERED',
+      'COMPLETED',
+      'CANCELLED',
+    ]);
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Marketplace order ID is required.',
+      });
+    }
+
+    if (!allowedStatuses.has(requestedStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Marketplace order status.',
+      });
+    }
+
+    const merchant = await MarketplaceMerchant.findOne({
+      $or: [
+        { user: sellerUserId },
+        { owner: sellerUserId },
+        { userId: sellerUserId },
+        { ownerId: sellerUserId },
+        { createdBy: sellerUserId },
+      ],
+    });
+
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Marketplace store profile not found.',
+      });
+    }
+
+    const order = await MarketplaceOrder.findOne({
+      _id: orderId,
+      $or: [
+        { merchant: merchant._id },
+        { merchantId: merchant._id },
+        { seller: merchant._id },
+        { store: merchant._id },
+      ],
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Marketplace order not found for this store.',
+      });
+    }
+
+    const oldStatus = String(
+      order.orderStatus || order.status || ''
+    ).toUpperCase();
+
+    if ('orderStatus' in order) {
+      order.orderStatus = requestedStatus;
+    } else {
+      order.status = requestedStatus;
+    }
+
+    const shouldSettle =
+      ['DELIVERED', 'COMPLETED'].includes(requestedStatus) &&
+      !['DELIVERED', 'COMPLETED'].includes(oldStatus);
+
+    let sellerCredited = 0;
+
+    if (shouldSettle) {
+      const alreadySettled =
+        order.sellerSettlementStatus === 'SETTLED' ||
+        order.sellerSettled === true ||
+        Boolean(order.sellerSettledAt);
+
+      if (!alreadySettled) {
+        const sellerAccountId =
+          merchant.user ||
+          merchant.owner ||
+          merchant.userId ||
+          merchant.ownerId ||
+          merchant.createdBy;
+
+        if (!sellerAccountId) {
+          return res.status(400).json({
+            success: false,
+            message: 'Store owner account could not be determined.',
+          });
+        }
+
+        const seller = await User.findById(sellerAccountId);
+
+        if (!seller) {
+          return res.status(404).json({
+            success: false,
+            message: 'Store owner user account not found.',
+          });
+        }
+
+        const orderAmount = Number(
+          order.totalAmount ??
+          order.total ??
+          order.amount ??
+          order.grandTotal ??
+          0
+        );
+
+        if (!Number.isFinite(orderAmount) || orderAmount <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Marketplace order amount is invalid.',
+          });
+        }
+
+        const marketplaceCommissionRate = Number(
+          process.env.MARKETPLACE_COMMISSION_PERCENT || 0
+        );
+
+        const safeCommissionRate =
+          Number.isFinite(marketplaceCommissionRate) &&
+          marketplaceCommissionRate >= 0 &&
+          marketplaceCommissionRate <= 100
+            ? marketplaceCommissionRate
+            : 0;
+
+        const commission =
+          Math.round(
+            (orderAmount * safeCommissionRate / 100) * 100
+          ) / 100;
+
+        const sellerNet =
+          Math.round((orderAmount - commission) * 100) / 100;
+
+        if (sellerNet <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Calculated seller settlement is invalid.',
+          });
+        }
+
+        const walletField =
+          Object.prototype.hasOwnProperty.call(
+            seller.toObject ? seller.toObject() : seller,
+            'walletBalance'
+          )
+            ? 'walletBalance'
+            : 'wallet';
+
+        const creditResult = await User.updateOne(
+          { _id: seller._id },
+          { $inc: { [walletField]: sellerNet } }
+        );
+
+        if (!creditResult.acknowledged) {
+          throw new Error(
+            'Unable to credit Marketplace store owner wallet.'
+          );
+        }
+
+        sellerCredited = sellerNet;
+
+        order.sellerSettlementStatus = 'SETTLED';
+        order.sellerSettled = true;
+        order.sellerSettledAt = new Date();
+        order.sellerSettlementAmount = sellerNet;
+        order.marketplaceCommissionAmount = commission;
+        order.marketplaceCommissionPercent = safeCommissionRate;
+      }
+    }
+
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: shouldSettle
+        ? sellerCredited > 0
+          ? 'Marketplace order updated and store owner wallet credited.'
+          : 'Marketplace order updated. Settlement was already completed.'
+        : 'Marketplace order status updated successfully.',
+      sellerCredited,
+      order,
+    });
+  } catch (error) {
+    console.error('MARKETPLACE_SELLER_STATUS_ERROR', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to update Marketplace order.',
+    });
+  }
+};
+
