@@ -106,4 +106,12 @@ router.post(
   sudoController.createCardProgram
 );
 
+
+
+router.post(
+  "/name-enquiry",
+  protect,
+  sudoController.nameEnquiry
+);
+
 module.exports = router;

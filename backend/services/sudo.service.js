@@ -208,3 +208,14 @@ async function createCardProgram(payload) {
 }
 
 module.exports.createCardProgram = createCardProgram;
+
+
+async function nameEnquiry(payload) {
+  return sudoRequest({
+    method: "POST",
+    url: "/accounts/transfer/name-enquiry",
+    data: payload,
+  });
+}
+
+module.exports.nameEnquiry = nameEnquiry;

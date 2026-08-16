@@ -457,3 +457,48 @@ exports.createCardProgram = async (req, res) => {
     });
   }
 };
+
+
+exports.nameEnquiry = async (req, res) => {
+  try {
+    const { bankCode, accountNumber } = req.body || {};
+
+    if (!bankCode || !accountNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "bankCode and accountNumber are required.",
+      });
+    }
+
+    const data = await sudoService.nameEnquiry({
+      bankCode: String(bankCode).trim(),
+      accountNumber: String(accountNumber).trim(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Sudo name enquiry completed successfully.",
+      data,
+    });
+  } catch (error) {
+    const status =
+      error?.status ||
+      error?.response?.status ||
+      500;
+
+    const raw =
+      error?.response?.data ||
+      error?.data ||
+      null;
+
+    return res.status(status).json({
+      success: false,
+      message:
+        raw?.message ||
+        raw?.error?.message ||
+        error?.message ||
+        "Unable to perform Sudo name enquiry.",
+      error: raw,
+    });
+  }
+};
