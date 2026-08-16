@@ -1,3 +1,13 @@
+function serializeSudoError(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch (_) {
+    return String(value);
+  }
+}
+
 const axios = require("axios");
 
 const SUDO_BASE_URL =
