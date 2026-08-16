@@ -813,45 +813,92 @@ exports.mySellerOrders = async (req, res) => {
     }
 
     const merchant = await MarketplaceMerchant.findOne({
-      $or: [
-        { user: sellerUserId },
-        { owner: sellerUserId },
-        { userId: sellerUserId },
-        { ownerId: sellerUserId },
-        { createdBy: sellerUserId },
-      ],
-    });
+      user: sellerUserId,
+    }).lean();
 
     if (!merchant) {
-      return res.status(404).json({
-        success: false,
-        message: 'Marketplace store profile not found.',
+      return res.status(200).json({
+        success: true,
+        orders: [],
+        data: [],
+        count: 0,
+        message: 'No Marketplace store found for this account.',
       });
     }
 
+    /*
+     * IMPORTANT:
+     * MarketplaceOrder stores the merchant on each order item:
+     *
+     *   items[].merchant
+     *
+     * It is NOT primarily stored as a top-level `merchant` field.
+     */
     const orders = await MarketplaceOrder.find({
-      $or: [
-        { merchant: merchant._id },
-        { merchantId: merchant._id },
-        { seller: merchant._id },
-        { store: merchant._id },
-      ],
+      'items.merchant': merchant._id,
     })
+      .populate('buyer', 'fullName name phone email')
+      .populate('items.product')
+      .populate('items.merchant')
       .sort({ createdAt: -1 })
       .lean();
 
-    return res.json({
+    /*
+     * A Marketplace order may contain products from more than one merchant.
+     * Return only the items belonging to the logged-in seller.
+     */
+    const sellerOrders = orders.map((order) => {
+      const ownItems = Array.isArray(order.items)
+        ? order.items.filter((item) => {
+            const itemMerchant =
+              item?.merchant?._id ||
+              item?.merchant;
+
+            return (
+              itemMerchant &&
+              String(itemMerchant) === String(merchant._id)
+            );
+          })
+        : [];
+
+      const sellerSubtotal = ownItems.reduce((sum, item) => {
+        const quantity = Number(item.quantity || 1);
+        const unitPrice = Number(
+          item.unitPrice ??
+          item.price ??
+          item.product?.price ??
+          0
+        );
+
+        return sum + (quantity * unitPrice);
+      }, 0);
+
+      return {
+        ...order,
+        items: ownItems,
+        sellerSubtotal,
+        store: {
+          id: merchant._id,
+          storeName: merchant.storeName || '',
+        },
+      };
+    });
+
+    return res.status(200).json({
       success: true,
-      merchant,
-      count: orders.length,
-      orders,
+      orders: sellerOrders,
+      data: sellerOrders,
+      count: sellerOrders.length,
     });
   } catch (error) {
-    console.error('MARKETPLACE_SELLER_ORDERS_ERROR', error);
+    console.error(
+      'MARKETPLACE_SELLER_ORDERS_ERROR',
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: 'Unable to load Marketplace store orders.',
+      message: 'Unable to load Marketplace seller orders.',
     });
   }
 };
