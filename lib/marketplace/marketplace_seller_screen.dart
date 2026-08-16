@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'marketplace_seller_orders_screen.dart';
+
 class MarketplaceSellerScreen extends StatefulWidget {
   const MarketplaceSellerScreen({super.key});
 
@@ -248,6 +250,21 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'marketplace_my_store_orders',
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const MarketplaceSellerOrdersScreen(),
+            ),
+          );
+        },
+        icon: const Icon(Icons.receipt_long_rounded),
+        label: const Text(
+          'My Store Orders',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
       backgroundColor: const Color(0xFFF7F9F8),
       appBar: AppBar(
         title: const Text('Marketplace Seller'),
