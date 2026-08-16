@@ -447,11 +447,13 @@ exports.createCardProgram = async (req, res) => {
     return res.status(status).json({
       success: false,
       message:
-        error?.message ||
         error?.response?.data?.message ||
+        error?.message ||
         "Unable to create Sudo card program.",
-      error:
-        error?.response?.data || null,
+      error: error?.response?.data || {
+        message: error?.message || null,
+        status: error?.status || null,
+      },
     });
   }
 };
