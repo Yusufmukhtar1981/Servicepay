@@ -27,6 +27,12 @@ router.post(
   marketplaceController.createProduct
 );
 
+router.post(
+  '/products',
+  protect,
+  marketplaceController.createProduct
+);
+
 
 
 router.get(
