@@ -153,7 +153,7 @@ async function getAccounts(params = {}) {
 async function getFundingSources(params = {}) {
   return sudoRequest({
     method: "GET",
-    url: "/funding-sources",
+    url: "/fundingsources",
     params,
   });
 }
@@ -171,3 +171,14 @@ async function createAccount(payload) {
 }
 
 module.exports.createAccount = createAccount;
+
+
+async function createFundingSource(payload) {
+  return sudoRequest({
+    method: "POST",
+    url: "/fundingsources",
+    data: payload,
+  });
+}
+
+module.exports.createFundingSource = createFundingSource;

@@ -328,3 +328,38 @@ exports.createAccount = async (req, res) => {
     });
   }
 };
+
+
+exports.createFundingSource = async (req, res) => {
+  try {
+    const {
+      type = "default",
+      status = "active",
+    } = req.body || {};
+
+    const data = await sudoService.createFundingSource({
+      type,
+      status,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Sudo funding source created successfully.",
+      data,
+    });
+  } catch (error) {
+    const status =
+      error?.status ||
+      error?.response?.status ||
+      500;
+
+    return res.status(status).json({
+      success: false,
+      message:
+        error?.message ||
+        error?.response?.data?.message ||
+        "Unable to create Sudo funding source.",
+      error: error?.response?.data || null,
+    });
+  }
+};
