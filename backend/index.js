@@ -1,4 +1,3 @@
-const fintechControlMiddleware = require("./middleware/fintechControl.middleware");
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
@@ -11,6 +10,7 @@ const managementRoutes = require('./routes/management.routes');
 const appSettingsRoutes = require("./routes/appSettings.routes");
 const cors = require("cors");
 const helmet = require("helmet");
+const fintechControlMiddleware = require("./middleware/fintechControl.middleware");
 
 require("dotenv").config();
 
@@ -129,6 +129,16 @@ app.get("/", (req, res) => {
   });
 });
 
+
+/*
+ * ServicePay Fintech Control
+ * IMPORTANT:
+ * Must execute before ServicePay API routes so settings saved from
+ * Admin > Platform Configuration affect live backend requests.
+ * Public/auth/admin/webhook exclusions are handled inside the middleware.
+ */
+app.use(fintechControlMiddleware);
+
 app.use(
   "/api/paystack",
   paystackRoutes
@@ -206,8 +216,6 @@ app.use(
 
 
 // ServicePay Fintech Control Enforcement
-app.use(fintechControlMiddleware);
-
 app.use('/api/marketplace', marketplaceRoutes);
 app.use("/api/settings", appSettingsRoutes);
 app.use('/api/cards', cardRoutes);
