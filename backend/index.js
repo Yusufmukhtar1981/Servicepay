@@ -1,3 +1,4 @@
+const fintechControlMiddleware = require("./middleware/fintechControl.middleware");
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
@@ -202,6 +203,10 @@ app.use(
   "/api/transaction-pin",
   transactionPinRoutes
 );
+
+
+// ServicePay Fintech Control Enforcement
+app.use(fintechControlMiddleware);
 
 app.use('/api/marketplace', marketplaceRoutes);
 app.use("/api/settings", appSettingsRoutes);
