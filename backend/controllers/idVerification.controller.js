@@ -313,9 +313,9 @@ exports.verifyNin = async (req, res) => {
 
     try {
       premblyResponse = await axios.post(
-        `${PREMBLY_BASE_URL}/verification/vnin`,
+        `${PREMBLY_BASE_URL}/verification/vnin-basic`,
         {
-          number_nin: String(ninNumber).trim(),
+          number: String(ninNumber).trim(),
         },
         {
           headers: getPremblyHeaders(),
