@@ -17,16 +17,11 @@ const axios = require("axios");
 const SERVICEPAY_ONBOARDING_PREMBLY_BASE_URL =
   process.env.PREMBLY_BASE_URL || "https://api.prembly.com";
 
-const SERVICEPAY_ONBOARDING_PREMBLY_APP_ID =
-  process.env.PREMBLY_APP_ID || "";
-
-const SERVICEPAY_ONBOARDING_PREMBLY_SECRET_KEY =
-  process.env.PREMBLY_SECRET_KEY || "";
+const SERVICEPAY_ONBOARDING_PREMBLY_SECRET_KEY = process.env.PREMBLY_SECRET_KEY || "";
 
 const servicePayOnboardingPremblyHeaders = () => {
   return {
     "Content-Type": "application/json",
-    app_id: SERVICEPAY_ONBOARDING_PREMBLY_APP_ID,
     "x-api-key": SERVICEPAY_ONBOARDING_PREMBLY_SECRET_KEY,
   };
 };
@@ -124,10 +119,7 @@ const servicePayVerifyRegistrationNin = async (nin) => {
     throw error;
   }
 
-  if (
-    !SERVICEPAY_ONBOARDING_PREMBLY_APP_ID ||
-    !SERVICEPAY_ONBOARDING_PREMBLY_SECRET_KEY
-  ) {
+  if (!SERVICEPAY_ONBOARDING_PREMBLY_SECRET_KEY) {
     const error = new Error(
       "NIN verification service is not configured."
     );
