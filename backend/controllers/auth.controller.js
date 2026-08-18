@@ -559,55 +559,47 @@ exports.registerUser = async (
 
     
     // ========================================================
-    // SERVICEPAY_MANDATORY_REGISTRATION_NIN
-    // Verify identity BEFORE creating the customer account.
-    // No ServicePay wallet charge is applied here.
-    // ========================================================
 
-    const registrationNin =
-      req.body.nin ||
-      req.body.ninNumber ||
-      req.body.nin_number ||
-      "";
+  // ============================================================
+  // SERVICEPAY_REGISTRATION_NIN_PENDING
+  // NIN remains mandatory for new customer registration.
+  // Registration is NOT blocked by external NIN provider failure.
+  // Verification will be completed separately/manual review.
+  // ============================================================
 
-    let onboardingNinResult;
+  const registrationNin = String(
+    req.body.nin ||
+    req.body.ninNumber ||
+    req.body.nin_number ||
+    ""
+  ).replace(/\D/g, "");
 
-    try {
-      onboardingNinResult =
-        await servicePayVerifyRegistrationNin(
-          registrationNin
-        );
-    } catch (ninError) {
-      console.error(
-        "Registration NIN verification error:",
-        ninError?.message || ninError
-      );
+  if (!/^\d{11}$/.test(registrationNin)) {
+    return res.status(400).json({
+      success: false,
+      message: "Please provide a valid 11-digit NIN.",
+      code: "INVALID_NIN",
+    });
+  }
 
-      return res.status(400).json({
-        success: false,
-        message:
-          ninError?.message ||
-          "NIN verification failed.",
-        code:
-          ninError?.code ||
-          "NIN_VERIFICATION_FAILED",
-      });
-    }
+  const onboardingNinResult = {
+    maskedNin: `*******${registrationNin.slice(-4)}`,
+    reference: undefined,
+    status: "PENDING",
+  };
 
-const user = await User.create({
+  const user = await User.create({
       
       // SERVICEPAY_REGISTRATION_NIN_METADATA
       ninNumberMasked:
         onboardingNinResult.maskedNin,
 
-      ninVerificationStatus:
-        "VERIFIED",
+      ninVerificationStatus: "PENDING",
 
       ninVerificationReference:
         onboardingNinResult.reference,
 
-      ninVerifiedAt:
-        new Date(),
+      ninVerifiedAt: undefined,
 
 fullName: cleanFullName,
       phone: cleanPhone,
