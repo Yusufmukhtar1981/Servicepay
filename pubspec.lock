@@ -720,6 +720,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.4.0"
+  nigeria_lg_state_city:
+    dependency: "direct main"
+    description:
+      name: nigeria_lg_state_city
+      sha256: "34f4e27174a7d5978feb6f4a07c99232f3be00a02197f4838ff2d0fa14b498d6"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.3"
   objective_c:
     dependency: transitive
     description:
