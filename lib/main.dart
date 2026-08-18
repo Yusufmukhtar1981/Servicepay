@@ -41,101 +41,64 @@ Future<void> firebaseMessagingBackgroundHandler(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  /*
-   * Initialize Firebase for Android + Web.
-   */
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  /*
-   * Register background handler.
-   */
   FirebaseMessaging.onBackgroundMessage(
     firebaseMessagingBackgroundHandler,
-  );
-
-  /*
-   * Ask permission for notifications.
-   *
-   * On Web this may trigger browser notification
-   * permission when supported.
-   *
-   * We intentionally do NOT request the Web Push
-   * token here yet because we still need the
-   * ServicePay VAPID public key.
-   */
-  try {
-    await FirebaseMessaging.instance.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      announcement: false,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-    );
-  } catch (error) {
-    debugPrint(
-      'SERVICEPAY FCM PERMISSION ERROR: $error',
-    );
-  }
-
-  /*
-   * Foreground Firebase messages.
-   *
-   * Later, incoming Keke messages will be connected
-   * to the Rider alert screen.
-   */
-  FirebaseMessaging.onMessage.listen(
-    (
-      RemoteMessage message,
-    ) {
-      debugPrint(
-        'SERVICEPAY FOREGROUND FCM: ${message.messageId}',
-      );
-
-      debugPrint(
-        'SERVICEPAY FCM TITLE: ${message.notification?.title}',
-      );
-
-      debugPrint(
-        'SERVICEPAY FCM BODY: ${message.notification?.body}',
-      );
-
-      debugPrint(
-        'SERVICEPAY FCM DATA: ${message.data}',
-      );
-    },
-  );
-
-  /*
-   * User tapped a notification and opened ServicePay.
-   */
-  FirebaseMessaging.onMessageOpenedApp.listen(
-    (
-      RemoteMessage message,
-    ) {
-      debugPrint(
-        'SERVICEPAY FCM OPENED: ${message.messageId}',
-      );
-
-      debugPrint(
-        'SERVICEPAY FCM OPENED DATA: ${message.data}',
-      );
-    },
   );
 
   runApp(
     const ServicePayApp(),
   );
+
+  // Non-critical notification setup runs after the UI has started.
+  Future<void>.delayed(const Duration(milliseconds: 300), () async {
+    try {
+      await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        announcement: false,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+      );
+    } catch (error) {
+      debugPrint('SERVICEPAY FCM PERMISSION ERROR: $error');
+    }
+
+    FirebaseMessaging.onMessage.listen(
+      (RemoteMessage message) {
+        debugPrint(
+          'SERVICEPAY FOREGROUND FCM: ${message.messageId}',
+        );
+        debugPrint(
+          'SERVICEPAY FCM TITLE: ${message.notification?.title}',
+        );
+        debugPrint(
+          'SERVICEPAY FCM BODY: ${message.notification?.body}',
+        );
+        debugPrint(
+          'SERVICEPAY FCM DATA: ${message.data}',
+        );
+      },
+    );
+
+    FirebaseMessaging.onMessageOpenedApp.listen(
+      (RemoteMessage message) {
+        debugPrint(
+          'SERVICEPAY FCM OPENED: ${message.messageId}',
+        );
+        debugPrint(
+          'SERVICEPAY FCM OPENED DATA: ${message.data}',
+        );
+      },
+    );
+  });
 }
 
-/*
- * =====================================================
- * SERVICEPAY APP
- * =====================================================
- */
 class ServicePayApp extends StatelessWidget {
   const ServicePayApp({
     super.key,
