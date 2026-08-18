@@ -5,6 +5,190 @@ const User = require("../models/user.model");
 
 const { v2: cloudinary } = require("cloudinary");
 
+
+const axios = require("axios");
+
+// ============================================================
+// SERVICEPAY_NIN_REGISTRATION_HELPER
+// Mandatory identity verification for NEW customer registration.
+// This does NOT debit the customer's ServicePay wallet.
+// ============================================================
+
+const SERVICEPAY_ONBOARDING_PREMBLY_BASE_URL =
+  process.env.PREMBLY_BASE_URL || "https://api.prembly.com";
+
+const SERVICEPAY_ONBOARDING_PREMBLY_APP_ID =
+  process.env.PREMBLY_APP_ID || "";
+
+const SERVICEPAY_ONBOARDING_PREMBLY_SECRET_KEY =
+  process.env.PREMBLY_SECRET_KEY || "";
+
+const servicePayOnboardingPremblyHeaders = () => {
+  return {
+    "Content-Type": "application/json",
+    app_id: SERVICEPAY_ONBOARDING_PREMBLY_APP_ID,
+    "x-api-key": SERVICEPAY_ONBOARDING_PREMBLY_SECRET_KEY,
+  };
+};
+
+const servicePayMaskNin = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+
+  if (digits.length !== 11) {
+    return "";
+  }
+
+  return `${digits.slice(0, 3)}*****${digits.slice(-3)}`;
+};
+
+const servicePayExtractOnboardingNinData = (payload) => {
+  const possibleSources = [
+    payload?.data,
+    payload?.nin_data,
+    payload?.data?.nin_data,
+    payload?.response?.data,
+    payload?.response?.nin_data,
+    payload?.verificationData,
+    payload,
+  ];
+
+  for (const source of possibleSources) {
+    if (!source || typeof source !== "object") continue;
+
+    const firstName =
+      source.firstName ||
+      source.firstname ||
+      source.first_name ||
+      source.first ||
+      "";
+
+    const middleName =
+      source.middleName ||
+      source.middlename ||
+      source.middle_name ||
+      "";
+
+    const lastName =
+      source.lastName ||
+      source.lastname ||
+      source.surname ||
+      source.last_name ||
+      "";
+
+    const composedName =
+      [firstName, middleName, lastName]
+        .map((v) => String(v || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+    const fullName =
+      source.fullName ||
+      source.full_name ||
+      source.name ||
+      composedName;
+
+    if (String(fullName || "").trim()) {
+      return {
+        fullName: String(fullName).trim(),
+
+        reference:
+          source.reference ||
+          source.ref ||
+          source.transaction_reference ||
+          source.verification_reference ||
+          payload?.reference ||
+          payload?.data?.reference ||
+          "",
+      };
+    }
+  }
+
+  return {
+    fullName: "",
+    reference:
+      payload?.reference ||
+      payload?.data?.reference ||
+      "",
+  };
+};
+
+const servicePayVerifyRegistrationNin = async (nin) => {
+  const cleanNin = String(nin || "").replace(/\D/g, "");
+
+  if (!/^\d{11}$/.test(cleanNin)) {
+    const error = new Error(
+      "Please enter a valid 11-digit NIN."
+    );
+    error.code = "INVALID_NIN";
+    throw error;
+  }
+
+  if (
+    !SERVICEPAY_ONBOARDING_PREMBLY_APP_ID ||
+    !SERVICEPAY_ONBOARDING_PREMBLY_SECRET_KEY
+  ) {
+    const error = new Error(
+      "NIN verification service is not configured."
+    );
+    error.code = "NIN_SERVICE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  let response;
+
+  try {
+    response = await axios.post(
+      `${SERVICEPAY_ONBOARDING_PREMBLY_BASE_URL}/verification/vnin`,
+      {
+        number_nin: cleanNin,
+      },
+      {
+        headers: servicePayOnboardingPremblyHeaders(),
+        timeout: 45000,
+      }
+    );
+  } catch (error) {
+    const providerMessage =
+      error?.response?.data?.message ||
+      error?.response?.data?.detail ||
+      error?.message ||
+      "NIN verification request failed.";
+
+    const verificationError = new Error(providerMessage);
+    verificationError.code = "NIN_VERIFICATION_FAILED";
+    throw verificationError;
+  }
+
+  const responseData = response?.data || {};
+
+  const ninData =
+    servicePayExtractOnboardingNinData(responseData);
+
+  if (!ninData.fullName) {
+    const error = new Error(
+      responseData?.message ||
+      responseData?.detail ||
+      "No valid NIN data returned from provider."
+    );
+
+    error.code = "NIN_NOT_VERIFIED";
+    throw error;
+  }
+
+  return {
+    verified: true,
+    maskedNin: servicePayMaskNin(cleanNin),
+    reference:
+      ninData.reference ||
+      `NIN-ONBOARD-${Date.now()}`,
+  };
+};
+
+// ============================================================
+// END SERVICEPAY_NIN_REGISTRATION_HELPER
+// ============================================================
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -381,8 +565,59 @@ exports.registerUser = async (
       });
     }
 
-    const user = await User.create({
-      fullName: cleanFullName,
+    
+    // ========================================================
+    // SERVICEPAY_MANDATORY_REGISTRATION_NIN
+    // Verify identity BEFORE creating the customer account.
+    // No ServicePay wallet charge is applied here.
+    // ========================================================
+
+    const registrationNin =
+      req.body.nin ||
+      req.body.ninNumber ||
+      req.body.nin_number ||
+      "";
+
+    let onboardingNinResult;
+
+    try {
+      onboardingNinResult =
+        await servicePayVerifyRegistrationNin(
+          registrationNin
+        );
+    } catch (ninError) {
+      console.error(
+        "Registration NIN verification error:",
+        ninError?.message || ninError
+      );
+
+      return res.status(400).json({
+        success: false,
+        message:
+          ninError?.message ||
+          "NIN verification failed.",
+        code:
+          ninError?.code ||
+          "NIN_VERIFICATION_FAILED",
+      });
+    }
+
+const user = await User.create({
+      
+      // SERVICEPAY_REGISTRATION_NIN_METADATA
+      ninNumberMasked:
+        onboardingNinResult.maskedNin,
+
+      ninVerificationStatus:
+        "VERIFIED",
+
+      ninVerificationReference:
+        onboardingNinResult.reference,
+
+      ninVerifiedAt:
+        new Date(),
+
+fullName: cleanFullName,
       phone: cleanPhone,
       email:
         cleanEmail || undefined,

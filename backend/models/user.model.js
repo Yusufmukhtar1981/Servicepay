@@ -1139,6 +1139,37 @@ userSchema.add({
   },
 });
 
+
+/*
+ * SERVICEPAY_NIN_ONBOARDING_VERIFICATION_FIELDS
+ * Stores only masked onboarding NIN information.
+ * Raw NIN/provider response is not stored here.
+ */
+userSchema.add({
+  ninNumberMasked: {
+    type: String,
+    trim: true,
+    default: undefined,
+  },
+
+  ninVerificationStatus: {
+    type: String,
+    enum: ["PENDING", "VERIFIED", "FAILED"],
+    default: undefined,
+  },
+
+  ninVerificationReference: {
+    type: String,
+    trim: true,
+    default: undefined,
+  },
+
+  ninVerifiedAt: {
+    type: Date,
+    default: null,
+  },
+});
+
 module.exports =
   mongoose.model(
     "User",
