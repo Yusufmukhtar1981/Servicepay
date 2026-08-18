@@ -93,7 +93,53 @@ exports.getMyKycStatus = async (req, res) => {
     );
 
     if (!profile) {
-      return res.status(404).json({
+      
+    // SERVICEPAY_KYC_REGISTRATION_FALLBACK
+    const servicePayUserId =
+      req.user?._id ||
+      req.user?.id ||
+      req.userId;
+
+    const servicePayUser = servicePayUserId
+      ? await User.findById(servicePayUserId).select(
+          "firstName middleName lastName fullName dateOfBirth gender address state lga registrationState registrationLga transactionPinSet transactionPinHash"
+        ).lean()
+      : null;
+
+    if (kyc && servicePayUser) {
+      if (!kyc.firstName && servicePayUser.firstName) {
+        kyc.firstName = servicePayUser.firstName;
+      }
+      if (!kyc.middleName && servicePayUser.middleName) {
+        kyc.middleName = servicePayUser.middleName;
+      }
+      if (!kyc.lastName && servicePayUser.lastName) {
+        kyc.lastName = servicePayUser.lastName;
+      }
+      if (!kyc.dateOfBirth && servicePayUser.dateOfBirth) {
+        kyc.dateOfBirth = servicePayUser.dateOfBirth;
+      }
+      if (!kyc.gender && servicePayUser.gender) {
+        kyc.gender = servicePayUser.gender;
+      }
+      if (!kyc.address && servicePayUser.address) {
+        kyc.address = servicePayUser.address;
+      }
+      if (!kyc.state) {
+        kyc.state =
+          servicePayUser.registrationState ||
+          servicePayUser.state ||
+          "";
+      }
+      if (!kyc.lga) {
+        kyc.lga =
+          servicePayUser.registrationLga ||
+          servicePayUser.lga ||
+          "";
+      }
+    }
+
+return res.status(404).json({
         success: false,
         message: "User account was not found.",
       });

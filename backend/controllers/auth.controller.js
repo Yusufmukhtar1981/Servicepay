@@ -592,7 +592,22 @@ exports.registerUser = async (
     status: "PENDING",
   };
 
-  const user = await User.create({
+  
+    const servicePayRegistrationPin = String(
+      req.body?.transactionPin ||
+      req.body?.transactionPIN ||
+      req.body?.pin ||
+      ""
+    ).trim();
+
+    if (servicePayRegistrationPin && !/^\d{4}$/.test(servicePayRegistrationPin)) {
+      return res.status(400).json({
+        success: false,
+        message: "Transaction PIN must be exactly 4 digits.",
+      });
+    }
+
+const user = await User.create({
       
       // SERVICEPAY_REGISTRATION_NIN_METADATA
       ninNumberMasked:
@@ -633,7 +648,7 @@ fullName: cleanFullName,
       commissionBalance: 0,
       totalEarnings: 0,
       totalTransactions: 0,
-      transactionPinSet: false,
+      transactionPinSet: Boolean(servicePayRegistrationPin),
 
       zone:
         String(zone || "").trim() ||
@@ -832,7 +847,41 @@ exports.loginUser = async (
          * user.model.js will hash it
          * automatically before saving.
          */
-        await user.save();
+        
+    if (servicePayRegistrationPin) {
+      if ("transactionPin" in user) {
+        user.transactionPin = servicePayRegistrationPin;
+      }
+
+      if ("transactionPIN" in user) {
+        user.transactionPIN = servicePayRegistrationPin;
+      }
+
+      if ("pin" in user && !user.pin) {
+        user.pin = servicePayRegistrationPin;
+      }
+
+      /*
+       * If the model exposes a dedicated setter/method, use it.
+       * Otherwise save a bcrypt hash in the standard transactionPinHash field.
+       */
+      if (typeof user.setTransactionPin === "function") {
+        await user.setTransactionPin(servicePayRegistrationPin);
+      } else if ("transactionPinHash" in user || user.schema?.path?.("transactionPinHash")) {
+        const bcryptLib =
+          typeof bcrypt !== "undefined"
+            ? bcrypt
+            : require("bcryptjs");
+        user.transactionPinHash = await bcryptLib.hash(
+          servicePayRegistrationPin,
+          10
+        );
+      }
+
+      user.transactionPinSet = true;
+    }
+
+await user.save();
 
         console.log(
           `Password migrated to bcrypt for ${

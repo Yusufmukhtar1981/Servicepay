@@ -101,7 +101,8 @@ class _KycScreenState extends State<KycScreen> {
 
         final dob = kyc['dateOfBirth'];
         if (dob != null && dob.toString().isNotEmpty) {
-          dateOfBirth = DateTime.tryParse(dob.toString());
+          dateOfBirth = DateTime.tryParse(dob.toString()) ??
+              DateTime.tryParse(dob.toString().split('T').first);
         }
 
         final loadedGender = (kyc['gender'] ?? '').toString().toUpperCase();
