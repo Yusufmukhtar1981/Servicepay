@@ -133,7 +133,7 @@ const servicePayVerifyRegistrationNin = async (nin) => {
     response = await axios.post(
       `${SERVICEPAY_ONBOARDING_PREMBLY_BASE_URL}/verification/vnin`,
       {
-        number: cleanNin,
+        number_nin: cleanNin,
       },
       {
         headers: servicePayOnboardingPremblyHeaders(),
