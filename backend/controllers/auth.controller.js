@@ -13,6 +13,8 @@ cloudinary.config({
 
 const { sendEmail } = require("../services/email.service");
 
+const { validateStrongPassword, validateTransactionPin } = require('../utils/passwordPolicy');
+
 const generateToken = (userId) => {
   if (!process.env.JWT_SECRET) {
     throw new Error(
@@ -254,6 +256,46 @@ exports.registerUser = async (
   req,
   res
 ) => {
+
+  // SERVICEPAY_SECURE_REGISTRATION_POLICY
+  // Applied only when creating a NEW account.
+  // Existing customers are unaffected.
+  {
+    const passwordCheck = validateStrongPassword(req.body.password);
+
+    if (!passwordCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        message: passwordCheck.message,
+        code: 'WEAK_PASSWORD',
+      });
+    }
+
+    if (req.body.transactionPin !== undefined &&
+        req.body.transactionPin !== null &&
+        String(req.body.transactionPin).trim() !== '') {
+
+      const pinCheck = validateTransactionPin(req.body.transactionPin);
+
+      if (!pinCheck.valid) {
+        return res.status(400).json({
+          success: false,
+          message: pinCheck.message,
+          code: 'INVALID_TRANSACTION_PIN',
+        });
+      }
+    }
+
+    if (req.body.acceptTerms !== true) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must accept the Terms and Privacy Policy.',
+        code: 'TERMS_REQUIRED',
+      });
+    }
+  }
+
+
   try {
     const {
       fullName,

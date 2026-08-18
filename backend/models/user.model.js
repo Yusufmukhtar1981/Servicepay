@@ -1082,6 +1082,63 @@ userSchema.methods.setRiderLocation =
  * EXPORT
  * =====================================================
  */
+
+
+// SERVICEPAY_SECURE_ONBOARDING_FIELDS
+// Optional fields: existing users remain fully compatible.
+userSchema.add({
+  gender: {
+    type: String,
+    enum: ['MALE', 'FEMALE', 'OTHER', ''],
+    default: '',
+  },
+
+  dateOfBirth: {
+    type: Date,
+    default: null,
+  },
+
+  residentialAddress: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+
+  registrationState: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+
+  registrationLga: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+
+  nin: {
+    type: String,
+    trim: true,
+    default: '',
+    select: false,
+  },
+
+  kycConsent: {
+    type: Boolean,
+    default: false,
+  },
+
+  termsAcceptedAt: {
+    type: Date,
+    default: null,
+  },
+
+  onboardingCompletedAt: {
+    type: Date,
+    default: null,
+  },
+});
+
 module.exports =
   mongoose.model(
     "User",
