@@ -224,6 +224,8 @@ const formatUser = (user) => {
     zone: user.zone,
     state: user.state,
     lga: user.lga,
+      dateOfBirth: user.dateOfBirth || null,
+      gender: user.gender || "",
 
     zonalManagerId:
       user.zonalManagerId,
@@ -484,7 +486,9 @@ exports.registerUser = async (
       zonalManagerId,
       stateManagerId,
       agentId,
-    } = req.body;
+    dateOfBirth,
+    gender,
+  } = req.body;
 
     const cleanFullName = String(
       fullName || ""
@@ -611,7 +615,19 @@ fullName: cleanFullName,
        * Only CUSTOMER accounts can register
        * through the public ServicePay app.
        */
-      role: "CUSTOMER",
+      
+    dateOfBirth:
+      dateOfBirth && !Number.isNaN(Date.parse(String(dateOfBirth)))
+        ? new Date(String(dateOfBirth))
+        : undefined,
+
+    gender:
+      ["MALE", "FEMALE", "OTHER"].includes(
+        String(gender || "").trim().toUpperCase()
+      )
+        ? String(gender).trim().toUpperCase()
+        : "",
+    role: "CUSTOMER",
       status: "ACTIVE",
       walletBalance: 0,
       commissionBalance: 0,
