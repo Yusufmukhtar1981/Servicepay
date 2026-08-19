@@ -1,4 +1,6 @@
 const express = require("express");
+
+const adminTransactionRequeryController = require("../controllers/adminTransactionRequery.controller");
 const bankTransferController = require("../controllers/bankTransfer.controller");
 
 const {
@@ -475,7 +477,7 @@ router.post(
   "/transaction-requery",
   protect,
   adminOnly("HEAD_OFFICE"),
-  bankTransferController.adminRequeryBankTransfer
+  adminTransactionRequeryController.adminRequeryTransaction
 );
 
 module.exports = router;
