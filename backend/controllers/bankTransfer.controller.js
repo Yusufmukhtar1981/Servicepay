@@ -1869,3 +1869,67 @@ exports.squadWebhook =
       });
     }
   };
+
+/**
+ * HEAD OFFICE transaction requery.
+ *
+ * Finds a ServicePay bank-transfer record by reference, then safely
+ * reuses the existing customer requery engine using the original sender.
+ * This keeps Squad classification, wallet handling and status updates
+ * inside one source of truth.
+ */
+exports.adminRequeryBankTransfer = async (req, res) => {
+  try {
+    const reference = normalizeText(
+      req.body?.reference ||
+      req.params?.reference ||
+      req.query?.reference
+    );
+
+    if (!reference) {
+      return res.status(400).json({
+        success: false,
+        message: "Transfer reference is required.",
+      });
+    }
+
+    const record = await BankTransfer.findOne({ reference });
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        message: "Bank transfer record was not found.",
+      });
+    }
+
+    const adminActor = req.user;
+
+    // Preserve the real HEAD OFFICE actor for audit/debug purposes.
+    req.adminActor = adminActor;
+
+    // Existing requeryBankTransfer intentionally restricts a requery
+    // to the transaction owner. For this HEAD OFFICE-only endpoint,
+    // execute that same proven engine as the original transaction sender.
+    req.user = {
+      ...(adminActor && typeof adminActor.toObject === "function"
+        ? adminActor.toObject()
+        : adminActor || {}),
+      _id: record.sender,
+      id: record.sender,
+    };
+
+    req.body = {
+      ...(req.body || {}),
+      reference,
+    };
+
+    return exports.requeryBankTransfer(req, res);
+  } catch (error) {
+    console.error("Admin bank transfer requery error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to requery this transaction right now.",
+    });
+  }
+};

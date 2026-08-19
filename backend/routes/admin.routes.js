@@ -1,4 +1,5 @@
 const express = require("express");
+const bankTransferController = require("../controllers/bankTransfer.controller");
 
 const {
   getAdminDashboard,
@@ -461,6 +462,20 @@ router.patch(
   protect,
   adminOnly('HEAD_OFFICE'),
   adminMarketplaceController.suspendMarketplaceProduct
+);
+
+
+
+/*
+ * HEAD OFFICE-only real bank-transfer requery.
+ * POST /api/admin/transaction-requery
+ * Body: { "reference": "..." }
+ */
+router.post(
+  "/transaction-requery",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  bankTransferController.adminRequeryBankTransfer
 );
 
 module.exports = router;
