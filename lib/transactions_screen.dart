@@ -73,7 +73,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       }
 
       final http.Response response = await http.get(
-        Uri.parse('$baseUrl/transactions'),
+        Uri.parse('$baseUrl/admin/transactions'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
