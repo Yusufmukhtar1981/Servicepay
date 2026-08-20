@@ -1136,15 +1136,7 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
         0xFFF5F7FA,
       ),
       appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        title: const Text(
-          'My Deliveries',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        // SERVICEPAY_RIDER_PIN_SHORTCUT
         actions: <Widget>[
           IconButton(
             tooltip: 'Refresh',

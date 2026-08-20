@@ -993,14 +993,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text(
-          'Withdraw Commission',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        // SERVICEPAY_RIDER_PIN_SHORTCUT
         actions: [
           IconButton(
             tooltip: 'Refresh',
