@@ -17,8 +17,8 @@ class _RiderTransactionPinScreenState extends State<RiderTransactionPinScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static const String statusPath = '/transaction-pin/status';
-  static const String createPath = '/transaction-pin/status';
-  static const String changePath = '/transaction-pin/status';
+  static const String createPath = '/transaction-pin/create';
+  static const String changePath = '/transaction-pin/change';
 
   final _newPinController = TextEditingController();
   final _confirmPinController = TextEditingController();
