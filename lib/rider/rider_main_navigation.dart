@@ -9,6 +9,8 @@ import '../keke_driver_screen.dart';
 import '../login_screen.dart';
 import 'rider_withdrawal_screen.dart';
 
+import 'rider_transaction_pin_screen.dart';
+
 class RiderApi {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
@@ -2007,6 +2009,47 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                             icon: Icons.location_on_outlined,
                             title: 'Location',
                             value: location,
+                          ),
+                          // RIDER_PROFILE_TRANSACTION_PIN
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEAF7F0),
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: const Icon(
+                                Icons.lock_outline_rounded,
+                                color: Color(0xFF08783E),
+                              ),
+                            ),
+                            title: const Text(
+                              'Transaction PIN',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: const Text(
+                              'Create or change your 4-digit PIN',
+                              style: TextStyle(
+                                fontSize: 13,
+                              ),
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.grey,
+                            ),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      const RiderTransactionPinScreen(),
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
