@@ -1,0 +1,771 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class PartnerApplicationScreen extends StatefulWidget {
+  const PartnerApplicationScreen({super.key});
+
+  @override
+  State<PartnerApplicationScreen> createState() =>
+      _PartnerApplicationScreenState();
+}
+
+class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  final businessNameController = TextEditingController();
+  final contactNameController = TextEditingController();
+  final emailController = TextEditingController();
+  final phoneController = TextEditingController();
+
+  bool loading = true;
+
+  Map<String, dynamic>? partnerProfile;
+  bool loadingPartnerProfile = false;
+  String partnerProfileError = '';
+
+  String get partnerApiKey => (partnerProfile?['apiKey'] ?? '').toString();
+
+  List<dynamic> get partnerPermissions {
+    final value = partnerProfile?['permissions'];
+    return value is List ? value : <dynamic>[];
+  }
+
+  double _partnerNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  Future<void> _loadPartnerProfile() async {
+    if (loadingPartnerProfile) return;
+
+    if (mounted) {
+      setState(() {
+        loadingPartnerProfile = true;
+        partnerProfileError = '';
+      });
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token =
+          prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+
+      if (token.isEmpty) {
+        throw Exception('Login session not found.');
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/partner/me'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        decoded = null;
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map
+            ? (decoded['message'] ?? 'Unable to load Partner API profile.')
+            : 'Unable to load Partner API profile.';
+        throw Exception(message.toString());
+      }
+
+      final Map<String, dynamic> body =
+          decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+
+      final dynamic rawPartner = body['partner'] ?? body['data'] ?? body;
+
+      if (rawPartner is! Map) {
+        throw Exception('Partner API profile was not returned.');
+      }
+
+      if (mounted) {
+        setState(() {
+          partnerProfile = Map<String, dynamic>.from(rawPartner as Map);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          partnerProfileError = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          loadingPartnerProfile = false;
+        });
+      }
+    }
+  }
+
+  Widget _partnerApiProfileCard() {
+    if (loadingPartnerProfile && partnerProfile == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 18),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (partnerProfileError.isNotEmpty && partnerProfile == null) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 14),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3F2),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFFFC9C5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              partnerProfileError,
+              style: const TextStyle(
+                color: Color(0xFFB42318),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _loadPartnerProfile,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (partnerProfile == null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: OutlinedButton.icon(
+          onPressed: _loadPartnerProfile,
+          icon: const Icon(Icons.key_rounded),
+          label: const Text('Load API Credentials'),
+        ),
+      );
+    }
+
+    final wallet = _partnerNumber(partnerProfile?['walletBalance']);
+    final dailyLimit = _partnerNumber(partnerProfile?['dailyLimit']);
+    final dailySpent = _partnerNumber(partnerProfile?['dailySpent']);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFF08783E).withValues(alpha: 0.22),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.vpn_key_rounded,
+                color: Color(0xFF08783E),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Partner API Access',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                  color: Color(0xFF153B2A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'API Key',
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 5),
+          SelectableText(
+            partnerApiKey.isEmpty
+                ? 'API Key has not been generated yet.'
+                : partnerApiKey,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 18,
+            runSpacing: 12,
+            children: [
+              _partnerMetric(
+                'Wallet',
+                '₦${wallet.toStringAsFixed(2)}',
+              ),
+              _partnerMetric(
+                'Daily Limit',
+                '₦${dailyLimit.toStringAsFixed(2)}',
+              ),
+              _partnerMetric(
+                'Daily Spent',
+                '₦${dailySpent.toStringAsFixed(2)}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Approved Services',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF334155),
+            ),
+          ),
+          const SizedBox(height: 9),
+          if (partnerPermissions.isEmpty)
+            const Text(
+              'No permissions assigned yet.',
+              style: TextStyle(color: Color(0xFF64748B)),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: partnerPermissions
+                  .map(
+                    (permission) => Chip(
+                      label: Text(
+                        permission.toString(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          const SizedBox(height: 12),
+          const Text(
+            'For security, your API Secret is shown only when credentials are generated or regenerated. Never share it publicly.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _partnerMetric(String label, String value) {
+    return SizedBox(
+      width: 125,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool submitting = false;
+
+  Map<String, dynamic>? application;
+
+  String get status =>
+      (application?['status'] ?? 'NOT_APPLIED').toString().toUpperCase();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadApplication();
+  }
+
+  @override
+  void dispose() {
+    businessNameController.dispose();
+    contactNameController.dispose();
+    emailController.dispose();
+    phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<String?> _token() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
+  }
+
+  Future<void> _loadApplication() async {
+    try {
+      final token = await _token();
+
+      if (token == null || token.isEmpty) {
+        if (mounted) {
+          setState(() => loading = false);
+        }
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/partner-applications/my'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+
+        Map<String, dynamic>? found;
+
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['application'] is Map) {
+            found = Map<String, dynamic>.from(decoded['application']);
+          } else if (decoded['data'] is Map) {
+            found = Map<String, dynamic>.from(decoded['data']);
+          } else if (decoded['status'] != null ||
+              decoded['businessName'] != null) {
+            found = decoded;
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            application = found;
+            loading = false;
+          });
+        }
+        return;
+      }
+
+      if (response.statusCode == 404) {
+        if (mounted) {
+          setState(() {
+            application = null;
+            loading = false;
+          });
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
+  }
+
+  String _messageFrom(dynamic decoded, String fallback) {
+    if (decoded is Map) {
+      final value = decoded['message'] ?? decoded['error'] ?? decoded['detail'];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString();
+      }
+    }
+    return fallback;
+  }
+
+  Future<void> _submit() async {
+    final businessName = businessNameController.text.trim();
+    final contactName = contactNameController.text.trim();
+    final email = emailController.text.trim();
+    final phone = phoneController.text.trim();
+
+    if (businessName.isEmpty ||
+        contactName.isEmpty ||
+        email.isEmpty ||
+        phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please complete all required fields.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => submitting = true);
+
+    try {
+      final token = await _token();
+
+      if (token == null || token.isEmpty) {
+        throw Exception('Please login again.');
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/partner-applications/apply'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'businessName': businessName,
+          'contactName': contactName,
+          'email': email,
+          'phone': phone,
+        }),
+      );
+
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        decoded = null;
+      }
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _messageFrom(
+                decoded,
+                'Partner application submitted successfully.',
+              ),
+            ),
+          ),
+        );
+
+        businessNameController.clear();
+        contactNameController.clear();
+        emailController.clear();
+        phoneController.clear();
+
+        await _loadApplication();
+        return;
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _messageFrom(
+              decoded,
+              'Unable to submit partner application.',
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => submitting = false);
+      }
+    }
+  }
+
+  Color _statusColor() {
+    switch (status) {
+      case 'APPROVED':
+        return Colors.green;
+      case 'REJECTED':
+        return Colors.red;
+      case 'PENDING':
+        return Colors.orange;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  Widget _statusCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _statusColor().withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: _statusColor().withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                status == 'APPROVED'
+                    ? Icons.verified_rounded
+                    : status == 'REJECTED'
+                        ? Icons.cancel_rounded
+                        : Icons.schedule_rounded,
+                color: _statusColor(),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Application Status: $status',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: _statusColor(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            status == 'APPROVED'
+                ? 'Your ServicePay Partner application has been approved.'
+                : status == 'REJECTED'
+                    ? 'Your application was not approved. Contact ServicePay support if you need clarification.'
+                    : 'Your application is under review by ServicePay Head Office.',
+            style: const TextStyle(
+              height: 1.45,
+              color: Color(0xFF475569),
+            ),
+          ),
+          if (status == 'APPROVED') ...[
+            const SizedBox(height: 12),
+            const Text(
+              'API credentials are issued securely after approval. Keep your API Secret private.',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF334155),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(
+              color: Color(0xFFE2E8F0),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF08783E);
+
+    if (status == 'APPROVED' &&
+        partnerProfile == null &&
+        !loadingPartnerProfile) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            status == 'APPROVED' &&
+            partnerProfile == null &&
+            !loadingPartnerProfile) {
+          _loadPartnerProfile();
+        }
+      });
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: const Text('ServicePay Partner API'),
+        backgroundColor: green,
+        foregroundColor: Colors.white,
+      ),
+      body: loading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadApplication,
+              child: ListView(
+                padding: const EdgeInsets.all(18),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF08783E),
+                          Color(0xFF0F9D58),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.handshake_rounded,
+                          size: 38,
+                          color: Colors.white,
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Become a ServicePay API Partner',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Connect your business or platform to approved ServicePay services through our Partner API.',
+                          style: TextStyle(
+                            color: Colors.white,
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  if (application != null) ...[
+                    _statusCard(),
+                    const SizedBox(height: 18),
+                  ],
+                  if (application == null || status == 'REJECTED') ...[
+                    const Text(
+                      'Partner Application',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Submit your business details. ServicePay Head Office will review your application before API access is activated.',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    _field(
+                      controller: businessNameController,
+                      label: 'Business / Company Name',
+                      icon: Icons.business_rounded,
+                    ),
+                    _field(
+                      controller: contactNameController,
+                      label: 'Contact Person',
+                      icon: Icons.person_rounded,
+                    ),
+                    _field(
+                      controller: emailController,
+                      label: 'Business Email',
+                      icon: Icons.email_rounded,
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    _field(
+                      controller: phoneController,
+                      label: 'Phone Number',
+                      icon: Icons.phone_rounded,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: 54,
+                      child: ElevatedButton.icon(
+                        onPressed: submitting ? null : _submit,
+                        icon: submitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.send_rounded),
+                        label: Text(
+                          submitting
+                              ? 'Submitting...'
+                              : 'Submit Partner Application',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: green,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+}
