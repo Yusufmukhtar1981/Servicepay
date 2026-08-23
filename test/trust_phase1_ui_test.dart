@@ -36,6 +36,54 @@ void main() {
     );
   });
 
+  testWidgets('shows a public-safe search result and opens its profile',
+      (WidgetTester tester) async {
+    Future<List<TrustProfile>> search({
+      required String query,
+      required String kind,
+    }) async =>
+        <TrustProfile>[profile];
+
+    await tester.pumpWidget(
+      MaterialApp(home: TrustSearchScreen(searchProfiles: search)),
+    );
+
+    await tester.enterText(find.byType(TextField), '08021234645');
+    await tester.tap(find.byIcon(Icons.arrow_forward));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ada Example'), findsOneWidget);
+    expect(find.text('*******4645'), findsOneWidget);
+    expect(find.text('TRUSTED'), findsOneWidget);
+
+    await tester.tap(find.byType(ListTile));
+    await tester.pump();
+
+    expect(
+      find.byType(TrustProfileScreen, skipOffstage: false),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows a generic empty result without exposing privacy state',
+      (WidgetTester tester) async {
+    Future<List<TrustProfile>> search({
+      required String query,
+      required String kind,
+    }) async =>
+        <TrustProfile>[];
+
+    await tester.pumpWidget(
+      MaterialApp(home: TrustSearchScreen(searchProfiles: search)),
+    );
+
+    await tester.enterText(find.byType(TextField), '08021234645');
+    await tester.tap(find.byIcon(Icons.arrow_forward));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No Trust profile found.'), findsOneWidget);
+  });
+
   testWidgets('shows admin-only score inputs and discoverability',
       (WidgetTester tester) async {
     await tester.pumpWidget(

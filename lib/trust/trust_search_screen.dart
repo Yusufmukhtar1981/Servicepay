@@ -4,8 +4,16 @@ import 'trust_api_service.dart';
 import 'trust_models.dart';
 import 'trust_profile_screen.dart';
 
+typedef TrustProfileSearch = Future<List<TrustProfile>> Function({
+  required String query,
+  required String kind,
+});
+
 class TrustSearchScreen extends StatefulWidget {
-  const TrustSearchScreen({super.key});
+  const TrustSearchScreen({super.key, this.searchProfiles});
+
+  final TrustProfileSearch? searchProfiles;
+
   @override
   State<TrustSearchScreen> createState() => _TrustSearchScreenState();
 }
@@ -16,6 +24,9 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
   List<TrustProfile> _profiles = <TrustProfile>[];
   String? _error;
   bool _loading = false;
+  bool _hasSearched = false;
+  int _searchRevision = 0;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -23,22 +34,41 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
   }
 
   Future<void> _search() async {
-    if (_controller.text.trim().isEmpty) return;
+    final String query = _controller.text.trim();
+    if (query.isEmpty) {
+      setState(() {
+        _profiles = <TrustProfile>[];
+        _hasSearched = false;
+        _error = 'Enter a phone number, Trust ID, or business name.';
+      });
+      return;
+    }
+
+    final int searchRevision = ++_searchRevision;
+    final String kind = _kind;
     setState(() {
       _loading = true;
       _error = null;
+      _profiles = <TrustProfile>[];
+      _hasSearched = true;
     });
     try {
-      final List<TrustProfile> profiles = await TrustApiService.searchProfiles(
-          query: _controller.text, kind: _kind);
-      if (mounted) setState(() => _profiles = profiles);
+      final TrustProfileSearch searchProfiles =
+          widget.searchProfiles ?? TrustApiService.searchProfiles;
+      final List<TrustProfile> profiles =
+          await searchProfiles(query: query, kind: kind);
+      if (mounted && searchRevision == _searchRevision) {
+        setState(() => _profiles = profiles);
+      }
     } catch (error) {
-      if (mounted) {
+      if (mounted && searchRevision == _searchRevision) {
         setState(
             () => _error = error.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && searchRevision == _searchRevision) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -130,8 +160,13 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
                     Text(_error!, style: const TextStyle(color: Colors.red))),
           Expanded(
               child: _profiles.isEmpty && !_loading
-                  ? const Center(
-                      child: Text('Search for a ServicePay Trust profile.'))
+                  ? Center(
+                      child: Text(
+                        _hasSearched
+                            ? 'No Trust profile found.'
+                            : 'Search for a ServicePay Trust profile.',
+                      ),
+                    )
                   : ListView.builder(
                       itemCount: _profiles.length,
                       itemBuilder: (_, int index) {

@@ -19,6 +19,31 @@ const normalizeText = (value) =>
 const normalizePhone = (value) =>
   String(value || "").replace(/[^\d+]/g, "");
 
+const phoneSearchVariants = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  const variants = new Set();
+
+  if (!digits) {
+    return [];
+  }
+
+  variants.add(digits);
+  variants.add(`+${digits}`);
+
+  if (/^0\d{10}$/.test(digits)) {
+    const international = `234${digits.slice(1)}`;
+    variants.add(international);
+    variants.add(`+${international}`);
+  }
+
+  if (/^234\d{10}$/.test(digits)) {
+    const local = `0${digits.slice(3)}`;
+    variants.add(local);
+  }
+
+  return [...variants];
+};
+
 const maskPhone = (value) => {
   const phone = String(value || "").replace(/\D/g, "");
 
@@ -298,19 +323,27 @@ const findDiscoverableProfiles = async ({ query, kind }) => {
 
   if (search.kind === "business_name") {
     const prefix = new RegExp(`^${safeRegex(search.value)}`, "i");
+    const users = await User.find({
+      businessName: prefix,
+      status: "ACTIVE",
+    })
+      .select("_id")
+      .lean();
+
+    if (users.length === 0) {
+      return [];
+    }
+
     return TrustProfile.find({
       ...discoverableFilter,
-      businessNameNormalized: prefix,
+      user: { $in: users.map((user) => user._id) },
     })
       .sort({ trustScore: -1, createdAt: 1 })
       .limit(MAX_SEARCH_RESULTS)
       .lean();
   }
 
-  const phoneVariants = [
-    search.value,
-    search.value.replace(/^\+/, ""),
-  ];
+  const phoneVariants = phoneSearchVariants(search.value);
   const users = await User.find({
     phone: { $in: phoneVariants },
     status: "ACTIVE",
@@ -477,6 +510,7 @@ module.exports = {
   isPubliclyAvailable,
   listAdminProfiles,
   maskPhone,
+  phoneSearchVariants,
   searchPublicProfiles,
   toAdminTrustProfile,
   toPlainProfile,

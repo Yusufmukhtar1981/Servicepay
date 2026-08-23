@@ -10,6 +10,7 @@ const {
   classifySearch,
   isPubliclyAvailable,
   maskPhone,
+  phoneSearchVariants,
   toPlainProfile,
   toPublicTrustProfile,
 } = require("../services/trustProfile.service");
@@ -188,6 +189,20 @@ test("keeps Trust viewing permission in the canonical role seed", () => {
 test("masks phone values without exposing full identifiers", () => {
   assert.equal(maskPhone("08021234645"), "*******4645");
   assert.equal(maskPhone("12345"), "");
+});
+
+test("matches Nigerian local and international phone lookup forms", () => {
+  assert.deepEqual(phoneSearchVariants("08021234645").sort(), [
+    "+08021234645",
+    "+2348021234645",
+    "08021234645",
+    "2348021234645",
+  ]);
+  assert.deepEqual(phoneSearchVariants("+2348021234645").sort(), [
+    "+2348021234645",
+    "08021234645",
+    "2348021234645",
+  ]);
 });
 
 test("serializes a first-created Trust profile before responding", () => {
