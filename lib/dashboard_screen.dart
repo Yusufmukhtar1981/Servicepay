@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,6 +27,8 @@ import 'request_money_screen.dart';
 import 'business_wallet_screen.dart';
 import 'community_agent_locator_screen.dart';
 import 'group_wallet_screen.dart';
+import 'help_support_screen.dart';
+import 'profile_screen.dart';
 
 import 'withdrawal_screen.dart';
 
@@ -52,8 +55,11 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with TickerProviderStateMixin {
   final ImagePicker _profileImagePicker = ImagePicker();
+  late final AnimationController _motionController;
+  late final AnimationController _refreshController;
 
   String profilePhotoUrl = '';
   bool isUploadingProfilePhoto = false;
@@ -96,12 +102,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _motionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3600),
+    )..repeat(reverse: true);
+    _refreshController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    );
     _loadSavedProfilePhoto();
     loadDashboard();
   }
 
   @override
   void dispose() {
+    _motionController.dispose();
+    _refreshController.dispose();
     searchController.dispose();
     super.dispose();
   }
@@ -139,9 +155,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return null;
   }
 
-  Future<void> loadDashboard({
+  Future<bool> loadDashboard({
     bool refreshing = false,
   }) async {
+    if (refreshing && isRefreshing) {
+      return false;
+    }
+
+    bool receivedFreshWalletBalance = false;
+
     if (mounted) {
       setState(() {
         if (refreshing) {
@@ -176,7 +198,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final String? token = await getSavedAuthToken(preferences);
 
       if (token == null || token.isEmpty) {
-        return;
+        return false;
       }
 
       final http.Response response = await http.get(
@@ -190,13 +212,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
 
       if (response.statusCode != 200) {
-        return;
+        return false;
       }
 
       final dynamic decoded = jsonDecode(response.body);
 
       if (decoded is! Map) {
-        return;
+        return false;
       }
 
       final Map<String, dynamic> data = Map<String, dynamic>.from(decoded);
@@ -211,12 +233,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         rawBalance ??= nested['walletBalance'] ?? nested['balance'];
       }
 
-      final double freshBalance = rawBalance is num
+      final double? freshBalance = rawBalance is num
           ? rawBalance.toDouble()
           : double.tryParse(
-                rawBalance?.toString() ?? '',
-              ) ??
-              walletBalance;
+              rawBalance?.toString() ?? '',
+            );
+
+      if (freshBalance == null) {
+        return false;
+      }
 
       await preferences.setDouble(
         'wallet_balance',
@@ -228,6 +253,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           walletBalance = freshBalance;
         });
       }
+      receivedFreshWalletBalance = true;
     } catch (_) {
       // Keep locally saved dashboard values.
     } finally {
@@ -238,6 +264,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
       }
     }
+
+    return receivedFreshWalletBalance;
+  }
+
+  Future<void> _refreshDashboard() async {
+    if (isRefreshing) {
+      return;
+    }
+
+    _refreshController.repeat();
+    final bool refreshed = await loadDashboard(refreshing: true);
+    _refreshController.stop();
+    _refreshController.reset();
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            refreshed
+                ? 'Dashboard updated'
+                : 'Saved dashboard data is still showing',
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+          backgroundColor: refreshed ? primaryGreen : const Color(0xFF5F6C64),
+        ),
+      );
   }
 
   Future<void> _loadServiceAvailability() async {
@@ -736,7 +794,935 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget buildHeader() {
-    return buildPremiumHeader();
+    return buildDashboardHeader();
+  }
+
+  Widget buildDashboardHeader() {
+    final String customerFirstName = firstName();
+    final String initial = customerFirstName.isEmpty
+        ? 'S'
+        : customerFirstName.substring(0, 1).toUpperCase();
+    final int hour = DateTime.now().hour;
+    final String greeting = hour < 12
+        ? 'Good morning,'
+        : hour < 17
+            ? 'Good afternoon,'
+            : 'Good evening,';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Container(
+              width: 48,
+              height: 48,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE9F8EF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD4EBDD)),
+              ),
+              child: Image.asset(
+                'assets/image/servicepay_logo.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: primaryGreen,
+                  size: 27,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'ServicePay',
+                    style: TextStyle(
+                      color: Color(0xFF13251A),
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.55,
+                    ),
+                  ),
+                  SizedBox(height: 1),
+                  Text(
+                    'Simple. Secure. Instant.',
+                    style: TextStyle(
+                      color: Color(0xFF708078),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _headerIconButton(
+              tooltip: 'Notifications',
+              icon: Icons.notifications_none_rounded,
+              onTap: () => openScreen(const NotificationsScreen()),
+              showDot: unreadNotifications > 0,
+            ),
+            const SizedBox(width: 8),
+            Semantics(
+              button: true,
+              label: 'Change profile photo',
+              child: GestureDetector(
+                onTap: isUploadingProfilePhoto
+                    ? null
+                    : _showProfilePhotoSourceSheet,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFEAF7F0),
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x1A08783E),
+                        blurRadius: 12,
+                        offset: Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: isUploadingProfilePhoto
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(
+                            color: primaryGreen,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : profilePhotoUrl.trim().isNotEmpty
+                          ? Image.network(
+                              profilePhotoUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Text(
+                                initial,
+                                style: const TextStyle(
+                                  color: primaryGreen,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              initial,
+                              style: const TextStyle(
+                                color: primaryGreen,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        Text(
+          greeting,
+          style: const TextStyle(
+            color: Color(0xFF63736A),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          customerFirstName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Color(0xFF122219),
+            fontSize: 27,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -1,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _headerIconButton({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool showDot = false,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2EAE5)),
+              ),
+              child: Icon(icon, size: 22, color: const Color(0xFF315645)),
+            ),
+            if (showDot)
+              Positioned(
+                right: 9,
+                top: 8,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8503D),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildTopQuickTools() {
+    final List<_DashboardTool> tools = <_DashboardTool>[
+      _DashboardTool(
+        label: 'Refresh',
+        icon: Icons.refresh_rounded,
+        onTap: _refreshDashboard,
+        key: const Key('dashboard-refresh-tool'),
+      ),
+      _DashboardTool(
+        label: 'History',
+        icon: Icons.receipt_long_outlined,
+        onTap: () => openScreen(const TransactionsScreen()),
+        key: const Key('dashboard-history-tool'),
+      ),
+      _DashboardTool(
+        label: 'Help',
+        icon: Icons.headset_mic_outlined,
+        onTap: () => openScreen(const HelpSupportScreen()),
+        key: const Key('dashboard-help-tool'),
+      ),
+      _DashboardTool(
+        label: 'Settings',
+        icon: Icons.tune_rounded,
+        onTap: () => openScreen(const ProfileScreen()),
+        key: const Key('dashboard-settings-tool'),
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: const Color(0xFFE3EDE7)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0F0B3B20),
+            blurRadius: 16,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: tools
+            .map(
+              (_DashboardTool tool) => Expanded(
+                child: _dashboardToolCard(tool),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _dashboardToolCard(_DashboardTool tool) {
+    final Widget icon = tool.label == 'Refresh'
+        ? RotationTransition(
+            turns: _refreshController,
+            child: Icon(tool.icon, size: 20, color: primaryGreen),
+          )
+        : Icon(tool.icon, size: 20, color: primaryGreen);
+
+    return Semantics(
+      button: true,
+      label: tool.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: tool.key,
+          onTap: isRefreshing && tool.label == 'Refresh' ? null : tool.onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 3),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  width: 35,
+                  height: 35,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: softGreen,
+                    shape: BoxShape.circle,
+                  ),
+                  child: icon,
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  tool.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF45564C),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildPremiumBalanceCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 17, 18, 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFFF8FFFA), Color(0xFFE5F7EC)],
+        ),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: const Color(0xFFCFE9D8)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x1608783E),
+            blurRadius: 22,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Positioned(
+            right: -10,
+            top: 24,
+            child: IgnorePointer(
+              child: _floating(
+                index: 1,
+                child: Container(
+                  width: 92,
+                  height: 92,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: primaryGreen.withValues(alpha: 0.08),
+                    border: Border.all(
+                      color: primaryGreen.withValues(alpha: 0.12),
+                      width: 9,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.shield_rounded,
+                    color: primaryGreen,
+                    size: 39,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Text(
+                    'Available Balance',
+                    style: TextStyle(
+                      color: Color(0xFF51645A),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Semantics(
+                    button: true,
+                    label: hideBalance ? 'Show balance' : 'Hide balance',
+                    child: Tooltip(
+                      message: hideBalance ? 'Show balance' : 'Hide balance',
+                      child: InkWell(
+                        onTap: () => setState(() => hideBalance = !hideBalance),
+                        borderRadius: BorderRadius.circular(18),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(
+                            hideBalance
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: primaryGreen,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => openScreen(const WalletScreen()),
+                    icon: const Icon(Icons.account_balance_wallet_outlined,
+                        size: 17),
+                    label: const Text('Wallet'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: primaryGreen,
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 7,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 7),
+              Text(
+                hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF102A1B),
+                  fontSize: 29,
+                  height: 1.05,
+                  letterSpacing: -1.2,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 7,
+                runSpacing: 9,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primaryGreen.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.verified_user_outlined,
+                            size: 14, color: primaryGreen),
+                        SizedBox(width: 4),
+                        Text(
+                          'Secured & Protected',
+                          style: TextStyle(
+                            color: primaryGreen,
+                            fontSize: 9.8,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      _balanceActionButton(
+                        label: 'Add Money',
+                        icon: Icons.add_rounded,
+                        filled: true,
+                        onTap: () => openScreen(const WalletScreen()),
+                      ),
+                      const SizedBox(width: 7),
+                      _balanceActionButton(
+                        label: 'Send Money',
+                        icon: Icons.send_rounded,
+                        filled: false,
+                        onTap: () => openScreen(const TransferScreen()),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _balanceActionButton({
+    required String label,
+    required IconData icon,
+    required bool filled,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: filled ? primaryGreen : Colors.white.withValues(alpha: 0.76),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 15, color: filled ? Colors.white : primaryGreen),
+              const SizedBox(width: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  color: filled ? Colors.white : primaryGreen,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildPremiumActionRow() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE3ECE6)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0C102A1B),
+            blurRadius: 15,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: _premiumWalletAction(
+              icon: Icons.swap_horiz_rounded,
+              label: 'Transfer',
+              detail: 'Send funds',
+              onTap: () => openScreen(const TransferScreen()),
+            ),
+          ),
+          _premiumActionDivider(),
+          Expanded(
+            child: _premiumWalletAction(
+              icon: Icons.south_west_rounded,
+              label: 'Withdrawal',
+              detail: 'Cash out',
+              onTap: () => openScreen(const WithdrawalScreen()),
+            ),
+          ),
+          _premiumActionDivider(),
+          Expanded(
+            child: _premiumWalletAction(
+              icon: Icons.account_balance_wallet_outlined,
+              label: 'Wallet',
+              detail: 'Manage funds',
+              onTap: () => openScreen(const WalletScreen()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _premiumActionDivider() {
+    return Container(
+      width: 1,
+      height: 46,
+      color: const Color(0xFFE5EEE8),
+    );
+  }
+
+  Widget _premiumWalletAction({
+    required IconData icon,
+    required String label,
+    required String detail,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 35,
+                height: 35,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: softGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: primaryGreen, size: 20),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF263D30),
+                  fontSize: 10.8,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  if (constraints.maxWidth < 96) {
+                    return const SizedBox(height: 2);
+                  }
+                  return Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF839189),
+                      fontSize: 8.8,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildPremiumServices() {
+    final List<_DashboardService> all = <_DashboardService>[
+      ...filtered(popularServices()),
+      ...filtered(moreServices()),
+    ];
+    final Map<String, _DashboardService> unique = <String, _DashboardService>{
+      for (final _DashboardService service in all)
+        service.title.toLowerCase(): service,
+    };
+
+    _DashboardService? findByName(String name) {
+      return unique.values.cast<_DashboardService?>().firstWhere(
+            (_DashboardService? service) =>
+                service?.title.toLowerCase().contains(name.toLowerCase()) ??
+                false,
+            orElse: () => null,
+          );
+    }
+
+    final List<_DashboardService> selected = <_DashboardService>[
+      for (final String title in <String>[
+        'Airtime',
+        'Data',
+        'Electricity',
+        'Cable',
+        'Delivery',
+        'NIN',
+        'Empowerment',
+        'Cards',
+      ])
+        if (findByName(title) case final _DashboardService service) service,
+    ];
+
+    for (final _DashboardService service in unique.values) {
+      if (selected.length >= 8) {
+        break;
+      }
+      if (!selected.any(
+        (_DashboardService existing) => existing.title == service.title,
+      )) {
+        selected.add(service);
+      }
+    }
+
+    if (selected.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 16, 12, 13),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFCFFFD),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE1EEE6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Services',
+                  style: TextStyle(
+                    color: Color(0xFF15281B),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => _ServicePayAllServicesScreen(
+                        services: unique.values.toList(),
+                      ),
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(foregroundColor: primaryGreen),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'All Services',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, size: 18),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final int columns = constraints.maxWidth >= 350 ? 4 : 3;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: selected.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 9,
+                  crossAxisSpacing: 9,
+                  mainAxisExtent: columns == 4 ? 100 : 104,
+                ),
+                itemBuilder: (BuildContext context, int index) {
+                  return _premiumServiceItem(
+                    selected[index],
+                    index: index,
+                  );
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _premiumServiceItem(
+    _DashboardService service, {
+    required int index,
+  }) {
+    return _floating(
+      index: index + 3,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: service.onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE6EEE9)),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                  color: Color(0x110B3B20),
+                  blurRadius: 10,
+                  offset: Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: service.backgroundColor.withValues(alpha: 0.72),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    service.icon,
+                    color: primaryGreen,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  service.title,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF405348),
+                    fontSize: 10.2,
+                    height: 1.1,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildPremiumInviteBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 17, 16, 17),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFF003F26), Color(0xFF08783E)],
+        ),
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x38004326),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Invite & Earn',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Share ServicePay with friends and earn rewards together.',
+                  style: TextStyle(
+                    color: Color(0xFFD4F5DD),
+                    fontSize: 11.5,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 13),
+                Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(17),
+                  child: InkWell(
+                    onTap: () => openScreen(const ReferralScreen()),
+                    borderRadius: BorderRadius.circular(17),
+                    child: const Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                      child: Text(
+                        'Invite Now',
+                        style: TextStyle(
+                          color: primaryGreen,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          _floating(
+            index: 12,
+            child: Container(
+              width: 72,
+              height: 72,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.20),
+                ),
+              ),
+              child: const Icon(
+                Icons.card_giftcard_rounded,
+                color: Color(0xFFE0FFE8),
+                size: 37,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _floating({required int index, required Widget child}) {
+    return AnimatedBuilder(
+      animation: _motionController,
+      child: child,
+      builder: (BuildContext context, Widget? child) {
+        final double phase =
+            _motionController.value * math.pi * 2 + (index * math.pi / 4);
+        return Transform.translate(
+          offset: Offset(0, math.sin(phase) * 1.8),
+          child: Transform.scale(
+            scale: 1 + (math.cos(phase) * 0.012),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   Widget buildWalletCard() {
@@ -2837,63 +3823,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           color: primaryGreen,
-          onRefresh: () {
-            return loadDashboard(
-              refreshing: true,
-            );
-          },
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(
-              15,
-              14,
-              15,
-              30,
-            ),
-            children: <Widget>[
-              buildHeader(),
-              const SizedBox(height: 20),
-              if (isLoading)
-                const LinearProgressIndicator(
-                  color: primaryGreen,
-                  backgroundColor: softGreen,
-                  minHeight: 2,
-                ),
-              if (isLoading) const SizedBox(height: 10),
-              buildWalletCard(),
-              const SizedBox(height: 13),
-              buildModernHomeServices(),
-              buildHomeBanners(),
-              if (filtered(
-                popularServices(),
-              ).isNotEmpty)
-                const SizedBox(height: 18),
-              const SizedBox.shrink(),
-              buildEmptySearch(),
-              if (searchQuery.trim().isEmpty) const SizedBox(height: 18),
-              if (searchQuery.trim().isEmpty) const SizedBox.shrink(),
-              if (isRefreshing)
-                const Padding(
-                  padding: EdgeInsets.only(
-                    top: 20,
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Refreshing dashboard...',
-                      style: TextStyle(
-                        color: Color(
-                          0xFF667085,
+          onRefresh: _refreshDashboard,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
+                children: <Widget>[
+                  buildHeader(),
+                  const SizedBox(height: 18),
+                  buildTopQuickTools(),
+                  const SizedBox(height: 16),
+                  if (isLoading)
+                    const LinearProgressIndicator(
+                      color: primaryGreen,
+                      backgroundColor: softGreen,
+                      minHeight: 2,
+                    ),
+                  if (isLoading) const SizedBox(height: 10),
+                  buildPremiumBalanceCard(),
+                  const SizedBox(height: 12),
+                  buildPremiumActionRow(),
+                  const SizedBox(height: 20),
+                  buildPremiumServices(),
+                  const SizedBox(height: 18),
+                  buildPremiumInviteBanner(),
+                  const SizedBox(height: 14),
+                  const TrustDashboardEntry(),
+                  if (isRefreshing)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 18),
+                      child: Center(
+                        child: Text(
+                          'Refreshing dashboard…',
+                          style: TextStyle(
+                            color: Color(0xFF667085),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-            ],
+                  const SizedBox(height: 22),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _DashboardTool {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final Key key;
+
+  const _DashboardTool({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    required this.key,
+  });
 }
 
 class _DashboardService {

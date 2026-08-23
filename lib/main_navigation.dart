@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dashboard_screen.dart';
 import 'keke_driver_screen.dart';
 import 'profile_screen.dart';
+import 'qr_pay_screen.dart';
 import 'transactions_screen.dart';
 import 'wallet_screen.dart';
 
@@ -16,7 +17,8 @@ class MainNavigation extends StatefulWidget {
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
+class _MainNavigationState extends State<MainNavigation>
+    with SingleTickerProviderStateMixin {
   static const Color primaryGreen = Color(0xFF08783E);
 
   int currentIndex = 0;
@@ -26,16 +28,27 @@ class _MainNavigationState extends State<MainNavigation> {
   String userRole = 'CUSTOMER';
 
   List<Widget> pages = <Widget>[];
+  late final AnimationController _qrPulseController;
 
   @override
   void initState() {
     super.initState();
+    _qrPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
 
     // Show customer dashboard immediately.
     // Role loading can continue in the background.
     pages = _buildPages('CUSTOMER');
 
     _loadUserRole();
+  }
+
+  @override
+  void dispose() {
+    _qrPulseController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserRole() async {
@@ -186,7 +199,7 @@ class _MainNavigationState extends State<MainNavigation> {
           8,
         ),
         child: Container(
-          height: 78,
+          height: userRole == 'DELIVERY_RIDER' ? 78 : 82,
           padding: const EdgeInsets.symmetric(
             horizontal: 7,
             vertical: 6,
@@ -216,30 +229,132 @@ class _MainNavigationState extends State<MainNavigation> {
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: userRole == 'DELIVERY_RIDER'
+                ? _riderNavigationItems()
+                : _customerNavigationItems(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _riderNavigationItems() {
+    return <Widget>[
+      buildNavigationItem(
+        index: 0,
+        icon: firstNavigationIcon,
+        activeIcon: firstNavigationActiveIcon,
+        label: firstNavigationLabel,
+      ),
+      buildNavigationItem(
+        index: 1,
+        icon: Icons.receipt_long_outlined,
+        activeIcon: Icons.receipt_long_rounded,
+        label: 'Transactions',
+      ),
+      buildNavigationItem(
+        index: 2,
+        icon: Icons.account_balance_wallet_outlined,
+        activeIcon: Icons.account_balance_wallet_rounded,
+        label: 'Wallet',
+      ),
+      buildNavigationItem(
+        index: 3,
+        icon: Icons.person_outline_rounded,
+        activeIcon: Icons.person_rounded,
+        label: 'Profile',
+      ),
+    ];
+  }
+
+  List<Widget> _customerNavigationItems() {
+    return <Widget>[
+      buildNavigationItem(
+        index: 0,
+        icon: Icons.home_outlined,
+        activeIcon: Icons.home_rounded,
+        label: 'Home',
+      ),
+      buildNavigationItem(
+        index: 1,
+        icon: Icons.receipt_long_outlined,
+        activeIcon: Icons.receipt_long_rounded,
+        label: 'Transactions',
+      ),
+      _buildQrNavigationItem(),
+      buildNavigationItem(
+        index: 2,
+        icon: Icons.account_balance_wallet_outlined,
+        activeIcon: Icons.account_balance_wallet_rounded,
+        label: 'Wallet',
+      ),
+      buildNavigationItem(
+        index: 3,
+        icon: Icons.person_outline_rounded,
+        activeIcon: Icons.person_rounded,
+        label: 'Profile',
+      ),
+    ];
+  }
+
+  Widget _buildQrNavigationItem() {
+    return Expanded(
+      child: Semantics(
+        button: true,
+        label: 'QR Scan',
+        child: InkWell(
+          key: const Key('customer-qr-navigation'),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const QrPayScreen(),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(22),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              buildNavigationItem(
-                index: 0,
-                icon: firstNavigationIcon,
-                activeIcon: firstNavigationActiveIcon,
-                label: firstNavigationLabel,
+              AnimatedBuilder(
+                animation: _qrPulseController,
+                builder: (BuildContext context, Widget? child) {
+                  final double scale = 1 + (_qrPulseController.value * 0.035);
+                  return Transform.translate(
+                    offset: const Offset(0, -10),
+                    child: Transform.scale(scale: scale, child: child),
+                  );
+                },
+                child: Container(
+                  width: 50,
+                  height: 50,
+                  decoration: const BoxDecoration(
+                    color: primaryGreen,
+                    shape: BoxShape.circle,
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x4D08783E),
+                        blurRadius: 14,
+                        offset: Offset(0, 7),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
               ),
-              buildNavigationItem(
-                index: 1,
-                icon: Icons.receipt_long_outlined,
-                activeIcon: Icons.receipt_long_rounded,
-                label: 'Transactions',
-              ),
-              buildNavigationItem(
-                index: 2,
-                icon: Icons.account_balance_wallet_outlined,
-                activeIcon: Icons.account_balance_wallet_rounded,
-                label: 'Wallet',
-              ),
-              buildNavigationItem(
-                index: 3,
-                icon: Icons.person_outline_rounded,
-                activeIcon: Icons.person_rounded,
-                label: 'Profile',
+              const SizedBox(height: 1),
+              const Text(
+                'Scan',
+                style: TextStyle(
+                  color: primaryGreen,
+                  fontSize: 9.5,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),
