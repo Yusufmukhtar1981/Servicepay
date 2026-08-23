@@ -2,8 +2,38 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
+
+import 'bvn_verification_screen.dart';
+import 'id_verification_screen.dart';
+
+MediaType kycImageContentType(String filename) {
+  final extension = filename.split('.').last.toLowerCase();
+  final subtype = switch (extension) {
+    'png' => 'png',
+    'webp' => 'webp',
+    'gif' => 'gif',
+    'heic' => 'heic',
+    'heif' => 'heif',
+    _ => 'jpeg',
+  };
+
+  return MediaType('image', subtype);
+}
+
+http.MultipartFile kycDocumentMultipartFile({
+  required List<int> bytes,
+  required String filename,
+}) {
+  return http.MultipartFile.fromBytes(
+    'document',
+    bytes,
+    filename: filename,
+    contentType: kycImageContentType(filename),
+  );
+}
 
 class KycScreen extends StatefulWidget {
   const KycScreen({super.key});
@@ -30,9 +60,16 @@ class _KycScreenState extends State<KycScreen> {
   String level = 'TIER_1';
   String requestedLevel = 'TIER_1';
 
-  String selfieUrl = '';
-  String idDocumentUrl = '';
-  String proofOfAddressUrl = '';
+  bool selfieUploaded = false;
+  bool idDocumentUploaded = false;
+  bool proofOfAddressUploaded = false;
+  bool selfieNeedsSecureReupload = false;
+  bool idDocumentNeedsSecureReupload = false;
+  bool proofOfAddressNeedsSecureReupload = false;
+  bool ninVerified = false;
+  bool bvnVerified = false;
+  String ninLast4 = '';
+  String bvnLast4 = '';
 
   bool uploadingSelfie = false;
   bool uploadingIdDocument = false;
@@ -43,6 +80,8 @@ class _KycScreenState extends State<KycScreen> {
 
   bool isLoading = true;
   bool isSubmitting = false;
+
+  bool get _isLocked => status == 'PENDING' || status == 'UNDER_REVIEW';
 
   @override
   void initState() {
@@ -92,28 +131,7 @@ class _KycScreenState extends State<KycScreen> {
           body['success'] == true) {
         final kyc = body['kyc'] ?? {};
 
-        firstNameController.text = (kyc['firstName'] ?? '').toString();
-        middleNameController.text = (kyc['middleName'] ?? '').toString();
-        lastNameController.text = (kyc['lastName'] ?? '').toString();
-        addressController.text = (kyc['address'] ?? '').toString();
-        stateController.text = (kyc['state'] ?? '').toString();
-        lgaController.text = (kyc['lga'] ?? '').toString();
-
-        final dob = kyc['dateOfBirth'];
-        if (dob != null && dob.toString().isNotEmpty) {
-          dateOfBirth = DateTime.tryParse(dob.toString()) ??
-              DateTime.tryParse(dob.toString().split('T').first);
-        }
-
-        final loadedGender = (kyc['gender'] ?? '').toString().toUpperCase();
-
-        if (['MALE', 'FEMALE', 'OTHER'].contains(loadedGender)) {
-          gender = loadedGender;
-        }
-
-        status = (kyc['status'] ?? 'NOT_STARTED').toString();
-        level = (kyc['level'] ?? 'TIER_1').toString();
-        rejectionReason = (kyc['rejectionReason'] ?? '').toString();
+        _applyKyc(Map<String, dynamic>.from(kyc));
       } else {
         _showMessage(
           (body['message'] ?? 'Unable to load KYC.').toString(),
@@ -128,7 +146,62 @@ class _KycScreenState extends State<KycScreen> {
     }
   }
 
+  void _applyKyc(Map<String, dynamic> kyc) {
+    firstNameController.text = (kyc['firstName'] ?? '').toString();
+    middleNameController.text = (kyc['middleName'] ?? '').toString();
+    lastNameController.text = (kyc['lastName'] ?? '').toString();
+    addressController.text = (kyc['address'] ?? '').toString();
+    stateController.text = (kyc['state'] ?? '').toString();
+    lgaController.text = (kyc['lga'] ?? '').toString();
+    final dob = kyc['dateOfBirth'];
+    if (dob != null && dob.toString().isNotEmpty) {
+      dateOfBirth = DateTime.tryParse(dob.toString()) ??
+          DateTime.tryParse(dob.toString().split('T').first);
+    }
+    final loadedGender = (kyc['gender'] ?? '').toString().toUpperCase();
+    gender =
+        ['MALE', 'FEMALE', 'OTHER'].contains(loadedGender) ? loadedGender : '';
+    status = (kyc['status'] ?? 'NOT_STARTED').toString().toUpperCase();
+    level = (kyc['level'] ?? 'TIER_1').toString().toUpperCase();
+    requestedLevel = (kyc['requestedLevel'] ?? level).toString().toUpperCase();
+    rejectionReason = (kyc['rejectionReason'] ?? '').toString();
+
+    final identity = kyc['identity'] is Map
+        ? Map<String, dynamic>.from(kyc['identity'] as Map)
+        : <String, dynamic>{};
+    ninVerified = identity['ninVerified'] == true;
+    bvnVerified = identity['bvnVerified'] == true;
+    ninLast4 = (identity['ninLast4'] ?? '').toString();
+    bvnLast4 = (identity['bvnLast4'] ?? '').toString();
+
+    final documents = kyc['documents'] is Map
+        ? Map<String, dynamic>.from(kyc['documents'] as Map)
+        : <String, dynamic>{};
+    _applyDocumentFlags(documents);
+  }
+
+  void _applyDocumentFlags(Map<String, dynamic> documents) {
+    selfieUploaded = documents['selfieUploaded'] == true;
+    idDocumentUploaded = documents['idDocumentUploaded'] == true;
+    proofOfAddressUploaded = documents['proofOfAddressUploaded'] == true;
+    selfieNeedsSecureReupload = documents['selfieNeedsSecureReupload'] == true;
+    idDocumentNeedsSecureReupload =
+        documents['idDocumentNeedsSecureReupload'] == true;
+    proofOfAddressNeedsSecureReupload =
+        documents['proofOfAddressNeedsSecureReupload'] == true;
+  }
+
+  bool _canUploadDocument(String documentType) {
+    if (!_isLocked) return true;
+
+    return (documentType == 'SELFIE' && selfieNeedsSecureReupload) ||
+        (documentType == 'ID_DOCUMENT' && idDocumentNeedsSecureReupload) ||
+        (documentType == 'PROOF_OF_ADDRESS' &&
+            proofOfAddressNeedsSecureReupload);
+  }
+
   Future<void> _pickDate() async {
+    if (_isLocked) return;
     final now = DateTime.now();
 
     final picked = await showDatePicker(
@@ -144,6 +217,10 @@ class _KycScreenState extends State<KycScreen> {
   }
 
   Future<void> _submitKyc() async {
+    if (_isLocked) {
+      _showMessage('Your KYC is being reviewed and cannot be changed yet.');
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     if (dateOfBirth == null) {
@@ -157,7 +234,7 @@ class _KycScreenState extends State<KycScreen> {
     }
 
     if ((requestedLevel == 'TIER_2' || requestedLevel == 'TIER_3') &&
-        idDocumentUrl.isEmpty) {
+        !idDocumentUploaded) {
       _showMessage(
         'Please upload your Government ID.',
       );
@@ -165,14 +242,14 @@ class _KycScreenState extends State<KycScreen> {
     }
 
     if ((requestedLevel == 'TIER_2' || requestedLevel == 'TIER_3') &&
-        selfieUrl.isEmpty) {
+        !selfieUploaded) {
       _showMessage(
         'Please take and upload your selfie.',
       );
       return;
     }
 
-    if (requestedLevel == 'TIER_3' && proofOfAddressUrl.isEmpty) {
+    if (requestedLevel == 'TIER_3' && !proofOfAddressUploaded) {
       _showMessage(
         'Please upload your proof of address.',
       );
@@ -217,11 +294,7 @@ class _KycScreenState extends State<KycScreen> {
           body['success'] == true) {
         final kyc = body['kyc'] ?? {};
 
-        setState(() {
-          status = (kyc['status'] ?? 'PENDING').toString();
-          level = (kyc['level'] ?? 'TIER_1').toString();
-          rejectionReason = (kyc['rejectionReason'] ?? '').toString();
-        });
+        setState(() => _applyKyc(Map<String, dynamic>.from(kyc)));
 
         _showMessage(
           (body['message'] ?? 'KYC submitted successfully.').toString(),
@@ -253,7 +326,7 @@ class _KycScreenState extends State<KycScreen> {
   Future<void> _uploadKycDocument(
     String documentType,
   ) async {
-    if (isSubmitting) {
+    if (isSubmitting || !_canUploadDocument(documentType)) {
       return;
     }
 
@@ -313,9 +386,8 @@ class _KycScreenState extends State<KycScreen> {
       final bytes = await picked.readAsBytes();
 
       request.files.add(
-        http.MultipartFile.fromBytes(
-          'document',
-          bytes,
+        kycDocumentMultipartFile(
+          bytes: bytes,
           filename: picked.name,
         ),
       );
@@ -338,39 +410,26 @@ class _KycScreenState extends State<KycScreen> {
           response.statusCode < 300 &&
           body is Map &&
           body['success'] == true) {
-        final dynamic document = body['document'];
-
-        String uploadedUrl = '';
-
-        if (document is Map) {
-          uploadedUrl = (document['url'] ??
-                  document['secureUrl'] ??
-                  document['documentUrl'] ??
-                  '')
-              .toString();
-        }
-
         final dynamic kyc = body['kyc'];
-
-        if (kyc is Map) {
-          if (documentType == 'SELFIE') {
-            uploadedUrl = (kyc['selfieUrl'] ?? uploadedUrl).toString();
-          } else if (documentType == 'ID_DOCUMENT') {
-            uploadedUrl = (kyc['idDocumentUrl'] ?? uploadedUrl).toString();
-          } else if (documentType == 'PROOF_OF_ADDRESS') {
-            uploadedUrl = (kyc['proofOfAddressUrl'] ?? uploadedUrl).toString();
-          }
-        }
 
         if (mounted) {
           setState(() {
-            if (documentType == 'SELFIE') {
-              selfieUrl = uploadedUrl.isEmpty ? 'UPLOADED' : uploadedUrl;
-            } else if (documentType == 'ID_DOCUMENT') {
-              idDocumentUrl = uploadedUrl.isEmpty ? 'UPLOADED' : uploadedUrl;
-            } else if (documentType == 'PROOF_OF_ADDRESS') {
-              proofOfAddressUrl =
-                  uploadedUrl.isEmpty ? 'UPLOADED' : uploadedUrl;
+            if (kyc is Map) {
+              _applyKyc(Map<String, dynamic>.from(kyc));
+            } else if (body['documents'] is Map) {
+              _applyDocumentFlags(
+                Map<String, dynamic>.from(body['documents'] as Map),
+              );
+            } else {
+              if (documentType == 'SELFIE') {
+                selfieUploaded = true;
+              }
+              if (documentType == 'ID_DOCUMENT') {
+                idDocumentUploaded = true;
+              }
+              if (documentType == 'PROOF_OF_ADDRESS') {
+                proofOfAddressUploaded = true;
+              }
             }
           });
         }
@@ -471,13 +530,19 @@ class _KycScreenState extends State<KycScreen> {
           const SizedBox(height: 16),
           if (_tierRequiresIdentityDocuments)
             _kycDocumentTile(
+              documentType: 'ID_DOCUMENT',
               title: 'Government ID',
               subtitle:
                   'Upload NIN slip/card, National ID, Driver’s Licence or International Passport.',
               icon: Icons.badge_outlined,
-              uploaded: idDocumentUrl.isNotEmpty,
+              uploaded: idDocumentUploaded,
+              needsSecureReupload: idDocumentNeedsSecureReupload,
               loading: uploadingIdDocument,
-              buttonText: idDocumentUrl.isNotEmpty ? 'Replace ID' : 'Upload ID',
+              buttonText: idDocumentNeedsSecureReupload
+                  ? 'Securely Re-upload ID'
+                  : idDocumentUploaded
+                      ? 'Replace ID'
+                      : 'Upload ID',
               onTap: () => _uploadKycDocument(
                 'ID_DOCUMENT',
               ),
@@ -485,13 +550,18 @@ class _KycScreenState extends State<KycScreen> {
           if (_tierRequiresIdentityDocuments) const SizedBox(height: 12),
           if (_tierRequiresIdentityDocuments)
             _kycDocumentTile(
+              documentType: 'SELFIE',
               title: 'Selfie',
               subtitle: 'Take a clear live selfie showing your full face.',
               icon: Icons.face_retouching_natural_outlined,
-              uploaded: selfieUrl.isNotEmpty,
+              uploaded: selfieUploaded,
+              needsSecureReupload: selfieNeedsSecureReupload,
               loading: uploadingSelfie,
-              buttonText:
-                  selfieUrl.isNotEmpty ? 'Retake Selfie' : 'Take Selfie',
+              buttonText: selfieNeedsSecureReupload
+                  ? 'Securely Re-upload Selfie'
+                  : selfieUploaded
+                      ? 'Retake Selfie'
+                      : 'Take Selfie',
               onTap: () => _uploadKycDocument(
                 'SELFIE',
               ),
@@ -499,15 +569,19 @@ class _KycScreenState extends State<KycScreen> {
           if (_tierRequiresProofOfAddress) const SizedBox(height: 12),
           if (_tierRequiresProofOfAddress)
             _kycDocumentTile(
+              documentType: 'PROOF_OF_ADDRESS',
               title: 'Proof of Address',
               subtitle:
                   'Upload a recent utility bill, bank statement or other acceptable proof of residence.',
               icon: Icons.home_work_outlined,
-              uploaded: proofOfAddressUrl.isNotEmpty,
+              uploaded: proofOfAddressUploaded,
+              needsSecureReupload: proofOfAddressNeedsSecureReupload,
               loading: uploadingProofOfAddress,
-              buttonText: proofOfAddressUrl.isNotEmpty
-                  ? 'Replace Document'
-                  : 'Upload Document',
+              buttonText: proofOfAddressNeedsSecureReupload
+                  ? 'Securely Re-upload Document'
+                  : proofOfAddressUploaded
+                      ? 'Replace Document'
+                      : 'Upload Document',
               onTap: () => _uploadKycDocument(
                 'PROOF_OF_ADDRESS',
               ),
@@ -518,10 +592,12 @@ class _KycScreenState extends State<KycScreen> {
   }
 
   Widget _kycDocumentTile({
+    required String documentType,
     required String title,
     required String subtitle,
     required IconData icon,
     required bool uploaded,
+    required bool needsSecureReupload,
     required bool loading,
     required String buttonText,
     required VoidCallback onTap,
@@ -568,7 +644,11 @@ class _KycScreenState extends State<KycScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      uploaded ? 'Uploaded successfully' : subtitle,
+                      uploaded
+                          ? 'Uploaded securely'
+                          : needsSecureReupload
+                              ? 'A secure re-upload is required before this document can be reviewed.'
+                              : subtitle,
                       style: TextStyle(
                         fontSize: 12.5,
                         height: 1.35,
@@ -576,9 +656,11 @@ class _KycScreenState extends State<KycScreen> {
                             ? const Color(
                                 0xFF08783E,
                               )
-                            : const Color(
-                                0xFF667085,
-                              ),
+                            : needsSecureReupload
+                                ? const Color(0xFFB54708)
+                                : const Color(
+                                    0xFF667085,
+                                  ),
                       ),
                     ),
                   ],
@@ -590,7 +672,8 @@ class _KycScreenState extends State<KycScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: loading ? null : onTap,
+              onPressed:
+                  loading || !_canUploadDocument(documentType) ? null : onTap,
               icon: loading
                   ? const SizedBox(
                       width: 18,
@@ -662,6 +745,88 @@ class _KycScreenState extends State<KycScreen> {
     return '$day/$month/${date.year}';
   }
 
+  Future<void> _openVerificationScreen(Widget screen) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => screen),
+    );
+    if (mounted) await _loadKyc();
+  }
+
+  Widget _buildIdentityVerificationSection() {
+    Widget verificationTile({
+      required String title,
+      required bool verified,
+      required String last4,
+      required VoidCallback onTap,
+    }) {
+      final suffix = last4.isEmpty ? '' : ' •••• $last4';
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(
+          verified ? Icons.verified_rounded : Icons.pending_outlined,
+          color: verified ? const Color(0xFF08783E) : Colors.orange,
+        ),
+        title: Text(title),
+        subtitle: Text(
+          verified ? 'Verified$suffix' : 'Not verified',
+          style: TextStyle(
+            color: verified ? const Color(0xFF08783E) : Colors.black54,
+          ),
+        ),
+        trailing: TextButton(
+          onPressed: onTap,
+          child: Text(verified ? 'View' : 'Verify'),
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Identity verification',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(height: 3),
+            const Text(
+              'Verify your NIN or BVN securely. This form never displays or collects the full number.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            verificationTile(
+              title: 'NIN verification',
+              verified: ninVerified,
+              last4: ninLast4,
+              onTap: () => _openVerificationScreen(
+                const IdVerificationScreen(),
+              ),
+            ),
+            const Divider(height: 1),
+            verificationTile(
+              title: 'BVN verification',
+              verified: bvnVerified,
+              last4: bvnLast4,
+              onTap: () => _openVerificationScreen(
+                const BvnVerificationScreen(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTierSelector() {
     String limitText(String tier) {
       switch (tier) {
@@ -684,7 +849,7 @@ class _KycScreenState extends State<KycScreen> {
 
       return InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: isSubmitting
+        onTap: isSubmitting || _isLocked
             ? null
             : () {
                 setState(() {
@@ -861,8 +1026,6 @@ class _KycScreenState extends State<KycScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildTierSelector(),
-                              _buildKycDocumentsSection(),
                               const Text(
                                 'Verification Status',
                                 style: TextStyle(
@@ -881,10 +1044,9 @@ class _KycScreenState extends State<KycScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Current level: ${level.replaceAll('_', ' ')}',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                ),
+                                'Current tier: ${level.replaceAll('_', ' ')}\n'
+                                'Requested tier: ${requestedLevel.replaceAll('_', ' ')}',
+                                style: const TextStyle(fontSize: 13),
                               ),
                             ],
                           ),
@@ -892,6 +1054,17 @@ class _KycScreenState extends State<KycScreen> {
                       ],
                     ),
                   ),
+                  if (_isLocked) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Your submission is in progress. You can refresh this page for updates, but changes are disabled until it is reviewed.',
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  _buildTierSelector(),
+                  _buildKycDocumentsSection(),
+                  _buildIdentityVerificationSection(),
                   if (status == 'REJECTED' && rejectionReason.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     Container(
@@ -951,7 +1124,7 @@ class _KycScreenState extends State<KycScreen> {
                           required: true,
                         ),
                         InkWell(
-                          onTap: _pickDate,
+                          onTap: _isLocked ? null : _pickDate,
                           borderRadius: BorderRadius.circular(14),
                           child: InputDecorator(
                             decoration: const InputDecoration(
@@ -990,11 +1163,13 @@ class _KycScreenState extends State<KycScreen> {
                               child: Text('Other'),
                             ),
                           ],
-                          onChanged: (value) {
-                            setState(() {
-                              gender = value ?? '';
-                            });
-                          },
+                          onChanged: _isLocked
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    gender = value ?? '';
+                                  });
+                                },
                         ),
                         const SizedBox(height: 14),
                         _textField(
@@ -1014,6 +1189,7 @@ class _KycScreenState extends State<KycScreen> {
                           controller: lgaController,
                           label: 'LGA',
                           icon: Icons.map_outlined,
+                          required: true,
                         ),
                         const SizedBox(height: 8),
                         Container(
@@ -1047,7 +1223,8 @@ class _KycScreenState extends State<KycScreen> {
                           width: double.infinity,
                           height: 52,
                           child: ElevatedButton.icon(
-                            onPressed: isSubmitting ? null : _submitKyc,
+                            onPressed:
+                                isSubmitting || _isLocked ? null : _submitKyc,
                             icon: isSubmitting
                                 ? const SizedBox(
                                     width: 20,
@@ -1099,6 +1276,7 @@ class _KycScreenState extends State<KycScreen> {
       child: TextFormField(
         controller: controller,
         maxLines: maxLines,
+        enabled: !_isLocked,
         validator: (value) {
           if (required && (value == null || value.trim().isEmpty)) {
             return '$label is required';
