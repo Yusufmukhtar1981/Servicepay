@@ -15,15 +15,20 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static const Color primaryGreen = Color(0xFF2E7D32);
+  static const int pageSize = 20;
 
   final TextEditingController searchController = TextEditingController();
+  final ScrollController scrollController = ScrollController();
 
   bool isLoading = true;
   bool isRefreshing = false;
+  bool isLoadingMore = false;
+  bool hasMore = false;
 
   String searchQuery = '';
   String selectedFilter = 'ALL';
   String errorMessage = '';
+  String? nextCursor;
 
   List<Map<String, dynamic>> transactions = [];
 
@@ -38,27 +43,47 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   void initState() {
     super.initState();
     loadTransactions();
+    scrollController.addListener(_loadMoreWhenNeeded);
   }
 
   @override
   void dispose() {
     searchController.dispose();
+    scrollController.dispose();
     super.dispose();
+  }
+
+  void _loadMoreWhenNeeded() {
+    if (!scrollController.hasClients ||
+        scrollController.position.extentAfter > 320) {
+      return;
+    }
+
+    loadMoreTransactions();
   }
 
   Future<void> loadTransactions({
     bool showRefreshLoader = false,
+    bool reset = true,
   }) async {
     if (!mounted) return;
 
+    if ((!reset && isLoadingMore) || (reset && isRefreshing)) {
+      return;
+    }
+
     setState(() {
-      if (showRefreshLoader) {
+      if (!reset) {
+        isLoadingMore = true;
+      } else if (showRefreshLoader) {
         isRefreshing = true;
       } else {
         isLoading = true;
       }
 
-      errorMessage = '';
+      if (reset) {
+        errorMessage = '';
+      }
     });
 
     try {
@@ -72,8 +97,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         );
       }
 
+      final Map<String, String> queryParameters = {
+        'limit': '$pageSize',
+      };
+
+      if (!reset && nextCursor != null && nextCursor!.isNotEmpty) {
+        queryParameters['before'] = nextCursor!;
+      }
+
       final http.Response response = await http.get(
-        Uri.parse('$baseUrl/admin/transactions'),
+        Uri.parse('$baseUrl/transactions').replace(
+          queryParameters: queryParameters,
+        ),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -86,11 +121,32 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final List<Map<String, dynamic>> loaded = _extractTransactions(decoded);
+        final Map<String, dynamic> pagination = _extractPagination(decoded);
 
         if (!mounted) return;
 
         setState(() {
-          transactions = loaded;
+          final Map<String, Map<String, dynamic>> combined = {
+            for (final transaction in reset ? <Map<String, dynamic>>[] : transactions)
+              _transactionId(transaction): transaction,
+          };
+
+          for (final transaction in loaded) {
+            combined[_transactionId(transaction)] = transaction;
+          }
+
+          transactions = combined.values.toList()
+            ..sort((left, right) {
+              final DateTime? rightDate = _transactionDate(right);
+              final DateTime? leftDate = _transactionDate(left);
+
+              return (rightDate?.millisecondsSinceEpoch ?? 0).compareTo(
+                leftDate?.millisecondsSinceEpoch ?? 0,
+              );
+            });
+
+          hasMore = pagination['hasMore'] == true;
+          nextCursor = pagination['nextCursor']?.toString();
         });
       } else {
         throw Exception(
@@ -104,16 +160,29 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       if (!mounted) return;
 
       setState(() {
-        errorMessage = error.toString().replaceFirst('Exception: ', '');
+          if (reset || transactions.isEmpty) {
+            errorMessage = error.toString().replaceFirst('Exception: ', '');
+          }
       });
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        isLoading = false;
-        isRefreshing = false;
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+          isLoadingMore = false;
+        });
+      }
     }
+  }
+
+  Future<void> loadMoreTransactions() async {
+    if (!hasMore || nextCursor == null || nextCursor!.isEmpty) {
+      return;
+    }
+
+    await loadTransactions(
+      reset: false,
+    );
   }
 
   dynamic _decodeResponse(String body) {
@@ -155,6 +224,31 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
         )
         .toList();
+  }
+
+  Map<String, dynamic> _extractPagination(dynamic data) {
+    if (data is! Map) {
+      return const {};
+    }
+
+    final dynamic nestedData = data['data'];
+
+    if (nestedData is Map && nestedData['pagination'] is Map) {
+      return Map<String, dynamic>.from(nestedData['pagination'] as Map);
+    }
+
+    if (data['pagination'] is Map) {
+      return Map<String, dynamic>.from(data['pagination'] as Map);
+    }
+
+    return const {};
+  }
+
+  String _transactionId(Map<String, dynamic> transaction) {
+    final dynamic value =
+        transaction['id'] ?? transaction['_id'] ?? transaction['reference'];
+
+    return value?.toString() ?? '';
   }
 
   String _extractMessage(
@@ -215,6 +309,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final dynamic value = transaction['description'] ??
         transaction['narration'] ??
         transaction['message'] ??
+        transaction['counterparty'] ??
         transaction['recipientPhone'] ??
         transaction['phone'] ??
         '';
@@ -272,6 +367,39 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           value.toString().replaceAll(',', '').trim(),
         ) ??
         0;
+  }
+
+  String _transactionDirection(
+    Map<String, dynamic> transaction,
+  ) {
+    final String value =
+        (transaction['direction'] ?? '').toString().trim().toUpperCase();
+
+    if (value == 'CREDIT' || value == 'DEBIT') {
+      return value;
+    }
+
+    final String title = _transactionTitle(transaction).toUpperCase();
+
+    return title.contains('FUNDING') ||
+            title.contains('REFUND') ||
+            title.contains('REVERSAL')
+        ? 'CREDIT'
+        : 'DEBIT';
+  }
+
+  Color _directionColor(String direction) {
+    return direction == 'CREDIT'
+        ? const Color(0xFF15803D)
+        : const Color(0xFFB91C1C);
+  }
+
+  String _formattedAmount(
+    double amount,
+    String direction,
+  ) {
+    final String sign = direction == 'CREDIT' ? '+' : '-';
+    return '$sign₦${amount.toStringAsFixed(2)}';
   }
 
   DateTime? _transactionDate(
@@ -386,6 +514,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final double amount = _transactionAmount(transaction);
 
     final DateTime? date = _transactionDate(transaction);
+    final String direction = _transactionDirection(transaction);
 
     showModalBottomSheet(
       context: context,
@@ -439,8 +568,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '₦${amount.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  _formattedAmount(amount, direction),
+                  style: TextStyle(
+                    color: _directionColor(direction),
                     fontSize: 27,
                     fontWeight: FontWeight.w900,
                   ),
@@ -468,6 +598,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 _DetailRow(
                   label: 'Date',
                   value: _formatDate(date),
+                ),
+                _DetailRow(
+                  label: 'Direction',
+                  value: direction,
                 ),
                 if (description.isNotEmpty)
                   _DetailRow(
@@ -542,6 +676,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 );
               },
               child: ListView(
+                controller: scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(
                   14,
@@ -634,7 +769,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   if (errorMessage.isNotEmpty)
                     _ErrorState(
                       message: errorMessage,
-                      onRetry: loadTransactions,
+                      onRetry: () {
+                        loadTransactions(
+                          reset: true,
+                        );
+                      },
                     )
                   else if (visible.isEmpty)
                     const _EmptyState()
@@ -662,6 +801,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           amount: _transactionAmount(
                             transaction,
                           ),
+                           direction: _transactionDirection(
+                             transaction,
+                           ),
                           status: _transactionStatus(
                             transaction,
                           ),
@@ -680,11 +822,43 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               transaction,
                             ),
                           ),
+                           directionColor: _directionColor(
+                             _transactionDirection(
+                               transaction,
+                             ),
+                           ),
                           onTap: () {
                             _showTransactionDetails(
                               transaction,
                             );
                           },
+                        ),
+                      ),
+                    if (hasMore)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: 6,
+                          bottom: 8,
+                        ),
+                        child: Center(
+                          child: isLoadingMore
+                              ? const SizedBox(
+                                  width: 26,
+                                  height: 26,
+                                  child: CircularProgressIndicator(
+                                    color: primaryGreen,
+                                    strokeWidth: 2.4,
+                                  ),
+                                )
+                              : TextButton.icon(
+                                  onPressed: loadMoreTransactions,
+                                  icon: const Icon(
+                                    Icons.expand_more_rounded,
+                                  ),
+                                  label: const Text(
+                                    'Load more transactions',
+                                  ),
+                                ),
                         ),
                       ),
                   ],
@@ -699,20 +873,24 @@ class _TransactionCard extends StatelessWidget {
   final String title;
   final String description;
   final double amount;
+  final String direction;
   final String status;
   final String date;
   final IconData icon;
   final Color statusColor;
+  final Color directionColor;
   final VoidCallback onTap;
 
   const _TransactionCard({
     required this.title,
     required this.description,
     required this.amount,
+    required this.direction,
     required this.status,
     required this.date,
     required this.icon,
     required this.statusColor,
+    required this.directionColor,
     required this.onTap,
   });
 
@@ -789,21 +967,35 @@ class _TransactionCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '₦${amount.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: Color(0xFF171A18),
+                    '${direction == 'CREDIT' ? '+' : '-'}₦${amount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: directionColor,
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        direction,
+                        style: TextStyle(
+                          color: directionColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        status,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

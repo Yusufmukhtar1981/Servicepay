@@ -1,4 +1,7 @@
 const Transaction = require("../models/transaction.model");
+const {
+  getCustomerHistory,
+} = require("../services/customerHistory.service");
 
 const getMyTransactions = async (req, res) => {
   try {
@@ -11,71 +14,24 @@ const getMyTransactions = async (req, res) => {
       });
     }
 
-    const {
-      page = 1,
-      limit = 100,
-      status,
-      serviceType,
-    } = req.query;
+    const { limit, before } = req.query;
 
-    const pageNumber = Math.max(
-      parseInt(page, 10) || 1,
-      1
-    );
-
-    const limitNumber = Math.min(
-      Math.max(parseInt(limit, 10) || 100, 1),
-      200
-    );
-
-    const filter = {
-      customerId: userId,
-    };
-
-    if (status) {
-      filter.status = String(status)
-        .trim()
-        .toUpperCase();
-    }
-
-    if (serviceType) {
-      filter.serviceType = String(serviceType)
-        .trim()
-        .toUpperCase();
-    }
-
-    const [transactions, total] =
-      await Promise.all([
-        Transaction.find(filter)
-          .sort({
-            createdAt: -1,
-          })
-          .skip(
-            (pageNumber - 1) *
-              limitNumber
-          )
-          .limit(limitNumber)
-          .lean(),
-
-        Transaction.countDocuments(
-          filter
-        ),
-      ]);
+    const history = await getCustomerHistory({
+      userId,
+      limit,
+      before,
+    });
 
     return res.status(200).json({
       success: true,
       message:
         "Transactions fetched successfully.",
-      total,
-      page: pageNumber,
-      limit: limitNumber,
-      transactions,
       data: {
-        total,
-        page: pageNumber,
-        limit: limitNumber,
-        transactions,
+        transactions: history.transactions,
+        pagination: history.pagination,
       },
+      transactions: history.transactions,
+      pagination: history.pagination,
     });
   } catch (error) {
     console.error(
