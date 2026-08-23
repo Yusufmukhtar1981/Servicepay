@@ -1,0 +1,4490 @@
+From 8fae798ff665443031b1569a8efa4a8b858c8319 Mon Sep 17 00:00:00 2001
+From: Yusufmukhtar1981 <73634131+Yusufmukhtar1981@users.noreply.github.com>
+Date: Sun, 23 Aug 2026 22:44:37 +0000
+Subject: [PATCH] Rebuild production KYC against current main
+
+---
+ backend/controllers/adminKyc.controller.js    |  252 +--
+ backend/controllers/kyc.controller.js         |  414 ++--
+ backend/controllers/kycDocument.controller.js |  286 ++-
+ .../kycIdentityRateLimit.middleware.js        |   25 +
+ backend/models/kycProfile.model.js            |   82 +
+ backend/routes/adminKyc.routes.js             |    5 +
+ backend/routes/kyc.routes.js                  |   31 +-
+ .../kycIdentityVerification.service.js        |  153 ++
+ .../services/kycImageValidation.service.js    |   18 +
+ backend/services/kycRequirements.service.js   |  151 ++
+ backend/test/kycRequirements.service.test.js  |   96 +
+ lib/admin/admin_kyc_api_service.dart          |   68 +-
+ lib/admin/admin_kyc_review_screen.dart        |  102 +-
+ lib/admin/main_navigation.dart                |    7 +
+ lib/kyc_screen.dart                           | 1924 +++++++----------
+ test/admin_kyc_api_service_test.dart          |   22 +
+ test/kyc_screen_test.dart                     |   21 +-
+ 17 files changed, 2022 insertions(+), 1635 deletions(-)
+ create mode 100644 backend/middleware/kycIdentityRateLimit.middleware.js
+ create mode 100644 backend/services/kycIdentityVerification.service.js
+ create mode 100644 backend/services/kycImageValidation.service.js
+ create mode 100644 backend/services/kycRequirements.service.js
+ create mode 100644 backend/test/kycRequirements.service.test.js
+
+diff --git a/backend/controllers/adminKyc.controller.js b/backend/controllers/adminKyc.controller.js
+index 9cd3035681614fb33728c1008e94342bbe9f89a9..ad6ba1ee6cc3ecfa21e89770b2509fefc47df1e0 100644
+--- a/backend/controllers/adminKyc.controller.js
++++ b/backend/controllers/adminKyc.controller.js
+@@ -1,49 +1,42 @@
+ const KycProfile = require("../models/kycProfile.model");
+-
+-const normalizeRequestedKycLevel = (value) => {
+-  const level = String(value || "TIER_1")
+-    .trim()
+-    .toUpperCase();
+-
+-  if (["TIER_1", "TIER_2", "TIER_3"].includes(level)) {
+-    return level;
+-  }
+-
+-  return "TIER_1";
+-};
+-
+-
+-const ALLOWED_STATUS = new Set([
+-  "PENDING",
+-  "UNDER_REVIEW",
++const {
++  safeKycProfile,
++  validateDocumentsForTier,
++} = require("../services/kycRequirements.service");
++const {
++  getAuthorizedDocumentUrl,
++  normalizeUploadType,
++} = require("./kycDocument.controller");
++
++const ALLOWED_ACTIONS = new Set([
++  "APPROVED",
+   "VERIFIED",
+   "REJECTED",
++  "REQUEST_MORE_INFORMATION",
+ ]);
+ 
++const canReview = (profile) =>
++  ["PENDING", "UNDER_REVIEW"].includes(String(profile?.status || "").toUpperCase());
++
++const serializeAdmin = (profile) => ({
++  ...safeKycProfile(profile, { includeReviewHistory: true }),
++  user: profile.user && typeof profile.user === "object"
++    ? {
++        fullName: String(profile.user.fullName || ""),
++        phone: String(profile.user.phone || ""),
++        email: String(profile.user.email || ""),
++      }
++    : undefined,
++});
++
+ exports.getKycApplications = async (req, res) => {
+   try {
+-    const {
+-      status,
+-      level,
+-      search,
+-      page = 1,
+-      limit = 50,
+-    } = req.query || {};
+-
++    const { status, level, search, page = 1, limit = 50 } = req.query || {};
+     const filter = {};
+-
+-    if (status) {
+-      filter.status = String(status).toUpperCase();
+-    }
+-
+-    if (level) {
+-      filter.level = String(level).toUpperCase();
+-    }
+-
++    if (status) filter.status = String(status).toUpperCase();
++    if (level) filter.requestedLevel = String(level).toUpperCase();
+     if (search) {
+-      const safeSearch = String(search)
+-        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+-
++      const safeSearch = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+       filter.$or = [
+         { firstName: { $regex: safeSearch, $options: "i" } },
+         { middleName: { $regex: safeSearch, $options: "i" } },
+@@ -52,164 +45,145 @@ exports.getKycApplications = async (req, res) => {
+         { email: { $regex: safeSearch, $options: "i" } },
+       ];
+     }
+-
+     const safePage = Math.max(1, Number(page) || 1);
+-    const safeLimit = Math.min(
+-      100,
+-      Math.max(1, Number(limit) || 50)
+-    );
+-
++    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+     const [items, total] = await Promise.all([
+       KycProfile.find(filter)
+-        .populate(
+-          "user",
+-          "fullName phone email role status state lga"
+-        )
++        .populate("user", "fullName phone email")
+         .sort({ submittedAt: -1, createdAt: -1 })
+         .skip((safePage - 1) * safeLimit)
+         .limit(safeLimit),
+       KycProfile.countDocuments(filter),
+     ]);
+-
+     return res.status(200).json({
+       success: true,
+       total,
+       page: safePage,
+       limit: safeLimit,
+-      kycApplications: items,
+-    });
+-  } catch (error) {
+-    console.error("ADMIN GET KYC ERROR:", error);
+-
+-    return res.status(500).json({
+-      success: false,
+-      message: "Unable to load KYC applications.",
+-      error: error.message,
++      kycApplications: items.map(serializeAdmin),
+     });
++  } catch (_) {
++    return res.status(500).json({ success: false, message: "Unable to load KYC applications." });
+   }
+ };
+ 
+ exports.getKycApplication = async (req, res) => {
+   try {
+-    const profile = await KycProfile.findById(
+-      req.params.kycId
+-    ).populate(
++    const profile = await KycProfile.findById(req.params.kycId).populate(
+       "user",
+-      "fullName phone email role status state lga createdAt"
++      "fullName phone email",
+     );
+-
+     if (!profile) {
+-      return res.status(404).json({
+-        success: false,
+-        message: "KYC application was not found.",
+-      });
++      return res.status(404).json({ success: false, message: "KYC application was not found." });
+     }
++    return res.status(200).json({ success: true, kyc: serializeAdmin(profile) });
++  } catch (_) {
++    return res.status(500).json({ success: false, message: "Unable to load KYC application." });
++  }
++};
+ 
++exports.getKycDocument = async (req, res) => {
++  try {
++    const documentType = normalizeUploadType(req.params.documentType);
++    const profile = await KycProfile.findById(req.params.kycId);
++    if (!profile || !documentType) {
++      return res.status(404).json({ success: false, message: "KYC document was not found." });
++    }
++    const field = {
++      SELFIE: "selfieAssetId",
++      ID_DOCUMENT: "idDocumentAssetId",
++      ID_DOCUMENT_FRONT: "idDocumentAssetId",
++      ID_DOCUMENT_BACK: "idDocumentBackAssetId",
++      PROOF_OF_ADDRESS: "proofOfAddressAssetId",
++    }[documentType];
++    const assetId = String(profile[field] || "").trim();
++    if (!assetId) {
++      return res.status(404).json({ success: false, message: "KYC document was not found." });
++    }
+     return res.status(200).json({
+       success: true,
+-      kyc: profile,
++      url: getAuthorizedDocumentUrl(assetId),
++      expiresInSeconds: 300,
+     });
+-  } catch (error) {
+-    console.error("ADMIN GET KYC DETAIL ERROR:", error);
+-
+-    return res.status(500).json({
++  } catch (_) {
++    return res.status(503).json({
+       success: false,
+-      message: "Unable to load KYC application.",
+-      error: error.message,
++      message: "Authorized document access is temporarily unavailable.",
+     });
+   }
+ };
+ 
+ exports.updateKycStatus = async (req, res) => {
+   try {
+-    const status = String(
+-      req.body?.status || ""
+-    ).toUpperCase();
+-
+-    const rejectionReason = String(
+-      req.body?.rejectionReason || ""
++    const action = String(req.body?.status || req.body?.action || "").toUpperCase();
++    const reviewReason = String(
++      req.body?.reviewReason || req.body?.rejectionReason || "",
+     ).trim();
+-
+-    if (!ALLOWED_STATUS.has(status)) {
++    if (!ALLOWED_ACTIONS.has(action)) {
+       return res.status(400).json({
+         success: false,
+-        message:
+-          "Status must be PENDING, UNDER_REVIEW, VERIFIED or REJECTED.",
++        message: "Choose APPROVED, REJECTED, or REQUEST_MORE_INFORMATION.",
+       });
+     }
+-
+     if (
+-      status === "REJECTED" &&
+-      !rejectionReason
++      ["REJECTED", "REQUEST_MORE_INFORMATION"].includes(action) &&
++      !reviewReason
+     ) {
+       return res.status(400).json({
+         success: false,
+-        message:
+-          "A rejection reason is required.",
++        message: "A review reason is required for this action.",
+       });
+     }
+ 
+-    const profile = await KycProfile.findById(
+-      req.params.kycId
+-    );
+-
++    const profile = await KycProfile.findById(req.params.kycId);
+     if (!profile) {
+-      return res.status(404).json({
++      return res.status(404).json({ success: false, message: "KYC application was not found." });
++    }
++    if (!canReview(profile)) {
++      return res.status(409).json({
+         success: false,
+-        message: "KYC application was not found.",
++        message: "Only submitted KYC applications can be reviewed.",
+       });
+     }
+ 
+-    profile.status = status;
+-
+-    /*
+-     * Only Admin VERIFIED status can promote the customer's
+-     * approved KYC tier.
+-     */
+-    if (status === "VERIFIED") {
+-      profile.level = normalizeRequestedKycLevel(
+-        profile.requestedLevel ||
+-        profile.level ||
+-        "TIER_1"
+-      );
+-
+-      profile.requestedLevel = profile.level;
+-    }
+-
+-    if (status === "REJECTED") {
+-      profile.rejectionReason = rejectionReason;
+-    } else {
+-      profile.rejectionReason = "";
+-    }
+-
+-    if (
+-      status === "VERIFIED" ||
+-      status === "REJECTED"
+-    ) {
+-      profile.reviewedAt = new Date();
++    const persistedStatus = action === "APPROVED" || action === "VERIFIED"
++      ? "VERIFIED"
++      : action === "REQUEST_MORE_INFORMATION"
++        ? "NEEDS_MORE_INFORMATION"
++        : "REJECTED";
++
++    if (persistedStatus === "VERIFIED") {
++      const documentCheck = validateDocumentsForTier(profile, profile.requestedLevel);
++      if (!documentCheck.valid) {
++        return res.status(400).json({
++          success: false,
++          message: `KYC cannot be approved: ${documentCheck.message}`,
++        });
++      }
++      profile.level = profile.requestedLevel;
++      profile.approvedAt = new Date();
+     }
+ 
+-    profile.metadata = {
+-      ...(profile.metadata || {}),
+-      lastReviewedBy:
+-        req.user?._id?.toString?.() || "",
+-      lastReviewedAt: new Date(),
+-    };
+-
++    profile.status = persistedStatus;
++    profile.reviewReason = reviewReason;
++    profile.rejectionReason = persistedStatus === "REJECTED" ? reviewReason : "";
++    profile.reviewedAt = new Date();
++    profile.reviewedBy = req.user?._id || req.user?.id || null;
++    profile.reviewHistory.push({
++      action: persistedStatus,
++      reason: reviewReason,
++      reviewer: profile.reviewedBy,
++      occurredAt: profile.reviewedAt,
++    });
+     await profile.save();
++    await profile.populate("user", "fullName phone email");
+ 
+     return res.status(200).json({
+       success: true,
+-      message: `KYC status updated to ${status}.`,
+-      kyc: profile,
+-    });
+-  } catch (error) {
+-    console.error("ADMIN UPDATE KYC ERROR:", error);
+-
+-    return res.status(500).json({
+-      success: false,
+-      message: "Unable to update KYC status.",
+-      error: error.message,
++      message: `KYC ${persistedStatus.toLowerCase().replaceAll("_", " ")}.`,
++      kyc: serializeAdmin(profile),
+     });
++  } catch (_) {
++    return res.status(500).json({ success: false, message: "Unable to update KYC status." });
+   }
+-};
++};
+\ No newline at end of file
+diff --git a/backend/controllers/kyc.controller.js b/backend/controllers/kyc.controller.js
+index 4b35251098852791e7c550f64706d6adcd84da90..1219b23ac7040ebee2c8b93b61e95487d0ce6551 100644
+--- a/backend/controllers/kyc.controller.js
++++ b/backend/controllers/kyc.controller.js
+@@ -1,181 +1,180 @@
+ const KycProfile = require("../models/kycProfile.model");
+ const User = require("../models/user.model");
+ const {
++  canEditKyc,
++  normalizeDocumentType,
++  safeKycProfile,
+   validateDocumentsForTier,
+-} = require("./kycDocument.controller");
+-
++} = require("../services/kycRequirements.service");
++const {
++  normalizeIdentityType,
++  verifyIdentity,
++} = require("../services/kycIdentityVerification.service");
+ 
+ const normalizeRequestedKycLevel = (value) => {
+-  const level = String(value || "TIER_1")
+-    .trim()
+-    .toUpperCase();
+-
+-  if (["TIER_1", "TIER_2", "TIER_3"].includes(level)) {
+-    return level;
+-  }
+-
+-  return "TIER_1";
++  const level = String(value || "TIER_1").trim().toUpperCase();
++  return ["TIER_1", "TIER_2", "TIER_3"].includes(level) ? level : "TIER_1";
+ };
+ 
+ const SERVICEPAY_KYC_LIMITS = {
+   TIER_1: {
+-    perTransaction: Number(
+-      process.env.KYC_TIER1_PER_TRANSACTION || 50000
+-    ),
+-    daily: Number(
+-      process.env.KYC_TIER1_DAILY_LIMIT || 200000
+-    ),
++    perTransaction: Number(process.env.KYC_TIER1_PER_TRANSACTION || 50000),
++    daily: Number(process.env.KYC_TIER1_DAILY_LIMIT || 200000),
+   },
+   TIER_2: {
+-    perTransaction: Number(
+-      process.env.KYC_TIER2_PER_TRANSACTION || 200000
+-    ),
+-    daily: Number(
+-      process.env.KYC_TIER2_DAILY_LIMIT || 1000000
+-    ),
++    perTransaction: Number(process.env.KYC_TIER2_PER_TRANSACTION || 200000),
++    daily: Number(process.env.KYC_TIER2_DAILY_LIMIT || 1000000),
+   },
+   TIER_3: {
+-    perTransaction: Number(
+-      process.env.KYC_TIER3_PER_TRANSACTION || 1000000
+-    ),
+-    daily: Number(
+-      process.env.KYC_TIER3_DAILY_LIMIT || 5000000
+-    ),
++    perTransaction: Number(process.env.KYC_TIER3_PER_TRANSACTION || 1000000),
++    daily: Number(process.env.KYC_TIER3_DAILY_LIMIT || 5000000),
+   },
+ };
+ 
++const getOrCreateProfile = async (userId) => {
++  let profile = await KycProfile.findOne({ user: userId });
++  if (profile) return profile;
+ 
++  const user = await User.findById(userId);
++  if (!user) return null;
+ 
+-const getOrCreateProfile = async (userId) => {
+-  let profile = await KycProfile.findOne({
+-    user: userId,
++  const fullName = String(user.fullName || "")
++    .trim()
++    .split(/\s+/)
++    .filter(Boolean);
++
++  profile = await KycProfile.create({
++    user: user._id,
++    firstName: user.firstName || fullName[0] || "",
++    middleName: user.middleName || (fullName.length > 2 ? fullName.slice(1, -1).join(" ") : ""),
++    lastName: user.lastName || (fullName.length > 1 ? fullName[fullName.length - 1] : ""),
++    phone: user.phone || "",
++    email: user.email || "",
++    address: user.address || "",
++    state: user.registrationState || user.state || "",
++    lga: user.registrationLga || user.lga || "",
+   });
++  return profile;
++};
+ 
+-  if (!profile) {
+-    const user = await User.findById(userId);
++const isAdultDate = (value) => {
++  const date = new Date(value);
++  if (Number.isNaN(date.getTime())) return false;
++  const threshold = new Date();
++  threshold.setFullYear(threshold.getFullYear() - 18);
++  return date <= threshold;
++};
+ 
+-    if (!user) {
+-      return null;
+-    }
++exports.getOrCreateProfile = getOrCreateProfile;
+ 
+-    const fullName = String(user.fullName || "")
+-      .trim()
+-      .split(/\s+/)
+-      .filter(Boolean);
++exports.getMyKycStatus = async (req, res) => {
++  try {
++    const profile = await getOrCreateProfile(req.user?._id || req.user?.id);
++    if (!profile) {
++      return res.status(404).json({
++        success: false,
++        message: "User account was not found.",
++      });
++    }
+ 
+-    profile = await KycProfile.create({
+-      user: user._id,
+-      firstName: fullName[0] || "",
+-      middleName:
+-        fullName.length > 2
+-          ? fullName.slice(1, -1).join(" ")
+-          : "",
+-      lastName:
+-        fullName.length > 1
+-          ? fullName[fullName.length - 1]
+-          : "",
+-      phone: user.phone || "",
+-      email: user.email || "",
+-      state: user.state || "",
+-      lga: user.lga || "",
+-      status: "NOT_STARTED",
+-      level: "TIER_1",
++    return res.status(200).json({
++      success: true,
++      kyc: safeKycProfile(profile),
++      servicepayLimits:
++        SERVICEPAY_KYC_LIMITS[normalizeRequestedKycLevel(profile.level)],
++    });
++  } catch (_) {
++    return res.status(500).json({
++      success: false,
++      message: "Unable to load KYC status.",
+     });
+   }
+-
+-  return profile;
+ };
+ 
+-exports.getMyKycStatus = async (req, res) => {
++exports.verifyMyKycIdentity = async (req, res) => {
+   try {
+-    const profile = await getOrCreateProfile(
+-      req.user._id
+-    );
+-
++    const profile = await getOrCreateProfile(req.user?._id || req.user?.id);
+     if (!profile) {
+-      
+-    // SERVICEPAY_KYC_REGISTRATION_FALLBACK
+-    const servicePayUserId =
+-      req.user?._id ||
+-      req.user?.id ||
+-      req.userId;
+-
+-    const servicePayUser = servicePayUserId
+-      ? await User.findById(servicePayUserId).select(
+-          "firstName middleName lastName fullName dateOfBirth gender address state lga registrationState registrationLga transactionPinSet transactionPinHash"
+-        ).lean()
+-      : null;
++      return res.status(404).json({
++        success: false,
++        message: "User account was not found.",
++      });
++    }
++    if (!canEditKyc(profile)) {
++      return res.status(409).json({
++        success: false,
++        code: "KYC_LOCKED_FOR_REVIEW",
++        message: "Your submitted KYC application cannot be changed while it is under review.",
++      });
++    }
+ 
+-    if (kyc && servicePayUser) {
+-      if (!kyc.firstName && servicePayUser.firstName) {
+-        kyc.firstName = servicePayUser.firstName;
+-      }
+-      if (!kyc.middleName && servicePayUser.middleName) {
+-        kyc.middleName = servicePayUser.middleName;
+-      }
+-      if (!kyc.lastName && servicePayUser.lastName) {
+-        kyc.lastName = servicePayUser.lastName;
+-      }
+-      if (!kyc.dateOfBirth && servicePayUser.dateOfBirth) {
+-        kyc.dateOfBirth = servicePayUser.dateOfBirth;
+-      }
+-      if (!kyc.gender && servicePayUser.gender) {
+-        kyc.gender = servicePayUser.gender;
+-      }
+-      if (!kyc.address && servicePayUser.address) {
+-        kyc.address = servicePayUser.address;
+-      }
+-      if (!kyc.state) {
+-        kyc.state =
+-          servicePayUser.registrationState ||
+-          servicePayUser.state ||
+-          "";
+-      }
+-      if (!kyc.lga) {
+-        kyc.lga =
+-          servicePayUser.registrationLga ||
+-          servicePayUser.lga ||
+-          "";
+-      }
++    const identityType = normalizeIdentityType(req.body?.identityType);
++    const identityNumber = String(req.body?.identityNumber || "");
++    if (req.body?.consentAccepted !== true) {
++      return res.status(400).json({
++        success: false,
++        code: "CONSENT_REQUIRED",
++        message: "Your consent is required before identity verification.",
++      });
+     }
+ 
+-return res.status(404).json({
++    const result = await verifyIdentity({
++      type: identityType,
++      identifier: identityNumber,
++      profile,
++    });
++    if (!result.ok) {
++      return res.status(result.status).json({
+         success: false,
+-        message: "User account was not found.",
++        code: result.code,
++        message: result.message,
+       });
+     }
+ 
++    const now = new Date();
++    if (result.identityType === "NIN") {
++      profile.ninVerified = true;
++      profile.ninLast4 = result.maskedIdentifier.slice(-4);
++      profile.ninVerificationId = result.providerReference;
++      profile.ninVerifiedAt = now;
++    } else {
++      profile.bvnVerified = true;
++      profile.bvnLast4 = result.maskedIdentifier.slice(-4);
++      profile.bvnVerificationId = result.providerReference;
++      profile.bvnVerifiedAt = now;
++    }
++    profile.identityMatchStatus = result.matchStatus;
++    await profile.save();
++
+     return res.status(200).json({
+       success: true,
+-      kyc: profile,
+-      servicepayLimits:
+-        SERVICEPAY_KYC_LIMITS[
+-          normalizeRequestedKycLevel(profile.level)
+-        ],
++      message: `${result.identityType} verified successfully.`,
++      identity: safeKycProfile(profile).identity,
+     });
+-  } catch (error) {
+-    console.error("GET KYC STATUS ERROR:", error);
+-
++  } catch (_) {
+     return res.status(500).json({
+       success: false,
+-      message: "Unable to load KYC status.",
+-      error: error.message,
++      message: "Unable to verify identity right now. Please try again later.",
+     });
+   }
+ };
+ 
+ exports.submitMyKyc = async (req, res) => {
+   try {
+-    const profile = await getOrCreateProfile(
+-      req.user._id
+-    );
+-
++    const profile = await getOrCreateProfile(req.user?._id || req.user?.id);
+     if (!profile) {
+       return res.status(404).json({
+         success: false,
+         message: "User account was not found.",
+       });
+     }
++    if (!canEditKyc(profile)) {
++      return res.status(409).json({
++        success: false,
++        code: "KYC_ALREADY_SUBMITTED",
++        message: "Your KYC application is already submitted for review.",
++      });
++    }
+ 
+     const {
+       firstName,
+@@ -183,129 +182,118 @@ exports.submitMyKyc = async (req, res) => {
+       lastName,
+       dateOfBirth,
+       gender,
++      phone,
++      email,
+       address,
+       state,
+       lga,
+-      selfieUrl,
+-      idDocumentUrl,
+-      proofOfAddressUrl,
++      documentType,
++      requestedLevel,
++      consentAccepted,
+     } = req.body || {};
+ 
+     if (
+       !String(firstName || "").trim() ||
+       !String(lastName || "").trim() ||
++      !String(phone || "").trim() ||
++      !String(email || "").trim() ||
+       !String(address || "").trim() ||
+-      !String(state || "").trim()
++      !String(state || "").trim() ||
++      !String(lga || "").trim()
+     ) {
+       return res.status(400).json({
+         success: false,
+-        message:
+-          "First name, last name, address and state are required.",
++        code: "PERSONAL_INFORMATION_REQUIRED",
++        message: "Complete all required personal information before submitting.",
++      });
++    }
++    if (!isAdultDate(dateOfBirth)) {
++      return res.status(400).json({
++        success: false,
++        code: "INVALID_DATE_OF_BIRTH",
++        message: "You must be at least 18 years old to submit KYC.",
++      });
++    }
++    if (!["MALE", "FEMALE", "OTHER"].includes(String(gender || "").toUpperCase())) {
++      return res.status(400).json({
++        success: false,
++        code: "GENDER_REQUIRED",
++        message: "Select your gender before submitting.",
++      });
++    }
++    if (consentAccepted !== true) {
++      return res.status(400).json({
++        success: false,
++        code: "CONSENT_REQUIRED",
++        message: "Your consent is required before submitting KYC.",
++      });
++    }
++    if (!profile.ninVerified && !profile.bvnVerified) {
++      return res.status(400).json({
++        success: false,
++        code: "KYC_IDENTITY_VERIFICATION_REQUIRED",
++        message: "Verify your NIN or BVN before submitting KYC.",
+       });
+     }
+ 
+     profile.firstName = String(firstName).trim();
+-    profile.middleName = String(
+-      middleName || ""
+-    ).trim();
++    profile.middleName = String(middleName || "").trim();
+     profile.lastName = String(lastName).trim();
+-
+-    if (dateOfBirth) {
+-      profile.dateOfBirth = new Date(dateOfBirth);
+-    }
+-
++    profile.dateOfBirth = new Date(dateOfBirth);
++    profile.gender = String(gender).toUpperCase();
++    profile.phone = String(phone).trim();
++    profile.email = String(email).trim().toLowerCase();
++    profile.address = String(address).trim();
++    profile.state = String(state).trim();
++    profile.lga = String(lga).trim();
++    const normalizedDocumentType = normalizeDocumentType(
++      documentType || profile.documentType,
++    );
+     if (
+-      ["MALE", "FEMALE", "OTHER"].includes(
+-        String(gender || "").toUpperCase()
+-      )
++      profile.requestedLevel !== "TIER_1" &&
++      !normalizedDocumentType
+     ) {
+-      profile.gender =
+-        String(gender).toUpperCase();
++      return res.status(400).json({
++        success: false,
++        code: "GOVERNMENT_ID_TYPE_REQUIRED",
++        message: "Select a supported government ID type before submitting.",
++      });
+     }
+-
+-    profile.address = String(address).trim();
+-    profile.state = String(state).trim();
+-    profile.lga = String(lga || "").trim();
+-
+-    profile.selfieUrl = String(
+-      selfieUrl || profile.selfieUrl || ""
+-    ).trim();
+-
+-    profile.idDocumentUrl = String(
+-      idDocumentUrl ||
+-        profile.idDocumentUrl ||
+-        ""
+-    ).trim();
+-
+-    profile.proofOfAddressUrl = String(
+-      proofOfAddressUrl ||
+-        profile.proofOfAddressUrl ||
+-        ""
+-    ).trim();
+-
++    profile.documentType = normalizedDocumentType;
+     profile.requestedLevel = normalizeRequestedKycLevel(
+-      req.body.requestedLevel ||
+-      req.body.level ||
+-      profile.requestedLevel ||
+-      profile.level ||
+-      "TIER_1"
+-    );
+-
+-    profile.level = normalizeRequestedKycLevel(
+-      profile.level || "TIER_1"
++      requestedLevel || profile.requestedLevel || profile.level,
+     );
++    profile.level = normalizeRequestedKycLevel(profile.level);
+ 
+-    /*
+-   * SERVICEPAY KYC DOCUMENT REQUIREMENTS
+-   *
+-   * Tier 1:
+-   * Basic KYC information.
+-   *
+-   * Tier 2:
+-   * Government ID + Selfie.
+-   *
+-   * Tier 3:
+-   * Government ID + Selfie + Proof of Address.
+-   */
+-  const documentCheck =
+-    validateDocumentsForTier(
+-      profile,
+-      profile.requestedLevel ||
+-        profile.level ||
+-        "TIER_1"
+-    );
+-
+-  if (!documentCheck.valid) {
+-    return res.status(400).json({
+-      success: false,
+-      message: documentCheck.message,
+-      code: "KYC_DOCUMENTS_REQUIRED",
+-      requestedLevel:
+-        profile.requestedLevel ||
+-        profile.level ||
+-        "TIER_1",
+-    });
+-  }
++    const documentCheck = validateDocumentsForTier(profile, profile.requestedLevel);
++    if (!documentCheck.valid) {
++      return res.status(400).json({
++        success: false,
++        code: "KYC_DOCUMENTS_REQUIRED",
++        message: documentCheck.message,
++        requestedLevel: profile.requestedLevel,
++      });
++    }
+ 
+-profile.status = "PENDING";
++    profile.status = "PENDING";
+     profile.submittedAt = new Date();
+     profile.rejectionReason = "";
+-
++    profile.reviewReason = "";
++    profile.reviewHistory.push({
++      action: "SUBMITTED",
++      occurredAt: profile.submittedAt,
++    });
+     await profile.save();
+ 
+     return res.status(200).json({
+       success: true,
+-      message:
+-        "KYC submitted successfully and is awaiting review.",
+-      kyc: profile,
++      message: "KYC submitted successfully and is awaiting review.",
++      kyc: safeKycProfile(profile),
+     });
+-  } catch (error) {
+-    console.error("SUBMIT KYC ERROR:", error);
+-
++  } catch (_) {
+     return res.status(500).json({
+       success: false,
+       message: "Unable to submit KYC.",
+-      error: error.message,
+     });
+   }
+ };
+\ No newline at end of file
+diff --git a/backend/controllers/kycDocument.controller.js b/backend/controllers/kycDocument.controller.js
+index 54203535ff900c8bf48cdd01b6e554f246b5827b..63d212d8888bdc79d00771c6d3cb99084a009a55 100644
+--- a/backend/controllers/kycDocument.controller.js
++++ b/backend/controllers/kycDocument.controller.js
+@@ -1,23 +1,31 @@
+ const { v2: cloudinary } = require("cloudinary");
+ const KycProfile = require("../models/kycProfile.model");
++const { getOrCreateProfile } = require("./kyc.controller");
++const { hasSupportedImageSignature } = require("../services/kycImageValidation.service");
++const { canEditKyc, documentFlags, normalizeDocumentType } = require("../services/kycRequirements.service");
++
++const DOCUMENT_FIELDS = {
++  SELFIE: "selfieAssetId",
++  ID_DOCUMENT_FRONT: "idDocumentAssetId",
++  ID_DOCUMENT: "idDocumentAssetId",
++  ID_DOCUMENT_BACK: "idDocumentBackAssetId",
++  PROOF_OF_ADDRESS: "proofOfAddressAssetId",
++};
+ 
+-const configureCloudinary = () => {
+-  const cloudName =
+-    process.env.CLOUDINARY_CLOUD_NAME ||
+-    process.env.CLOUD_NAME;
+-
+-  const apiKey =
+-    process.env.CLOUDINARY_API_KEY ||
+-    process.env.API_KEY;
+-
+-  const apiSecret =
+-    process.env.CLOUDINARY_API_SECRET ||
+-    process.env.API_SECRET;
++const normalizeUploadType = (value) => {
++  const type = String(value || "").trim().toUpperCase();
++  return Object.prototype.hasOwnProperty.call(DOCUMENT_FIELDS, type) ? type : "";
++};
+ 
++const configureCloudinary = () => {
++  const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME;
++  const apiKey = process.env.CLOUDINARY_API_KEY || process.env.API_KEY;
++  const apiSecret = process.env.CLOUDINARY_API_SECRET || process.env.API_SECRET;
+   if (!cloudName || !apiKey || !apiSecret) {
+-    throw new Error("Cloudinary storage is not configured.");
++    const error = new Error("KYC document storage is not configured.");
++    error.code = "STORAGE_UNAVAILABLE";
++    throw error;
+   }
+-
+   cloudinary.config({
+     cloud_name: cloudName,
+     api_key: apiKey,
+@@ -28,211 +36,169 @@ const configureCloudinary = () => {
+ 
+ const uploadBuffer = async (buffer, folder) => {
+   configureCloudinary();
+-
+   return new Promise((resolve, reject) => {
+     const stream = cloudinary.uploader.upload_stream(
+       {
+         folder,
+         resource_type: "image",
++        type: "authenticated",
+         overwrite: false,
+       },
+-      (error, result) => {
+-        if (error) {
+-          return reject(error);
+-        }
+-
+-        resolve(result);
+-      }
++      (error, result) => (error ? reject(error) : resolve(result)),
+     );
+-
+     stream.end(buffer);
+   });
+ };
+ 
+-const normalizeType = (value) => {
+-  const type = String(value || "")
+-    .trim()
+-    .toUpperCase();
+-
+-  const allowed = new Set([
+-    "SELFIE",
+-    "ID_DOCUMENT",
+-    "PROOF_OF_ADDRESS",
+-  ]);
+-
+-  return allowed.has(type) ? type : "";
++const destroyAsset = async (assetId) => {
++  if (!assetId) return;
++  configureCloudinary();
++  await cloudinary.uploader.destroy(assetId, {
++    resource_type: "image",
++    type: "authenticated",
++    invalidate: true,
++  });
+ };
+ 
+ const uploadKycDocument = async (req, res) => {
+   try {
+-    const userId =
+-      req.user?._id ||
+-      req.user?.id;
+-
++    const userId = req.user?._id || req.user?.id;
+     if (!userId) {
+-      return res.status(401).json({
+-        success: false,
+-        message: "Unauthorized.",
+-      });
++      return res.status(401).json({ success: false, message: "Unauthorized." });
+     }
+-
+-    if (!req.file || !req.file.buffer) {
+-      return res.status(400).json({
+-        success: false,
+-        message: "Please select an image.",
+-      });
++    if (!req.file?.buffer) {
++      return res.status(400).json({ success: false, message: "Please select a JPEG or PNG image." });
+     }
+ 
+-    const mimeType = String(
+-      req.file.mimetype || ""
+-    ).toLowerCase();
+-
+-    if (!mimeType.startsWith("image/")) {
++    const mimeType = String(req.file.mimetype || "").toLowerCase();
++    if (
++      !["image/jpeg", "image/png"].includes(mimeType) ||
++      !hasSupportedImageSignature(req.file.buffer, mimeType)
++    ) {
+       return res.status(400).json({
+         success: false,
+-        message: "Only image files are allowed.",
++        code: "UNSUPPORTED_IMAGE",
++        message: "KYC uploads must be valid JPEG or PNG images.",
+       });
+     }
+ 
+-    const documentType =
+-      normalizeType(req.body?.documentType);
+-
++    const documentType = normalizeUploadType(req.body?.documentType);
+     if (!documentType) {
+       return res.status(400).json({
+         success: false,
+-        message:
+-          "Invalid KYC document type.",
++        message: "Invalid KYC document type.",
+       });
+     }
+ 
+-    let profile =
+-      await KycProfile.findOne({
+-        user: userId,
+-      });
+-
++    const profile = await getOrCreateProfile(userId);
+     if (!profile) {
+-      profile = await KycProfile.create({
+-        user: userId,
++      return res.status(404).json({ success: false, message: "User account was not found." });
++    }
++    if (!canEditKyc(profile)) {
++      return res.status(409).json({
++        success: false,
++        code: "KYC_LOCKED_FOR_REVIEW",
++        message: "Your submitted KYC application cannot be changed while it is under review.",
+       });
+     }
+ 
+-    const result = await uploadBuffer(
+-      req.file.buffer,
+-      `servicepay/kyc/${userId}`
+-    );
+-
+-    const url =
+-      String(result?.secure_url || "")
+-        .trim();
+-
+-    if (!url) {
+-      return res.status(500).json({
++    const requestedDocumentType = normalizeDocumentType(req.body?.governmentIdType);
++    if (
++      ["ID_DOCUMENT", "ID_DOCUMENT_FRONT", "ID_DOCUMENT_BACK"].includes(documentType) &&
++      !requestedDocumentType &&
++      !normalizeDocumentType(profile.documentType)
++    ) {
++      return res.status(400).json({
+         success: false,
+-        message:
+-          "Unable to obtain uploaded document URL.",
++        message: "Select the type of government ID before uploading it.",
+       });
+     }
+ 
+-    if (documentType === "SELFIE") {
+-      profile.selfieUrl = url;
++    const result = await uploadBuffer(req.file.buffer, `servicepay/kyc/${userId}`);
++    const assetId = String(result?.public_id || "").trim();
++    if (!assetId) {
++      return res.status(502).json({
++        success: false,
++        message: "Document storage did not confirm the upload. Please retry.",
++      });
+     }
+ 
+-    if (documentType === "ID_DOCUMENT") {
+-      profile.idDocumentUrl = url;
+-    }
++    const field = DOCUMENT_FIELDS[documentType];
++    const previousAssetId = String(profile[field] || "").trim();
++    profile[field] = assetId;
++    if (requestedDocumentType) profile.documentType = requestedDocumentType;
++    if (documentType === "SELFIE") profile.livenessStatus = "READY_FOR_CHECK";
++    await profile.save();
+ 
+-    if (
+-      documentType ===
+-      "PROOF_OF_ADDRESS"
+-    ) {
+-      profile.proofOfAddressUrl = url;
++    if (previousAssetId && previousAssetId !== assetId) {
++      destroyAsset(previousAssetId).catch(() => {});
+     }
+ 
+-    await profile.save();
+-
+     return res.status(200).json({
+       success: true,
+-      message:
+-        "KYC document uploaded successfully.",
++      message: "KYC document uploaded securely.",
+       documentType,
+-      url,
+-      kyc: profile,
++      documents: documentFlags(profile),
+     });
+   } catch (error) {
+-    console.error(
+-      "KYC DOCUMENT UPLOAD ERROR:",
+-      error
+-    );
+-
+-    return res.status(500).json({
++    return res.status(error?.code === "STORAGE_UNAVAILABLE" ? 503 : 500).json({
+       success: false,
++      code: error?.code === "STORAGE_UNAVAILABLE" ? "STORAGE_UNAVAILABLE" : "DOCUMENT_UPLOAD_FAILED",
+       message:
+-        "Unable to upload KYC document.",
+-      error: error.message,
++        error?.code === "STORAGE_UNAVAILABLE"
++          ? "Secure document storage is temporarily unavailable. Please try again later."
++          : "Unable to upload KYC document. Please retry.",
+     });
+   }
+ };
+ 
+-const validateDocumentsForTier = (
+-  profile,
+-  requestedLevel
+-) => {
+-  const level = String(
+-    requestedLevel ||
+-    profile?.requestedLevel ||
+-    profile?.level ||
+-    "TIER_1"
+-  )
+-    .trim()
+-    .toUpperCase();
+-
+-  const selfie =
+-    String(profile?.selfieUrl || "")
+-      .trim();
+-
+-  const idDocument =
+-    String(
+-      profile?.idDocumentUrl || ""
+-    ).trim();
+-
+-  const proofOfAddress =
+-    String(
+-      profile?.proofOfAddressUrl || ""
+-    ).trim();
+-
+-  if (
+-    level === "TIER_2" &&
+-    (!selfie || !idDocument)
+-  ) {
+-    return {
+-      valid: false,
+-      message:
+-        "Tier 2 requires Government ID and Selfie.",
+-    };
+-  }
++const removeKycDocument = async (req, res) => {
++  try {
++    const userId = req.user?._id || req.user?.id;
++    const documentType = normalizeUploadType(req.params?.documentType);
++    if (!userId || !documentType) {
++      return res.status(400).json({ success: false, message: "Invalid KYC document." });
++    }
++    const profile = await KycProfile.findOne({ user: userId });
++    if (!profile) return res.status(404).json({ success: false, message: "KYC profile was not found." });
++    if (!canEditKyc(profile)) {
++      return res.status(409).json({
++        success: false,
++        code: "KYC_LOCKED_FOR_REVIEW",
++        message: "Your submitted KYC application cannot be changed while it is under review.",
++      });
++    }
+ 
+-  if (
+-    level === "TIER_3" &&
+-    (
+-      !selfie ||
+-      !idDocument ||
+-      !proofOfAddress
+-    )
+-  ) {
+-    return {
+-      valid: false,
+-      message:
+-        "Tier 3 requires Government ID, Selfie and Proof of Address.",
+-    };
++    const field = DOCUMENT_FIELDS[documentType];
++    const assetId = String(profile[field] || "").trim();
++    profile[field] = "";
++    if (documentType === "SELFIE") profile.livenessStatus = "NOT_STARTED";
++    await profile.save();
++    destroyAsset(assetId).catch(() => {});
++
++    return res.status(200).json({
++      success: true,
++      documents: documentFlags(profile),
++    });
++  } catch (_) {
++    return res.status(500).json({ success: false, message: "Unable to remove KYC document." });
+   }
++};
+ 
+-  return {
+-    valid: true,
+-    message: "",
+-  };
++const getAuthorizedDocumentUrl = (assetId) => {
++  configureCloudinary();
++  return cloudinary.url(assetId, {
++    resource_type: "image",
++    type: "authenticated",
++    sign_url: true,
++    secure: true,
++    expires_at: Math.floor(Date.now() / 1000) + 300,
++  });
+ };
+ 
+ module.exports = {
+   uploadKycDocument,
+-  validateDocumentsForTier,
+-};
++  removeKycDocument,
++  getAuthorizedDocumentUrl,
++  normalizeUploadType,
++};
+\ No newline at end of file
+diff --git a/backend/middleware/kycIdentityRateLimit.middleware.js b/backend/middleware/kycIdentityRateLimit.middleware.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..cb4abb094629ca4e9b6e6c0f4f26d33307797b37
+--- /dev/null
++++ b/backend/middleware/kycIdentityRateLimit.middleware.js
+@@ -0,0 +1,25 @@
++const attempts = new Map();
++const WINDOW_MS = 15 * 60 * 1000;
++const MAX_ATTEMPTS = 5;
++
++const kycIdentityRateLimit = (req, res, next) => {
++  const key = String(req.user?._id || req.user?.id || "");
++  const now = Date.now();
++  const activeAttempts = (attempts.get(key) || []).filter(
++    (timestamp) => now - timestamp < WINDOW_MS,
++  );
++
++  if (activeAttempts.length >= MAX_ATTEMPTS) {
++    return res.status(429).json({
++      success: false,
++      code: "IDENTITY_VERIFICATION_RATE_LIMITED",
++      message: "Too many identity verification attempts. Please try again later.",
++    });
++  }
++
++  activeAttempts.push(now);
++  attempts.set(key, activeAttempts);
++  return next();
++};
++
++module.exports = { kycIdentityRateLimit };
+\ No newline at end of file
+diff --git a/backend/models/kycProfile.model.js b/backend/models/kycProfile.model.js
+index 76b8550fadfd77bfad0e79ca30c65d8f8b7005bb..702b408e3047ce28fd8204a0f4d5509b25ed0223 100644
+--- a/backend/models/kycProfile.model.js
++++ b/backend/models/kycProfile.model.js
+@@ -32,6 +32,7 @@ const kycProfileSchema = new mongoose.Schema(
+         "UNDER_REVIEW",
+         "VERIFIED",
+         "REJECTED",
++        "NEEDS_MORE_INFORMATION",
+       ],
+       default: "NOT_STARTED",
+       index: true,
+@@ -118,6 +119,10 @@ const kycProfileSchema = new mongoose.Schema(
+       trim: true,
+       default: "",
+     },
++    ninVerifiedAt: {
++      type: Date,
++      default: null,
++    },
+ 
+     bvnVerified: {
+       type: Boolean,
+@@ -135,6 +140,40 @@ const kycProfileSchema = new mongoose.Schema(
+       trim: true,
+       default: "",
+     },
++    bvnVerifiedAt: {
++      type: Date,
++      default: null,
++    },
++    identityMatchStatus: {
++      type: String,
++      enum: ["NOT_VERIFIED", "MATCHED", "REVIEW_REQUIRED", "FAILED"],
++      default: "NOT_VERIFIED",
++    },
++    documentType: {
++      type: String,
++      enum: ["", "NIN_SLIP", "NATIONAL_ID", "DRIVERS_LICENSE", "INTERNATIONAL_PASSPORT", "VOTERS_CARD"],
++      default: "",
++    },
++    selfieAssetId: {
++      type: String,
++      trim: true,
++      default: "",
++    },
++    idDocumentAssetId: {
++      type: String,
++      trim: true,
++      default: "",
++    },
++    idDocumentBackAssetId: {
++      type: String,
++      trim: true,
++      default: "",
++    },
++    proofOfAddressAssetId: {
++      type: String,
++      trim: true,
++      default: "",
++    },
+ 
+     selfieUrl: {
+       type: String,
+@@ -159,6 +198,11 @@ const kycProfileSchema = new mongoose.Schema(
+       trim: true,
+       default: "",
+     },
++    reviewReason: {
++      type: String,
++      trim: true,
++      default: "",
++    },
+ 
+     submittedAt: {
+       type: Date,
+@@ -169,6 +213,44 @@ const kycProfileSchema = new mongoose.Schema(
+       type: Date,
+       default: null,
+     },
++    approvedAt: {
++      type: Date,
++      default: null,
++    },
++    reviewedBy: {
++      type: mongoose.Schema.Types.ObjectId,
++      ref: "User",
++      default: null,
++    },
++    livenessStatus: {
++      type: String,
++      enum: ["NOT_STARTED", "READY_FOR_CHECK", "PASSED", "FAILED"],
++      default: "NOT_STARTED",
++    },
++    reviewHistory: {
++      type: [
++        {
++          action: {
++            type: String,
++            required: true,
++          },
++          reason: {
++            type: String,
++            default: "",
++          },
++          reviewer: {
++            type: mongoose.Schema.Types.ObjectId,
++            ref: "User",
++            default: null,
++          },
++          occurredAt: {
++            type: Date,
++            default: Date.now,
++          },
++        },
++      ],
++      default: [],
++    },
+ 
+     metadata: {
+       type: mongoose.Schema.Types.Mixed,
+diff --git a/backend/routes/adminKyc.routes.js b/backend/routes/adminKyc.routes.js
+index 068ff2e61a9d3c81f9ae7e8e77f4159f8bb15123..904de8e6744152212432bae0a9c648f51b1d678e 100644
+--- a/backend/routes/adminKyc.routes.js
++++ b/backend/routes/adminKyc.routes.js
+@@ -37,6 +37,11 @@ router.get(
+   adminKycController.getKycApplication
+ );
+ 
++router.get(
++  "/:kycId/document/:documentType",
++  adminKycController.getKycDocument
++);
++
+ router.patch(
+   "/:kycId/status",
+   adminKycController.updateKycStatus
+diff --git a/backend/routes/kyc.routes.js b/backend/routes/kyc.routes.js
+index 3dfdf1de087b94f8cc8866e6a70de770af38c7f4..00c5aace5f24b4a175c9d119f39a95507b2780f6 100644
+--- a/backend/routes/kyc.routes.js
++++ b/backend/routes/kyc.routes.js
+@@ -1,7 +1,11 @@
+ const multer = require("multer");
+ const {
+   uploadKycDocument,
++  removeKycDocument,
+ } = require("../controllers/kycDocument.controller");
++const {
++  kycIdentityRateLimit,
++} = require("../middleware/kycIdentityRateLimit.middleware");
+ 
+ const kycDocumentUpload = multer({
+   storage: multer.memoryStorage(),
+@@ -40,6 +44,12 @@ router.post(
+   kycController.submitMyKyc
+ );
+ 
++router.post(
++  "/identity/verify",
++  protect,
++  kycIdentityRateLimit,
++  kycController.verifyMyKycIdentity
++);
+ 
+ /*
+  * KYC supporting-document upload
+@@ -54,8 +64,27 @@ router.post(
+ router.post(
+   "/document/upload",
+   protect,
+-  kycDocumentUpload.single("document"),
++  (req, res, next) => {
++    kycDocumentUpload.single("document")(req, res, (error) => {
++      if (error) {
++        return res.status(400).json({
++          success: false,
++          message:
++            error.code === "LIMIT_FILE_SIZE"
++              ? "KYC images must be 8 MB or smaller."
++              : "Unable to process this upload.",
++        });
++      }
++      return next();
++    });
++  },
+   uploadKycDocument
+ );
+ 
++router.delete(
++  "/document/:documentType",
++  protect,
++  removeKycDocument
++);
++
+ module.exports = router;
+diff --git a/backend/services/kycIdentityVerification.service.js b/backend/services/kycIdentityVerification.service.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f932c0862dce975bb186330b48872ba22480e5b
+--- /dev/null
++++ b/backend/services/kycIdentityVerification.service.js
+@@ -0,0 +1,153 @@
++const axios = require("axios");
++
++const PREMBLY_BASE_URL =
++  process.env.PREMBLY_BASE_URL || "https://api.prembly.com";
++
++const normalizeIdentityType = (value) => {
++  const type = String(value || "").trim().toUpperCase();
++  return ["NIN", "BVN"].includes(type) ? type : "";
++};
++
++const maskIdentifier = (value) => {
++  const identifier = String(value || "").trim();
++  return identifier.length > 4
++    ? `${"*".repeat(identifier.length - 4)}${identifier.slice(-4)}`
++    : "****";
++};
++
++const normalizedName = (value) =>
++  String(value || "")
++    .normalize("NFKD")
++    .replace(/[\u0300-\u036f]/g, "")
++    .replace(/[^a-zA-Z0-9\s]/g, " ")
++    .toLowerCase()
++    .split(/\s+/)
++    .filter(Boolean)
++    .sort()
++    .join(" ");
++
++const getProviderName = (payload) => {
++  const sources = [
++    payload?.data,
++    payload?.nin_data,
++    payload?.data?.nin_data,
++    payload?.bvn_data,
++    payload?.data?.bvn_data,
++    payload?.response?.data,
++    payload,
++  ].filter((value) => value && typeof value === "object");
++
++  for (const source of sources) {
++    const fullName =
++      source.fullName ||
++      source.full_name ||
++      source.name ||
++      [source.firstname || source.first_name, source.middlename || source.middle_name, source.surname || source.last_name]
++        .filter(Boolean)
++        .join(" ");
++    if (String(fullName || "").trim()) return String(fullName).trim();
++  }
++  return "";
++};
++
++const nameMatchStatus = ({ firstName, middleName, lastName, providerName }) => {
++  const profileName = normalizedName(
++    [firstName, middleName, lastName].filter(Boolean).join(" "),
++  );
++  const verifiedName = normalizedName(providerName);
++  if (!profileName || !verifiedName) return "REVIEW_REQUIRED";
++  return profileName === verifiedName ? "MATCHED" : "REVIEW_REQUIRED";
++};
++
++const verifyIdentity = async ({ type, identifier, profile }) => {
++  const identityType = normalizeIdentityType(type);
++  const cleanIdentifier = String(identifier || "").replace(/\s+/g, "");
++  const appId = String(process.env.PREMBLY_APP_ID || "").trim();
++  const secret = String(process.env.PREMBLY_SECRET_KEY || "").trim();
++
++  if (!identityType || !/^\d{11}$/.test(cleanIdentifier)) {
++    return {
++      ok: false,
++      status: 400,
++      code: "INVALID_IDENTIFIER",
++      message: "Enter a valid 11-digit identity number.",
++    };
++  }
++
++  if (!appId || !secret) {
++    return {
++      ok: false,
++      status: 503,
++      code: "PROVIDER_UNAVAILABLE",
++      message: "Identity verification is temporarily unavailable. Please try again later.",
++    };
++  }
++
++  const path =
++    identityType === "NIN"
++      ? "/verification/vnin-basic"
++      : "/verification/bvn_validation";
++
++  let response;
++  try {
++    response = await axios.post(
++      `${PREMBLY_BASE_URL}${path}`,
++      { number: cleanIdentifier },
++      {
++        headers: {
++          "Content-Type": "application/json",
++          app_id: appId,
++          "x-api-key": secret,
++        },
++        timeout: 45000,
++      },
++    );
++  } catch (error) {
++    const upstreamStatus = Number(error?.response?.status);
++    return {
++      ok: false,
++      status: upstreamStatus >= 500 ? 503 : 400,
++      code: upstreamStatus >= 500 ? "PROVIDER_UNAVAILABLE" : "VERIFICATION_FAILED",
++      message:
++        upstreamStatus >= 500
++          ? "Identity verification is temporarily unavailable. Please try again later."
++          : "We could not verify that identity number.",
++    };
++  }
++
++  const providerName = getProviderName(response?.data || {});
++  if (!providerName) {
++    return {
++      ok: false,
++      status: 400,
++      code: "VERIFICATION_FAILED",
++      message: "We could not verify that identity number.",
++    };
++  }
++
++  return {
++    ok: true,
++    identityType,
++    maskedIdentifier: maskIdentifier(cleanIdentifier),
++    providerReference: String(
++      response?.data?.reference ||
++        response?.data?.transaction_id ||
++        response?.headers?.["x-request-id"] ||
++        "",
++    ).slice(0, 255),
++    matchStatus: nameMatchStatus({
++      firstName: profile?.firstName,
++      middleName: profile?.middleName,
++      lastName: profile?.lastName,
++      providerName,
++    }),
++  };
++};
++
++module.exports = {
++  normalizeIdentityType,
++  maskIdentifier,
++  normalizedName,
++  nameMatchStatus,
++  verifyIdentity,
++};
+\ No newline at end of file
+diff --git a/backend/services/kycImageValidation.service.js b/backend/services/kycImageValidation.service.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..078a46fc7d4b0d8bc2d427063a1b2df3d3a364f0
+--- /dev/null
++++ b/backend/services/kycImageValidation.service.js
+@@ -0,0 +1,18 @@
++const hasSupportedImageSignature = (buffer, mimeType) => {
++  if (!Buffer.isBuffer(buffer) || buffer.length < 8) return false;
++
++  const isJpeg =
++    buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
++  const isPng =
++    buffer[0] === 0x89 &&
++    buffer[1] === 0x50 &&
++    buffer[2] === 0x4e &&
++    buffer[3] === 0x47;
++
++  return (
++    (mimeType === "image/jpeg" && isJpeg) ||
++    (mimeType === "image/png" && isPng)
++  );
++};
++
++module.exports = { hasSupportedImageSignature };
+\ No newline at end of file
+diff --git a/backend/services/kycRequirements.service.js b/backend/services/kycRequirements.service.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..154c0fe769cf10a8d296ad08ed910340997dc424
+--- /dev/null
++++ b/backend/services/kycRequirements.service.js
+@@ -0,0 +1,151 @@
++const SUPPORTED_DOCUMENT_TYPES = new Set([
++  "NIN_SLIP",
++  "NATIONAL_ID",
++  "DRIVERS_LICENSE",
++  "INTERNATIONAL_PASSPORT",
++  "VOTERS_CARD",
++]);
++
++const EDITABLE_STATUSES = new Set([
++  "NOT_STARTED",
++  "REJECTED",
++  "NEEDS_MORE_INFORMATION",
++]);
++
++const normalizeDocumentType = (value) => {
++  const type = String(value || "").trim().toUpperCase();
++  return SUPPORTED_DOCUMENT_TYPES.has(type) ? type : "";
++};
++
++const requiresDocumentBack = (documentType) =>
++  ["NATIONAL_ID", "DRIVERS_LICENSE", "VOTERS_CARD"].includes(
++    normalizeDocumentType(documentType),
++  );
++
++const hasPrivateAsset = (profile, field) =>
++  Boolean(String(profile?.[field] || "").trim());
++
++const documentFlags = (profile) => {
++  const hasLegacySelfie = Boolean(String(profile?.selfieUrl || "").trim());
++  const hasLegacyId = Boolean(String(profile?.idDocumentUrl || "").trim());
++  const hasLegacyProof = Boolean(
++    String(profile?.proofOfAddressUrl || "").trim(),
++  );
++
++  return {
++    documentType: normalizeDocumentType(profile?.documentType),
++    selfieUploaded: hasPrivateAsset(profile, "selfieAssetId"),
++    idDocumentUploaded: hasPrivateAsset(profile, "idDocumentAssetId"),
++    idDocumentBackUploaded: hasPrivateAsset(profile, "idDocumentBackAssetId"),
++    proofOfAddressUploaded: hasPrivateAsset(profile, "proofOfAddressAssetId"),
++    selfieNeedsSecureReupload: !hasPrivateAsset(profile, "selfieAssetId") && hasLegacySelfie,
++    idDocumentNeedsSecureReupload:
++      !hasPrivateAsset(profile, "idDocumentAssetId") && hasLegacyId,
++    proofOfAddressNeedsSecureReupload:
++      !hasPrivateAsset(profile, "proofOfAddressAssetId") && hasLegacyProof,
++  };
++};
++
++const canEditKyc = (profile) =>
++  EDITABLE_STATUSES.has(String(profile?.status || "NOT_STARTED").toUpperCase());
++
++const validateDocumentsForTier = (profile, requestedLevel) => {
++  const level = String(
++    requestedLevel || profile?.requestedLevel || profile?.level || "TIER_1",
++  )
++    .trim()
++    .toUpperCase();
++  const flags = documentFlags(profile);
++
++  if (level === "TIER_1") {
++    return { valid: true, message: "" };
++  }
++
++  if (!flags.documentType || !flags.idDocumentUploaded || !flags.selfieUploaded) {
++    return {
++      valid: false,
++      message: "Tier 2 requires a supported government ID and a selfie.",
++    };
++  }
++
++  if (
++    requiresDocumentBack(flags.documentType) &&
++    !flags.idDocumentBackUploaded
++  ) {
++    return {
++      valid: false,
++      message: "Please upload the back of your government ID.",
++    };
++  }
++
++  if (level === "TIER_3" && !flags.proofOfAddressUploaded) {
++    return {
++      valid: false,
++      message: "Tier 3 requires proof of address.",
++    };
++  }
++
++  return { valid: true, message: "" };
++};
++
++const safeReviewHistory = (profile) =>
++  Array.isArray(profile?.reviewHistory)
++    ? profile.reviewHistory.map((entry) => ({
++        action: String(entry?.action || ""),
++        reason: String(entry?.reason || ""),
++        occurredAt: entry?.occurredAt || null,
++      }))
++    : [];
++
++const safeKycProfile = (profile, { includeReviewHistory = false } = {}) => {
++  const source = typeof profile?.toObject === "function" ? profile.toObject() : profile || {};
++  const identity = {
++    ninVerified: source.ninVerified === true,
++    ninLast4: String(source.ninLast4 || ""),
++    ninVerifiedAt: source.ninVerifiedAt || null,
++    bvnVerified: source.bvnVerified === true,
++    bvnLast4: String(source.bvnLast4 || ""),
++    bvnVerifiedAt: source.bvnVerifiedAt || null,
++    matchStatus: String(source.identityMatchStatus || "NOT_VERIFIED"),
++  };
++
++  return {
++    _id: source._id,
++    id: source._id?.toString?.() || "",
++    status: String(source.status || "NOT_STARTED"),
++    level: String(source.level || "TIER_1"),
++    requestedLevel: String(source.requestedLevel || source.level || "TIER_1"),
++    firstName: String(source.firstName || ""),
++    middleName: String(source.middleName || ""),
++    lastName: String(source.lastName || ""),
++    dateOfBirth: source.dateOfBirth || null,
++    gender: String(source.gender || ""),
++    phone: String(source.phone || ""),
++    email: String(source.email || ""),
++    address: String(source.address || ""),
++    state: String(source.state || ""),
++    lga: String(source.lga || ""),
++    rejectionReason: String(source.rejectionReason || ""),
++    reviewReason: String(source.reviewReason || ""),
++    submittedAt: source.submittedAt || null,
++    reviewedAt: source.reviewedAt || null,
++    approvedAt: source.approvedAt || null,
++    identity,
++    documents: documentFlags(source),
++    liveness: {
++      status: String(source.livenessStatus || "NOT_STARTED"),
++    },
++    ...(includeReviewHistory ? { reviewHistory: safeReviewHistory(source) } : {}),
++  };
++};
++
++module.exports = {
++  SUPPORTED_DOCUMENT_TYPES,
++  normalizeDocumentType,
++  requiresDocumentBack,
++  documentFlags,
++  canEditKyc,
++  validateDocumentsForTier,
++  safeReviewHistory,
++  safeKycProfile,
++};
+\ No newline at end of file
+diff --git a/backend/test/kycRequirements.service.test.js b/backend/test/kycRequirements.service.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..856f8bf7b7f2a81b4d484601039c00e63a6dc7bf
+--- /dev/null
++++ b/backend/test/kycRequirements.service.test.js
+@@ -0,0 +1,96 @@
++const test = require("node:test");
++const assert = require("node:assert/strict");
++
++const {
++  canEditKyc,
++  documentFlags,
++  safeKycProfile,
++  validateDocumentsForTier,
++} = require("../services/kycRequirements.service");
++const {
++  maskIdentifier,
++  nameMatchStatus,
++} = require("../services/kycIdentityVerification.service");
++const {
++  hasSupportedImageSignature,
++} = require("../services/kycImageValidation.service");
++
++test("requires private KYC assets for enhanced tiers", () => {
++  const incomplete = {
++    documentType: "DRIVERS_LICENSE",
++    idDocumentAssetId: "private/front",
++    selfieAssetId: "private/selfie",
++  };
++  assert.equal(validateDocumentsForTier(incomplete, "TIER_2").valid, false);
++
++  incomplete.idDocumentBackAssetId = "private/back";
++  assert.equal(validateDocumentsForTier(incomplete, "TIER_2").valid, true);
++  assert.equal(validateDocumentsForTier(incomplete, "TIER_3").valid, false);
++
++  incomplete.proofOfAddressAssetId = "private/address";
++  assert.equal(validateDocumentsForTier(incomplete, "TIER_3").valid, true);
++});
++
++test("never serializes private assets, legacy URLs, or provider references", () => {
++  const profile = {
++    _id: "kyc-1",
++    status: "PENDING",
++    ninVerified: true,
++    ninLast4: "1234",
++    ninVerificationId: "private-provider-reference",
++    selfieAssetId: "private/selfie",
++    selfieUrl: "https://legacy.example/selfie",
++    idDocumentAssetId: "private/id",
++    idDocumentUrl: "https://legacy.example/id",
++  };
++  const serialized = safeKycProfile(profile);
++  assert.equal(serialized.identity.ninLast4, "1234");
++  assert.equal(serialized.documents.selfieUploaded, true);
++  assert.equal(serialized.documents.idDocumentUploaded, true);
++  assert.equal(JSON.stringify(serialized).includes("private/"), false);
++  assert.equal(JSON.stringify(serialized).includes("legacy.example"), false);
++  assert.equal(JSON.stringify(serialized).includes("provider-reference"), false);
++});
++
++test("allows corrections only when KYC is not under review", () => {
++  assert.equal(canEditKyc({ status: "NOT_STARTED" }), true);
++  assert.equal(canEditKyc({ status: "REJECTED" }), true);
++  assert.equal(canEditKyc({ status: "NEEDS_MORE_INFORMATION" }), true);
++  assert.equal(canEditKyc({ status: "PENDING" }), false);
++  assert.equal(canEditKyc({ status: "UNDER_REVIEW" }), false);
++});
++
++test("masks identifiers, compares names safely, and validates image signatures", () => {
++  assert.equal(maskIdentifier("12345678901"), "*******8901");
++  assert.equal(
++    nameMatchStatus({
++      firstName: "Ada",
++      middleName: "N.",
++      lastName: "Okafor",
++      providerName: "Okafor Ada N",
++    }),
++    "MATCHED",
++  );
++  assert.equal(
++    nameMatchStatus({
++      firstName: "Ada",
++      lastName: "Okafor",
++      providerName: "Grace Hopper",
++    }),
++    "REVIEW_REQUIRED",
++  );
++  assert.equal(
++    hasSupportedImageSignature(
++      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
++      "image/png",
++    ),
++    true,
++  );
++  assert.equal(
++    hasSupportedImageSignature(
++      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
++      "image/jpeg",
++    ),
++    false,
++  );
++});
+\ No newline at end of file
+diff --git a/lib/admin/admin_kyc_api_service.dart b/lib/admin/admin_kyc_api_service.dart
+index ac83de82a7c099214fb14273f088ead9744eda9b..ca8f8fe28c32473bbbd5679e6c291050ed9abf01 100644
+--- a/lib/admin/admin_kyc_api_service.dart
++++ b/lib/admin/admin_kyc_api_service.dart
+@@ -24,10 +24,19 @@ class AdminKycApplication {
+     required this.rejectionReason,
+     required this.selfieUploaded,
+     required this.idDocumentUploaded,
++    required this.idDocumentBackUploaded,
+     required this.proofOfAddressUploaded,
+     required this.selfieNeedsSecureReupload,
+     required this.idDocumentNeedsSecureReupload,
+     required this.proofOfAddressNeedsSecureReupload,
++    required this.documentType,
++    required this.ninVerified,
++    required this.bvnVerified,
++    required this.ninLast4,
++    required this.bvnLast4,
++    required this.identityMatchStatus,
++    required this.reviewReason,
++    required this.reviewHistory,
+   });
+ 
+   final String id;
+@@ -49,10 +58,19 @@ class AdminKycApplication {
+   final String rejectionReason;
+   final bool selfieUploaded;
+   final bool idDocumentUploaded;
++  final bool idDocumentBackUploaded;
+   final bool proofOfAddressUploaded;
+   final bool selfieNeedsSecureReupload;
+   final bool idDocumentNeedsSecureReupload;
+   final bool proofOfAddressNeedsSecureReupload;
++  final String documentType;
++  final bool ninVerified;
++  final bool bvnVerified;
++  final String ninLast4;
++  final String bvnLast4;
++  final String identityMatchStatus;
++  final String reviewReason;
++  final List<AdminKycReviewEvent> reviewHistory;
+ 
+   String get displayName => <String>[firstName, middleName, lastName]
+       .where((name) => name.isNotEmpty)
+@@ -65,6 +83,9 @@ class AdminKycApplication {
+     final Map<String, dynamic> documents = json['documents'] is Map
+         ? Map<String, dynamic>.from(json['documents'] as Map)
+         : <String, dynamic>{};
++    final Map<String, dynamic> identity = json['identity'] is Map
++        ? Map<String, dynamic>.from(json['identity'] as Map)
++        : <String, dynamic>{};
+     String value(String key) =>
+         (json[key] ?? user[key] ?? '').toString().trim();
+     bool documentFlag(String key) {
+@@ -103,6 +124,10 @@ class AdminKycApplication {
+       selfieUploaded: documentUploaded('selfieUploaded', 'selfieUrl'),
+       idDocumentUploaded:
+           documentUploaded('idDocumentUploaded', 'idDocumentUrl'),
++      idDocumentBackUploaded: documentUploaded(
++        'idDocumentBackUploaded',
++        'idDocumentBackUrl',
++      ),
+       proofOfAddressUploaded:
+           documentUploaded('proofOfAddressUploaded', 'proofOfAddressUrl'),
+       selfieNeedsSecureReupload: documentFlag('selfieNeedsSecureReupload'),
+@@ -110,6 +135,24 @@ class AdminKycApplication {
+           documentFlag('idDocumentNeedsSecureReupload'),
+       proofOfAddressNeedsSecureReupload:
+           documentFlag('proofOfAddressNeedsSecureReupload'),
++      documentType: (documents['documentType'] ?? json['documentType'] ?? '')
++          .toString()
++          .trim(),
++      ninVerified: identity['ninVerified'] == true,
++      bvnVerified: identity['bvnVerified'] == true,
++      ninLast4: (identity['ninLast4'] ?? '').toString().trim(),
++      bvnLast4: (identity['bvnLast4'] ?? '').toString().trim(),
++      identityMatchStatus:
++          (identity['matchStatus'] ?? 'NOT_VERIFIED').toString().trim(),
++      reviewReason: value('reviewReason').isNotEmpty
++          ? value('reviewReason')
++          : value('rejectionReason'),
++      reviewHistory: (json['reviewHistory'] as List<dynamic>? ?? <dynamic>[])
++          .whereType<Map>()
++          .map((Map entry) => AdminKycReviewEvent.fromJson(
++                Map<String, dynamic>.from(entry),
++              ))
++          .toList(),
+     );
+   }
+ }
+@@ -156,14 +199,15 @@ class AdminKycApiService {
+   static Future<AdminKycApplication> updateStatus(
+     String kycId, {
+     required String status,
+-    String rejectionReason = '',
++    String reviewReason = '',
+   }) async {
+     final Map<String, dynamic> body = await _request(
+       'PATCH',
+       Uri.parse('$_baseUrl/admin/kyc/${Uri.encodeComponent(kycId)}/status'),
+       payload: <String, dynamic>{
+         'status': status,
+-        if (status == 'REJECTED') 'rejectionReason': rejectionReason.trim(),
++        if (status == 'REJECTED' || status == 'REQUEST_MORE_INFORMATION')
++          'reviewReason': reviewReason.trim(),
+       },
+     );
+     final dynamic raw =
+@@ -253,3 +297,23 @@ class AdminKycApiService {
+     return body;
+   }
+ }
++
++class AdminKycReviewEvent {
++  const AdminKycReviewEvent({
++    required this.action,
++    required this.reason,
++    required this.occurredAt,
++  });
++
++  final String action;
++  final String reason;
++  final String occurredAt;
++
++  factory AdminKycReviewEvent.fromJson(Map<String, dynamic> json) {
++    return AdminKycReviewEvent(
++      action: (json['action'] ?? '').toString().trim(),
++      reason: (json['reason'] ?? '').toString().trim(),
++      occurredAt: (json['occurredAt'] ?? '').toString().trim(),
++    );
++  }
++}
+diff --git a/lib/admin/admin_kyc_review_screen.dart b/lib/admin/admin_kyc_review_screen.dart
+index c1cf60f37d5f1bb11079e7fd117869021698a9c9..196caaee1203759339c92aa2ee7fcf8840052a66 100644
+--- a/lib/admin/admin_kyc_review_screen.dart
++++ b/lib/admin/admin_kyc_review_screen.dart
+@@ -103,6 +103,10 @@ class _AdminKycReviewScreenState extends State<AdminKycReviewScreen> {
+                   ),
+                   DropdownMenuItem(value: 'VERIFIED', child: Text('Verified')),
+                   DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
++                  DropdownMenuItem(
++                    value: 'NEEDS_MORE_INFORMATION',
++                    child: Text('More information required'),
++                  ),
+                 ],
+                 onChanged: (String? value) {
+                   setState(() => _status = value ?? '');
+@@ -213,19 +217,23 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
+ 
+   Future<void> _review(String status) async {
+     String reason = '';
+-    if (status == 'REJECTED') {
++    if (status == 'REJECTED' || status == 'REQUEST_MORE_INFORMATION') {
+       final TextEditingController controller = TextEditingController();
+       final String? submitted = await showDialog<String>(
+         context: context,
+         builder: (BuildContext context) => AlertDialog(
+-          title: const Text('Reject KYC application'),
++          title: Text(
++            status == 'REJECTED'
++                ? 'Reject KYC application'
++                : 'Request more information',
++          ),
+           content: TextField(
+             controller: controller,
+             autofocus: true,
+             maxLines: 3,
+             decoration: const InputDecoration(
+-              labelText: 'Rejection reason',
+-              hintText: 'Explain what the applicant must correct',
++              labelText: 'Required review reason',
++              hintText: 'Explain what the applicant must correct or provide',
+             ),
+           ),
+           actions: <Widget>[
+@@ -238,7 +246,9 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
+                 final String value = controller.text.trim();
+                 if (value.isNotEmpty) Navigator.pop(context, value);
+               },
+-              child: const Text('Reject'),
++              child: Text(
++                status == 'REJECTED' ? 'Reject' : 'Send request',
++              ),
+             ),
+           ],
+         ),
+@@ -252,7 +262,7 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
+       final AdminKycApplication updated = await AdminKycApiService.updateStatus(
+         widget.kycId,
+         status: status,
+-        rejectionReason: reason,
++        reviewReason: reason,
+       );
+       if (!mounted) return;
+       setState(() => _application = updated);
+@@ -330,11 +340,9 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
+                                         fontWeight: FontWeight.bold))),
+                             _StatusChip(status: application.status),
+                           ]),
+-                          if (application
+-                              .rejectionReason.isNotEmpty) ...<Widget>[
++                          if (application.reviewReason.isNotEmpty) ...<Widget>[
+                             const SizedBox(height: 12),
+-                            Text(
+-                                'Rejection reason: ${application.rejectionReason}',
++                            Text('Review reason: ${application.reviewReason}',
+                                 style: const TextStyle(color: Colors.red)),
+                           ],
+                         ]),
+@@ -354,14 +362,42 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
+                               _label(application.requestedLevel)),
+                           _field('Approved tier', _label(application.level)),
+                           _field('Submitted', application.submittedAt),
++                          _field(
++                            'Identity match',
++                            _label(application.identityMatchStatus),
++                          ),
++                        ]),
++                        _section('Identity verification', <Widget>[
++                          _field(
++                            'NIN',
++                            application.ninVerified
++                                ? 'Verified •••• ${application.ninLast4}'
++                                : 'Not verified',
++                          ),
++                          _field(
++                            'BVN',
++                            application.bvnVerified
++                                ? 'Verified •••• ${application.bvnLast4}'
++                                : 'Not verified',
++                          ),
++                          _field(
++                            'Government ID type',
++                            _label(application.documentType),
++                          ),
+                         ]),
+                         _section('Authorized documents', <Widget>[
+                           _document(
+-                            'Government ID',
+-                            'ID_DOCUMENT',
++                            'Government ID — front',
++                            'ID_DOCUMENT_FRONT',
+                             application.idDocumentUploaded,
+                             application.idDocumentNeedsSecureReupload,
+                           ),
++                          _document(
++                            'Government ID — back',
++                            'ID_DOCUMENT_BACK',
++                            application.idDocumentBackUploaded,
++                            false,
++                          ),
+                           _document(
+                             'Selfie',
+                             'SELFIE',
+@@ -375,6 +411,22 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
+                             application.proofOfAddressNeedsSecureReupload,
+                           ),
+                         ]),
++                        if (application.reviewHistory.isNotEmpty)
++                          _section(
++                            'Review history',
++                            application.reviewHistory
++                                .map(
++                                  (AdminKycReviewEvent event) => Padding(
++                                    padding: const EdgeInsets.only(bottom: 10),
++                                    child: Text(
++                                      '${_label(event.action)}'
++                                      '${event.occurredAt.isEmpty ? '' : ' • ${event.occurredAt}'}'
++                                      '${event.reason.isEmpty ? '' : '\n${event.reason}'}',
++                                    ),
++                                  ),
++                                )
++                                .toList(),
++                          ),
+                         if (application.status == 'PENDING' ||
+                             application.status == 'UNDER_REVIEW')
+                           Row(children: <Widget>[
+@@ -393,15 +445,29 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
+                                 child: ElevatedButton.icon(
+                                     onPressed: _updating
+                                         ? null
+-                                        : () => _review('VERIFIED'),
++                                        : () => _review('APPROVED'),
+                                     icon: const Icon(Icons.verified),
+                                     label: Text(
+-                                        _updating ? 'Updating...' : 'Verify'),
++                                        _updating ? 'Updating...' : 'Approve'),
+                                     style: ElevatedButton.styleFrom(
+                                         backgroundColor:
+                                             const Color(0xFF08783E),
+                                         foregroundColor: Colors.white))),
+                           ]),
++                        if (application.status == 'PENDING' ||
++                            application.status == 'UNDER_REVIEW') ...<Widget>[
++                          const SizedBox(height: 12),
++                          SizedBox(
++                            width: double.infinity,
++                            child: OutlinedButton.icon(
++                              onPressed: _updating
++                                  ? null
++                                  : () => _review('REQUEST_MORE_INFORMATION'),
++                              icon: const Icon(Icons.question_answer_outlined),
++                              label: const Text('Request more information'),
++                            ),
++                          ),
++                        ],
+                       ],
+                     ),
+     );
+@@ -470,9 +536,11 @@ class _StatusChip extends StatelessWidget {
+         ? Colors.green
+         : status == 'REJECTED'
+             ? Colors.red
+-            : status == 'UNDER_REVIEW'
+-                ? Colors.orange
+-                : Colors.blueGrey;
++            : status == 'NEEDS_MORE_INFORMATION'
++                ? Colors.deepOrange
++                : status == 'UNDER_REVIEW'
++                    ? Colors.orange
++                    : Colors.blueGrey;
+     return Chip(
+       label: Text(_label(status), style: TextStyle(color: color, fontSize: 12)),
+       backgroundColor: color.withValues(alpha: .1),
+diff --git a/lib/admin/main_navigation.dart b/lib/admin/main_navigation.dart
+index dc9cfe55dddbb1c41ed8ed2ca510679b3706efa5..7138d86d7df7b7c0e7c83d6fa31b398c86870ebb 100644
+--- a/lib/admin/main_navigation.dart
++++ b/lib/admin/main_navigation.dart
+@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
+ import 'admin_dashboard_screen.dart';
+ import 'admin_manual_funding_screen.dart';
+ import 'admin_notifications_screen.dart';
++import 'admin_kyc_review_screen.dart';
+ 
+ import 'admin_airtime_to_cash_screen.dart';
+ 
+@@ -30,6 +31,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
+       ),
+     ),
+     AdminAirtimeToCashScreen(),
++    AdminKycReviewScreen(),
+   ];
+ 
+   @override
+@@ -105,6 +107,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
+             ),
+             label: 'Airtime Cash',
+           ),
++          BottomNavigationBarItem(
++            icon: Icon(Icons.verified_user_outlined),
++            activeIcon: Icon(Icons.verified_user),
++            label: 'KYC',
++          ),
+         ],
+       ),
+     );
+diff --git a/lib/kyc_screen.dart b/lib/kyc_screen.dart
+index 465bece7141f445f3240ce31e2d59380172e1418..cb2d20b1da4c79990103ae2b705d0efea14a0258 100644
+--- a/lib/kyc_screen.dart
++++ b/lib/kyc_screen.dart
+@@ -1,26 +1,20 @@
+ import 'dart:convert';
++import 'dart:typed_data';
+ 
+ import 'package:flutter/material.dart';
+ import 'package:http/http.dart' as http;
+ import 'package:http_parser/http_parser.dart';
+-import 'package:shared_preferences/shared_preferences.dart';
+ import 'package:image_picker/image_picker.dart';
++import 'package:shared_preferences/shared_preferences.dart';
+ 
+-import 'bvn_verification_screen.dart';
+-import 'id_verification_screen.dart';
++bool isSupportedKycImageFilename(String filename) {
++  final String extension = filename.split('.').last.toLowerCase();
++  return extension == 'jpg' || extension == 'jpeg' || extension == 'png';
++}
+ 
+ MediaType kycImageContentType(String filename) {
+-  final extension = filename.split('.').last.toLowerCase();
+-  final subtype = switch (extension) {
+-    'png' => 'png',
+-    'webp' => 'webp',
+-    'gif' => 'gif',
+-    'heic' => 'heic',
+-    'heif' => 'heif',
+-    _ => 'jpeg',
+-  };
+-
+-  return MediaType('image', subtype);
++  final String extension = filename.split('.').last.toLowerCase();
++  return MediaType('image', extension == 'png' ? 'png' : 'jpeg');
+ }
+ 
+ http.MultipartFile kycDocumentMultipartFile({
+@@ -35,6 +29,13 @@ http.MultipartFile kycDocumentMultipartFile({
+   );
+ }
+ 
++class _KycLocalImage {
++  const _KycLocalImage({required this.name, required this.bytes});
++
++  final String name;
++  final Uint8List bytes;
++}
++
+ class KycScreen extends StatefulWidget {
+   const KycScreen({super.key});
+ 
+@@ -43,45 +44,52 @@ class KycScreen extends StatefulWidget {
+ }
+ 
+ class _KycScreenState extends State<KycScreen> {
+-  static const String baseUrl = 'https://api.servicepay.ng/api';
+-
+-  final _formKey = GlobalKey<FormState>();
+-
+-  final firstNameController = TextEditingController();
+-  final middleNameController = TextEditingController();
+-  final lastNameController = TextEditingController();
+-  final addressController = TextEditingController();
+-  final stateController = TextEditingController();
+-  final lgaController = TextEditingController();
+-
+-  DateTime? dateOfBirth;
+-  String gender = '';
+-  String status = 'NOT_STARTED';
+-  String level = 'TIER_1';
+-  String requestedLevel = 'TIER_1';
+-
+-  bool selfieUploaded = false;
+-  bool idDocumentUploaded = false;
+-  bool proofOfAddressUploaded = false;
+-  bool selfieNeedsSecureReupload = false;
+-  bool idDocumentNeedsSecureReupload = false;
+-  bool proofOfAddressNeedsSecureReupload = false;
+-  bool ninVerified = false;
+-  bool bvnVerified = false;
+-  String ninLast4 = '';
+-  String bvnLast4 = '';
+-
+-  bool uploadingSelfie = false;
+-  bool uploadingIdDocument = false;
+-  bool uploadingProofOfAddress = false;
+-
+-  final ImagePicker _kycImagePicker = ImagePicker();
+-  String rejectionReason = '';
+-
+-  bool isLoading = true;
+-  bool isSubmitting = false;
++  static const String _baseUrl = 'https://api.servicepay.ng/api';
++  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
++  final ImagePicker _picker = ImagePicker();
++  final TextEditingController _firstName = TextEditingController();
++  final TextEditingController _middleName = TextEditingController();
++  final TextEditingController _lastName = TextEditingController();
++  final TextEditingController _phone = TextEditingController();
++  final TextEditingController _email = TextEditingController();
++  final TextEditingController _address = TextEditingController();
++  final TextEditingController _state = TextEditingController();
++  final TextEditingController _lga = TextEditingController();
++  final TextEditingController _nin = TextEditingController();
++  final TextEditingController _bvn = TextEditingController();
++
++  DateTime? _dateOfBirth;
++  String _gender = '';
++  String _status = 'NOT_STARTED';
++  String _level = 'TIER_1';
++  String _requestedLevel = 'TIER_1';
++  String _governmentIdType = '';
++  String _identityMatchStatus = 'NOT_VERIFIED';
++  String _reviewReason = '';
++
++  bool _ninVerified = false;
++  bool _bvnVerified = false;
++  String _ninLast4 = '';
++  String _bvnLast4 = '';
++  bool _consentAccepted = false;
++  bool _loading = true;
++  bool _submitting = false;
++  final Map<String, bool> _uploading = <String, bool>{};
++  final Map<String, bool> _uploaded = <String, bool>{};
++  final Map<String, _KycLocalImage> _previews = <String, _KycLocalImage>{};
++  final Map<String, String> _verificationStates = <String, String>{
++    'NIN': 'Not verified',
++    'BVN': 'Not verified',
++  };
+ 
+-  bool get _isLocked => status == 'PENDING' || status == 'UNDER_REVIEW';
++  bool get _isLocked => _status == 'PENDING' || _status == 'UNDER_REVIEW';
++  bool get _needsDocument => _requestedLevel != 'TIER_1';
++  bool get _needsProofOfAddress => _requestedLevel == 'TIER_3';
++  bool get _documentBackRequired => <String>[
++        'NATIONAL_ID',
++        'DRIVERS_LICENSE',
++        'VOTERS_CARD'
++      ].contains(_governmentIdType);
+ 
+   @override
+   void initState() {
+@@ -91,1204 +99,940 @@ class _KycScreenState extends State<KycScreen> {
+ 
+   @override
+   void dispose() {
+-    firstNameController.dispose();
+-    middleNameController.dispose();
+-    lastNameController.dispose();
+-    addressController.dispose();
+-    stateController.dispose();
+-    lgaController.dispose();
++    for (final TextEditingController controller in <TextEditingController>[
++      _firstName,
++      _middleName,
++      _lastName,
++      _phone,
++      _email,
++      _address,
++      _state,
++      _lga,
++      _nin,
++      _bvn,
++    ]) {
++      controller.dispose();
++    }
+     super.dispose();
+   }
+ 
+-  Future<String?> _getToken() async {
+-    final prefs = await SharedPreferences.getInstance();
+-    return prefs.getString('auth_token');
++  Future<String?> _token() async {
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    final String? value = prefs.getString('auth_token')?.trim();
++    if (value == null || value.isEmpty) return null;
++    return value.toLowerCase().startsWith('bearer ')
++        ? value.substring(7).trim()
++        : value;
+   }
+ 
+   Future<void> _loadKyc() async {
+     try {
+-      final token = await _getToken();
+-
+-      if (token == null || token.isEmpty) {
+-        if (!mounted) return;
+-        setState(() => isLoading = false);
+-        _showMessage('Please log in again.');
++      final String? token = await _token();
++      if (token == null) {
+         return;
+       }
+-
+-      final response = await http.get(
+-        Uri.parse('$baseUrl/kyc/status'),
+-        headers: {
+-          'Authorization': 'Bearer $token',
+-          'Content-Type': 'application/json',
+-        },
++      final http.Response response = await http.get(
++        Uri.parse('$_baseUrl/kyc/status'),
++        headers: <String, String>{'Authorization': 'Bearer $token'},
+       );
+-
+-      final body = jsonDecode(response.body);
+-
++      final dynamic decoded = jsonDecode(response.body);
+       if (response.statusCode >= 200 &&
+           response.statusCode < 300 &&
+-          body['success'] == true) {
+-        final kyc = body['kyc'] ?? {};
+-
+-        _applyKyc(Map<String, dynamic>.from(kyc));
+-      } else {
+-        _showMessage(
+-          (body['message'] ?? 'Unable to load KYC.').toString(),
+-        );
++          decoded is Map &&
++          decoded['success'] == true &&
++          decoded['kyc'] is Map) {
++        _applyKyc(Map<String, dynamic>.from(decoded['kyc'] as Map));
+       }
+-    } catch (e) {
+-      _showMessage('Unable to load KYC. Please try again.');
++    } catch (_) {
++      // The editable draft remains available; avoid exposing transport details.
+     } finally {
+-      if (mounted) {
+-        setState(() => isLoading = false);
+-      }
++      if (mounted) setState(() => _loading = false);
+     }
+   }
+ 
+   void _applyKyc(Map<String, dynamic> kyc) {
+-    firstNameController.text = (kyc['firstName'] ?? '').toString();
+-    middleNameController.text = (kyc['middleName'] ?? '').toString();
+-    lastNameController.text = (kyc['lastName'] ?? '').toString();
+-    addressController.text = (kyc['address'] ?? '').toString();
+-    stateController.text = (kyc['state'] ?? '').toString();
+-    lgaController.text = (kyc['lga'] ?? '').toString();
+-    final dob = kyc['dateOfBirth'];
+-    if (dob != null && dob.toString().isNotEmpty) {
+-      dateOfBirth = DateTime.tryParse(dob.toString()) ??
+-          DateTime.tryParse(dob.toString().split('T').first);
+-    }
+-    final loadedGender = (kyc['gender'] ?? '').toString().toUpperCase();
+-    gender =
+-        ['MALE', 'FEMALE', 'OTHER'].contains(loadedGender) ? loadedGender : '';
+-    status = (kyc['status'] ?? 'NOT_STARTED').toString().toUpperCase();
+-    level = (kyc['level'] ?? 'TIER_1').toString().toUpperCase();
+-    requestedLevel = (kyc['requestedLevel'] ?? level).toString().toUpperCase();
+-    rejectionReason = (kyc['rejectionReason'] ?? '').toString();
+-
+-    final identity = kyc['identity'] is Map
++    String field(String key) => (kyc[key] ?? '').toString();
++    _firstName.text = field('firstName');
++    _middleName.text = field('middleName');
++    _lastName.text = field('lastName');
++    _phone.text = field('phone');
++    _email.text = field('email');
++    _address.text = field('address');
++    _state.text = field('state');
++    _lga.text = field('lga');
++    _status = field('status').toUpperCase().isEmpty
++        ? 'NOT_STARTED'
++        : field('status').toUpperCase();
++    _level = field('level').toUpperCase().isEmpty
++        ? 'TIER_1'
++        : field('level').toUpperCase();
++    _requestedLevel = field('requestedLevel').toUpperCase().isEmpty
++        ? _level
++        : field('requestedLevel').toUpperCase();
++    _reviewReason = field('reviewReason').isNotEmpty
++        ? field('reviewReason')
++        : field('rejectionReason');
++    _dateOfBirth = DateTime.tryParse(field('dateOfBirth'));
++
++    final String gender = field('gender').toUpperCase();
++    _gender =
++        <String>['MALE', 'FEMALE', 'OTHER'].contains(gender) ? gender : '';
++    final Map<String, dynamic> identity = kyc['identity'] is Map
+         ? Map<String, dynamic>.from(kyc['identity'] as Map)
+         : <String, dynamic>{};
+-    ninVerified = identity['ninVerified'] == true;
+-    bvnVerified = identity['bvnVerified'] == true;
+-    ninLast4 = (identity['ninLast4'] ?? '').toString();
+-    bvnLast4 = (identity['bvnLast4'] ?? '').toString();
+-
+-    final documents = kyc['documents'] is Map
++    _ninVerified = identity['ninVerified'] == true;
++    _bvnVerified = identity['bvnVerified'] == true;
++    _ninLast4 = (identity['ninLast4'] ?? '').toString();
++    _bvnLast4 = (identity['bvnLast4'] ?? '').toString();
++    _identityMatchStatus =
++        (identity['matchStatus'] ?? 'NOT_VERIFIED').toString();
++    _verificationStates['NIN'] = _ninVerified ? 'Verified' : 'Not verified';
++    _verificationStates['BVN'] = _bvnVerified ? 'Verified' : 'Not verified';
++
++    final Map<String, dynamic> documents = kyc['documents'] is Map
+         ? Map<String, dynamic>.from(kyc['documents'] as Map)
+         : <String, dynamic>{};
+-    _applyDocumentFlags(documents);
++    _governmentIdType = (documents['documentType'] ?? '').toString();
++    _uploaded
++      ..['SELFIE'] = documents['selfieUploaded'] == true
++      ..['ID_DOCUMENT_FRONT'] = documents['idDocumentUploaded'] == true
++      ..['ID_DOCUMENT_BACK'] = documents['idDocumentBackUploaded'] == true
++      ..['PROOF_OF_ADDRESS'] = documents['proofOfAddressUploaded'] == true;
+   }
+ 
+-  void _applyDocumentFlags(Map<String, dynamic> documents) {
+-    selfieUploaded = documents['selfieUploaded'] == true;
+-    idDocumentUploaded = documents['idDocumentUploaded'] == true;
+-    proofOfAddressUploaded = documents['proofOfAddressUploaded'] == true;
+-    selfieNeedsSecureReupload = documents['selfieNeedsSecureReupload'] == true;
+-    idDocumentNeedsSecureReupload =
+-        documents['idDocumentNeedsSecureReupload'] == true;
+-    proofOfAddressNeedsSecureReupload =
+-        documents['proofOfAddressNeedsSecureReupload'] == true;
+-  }
+-
+-  bool _canUploadDocument(String documentType) {
+-    if (!_isLocked) return true;
+-
+-    return (documentType == 'SELFIE' && selfieNeedsSecureReupload) ||
+-        (documentType == 'ID_DOCUMENT' && idDocumentNeedsSecureReupload) ||
+-        (documentType == 'PROOF_OF_ADDRESS' &&
+-            proofOfAddressNeedsSecureReupload);
++  void _message(String message, {bool error = false}) {
++    if (!mounted) return;
++    ScaffoldMessenger.of(context).showSnackBar(
++      SnackBar(
++          content: Text(message),
++          backgroundColor: error ? Colors.red.shade700 : null),
++    );
+   }
+ 
+   Future<void> _pickDate() async {
+     if (_isLocked) return;
+-    final now = DateTime.now();
+-
+-    final picked = await showDatePicker(
++    final DateTime now = DateTime.now();
++    final DateTime? selected = await showDatePicker(
+       context: context,
+-      initialDate: dateOfBirth ?? DateTime(now.year - 25, now.month, now.day),
++      initialDate: _dateOfBirth ?? DateTime(now.year - 25),
+       firstDate: DateTime(1900),
+       lastDate: DateTime(now.year - 18, now.month, now.day),
+     );
+-
+-    if (picked != null) {
+-      setState(() => dateOfBirth = picked);
+-    }
++    if (selected != null && mounted) setState(() => _dateOfBirth = selected);
+   }
+ 
+-  Future<void> _submitKyc() async {
+-    if (_isLocked) {
+-      _showMessage('Your KYC is being reviewed and cannot be changed yet.');
+-      return;
+-    }
+-    if (!_formKey.currentState!.validate()) return;
+-
+-    if (dateOfBirth == null) {
+-      _showMessage('Please select your date of birth.');
+-      return;
+-    }
+-
+-    if (gender.isEmpty) {
+-      _showMessage('Please select your gender.');
+-      return;
+-    }
+-
+-    if ((requestedLevel == 'TIER_2' || requestedLevel == 'TIER_3') &&
+-        !idDocumentUploaded) {
+-      _showMessage(
+-        'Please upload your Government ID.',
+-      );
+-      return;
+-    }
+-
+-    if ((requestedLevel == 'TIER_2' || requestedLevel == 'TIER_3') &&
+-        !selfieUploaded) {
+-      _showMessage(
+-        'Please take and upload your selfie.',
+-      );
++  Future<void> _verifyIdentity(String type) async {
++    if (_isLocked || _verificationStates[type] == 'Verifying') return;
++    final String identifier =
++        (type == 'NIN' ? _nin : _bvn).text.replaceAll(' ', '');
++    if (!RegExp(r'^\d{11}$').hasMatch(identifier)) {
++      _message('Enter a valid 11-digit $type before verifying.', error: true);
+       return;
+     }
+-
+-    if (requestedLevel == 'TIER_3' && !proofOfAddressUploaded) {
+-      _showMessage(
+-        'Please upload your proof of address.',
+-      );
++    if (!_consentAccepted) {
++      _message('Accept the KYC consent before verifying identity.',
++          error: true);
+       return;
+     }
+-
+-    setState(() => isSubmitting = true);
+-
++    setState(() => _verificationStates[type] = 'Verifying');
+     try {
+-      final token = await _getToken();
+-
+-      if (token == null || token.isEmpty) {
+-        _showMessage('Please log in again.');
++      final String? token = await _token();
++      if (token == null) {
++        _message('Please log in again.', error: true);
+         return;
+       }
+-
+-      final payload = {
+-        'firstName': firstNameController.text.trim(),
+-        'middleName': middleNameController.text.trim(),
+-        'lastName': lastNameController.text.trim(),
+-        'dateOfBirth': dateOfBirth!.toIso8601String(),
+-        'gender': gender,
+-        'address': addressController.text.trim(),
+-        'state': stateController.text.trim(),
+-        'lga': lgaController.text.trim(),
+-        'requestedLevel': requestedLevel,
+-      };
+-
+-      final response = await http.post(
+-        Uri.parse('$baseUrl/kyc/submit'),
+-        headers: {
++      final http.Response response = await http.post(
++        Uri.parse('$_baseUrl/kyc/identity/verify'),
++        headers: <String, String>{
+           'Authorization': 'Bearer $token',
+           'Content-Type': 'application/json',
+         },
+-        body: jsonEncode(payload),
++        body: jsonEncode(<String, dynamic>{
++          'identityType': type,
++          'identityNumber': identifier,
++          'consentAccepted': true,
++        }),
+       );
+-
+-      final body = jsonDecode(response.body);
+-
++      final dynamic decoded = jsonDecode(response.body);
+       if (response.statusCode >= 200 &&
+           response.statusCode < 300 &&
+-          body['success'] == true) {
+-        final kyc = body['kyc'] ?? {};
+-
+-        setState(() => _applyKyc(Map<String, dynamic>.from(kyc)));
+-
+-        _showMessage(
+-          (body['message'] ?? 'KYC submitted successfully.').toString(),
+-        );
++          decoded is Map &&
++          decoded['success'] == true) {
++        final Map<String, dynamic> identity = decoded['identity'] is Map
++            ? Map<String, dynamic>.from(decoded['identity'] as Map)
++            : <String, dynamic>{};
++        if (mounted) {
++          setState(() {
++            _ninVerified = identity['ninVerified'] == true;
++            _bvnVerified = identity['bvnVerified'] == true;
++            _ninLast4 = (identity['ninLast4'] ?? '').toString();
++            _bvnLast4 = (identity['bvnLast4'] ?? '').toString();
++            _identityMatchStatus =
++                (identity['matchStatus'] ?? 'NOT_VERIFIED').toString();
++            _verificationStates[type] = 'Verified';
++            (type == 'NIN' ? _nin : _bvn).clear();
++          });
++        }
++        _message('$type verified successfully.');
+       } else {
+-        _showMessage(
+-          (body['message'] ?? 'Unable to submit KYC.').toString(),
++        final String code =
++            decoded is Map ? (decoded['code'] ?? '').toString() : '';
++        if (mounted) {
++          setState(() {
++            _verificationStates[type] = code == 'PROVIDER_UNAVAILABLE'
++                ? 'Provider unavailable'
++                : 'Verification failed';
++          });
++        }
++        _message(
++          decoded is Map
++              ? (decoded['message'] ?? 'Unable to verify $type.').toString()
++              : 'Unable to verify $type.',
++          error: true,
+         );
+       }
+-    } catch (e) {
+-      _showMessage(
+-        'Unable to submit KYC. Please try again.',
+-      );
+-    } finally {
++    } catch (_) {
+       if (mounted) {
+-        setState(() => isSubmitting = false);
++        setState(() => _verificationStates[type] = 'Verification failed');
+       }
++      _message('Unable to verify $type. Please try again.', error: true);
+     }
+   }
+ 
+-  void _showMessage(String message) {
+-    if (!mounted) return;
+-
+-    ScaffoldMessenger.of(context).showSnackBar(
+-      SnackBar(content: Text(message)),
++  Future<ImageSource?> _sourceChooser(String title) async {
++    return showModalBottomSheet<ImageSource>(
++      context: context,
++      builder: (BuildContext context) => SafeArea(
++        child: Wrap(
++          children: <Widget>[
++            ListTile(title: Text(title), enabled: false),
++            ListTile(
++              leading: const Icon(Icons.camera_alt_outlined),
++              title: const Text('Use camera'),
++              onTap: () => Navigator.pop(context, ImageSource.camera),
++            ),
++            ListTile(
++              leading: const Icon(Icons.photo_library_outlined),
++              title: const Text('Choose from gallery'),
++              onTap: () => Navigator.pop(context, ImageSource.gallery),
++            ),
++          ],
++        ),
++      ),
+     );
+   }
+ 
+-  Future<void> _uploadKycDocument(
+-    String documentType,
+-  ) async {
+-    if (isSubmitting || !_canUploadDocument(documentType)) {
++  Future<void> _pickAndUpload(String documentType, String title) async {
++    if (_isLocked || _uploading[documentType] == true) return;
++    if (documentType.startsWith('ID_DOCUMENT') && _governmentIdType.isEmpty) {
++      _message('Select your government ID type first.', error: true);
++      return;
++    }
++    final ImageSource? source = await _sourceChooser(title);
++    if (source == null) return;
++    final XFile? selected = await _picker.pickImage(
++      source: source,
++      imageQuality: 88,
++      maxWidth: 1800,
++      maxHeight: 1800,
++    );
++    if (selected == null) return;
++    if (!isSupportedKycImageFilename(selected.name)) {
++      _message('Choose a JPEG or PNG image.', error: true);
+       return;
+     }
+ 
+-    final bool isSelfie = documentType == 'SELFIE';
+-
+-    final ImageSource source =
+-        isSelfie ? ImageSource.camera : ImageSource.gallery;
+-
++    final Uint8List bytes = await selected.readAsBytes();
++    if (bytes.length > 8 * 1024 * 1024) {
++      _message('KYC images must be 8 MB or smaller.', error: true);
++      return;
++    }
++    if (mounted) {
++      setState(() {
++        _previews[documentType] =
++            _KycLocalImage(name: selected.name, bytes: bytes);
++        _uploading[documentType] = true;
++      });
++    }
+     try {
+-      final picked = await _kycImagePicker.pickImage(
+-        source: source,
+-        imageQuality: 82,
+-        maxWidth: 1600,
+-        maxHeight: 1600,
+-      );
+-
+-      if (picked == null) {
+-        return;
+-      }
+-
+-      if (mounted) {
+-        setState(() {
+-          if (documentType == 'SELFIE') {
+-            uploadingSelfie = true;
+-          } else if (documentType == 'ID_DOCUMENT') {
+-            uploadingIdDocument = true;
+-          } else if (documentType == 'PROOF_OF_ADDRESS') {
+-            uploadingProofOfAddress = true;
+-          }
+-        });
+-      }
+-
+-      final prefs = await SharedPreferences.getInstance();
+-
+-      final token = prefs.getString('auth_token') ?? '';
+-
+-      if (token.isEmpty) {
+-        _showMessage(
+-          'Your login session has expired. Please log in again.',
+-        );
++      final String? token = await _token();
++      if (token == null) {
++        _message('Please log in again.', error: true);
+         return;
+       }
+-
+-      final uri = Uri.parse(
+-        '$baseUrl/kyc/document/upload',
+-      );
+-
+-      final request = http.MultipartRequest(
++      final http.MultipartRequest request = http.MultipartRequest(
+         'POST',
+-        uri,
++        Uri.parse('$_baseUrl/kyc/document/upload'),
+       );
+-
+       request.headers['Authorization'] = 'Bearer $token';
+-
+       request.fields['documentType'] = documentType;
+-
+-      final bytes = await picked.readAsBytes();
+-
+-      request.files.add(
+-        kycDocumentMultipartFile(
+-          bytes: bytes,
+-          filename: picked.name,
+-        ),
+-      );
+-
+-      final streamed = await request.send();
+-
+-      final response = await http.Response.fromStream(
+-        streamed,
+-      );
+-
+-      dynamic body;
+-
+-      try {
+-        body = jsonDecode(response.body);
+-      } catch (_) {
+-        body = <String, dynamic>{};
++      if (documentType.startsWith('ID_DOCUMENT')) {
++        request.fields['governmentIdType'] = _governmentIdType;
+       }
+-
++      request.files
++          .add(kycDocumentMultipartFile(bytes: bytes, filename: selected.name));
++      final http.Response response =
++          await http.Response.fromStream(await request.send());
++      final dynamic decoded = jsonDecode(response.body);
+       if (response.statusCode >= 200 &&
+           response.statusCode < 300 &&
+-          body is Map &&
+-          body['success'] == true) {
+-        final dynamic kyc = body['kyc'];
+-
++          decoded is Map &&
++          decoded['success'] == true) {
++        final Map<String, dynamic> documents = decoded['documents'] is Map
++            ? Map<String, dynamic>.from(decoded['documents'] as Map)
++            : <String, dynamic>{};
+         if (mounted) {
+           setState(() {
+-            if (kyc is Map) {
+-              _applyKyc(Map<String, dynamic>.from(kyc));
+-            } else if (body['documents'] is Map) {
+-              _applyDocumentFlags(
+-                Map<String, dynamic>.from(body['documents'] as Map),
+-              );
+-            } else {
+-              if (documentType == 'SELFIE') {
+-                selfieUploaded = true;
+-              }
+-              if (documentType == 'ID_DOCUMENT') {
+-                idDocumentUploaded = true;
+-              }
+-              if (documentType == 'PROOF_OF_ADDRESS') {
+-                proofOfAddressUploaded = true;
+-              }
+-            }
++            _uploaded[documentType] = true;
++            _uploaded['ID_DOCUMENT_FRONT'] =
++                documents['idDocumentUploaded'] == true ||
++                    _uploaded['ID_DOCUMENT_FRONT'] == true;
++            _uploaded['ID_DOCUMENT_BACK'] =
++                documents['idDocumentBackUploaded'] == true ||
++                    _uploaded['ID_DOCUMENT_BACK'] == true;
++            _uploaded['SELFIE'] = documents['selfieUploaded'] == true ||
++                _uploaded['SELFIE'] == true;
++            _uploaded['PROOF_OF_ADDRESS'] =
++                documents['proofOfAddressUploaded'] == true ||
++                    _uploaded['PROOF_OF_ADDRESS'] == true;
+           });
+         }
+-
+-        _showMessage(
+-          documentType == 'SELFIE'
+-              ? 'Selfie uploaded successfully.'
+-              : documentType == 'ID_DOCUMENT'
+-                  ? 'Government ID uploaded successfully.'
+-                  : 'Proof of address uploaded successfully.',
++        _message('$title uploaded securely.');
++      } else {
++        _message(
++          decoded is Map
++              ? (decoded['message'] ?? 'Unable to upload $title.').toString()
++              : 'Unable to upload $title.',
++          error: true,
+         );
+-
+-        return;
+       }
+-
+-      _showMessage(
+-        body is Map
+-            ? (body['message'] ?? 'Unable to upload document.').toString()
+-            : 'Unable to upload document.',
+-      );
+     } catch (_) {
+-      _showMessage(
+-        'Unable to upload document. Please try again.',
+-      );
++      _message('Unable to upload $title. Please retry.', error: true);
+     } finally {
+-      if (mounted) {
++      if (mounted) setState(() => _uploading[documentType] = false);
++    }
++  }
++
++  Future<void> _removeDocument(String documentType) async {
++    if (_isLocked) return;
++    try {
++      final String? token = await _token();
++      if (token == null) return;
++      final http.Response response = await http.delete(
++        Uri.parse('$_baseUrl/kyc/document/$documentType'),
++        headers: <String, String>{'Authorization': 'Bearer $token'},
++      );
++      if (response.statusCode >= 200 && response.statusCode < 300 && mounted) {
+         setState(() {
+-          if (documentType == 'SELFIE') {
+-            uploadingSelfie = false;
+-          } else if (documentType == 'ID_DOCUMENT') {
+-            uploadingIdDocument = false;
+-          } else if (documentType == 'PROOF_OF_ADDRESS') {
+-            uploadingProofOfAddress = false;
+-          }
++          _uploaded[documentType] = false;
++          _previews.remove(documentType);
+         });
++        _message('Document removed.');
++      } else {
++        _message('Unable to remove this document.', error: true);
+       }
++    } catch (_) {
++      _message('Unable to remove this document.', error: true);
+     }
+   }
+ 
+-  bool get _tierRequiresIdentityDocuments {
+-    return requestedLevel == 'TIER_2' || requestedLevel == 'TIER_3';
+-  }
+-
+-  bool get _tierRequiresProofOfAddress {
+-    return requestedLevel == 'TIER_3';
+-  }
+-
+-  Widget _buildKycDocumentsSection() {
+-    if (requestedLevel == 'TIER_1') {
+-      return const SizedBox.shrink();
++  Future<void> _submit() async {
++    if (_isLocked || _submitting) return;
++    if (!(_formKey.currentState?.validate() ?? false)) return;
++    if (_dateOfBirth == null || _gender.isEmpty) {
++      _message('Complete your date of birth and gender.', error: true);
++      return;
+     }
+-
+-    return Container(
+-      margin: const EdgeInsets.only(
+-        top: 18,
+-        bottom: 10,
+-      ),
+-      padding: const EdgeInsets.all(16),
+-      decoration: BoxDecoration(
+-        color: const Color(0xFFF7FAF8),
+-        borderRadius: BorderRadius.circular(16),
+-        border: Border.all(
+-          color: const Color(0xFF08783E).withValues(alpha: 0.18),
+-        ),
+-      ),
+-      child: Column(
+-        crossAxisAlignment: CrossAxisAlignment.start,
+-        children: [
+-          const Row(
+-            children: [
+-              Icon(
+-                Icons.folder_copy_outlined,
+-                color: Color(0xFF08783E),
+-              ),
+-              SizedBox(width: 10),
+-              Expanded(
+-                child: Text(
+-                  'Required Verification Documents',
+-                  style: TextStyle(
+-                    fontSize: 17,
+-                    fontWeight: FontWeight.w800,
+-                  ),
+-                ),
+-              ),
+-            ],
+-          ),
+-          const SizedBox(height: 6),
+-          Text(
+-            requestedLevel == 'TIER_3'
+-                ? 'Tier 3 requires a Government ID, selfie and proof of address.'
+-                : 'Tier 2 requires a Government ID and selfie.',
+-            style: const TextStyle(
+-              fontSize: 13,
+-              color: Color(0xFF667085),
+-              height: 1.4,
+-            ),
+-          ),
+-          const SizedBox(height: 16),
+-          if (_tierRequiresIdentityDocuments)
+-            _kycDocumentTile(
+-              documentType: 'ID_DOCUMENT',
+-              title: 'Government ID',
+-              subtitle:
+-                  'Upload NIN slip/card, National ID, Driver’s Licence or International Passport.',
+-              icon: Icons.badge_outlined,
+-              uploaded: idDocumentUploaded,
+-              needsSecureReupload: idDocumentNeedsSecureReupload,
+-              loading: uploadingIdDocument,
+-              buttonText: idDocumentNeedsSecureReupload
+-                  ? 'Securely Re-upload ID'
+-                  : idDocumentUploaded
+-                      ? 'Replace ID'
+-                      : 'Upload ID',
+-              onTap: () => _uploadKycDocument(
+-                'ID_DOCUMENT',
+-              ),
+-            ),
+-          if (_tierRequiresIdentityDocuments) const SizedBox(height: 12),
+-          if (_tierRequiresIdentityDocuments)
+-            _kycDocumentTile(
+-              documentType: 'SELFIE',
+-              title: 'Selfie',
+-              subtitle: 'Take a clear live selfie showing your full face.',
+-              icon: Icons.face_retouching_natural_outlined,
+-              uploaded: selfieUploaded,
+-              needsSecureReupload: selfieNeedsSecureReupload,
+-              loading: uploadingSelfie,
+-              buttonText: selfieNeedsSecureReupload
+-                  ? 'Securely Re-upload Selfie'
+-                  : selfieUploaded
+-                      ? 'Retake Selfie'
+-                      : 'Take Selfie',
+-              onTap: () => _uploadKycDocument(
+-                'SELFIE',
+-              ),
+-            ),
+-          if (_tierRequiresProofOfAddress) const SizedBox(height: 12),
+-          if (_tierRequiresProofOfAddress)
+-            _kycDocumentTile(
+-              documentType: 'PROOF_OF_ADDRESS',
+-              title: 'Proof of Address',
+-              subtitle:
+-                  'Upload a recent utility bill, bank statement or other acceptable proof of residence.',
+-              icon: Icons.home_work_outlined,
+-              uploaded: proofOfAddressUploaded,
+-              needsSecureReupload: proofOfAddressNeedsSecureReupload,
+-              loading: uploadingProofOfAddress,
+-              buttonText: proofOfAddressNeedsSecureReupload
+-                  ? 'Securely Re-upload Document'
+-                  : proofOfAddressUploaded
+-                      ? 'Replace Document'
+-                      : 'Upload Document',
+-              onTap: () => _uploadKycDocument(
+-                'PROOF_OF_ADDRESS',
+-              ),
+-            ),
+-        ],
+-      ),
+-    );
+-  }
+-
+-  Widget _kycDocumentTile({
+-    required String documentType,
+-    required String title,
+-    required String subtitle,
+-    required IconData icon,
+-    required bool uploaded,
+-    required bool needsSecureReupload,
+-    required bool loading,
+-    required String buttonText,
+-    required VoidCallback onTap,
+-  }) {
+-    return Container(
+-      padding: const EdgeInsets.all(14),
+-      decoration: BoxDecoration(
+-        color: Colors.white,
+-        borderRadius: BorderRadius.circular(14),
+-        border: Border.all(
+-          color: uploaded ? const Color(0xFF22A06B) : const Color(0xFFE4E7EC),
+-        ),
+-      ),
+-      child: Column(
+-        children: [
+-          Row(
+-            crossAxisAlignment: CrossAxisAlignment.start,
+-            children: [
+-              Container(
+-                width: 44,
+-                height: 44,
+-                decoration: BoxDecoration(
+-                  color: const Color(0xFFEAF7F0),
+-                  borderRadius: BorderRadius.circular(
+-                    12,
+-                  ),
+-                ),
+-                child: Icon(
+-                  uploaded ? Icons.check_circle_rounded : icon,
+-                  color: const Color(0xFF08783E),
+-                ),
+-              ),
+-              const SizedBox(width: 12),
+-              Expanded(
+-                child: Column(
+-                  crossAxisAlignment: CrossAxisAlignment.start,
+-                  children: [
+-                    Text(
+-                      title,
+-                      style: const TextStyle(
+-                        fontSize: 15,
+-                        fontWeight: FontWeight.w800,
+-                      ),
+-                    ),
+-                    const SizedBox(height: 4),
+-                    Text(
+-                      uploaded
+-                          ? 'Uploaded securely'
+-                          : needsSecureReupload
+-                              ? 'A secure re-upload is required before this document can be reviewed.'
+-                              : subtitle,
+-                      style: TextStyle(
+-                        fontSize: 12.5,
+-                        height: 1.35,
+-                        color: uploaded
+-                            ? const Color(
+-                                0xFF08783E,
+-                              )
+-                            : needsSecureReupload
+-                                ? const Color(0xFFB54708)
+-                                : const Color(
+-                                    0xFF667085,
+-                                  ),
+-                      ),
+-                    ),
+-                  ],
+-                ),
+-              ),
+-            ],
+-          ),
+-          const SizedBox(height: 12),
+-          SizedBox(
+-            width: double.infinity,
+-            child: OutlinedButton.icon(
+-              onPressed:
+-                  loading || !_canUploadDocument(documentType) ? null : onTap,
+-              icon: loading
+-                  ? const SizedBox(
+-                      width: 18,
+-                      height: 18,
+-                      child: CircularProgressIndicator(
+-                        strokeWidth: 2,
+-                      ),
+-                    )
+-                  : Icon(
+-                      uploaded
+-                          ? Icons.refresh_rounded
+-                          : Icons.upload_file_rounded,
+-                    ),
+-              label: Text(
+-                loading ? 'Uploading...' : buttonText,
+-              ),
+-            ),
+-          ),
+-        ],
+-      ),
+-    );
+-  }
+-
+-  Color _statusColor() {
+-    switch (status) {
+-      case 'VERIFIED':
+-        return Colors.green;
+-      case 'REJECTED':
+-        return Colors.red;
+-      case 'UNDER_REVIEW':
+-        return Colors.orange;
+-      case 'PENDING':
+-        return Colors.blue;
+-      default:
+-        return Colors.grey;
++    if (!_ninVerified && !_bvnVerified) {
++      _message('Verify your NIN or BVN before submitting.', error: true);
++      return;
+     }
+-  }
+-
+-  IconData _statusIcon() {
+-    switch (status) {
+-      case 'VERIFIED':
+-        return Icons.verified_rounded;
+-      case 'REJECTED':
+-        return Icons.cancel_rounded;
+-      case 'UNDER_REVIEW':
+-        return Icons.manage_search_rounded;
+-      case 'PENDING':
+-        return Icons.hourglass_top_rounded;
+-      default:
+-        return Icons.person_search_rounded;
++    if (_needsDocument &&
++        (_uploaded['ID_DOCUMENT_FRONT'] != true ||
++            _uploaded['SELFIE'] != true)) {
++      _message('Upload your government ID and selfie before submitting.',
++          error: true);
++      return;
++    }
++    if (_needsDocument &&
++        _documentBackRequired &&
++        _uploaded['ID_DOCUMENT_BACK'] != true) {
++      _message('Upload the back of your government ID before submitting.',
++          error: true);
++      return;
++    }
++    if (_needsProofOfAddress && _uploaded['PROOF_OF_ADDRESS'] != true) {
++      _message('Upload proof of address before submitting.', error: true);
++      return;
++    }
++    if (!_consentAccepted) {
++      _message('Accept the KYC consent before submitting.', error: true);
++      return;
++    }
++    setState(() => _submitting = true);
++    try {
++      final String? token = await _token();
++      if (token == null) {
++        _message('Please log in again.', error: true);
++        return;
++      }
++      final http.Response response = await http.post(
++        Uri.parse('$_baseUrl/kyc/submit'),
++        headers: <String, String>{
++          'Authorization': 'Bearer $token',
++          'Content-Type': 'application/json',
++        },
++        body: jsonEncode(<String, dynamic>{
++          'firstName': _firstName.text.trim(),
++          'middleName': _middleName.text.trim(),
++          'lastName': _lastName.text.trim(),
++          'dateOfBirth': _dateOfBirth!.toIso8601String(),
++          'gender': _gender,
++          'phone': _phone.text.trim(),
++          'email': _email.text.trim(),
++          'address': _address.text.trim(),
++          'state': _state.text.trim(),
++          'lga': _lga.text.trim(),
++          'documentType': _governmentIdType,
++          'requestedLevel': _requestedLevel,
++          'consentAccepted': true,
++        }),
++      );
++      final dynamic decoded = jsonDecode(response.body);
++      if (response.statusCode >= 200 &&
++          response.statusCode < 300 &&
++          decoded is Map &&
++          decoded['success'] == true) {
++        if (decoded['kyc'] is Map && mounted) {
++          setState(() =>
++              _applyKyc(Map<String, dynamic>.from(decoded['kyc'] as Map)));
++        }
++        _message((decoded['message'] ?? 'KYC submitted.').toString());
++      } else {
++        _message(
++          decoded is Map
++              ? (decoded['message'] ?? 'Unable to submit KYC.').toString()
++              : 'Unable to submit KYC.',
++          error: true,
++        );
++      }
++    } catch (_) {
++      _message('Unable to submit KYC. Please try again.', error: true);
++    } finally {
++      if (mounted) setState(() => _submitting = false);
+     }
+   }
+ 
+   String _statusLabel() {
+-    return status
+-        .replaceAll('_', ' ')
+-        .split(' ')
+-        .map(
+-          (e) => e.isEmpty
+-              ? e
+-              : '${e[0].toUpperCase()}${e.substring(1).toLowerCase()}',
+-        )
++    if (_status == 'NOT_STARTED') {
++      final bool hasDraft = <String>[
++        _firstName.text,
++        _lastName.text,
++        _phone.text,
++        _email.text,
++      ].any((String value) => value.isNotEmpty);
++      return hasDraft ? 'Incomplete' : 'Draft';
++    }
++    if (_status == 'VERIFIED') return 'Approved';
++    return _status
++        .split('_')
++        .map((String word) => word.isEmpty
++            ? word
++            : '${word[0]}${word.substring(1).toLowerCase()}')
+         .join(' ');
+   }
+ 
+-  String _formatDate(DateTime date) {
+-    final day = date.day.toString().padLeft(2, '0');
+-    final month = date.month.toString().padLeft(2, '0');
+-    return '$day/$month/${date.year}';
+-  }
+-
+-  Future<void> _openVerificationScreen(Widget screen) async {
+-    await Navigator.of(context).push(
+-      MaterialPageRoute(builder: (_) => screen),
+-    );
+-    if (mounted) await _loadKyc();
++  Color _statusColor() {
++    if (_status == 'VERIFIED') return Colors.green;
++    if (_status == 'REJECTED') return Colors.red;
++    if (_status == 'NEEDS_MORE_INFORMATION') return Colors.deepOrange;
++    if (_status == 'PENDING' || _status == 'UNDER_REVIEW') return Colors.blue;
++    return Colors.grey.shade700;
+   }
+ 
+-  Widget _buildIdentityVerificationSection() {
+-    Widget verificationTile({
+-      required String title,
+-      required bool verified,
+-      required String last4,
+-      required VoidCallback onTap,
+-    }) {
+-      final suffix = last4.isEmpty ? '' : ' •••• $last4';
+-      return ListTile(
+-        contentPadding: EdgeInsets.zero,
+-        leading: Icon(
+-          verified ? Icons.verified_rounded : Icons.pending_outlined,
+-          color: verified ? const Color(0xFF08783E) : Colors.orange,
+-        ),
+-        title: Text(title),
+-        subtitle: Text(
+-          verified ? 'Verified$suffix' : 'Not verified',
+-          style: TextStyle(
+-            color: verified ? const Color(0xFF08783E) : Colors.black54,
+-          ),
+-        ),
+-        trailing: TextButton(
+-          onPressed: onTap,
+-          child: Text(verified ? 'View' : 'Verify'),
+-        ),
+-      );
+-    }
+-
++  Widget _stepCard(
++      int number, String title, String subtitle, List<Widget> children) {
+     return Card(
++      margin: const EdgeInsets.only(bottom: 16),
+       elevation: 0,
+-      margin: const EdgeInsets.only(bottom: 18),
+       shape: RoundedRectangleBorder(
+-        borderRadius: BorderRadius.circular(16),
++        borderRadius: BorderRadius.circular(18),
+         side: BorderSide(color: Colors.grey.shade200),
+       ),
+       child: Padding(
+-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
++        padding: const EdgeInsets.all(16),
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+-          children: [
+-            const Padding(
+-              padding: EdgeInsets.only(top: 8),
+-              child: Text(
+-                'Identity verification',
+-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+-              ),
+-            ),
+-            const SizedBox(height: 3),
+-            const Text(
+-              'Verify your NIN or BVN securely. This form never displays or collects the full number.',
+-              style: TextStyle(fontSize: 12, color: Colors.black54),
+-            ),
+-            verificationTile(
+-              title: 'NIN verification',
+-              verified: ninVerified,
+-              last4: ninLast4,
+-              onTap: () => _openVerificationScreen(
+-                const IdVerificationScreen(),
+-              ),
+-            ),
+-            const Divider(height: 1),
+-            verificationTile(
+-              title: 'BVN verification',
+-              verified: bvnVerified,
+-              last4: bvnLast4,
+-              onTap: () => _openVerificationScreen(
+-                const BvnVerificationScreen(),
+-              ),
++          children: <Widget>[
++            Row(
++              children: <Widget>[
++                CircleAvatar(
++                  radius: 15,
++                  backgroundColor: const Color(0xFF08783E),
++                  child: Text('$number',
++                      style: const TextStyle(
++                          color: Colors.white, fontWeight: FontWeight.bold)),
++                ),
++                const SizedBox(width: 10),
++                Expanded(
++                    child: Text(title,
++                        style: const TextStyle(
++                            fontSize: 17, fontWeight: FontWeight.w800))),
++              ],
+             ),
++            const SizedBox(height: 7),
++            Text(subtitle,
++                style: const TextStyle(color: Colors.black54, height: 1.35)),
++            const SizedBox(height: 16),
++            ...children,
+           ],
+         ),
+       ),
+     );
+   }
+ 
+-  Widget _buildTierSelector() {
+-    String limitText(String tier) {
+-      switch (tier) {
+-        case 'TIER_2':
+-          return '₦200,000 per transaction • ₦1,000,000 daily';
+-        case 'TIER_3':
+-          return '₦1,000,000 per transaction • ₦5,000,000 daily';
+-        default:
+-          return '₦50,000 per transaction • ₦200,000 daily';
+-      }
+-    }
+-
+-    Widget tierTile({
+-      required String tier,
+-      required String title,
+-      required String description,
+-      required IconData icon,
+-    }) {
+-      final selected = requestedLevel == tier;
++  Widget _field(
++    TextEditingController controller,
++    String label, {
++    TextInputType keyboardType = TextInputType.text,
++    int maxLines = 1,
++    bool required = true,
++  }) {
++    return Padding(
++      padding: const EdgeInsets.only(bottom: 12),
++      child: TextFormField(
++        controller: controller,
++        enabled: !_isLocked,
++        keyboardType: keyboardType,
++        maxLines: maxLines,
++        decoration: InputDecoration(
++            labelText: label, border: const OutlineInputBorder()),
++        validator: required
++            ? (String? value) => value == null || value.trim().isEmpty
++                ? '$label is required.'
++                : null
++            : null,
++      ),
++    );
++  }
+ 
+-      return InkWell(
++  Widget _identityTile(String type, TextEditingController controller,
++      bool verified, String last4) {
++    final String state = _verificationStates[type] ?? 'Not verified';
++    final bool loading = state == 'Verifying';
++    final Color color = state == 'Verified'
++        ? Colors.green
++        : state == 'Provider unavailable'
++            ? Colors.orange.shade800
++            : state == 'Verification failed'
++                ? Colors.red
++                : Colors.grey.shade700;
++    return Container(
++      margin: const EdgeInsets.only(bottom: 12),
++      padding: const EdgeInsets.all(12),
++      decoration: BoxDecoration(
++        color: color.withValues(alpha: .05),
++        border: Border.all(color: color.withValues(alpha: .3)),
+         borderRadius: BorderRadius.circular(14),
+-        onTap: isSubmitting || _isLocked
+-            ? null
+-            : () {
+-                setState(() {
+-                  requestedLevel = tier;
+-                });
+-              },
+-        child: AnimatedContainer(
+-          duration: const Duration(milliseconds: 180),
+-          margin: const EdgeInsets.only(bottom: 10),
+-          padding: const EdgeInsets.all(14),
+-          decoration: BoxDecoration(
+-            borderRadius: BorderRadius.circular(14),
+-            border: Border.all(
+-              color: selected ? const Color(0xFF08783E) : Colors.grey.shade300,
+-              width: selected ? 2 : 1,
+-            ),
+-            color: selected ? const Color(0xFFEAF7F0) : Colors.white,
+-          ),
+-          child: Row(
+-            crossAxisAlignment: CrossAxisAlignment.start,
+-            children: [
+-              Container(
+-                width: 42,
+-                height: 42,
+-                decoration: BoxDecoration(
+-                  color:
+-                      selected ? const Color(0xFF08783E) : Colors.grey.shade100,
+-                  borderRadius: BorderRadius.circular(12),
+-                ),
+-                child: Icon(
+-                  icon,
+-                  color: selected ? Colors.white : const Color(0xFF08783E),
+-                ),
++      ),
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: <Widget>[
++          Text('$type verification',
++              style: const TextStyle(fontWeight: FontWeight.w800)),
++          const SizedBox(height: 8),
++          if (!verified)
++            TextField(
++              controller: controller,
++              enabled: !_isLocked && !loading,
++              keyboardType: TextInputType.number,
++              maxLength: 11,
++              obscureText: true,
++              decoration: InputDecoration(
++                labelText: 'Enter your $type',
++                counterText: '',
++                border: const OutlineInputBorder(),
+               ),
+-              const SizedBox(width: 12),
++            ),
++          if (verified)
++            Text('Verified •••• $last4',
++                style: TextStyle(color: color, fontWeight: FontWeight.w600)),
++          const SizedBox(height: 6),
++          Row(
++            children: <Widget>[
+               Expanded(
+-                child: Column(
+-                  crossAxisAlignment: CrossAxisAlignment.start,
+-                  children: [
+-                    Text(
+-                      title,
+-                      style: const TextStyle(
+-                        fontWeight: FontWeight.w800,
+-                        fontSize: 15,
+-                      ),
+-                    ),
+-                    const SizedBox(height: 3),
+-                    Text(
+-                      description,
+-                      style: const TextStyle(
+-                        fontSize: 12,
+-                        color: Colors.black54,
+-                      ),
+-                    ),
+-                    const SizedBox(height: 5),
+-                    Text(
+-                      limitText(tier),
+-                      style: const TextStyle(
+-                        fontSize: 12,
+-                        fontWeight: FontWeight.w700,
+-                        color: Color(0xFF08783E),
+-                      ),
+-                    ),
+-                  ],
+-                ),
+-              ),
+-              const SizedBox(width: 8),
+-              Icon(
+-                selected ? Icons.check_circle : Icons.radio_button_unchecked,
+-                color: selected ? const Color(0xFF08783E) : Colors.grey,
++                  child: Text(state,
++                      style: TextStyle(
++                          color: color, fontWeight: FontWeight.w600))),
++              TextButton.icon(
++                onPressed:
++                    _isLocked || loading ? null : () => _verifyIdentity(type),
++                icon: loading
++                    ? const SizedBox(
++                        width: 16,
++                        height: 16,
++                        child: CircularProgressIndicator(strokeWidth: 2))
++                    : const Icon(Icons.verified_user_outlined),
++                label: Text(verified ? 'Verify again' : 'Verify $type'),
+               ),
+             ],
+           ),
+-        ),
+-      );
+-    }
++        ],
++      ),
++    );
++  }
+ 
+-    return Card(
+-      elevation: 0,
+-      margin: const EdgeInsets.only(bottom: 18),
+-      shape: RoundedRectangleBorder(
+-        borderRadius: BorderRadius.circular(16),
+-        side: BorderSide(
+-          color: Colors.grey.shade200,
+-        ),
++  Widget _documentTile(String documentType, String title, String subtitle) {
++    final _KycLocalImage? preview = _previews[documentType];
++    final bool uploaded = _uploaded[documentType] == true;
++    final bool loading = _uploading[documentType] == true;
++    return Container(
++      margin: const EdgeInsets.only(bottom: 12),
++      padding: const EdgeInsets.all(12),
++      decoration: BoxDecoration(
++        border: Border.all(
++            color: uploaded ? Colors.green.shade300 : Colors.grey.shade300),
++        borderRadius: BorderRadius.circular(14),
+       ),
+-      child: Padding(
+-        padding: const EdgeInsets.all(16),
+-        child: Column(
+-          crossAxisAlignment: CrossAxisAlignment.start,
+-          children: [
+-            const Text(
+-              'Choose KYC Tier',
+-              style: TextStyle(
+-                fontSize: 17,
+-                fontWeight: FontWeight.w800,
+-              ),
+-            ),
+-            const SizedBox(height: 5),
+-            const Text(
+-              'Select the verification level you want to apply for.',
+-              style: TextStyle(
+-                fontSize: 12,
+-                color: Colors.black54,
+-              ),
+-            ),
+-            const SizedBox(height: 14),
+-            tierTile(
+-              tier: 'TIER_1',
+-              title: 'Tier 1',
+-              description: 'Basic identity verification.',
+-              icon: Icons.verified_user_outlined,
+-            ),
+-            tierTile(
+-              tier: 'TIER_2',
+-              title: 'Tier 2',
+-              description: 'Enhanced identity verification.',
+-              icon: Icons.shield_outlined,
+-            ),
+-            tierTile(
+-              tier: 'TIER_3',
+-              title: 'Tier 3',
+-              description: 'Full identity and address verification.',
+-              icon: Icons.workspace_premium_outlined,
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: <Widget>[
++          Row(
++            children: <Widget>[
++              const Icon(Icons.image_outlined, color: Color(0xFF08783E)),
++              const SizedBox(width: 8),
++              Expanded(
++                  child: Text(title,
++                      style: const TextStyle(fontWeight: FontWeight.w800))),
++              if (uploaded) const Icon(Icons.check_circle, color: Colors.green),
++            ],
++          ),
++          const SizedBox(height: 5),
++          Text(
++              uploaded
++                  ? 'Uploaded securely. You can replace or remove it before submission.'
++                  : subtitle,
++              style: const TextStyle(color: Colors.black54, height: 1.3)),
++          if (preview != null) ...<Widget>[
++            const SizedBox(height: 10),
++            ClipRRect(
++              borderRadius: BorderRadius.circular(10),
++              child: Image.memory(preview.bytes,
++                  height: 150, width: double.infinity, fit: BoxFit.cover),
+             ),
+           ],
+-        ),
++          const SizedBox(height: 10),
++          Row(
++            children: <Widget>[
++              Expanded(
++                child: OutlinedButton.icon(
++                  onPressed: _isLocked || loading
++                      ? null
++                      : () => _pickAndUpload(documentType, title),
++                  icon: loading
++                      ? const SizedBox(
++                          width: 16,
++                          height: 16,
++                          child: CircularProgressIndicator(strokeWidth: 2))
++                      : Icon(uploaded
++                          ? Icons.refresh
++                          : Icons.upload_file_outlined),
++                  label: Text(loading
++                      ? 'Uploading...'
++                      : uploaded
++                          ? 'Replace'
++                          : 'Select / capture'),
++                ),
++              ),
++              if (uploaded || preview != null) ...<Widget>[
++                const SizedBox(width: 8),
++                IconButton(
++                  tooltip: 'Remove $title',
++                  onPressed: _isLocked || loading
++                      ? null
++                      : () => _removeDocument(documentType),
++                  icon: const Icon(Icons.delete_outline, color: Colors.red),
++                ),
++              ],
++            ],
++          ),
++        ],
+       ),
+     );
+   }
+ 
++  Widget _tierSelector() {
++    return DropdownButtonFormField<String>(
++      value: _requestedLevel,
++      isExpanded: true,
++      decoration: const InputDecoration(
++          labelText: 'Requested KYC tier', border: OutlineInputBorder()),
++      items: const <DropdownMenuItem<String>>[
++        DropdownMenuItem(
++            value: 'TIER_1', child: Text('Tier 1 — basic verification')),
++        DropdownMenuItem(
++            value: 'TIER_2', child: Text('Tier 2 — government ID and selfie')),
++        DropdownMenuItem(
++            value: 'TIER_3',
++            child: Text('Tier 3 — identity, selfie and proof of address')),
++      ],
++      onChanged: _isLocked
++          ? null
++          : (String? value) =>
++              setState(() => _requestedLevel = value ?? 'TIER_1'),
++    );
++  }
++
+   @override
+   Widget build(BuildContext context) {
+-    const primary = Color(0xFF08783E);
+-
+     return Scaffold(
+       appBar: AppBar(
+         title: const Text('KYC Verification'),
+-        backgroundColor: primary,
++        backgroundColor: const Color(0xFF08783E),
+         foregroundColor: Colors.white,
+       ),
+-      body: isLoading
+-          ? const Center(
+-              child: CircularProgressIndicator(),
+-            )
++      body: _loading
++          ? const Center(child: CircularProgressIndicator())
+           : RefreshIndicator(
+               onRefresh: _loadKyc,
+               child: ListView(
+                 padding: const EdgeInsets.all(16),
+-                children: [
++                children: <Widget>[
+                   Container(
+-                    padding: const EdgeInsets.all(18),
++                    padding: const EdgeInsets.all(16),
+                     decoration: BoxDecoration(
+-                      color: _statusColor().withValues(alpha: 0.08),
+-                      borderRadius: BorderRadius.circular(18),
++                      color: _statusColor().withValues(alpha: .08),
++                      borderRadius: BorderRadius.circular(16),
+                       border: Border.all(
+-                        color: _statusColor().withValues(alpha: 0.25),
+-                      ),
++                          color: _statusColor().withValues(alpha: .25)),
+                     ),
+-                    child: Row(
+-                      children: [
+-                        CircleAvatar(
+-                          radius: 27,
+-                          backgroundColor:
+-                              _statusColor().withValues(alpha: 0.15),
+-                          child: Icon(
+-                            _statusIcon(),
+-                            color: _statusColor(),
+-                            size: 30,
+-                          ),
+-                        ),
+-                        const SizedBox(width: 14),
+-                        Expanded(
+-                          child: Column(
+-                            crossAxisAlignment: CrossAxisAlignment.start,
+-                            children: [
+-                              const Text(
+-                                'Verification Status',
+-                                style: TextStyle(
+-                                  fontSize: 13,
+-                                  color: Colors.black54,
+-                                ),
+-                              ),
+-                              const SizedBox(height: 4),
+-                              Text(
+-                                _statusLabel(),
+-                                style: TextStyle(
+-                                  fontSize: 19,
+-                                  fontWeight: FontWeight.bold,
++                    child: Column(
++                      crossAxisAlignment: CrossAxisAlignment.start,
++                      children: <Widget>[
++                        Text('KYC status: ${_statusLabel()}',
++                            style: TextStyle(
++                                fontSize: 19,
++                                fontWeight: FontWeight.bold,
++                                color: _statusColor())),
++                        const SizedBox(height: 5),
++                        Text(
++                            'Current tier: ${_level.replaceAll('_', ' ')} • Requested: ${_requestedLevel.replaceAll('_', ' ')}'),
++                        if (_reviewReason.isNotEmpty) ...<Widget>[
++                          const SizedBox(height: 8),
++                          Text(_reviewReason,
++                              style: TextStyle(
+                                   color: _statusColor(),
+-                                ),
+-                              ),
+-                              const SizedBox(height: 4),
+-                              Text(
+-                                'Current tier: ${level.replaceAll('_', ' ')}\n'
+-                                'Requested tier: ${requestedLevel.replaceAll('_', ' ')}',
+-                                style: const TextStyle(fontSize: 13),
+-                              ),
+-                            ],
+-                          ),
+-                        ),
++                                  fontWeight: FontWeight.w600)),
++                        ],
+                       ],
+                     ),
+                   ),
+-                  if (_isLocked) ...[
+-                    const SizedBox(height: 12),
+-                    const Text(
+-                      'Your submission is in progress. You can refresh this page for updates, but changes are disabled until it is reviewed.',
+-                      style: TextStyle(color: Colors.black54),
+-                    ),
+-                  ],
+-                  const SizedBox(height: 18),
+-                  _buildTierSelector(),
+-                  _buildKycDocumentsSection(),
+-                  _buildIdentityVerificationSection(),
+-                  if (status == 'REJECTED' && rejectionReason.isNotEmpty) ...[
+-                    const SizedBox(height: 14),
+-                    Container(
+-                      padding: const EdgeInsets.all(14),
+-                      decoration: BoxDecoration(
+-                        color: Colors.red.shade50,
+-                        borderRadius: BorderRadius.circular(14),
+-                      ),
+-                      child: Row(
+-                        crossAxisAlignment: CrossAxisAlignment.start,
+-                        children: [
+-                          const Icon(
+-                            Icons.info_outline,
+-                            color: Colors.red,
+-                          ),
+-                          const SizedBox(width: 10),
+-                          Expanded(
+-                            child: Text(
+-                              'Reason: $rejectionReason',
+-                              style: const TextStyle(
+-                                color: Colors.red,
+-                              ),
+-                            ),
+-                          ),
+-                        ],
+-                      ),
+-                    ),
+-                  ],
+-                  const SizedBox(height: 22),
+-                  const Text(
+-                    'Personal Information',
+-                    style: TextStyle(
+-                      fontSize: 18,
+-                      fontWeight: FontWeight.bold,
+-                    ),
++                  const SizedBox(height: 16),
++                  LinearProgressIndicator(
++                    value: _status == 'VERIFIED'
++                        ? 1
++                        : _isLocked
++                            ? .9
++                            : .45,
++                    color: const Color(0xFF08783E),
++                    backgroundColor: Colors.green.shade50,
+                   ),
+-                  const SizedBox(height: 14),
++                  const SizedBox(height: 16),
++                  if (_isLocked)
++                    const Padding(
++                      padding: EdgeInsets.only(bottom: 12),
++                      child: Text(
++                          'Your application is submitted. Refresh to track review progress.',
++                          style: TextStyle(color: Colors.black54)),
++                    ),
+                   Form(
+                     key: _formKey,
+                     child: Column(
+-                      children: [
+-                        _textField(
+-                          controller: firstNameController,
+-                          label: 'First Name',
+-                          icon: Icons.person_outline,
+-                          required: true,
+-                        ),
+-                        _textField(
+-                          controller: middleNameController,
+-                          label: 'Middle Name',
+-                          icon: Icons.person_outline,
+-                        ),
+-                        _textField(
+-                          controller: lastNameController,
+-                          label: 'Last Name',
+-                          icon: Icons.person_outline,
+-                          required: true,
+-                        ),
+-                        InkWell(
+-                          onTap: _isLocked ? null : _pickDate,
+-                          borderRadius: BorderRadius.circular(14),
+-                          child: InputDecorator(
+-                            decoration: const InputDecoration(
+-                              labelText: 'Date of Birth',
+-                              prefixIcon: Icon(Icons.cake_outlined),
+-                              border: OutlineInputBorder(),
+-                            ),
+-                            child: Text(
+-                              dateOfBirth == null
+-                                  ? 'Select date'
+-                                  : _formatDate(
+-                                      dateOfBirth!,
+-                                    ),
+-                            ),
+-                          ),
+-                        ),
+-                        const SizedBox(height: 14),
+-                        DropdownButtonFormField<String>(
+-                          initialValue: gender.isEmpty ? null : gender,
+-                          decoration: const InputDecoration(
+-                            labelText: 'Gender',
+-                            prefixIcon: Icon(Icons.people_outline),
+-                            border: OutlineInputBorder(),
+-                          ),
+-                          items: const [
+-                            DropdownMenuItem(
+-                              value: 'MALE',
+-                              child: Text('Male'),
+-                            ),
+-                            DropdownMenuItem(
+-                              value: 'FEMALE',
+-                              child: Text('Female'),
+-                            ),
+-                            DropdownMenuItem(
+-                              value: 'OTHER',
+-                              child: Text('Other'),
+-                            ),
+-                          ],
+-                          onChanged: _isLocked
+-                              ? null
+-                              : (value) {
+-                                  setState(() {
+-                                    gender = value ?? '';
+-                                  });
+-                                },
+-                        ),
+-                        const SizedBox(height: 14),
+-                        _textField(
+-                          controller: addressController,
+-                          label: 'Residential Address',
+-                          icon: Icons.home_outlined,
+-                          required: true,
+-                          maxLines: 2,
+-                        ),
+-                        _textField(
+-                          controller: stateController,
+-                          label: 'State',
+-                          icon: Icons.location_on_outlined,
+-                          required: true,
+-                        ),
+-                        _textField(
+-                          controller: lgaController,
+-                          label: 'LGA',
+-                          icon: Icons.map_outlined,
+-                          required: true,
+-                        ),
+-                        const SizedBox(height: 8),
+-                        Container(
+-                          width: double.infinity,
+-                          padding: const EdgeInsets.all(14),
+-                          decoration: BoxDecoration(
+-                            color: Colors.green.shade50,
+-                            borderRadius: BorderRadius.circular(14),
+-                          ),
+-                          child: const Row(
+-                            crossAxisAlignment: CrossAxisAlignment.start,
+-                            children: [
+-                              Icon(
+-                                Icons.security_rounded,
+-                                color: primary,
+-                              ),
+-                              SizedBox(width: 10),
+-                              Expanded(
+-                                child: Text(
+-                                  'Your NIN/BVN will be linked securely through ServicePay verification. Raw identity numbers are not stored in this KYC form.',
+-                                  style: TextStyle(
+-                                    fontSize: 13,
+-                                  ),
++                      children: <Widget>[
++                        _stepCard(
++                            1,
++                            'Personal Information',
++                            'Enter the details shown on your official identity documents.',
++                            <Widget>[
++                              _field(_firstName, 'First legal name'),
++                              _field(_middleName, 'Middle name',
++                                  required: false),
++                              _field(_lastName, 'Last legal name'),
++                              _field(_phone, 'Phone number',
++                                  keyboardType: TextInputType.phone),
++                              _field(_email, 'Email address',
++                                  keyboardType: TextInputType.emailAddress),
++                              _field(_address, 'Residential address',
++                                  maxLines: 2),
++                              _field(_state, 'State'),
++                              _field(_lga, 'LGA'),
++                              ListTile(
++                                contentPadding: EdgeInsets.zero,
++                                title: const Text('Date of birth'),
++                                subtitle: Text(_dateOfBirth == null
++                                    ? 'Required'
++                                    : '${_dateOfBirth!.day.toString().padLeft(2, '0')}/${_dateOfBirth!.month.toString().padLeft(2, '0')}/${_dateOfBirth!.year}'),
++                                trailing: OutlinedButton(
++                                  onPressed: _isLocked ? null : _pickDate,
++                                  child: const Text('Select'),
+                                 ),
+                               ),
+-                            ],
+-                          ),
+-                        ),
+-                        const SizedBox(height: 22),
+-                        SizedBox(
+-                          width: double.infinity,
+-                          height: 52,
+-                          child: ElevatedButton.icon(
+-                            onPressed:
+-                                isSubmitting || _isLocked ? null : _submitKyc,
+-                            icon: isSubmitting
+-                                ? const SizedBox(
+-                                    width: 20,
+-                                    height: 20,
+-                                    child: CircularProgressIndicator(
+-                                      strokeWidth: 2,
+-                                    ),
+-                                  )
+-                                : const Icon(
+-                                    Icons.verified_user_outlined,
++                              DropdownButtonFormField<String>(
++                                value: _gender.isEmpty ? null : _gender,
++                                decoration: const InputDecoration(
++                                    labelText: 'Gender',
++                                    border: OutlineInputBorder()),
++                                items: const <DropdownMenuItem<String>>[
++                                  DropdownMenuItem(
++                                      value: 'MALE', child: Text('Male')),
++                                  DropdownMenuItem(
++                                      value: 'FEMALE', child: Text('Female')),
++                                  DropdownMenuItem(
++                                      value: 'OTHER', child: Text('Other')),
++                                ],
++                                onChanged: _isLocked
++                                    ? null
++                                    : (String? value) =>
++                                        setState(() => _gender = value ?? ''),
++                              ),
++                              const SizedBox(height: 12),
++                              _tierSelector(),
++                            ]),
++                        _stepCard(
++                            2,
++                            'Identity Verification',
++                            'Verify your NIN or BVN here. This never opens the paid identity service.',
++                            <Widget>[
++                              _identityTile(
++                                  'NIN', _nin, _ninVerified, _ninLast4),
++                              _identityTile(
++                                  'BVN', _bvn, _bvnVerified, _bvnLast4),
++                              if (_identityMatchStatus == 'REVIEW_REQUIRED')
++                                const Text(
++                                    'Your identity details may need manual review.',
++                                    style: TextStyle(color: Colors.orange)),
++                            ]),
++                        _stepCard(
++                            3,
++                            'Identity Document',
++                            'Upload a clear JPEG or PNG image. Files are stored privately and can be replaced before submission.',
++                            <Widget>[
++                              DropdownButtonFormField<String>(
++                                value: _governmentIdType.isEmpty
++                                    ? null
++                                    : _governmentIdType,
++                                isExpanded: true,
++                                decoration: const InputDecoration(
++                                    labelText: 'Government ID type',
++                                    border: OutlineInputBorder()),
++                                items: const <DropdownMenuItem<String>>[
++                                  DropdownMenuItem(
++                                      value: 'NIN_SLIP',
++                                      child: Text('National ID / NIN slip')),
++                                  DropdownMenuItem(
++                                      value: 'NATIONAL_ID',
++                                      child: Text('National ID card')),
++                                  DropdownMenuItem(
++                                      value: 'DRIVERS_LICENSE',
++                                      child: Text("Driver's licence")),
++                                  DropdownMenuItem(
++                                      value: 'INTERNATIONAL_PASSPORT',
++                                      child: Text('International passport')),
++                                  DropdownMenuItem(
++                                      value: 'VOTERS_CARD',
++                                      child: Text("Voter's card")),
++                                ],
++                                onChanged: _isLocked
++                                    ? null
++                                    : (String? value) => setState(
++                                        () => _governmentIdType = value ?? ''),
++                              ),
++                              const SizedBox(height: 12),
++                              _documentTile(
++                                  'ID_DOCUMENT_FRONT',
++                                  'Government ID — front',
++                                  'Select or capture the front of your government ID.'),
++                              if (_documentBackRequired)
++                                _documentTile(
++                                    'ID_DOCUMENT_BACK',
++                                    'Government ID — back',
++                                    'Select or capture the back of your government ID.'),
++                              if (_needsProofOfAddress)
++                                _documentTile(
++                                    'PROOF_OF_ADDRESS',
++                                    'Proof of address',
++                                    'Upload a recent address document.'),
++                            ]),
++                        _stepCard(
++                            4,
++                            'Selfie / Liveness-ready Capture',
++                            'Capture or upload a clear selfie. It is stored privately and marked ready for future liveness checks.',
++                            <Widget>[
++                              _documentTile('SELFIE', 'Selfie',
++                                  'Use camera or choose a clear JPEG/PNG selfie.'),
++                            ]),
++                        _stepCard(
++                            5,
++                            'Review & Consent',
++                            'Review the information and document status before submitting one KYC application.',
++                            <Widget>[
++                              Text('Applicant: ${[
++                                _firstName.text,
++                                _middleName.text,
++                                _lastName.text
++                              ].where((String value) => value.isNotEmpty).join(' ')}'),
++                              Text(
++                                  'Identity: ${_ninVerified ? 'NIN verified' : ''}${_ninVerified && _bvnVerified ? ' • ' : ''}${_bvnVerified ? 'BVN verified' : _ninVerified ? '' : 'Not verified'}'),
++                              Text(
++                                  'Documents: ID ${_uploaded['ID_DOCUMENT_FRONT'] == true ? 'uploaded' : 'missing'} • Selfie ${_uploaded['SELFIE'] == true ? 'uploaded' : 'missing'}'),
++                              CheckboxListTile(
++                                contentPadding: EdgeInsets.zero,
++                                value: _consentAccepted,
++                                onChanged: _isLocked
++                                    ? null
++                                    : (bool? value) => setState(() =>
++                                        _consentAccepted = value ?? false),
++                                title: const Text(
++                                    'I confirm my information is accurate and consent to KYC verification.'),
++                                controlAffinity:
++                                    ListTileControlAffinity.leading,
++                              ),
++                            ]),
++                        _stepCard(
++                            6,
++                            'Submission',
++                            'Submit one coherent application for Head Office review.',
++                            <Widget>[
++                              SizedBox(
++                                width: double.infinity,
++                                child: FilledButton.icon(
++                                  onPressed:
++                                      _isLocked || _submitting ? null : _submit,
++                                  icon: _submitting
++                                      ? const SizedBox(
++                                          width: 18,
++                                          height: 18,
++                                          child: CircularProgressIndicator(
++                                              strokeWidth: 2,
++                                              color: Colors.white))
++                                      : const Icon(Icons.send_outlined),
++                                  label: Text(_submitting
++                                      ? 'Submitting...'
++                                      : 'Submit KYC application'),
++                                  style: FilledButton.styleFrom(
++                                    backgroundColor: const Color(0xFF08783E),
++                                    padding: const EdgeInsets.symmetric(
++                                        vertical: 14),
+                                   ),
+-                            label: Text(
+-                              isSubmitting
+-                                  ? 'Submitting...'
+-                                  : status == 'VERIFIED'
+-                                      ? 'Update KYC Information'
+-                                      : 'Submit KYC',
+-                            ),
+-                            style: ElevatedButton.styleFrom(
+-                              backgroundColor: primary,
+-                              foregroundColor: Colors.white,
+-                              shape: RoundedRectangleBorder(
+-                                borderRadius: BorderRadius.circular(
+-                                  14,
+                                 ),
+                               ),
+-                            ),
+-                          ),
+-                        ),
++                            ]),
+                       ],
+                     ),
+                   ),
+-                  const SizedBox(height: 20),
+                 ],
+               ),
+             ),
+     );
+   }
+-
+-  Widget _textField({
+-    required TextEditingController controller,
+-    required String label,
+-    required IconData icon,
+-    bool required = false,
+-    int maxLines = 1,
+-  }) {
+-    return Padding(
+-      padding: const EdgeInsets.only(bottom: 14),
+-      child: TextFormField(
+-        controller: controller,
+-        maxLines: maxLines,
+-        enabled: !_isLocked,
+-        validator: (value) {
+-          if (required && (value == null || value.trim().isEmpty)) {
+-            return '$label is required';
+-          }
+-          return null;
+-        },
+-        decoration: InputDecoration(
+-          labelText: label,
+-          prefixIcon: Icon(icon),
+-          border: const OutlineInputBorder(),
+-        ),
+-      ),
+-    );
+-  }
+ }
+diff --git a/test/admin_kyc_api_service_test.dart b/test/admin_kyc_api_service_test.dart
+index 21f7bd2a05168ee7745c659d95dfa36172b8c274..3f29c6e12c22edd109316c09b60e37b3ba6411bf 100644
+--- a/test/admin_kyc_api_service_test.dart
++++ b/test/admin_kyc_api_service_test.dart
+@@ -13,9 +13,24 @@ void main() {
+         'documents': <String, dynamic>{
+           'selfieUploaded': true,
+           'idDocumentUploaded': true,
++          'idDocumentBackUploaded': true,
+           'proofOfAddressUploaded': true,
+           'idDocumentNeedsSecureReupload': true,
++          'documentType': 'DRIVERS_LICENSE',
+         },
++        'identity': <String, dynamic>{
++          'ninVerified': true,
++          'ninLast4': '1234',
++          'bvnVerified': true,
++          'bvnLast4': '5678',
++          'matchStatus': 'MATCHED',
++        },
++        'reviewHistory': <Map<String, dynamic>>[
++          <String, dynamic>{
++            'action': 'SUBMITTED',
++            'occurredAt': '2026-08-23T12:00:00.000Z',
++          },
++        ],
+         'user': <String, dynamic>{
+           'email': 'ada@example.com',
+           'phone': '08000000000',
+@@ -28,9 +43,16 @@ void main() {
+     expect(application.email, 'ada@example.com');
+     expect(application.selfieUploaded, isTrue);
+     expect(application.idDocumentUploaded, isTrue);
++    expect(application.idDocumentBackUploaded, isTrue);
+     expect(application.proofOfAddressUploaded, isTrue);
+     expect(application.idDocumentNeedsSecureReupload, isTrue);
+     expect(application.selfieNeedsSecureReupload, isFalse);
++    expect(application.ninVerified, isTrue);
++    expect(application.ninLast4, '1234');
++    expect(application.bvnVerified, isTrue);
++    expect(application.identityMatchStatus, 'MATCHED');
++    expect(application.documentType, 'DRIVERS_LICENSE');
++    expect(application.reviewHistory, hasLength(1));
+   });
+ 
+   test('reduces legacy document URLs to availability flags', () {
+diff --git a/test/kyc_screen_test.dart b/test/kyc_screen_test.dart
+index 15b9cd129318cd869d7cbc5cb3a8f0e44c9ced7f..7beffcd14b7d3367d073af2c36e9bf784bb73f3f 100644
+--- a/test/kyc_screen_test.dart
++++ b/test/kyc_screen_test.dart
+@@ -15,7 +15,7 @@ void main() {
+     expect(part.contentType.subtype, 'png');
+   });
+ 
+-  testWidgets('shows the customer KYC tier and identity form', (
++  testWidgets('keeps NIN and BVN verification inside the KYC flow', (
+     WidgetTester tester,
+   ) async {
+     SharedPreferences.setMockInitialValues(<String, Object>{});
+@@ -25,20 +25,15 @@ void main() {
+         home: KycScreen(),
+       ),
+     );
+-    await tester.pump();
++    await tester.pumpAndSettle();
+ 
+     expect(find.text('KYC Verification'), findsOneWidget);
+-    expect(find.text('Choose KYC Tier'), findsOneWidget);
+-    expect(find.text('Tier 1'), findsOneWidget);
+-    expect(find.text('Tier 2'), findsOneWidget);
+-    expect(find.text('Tier 3'), findsOneWidget);
++    expect(find.text('Personal Information'), findsOneWidget);
+ 
+-    await tester.scrollUntilVisible(
+-      find.text('Identity verification'),
+-      300,
+-    );
+-
+-    expect(find.text('Identity verification'), findsOneWidget);
+-    expect(find.text('LGA', skipOffstage: false), findsOneWidget);
++    expect(find.text('Identity Verification', skipOffstage: false),
++        findsOneWidget);
++    expect(find.text('Verify NIN', skipOffstage: false), findsOneWidget);
++    expect(find.text('Verify BVN', skipOffstage: false), findsOneWidget);
++    expect(find.text('Enter your NIN', skipOffstage: false), findsOneWidget);
+   });
+ }
+-- 
+2.53.0
+

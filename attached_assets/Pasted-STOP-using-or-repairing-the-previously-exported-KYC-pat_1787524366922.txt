@@ -1,0 +1,200 @@
+STOP using or repairing the previously exported KYC patch.
+
+The exported patch is NOT compatible with the current GitHub main branch. Verification against a fresh clone of origin/main failed because multiple backend KYC files have changed and some files expected by the patch do not exist.
+
+Rebuild the ServicePay KYC system DIRECTLY against the CURRENT repository state.
+
+IMPORTANT:
+1. First fetch and inspect the latest origin/main.
+2. Treat the current main branch as the ONLY source of truth.
+3. Do NOT use git am, the old patch, old commit blobs, or assumptions from previous repository versions.
+4. Do NOT push or deploy anything.
+5. Modify only files genuinely required for the KYC system.
+6. Preserve all unrelated existing ServicePay features.
+
+Build a complete production-grade, world-standard customer KYC system.
+
+CUSTOMER FLOW
+
+Create one dedicated KYC experience inside ServicePay. NIN/BVN verification MUST happen inline inside the KYC screen. Pressing Verify NIN or Verify BVN must NEVER navigate the customer to the separate paid ID Verification service or back to the dashboard.
+
+KYC should have a clear step-by-step flow:
+
+Step 1 — Personal Information
+- Full legal name
+- Date of birth
+- Gender
+- Phone
+- Email
+- Residential address
+- State
+- LGA
+
+Step 2 — Identity Verification
+- NIN input and Verify NIN button
+- BVN input and Verify BVN button
+- Show explicit states:
+  Not verified
+  Verifying
+  Verified
+  Verification failed
+  Provider unavailable
+- Prevent accidental double submissions.
+- Never fabricate successful verification.
+- Store only necessary/masked identity information.
+
+Step 3 — Identity Document
+Allow:
+- National ID/NIN slip
+- Driver's licence
+- International passport
+- Voter's card where appropriate
+
+Customer must be able to select/capture and upload the document successfully.
+
+Validate:
+- JPEG/PNG
+- MIME type AND file signature
+- sensible maximum size
+- clear upload progress
+- retry on failure
+- preview selected image
+- replace/remove before final submission
+
+Step 4 — Selfie / Liveness-ready capture
+- Customer can capture or upload a clear selfie.
+- Preview must display correctly.
+- Upload must actually reach backend storage.
+- Design the data model so real liveness/face matching can be integrated later without redesigning KYC.
+
+Step 5 — Review & Consent
+Show entered details and uploaded-document status.
+Require explicit consent before submission.
+
+Step 6 — Submission
+Submit one coherent KYC application.
+Prevent duplicate pending submissions.
+Show:
+- Draft
+- Incomplete
+- Submitted
+- Under Review
+- More Information Required
+- Approved
+- Rejected
+
+DOCUMENT STORAGE
+
+Use the project's existing Cloudinary configuration where available.
+
+KYC documents/selfies must be private/authenticated assets, not permanent public URLs.
+
+Store private asset identifiers in the database.
+
+Head Office/Admin document viewing must use controlled short-lived access where supported.
+
+Do not silently report upload success if storage failed.
+
+BACKEND
+
+Inspect the CURRENT backend architecture before changing anything.
+
+Implement/adapt current-main-compatible:
+- KYC profile/application model
+- KYC document handling
+- NIN/BVN verification adapter
+- upload endpoints
+- submission endpoint
+- customer KYC status endpoint
+- admin review endpoints
+- audit trail
+
+Do NOT create duplicate/conflicting routes if equivalent current routes already exist. Refactor/adapt them.
+
+ADMIN / HEAD OFFICE
+
+Provide a professional KYC review screen showing:
+- customer
+- submitted personal information
+- masked NIN/BVN
+- NIN verification state
+- BVN verification state
+- identity document
+- selfie
+- submission date
+- KYC tier/status
+- review history
+
+Admin actions:
+- Approve
+- Reject with mandatory reason
+- Request more information with mandatory reason
+
+Every review action must create an audit record.
+
+SECURITY
+
+- Authentication and authorization on every KYC endpoint.
+- Customer can access only their own KYC.
+- Only authorized Head Office/Admin roles can review KYC.
+- Validate MIME + image signature server-side.
+- Rate-limit identity verification.
+- Never log raw NIN/BVN, secrets, document URLs or sensitive provider payloads.
+- Do not expose provider credentials to Flutter.
+- Do not fabricate verification when provider credentials are unavailable.
+
+PROVIDER
+
+Inspect the existing project first.
+
+If Prembly credentials/integration already exist, adapt and use them safely.
+
+If valid provider credentials are NOT configured, implement the provider adapter and explicit PROVIDER_UNAVAILABLE state. Do not fake verification and do not redirect customers to another ServicePay service.
+
+CRITICAL BUGS THAT MUST BE FIXED
+
+1. Verify NIN currently redirects/leaves the KYC flow.
+2. Verify BVN currently redirects/leaves the KYC flow.
+3. Customer ID/document image upload currently does not reliably upload.
+4. Customer photo/selfie upload currently does not reliably upload.
+5. KYC must remain one continuous customer flow from start through submission.
+6. Admin must be able to review the submitted evidence.
+
+COMPATIBILITY
+
+Before finishing:
+- run backend tests
+- run Flutter analyze
+- run focused KYC widget/API tests
+- run Flutter web release build if environment supports it
+- inspect git diff carefully
+
+Do not include:
+- .agents
+- Replit metadata
+- generated build files
+- secrets
+- unrelated changes
+
+DELIVERY
+
+When complete:
+1. Make ONE clean local commit named:
+   Rebuild production KYC against current main
+2. Do NOT push.
+3. Do NOT deploy.
+4. Export a NEW patch/ZIP generated from the CURRENT main-compatible changes.
+5. The patch must be verified against a FRESH clone of the latest origin/main using:
+   git apply --check
+6. If git apply --check fails, DO NOT give me the patch. Fix/re-export it until the check passes.
+7. Clearly report:
+   - files changed
+   - backend test result
+   - Flutter analyze result
+   - Flutter test result
+   - release build result
+   - git apply --check result
+   - exact commit hash
+   - exact ZIP filename
+
+Do not mark the task complete until the newly exported patch passes git apply --check against a fresh latest origin/main.
