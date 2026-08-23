@@ -42,6 +42,7 @@ import 'qr_pay_screen.dart';
 import 'mini_apps_screen.dart';
 
 import 'marketplace/marketplace_screen.dart';
+import 'trust/trust_search_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -1124,6 +1125,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         openScreen(
           const KycScreen(),
         );
+      },
+    );
+
+    addItem(
+      feature: 'trust',
+      icon: Icons.shield_outlined,
+      label: 'Trust',
+      onTap: () {
+        openScreen(const TrustSearchScreen());
       },
     );
 

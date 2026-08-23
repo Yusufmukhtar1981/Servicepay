@@ -68,6 +68,10 @@ const announcementRoutes = require(
 const transactionRoutes = require(
   "./routes/transaction.routes"
 );
+const trustRoutes = require("./routes/trust.routes");
+const adminTrustRoutes = require(
+  "./routes/adminTrust.routes"
+);
 
 const electricityRoutes = require(
   "./routes/electricity.routes"
@@ -203,6 +207,9 @@ app.use(
   "/api/transactions",
   transactionRoutes
 );
+
+app.use("/api/trust", trustRoutes);
+app.use("/api/admin/trust", adminTrustRoutes);
 
 app.use(
   "/api/electricity",

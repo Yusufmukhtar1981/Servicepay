@@ -210,6 +210,7 @@ const defaultRoles = [
       P.KYC_VIEW,
       P.KYC_APPROVE,
       P.KYC_REJECT,
+      P.TRUST_VIEW,
 
       P.AUDIT_VIEW,
       P.AUDIT_EXPORT,
@@ -331,15 +332,22 @@ const seedRoles = async () => {
   );
 };
 
-seedRoles()
-  .catch((error) => {
-    console.error(
-      "❌ Unable to seed staff roles:",
-      error
-    );
+if (require.main === module) {
+  seedRoles()
+    .catch((error) => {
+      console.error(
+        "❌ Unable to seed staff roles:",
+        error
+      );
 
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await mongoose.disconnect();
-  });
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await mongoose.disconnect();
+    });
+}
+
+module.exports = {
+  defaultRoles,
+  seedRoles,
+};

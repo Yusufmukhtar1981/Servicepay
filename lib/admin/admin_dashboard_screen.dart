@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_notifications_screen.dart';
 import 'admin_product_commission_screen.dart';
+import 'admin_trust_profiles_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -364,6 +365,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
+                  buildAdminAction(
+                    title: 'Trust Profiles',
+                    subtitle: 'Search and review ServicePay Trust profiles.',
+                    icon: Icons.shield_outlined,
+                    onTap: () {
+                      openPage(const AdminTrustProfilesScreen());
+                    },
+                  ),
                   buildAdminAction(
                     title: 'Manage Users',
                     subtitle:

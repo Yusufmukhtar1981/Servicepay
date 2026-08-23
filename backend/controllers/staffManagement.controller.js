@@ -713,6 +713,7 @@ exports.seedDefaultRoles = async (req, res) => {
           P.KYC_VIEW,
           P.KYC_APPROVE,
           P.KYC_REJECT,
+          P.TRUST_VIEW,
           P.AUDIT_VIEW,
           P.AUDIT_EXPORT,
           P.REPORTS_VIEW,
