@@ -32,6 +32,7 @@ const kycProfileSchema = new mongoose.Schema(
         "UNDER_REVIEW",
         "VERIFIED",
         "REJECTED",
+        "NEEDS_MORE_INFORMATION",
       ],
       default: "NOT_STARTED",
       index: true,
@@ -118,6 +119,10 @@ const kycProfileSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    ninVerifiedAt: {
+      type: Date,
+      default: null,
+    },
 
     bvnVerified: {
       type: Boolean,
@@ -131,6 +136,40 @@ const kycProfileSchema = new mongoose.Schema(
     },
 
     bvnLast4: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    bvnVerifiedAt: {
+      type: Date,
+      default: null,
+    },
+    identityMatchStatus: {
+      type: String,
+      enum: ["NOT_VERIFIED", "MATCHED", "REVIEW_REQUIRED", "FAILED"],
+      default: "NOT_VERIFIED",
+    },
+    documentType: {
+      type: String,
+      enum: ["", "NIN_SLIP", "NATIONAL_ID", "DRIVERS_LICENSE", "INTERNATIONAL_PASSPORT", "VOTERS_CARD"],
+      default: "",
+    },
+    selfieAssetId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    idDocumentAssetId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    idDocumentBackAssetId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    proofOfAddressAssetId: {
       type: String,
       trim: true,
       default: "",
@@ -159,6 +198,11 @@ const kycProfileSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    reviewReason: {
+      type: String,
+      trim: true,
+      default: "",
+    },
 
     submittedAt: {
       type: Date,
@@ -168,6 +212,44 @@ const kycProfileSchema = new mongoose.Schema(
     reviewedAt: {
       type: Date,
       default: null,
+    },
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    livenessStatus: {
+      type: String,
+      enum: ["NOT_STARTED", "READY_FOR_CHECK", "PASSED", "FAILED"],
+      default: "NOT_STARTED",
+    },
+    reviewHistory: {
+      type: [
+        {
+          action: {
+            type: String,
+            required: true,
+          },
+          reason: {
+            type: String,
+            default: "",
+          },
+          reviewer: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+          },
+          occurredAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
     },
 
     metadata: {

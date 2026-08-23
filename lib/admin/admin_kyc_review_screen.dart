@@ -103,6 +103,10 @@ class _AdminKycReviewScreenState extends State<AdminKycReviewScreen> {
                   ),
                   DropdownMenuItem(value: 'VERIFIED', child: Text('Verified')),
                   DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+                  DropdownMenuItem(
+                    value: 'NEEDS_MORE_INFORMATION',
+                    child: Text('More information required'),
+                  ),
                 ],
                 onChanged: (String? value) {
                   setState(() => _status = value ?? '');
@@ -213,19 +217,23 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
 
   Future<void> _review(String status) async {
     String reason = '';
-    if (status == 'REJECTED') {
+    if (status == 'REJECTED' || status == 'REQUEST_MORE_INFORMATION') {
       final TextEditingController controller = TextEditingController();
       final String? submitted = await showDialog<String>(
         context: context,
         builder: (BuildContext context) => AlertDialog(
-          title: const Text('Reject KYC application'),
+          title: Text(
+            status == 'REJECTED'
+                ? 'Reject KYC application'
+                : 'Request more information',
+          ),
           content: TextField(
             controller: controller,
             autofocus: true,
             maxLines: 3,
             decoration: const InputDecoration(
-              labelText: 'Rejection reason',
-              hintText: 'Explain what the applicant must correct',
+              labelText: 'Required review reason',
+              hintText: 'Explain what the applicant must correct or provide',
             ),
           ),
           actions: <Widget>[
@@ -238,7 +246,9 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
                 final String value = controller.text.trim();
                 if (value.isNotEmpty) Navigator.pop(context, value);
               },
-              child: const Text('Reject'),
+              child: Text(
+                status == 'REJECTED' ? 'Reject' : 'Send request',
+              ),
             ),
           ],
         ),
@@ -252,7 +262,7 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
       final AdminKycApplication updated = await AdminKycApiService.updateStatus(
         widget.kycId,
         status: status,
-        rejectionReason: reason,
+        reviewReason: reason,
       );
       if (!mounted) return;
       setState(() => _application = updated);
@@ -330,11 +340,9 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
                                         fontWeight: FontWeight.bold))),
                             _StatusChip(status: application.status),
                           ]),
-                          if (application
-                              .rejectionReason.isNotEmpty) ...<Widget>[
+                          if (application.reviewReason.isNotEmpty) ...<Widget>[
                             const SizedBox(height: 12),
-                            Text(
-                                'Rejection reason: ${application.rejectionReason}',
+                            Text('Review reason: ${application.reviewReason}',
                                 style: const TextStyle(color: Colors.red)),
                           ],
                         ]),
@@ -354,13 +362,41 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
                               _label(application.requestedLevel)),
                           _field('Approved tier', _label(application.level)),
                           _field('Submitted', application.submittedAt),
+                          _field(
+                            'Identity match',
+                            _label(application.identityMatchStatus),
+                          ),
+                        ]),
+                        _section('Identity verification', <Widget>[
+                          _field(
+                            'NIN',
+                            application.ninVerified
+                                ? 'Verified •••• ${application.ninLast4}'
+                                : 'Not verified',
+                          ),
+                          _field(
+                            'BVN',
+                            application.bvnVerified
+                                ? 'Verified •••• ${application.bvnLast4}'
+                                : 'Not verified',
+                          ),
+                          _field(
+                            'Government ID type',
+                            _label(application.documentType),
+                          ),
                         ]),
                         _section('Authorized documents', <Widget>[
                           _document(
-                            'Government ID',
-                            'ID_DOCUMENT',
+                            'Government ID — front',
+                            'ID_DOCUMENT_FRONT',
                             application.idDocumentUploaded,
                             application.idDocumentNeedsSecureReupload,
+                          ),
+                          _document(
+                            'Government ID — back',
+                            'ID_DOCUMENT_BACK',
+                            application.idDocumentBackUploaded,
+                            false,
                           ),
                           _document(
                             'Selfie',
@@ -375,6 +411,22 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
                             application.proofOfAddressNeedsSecureReupload,
                           ),
                         ]),
+                        if (application.reviewHistory.isNotEmpty)
+                          _section(
+                            'Review history',
+                            application.reviewHistory
+                                .map(
+                                  (AdminKycReviewEvent event) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: Text(
+                                      '${_label(event.action)}'
+                                      '${event.occurredAt.isEmpty ? '' : ' • ${event.occurredAt}'}'
+                                      '${event.reason.isEmpty ? '' : '\n${event.reason}'}',
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
                         if (application.status == 'PENDING' ||
                             application.status == 'UNDER_REVIEW')
                           Row(children: <Widget>[
@@ -393,15 +445,29 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
                                 child: ElevatedButton.icon(
                                     onPressed: _updating
                                         ? null
-                                        : () => _review('VERIFIED'),
+                                        : () => _review('APPROVED'),
                                     icon: const Icon(Icons.verified),
                                     label: Text(
-                                        _updating ? 'Updating...' : 'Verify'),
+                                        _updating ? 'Updating...' : 'Approve'),
                                     style: ElevatedButton.styleFrom(
                                         backgroundColor:
                                             const Color(0xFF08783E),
                                         foregroundColor: Colors.white))),
                           ]),
+                        if (application.status == 'PENDING' ||
+                            application.status == 'UNDER_REVIEW') ...<Widget>[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _updating
+                                  ? null
+                                  : () => _review('REQUEST_MORE_INFORMATION'),
+                              icon: const Icon(Icons.question_answer_outlined),
+                              label: const Text('Request more information'),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
     );
@@ -470,9 +536,11 @@ class _StatusChip extends StatelessWidget {
         ? Colors.green
         : status == 'REJECTED'
             ? Colors.red
-            : status == 'UNDER_REVIEW'
-                ? Colors.orange
-                : Colors.blueGrey;
+            : status == 'NEEDS_MORE_INFORMATION'
+                ? Colors.deepOrange
+                : status == 'UNDER_REVIEW'
+                    ? Colors.orange
+                    : Colors.blueGrey;
     return Chip(
       label: Text(_label(status), style: TextStyle(color: color, fontSize: 12)),
       backgroundColor: color.withValues(alpha: .1),

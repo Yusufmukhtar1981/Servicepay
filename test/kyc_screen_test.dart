@@ -15,7 +15,7 @@ void main() {
     expect(part.contentType.subtype, 'png');
   });
 
-  testWidgets('shows the customer KYC tier and identity form', (
+  testWidgets('keeps NIN and BVN verification inside the KYC flow', (
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -25,20 +25,15 @@ void main() {
         home: KycScreen(),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('KYC Verification'), findsOneWidget);
-    expect(find.text('Choose KYC Tier'), findsOneWidget);
-    expect(find.text('Tier 1'), findsOneWidget);
-    expect(find.text('Tier 2'), findsOneWidget);
-    expect(find.text('Tier 3'), findsOneWidget);
+    expect(find.text('Personal Information'), findsOneWidget);
 
-    await tester.scrollUntilVisible(
-      find.text('Identity verification'),
-      300,
-    );
-
-    expect(find.text('Identity verification'), findsOneWidget);
-    expect(find.text('LGA', skipOffstage: false), findsOneWidget);
+    expect(find.text('Identity Verification', skipOffstage: false),
+        findsOneWidget);
+    expect(find.text('Verify NIN', skipOffstage: false), findsOneWidget);
+    expect(find.text('Verify BVN', skipOffstage: false), findsOneWidget);
+    expect(find.text('Enter your NIN', skipOffstage: false), findsOneWidget);
   });
 }

@@ -37,6 +37,11 @@ router.get(
   adminKycController.getKycApplication
 );
 
+router.get(
+  "/:kycId/document/:documentType",
+  adminKycController.getKycDocument
+);
+
 router.patch(
   "/:kycId/status",
   adminKycController.updateKycStatus

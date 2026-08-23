@@ -24,10 +24,19 @@ class AdminKycApplication {
     required this.rejectionReason,
     required this.selfieUploaded,
     required this.idDocumentUploaded,
+    required this.idDocumentBackUploaded,
     required this.proofOfAddressUploaded,
     required this.selfieNeedsSecureReupload,
     required this.idDocumentNeedsSecureReupload,
     required this.proofOfAddressNeedsSecureReupload,
+    required this.documentType,
+    required this.ninVerified,
+    required this.bvnVerified,
+    required this.ninLast4,
+    required this.bvnLast4,
+    required this.identityMatchStatus,
+    required this.reviewReason,
+    required this.reviewHistory,
   });
 
   final String id;
@@ -49,10 +58,19 @@ class AdminKycApplication {
   final String rejectionReason;
   final bool selfieUploaded;
   final bool idDocumentUploaded;
+  final bool idDocumentBackUploaded;
   final bool proofOfAddressUploaded;
   final bool selfieNeedsSecureReupload;
   final bool idDocumentNeedsSecureReupload;
   final bool proofOfAddressNeedsSecureReupload;
+  final String documentType;
+  final bool ninVerified;
+  final bool bvnVerified;
+  final String ninLast4;
+  final String bvnLast4;
+  final String identityMatchStatus;
+  final String reviewReason;
+  final List<AdminKycReviewEvent> reviewHistory;
 
   String get displayName => <String>[firstName, middleName, lastName]
       .where((name) => name.isNotEmpty)
@@ -64,6 +82,9 @@ class AdminKycApplication {
         : <String, dynamic>{};
     final Map<String, dynamic> documents = json['documents'] is Map
         ? Map<String, dynamic>.from(json['documents'] as Map)
+        : <String, dynamic>{};
+    final Map<String, dynamic> identity = json['identity'] is Map
+        ? Map<String, dynamic>.from(json['identity'] as Map)
         : <String, dynamic>{};
     String value(String key) =>
         (json[key] ?? user[key] ?? '').toString().trim();
@@ -103,6 +124,10 @@ class AdminKycApplication {
       selfieUploaded: documentUploaded('selfieUploaded', 'selfieUrl'),
       idDocumentUploaded:
           documentUploaded('idDocumentUploaded', 'idDocumentUrl'),
+      idDocumentBackUploaded: documentUploaded(
+        'idDocumentBackUploaded',
+        'idDocumentBackUrl',
+      ),
       proofOfAddressUploaded:
           documentUploaded('proofOfAddressUploaded', 'proofOfAddressUrl'),
       selfieNeedsSecureReupload: documentFlag('selfieNeedsSecureReupload'),
@@ -110,6 +135,24 @@ class AdminKycApplication {
           documentFlag('idDocumentNeedsSecureReupload'),
       proofOfAddressNeedsSecureReupload:
           documentFlag('proofOfAddressNeedsSecureReupload'),
+      documentType: (documents['documentType'] ?? json['documentType'] ?? '')
+          .toString()
+          .trim(),
+      ninVerified: identity['ninVerified'] == true,
+      bvnVerified: identity['bvnVerified'] == true,
+      ninLast4: (identity['ninLast4'] ?? '').toString().trim(),
+      bvnLast4: (identity['bvnLast4'] ?? '').toString().trim(),
+      identityMatchStatus:
+          (identity['matchStatus'] ?? 'NOT_VERIFIED').toString().trim(),
+      reviewReason: value('reviewReason').isNotEmpty
+          ? value('reviewReason')
+          : value('rejectionReason'),
+      reviewHistory: (json['reviewHistory'] as List<dynamic>? ?? <dynamic>[])
+          .whereType<Map>()
+          .map((Map entry) => AdminKycReviewEvent.fromJson(
+                Map<String, dynamic>.from(entry),
+              ))
+          .toList(),
     );
   }
 }
@@ -156,14 +199,15 @@ class AdminKycApiService {
   static Future<AdminKycApplication> updateStatus(
     String kycId, {
     required String status,
-    String rejectionReason = '',
+    String reviewReason = '',
   }) async {
     final Map<String, dynamic> body = await _request(
       'PATCH',
       Uri.parse('$_baseUrl/admin/kyc/${Uri.encodeComponent(kycId)}/status'),
       payload: <String, dynamic>{
         'status': status,
-        if (status == 'REJECTED') 'rejectionReason': rejectionReason.trim(),
+        if (status == 'REJECTED' || status == 'REQUEST_MORE_INFORMATION')
+          'reviewReason': reviewReason.trim(),
       },
     );
     final dynamic raw =
@@ -251,5 +295,25 @@ class AdminKycApiService {
       );
     }
     return body;
+  }
+}
+
+class AdminKycReviewEvent {
+  const AdminKycReviewEvent({
+    required this.action,
+    required this.reason,
+    required this.occurredAt,
+  });
+
+  final String action;
+  final String reason;
+  final String occurredAt;
+
+  factory AdminKycReviewEvent.fromJson(Map<String, dynamic> json) {
+    return AdminKycReviewEvent(
+      action: (json['action'] ?? '').toString().trim(),
+      reason: (json['reason'] ?? '').toString().trim(),
+      occurredAt: (json['occurredAt'] ?? '').toString().trim(),
+    );
   }
 }

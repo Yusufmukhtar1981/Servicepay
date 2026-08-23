@@ -1,7 +1,11 @@
 const multer = require("multer");
 const {
   uploadKycDocument,
+  removeKycDocument,
 } = require("../controllers/kycDocument.controller");
+const {
+  kycIdentityRateLimit,
+} = require("../middleware/kycIdentityRateLimit.middleware");
 
 const kycDocumentUpload = multer({
   storage: multer.memoryStorage(),
@@ -40,6 +44,12 @@ router.post(
   kycController.submitMyKyc
 );
 
+router.post(
+  "/identity/verify",
+  protect,
+  kycIdentityRateLimit,
+  kycController.verifyMyKycIdentity
+);
 
 /*
  * KYC supporting-document upload
@@ -54,8 +64,27 @@ router.post(
 router.post(
   "/document/upload",
   protect,
-  kycDocumentUpload.single("document"),
+  (req, res, next) => {
+    kycDocumentUpload.single("document")(req, res, (error) => {
+      if (error) {
+        return res.status(400).json({
+          success: false,
+          message:
+            error.code === "LIMIT_FILE_SIZE"
+              ? "KYC images must be 8 MB or smaller."
+              : "Unable to process this upload.",
+        });
+      }
+      return next();
+    });
+  },
   uploadKycDocument
+);
+
+router.delete(
+  "/document/:documentType",
+  protect,
+  removeKycDocument
 );
 
 module.exports = router;
