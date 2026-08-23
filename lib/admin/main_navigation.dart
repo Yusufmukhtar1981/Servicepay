@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'admin_dashboard_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_kyc_review_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 
@@ -30,6 +31,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       ),
     ),
     AdminAirtimeToCashScreen(),
+    AdminKycReviewScreen(),
   ];
 
   @override
@@ -104,6 +106,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
               Icons.currency_exchange_rounded,
             ),
             label: 'Airtime Cash',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.verified_user_outlined),
+            activeIcon: Icon(Icons.verified_user),
+            label: 'KYC',
           ),
         ],
       ),
