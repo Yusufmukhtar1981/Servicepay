@@ -1,0 +1,210 @@
+Rebuild ONLY the ServicePay customer dashboard UI to match the attached reference design as closely as possible.
+
+This is NOT a general redesign request. Treat the attached image as the visual source of truth.
+
+IMPORTANT:
+- Do not invent a different layout.
+- Do not simplify it.
+- Do not change feature behavior.
+- Do not touch backend logic.
+- Do not touch wallet balances, transfers, withdrawals, KYC, Trust, transaction history, Rider, admin, or API behavior.
+- Modify only the customer dashboard presentation and its local animation/refresh behavior.
+- Preserve all existing navigation destinations and working features.
+
+TARGET VISUAL STRUCTURE
+
+1. HEADER
+- White background.
+- ServicePay logo at top-left, visibly larger than current production but not oversized.
+- Brand text beside logo:
+  ServicePay
+  Simple. Secure. Instant.
+- Notification icon on the right.
+- Customer avatar/profile circle on the far right.
+- Greeting below:
+  Good morning,
+  Customer first name
+- Use strong premium typography with generous spacing.
+
+2. TOP QUICK TOOLS
+Place four compact premium shortcut cards near the greeting:
+- Refresh
+- History
+- Help
+- Settings
+
+Refresh must be functional:
+- refresh wallet balance
+- refresh dashboard data
+- show rotating refresh icon while loading
+- prevent duplicate taps during refresh
+- show subtle success feedback when done
+
+3. BALANCE CARD
+This is very important.
+
+The current production green balance block is too thick.
+
+Replace it with a slimmer premium card similar to the reference:
+- white/light-green glass-like background
+- soft green gradient
+- subtle border
+- large but balanced width
+- reduced vertical height
+- rounded corners
+- Available Balance at top
+- eye/hide icon
+- Wallet action on top-right
+- Secured & Protected badge
+- Add Money button
+- Send Money button
+- premium shield/security illustration area on the right
+
+Do not make this card bulky.
+
+4. QUICK ACTION ROW
+Directly below the balance card:
+- Transfer
+- Withdrawal
+- Wallet
+
+Each action should have:
+- premium green icon
+- label
+- short supporting text where space allows
+- subtle glow or elevation
+- compact horizontal layout
+
+5. SERVICES SECTION
+Section header:
+Services                     All Services >
+
+Use a 4-column grid on mobile where width permits.
+
+Visible services:
+- Airtime
+- Data
+- Electricity
+- Cable TV
+- Delivery
+- NIN Verification
+- Empowerment
+- Cards
+
+Each tile:
+- white rounded card
+- premium green icon
+- soft glow
+- small shadow
+- consistent dimensions
+- clean label alignment
+
+Do not use oversized tiles.
+
+6. ICON ANIMATION
+Icons should visibly move, but elegantly.
+
+Use subtle animations only:
+- gentle floating motion
+- soft pulse
+- tiny scale breathing
+- occasional glow shimmer
+- no bouncing wildly
+- no childish animation
+- no continuous distracting rotation except refresh while loading
+
+Animation should feel like a premium fintech app.
+
+Use staggered animation timings so all icons do not move at exactly the same moment.
+
+7. INVITE & EARN BANNER
+Add a premium referral banner under services:
+- dark/deep green gradient
+- gift/reward visual
+- Invite & Earn
+- short description
+- Invite Now button
+- rounded premium card
+- responsive on small screens
+
+8. BOTTOM NAVIGATION
+Use:
+- Home
+- Transactions
+- centered QR/Scan button
+- Wallet
+- Profile
+
+Center QR button should:
+- be circular
+- elevated
+- green
+- slightly larger
+- subtle pulse/glow
+
+Preserve existing navigation behavior.
+
+9. RESPONSIVENESS
+Must work correctly on:
+- small Android phones
+- medium phones
+- mobile web
+- desktop browser widths
+
+No text clipping.
+No overflow.
+No overlapping bottom navigation.
+No service labels hidden behind bottom nav.
+
+10. VISUAL QUALITY
+Aim for:
+- premium Nigerian fintech
+- white + ServicePay green
+- soft gradients
+- subtle shadows
+- refined spacing
+- modern financial app
+- clean, trusted, high-end look
+
+Avoid:
+- dark crypto aesthetic
+- gaming UI
+- oversized 3D elements
+- excessive gradients
+- thick green blocks
+- clutter
+
+11. IMPLEMENTATION METHOD
+Before editing:
+- inspect the existing dashboard file and existing navigation
+- identify reusable widgets
+- preserve current feature destinations
+- preserve service availability logic
+- preserve wallet visibility behavior
+
+Then implement the dashboard only.
+
+12. VALIDATION
+Before completion:
+- run flutter analyze on changed files
+- run focused dashboard widget/navigation tests
+- run web build if supported
+- check mobile widths for overflow
+- verify Refresh action works
+- verify every tile still opens its existing destination
+- verify bottom navigation still works
+
+13. DELIVERY
+Do NOT push.
+Do NOT deploy.
+
+Create ONE clean local commit:
+"Redesign premium ServicePay customer dashboard"
+
+Report:
+- exact files changed
+- screenshot/preview of the final dashboard
+- validation results
+- any existing unrelated warnings
+
+Do not mark complete until the preview visually matches the attached reference closely.
