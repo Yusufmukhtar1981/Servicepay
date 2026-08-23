@@ -42,6 +42,7 @@ import 'qr_pay_screen.dart';
 import 'mini_apps_screen.dart';
 
 import 'marketplace/marketplace_screen.dart';
+import 'trust/trust_dashboard_entry.dart';
 import 'trust/trust_search_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -2449,6 +2450,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 14),
+              const TrustDashboardEntry(),
             ],
           ),
         ),
