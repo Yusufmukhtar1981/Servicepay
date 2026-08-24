@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'airtime_screen.dart';
+import 'ai_support_screen.dart';
 import 'amana_screen.dart';
 import 'cable_screen.dart';
 import 'data_screen.dart';
@@ -528,6 +529,20 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   List<_DashboardService> moreServices() {
     return <_DashboardService>[
+      _DashboardService(
+        title: 'AI Support',
+        subtitle: 'Ask ServicePay',
+        icon: Icons.support_agent_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFE5F5EA),
+        keywords:
+            'ai support ask servicepay help customer care chat transaction issue',
+        onTap: () {
+          openScreen(
+            const AiSupportScreen(),
+          );
+        },
+      ),
       _DashboardService(
         title: 'Cards',
         icon: Icons.credit_card_rounded,
@@ -1468,6 +1483,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         'Delivery',
         'NIN',
         'Empowerment',
+        'AI Support',
         'Cards',
       ])
         if (findByName(title) case final _DashboardService service) service,
@@ -1620,6 +1636,19 @@ class _DashboardScreenState extends State<DashboardScreen>
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (service.subtitle.isNotEmpty)
+                  Text(
+                    service.subtitle,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF6C7D73),
+                      fontSize: 8,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -3906,6 +3935,7 @@ class _DashboardTool {
 
 class _DashboardService {
   final String title;
+  final String subtitle;
   final IconData icon;
   final Color iconColor;
   final Color backgroundColor;
@@ -3914,6 +3944,7 @@ class _DashboardService {
 
   const _DashboardService({
     required this.title,
+    this.subtitle = '',
     required this.icon,
     required this.iconColor,
     required this.backgroundColor,

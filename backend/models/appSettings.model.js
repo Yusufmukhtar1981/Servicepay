@@ -469,6 +469,16 @@ const supportSettingsSchema =
         default: "",
       },
 
+      aiSupportEnabled: {
+        type: Boolean,
+        default: true,
+      },
+
+      humanEscalationEnabled: {
+        type: Boolean,
+        default: true,
+      },
+
       officeAddress: {
         type: String,
         trim: true,

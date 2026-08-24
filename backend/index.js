@@ -87,6 +87,7 @@ connectDB();
 const adminPartnerApplicationRoutes = require("./routes/adminPartnerApplication.routes");
 
 const empowermentRoutes = require("./routes/empowerment.routes");
+const aiSupportRoutes = require("./routes/aiSupport.routes");
 const servicepayFeaturesRoutes = require("./routes/servicepayFeatures.routes");
 const businessWalletRoutes = require("./routes/businessWallet.routes");
 const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
@@ -253,6 +254,7 @@ app.use("/api/admin/partners", adminPartnerRoutes);
 app.use("/api/admin/partner-applications", adminPartnerApplicationRoutes);
 /* ServicePay restored API modules */
 app.use("/api/empowerment", empowermentRoutes);
+app.use("/api/ai-support", aiSupportRoutes);
 app.use("/api/servicepay-features", servicepayFeaturesRoutes);
 app.use("/api/business-wallet", businessWalletRoutes);
 app.use("/api/airtime-to-cash", airtimeToCashRoutes);

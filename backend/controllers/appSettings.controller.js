@@ -1136,6 +1136,18 @@ exports.updateAdminSettings = async (
           .whatsappNumber
       );
 
+    settings.support.aiSupportEnabled =
+      toBoolean(
+        support.aiSupportEnabled,
+        settings.support.aiSupportEnabled !== false
+      );
+
+    settings.support.humanEscalationEnabled =
+      toBoolean(
+        support.humanEscalationEnabled,
+        settings.support.humanEscalationEnabled !== false
+      );
+
     settings.support.officeAddress =
       cleanString(
         support.officeAddress,
