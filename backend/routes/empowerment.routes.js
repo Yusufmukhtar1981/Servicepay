@@ -25,6 +25,7 @@ const {
   bulkAddBeneficiaries,
   getProgramStatistics,
   fundProgram,
+  listProgramFunding,
   createDisbursementPreview,
   disburseProgram,
   disburseBeneficiary,
@@ -145,10 +146,20 @@ router.get(
 );
 
 router.post(
+  "/programs/:programId/fund",
+  fundProgram
+);
+
+// Legacy alias retained for existing clients while they move to /fund.
+router.post(
   "/programs/:programId/funding",
   fundProgram
 );
 
+router.get(
+  "/programs/:programId/funding",
+  listProgramFunding
+);
 
 router.post(
   "/programs/:programId/disbursement-preview",
@@ -166,10 +177,15 @@ router.post(
 );
 
 router.post(
-  "/programs/:programId/beneficiaries/:beneficiaryId/disbursement",
+  "/programs/:programId/beneficiaries/:beneficiaryId/pay",
   disburseBeneficiary
 );
 
+// Legacy alias retained for existing clients while they move to /pay.
+router.post(
+  "/programs/:programId/beneficiaries/:beneficiaryId/disbursement",
+  disburseBeneficiary
+);
 router.post(
   "/disbursement-batches/:batchId/prepare",
   prepareDisbursementBatch
@@ -184,6 +200,11 @@ router.get(
 router.get(
   "/dashboard-summary",
   getEmpowermentDashboardSummary
+);
+
+router.get(
+  "/audit",
+  getEmpowermentAuditTrail
 );
 
 router.get(
