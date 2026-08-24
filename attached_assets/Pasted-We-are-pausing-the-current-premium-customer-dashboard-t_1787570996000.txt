@@ -1,0 +1,202 @@
+We are pausing the current premium customer dashboard task. Do not make any further changes to that task.
+
+Your new priority is to audit, fix, complete, and productionize the existing ServicePay Empowerment feature end-to-end.
+
+IMPORTANT:
+- Work with the existing ServicePay codebase. Do not create a separate demo project.
+- First inspect the entire repository and locate every existing Empowerment-related model, route, controller, service, API, admin page, customer screen, navigation item, and database integration.
+- Preserve all existing working ServicePay features.
+- Do not unnecessarily change dependencies, Flutter/Dart versions, authentication, wallet logic, or unrelated code.
+- Reuse the existing ServicePay design system and backend architecture.
+- Do not stop after analysis. Implement the fixes yourself.
+- Where an Empowerment implementation already exists, repair and extend it instead of duplicating it.
+
+The complete Empowerment flow must be:
+
+1. ORGANIZATION
+A logged-in eligible ServicePay user must be able to create an organization for an empowerment program.
+Organization details should include:
+- Organization name
+- Organization type (Government, NGO, Company, Cooperative, Foundation, Individual/Other)
+- Registration number where applicable
+- Contact person
+- Phone
+- Email
+- Address
+- State
+- Description
+- Verification status
+- Created by
+- Created date
+
+Users must be able to see their organizations and organization verification status.
+
+2. CREATE EMPOWERMENT PROGRAM
+An organization owner must be able to create an empowerment program with:
+- Program name/title
+- Organization
+- Description
+- Program type
+- Target beneficiaries
+- Number of beneficiaries
+- Amount per beneficiary
+- Total program budget
+- State/location
+- Eligibility requirements
+- Application start date
+- Application deadline
+- Disbursement date where applicable
+- Program status
+- Public/private visibility
+
+Validate all financial calculations and required fields on both frontend and backend.
+
+3. BENEFICIARIES
+Each program must support beneficiary registration/application.
+
+Capture:
+- Full name
+- ServicePay account/phone where applicable
+- Phone
+- Email where available
+- Gender
+- Date of birth
+- State
+- LGA
+- Address
+- NIN/BVN or existing ServicePay KYC reference where legally/technically appropriate
+- Application status
+- Verification status
+
+Prevent duplicate beneficiaries within the same program.
+
+4. BENEFICIARY MANAGEMENT
+Program owners/admins must be able to:
+- View applicants
+- Search/filter beneficiaries
+- Approve
+- Reject
+- Mark pending
+- Verify
+- View beneficiary details
+- See totals for pending, approved, rejected and paid beneficiaries
+
+5. PROGRAM FUNDING
+Implement a safe funding flow using the existing ServicePay wallet architecture.
+
+Before funding/disbursement:
+- Validate organization/program ownership and permissions.
+- Validate available balance.
+- Validate program status.
+- Validate approved beneficiary count.
+- Prevent duplicate disbursement.
+- Use transaction-safe/idempotent backend logic.
+
+Do not create fake successful transactions.
+
+6. BULK DISBURSEMENT
+Authorized program owner/admin must be able to disburse funds to approved beneficiaries.
+
+For ServicePay beneficiaries:
+- Credit the correct ServicePay wallet.
+- Create proper transaction records and references.
+- Record program ID, beneficiary ID, amount, payer and recipient.
+- Never credit the same beneficiary twice for the same approved disbursement.
+
+Show:
+- Successful
+- Failed
+- Pending
+- Total disbursed
+- Remaining program balance
+
+7. REPORTS & RECEIPTS
+Each program must have:
+- Program summary
+- Beneficiary report
+- Disbursement history
+- Total budget
+- Total disbursed
+- Remaining balance
+- Successful/failed counts
+- Unique transaction references
+- Printable/downloadable receipt/report where the current architecture supports it.
+
+8. CUSTOMER DASHBOARD
+Make Empowerment accessible from the appropriate customer dashboard/navigation.
+
+The user must clearly be able to:
+- Open Empowerment
+- Create/view organization
+- Create program
+- View own programs
+- Open program details
+- Manage beneficiaries where authorized
+- Track program progress and disbursements
+
+Use a polished premium ServicePay white/green UI consistent with the existing app.
+
+9. ADMIN DASHBOARD
+Audit and complete the existing Empowerment admin area.
+
+Admin must be able to:
+- View all organizations
+- Verify/reject organizations
+- View all programs
+- View program details
+- View beneficiaries
+- Approve/suspend/close programs where appropriate
+- Monitor funding/disbursement
+- Search/filter
+- See program statistics
+- Inspect transaction/disbursement history
+
+10. SECURITY
+This is financial software.
+
+Ensure:
+- Authentication on protected endpoints
+- Role/ownership authorization
+- Server-side validation
+- No client-controlled wallet balance
+- No arbitrary beneficiary credit
+- No duplicate payouts
+- No negative/zero disbursement
+- Idempotent financial operations
+- Proper transaction references
+- Audit trail for sensitive actions
+- No secrets exposed in frontend code
+
+11. COMPATIBILITY
+Do not break:
+- Login/registration
+- Wallet
+- ServicePay transfers
+- Withdrawals
+- Airtime/Data
+- KYC
+- Delivery/Rider
+- Admin dashboard
+- Existing transactions
+- Other existing ServicePay features
+
+12. VALIDATION
+After implementation:
+- Inspect changed files.
+- Run all available backend syntax/tests/build checks.
+- Run frontend analyze/build checks that are possible in this environment.
+- If the Replit Flutter SDK cannot build the current Flutter project, do not downgrade project dependencies just to make the environment build it. Validate everything else possible and clearly report that environment limitation.
+- Fix any errors caused by your changes.
+
+Finally give me a concise report containing:
+1. What Empowerment code already existed
+2. Problems you found
+3. Files changed
+4. Backend endpoints added/fixed
+5. Customer UI completed
+6. Admin UI completed
+7. Security protections added
+8. Tests/checks performed
+9. Anything that still genuinely requires external credentials/provider access
+
+Do not just give instructions for me to implement. Make the changes directly in this ServicePay workspace.
