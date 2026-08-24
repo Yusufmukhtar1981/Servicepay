@@ -249,6 +249,63 @@ test(
   }
 );
 
+test(
+  "Head Office manual override approves incomplete profiles with no, partial, or complete identity references",
+  { timeout: 120_000 },
+  async () => {
+    const headOffice = await createUser({ role: "HEAD_OFFICE" });
+    const cases = [
+      { name: "no identity", fields: {} },
+      { name: "NIN only", fields: { submittedNin: "12345678901" } },
+      { name: "BVN only", fields: { submittedBvn: "10987654321" } },
+      {
+        name: "both identities",
+        fields: {
+          submittedNin: "12345678901",
+          submittedBvn: "10987654321",
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const customer = await createUser();
+      const profile = await KycProfile.create({
+        user: customer._id,
+        status: "PENDING",
+        ...testCase.fields,
+      });
+      const response = await call(updateKycStatus, {
+        user: headOffice,
+        params: { kycId: String(profile._id) },
+        body: { status: "VERIFIED", manualOverride: true },
+      });
+
+      assert.equal(response.status, 200, testCase.name);
+      assert.equal(response.body.kyc.status, "VERIFIED", testCase.name);
+      assert.equal(
+        response.body.kyc.verification.method,
+        "MANUAL_ADMIN_OVERRIDE",
+        testCase.name
+      );
+
+      const persisted = await KycProfile.findById(profile._id)
+        .select("+submittedNin +submittedBvn");
+      assert.equal(persisted.status, "VERIFIED", testCase.name);
+      assert.equal(
+        persisted.submittedNin,
+        testCase.fields.submittedNin || "",
+        testCase.name
+      );
+      assert.equal(
+        persisted.submittedBvn,
+        testCase.fields.submittedBvn || "",
+        testCase.name
+      );
+      assert.equal((await User.findById(customer._id)).kycVerified, true);
+    }
+  }
+);
+
 test("manual KYC submission rejects invalid NIN and BVN formats", async () => {
   const customer = await createUser();
   const invalidNin = await call(submitMyKyc, {
