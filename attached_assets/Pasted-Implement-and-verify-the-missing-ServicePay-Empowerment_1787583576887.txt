@@ -1,0 +1,83 @@
+Implement and verify the missing ServicePay Empowerment beneficiary verification backend endpoint required by servicepay-admin.
+
+CURRENT LIVE FLOW:
+- Customer applies to an OPEN Empowerment program.
+- Application appears in Admin > Empowerment > Beneficiaries.
+- Admin can move application from SUBMITTED to UNDER_REVIEW.
+- Backend correctly blocks APPROVED until beneficiary verification is completed.
+- servicepay-admin now expects this real protected endpoint:
+
+PATCH /api/empowerment/beneficiaries/:id/verify
+
+with payload:
+{
+  "verificationStatus": "VERIFIED"
+}
+
+IMPORTANT:
+- Work only in the existing ServicePay backend Empowerment module.
+- Do not change unrelated customer/admin/dashboard features.
+- Reuse the existing Empowerment models, controllers, routes, auth middleware, audit trail, and canonical status rules.
+- Do not create duplicate models/routes if equivalent functionality already exists.
+- Do not fake verification.
+
+IMPLEMENT:
+
+1. AUDIT EXISTING BACKEND
+Inspect existing Empowerment beneficiary/application model, controller, routes, verification fields, KYC linkage, and status transition rules.
+
+2. VERIFICATION ENDPOINT
+Ensure this protected route exists and works:
+
+PATCH /api/empowerment/beneficiaries/:id/verify
+
+Expected behavior:
+- Admin/head-office authorized roles only.
+- Load the real beneficiary/application record.
+- Require the application to be in an appropriate review state, normally UNDER_REVIEW.
+- Validate beneficiary/account/KYC requirements already defined by the existing system.
+- Set beneficiary verification status to VERIFIED only after server-side validation.
+- Persist verifier identity and verified timestamp if supported by the existing schema.
+- Create an Empowerment audit record.
+- Return the updated beneficiary/application record.
+
+3. REJECT VERIFICATION
+If the existing model supports verification rejection, support the safe canonical rejection state through the same route or existing route convention.
+Do not invent incompatible status values.
+
+4. APPROVAL ENFORCEMENT
+Keep and verify the existing rule:
+- APPROVED must fail unless beneficiary verification status is VERIFIED.
+- Verification status and application status remain separate.
+
+5. AUTHORIZATION
+Ensure ordinary customers, organization owners without admin authority, or unauthorized roles cannot verify beneficiaries.
+
+6. FINANCIAL SAFETY
+Do not change wallet, funding, payout, disbursement, PAID, FAILED, REVERSED, or PAYMENT_PENDING logic in this task.
+
+7. TESTS
+Add/update backend tests for:
+- unauthorized verification blocked
+- admin can verify eligible UNDER_REVIEW beneficiary
+- verification persists
+- audit record created
+- approval blocked before verification
+- approval succeeds after verification
+- invalid/nonexistent beneficiary handled safely
+- duplicate verification is idempotent or safely rejected according to existing conventions
+
+Run the full available backend test suite.
+
+8. FINISHING REPORT
+At the end report:
+- exact files changed
+- exact endpoint and HTTP method
+- auth roles allowed
+- canonical verification values used
+- validation/KYC checks enforced
+- audit behavior
+- test results
+- whether servicepay-admin can safely call the endpoint now
+
+Do not stop after analysis. Implement the backend fix directly now.

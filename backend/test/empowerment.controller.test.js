@@ -14,6 +14,7 @@ const {
   applyForProgram,
   bulkAddBeneficiaries,
   fundProgram,
+  verifyBeneficiary,
   updateBeneficiaryStatus,
   disburseProgram,
 } = require("../controllers/empowerment.controller");
@@ -916,6 +917,140 @@ test(
       }),
       0
     );
+  }
+);
+
+test(
+  "dedicated beneficiary verification endpoint enforces review, KYC and idempotency",
+  { timeout: 120_000 },
+  async () => {
+    const owner = await createUser();
+    const applicant = await createUser();
+    const admin = await createUser({ role: "HEAD_OFFICE" });
+    await createKyc(applicant);
+    const program = await createProgram({ owner });
+    const beneficiary = await createBeneficiary({
+      program,
+      user: applicant,
+      applicationStatus: "UNDER_REVIEW",
+      verificationStatus: "PENDING",
+      kycStatus: "VERIFIED",
+    });
+
+    const approvalBeforeVerification = await call(updateBeneficiaryStatus, {
+      user: admin,
+      params: { id: String(beneficiary._id) },
+      body: { status: "APPROVED" },
+    });
+    assert.equal(approvalBeforeVerification.status, 409);
+    assert.match(
+      approvalBeforeVerification.body.message,
+      /Verify the beneficiary/
+    );
+
+    const unauthorized = await call(verifyBeneficiary, {
+      user: owner,
+      params: { id: String(beneficiary._id) },
+      body: { verificationStatus: "VERIFIED" },
+    });
+    assert.equal(unauthorized.status, 403);
+
+    const nonexistent = await call(verifyBeneficiary, {
+      user: admin,
+      params: { id: new mongoose.Types.ObjectId().toString() },
+      body: { verificationStatus: "VERIFIED" },
+    });
+    assert.equal(nonexistent.status, 404);
+
+    const pendingKycApplicant = await createUser();
+    await createKyc(pendingKycApplicant, "PENDING");
+    const pendingKycBeneficiary = await createBeneficiary({
+      program,
+      user: pendingKycApplicant,
+      applicationStatus: "UNDER_REVIEW",
+      verificationStatus: "PENDING",
+      kycStatus: "PENDING",
+    });
+    const pendingKycVerification = await call(verifyBeneficiary, {
+      user: admin,
+      params: { id: String(pendingKycBeneficiary._id) },
+      body: { verificationStatus: "VERIFIED" },
+    });
+    assert.equal(pendingKycVerification.status, 409);
+    assert.equal(
+      (await EmpowermentBeneficiary.findById(pendingKycBeneficiary._id))
+        .verificationStatus,
+      "PENDING"
+    );
+
+    const verified = await call(verifyBeneficiary, {
+      user: admin,
+      params: { id: String(beneficiary._id) },
+      body: { verificationStatus: "VERIFIED" },
+    });
+    assert.equal(verified.status, 200);
+    assert.equal(verified.body.beneficiary.verificationStatus, "VERIFIED");
+    assert.equal(
+      String(verified.body.beneficiary.verifiedBy),
+      String(admin._id)
+    );
+    assert.ok(verified.body.beneficiary.verifiedAt);
+    assert.equal(
+      (await EmpowermentBeneficiary.findById(beneficiary._id))
+        .applicationStatus,
+      "UNDER_REVIEW"
+    );
+    assert.equal(
+      await EmpowermentAuditLog.countDocuments({
+        entityId: beneficiary._id,
+        action: "BENEFICIARY_VERIFICATION_UPDATED",
+      }),
+      1
+    );
+
+    const duplicate = await call(verifyBeneficiary, {
+      user: admin,
+      params: { id: String(beneficiary._id) },
+      body: { verificationStatus: "VERIFIED" },
+    });
+    assert.equal(duplicate.status, 200);
+    assert.equal(
+      await EmpowermentAuditLog.countDocuments({
+        entityId: beneficiary._id,
+        action: "BENEFICIARY_VERIFICATION_UPDATED",
+      }),
+      1
+    );
+
+    const approved = await call(updateBeneficiaryStatus, {
+      user: admin,
+      params: { id: String(beneficiary._id) },
+      body: { status: "APPROVED" },
+    });
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.beneficiary.applicationStatus, "APPROVED");
+    assert.equal(approved.body.beneficiary.verificationStatus, "VERIFIED");
+
+    const rejectedApplicant = await createUser();
+    await createKyc(rejectedApplicant);
+    const rejectedBeneficiary = await createBeneficiary({
+      program,
+      user: rejectedApplicant,
+      applicationStatus: "UNDER_REVIEW",
+      verificationStatus: "PENDING",
+      kycStatus: "VERIFIED",
+    });
+    const rejected = await call(verifyBeneficiary, {
+      user: admin,
+      params: { id: String(rejectedBeneficiary._id) },
+      body: {
+        verificationStatus: "REJECTED",
+        rejectionReason: "Identity documents could not be validated.",
+      },
+    });
+    assert.equal(rejected.status, 200);
+    assert.equal(rejected.body.beneficiary.verificationStatus, "REJECTED");
+    assert.equal(rejected.body.beneficiary.applicationStatus, "UNDER_REVIEW");
   }
 );
 

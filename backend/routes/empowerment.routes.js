@@ -15,6 +15,7 @@ const {
   getProgram,
   updateProgram,
   listBeneficiaries,
+  verifyBeneficiary,
   updateOrganizationStatus,
   updateProgramStatus,
   updateBeneficiaryStatus,
@@ -103,6 +104,11 @@ router.patch(
 router.patch(
   "/beneficiaries/:id/status",
   updateBeneficiaryStatus
+);
+
+router.patch(
+  "/beneficiaries/:id/verify",
+  verifyBeneficiary
 );
 
 

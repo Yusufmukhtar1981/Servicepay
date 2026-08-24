@@ -936,6 +936,143 @@ const listBeneficiaries = async (req, res) => {
   }
 };
 
+const verifyBeneficiary = async (req, res) => {
+  try {
+    if (!isAdmin(req.user)) {
+      return respondError(
+        res,
+        403,
+        "Only an authorized administrator can verify a beneficiary."
+      );
+    }
+
+    const beneficiary = await EmpowermentBeneficiary.findById(req.params.id);
+    if (!beneficiary) {
+      return respondError(res, 404, "Beneficiary was not found.");
+    }
+
+    const program = await getManagedProgram(req, beneficiary.program);
+    if (!program) {
+      return respondError(res, 403, "You cannot manage this beneficiary.");
+    }
+    if (["PAID", "PAYMENT_PENDING", "FAILED", "REVERSED"].includes(
+      beneficiary.applicationStatus
+    )) {
+      return respondError(res, 409, "This beneficiary can no longer be verified.");
+    }
+    if (beneficiary.applicationStatus !== "UNDER_REVIEW") {
+      return respondError(
+        res,
+        409,
+        "Only beneficiaries under review can be verified."
+      );
+    }
+
+    const verificationStatus = cleanString(
+      req.body?.verificationStatus,
+      30
+    ).toUpperCase();
+    if (!["VERIFIED", "REJECTED"].includes(verificationStatus)) {
+      return respondError(
+        res,
+        400,
+        "Verification status must be VERIFIED or REJECTED."
+      );
+    }
+
+    if (
+      beneficiary.verificationStatus === verificationStatus &&
+      verificationStatus === "VERIFIED"
+    ) {
+      return res.status(200).json({ success: true, beneficiary });
+    }
+    if (
+      beneficiary.verificationStatus === "VERIFIED" &&
+      verificationStatus === "REJECTED"
+    ) {
+      return respondError(
+        res,
+        409,
+        "A verified beneficiary cannot be rejected."
+      );
+    }
+
+    const before = {
+      applicationStatus: beneficiary.applicationStatus,
+      verificationStatus: beneficiary.verificationStatus,
+    };
+    if (verificationStatus === "VERIFIED") {
+      if (!beneficiary.user) {
+        return respondError(
+          res,
+          409,
+          "Only a linked ServicePay account can be verified."
+        );
+      }
+
+      const [account, verifiedKyc] = await Promise.all([
+        User.findOne({ _id: beneficiary.user, status: "ACTIVE" }).select(
+          "_id status"
+        ),
+        KycProfile.findOne({
+          user: beneficiary.user,
+          status: "VERIFIED",
+        }),
+      ]);
+      if (!account) {
+        return respondError(
+          res,
+          409,
+          "A beneficiary must have an active ServicePay account."
+        );
+      }
+      if (!verifiedKyc) {
+        return respondError(
+          res,
+          409,
+          "A beneficiary can only be verified after ServicePay KYC is verified."
+        );
+      }
+
+      beneficiary.kycReference = String(verifiedKyc._id);
+      beneficiary.kycStatus = "VERIFIED";
+      beneficiary.verificationStatus = "VERIFIED";
+      beneficiary.verifiedBy = req.user._id;
+      beneficiary.verifiedAt = new Date();
+      beneficiary.rejectionReason = "";
+    } else {
+      const rejectionReason = cleanString(req.body?.rejectionReason, 500);
+      if (!rejectionReason) {
+        return respondError(res, 400, "A rejection reason is required.");
+      }
+      beneficiary.verificationStatus = "REJECTED";
+      beneficiary.kycStatus = "REJECTED";
+      beneficiary.verifiedBy = null;
+      beneficiary.verifiedAt = null;
+      beneficiary.rejectionReason = rejectionReason;
+    }
+
+    await beneficiary.save();
+    await audit({
+      req,
+      action: "BENEFICIARY_VERIFICATION_UPDATED",
+      entityType: "BENEFICIARY",
+      entityId: beneficiary._id,
+      program: program._id,
+      before,
+      after: {
+        applicationStatus: beneficiary.applicationStatus,
+        verificationStatus: beneficiary.verificationStatus,
+      },
+    });
+
+    return res.status(200).json({ success: true, beneficiary });
+  } catch (error) {
+    console.error("VERIFY EMPOWERMENT BENEFICIARY ERROR:", error);
+    return respondError(res, 500, "Unable to verify beneficiary.");
+  }
+};
+
 const updateBeneficiaryStatus = async (req, res) => {
   try {
     const beneficiary = await EmpowermentBeneficiary.findById(req.params.id);
@@ -1969,6 +2106,7 @@ module.exports = {
   updateProgram,
   addBeneficiary,
   listBeneficiaries,
+  verifyBeneficiary,
   updateOrganizationStatus,
   updateProgramStatus,
   updateBeneficiaryStatus,
