@@ -191,6 +191,8 @@ exports.submitMyKyc = async (req, res) => {
       requestedLevel,
       consentAccepted,
     } = req.body || {};
+    const submittedNin = String(req.body?.nin || "").trim();
+    const submittedBvn = String(req.body?.bvn || "").trim();
 
     if (
       !String(firstName || "").trim() ||
@@ -228,11 +230,11 @@ exports.submitMyKyc = async (req, res) => {
         message: "Your consent is required before submitting KYC.",
       });
     }
-    if (!profile.ninVerified && !profile.bvnVerified) {
+    if (!/^\d{11}$/.test(submittedNin) || !/^\d{11}$/.test(submittedBvn)) {
       return res.status(400).json({
         success: false,
-        code: "KYC_IDENTITY_VERIFICATION_REQUIRED",
-        message: "Verify your NIN or BVN before submitting KYC.",
+        code: "INVALID_IDENTITY_REFERENCE",
+        message: "Enter valid 11-digit NIN and BVN values before submitting KYC.",
       });
     }
 
@@ -246,6 +248,11 @@ exports.submitMyKyc = async (req, res) => {
     profile.address = String(address).trim();
     profile.state = String(state).trim();
     profile.lga = String(lga).trim();
+    profile.submittedNin = submittedNin;
+    profile.submittedBvn = submittedBvn;
+    profile.ninLast4 = submittedNin.slice(-4);
+    profile.bvnLast4 = submittedBvn.slice(-4);
+    profile.identityMatchStatus = "REVIEW_REQUIRED";
     const normalizedDocumentType = normalizeDocumentType(
       documentType || profile.documentType,
     );
@@ -279,8 +286,11 @@ exports.submitMyKyc = async (req, res) => {
     profile.submittedAt = new Date();
     profile.rejectionReason = "";
     profile.reviewReason = "";
+    profile.verifiedBy = null;
+    profile.verifiedAt = null;
+    profile.verificationMethod = "";
     profile.reviewHistory.push({
-      action: "SUBMITTED",
+      action: "MANUAL_REVIEW_SUBMITTED",
       occurredAt: profile.submittedAt,
     });
     await profile.save();

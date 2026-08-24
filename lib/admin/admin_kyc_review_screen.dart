@@ -68,7 +68,7 @@ class _AdminKycReviewScreenState extends State<AdminKycReviewScreen> {
                 controller: _search,
                 onSubmitted: (_) => _load(),
                 decoration: InputDecoration(
-                  hintText: 'Search name, phone or email',
+                  hintText: 'Search name, phone, email, NIN or BVN',
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: IconButton(
                     tooltip: 'Search',
@@ -366,19 +366,26 @@ class _AdminKycDetailScreenState extends State<_AdminKycDetailScreen> {
                             'Identity match',
                             _label(application.identityMatchStatus),
                           ),
+                           _field('Verification method',
+                               _label(application.verificationMethod)),
+                           _field('Verified at', application.verifiedAt),
                         ]),
                         _section('Identity verification', <Widget>[
                           _field(
                             'NIN',
-                            application.ninVerified
-                                ? 'Verified •••• ${application.ninLast4}'
-                                : 'Not verified',
+                             application.nin.isNotEmpty
+                                 ? application.nin
+                                 : application.ninVerified
+                                     ? 'Verified •••• ${application.ninLast4}'
+                                     : 'Not submitted',
                           ),
                           _field(
                             'BVN',
-                            application.bvnVerified
-                                ? 'Verified •••• ${application.bvnLast4}'
-                                : 'Not verified',
+                             application.bvn.isNotEmpty
+                                 ? application.bvn
+                                 : application.bvnVerified
+                                     ? 'Verified •••• ${application.bvnLast4}'
+                                     : 'Not submitted',
                           ),
                           _field(
                             'Government ID type',

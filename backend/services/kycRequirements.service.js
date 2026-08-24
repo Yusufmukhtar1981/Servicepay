@@ -103,10 +103,17 @@ const safeKycProfile = (profile, { includeReviewHistory = false } = {}) => {
     ninVerified: source.ninVerified === true,
     ninLast4: String(source.ninLast4 || ""),
     ninVerifiedAt: source.ninVerifiedAt || null,
+    ninSubmitted: Boolean(
+      String(source.submittedNin || source.ninLast4 || "").trim()
+    ),
     bvnVerified: source.bvnVerified === true,
     bvnLast4: String(source.bvnLast4 || ""),
     bvnVerifiedAt: source.bvnVerifiedAt || null,
+    bvnSubmitted: Boolean(
+      String(source.submittedBvn || source.bvnLast4 || "").trim()
+    ),
     matchStatus: String(source.identityMatchStatus || "NOT_VERIFIED"),
+    verificationMethod: String(source.verificationMethod || ""),
   };
 
   return {
@@ -130,6 +137,7 @@ const safeKycProfile = (profile, { includeReviewHistory = false } = {}) => {
     submittedAt: source.submittedAt || null,
     reviewedAt: source.reviewedAt || null,
     approvedAt: source.approvedAt || null,
+    verifiedAt: source.verifiedAt || null,
     identity,
     documents: documentFlags(source),
     liveness: {

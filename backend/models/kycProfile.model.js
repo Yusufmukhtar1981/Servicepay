@@ -99,10 +99,26 @@ const kycProfileSchema = new mongoose.Schema(
     },
 
     /*
-     * We intentionally do not store raw NIN/BVN here.
-     * Verification references will be connected to the
-     * existing ServicePay ID verification system.
+     * Submitted identity references are private and only selected by the
+     * protected Head Office KYC review API. Customer-facing responses always
+     * expose masked last-four values instead.
      */
+    submittedNin: {
+      type: String,
+      trim: true,
+      default: "",
+      select: false,
+      index: true,
+    },
+
+    submittedBvn: {
+      type: String,
+      trim: true,
+      default: "",
+      select: false,
+      index: true,
+    },
+
     ninVerified: {
       type: Boolean,
       default: false,
@@ -221,6 +237,20 @@ const kycProfileSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
+    },
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
+    verificationMethod: {
+      type: String,
+      enum: ["", "PROVIDER", "MANUAL_ADMIN_OVERRIDE"],
+      default: "",
     },
     livenessStatus: {
       type: String,

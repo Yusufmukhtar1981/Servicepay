@@ -37,6 +37,10 @@ class AdminKycApplication {
     required this.identityMatchStatus,
     required this.reviewReason,
     required this.reviewHistory,
+    required this.nin,
+    required this.bvn,
+    required this.verificationMethod,
+    required this.verifiedAt,
   });
 
   final String id;
@@ -71,6 +75,10 @@ class AdminKycApplication {
   final String identityMatchStatus;
   final String reviewReason;
   final List<AdminKycReviewEvent> reviewHistory;
+  final String nin;
+  final String bvn;
+  final String verificationMethod;
+  final String verifiedAt;
 
   String get displayName => <String>[firstName, middleName, lastName]
       .where((name) => name.isNotEmpty)
@@ -85,6 +93,9 @@ class AdminKycApplication {
         : <String, dynamic>{};
     final Map<String, dynamic> identity = json['identity'] is Map
         ? Map<String, dynamic>.from(json['identity'] as Map)
+        : <String, dynamic>{};
+    final Map<String, dynamic> verification = json['verification'] is Map
+        ? Map<String, dynamic>.from(json['verification'] as Map)
         : <String, dynamic>{};
     String value(String key) =>
         (json[key] ?? user[key] ?? '').toString().trim();
@@ -153,6 +164,15 @@ class AdminKycApplication {
                 Map<String, dynamic>.from(entry),
               ))
           .toList(),
+      nin: (json['nin'] ?? '').toString().trim(),
+      bvn: (json['bvn'] ?? '').toString().trim(),
+      verificationMethod:
+          (verification['method'] ?? json['verificationMethod'] ?? '')
+              .toString()
+              .trim(),
+      verifiedAt: (verification['verifiedAt'] ?? json['verifiedAt'] ?? '')
+          .toString()
+          .trim(),
     );
   }
 }
@@ -208,6 +228,8 @@ class AdminKycApiService {
         'status': status,
         if (status == 'REJECTED' || status == 'REQUEST_MORE_INFORMATION')
           'reviewReason': reviewReason.trim(),
+        if (status == 'APPROVED' || status == 'VERIFIED')
+          'manualOverride': true,
       },
     );
     final dynamic raw =

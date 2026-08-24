@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 bool isSupportedKycImageFilename(String filename) {
   final String extension = filename.split('.').last.toLowerCase();
@@ -186,8 +187,16 @@ class _KycScreenState extends State<KycScreen> {
     _bvnLast4 = (identity['bvnLast4'] ?? '').toString();
     _identityMatchStatus =
         (identity['matchStatus'] ?? 'NOT_VERIFIED').toString();
-    _verificationStates['NIN'] = _ninVerified ? 'Verified' : 'Not verified';
-    _verificationStates['BVN'] = _bvnVerified ? 'Verified' : 'Not verified';
+    _verificationStates['NIN'] = _ninVerified
+        ? 'Verified'
+        : identity['ninSubmitted'] == true
+            ? 'Submitted for manual review'
+            : 'Not submitted';
+    _verificationStates['BVN'] = _bvnVerified
+        ? 'Verified'
+        : identity['bvnSubmitted'] == true
+            ? 'Submitted for manual review'
+            : 'Not submitted';
 
     final Map<String, dynamic> documents = kyc['documents'] is Map
         ? Map<String, dynamic>.from(kyc['documents'] as Map)
@@ -443,8 +452,12 @@ class _KycScreenState extends State<KycScreen> {
       _message('Complete your date of birth and gender.', error: true);
       return;
     }
-    if (!_ninVerified && !_bvnVerified) {
-      _message('Verify your NIN or BVN before submitting.', error: true);
+    if (!RegExp(r'^\d{11}$').hasMatch(_nin.text.trim()) ||
+        !RegExp(r'^\d{11}$').hasMatch(_bvn.text.trim())) {
+      _message(
+        'Enter valid 11-digit NIN and BVN values before submitting.',
+        error: true,
+      );
       return;
     }
     if (_needsDocument &&
@@ -495,6 +508,8 @@ class _KycScreenState extends State<KycScreen> {
           'lga': _lga.text.trim(),
           'documentType': _governmentIdType,
           'requestedLevel': _requestedLevel,
+          'nin': _nin.text.trim(),
+          'bvn': _bvn.text.trim(),
           'consentAccepted': true,
         }),
       );
@@ -618,15 +633,12 @@ class _KycScreenState extends State<KycScreen> {
 
   Widget _identityTile(String type, TextEditingController controller,
       bool verified, String last4) {
-    final String state = _verificationStates[type] ?? 'Not verified';
-    final bool loading = state == 'Verifying';
-    final Color color = state == 'Verified'
+    final bool submitted = verified || last4.isNotEmpty;
+    final Color color = verified
         ? Colors.green
-        : state == 'Provider unavailable'
-            ? Colors.orange.shade800
-            : state == 'Verification failed'
-                ? Colors.red
-                : Colors.grey.shade700;
+        : submitted
+            ? Colors.blue
+            : Colors.grey.shade700;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -638,44 +650,35 @@ class _KycScreenState extends State<KycScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('$type verification',
+          Text('$type reference',
               style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
-          if (!verified)
+          if (!submitted)
             TextField(
               controller: controller,
-              enabled: !_isLocked && !loading,
+              enabled: !_isLocked,
               keyboardType: TextInputType.number,
               maxLength: 11,
               obscureText: true,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.digitsOnly,
+              ],
               decoration: InputDecoration(
                 labelText: 'Enter your $type',
                 counterText: '',
                 border: const OutlineInputBorder(),
               ),
             ),
-          if (verified)
-            Text('Verified •••• $last4',
+          if (submitted)
+            Text(
+                '${verified ? 'Verified' : 'Submitted'} •••• $last4',
                 style: TextStyle(color: color, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          Row(
-            children: <Widget>[
-              Expanded(
-                  child: Text(state,
-                      style: TextStyle(
-                          color: color, fontWeight: FontWeight.w600))),
-              TextButton.icon(
-                onPressed:
-                    _isLocked || loading ? null : () => _verifyIdentity(type),
-                icon: loading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.verified_user_outlined),
-                label: Text(verified ? 'Verify again' : 'Verify $type'),
-              ),
-            ],
+          Text(
+            verified
+                ? '$type is verified.'
+                : 'ServicePay will review this identity reference manually after submission.',
+            style: TextStyle(color: color, height: 1.3),
           ),
         ],
       ),
@@ -900,8 +903,8 @@ class _KycScreenState extends State<KycScreen> {
                             ]),
                         _stepCard(
                             2,
-                            'Identity Verification',
-                            'Verify your NIN or BVN here. This never opens the paid identity service.',
+                            'Identity Details',
+                            'Enter your 11-digit NIN and BVN. ServicePay will review both details manually after you submit.',
                             <Widget>[
                               _identityTile(
                                   'NIN', _nin, _ninVerified, _ninLast4),
@@ -982,7 +985,7 @@ class _KycScreenState extends State<KycScreen> {
                                 _lastName.text
                               ].where((String value) => value.isNotEmpty).join(' ')}'),
                               Text(
-                                  'Identity: ${_ninVerified ? 'NIN verified' : ''}${_ninVerified && _bvnVerified ? ' • ' : ''}${_bvnVerified ? 'BVN verified' : _ninVerified ? '' : 'Not verified'}'),
+                                  'Identity: NIN and BVN will be submitted for ServicePay manual review.'),
                               Text(
                                   'Documents: ID ${_uploaded['ID_DOCUMENT_FRONT'] == true ? 'uploaded' : 'missing'} • Selfie ${_uploaded['SELFIE'] == true ? 'uploaded' : 'missing'}'),
                               CheckboxListTile(
@@ -1001,7 +1004,7 @@ class _KycScreenState extends State<KycScreen> {
                         _stepCard(
                             6,
                             'Submission',
-                            'Submit one coherent application for Head Office review.',
+                            'Submit your identity details and documents for Head Office manual review.',
                             <Widget>[
                               SizedBox(
                                 width: double.infinity,
