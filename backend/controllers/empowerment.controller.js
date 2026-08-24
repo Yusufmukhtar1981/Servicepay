@@ -25,7 +25,7 @@ const EmpowermentAuditLog = require(
 const KycProfile = require("../models/kycProfile.model");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
-const { postDebit, postCredit } = require(
+const { postCredit } = require(
   "../services/ledger.service"
 );
 
@@ -105,15 +105,17 @@ const asMoney = (value) => {
 
 const programFinancials = (program) => {
   const totalBudget = Math.max(0, Number(program?.totalBudget || 0));
-  const fundedAmount = Math.max(0, Number(program?.totalFundedAmount || 0));
-  const availableBalance = Math.max(
+  const fundedAmount = Math.max(
     0,
-    Number(program?.availableFundingAmount || 0)
+    Number(program?.totalFunded || 0),
+    Number(program?.totalFundedAmount || 0)
   );
   const totalDisbursedAmount = Math.max(
     0,
+    Number(program?.totalDisbursed || 0),
     Number(program?.totalDisbursedAmount || 0)
   );
+  const availableBalance = Math.max(0, fundedAmount - totalDisbursedAmount);
 
   return {
     totalBudget,
@@ -121,9 +123,40 @@ const programFinancials = (program) => {
     availableBalance,
     totalDisbursedAmount,
     remainingFundingCapacity: Math.max(0, totalBudget - fundedAmount),
+    totalFunded: fundedAmount,
+    totalDisbursed: totalDisbursedAmount,
+    remainingBalance: availableBalance,
     totalFundedAmount: fundedAmount,
+    totalDisbursedAmount,
     availableFundingAmount: availableBalance,
+    lastFundedAt: program?.lastFundedAt || null,
+    lastFundedBy: program?.lastFundedBy || null,
   };
+};
+
+const reconcileProgramFunding = async (program, session = null) => {
+  const financials = programFinancials(program);
+  const fields = {
+    totalFunded: financials.totalFunded,
+    totalFundedAmount: financials.totalFundedAmount,
+    totalDisbursed: financials.totalDisbursed,
+    totalDisbursedAmount: financials.totalDisbursedAmount,
+    remainingBalance: financials.remainingBalance,
+    availableFundingAmount: financials.availableFundingAmount,
+  };
+  const mismatched = Object.entries(fields).some(
+    ([key, value]) => Number(program?.[key] || 0) !== value
+  );
+
+  if (mismatched) {
+    await EmpowermentProgram.updateOne(
+      { _id: program._id },
+      { $set: fields },
+      session ? { session } : undefined
+    );
+  }
+
+  return financials;
 };
 
 const asPositiveInteger = (value) => {
@@ -1561,46 +1594,22 @@ const getProgramStatistics = async (req, res) => {
       }
     }
 
+    const financials = programFinancials(program);
     return res.status(200).json({
       success: true,
       program,
       statistics: {
         ...counts,
-        ...programFinancials(program),
-        totalFunded: Number(program.totalFundedAmount || 0),
-        totalDisbursed: Number(program.totalDisbursedAmount || 0),
-        remainingProgramFunding: Number(program.availableFundingAmount || 0),
+        ...financials,
+        totalFunded: financials.totalFunded,
+        totalDisbursed: financials.totalDisbursed,
+        remainingProgramFunding: financials.remainingBalance,
       },
     });
   } catch (error) {
     console.error("EMPOWERMENT PROGRAM STATS ERROR:", error);
     return respondError(res, 500, "Unable to load program statistics.");
   }
-};
-
-const verifyTransactionPin = async (req, session) => {
-  const pin = String(req.body?.transactionPin || "").trim();
-  if (!/^\d{4}$/.test(pin)) {
-    throw Object.assign(new Error("A valid 4-digit transaction PIN is required."), {
-      status: 400,
-    });
-  }
-
-  const owner = await User.findById(req.user._id)
-    .select("+transactionPin")
-    .session(session);
-  if (!owner || owner.status !== "ACTIVE") {
-    throw Object.assign(new Error("Your account is not active."), { status: 403 });
-  }
-  if (!owner.transactionPinSet || !owner.transactionPin) {
-    throw Object.assign(new Error("Set a transaction PIN before funding a program."), {
-      status: 400,
-    });
-  }
-  if (!(await owner.compareTransactionPin(pin))) {
-    throw Object.assign(new Error("Incorrect transaction PIN."), { status: 401 });
-  }
-  return owner;
 };
 
 const fundProgram = async (req, res) => {
@@ -1625,6 +1634,11 @@ const fundProgram = async (req, res) => {
         400,
         "A positive amount and an Idempotency-Key of at least 12 characters are required."
       );
+    }
+    const note = String(req.body?.note || "").trim();
+    const sourceReference = String(req.body?.reference || "").trim();
+    if (note.length > 1000 || sourceReference.length > 200) {
+      return respondError(res, 400, "Funding reference or note is too long.");
     }
 
     let duplicate = null;
@@ -1670,77 +1684,28 @@ const fundProgram = async (req, res) => {
         );
       }
       await requireActiveOrganization(program, session);
-      const remainingBudget = Math.round(
-        (Number(program.totalBudget) - Number(program.totalFundedAmount || 0)) * 100
-      ) / 100;
-      if (amount > remainingBudget) {
-        throw Object.assign(new Error("Funding exceeds the remaining program budget."), {
-          status: 409,
-        });
-      }
-
-      const funder = await verifyTransactionPin(req, session);
-      const updatedFunder = await User.findOneAndUpdate(
-        {
-          _id: funder._id,
-          status: "ACTIVE",
-          walletBalance: { $gte: amount },
-        },
-        { $inc: { walletBalance: -amount, totalTransactions: 1 } },
-        { new: true, session, runValidators: true }
-      );
-      if (!updatedFunder) {
-        throw Object.assign(new Error("Wallet balance is insufficient for this funding."), {
-          status: 409,
-        });
-      }
 
       const reference = buildReference("EMPF");
-      const transaction = (
-        await Transaction.create(
-          [
-            {
-              reference,
-              customerId: funder._id,
-              serviceType: "EMPOWERMENT_FUNDING",
-              provider: "SERVICEPAY",
-              amount,
-              status: "SUCCESSFUL",
-              providerResponse: {
-                transactionDirection: "DEBIT",
-                programId: String(program._id),
-                organizationId: String(program.organization),
-                idempotencyKey,
-              },
-            },
-          ],
-          { session }
-        )
-      )[0];
-
-      await postDebit({
-        userId: funder._id,
-        amount,
-        openingBalance: Number((Number(updatedFunder.walletBalance) + amount).toFixed(2)),
-        closingBalance: Number(updatedFunder.walletBalance),
-        service: "EMPOWERMENT_FUNDING",
-        reference,
-        idempotencyKey: `EMPOWERMENT_FUNDING:${idempotencyKey}:DEBIT`,
-        transactionId: transaction._id,
-        narration: `Funding for ${program.name}`,
-        metadata: { programId: String(program._id) },
-        session,
-      });
+      const before = programFinancials(program);
+      const fundedAmount = Number((before.fundedAmount + amount).toFixed(2));
+      const remainingBalance = Number(
+        (fundedAmount - before.totalDisbursedAmount).toFixed(2)
+      );
 
       const updatedProgram = await EmpowermentProgram.findOneAndUpdate(
         {
           _id: program._id,
-          totalFundedAmount: { $lte: Number(program.totalBudget) - amount },
         },
         {
-          $inc: {
-            totalFundedAmount: amount,
-            availableFundingAmount: amount,
+          $set: {
+            totalFunded: fundedAmount,
+            totalFundedAmount: fundedAmount,
+            totalDisbursed: before.totalDisbursedAmount,
+            totalDisbursedAmount: before.totalDisbursedAmount,
+            remainingBalance,
+            availableFundingAmount: remainingBalance,
+            lastFundedAt: new Date(),
+            lastFundedBy: req.user._id,
           },
         },
         { new: true, session }
@@ -1755,11 +1720,12 @@ const fundProgram = async (req, res) => {
             {
               organization: program.organization,
               program: program._id,
-              fundedBy: funder._id,
+              fundedBy: req.user._id,
               amount,
               reference,
               idempotencyKey,
-              transaction: transaction._id,
+              sourceReference,
+              note,
             },
           ],
           { session }
@@ -1775,6 +1741,12 @@ const fundProgram = async (req, res) => {
         program: program._id,
         reference,
         after: programFinancials(updatedProgram),
+        metadata: {
+          amount,
+          fundingReference: sourceReference,
+          note,
+          fundingType: "PROGRAM_LEDGER_CREDIT",
+        },
         session,
       });
     });
@@ -1813,6 +1785,30 @@ const fundProgram = async (req, res) => {
     return respondError(res, error.status || 500, error.message || "Unable to fund program.");
   } finally {
     await session.endSession();
+  }
+};
+
+const listProgramFunding = async (req, res) => {
+  try {
+    if (!isHeadOffice(req.user)) {
+      return respondError(res, 403, "Only Head Office can view program funding history.");
+    }
+    const program = await getManagedProgram(req, req.params.programId);
+    if (!program) return respondError(res, 403, "You cannot view this program.");
+
+    const funding = await EmpowermentFunding.find({ program: program._id })
+      .populate("fundedBy", "fullName phone role")
+      .sort({ createdAt: -1 })
+      .limit(Math.min(200, Math.max(1, Number(req.query?.limit || 50))));
+
+    return res.status(200).json({
+      success: true,
+      financials: programFinancials(program),
+      funding,
+    });
+  } catch (error) {
+    console.error("LIST EMPOWERMENT FUNDING ERROR:", error);
+    return respondError(res, 500, "Unable to load program funding history.");
   }
 };
 
@@ -1923,6 +1919,7 @@ const disburseProgram = async (req, res) => {
         });
       }
       await requireActiveOrganization(program, session);
+      await reconcileProgramFunding(program, session);
 
       const beneficiaryFilter = {
         program: program._id,
@@ -2009,15 +2006,29 @@ const disburseProgram = async (req, res) => {
       const fundedProgram = await EmpowermentProgram.findOneAndUpdate(
         {
           _id: program._id,
-          availableFundingAmount: { $gte: totalAmount },
+          remainingBalance: { $gte: totalAmount },
         },
         {
+          $set: {
+            totalFunded: programFinancials(program).fundedAmount,
+            totalFundedAmount: programFinancials(program).fundedAmount,
+            totalDisbursed: Number(
+              (programFinancials(program).totalDisbursedAmount + totalAmount).toFixed(2)
+            ),
+            totalDisbursedAmount: Number(
+              (programFinancials(program).totalDisbursedAmount + totalAmount).toFixed(2)
+            ),
+            remainingBalance: Number(
+              (programFinancials(program).availableBalance - totalAmount).toFixed(2)
+            ),
+            availableFundingAmount: Number(
+              (programFinancials(program).availableBalance - totalAmount).toFixed(2)
+            ),
+            status: "DISBURSING",
+          },
           $inc: {
-            availableFundingAmount: -totalAmount,
-            totalDisbursedAmount: totalAmount,
             totalPaid: beneficiaries.length,
           },
-          $set: { status: "DISBURSING" },
         },
         { new: true, session }
       );
@@ -2262,6 +2273,7 @@ const listDisbursementBatches = async (req, res) => {
     const successful = totals.SUCCESSFUL || { count: 0, amount: 0 };
     const failed = totals.FAILED || { count: 0, amount: 0 };
     const pending = totals.PENDING || { count: 0, amount: 0 };
+    const financials = programFinancials(program);
     return res.status(200).json({
       success: true,
       batches,
@@ -2270,8 +2282,8 @@ const listDisbursementBatches = async (req, res) => {
         successfulCount: successful.count,
         failedCount: failed.count,
         pendingCount: pending.count,
-        remainingProgramFunding: Number(program.availableFundingAmount || 0),
-        remainingProgramBudget: Number(program.availableFundingAmount || 0),
+        remainingProgramFunding: financials.remainingBalance,
+        remainingProgramBudget: financials.remainingBalance,
       },
     });
   } catch (error) {
@@ -2298,16 +2310,15 @@ const getProgramReport = async (req, res) => {
         .sort({ createdAt: -1 }),
     ]);
 
+    const financials = programFinancials(program);
     return res.status(200).json({
       success: true,
       report: {
         generatedAt: new Date().toISOString(),
         program,
         financials: {
-          ...programFinancials(program),
-          totalFunded: Number(program.totalFundedAmount || 0),
-          totalDisbursed: Number(program.totalDisbursedAmount || 0),
-          remainingProgramFunding: Number(program.availableFundingAmount || 0),
+          ...financials,
+          remainingProgramFunding: financials.remainingBalance,
         },
         beneficiaryStatusCounts: statistics,
         fundings,
@@ -2322,8 +2333,8 @@ const getProgramReport = async (req, res) => {
 
 const getEmpowermentDashboardSummary = async (req, res) => {
   try {
-    if (!isAdmin(req.user)) {
-      return respondError(res, 403, "Administrator access is required.");
+    if (!isHeadOffice(req.user)) {
+      return respondError(res, 403, "Only Head Office can view Empowerment audit records.");
     }
     const [
       organizations,
@@ -2419,6 +2430,7 @@ module.exports = {
   bulkAddBeneficiaries,
   getProgramStatistics,
   fundProgram,
+  listProgramFunding,
   createDisbursementPreview,
   disburseProgram,
   disburseBeneficiary,
