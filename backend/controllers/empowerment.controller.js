@@ -1975,7 +1975,11 @@ const disburseProgram = async (req, res) => {
           status: 403,
         });
       }
-      if (!["APPROVED", "DISBURSING"].includes(program.status)) {
+      const normalizedProgramStatus = String(program.status || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "_");
+      if (!["APPROVED", "DISBURSING"].includes(normalizedProgramStatus)) {
         throw Object.assign(new Error("Program must be approved before disbursement."), {
           status: 409,
         });
