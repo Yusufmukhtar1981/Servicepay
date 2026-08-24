@@ -1931,6 +1931,105 @@ test(
 );
 
 test(
+  "approved and disbursing programs can pay while terminal and inactive statuses cannot",
+  { timeout: 120_000 },
+  async () => {
+    const headOffice = await createUser({ role: "HEAD_OFFICE" });
+    const firstRecipient = await createUser({ walletBalance: 10 });
+    const secondRecipient = await createUser({ walletBalance: 20 });
+    await Promise.all([createKyc(firstRecipient), createKyc(secondRecipient)]);
+    const activeProgram = await createProgram({
+      owner: headOffice,
+      status: "APPROVED",
+      targetBeneficiaries: 2,
+      amountPerBeneficiary: 100,
+      totalFundedAmount: 200,
+      availableFundingAmount: 200,
+    });
+    const [first, second] = await Promise.all([
+      createBeneficiary({ program: activeProgram, user: firstRecipient }),
+      createBeneficiary({ program: activeProgram, user: secondRecipient }),
+    ]);
+
+    const approvedPayout = await call(disburseBeneficiary, {
+      user: headOffice,
+      params: {
+        programId: String(activeProgram._id),
+        beneficiaryId: String(first._id),
+      },
+      body: {},
+      headers: { "Idempotency-Key": "approved-lifecycle-payout-1234" },
+    });
+    assert.equal(approvedPayout.status, 201);
+    assert.equal(
+      (await EmpowermentProgram.findById(activeProgram._id)).status,
+      "DISBURSING"
+    );
+
+    const disbursingBulkPayout = await call(bulkDisburseProgram, {
+      user: headOffice,
+      params: { programId: String(activeProgram._id) },
+      body: { beneficiaryIds: [String(second._id)] },
+      headers: { "Idempotency-Key": "disbursing-lifecycle-bulk-1234" },
+    });
+    assert.equal(disbursingBulkPayout.status, 201);
+    assert.equal((await User.findById(firstRecipient._id)).walletBalance, 110);
+    assert.equal((await User.findById(secondRecipient._id)).walletBalance, 120);
+    assert.equal(
+      (await EmpowermentProgram.findById(activeProgram._id))
+        .availableFundingAmount,
+      0
+    );
+
+    const duplicate = await call(disburseBeneficiary, {
+      user: headOffice,
+      params: {
+        programId: String(activeProgram._id),
+        beneficiaryId: String(first._id),
+      },
+      body: {},
+      headers: { "Idempotency-Key": "disbursing-already-paid-1234" },
+    });
+    assert.equal(duplicate.status, 409);
+    assert.equal((await User.findById(firstRecipient._id)).walletBalance, 110);
+
+    for (const status of ["COMPLETED", "SUSPENDED", "CANCELLED"]) {
+      const recipient = await createUser({ walletBalance: 15 });
+      await createKyc(recipient);
+      const blockedProgram = await createProgram({
+        owner: headOffice,
+        status,
+        amountPerBeneficiary: 100,
+        totalFundedAmount: 100,
+        availableFundingAmount: 100,
+      });
+      const blockedBeneficiary = await createBeneficiary({
+        program: blockedProgram,
+        user: recipient,
+      });
+
+      const blockedPayout = await call(disburseBeneficiary, {
+        user: headOffice,
+        params: {
+          programId: String(blockedProgram._id),
+          beneficiaryId: String(blockedBeneficiary._id),
+        },
+        body: {},
+        headers: { "Idempotency-Key": `blocked-${status.toLowerCase()}-1234` },
+      });
+
+      assert.equal(blockedPayout.status, 409, status);
+      assert.equal((await User.findById(recipient._id)).walletBalance, 15);
+      assert.equal(
+        (await EmpowermentProgram.findById(blockedProgram._id))
+          .availableFundingAmount,
+        100
+      );
+    }
+  }
+);
+
+test(
   "concurrent bulk retries create one batch and credit each selected wallet once",
   { timeout: 120_000 },
   async () => {
