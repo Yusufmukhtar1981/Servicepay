@@ -1,12 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 
-import 'package:gal/gal.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
+
+import 'services/receipt_download.dart';
 
 class BusinessWalletTransactionReceiptScreen extends StatefulWidget {
   final Map<String, dynamic> transaction;
@@ -329,39 +327,10 @@ class _BusinessWalletTransactionReceiptScreenState
 
       final fileName = 'servicepay_$reference.png';
 
-      if (kIsWeb) {
-        final blob = html.Blob(
-          <dynamic>[bytes],
-          'image/png',
-        );
-
-        final url = html.Url.createObjectUrlFromBlob(
-          blob,
-        );
-
-        final anchor = html.AnchorElement(
-          href: url,
-        )
-          ..setAttribute(
-            'download',
-            fileName,
-          )
-          ..style.display = 'none';
-
-        html.document.body?.children.add(
-          anchor,
-        );
-
-        anchor.click();
-        anchor.remove();
-
-        html.Url.revokeObjectUrl(url);
-      } else {
-        await Gal.putImageBytes(
-          bytes,
-          album: 'ServicePay',
-        );
-      }
+      final String successMessage = await downloadReceiptBytes(
+        bytes,
+        fileName,
+      );
 
       if (!mounted) {
         return;
@@ -370,9 +339,7 @@ class _BusinessWalletTransactionReceiptScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            kIsWeb
-                ? 'Receipt downloaded successfully.'
-                : 'Receipt saved successfully.',
+            successMessage,
           ),
         ),
       );
