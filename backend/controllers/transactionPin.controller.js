@@ -1,4 +1,7 @@
 const User = require("../models/user.model");
+const mongoose = require("mongoose");
+const AdminAuditLog = require("../models/adminAuditLog.model");
+const { validateTransactionPin } = require("../utils/passwordPolicy");
 
 const getLoggedInUserId = (req) => {
   return (
@@ -6,6 +9,47 @@ const getLoggedInUserId = (req) => {
     req.user?.id ||
     req.userId ||
     null
+  );
+};
+
+const isBcryptHash = (value) =>
+  typeof value === "string" &&
+  /^\$2[aby]\$\d{2}\$/.test(value);
+
+const recordTransactionPinReset = async (
+  req,
+  user,
+  session
+) => {
+  await AdminAuditLog.create(
+    [
+      {
+        actorId: user._id,
+        actorRole: "CUSTOMER",
+        actorName: user.fullName || "",
+        targetUserId: user._id,
+        targetUserName: user.fullName || "",
+        action: "TRANSACTION_PIN_RESET",
+        reason:
+          "Customer reset transaction PIN after password verification.",
+        newData: {
+          transactionPinSet: true,
+          transactionPinUpdatedAt: user.transactionPinUpdatedAt,
+        },
+        metadata: {
+          source: "CUSTOMER_SELF_SERVICE",
+        },
+        ipAddress: req.ip || "",
+        userAgent: req.get?.("user-agent") || "",
+        requestMethod: req.method || "POST",
+        requestPath:
+          req.originalUrl ||
+          req.path ||
+          "/api/transaction-pin/reset",
+        status: "SUCCESSFUL",
+      },
+    ],
+    { session }
   );
 };
 
@@ -351,6 +395,131 @@ exports.changeTransactionPin = async (
       message:
         error.message ||
         "Unable to change transaction PIN.",
+    });
+  }
+};
+
+/*
+ * Reset an existing transaction PIN after verifying the
+ * authenticated customer's current password.
+ */
+exports.resetTransactionPin = async (
+  req,
+  res
+) => {
+  try {
+    const userId = getLoggedInUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const currentPassword = String(
+      req.body?.currentPassword || ""
+    );
+    const newPin = String(
+      req.body?.newPin || ""
+    ).trim();
+    const confirmPin = String(
+      req.body?.confirmPin || ""
+    ).trim();
+
+    if (!currentPassword.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter your current password.",
+      });
+    }
+
+    const pinCheck = validateTransactionPin(newPin);
+
+    if (!pinCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        message: pinCheck.message,
+      });
+    }
+
+    if (newPin !== confirmPin) {
+      return res.status(400).json({
+        success: false,
+        message: "Transaction PINs do not match.",
+      });
+    }
+
+    const user = await User.findById(userId).select(
+      "+password +transactionPin transactionPinSet role fullName"
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User account not found.",
+      });
+    }
+
+    if (
+      String(user.role || "").trim().toUpperCase() !==
+      "CUSTOMER"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "This feature is available to customer accounts only.",
+      });
+    }
+
+    if (
+      !user.transactionPinSet ||
+      !user.transactionPin
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: "TRANSACTION_PIN_NOT_SET",
+        message: "Please create your transaction PIN first.",
+      });
+    }
+
+    const passwordIsCorrect = isBcryptHash(user.password)
+      ? await user.comparePassword(currentPassword)
+      : currentPassword === String(user.password || "");
+
+    if (!passwordIsCorrect) {
+      return res.status(401).json({
+        success: false,
+        code: "INCORRECT_PASSWORD",
+        message: "Current password is incorrect.",
+      });
+    }
+
+    const session = await mongoose.startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        user.setTransactionPin(newPin);
+        await user.save({ session });
+        await recordTransactionPinReset(req, user, session);
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Transaction PIN reset successfully.",
+      transactionPinSet: true,
+    });
+  } catch (error) {
+    console.error(
+      "Reset transaction PIN error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to reset transaction PIN.",
     });
   }
 };

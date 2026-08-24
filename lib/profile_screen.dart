@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_screen.dart';
+import 'reset_transaction_pin_screen.dart';
 import 'transaction_pin_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -400,13 +401,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> openTransactionPin() async {
-    final bool? created = await Navigator.of(context).push<bool>(
+    final bool hasTransactionPin = user['transactionPinSet'] == true;
+
+    final bool? updated = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => const TransactionPinScreen(),
+        builder: (_) => hasTransactionPin
+            ? const ResetTransactionPinScreen()
+            : const TransactionPinScreen(),
       ),
     );
 
-    if (created == true) {
+    if (updated == true) {
       await loadProfile(
         showRefreshLoader: true,
       );
@@ -706,12 +711,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onTap: openEditProfile,
                           ),
                           _ProfileActionTile(
-                            icon: Icons.pin_outlined,
+                            icon: user['transactionPinSet'] == true
+                                ? Icons.lock_reset_rounded
+                                : Icons.pin_outlined,
                             title: user['transactionPinSet'] == true
-                                ? 'Transaction PIN'
+                                ? 'Reset Transaction PIN'
                                 : 'Create Transaction PIN',
                             subtitle: user['transactionPinSet'] == true
-                                ? 'Your transaction PIN is active'
+                                ? 'Forgot your PIN? Verify your password to reset it'
                                 : 'Create a 4-digit PIN for transactions',
                             onTap: openTransactionPin,
                           ),

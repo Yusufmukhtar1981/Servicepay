@@ -5,13 +5,20 @@ const {
   createTransactionPin,
   verifyTransactionPin,
   changeTransactionPin,
+  resetTransactionPin,
 } = require(
   "../controllers/transactionPin.controller"
 );
 
 const {
+  customerOnly,
   protect,
 } = require("../middleware/auth.middleware");
+const {
+  transactionPinResetRateLimit,
+} = require(
+  "../middleware/transactionPinResetRateLimit.middleware"
+);
 
 const router = express.Router();
 
@@ -35,6 +42,13 @@ router.post(
 router.put(
   "/change",
   changeTransactionPin
+);
+
+router.post(
+  "/reset",
+  customerOnly,
+  transactionPinResetRateLimit,
+  resetTransactionPin
 );
 
 module.exports = router;
