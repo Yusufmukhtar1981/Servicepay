@@ -70,6 +70,9 @@ const isAdmin = (user) =>
       .toUpperCase()
   );
 
+const isProgramEligibleOrganization = (organization) =>
+  String(organization?.status || "").toUpperCase() === "ACTIVE";
+
 const actorId = (req) => String(req.user?._id || "");
 
 const normalizePhone = (value) => {
@@ -366,7 +369,13 @@ const listOrganizations = async (req, res) => {
       ? {}
       : { createdBy: req.user._id };
 
-    if (req.query?.status) {
+    const eligibleOnly =
+      String(req.query?.eligible || "").toLowerCase() === "true" ||
+      String(req.query?.purpose || "").toLowerCase() === "program";
+
+    if (eligibleOnly) {
+      filter.status = "ACTIVE";
+    } else if (req.query?.status) {
       filter.status = cleanString(req.query.status, 30).toUpperCase();
     }
 
@@ -395,6 +404,25 @@ const listOrganizations = async (req, res) => {
   } catch (error) {
     console.error("LIST EMPOWERMENT ORGANIZATIONS ERROR:", error);
     return respondError(res, 500, "Unable to load organizations.");
+  }
+};
+
+const getOrganization = async (req, res) => {
+  try {
+    const organization = await getManagedOrganization(req, req.params.id);
+    if (!organization) {
+      return respondError(res, 404, "Organization was not found.");
+    }
+
+    await organization.populate([
+      { path: "createdBy", select: "fullName phone email role state" },
+      { path: "verification.verifiedBy", select: "fullName phone email role" },
+    ]);
+
+    return res.status(200).json({ success: true, organization });
+  } catch (error) {
+    console.error("GET EMPOWERMENT ORGANIZATION ERROR:", error);
+    return respondError(res, 500, "Unable to load organization details.");
   }
 };
 
@@ -1167,7 +1195,7 @@ const listAvailablePrograms = async (req, res) => {
       .populate("organization", "name status state")
       .sort({ createdAt: -1 });
     const programs = allPrograms.filter(
-      (program) => program.organization?.status === "ACTIVE"
+      (program) => isProgramEligibleOrganization(program.organization)
     );
 
     return res.status(200).json({ success: true, programs });
@@ -1932,6 +1960,7 @@ const getEmpowermentAuditTrail = async (req, res) => {
 
 module.exports = {
   listOrganizations,
+  getOrganization,
   createOrganization,
   updateOrganization,
   createProgram,
@@ -1958,4 +1987,6 @@ module.exports = {
   getEmpowermentAuditTrail,
   normalizePhone,
   asMoney,
+  isAdmin,
+  isProgramEligibleOrganization,
 };

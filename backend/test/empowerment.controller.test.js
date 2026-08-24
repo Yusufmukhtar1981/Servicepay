@@ -6,6 +6,11 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const {
   normalizePhone,
   asMoney,
+  isAdmin,
+  isProgramEligibleOrganization,
+  listOrganizations,
+  updateOrganizationStatus,
+  createProgram: createProgramHandler,
   applyForProgram,
   bulkAddBeneficiaries,
   fundProgram,
@@ -66,11 +71,17 @@ test.beforeEach(async () => {
   );
 });
 
-const request = ({ user, body = {}, params = {}, headers = {} }) => ({
+const request = ({
+  user,
+  body = {},
+  params = {},
+  query = {},
+  headers = {},
+}) => ({
   user,
   body,
   params,
-  query: {},
+  query,
   get(name) {
     const key = Object.keys(headers).find(
       (header) => header.toLowerCase() === name.toLowerCase()
@@ -248,6 +259,156 @@ test("Empowerment transaction and payout schemas enforce auditable records", () 
     EmpowermentDisbursement.schema.path("idempotencyKey").isRequired,
     true
   );
+});
+
+test("organization verification is admin-only and controls program eligibility", async () => {
+  const owner = await createUser();
+  const otherCustomer = await createUser();
+  const admin = await createUser({ role: "HEAD_OFFICE" });
+  const organization = await EmpowermentOrganization.create({
+    name: "Pending Organization",
+    organizationType: "NGO",
+    registrationNumber: "PENDING-NGO-001",
+    contactName: owner.fullName,
+    phone: owner.phone,
+    email: owner.email,
+    address: "1 Pending Street",
+    state: owner.state,
+    status: "PENDING",
+    createdBy: owner._id,
+  });
+
+  const unauthorized = await call(updateOrganizationStatus, {
+    user: owner,
+    params: { id: String(organization._id) },
+    body: { status: "ACTIVE" },
+  });
+  assert.equal(unauthorized.status, 403);
+  assert.equal(
+    (await EmpowermentOrganization.findById(organization._id)).status,
+    "PENDING"
+  );
+
+  const pendingEligible = await call(listOrganizations, {
+    user: owner,
+    query: { eligible: "true" },
+  });
+  assert.equal(pendingEligible.status, 200);
+  assert.equal(pendingEligible.body.organizations.length, 0);
+
+  const approved = await call(updateOrganizationStatus, {
+    user: admin,
+    params: { id: String(organization._id) },
+    body: { status: "ACTIVE" },
+  });
+  assert.equal(approved.status, 200);
+  const activeOrganization = await EmpowermentOrganization.findById(
+    organization._id
+  );
+  assert.equal(activeOrganization.status, "ACTIVE");
+  assert.equal(String(activeOrganization.verification.verifiedBy), String(admin._id));
+  assert.equal(isProgramEligibleOrganization(activeOrganization), true);
+  assert.equal(isAdmin(admin), true);
+  assert.equal(
+    await EmpowermentAuditLog.countDocuments({
+      entityId: organization._id,
+      action: "ORGANIZATION_STATUS_UPDATED",
+    }),
+    1
+  );
+
+  const activeEligible = await call(listOrganizations, {
+    user: owner,
+    query: { eligible: "true" },
+  });
+  assert.equal(activeEligible.status, 200);
+  assert.equal(activeEligible.body.organizations.length, 1);
+  assert.equal(
+    String(activeEligible.body.organizations[0]._id),
+    String(organization._id)
+  );
+
+  const ownerProgram = await call(createProgramHandler, {
+    user: owner,
+    body: {
+      organizationId: String(organization._id),
+      name: "Owner Eligible Program",
+      amountPerBeneficiary: 100,
+      targetBeneficiaries: 2,
+      state: owner.state,
+    },
+  });
+  assert.equal(ownerProgram.status, 201);
+
+  const foreignOwnerProgram = await call(createProgramHandler, {
+    user: otherCustomer,
+    body: {
+      organizationId: String(organization._id),
+      name: "Unauthorized Program",
+      amountPerBeneficiary: 100,
+      targetBeneficiaries: 2,
+      state: otherCustomer.state,
+    },
+  });
+  assert.equal(foreignOwnerProgram.status, 403);
+});
+
+test("rejected and suspended organizations cannot create programs", async () => {
+  const owner = await createUser();
+  const admin = await createUser({ role: "HEAD_OFFICE" });
+  const organization = await EmpowermentOrganization.create({
+    name: "Organization Lifecycle Test",
+    organizationType: "NGO",
+    registrationNumber: "LIFECYCLE-NGO-001",
+    contactName: owner.fullName,
+    phone: owner.phone,
+    email: owner.email,
+    address: "2 Lifecycle Street",
+    state: owner.state,
+    status: "PENDING",
+    createdBy: owner._id,
+  });
+
+  const reject = await call(updateOrganizationStatus, {
+    user: admin,
+    params: { id: String(organization._id) },
+    body: { status: "REJECTED" },
+  });
+  assert.equal(reject.status, 200);
+  const rejectedProgram = await call(createProgramHandler, {
+    user: owner,
+    body: {
+      organizationId: String(organization._id),
+      name: "Rejected Organization Program",
+      amountPerBeneficiary: 100,
+      targetBeneficiaries: 1,
+      state: owner.state,
+    },
+  });
+  assert.equal(rejectedProgram.status, 409);
+
+  await call(updateOrganizationStatus, {
+    user: admin,
+    params: { id: String(organization._id) },
+    body: { status: "ACTIVE" },
+  });
+  const suspend = await call(updateOrganizationStatus, {
+    user: admin,
+    params: { id: String(organization._id) },
+    body: { status: "SUSPENDED" },
+  });
+  assert.equal(suspend.status, 200);
+  const suspendedProgram = await call(createProgramHandler, {
+    user: owner,
+    body: {
+      organizationId: String(organization._id),
+      name: "Suspended Organization Program",
+      amountPerBeneficiary: 100,
+      targetBeneficiaries: 1,
+      state: owner.state,
+    },
+  });
+  assert.equal(suspendedProgram.status, 409);
 });
 
 test(

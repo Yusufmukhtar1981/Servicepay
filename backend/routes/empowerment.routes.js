@@ -7,6 +7,7 @@ const {
 const {
   createOrganization,
   listOrganizations,
+  getOrganization,
   updateOrganization,
   createProgram,
   addBeneficiary,
@@ -46,6 +47,11 @@ router.post(
 router.get(
   "/organizations",
   listOrganizations
+);
+
+router.get(
+  "/organizations/:id",
+  getOrganization
 );
 
 router.patch(

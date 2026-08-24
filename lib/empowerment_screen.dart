@@ -20,6 +20,8 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
   String _error = '';
   List<Map<String, dynamic>> _available = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _organizations = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _eligibleOrganizations =
+      <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _programs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _applications = <Map<String, dynamic>>[];
 
@@ -65,7 +67,10 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
       final List<Map<String, dynamic>> results =
           await Future.wait(<Future<Map<String, dynamic>>>[
         _api.get('/available-programs'),
-        _api.get('/organizations'),
+        _api.get('/organizations',
+            query: <String, String>{'limit': '100'}),
+        _api.get('/organizations',
+            query: <String, String>{'eligible': 'true', 'limit': '100'}),
         _api.get('/programs'),
         _api.get('/my-applications'),
       ]);
@@ -73,8 +78,9 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
       setState(() {
         _available = _list(results[0], 'programs');
         _organizations = _list(results[1], 'organizations');
-        _programs = _list(results[2], 'programs');
-        _applications = _list(results[3], 'applications');
+        _eligibleOrganizations = _list(results[2], 'organizations');
+        _programs = _list(results[3], 'programs');
+        _applications = _list(results[4], 'applications');
         _loading = false;
       });
     } on EmpowermentApiException catch (error) {
@@ -237,7 +243,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
   }
 
   Future<void> _createProgram() async {
-    if (_organizations.isEmpty) {
+    if (_eligibleOrganizations.isEmpty) {
       _notice('Create and verify an organization before creating a program.',
           error: true);
       return;
@@ -258,7 +264,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
       ])
         key: TextEditingController(),
     };
-    String organizationId = _id(_organizations.first);
+    String organizationId = _id(_eligibleOrganizations.first);
     bool publicApplication = false;
 
     final bool? created = await showModalBottomSheet<bool>(
@@ -289,7 +295,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
                       DropdownButtonFormField<String>(
                         value: organizationId,
                         decoration: const InputDecoration(labelText: 'Organization'),
-                        items: _organizations
+                        items: _eligibleOrganizations
                             .map(
                               (Map<String, dynamic> item) =>
                                   DropdownMenuItem<String>(

@@ -19,6 +19,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
   String _error = '';
   Map<String, dynamic> _summary = <String, dynamic>{};
   List<Map<String, dynamic>> _organizations = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _eligibleOrganizations =
+      <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _programs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _audit = <Map<String, dynamic>>[];
 
@@ -64,6 +66,10 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
         _api.get('/organizations', query: <String, String>{'limit': '100'}),
         _api.get('/programs', query: <String, String>{'limit': '100'}),
         _api.get('/audit-trail', query: <String, String>{'limit': '50'}),
+        _api.get('/organizations', query: <String, String>{
+          'eligible': 'true',
+          'limit': '100',
+        }),
       ]);
       if (!mounted) return;
       setState(() {
@@ -73,6 +79,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
         _organizations = _list(values[1], 'organizations');
         _programs = _list(values[2], 'programs');
         _audit = _list(values[3], 'activity');
+        _eligibleOrganizations = _list(values[4], 'organizations');
         _loading = false;
       });
     } on EmpowermentApiException catch (error) {
@@ -117,6 +124,180 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
     }
   }
 
+  Future<void> _showOrganization(Map<String, dynamic> organization) async {
+    try {
+      final Map<String, dynamic> response =
+          await _api.get('/organizations/${_id(organization)}');
+      final Map<String, dynamic> details = response['organization'] is Map
+          ? Map<String, dynamic>.from(response['organization'] as Map)
+          : organization;
+      if (!mounted) return;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (BuildContext sheetContext) {
+          final String status = _text(details['status'], 'PENDING');
+          final Map<String, dynamic> owner = details['createdBy'] is Map
+              ? Map<String, dynamic>.from(details['createdBy'] as Map)
+              : <String, dynamic>{};
+          final Map<String, dynamic> verification =
+              details['verification'] is Map
+                  ? Map<String, dynamic>.from(details['verification'] as Map)
+                  : <String, dynamic>{};
+          final Map<String, dynamic> verifier =
+              verification['verifiedBy'] is Map
+                  ? Map<String, dynamic>.from(
+                      verification['verifiedBy'] as Map)
+                  : <String, dynamic>{};
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        const CircleAvatar(
+                          radius: 24,
+                          backgroundColor: Color(0xFFEAF7F0),
+                          child: Icon(Icons.account_balance_outlined,
+                              color: Color(0xFF08783E)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _text(details['name'], 'Organization details'),
+                            style: const TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        _status(status),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    _detailRow('Type', _text(details['organizationType'])
+                        .replaceAll('_', ' ')),
+                    _detailRow('Registration number',
+                        _text(details['registrationNumber'], 'Not supplied')),
+                    _detailRow('Contact person', _text(details['contactName'])),
+                    _detailRow('Phone', _text(details['phone'])),
+                    _detailRow('Email', _text(details['email'])),
+                    _detailRow('Address', _text(details['address'])),
+                    _detailRow('State / LGA',
+                        '${_text(details['state'])} / ${_text(details['lga'], '—')}'),
+                    _detailRow('Description',
+                        _text(details['description'], 'No description supplied.')),
+                    _detailRow(
+                      'Owner',
+                      _text(owner['fullName'], 'Unknown owner'),
+                    ),
+                    _detailRow(
+                      'Owner contact',
+                      '${_text(owner['phone'])} • ${_text(owner['email'])}',
+                    ),
+                    _detailRow('Created', _formatDate(details['createdAt'])),
+                    _detailRow(
+                      'Verified by',
+                      _text(verifier['fullName'], 'Not verified'),
+                    ),
+                    if (_text(verification['rejectionReason']).isNotEmpty)
+                      _detailRow(
+                        'Rejection reason',
+                        _text(verification['rejectionReason']),
+                      ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        if (status == 'PENDING')
+                          FilledButton.icon(
+                            onPressed: () {
+                              Navigator.of(sheetContext).pop();
+                              _organizationStatus(details, 'ACTIVE');
+                            },
+                            icon: const Icon(Icons.verified_outlined),
+                            label: const Text('Approve / verify'),
+                          ),
+                        if (status == 'PENDING')
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.of(sheetContext).pop();
+                              _organizationStatus(details, 'REJECTED');
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                            label: const Text('Reject'),
+                          ),
+                        if (status == 'ACTIVE')
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.of(sheetContext).pop();
+                              _organizationStatus(details, 'SUSPENDED');
+                            },
+                            icon: const Icon(Icons.pause_circle_outline),
+                            label: const Text('Suspend'),
+                          ),
+                        if (status == 'SUSPENDED')
+                          FilledButton.icon(
+                            onPressed: () {
+                              Navigator.of(sheetContext).pop();
+                              _organizationStatus(details, 'ACTIVE');
+                            },
+                            icon: const Icon(Icons.play_circle_outline),
+                            label: const Text('Reactivate'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } on EmpowermentApiException catch (error) {
+      _notice(error.message, error: true);
+    }
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            SizedBox(
+              width: 132,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF667085),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                value,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  String _formatDate(dynamic value) {
+    final String raw = _text(value);
+    if (raw.isEmpty) return 'Unknown';
+    return raw.replaceFirst('T', ' ').split('.').first;
+  }
+
   Future<void> _programStatus(
     Map<String, dynamic> program,
     String status,
@@ -132,6 +313,145 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
       _notice(error.message, error: true);
     }
   }
+
+  Future<void> _createProgram() async {
+    if (_eligibleOrganizations.isEmpty) {
+      _notice(
+        'No active verified organizations are available for a program.',
+        error: true,
+      );
+      return;
+    }
+
+    final TextEditingController name = TextEditingController();
+    final TextEditingController description = TextEditingController();
+    final TextEditingController amount = TextEditingController();
+    final TextEditingController beneficiaries = TextEditingController();
+    final TextEditingController state = TextEditingController();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    String organizationId = _id(_eligibleOrganizations.first);
+    final bool? submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+          ),
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'Create program',
+                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Only active, verified organizations are available here.',
+                    style: TextStyle(color: Color(0xFF667085)),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: organizationId,
+                    decoration:
+                        const InputDecoration(labelText: 'Organization'),
+                    items: _eligibleOrganizations
+                        .map(
+                          (Map<String, dynamic> item) =>
+                              DropdownMenuItem<String>(
+                            value: _id(item),
+                            child: Text(_text(item['name'])),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (String? value) => setSheetState(
+                      () => organizationId = value ?? organizationId,
+                    ),
+                  ),
+                  _formField(name, 'Program name'),
+                  _formField(description, 'Description', required: false, lines: 3),
+                  _formField(amount, 'Amount per beneficiary',
+                      keyboard: TextInputType.number),
+                  _formField(beneficiaries, 'Number of beneficiaries',
+                      keyboard: TextInputType.number),
+                  _formField(state, 'State'),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () {
+                        if (formKey.currentState?.validate() == true) {
+                          Navigator.of(sheetContext).pop(true);
+                        }
+                      },
+                      child: const Text('Create draft program'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (submitted == true) {
+      try {
+        await _api.post(
+          '/programs',
+          body: <String, dynamic>{
+            'organizationId': organizationId,
+            'name': name.text.trim(),
+            'description': description.text.trim(),
+            'amountPerBeneficiary': amount.text.trim(),
+            'targetBeneficiaries': beneficiaries.text.trim(),
+            'state': state.text.trim(),
+          },
+        );
+        _notice('Draft program created.');
+        await _load();
+      } on EmpowermentApiException catch (error) {
+        _notice(error.message, error: true);
+      }
+    }
+    name.dispose();
+    description.dispose();
+    amount.dispose();
+    beneficiaries.dispose();
+    state.dispose();
+  }
+
+  Widget _formField(
+    TextEditingController controller,
+    String label, {
+    bool required = true,
+    int lines = 1,
+    TextInputType? keyboard,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TextFormField(
+          controller: controller,
+          maxLines: lines,
+          keyboardType: keyboard,
+          decoration: InputDecoration(
+            labelText: label,
+            border: const OutlineInputBorder(),
+          ),
+          validator: required
+              ? (String? value) => value == null || value.trim().isEmpty
+                  ? '$label is required.'
+                  : null
+              : null,
+        ),
+      );
 
   Future<void> _showProgram(Map<String, dynamic> program) async {
     final String programId = _id(program);
@@ -311,6 +631,11 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
         foregroundColor: Colors.white,
         actions: <Widget>[
           IconButton(
+            tooltip: 'Create program',
+            onPressed: _loading ? null : _createProgram,
+            icon: const Icon(Icons.add_circle_outline),
+          ),
+          IconButton(
             tooltip: 'Refresh',
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh_rounded),
@@ -422,6 +747,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                     '${_text(organization['contactName'])} • ${_text(organization['state'])}',
                   ),
                   isThreeLine: true,
+                  onTap: () => _showOrganization(organization),
                   trailing: PopupMenuButton<String>(
                     child: _status(_text(organization['status'], 'PENDING')),
                     onSelected: (String status) =>
