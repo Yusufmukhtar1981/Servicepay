@@ -35,6 +35,7 @@ import 'withdrawal_screen.dart';
 import 'referral_screen.dart';
 
 import 'empowerment_screen.dart';
+import 'program_sponsor_screen.dart';
 import 'kyc_screen.dart';
 import 'cards_screen.dart';
 
@@ -574,6 +575,19 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () {
           openScreen(
             const EmpowermentScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Program Sponsor',
+        icon: Icons.corporate_fare_rounded,
+        iconColor: const Color(0xFF003F26),
+        backgroundColor: const Color(0xFFE6F3EC),
+        keywords:
+            'program sponsor organization ngo cooperative foundation government grant initiative',
+        onTap: () {
+          openScreen(
+            const ProgramSponsorScreen(),
           );
         },
       ),

@@ -12,10 +12,14 @@ const {
   updateOrganizationStatus,
   createProgram: createProgramHandler,
   applyForProgram,
+  getMyApplications,
+  listAvailablePrograms,
+  getSponsorDashboard,
   bulkAddBeneficiaries,
   fundProgram,
   verifyBeneficiary,
   updateBeneficiaryStatus,
+  updateProgramStatus,
   disburseProgram,
   disburseBeneficiary,
   bulkDisburseProgram,
@@ -420,6 +424,241 @@ test("rejected and suspended organizations cannot create programs", async () => 
     },
   });
   assert.equal(suspendedProgram.status, 409);
+});
+
+test(
+  "customers, sponsors and Head Office remain separated across applicant and sponsor flows",
+  async () => {
+    const sponsor = await createUser();
+    const otherSponsor = await createUser();
+    const applicant = await createUser();
+    const stranger = await createUser();
+    const headOffice = await createUser({ role: "HEAD_OFFICE" });
+    await createKyc(applicant);
+
+    const unverifiedOrganization = await EmpowermentOrganization.create({
+      name: "Pending Sponsor Organization",
+      organizationType: "FOUNDATION",
+      registrationNumber: "FOUNDATION-PENDING-001",
+      contactName: sponsor.fullName,
+      phone: sponsor.phone,
+      email: sponsor.email,
+      address: "3 Sponsor Street",
+      state: sponsor.state,
+      status: "PENDING",
+      verificationStatus: "PENDING_VERIFICATION",
+      createdBy: sponsor._id,
+    });
+    const blockedCreation = await call(createProgramHandler, {
+      user: sponsor,
+      body: {
+        organizationId: String(unverifiedOrganization._id),
+        name: "Blocked Sponsor Program",
+        amountPerBeneficiary: 100,
+        targetBeneficiaries: 2,
+        state: sponsor.state,
+      },
+    });
+    assert.equal(blockedCreation.status, 409);
+
+    const sponsorSelfVerification = await call(updateOrganizationStatus, {
+      user: sponsor,
+      params: { id: String(unverifiedOrganization._id) },
+      body: { status: "VERIFIED" },
+    });
+    assert.equal(sponsorSelfVerification.status, 403);
+
+    const verified = await call(updateOrganizationStatus, {
+      user: headOffice,
+      params: { id: String(unverifiedOrganization._id) },
+      body: { status: "VERIFIED" },
+    });
+    assert.equal(verified.status, 200);
+    assert.equal(
+      verified.body.organization.sponsorVerificationStatus,
+      "VERIFIED"
+    );
+
+    const createdProgram = await call(createProgramHandler, {
+      user: sponsor,
+      body: {
+        organizationId: String(unverifiedOrganization._id),
+        name: "Verified Sponsor Program",
+        amountPerBeneficiary: 100,
+        targetBeneficiaries: 2,
+        state: sponsor.state,
+        publicApplicationEnabled: true,
+      },
+    });
+    assert.equal(createdProgram.status, 201);
+    const programId = String(createdProgram.body.program._id);
+
+    const sponsorDashboard = await call(getSponsorDashboard, {
+      user: sponsor,
+    });
+    assert.equal(sponsorDashboard.status, 200);
+    assert.equal(sponsorDashboard.body.organizations.length, 1);
+    assert.equal(sponsorDashboard.body.programs.length, 1);
+
+    const foreignDashboard = await call(getSponsorDashboard, {
+      user: otherSponsor,
+    });
+    assert.equal(foreignDashboard.status, 200);
+    assert.equal(foreignDashboard.body.organizations.length, 0);
+    assert.equal(foreignDashboard.body.programs.length, 0);
+
+    const unverifiedForeignOrganization = await EmpowermentOrganization.create({
+      name: "Unverified Search Sponsor",
+      organizationType: "NGO",
+      registrationNumber: "SEARCH-PENDING-001",
+      contactName: otherSponsor.fullName,
+      phone: otherSponsor.phone,
+      email: otherSponsor.email,
+      address: "5 Search Street",
+      state: otherSponsor.state,
+      status: "PENDING",
+      verificationStatus: "PENDING_VERIFICATION",
+      createdBy: otherSponsor._id,
+    });
+    const eligibleSearch = await call(listOrganizations, {
+      user: otherSponsor,
+      query: { eligible: "true", search: "Unverified Search" },
+    });
+    assert.equal(eligibleSearch.status, 200);
+    assert.equal(eligibleSearch.body.organizations.length, 0);
+    assert.ok(unverifiedForeignOrganization._id);
+
+    const submitForReview = await call(updateProgramStatus, {
+      user: sponsor,
+      params: { id: programId },
+      body: { status: "UNDER_REVIEW" },
+    });
+    assert.equal(submitForReview.status, 200);
+    const sponsorSelfApproval = await call(updateProgramStatus, {
+      user: sponsor,
+      params: { id: programId },
+      body: { status: "OPEN" },
+    });
+    assert.equal(sponsorSelfApproval.status, 403);
+
+    const foreignProgramEdit = await call(updateProgramStatus, {
+      user: otherSponsor,
+      params: { id: programId },
+      body: { status: "UNDER_REVIEW" },
+    });
+    assert.equal(foreignProgramEdit.status, 404);
+
+    const openedProgram = await call(updateProgramStatus, {
+      user: headOffice,
+      params: { id: programId },
+      body: { status: "OPEN" },
+    });
+    assert.equal(openedProgram.status, 200);
+
+    const availablePrograms = await call(listAvailablePrograms, {
+      user: applicant,
+    });
+    assert.equal(availablePrograms.status, 200);
+    assert.equal(availablePrograms.body.programs.length, 1);
+    assert.equal(
+      String(availablePrograms.body.programs[0]._id),
+      programId
+    );
+
+    const application = await call(applyForProgram, {
+      user: applicant,
+      params: { programId },
+      body: { state: applicant.state, lga: applicant.lga },
+    });
+    assert.equal(application.status, 201);
+
+    const ownApplications = await call(getMyApplications, {
+      user: applicant,
+    });
+    assert.equal(ownApplications.status, 200);
+    assert.equal(ownApplications.body.applications.length, 1);
+    const otherApplications = await call(getMyApplications, {
+      user: stranger,
+    });
+    assert.equal(otherApplications.status, 200);
+    assert.equal(otherApplications.body.applications.length, 0);
+
+    const sponsorReviewAttempt = await call(updateBeneficiaryStatus, {
+      user: sponsor,
+      params: { id: String(application.body.beneficiary._id) },
+      body: { status: "APPROVED" },
+    });
+    assert.equal(sponsorReviewAttempt.status, 403);
+
+    const customerPayoutAttempt = await call(disburseProgram, {
+      user: applicant,
+      params: { programId },
+      body: {},
+      headers: { "Idempotency-Key": "customer-payout-blocked-1234" },
+    });
+    assert.equal(customerPayoutAttempt.status, 403);
+
+    for (const status of [
+      "OPEN",
+      "SUSPENDED",
+      "CANCELLED",
+      "COMPLETED",
+    ]) {
+      await call(updateProgramStatus, {
+        user: headOffice,
+        params: { id: programId },
+        body: { status },
+      });
+      const prohibitedResubmission = await call(updateProgramStatus, {
+        user: sponsor,
+        params: { id: programId },
+        body: { status: "UNDER_REVIEW" },
+      });
+      assert.equal(prohibitedResubmission.status, 403, status);
+    }
+  }
+);
+
+test("legacy active organizations remain eligible and readable", async () => {
+  const sponsor = await createUser();
+  const legacyOrganization = await EmpowermentOrganization.collection.insertOne({
+    name: "Youth Empowerment Legacy Sponsor",
+    organizationType: "NGO",
+    registrationNumber: "YOUTH-LEGACY-001",
+    contactName: sponsor.fullName,
+    phone: sponsor.phone,
+    email: sponsor.email,
+    address: "4 Legacy Street",
+    state: sponsor.state,
+    status: "ACTIVE",
+    createdBy: sponsor._id,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  const legacyProgram = await EmpowermentProgram.create({
+    organization: legacyOrganization.insertedId,
+    name: "Youth Empowerment",
+    state: sponsor.state,
+    amountPerBeneficiary: 100,
+    targetBeneficiaries: 5,
+    status: "OPEN",
+    publicApplicationEnabled: true,
+    createdBy: sponsor._id,
+  });
+
+  const sponsorDashboard = await call(getSponsorDashboard, { user: sponsor });
+  assert.equal(sponsorDashboard.status, 200);
+  assert.equal(sponsorDashboard.body.organizations.length, 1);
+  assert.equal(
+    sponsorDashboard.body.organizations[0].sponsorVerificationStatus,
+    "VERIFIED"
+  );
+  const available = await call(listAvailablePrograms, { user: sponsor });
+  assert.equal(available.status, 200);
+  assert.equal(
+    String(available.body.programs[0]._id),
+    String(legacyProgram._id)
+  );
 });
 
 test(

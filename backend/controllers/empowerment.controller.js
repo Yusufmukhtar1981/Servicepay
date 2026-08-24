@@ -42,6 +42,8 @@ const ORGANIZATION_TYPES = new Set([
   "COOPERATIVE",
   "FOUNDATION",
   "INDIVIDUAL",
+  "POLITICIAN",
+  "ASSOCIATION",
   "OTHER",
 ]);
 
@@ -73,8 +75,45 @@ const isAdmin = (user) =>
 const isHeadOffice = (user) =>
   String(user?.role || "").trim().toUpperCase() === "HEAD_OFFICE";
 
+const organizationVerificationStatus = (organization) => {
+  const legacy = String(organization?.status || "")
+    .trim()
+    .toUpperCase();
+  const explicit = String(organization?.verificationStatus || "")
+    .trim()
+    .toUpperCase();
+  // Mongoose supplies the new default for legacy rows even though no field was
+  // persisted. An ACTIVE legacy organization is already verified and must not
+  // lose program access merely because it is read through the newer schema.
+  if (
+    legacy === "ACTIVE" &&
+    ["", "DRAFT", "PENDING_VERIFICATION"].includes(explicit)
+  ) {
+    return "VERIFIED";
+  }
+  if (explicit) return explicit;
+
+  return (
+    {
+      ACTIVE: "VERIFIED",
+      PENDING: "PENDING_VERIFICATION",
+      REJECTED: "REJECTED",
+      SUSPENDED: "SUSPENDED",
+    }[legacy] || "DRAFT"
+  );
+};
+
 const isProgramEligibleOrganization = (organization) =>
-  String(organization?.status || "").toUpperCase() === "ACTIVE";
+  organizationVerificationStatus(organization) === "VERIFIED";
+
+const organizationStatusForVerification = (verificationStatus) =>
+  ({
+    DRAFT: "PENDING",
+    PENDING_VERIFICATION: "PENDING",
+    VERIFIED: "ACTIVE",
+    REJECTED: "REJECTED",
+    SUSPENDED: "SUSPENDED",
+  }[verificationStatus] || "");
 
 const actorId = (req) => String(req.user?._id || "");
 
@@ -319,7 +358,7 @@ const requireActiveOrganization = async (program, session = null) => {
     EmpowermentOrganization.findById(program.organization),
     session
   );
-  if (!organization || organization.status !== "ACTIVE") {
+  if (!organization || !isProgramEligibleOrganization(organization)) {
     throw Object.assign(
       new Error("The program organization is not active for this operation."),
       { status: 409 }
@@ -435,6 +474,8 @@ const createOrganization = async (req, res) => {
     const organization = await EmpowermentOrganization.create({
       ...values,
       createdBy: req.user._id,
+      status: "PENDING",
+      verificationStatus: "PENDING_VERIFICATION",
     });
 
     await audit({
@@ -468,18 +509,33 @@ const listOrganizations = async (req, res) => {
       String(req.query?.eligible || "").toLowerCase() === "true" ||
       String(req.query?.purpose || "").toLowerCase() === "program";
 
-    if (eligibleOnly) {
-      filter.status = "ACTIVE";
+    const eligibilityFilter = eligibleOnly
+      ? {
+          $or: [
+        { status: "ACTIVE" },
+        { verificationStatus: "VERIFIED" },
+          ],
+        }
+      : null;
+    if (eligibilityFilter) {
+      filter.$and = [eligibilityFilter];
     } else if (req.query?.status) {
       filter.status = cleanString(req.query.status, 30).toUpperCase();
     }
 
     if (search) {
-      filter.$or = [
+      const searchFilter = {
+        $or: [
         { name: new RegExp(search, "i") },
         { contactName: new RegExp(search, "i") },
         { registrationNumber: new RegExp(search, "i") },
-      ];
+        ],
+      };
+      if (eligibilityFilter) {
+        filter.$and.push(searchFilter);
+      } else {
+        filter.$or = searchFilter.$or;
+      }
     }
 
     const [organizations, total] = await Promise.all([
@@ -493,7 +549,10 @@ const listOrganizations = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      organizations,
+      organizations: organizations.map((organization) => ({
+        ...organization.toObject(),
+        sponsorVerificationStatus: organizationVerificationStatus(organization),
+      })),
       pagination: { page, limit, total },
     });
   } catch (error) {
@@ -566,8 +625,19 @@ const updateOrganizationStatus = async (req, res) => {
       return respondError(res, 403, "Administrator access is required.");
     }
 
-    const status = cleanString(req.body?.status, 30).toUpperCase();
-    if (!["PENDING", "ACTIVE", "SUSPENDED", "REJECTED"].includes(status)) {
+    const rawStatus = cleanString(req.body?.status, 30).toUpperCase();
+    const verificationStatus =
+      {
+        PENDING: "PENDING_VERIFICATION",
+        ACTIVE: "VERIFIED",
+        DRAFT: "DRAFT",
+        PENDING_VERIFICATION: "PENDING_VERIFICATION",
+        VERIFIED: "VERIFIED",
+        SUSPENDED: "SUSPENDED",
+        REJECTED: "REJECTED",
+      }[rawStatus] || "";
+    const status = organizationStatusForVerification(verificationStatus);
+    if (!status) {
       return respondError(res, 400, "Invalid organization status.");
     }
 
@@ -576,18 +646,22 @@ const updateOrganizationStatus = async (req, res) => {
       return respondError(res, 404, "Organization was not found.");
     }
 
-    const before = { status: organization.status };
+    const before = {
+      status: organization.status,
+      verificationStatus: organizationVerificationStatus(organization),
+    };
     organization.status = status;
+    organization.verificationStatus = verificationStatus;
     organization.verification = {
       verifiedBy: req.user._id,
       verifiedAt: new Date(),
       rejectionReason:
-        status === "REJECTED"
+        verificationStatus === "REJECTED"
           ? cleanString(req.body?.rejectionReason, 500)
           : "",
     };
     await organization.save();
-    if (["SUSPENDED", "REJECTED"].includes(status)) {
+    if (["SUSPENDED", "REJECTED"].includes(verificationStatus)) {
       await EmpowermentProgram.updateMany(
         {
           organization: organization._id,
@@ -602,10 +676,16 @@ const updateOrganizationStatus = async (req, res) => {
       entityType: "ORGANIZATION",
       entityId: organization._id,
       before,
-      after: { status },
+      after: { status, verificationStatus },
     });
 
-    return res.status(200).json({ success: true, organization });
+    return res.status(200).json({
+      success: true,
+      organization: {
+        ...organization.toObject(),
+        sponsorVerificationStatus: organizationVerificationStatus(organization),
+      },
+    });
   } catch (error) {
     console.error("UPDATE EMPOWERMENT ORGANIZATION STATUS ERROR:", error);
     return respondError(res, 500, "Unable to update organization status.");
@@ -678,7 +758,7 @@ const createProgram = async (req, res) => {
       );
     }
 
-    if (organization.status !== "ACTIVE") {
+    if (!isProgramEligibleOrganization(organization)) {
       return respondError(
         res,
         409,
@@ -798,6 +878,96 @@ const listPrograms = async (req, res) => {
   }
 };
 
+const getSponsorDashboard = async (req, res) => {
+  try {
+    const organizations = await EmpowermentOrganization.find({
+      createdBy: req.user._id,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    const organizationIds = organizations.map((organization) => organization._id);
+    const programs = organizationIds.length
+      ? await EmpowermentProgram.find({
+          organization: { $in: organizationIds },
+          createdBy: req.user._id,
+        })
+          .populate("organization", "name status verificationStatus state")
+          .sort({ createdAt: -1 })
+          .lean()
+      : [];
+    const programIds = programs.map((program) => program._id);
+    const beneficiaryRows = programIds.length
+      ? await EmpowermentBeneficiary.aggregate([
+          { $match: { program: { $in: programIds } } },
+          {
+            $group: {
+              _id: "$program",
+              applications: { $sum: 1 },
+              beneficiaries: { $sum: 1 },
+              approved: {
+                $sum: {
+                  $cond: [{ $eq: ["$applicationStatus", "APPROVED"] }, 1, 0],
+                },
+              },
+              paid: {
+                $sum: {
+                  $cond: [{ $eq: ["$applicationStatus", "PAID"] }, 1, 0],
+                },
+              },
+            },
+          },
+        ])
+      : [];
+    const countsByProgram = new Map(
+      beneficiaryRows.map((row) => [String(row._id), row])
+    );
+    const summary = programs.reduce(
+      (total, program) => {
+        const financials = programFinancials(program);
+        const counts = countsByProgram.get(String(program._id)) || {};
+        total.totalFunded += financials.totalFunded;
+        total.totalDisbursed += financials.totalDisbursed;
+        total.remainingFunds += financials.remainingBalance;
+        total.applications += Number(counts.applications || 0);
+        total.beneficiaries += Number(counts.beneficiaries || 0);
+        return total;
+      },
+      {
+        totalFunded: 0,
+        totalDisbursed: 0,
+        remainingFunds: 0,
+        applications: 0,
+        beneficiaries: 0,
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      organizations: organizations.map((organization) => ({
+        ...organization,
+        sponsorVerificationStatus: organizationVerificationStatus(organization),
+      })),
+      programs: programs.map((program) => {
+        const counts = countsByProgram.get(String(program._id)) || {};
+        return {
+          ...program,
+          financials: programFinancials(program),
+          activity: {
+            applications: Number(counts.applications || 0),
+            beneficiaries: Number(counts.beneficiaries || 0),
+            approved: Number(counts.approved || 0),
+            paid: Number(counts.paid || 0),
+          },
+        };
+      }),
+      summary,
+    });
+  } catch (error) {
+    console.error("GET PROGRAM SPONSOR DASHBOARD ERROR:", error);
+    return respondError(res, 500, "Unable to load the Program Sponsor dashboard.");
+  }
+};
+
 const getProgram = async (req, res) => {
   try {
     const program = await EmpowermentProgram.findById(req.params.programId)
@@ -836,6 +1006,16 @@ const updateProgram = async (req, res) => {
     const program = await getManagedProgram(req, req.params.programId);
     if (!program) {
       return respondError(res, 404, "Program was not found.");
+    }
+    if (
+      !isAdmin(req.user) &&
+      !["DRAFT", "UNDER_REVIEW"].includes(program.status)
+    ) {
+      return respondError(
+        res,
+        403,
+        "Sponsors can only edit draft or submitted programs they own."
+      );
     }
 
     if (
@@ -891,14 +1071,18 @@ const updateProgramStatus = async (req, res) => {
     if (!PROGRAM_STATUSES.has(status)) {
       return respondError(res, 400, "Invalid program status.");
     }
-    if (!isAdmin(req.user) && !["DRAFT", "OPEN", "UNDER_REVIEW"].includes(status)) {
-      return respondError(
-        res,
-        403,
-        "Only an administrator can approve, suspend, cancel or complete a program."
-      );
+    if (!isAdmin(req.user)) {
+      const sponsorMaySubmit =
+        program.status === "DRAFT" && status === "UNDER_REVIEW";
+      if (!sponsorMaySubmit) {
+        return respondError(
+          res,
+          403,
+          "Sponsors can only submit their own draft program for administrative review."
+        );
+      }
     }
-    if (status === "OPEN") {
+    if (["OPEN", "UNDER_REVIEW"].includes(status)) {
       try {
         await requireActiveOrganization(program);
       } catch (error) {
@@ -1274,6 +1458,13 @@ const verifyBeneficiary = async (req, res) => {
 
 const updateBeneficiaryStatus = async (req, res) => {
   try {
+    if (!isAdmin(req.user)) {
+      return respondError(
+        res,
+        403,
+        "Only an authorized administrator can review Empowerment applications."
+      );
+    }
     const beneficiary = await EmpowermentBeneficiary.findById(req.params.id);
     if (!beneficiary) return respondError(res, 404, "Beneficiary was not found.");
 
@@ -1875,6 +2066,13 @@ const listProgramFunding = async (req, res) => {
 
 const createDisbursementPreview = async (req, res) => {
   try {
+    if (!isHeadOffice(req.user)) {
+      return respondError(
+        res,
+        403,
+        "Only Head Office can prepare Empowerment disbursement previews."
+      );
+    }
     const program = await getManagedProgram(req, req.params.programId);
     if (!program) return respondError(res, 403, "You cannot view this program.");
     await requireActiveOrganization(program);
@@ -2568,6 +2766,7 @@ module.exports = {
   updateOrganization,
   createProgram,
   listPrograms,
+  getSponsorDashboard,
   getProgram,
   updateProgram,
   addBeneficiary,

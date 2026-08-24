@@ -28,7 +28,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
     _load();
   }
 
@@ -67,20 +67,12 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
       final List<Map<String, dynamic>> results =
           await Future.wait(<Future<Map<String, dynamic>>>[
         _api.get('/available-programs'),
-        _api.get('/organizations',
-            query: <String, String>{'limit': '100'}),
-        _api.get('/organizations',
-            query: <String, String>{'eligible': 'true', 'limit': '100'}),
-        _api.get('/programs'),
         _api.get('/my-applications'),
       ]);
       if (!mounted) return;
       setState(() {
         _available = _list(results[0], 'programs');
-        _organizations = _list(results[1], 'organizations');
-        _eligibleOrganizations = _list(results[2], 'organizations');
-        _programs = _list(results[3], 'programs');
-        _applications = _list(results[4], 'applications');
+        _applications = _list(results[1], 'applications');
         _loading = false;
       });
     } on EmpowermentApiException catch (error) {
@@ -702,6 +694,89 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
     );
   }
 
+  Future<void> _showApplicantProgram(Map<String, dynamic> program) {
+    final Map<String, dynamic> organization = program['organization'] is Map
+        ? Map<String, dynamic>.from(program['organization'] as Map)
+        : <String, dynamic>{};
+    final String location = _text(program['state']).isEmpty
+        ? 'Nationwide'
+        : _text(program['state']);
+    final String deadline = _text(
+      program['endDate'] ?? program['applicationDeadline'],
+      'No deadline published',
+    );
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  _text(program['name'], 'Empowerment program'),
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                _chip(_text(program['status'], 'OPEN')),
+                const SizedBox(height: 18),
+                _detailRow('Sponsor', _text(organization['name'], 'Verified sponsor')),
+                _detailRow('Category', _text(program['targetGroup'], 'GENERAL').replaceAll('_', ' ')),
+                _detailRow('Location', location),
+                _detailRow('Benefit', _currency(program['amountPerBeneficiary'])),
+                _detailRow('Application deadline', deadline),
+                if (_text(program['eligibilityRequirements']).isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 16),
+                  const Text('Eligibility requirements',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  Text(_text(program['eligibilityRequirements'])),
+                ],
+                if (_text(program['description']).isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 16),
+                  const Text('About this program',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  Text(_text(program['description'])),
+                ],
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.of(sheetContext).pop();
+                      _apply(program);
+                    },
+                    child: const Text('Apply now'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            SizedBox(
+              width: 138,
+              child: Text(label, style: const TextStyle(color: Color(0xFF667085))),
+            ),
+            Expanded(
+              child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      );
+
   Widget _formField(
     TextEditingController controller,
     String label, {
@@ -811,8 +886,8 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
             Row(
               children: <Widget>[
                 TextButton(
-                  onPressed: () => _showProgram(program),
-                  child: const Text('View progress'),
+                  onPressed: () => _showApplicantProgram(program),
+                  child: const Text('View details'),
                 ),
                 const Spacer(),
                 if (canApply)
@@ -840,6 +915,57 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
         title: Text(_text(organization['name'])),
         subtitle: Text(_text(organization['organizationType']).replaceAll('_', ' ')),
         trailing: _chip(_text(organization['status'], 'PENDING')),
+      ),
+    );
+  }
+
+  Widget _applicationCard(Map<String, dynamic> application) {
+    final Map<String, dynamic> program = application['program'] is Map
+        ? Map<String, dynamic>.from(application['program'] as Map)
+        : <String, dynamic>{};
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      child: ListTile(
+        leading: const CircleAvatar(
+          backgroundColor: Color(0xFFEAF7F0),
+          child: Icon(Icons.assignment_turned_in_outlined,
+              color: Color(0xFF08783E)),
+        ),
+        title: Text(_text(program['name'], 'Empowerment application')),
+        subtitle: Text(
+          'Verification: ${_text(application['verificationStatus'], 'PENDING').replaceAll('_', ' ')}',
+        ),
+        trailing: _chip(_text(application['applicationStatus'], 'SUBMITTED')),
+      ),
+    );
+  }
+
+  Widget _benefitCard(Map<String, dynamic> application) {
+    final Map<String, dynamic> program = application['program'] is Map
+        ? Map<String, dynamic>.from(application['program'] as Map)
+        : <String, dynamic>{};
+    final bool paid =
+        _text(application['applicationStatus']).toUpperCase() == 'PAID';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor:
+              paid ? const Color(0xFFEAF7F0) : const Color(0xFFFFF7DF),
+          child: Icon(
+            paid ? Icons.account_balance_wallet_rounded : Icons.schedule_rounded,
+            color: paid ? const Color(0xFF08783E) : const Color(0xFFB54708),
+          ),
+        ),
+        title: Text(_text(program['name'], 'Empowerment benefit')),
+        subtitle: Text(
+          paid
+              ? 'Payment ref: ${_text(application['paymentReference'], 'Pending reference')}'
+              : 'Approved benefit: ${_currency(application['amount'] ?? program['amountPerBeneficiary'])}',
+        ),
+        trailing: _chip(paid ? 'PAID' : 'APPROVED'),
       ),
     );
   }
@@ -884,18 +1010,11 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: const <Tab>[
-            Tab(text: 'Discover'),
-            Tab(text: 'My programs'),
-            Tab(text: 'Organizations'),
-            Tab(text: 'Applications'),
+            Tab(text: 'Available Programs'),
+            Tab(text: 'My Applications'),
+            Tab(text: 'My Benefits'),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _tabs.index == 2 ? _createOrganization() : _createProgram(),
-        backgroundColor: const Color(0xFF08783E),
-        icon: Icon(_tabs.index == 2 ? Icons.add_business_rounded : Icons.add_circle_outline),
-        label: Text(_tabs.index == 2 ? 'Organization' : 'Program'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -913,8 +1032,8 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
                           const SizedBox(height: 20),
                           if (_available.isEmpty)
                             _empty(
-                              'No programs available',
-                              'Verified organizations have not opened a public program yet.',
+                              'No empowerment programs available yet',
+                              'When a verified empowerment program opens, it will appear here.',
                               _load,
                               'Refresh',
                             )
@@ -926,62 +1045,41 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
                         ],
                       ),
                     ),
-                    _programs.isEmpty
-                        ? _empty(
-                            'No programs yet',
-                            'Create a verified organization, then create your first program.',
-                            _createProgram,
-                            'Create program',
-                          )
-                        : ListView(
-                            padding: const EdgeInsets.all(16),
-                            children: _programs
-                                .map((Map<String, dynamic> program) =>
-                                    _programCard(program))
-                                .toList(),
-                          ),
-                    _organizations.isEmpty
-                        ? _empty(
-                            'No organizations yet',
-                            'Submit an organization for ServicePay verification.',
-                            _createOrganization,
-                            'Create organization',
-                          )
-                        : ListView(
-                            padding: const EdgeInsets.all(16),
-                            children: _organizations
-                                .map(_organizationCard)
-                                .toList(),
-                          ),
                     _applications.isEmpty
                         ? _empty(
                             'No applications yet',
-                            'Explore verified public programs and apply securely.',
+                            'Apply to a verified opportunity to track it here.',
                             () => _tabs.animateTo(0),
-                            'Discover programs',
+                            'Browse programs',
                           )
                         : ListView(
                             padding: const EdgeInsets.all(16),
                             children: _applications
                                 .map(
-                                  (Map<String, dynamic> application) => Card(
-                                    child: ListTile(
-                                      leading: const Icon(Icons.assignment_turned_in_outlined,
-                                          color: Color(0xFF08783E)),
-                                      title: Text(
-                                        application['program'] is Map
-                                            ? _text((application['program'] as Map)['name'])
-                                            : 'Empowerment application',
-                                      ),
-                                      subtitle: Text(
-                                        'Verification: ${_text(application['verificationStatus'], 'PENDING')}',
-                                      ),
-                                      trailing: _chip(
-                                        _text(application['applicationStatus'], 'SUBMITTED'),
-                                      ),
-                                    ),
-                                  ),
+                                  (Map<String, dynamic> application) => _applicationCard(application),
                                 )
+                                .toList(),
+                          ),
+                    _applications
+                            .where((Map<String, dynamic> item) =>
+                                <String>['APPROVED', 'PAID'].contains(
+                                  _text(item['applicationStatus']).toUpperCase(),
+                                ))
+                            .isEmpty
+                        ? _empty(
+                            'No benefits yet',
+                            'Approved and paid empowerment benefits will appear here.',
+                            _load,
+                            'Refresh',
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.all(16),
+                            children: _applications
+                                .where((Map<String, dynamic> item) =>
+                                    <String>['APPROVED', 'PAID'].contains(
+                                      _text(item['applicationStatus']).toUpperCase(),
+                                    ))
+                                .map(_benefitCard)
                                 .toList(),
                           ),
                   ],
@@ -1003,12 +1101,12 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
             Icon(Icons.volunteer_activism_rounded, color: Colors.white, size: 34),
             SizedBox(height: 12),
             Text(
-              'Empower communities securely',
+              'Opportunities for you',
               style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900),
             ),
             SizedBox(height: 6),
             Text(
-              'Apply to verified opportunities or run your own transparent, wallet-backed program.',
+              'Discover verified programs, apply securely, and follow every step of your benefit.',
               style: TextStyle(color: Color(0xFFD4F5DD), height: 1.4),
             ),
           ],

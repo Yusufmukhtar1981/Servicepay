@@ -15,6 +15,7 @@ const empowermentOrganizationSchema = new mongoose.Schema(
         "STATE_GOVERNMENT",
         "LOCAL_GOVERNMENT",
         "POLITICIAN",
+        "ASSOCIATION",
         "NGO",
         "COMPANY",
         "COOPERATIVE",
@@ -79,6 +80,22 @@ const empowermentOrganizationSchema = new mongoose.Schema(
       type: String,
       enum: ["PENDING", "ACTIVE", "SUSPENDED", "REJECTED"],
       default: "PENDING",
+      index: true,
+    },
+
+    // `status` is retained for existing Admin and legacy records. New customer
+    // surfaces use this explicit lifecycle so "ACTIVE" is never mistaken for a
+    // sponsor-controlled operational state.
+    verificationStatus: {
+      type: String,
+      enum: [
+        "DRAFT",
+        "PENDING_VERIFICATION",
+        "VERIFIED",
+        "REJECTED",
+        "SUSPENDED",
+      ],
+      default: "PENDING_VERIFICATION",
       index: true,
     },
 

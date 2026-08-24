@@ -12,6 +12,7 @@ const {
   createProgram,
   addBeneficiary,
   listPrograms,
+  getSponsorDashboard,
   getProgram,
   updateProgram,
   listBeneficiaries,
@@ -72,6 +73,11 @@ router.post(
 router.get(
   "/programs",
   listPrograms
+);
+
+router.get(
+  "/sponsor/dashboard",
+  getSponsorDashboard
 );
 
 router.get(
