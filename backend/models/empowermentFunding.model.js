@@ -32,6 +32,24 @@ const empowermentFundingSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    note: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: "",
+    },
+    sourceReference: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: "",
+    },
+    type: {
+      type: String,
+      enum: ["FUNDING"],
+      default: "FUNDING",
+      required: true,
+    },
     idempotencyKey: {
       type: String,
       required: true,
@@ -42,7 +60,7 @@ const empowermentFundingSchema = new mongoose.Schema(
     transaction: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Transaction",
-      required: true,
+      default: null,
     },
     status: {
       type: String,
