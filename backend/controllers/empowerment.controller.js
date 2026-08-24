@@ -1074,6 +1074,67 @@ const listBeneficiaries = async (req, res) => {
   }
 };
 
+const listEligibleBeneficiaries = async (req, res) => {
+  try {
+    if (!isHeadOffice(req.user)) {
+      return respondError(
+        res,
+        403,
+        "Only Head Office can select beneficiaries for bulk disbursement."
+      );
+    }
+
+    const program = await getManagedProgram(req, req.params.programId);
+    if (!program) {
+      return respondError(res, 403, "You cannot view this program's beneficiaries.");
+    }
+    await requireActiveOrganization(program);
+
+    const limit = Math.min(
+      200,
+      Math.max(1, Number(req.query?.limit || 200))
+    );
+    const candidates = await EmpowermentBeneficiary.find({
+      program: program._id,
+      applicationStatus: "APPROVED",
+      verificationStatus: "VERIFIED",
+      user: { $ne: null },
+      paymentReference: { $in: [null, ""] },
+      paidAt: null,
+    })
+      .populate({
+        path: "user",
+        select: "fullName phone email status walletBalance",
+        match: { status: "ACTIVE", walletBalance: { $gte: 0 } },
+      })
+      .sort({ createdAt: 1 })
+      .limit(limit);
+
+    const linkedCandidates = candidates.filter((beneficiary) => beneficiary.user);
+    const paidPayouts = await EmpowermentPayout.find({
+      program: program._id,
+      beneficiary: { $in: linkedCandidates.map((beneficiary) => beneficiary._id) },
+    }).select("beneficiary");
+    const paidIds = new Set(paidPayouts.map((payout) => String(payout.beneficiary)));
+    const beneficiaries = linkedCandidates.filter(
+      (beneficiary) => !paidIds.has(String(beneficiary._id))
+    );
+
+    return res.status(200).json({
+      success: true,
+      beneficiaries,
+      eligibility: {
+        eligibleCount: beneficiaries.length,
+        amountPerBeneficiary: Number(program.amountPerBeneficiary || 0),
+        financials: programFinancials(program),
+      },
+    });
+  } catch (error) {
+    console.error("LIST BULK DISBURSEMENT ELIGIBILITY ERROR:", error);
+    return respondError(res, 500, "Unable to load eligible beneficiaries.");
+  }
+};
+
 const verifyBeneficiary = async (req, res) => {
   try {
     if (!isAdmin(req.user)) {
@@ -1851,6 +1912,7 @@ const disburseProgram = async (req, res) => {
   const session = await mongoose.startSession();
   let idempotencyKey = "";
   let requestedSelection = null;
+  const bulkDisbursement = req.body?.bulkDisbursement === true;
   try {
     if (!isHeadOffice(req.user)) {
       return respondError(
@@ -1926,6 +1988,8 @@ const disburseProgram = async (req, res) => {
         applicationStatus: "APPROVED",
         verificationStatus: "VERIFIED",
         user: { $ne: null },
+        paymentReference: { $in: [null, ""] },
+        paidAt: null,
       };
       if (beneficiaryIds) {
         beneficiaryFilter._id = { $in: beneficiaryIds };
@@ -1996,6 +2060,7 @@ const disburseProgram = async (req, res) => {
               createdBy: req.user._id,
               metadata: {
                 selectedBeneficiaryIds: requestedSelection,
+                disbursementType: bulkDisbursement ? "BULK" : "SINGLE",
               },
             },
           ],
@@ -2167,10 +2232,35 @@ const disburseProgram = async (req, res) => {
       });
     });
 
+    const currentProgram = await EmpowermentProgram.findById(
+      req.params.programId
+    );
+    const results = Array.isArray((duplicate || batch)?.results)
+      ? (duplicate || batch).results
+      : [];
+    const successful = results.filter(
+      (result) => String(result?.status || "").toUpperCase() === "SUCCESSFUL"
+    );
+    const failed = results.filter(
+      (result) => String(result?.status || "").toUpperCase() === "FAILED"
+    );
+
     return res.status(duplicate ? 200 : 201).json({
       success: true,
       idempotent: Boolean(duplicate),
       batch: duplicate || batch,
+      financials: programFinancials(currentProgram),
+      resultSummary: {
+        successful,
+        skipped: [],
+        failed,
+        totalAmountPaid: successful.reduce(
+          (total, result) => total + Number(result?.amount || 0),
+          0
+        ),
+        remainingProgramBalance: programFinancials(currentProgram)
+          .remainingBalance,
+      },
     });
   } catch (error) {
     if (error?.code === 11000 && idempotencyKey) {
@@ -2202,6 +2292,40 @@ const disburseProgram = async (req, res) => {
           success: true,
           idempotent: true,
           batch: existing,
+          financials: programFinancials(
+            await EmpowermentProgram.findById(existing.program)
+          ),
+          resultSummary: {
+            successful: Array.isArray(existing.results)
+              ? existing.results.filter(
+                  (result) =>
+                    String(result?.status || "").toUpperCase() ===
+                    "SUCCESSFUL"
+                )
+              : [],
+            skipped: [],
+            failed: Array.isArray(existing.results)
+              ? existing.results.filter(
+                  (result) =>
+                    String(result?.status || "").toUpperCase() === "FAILED"
+                )
+              : [],
+            totalAmountPaid: Array.isArray(existing.results)
+              ? existing.results
+                  .filter(
+                    (result) =>
+                      String(result?.status || "").toUpperCase() ===
+                      "SUCCESSFUL"
+                  )
+                  .reduce(
+                    (total, result) => total + Number(result?.amount || 0),
+                    0
+                  )
+              : 0,
+            remainingProgramBalance: programFinancials(
+              await EmpowermentProgram.findById(existing.program)
+            ).remainingBalance,
+          },
         });
       }
     }
@@ -2220,6 +2344,30 @@ const disburseBeneficiary = async (req, res) => {
   req.body = {
     ...(req.body || {}),
     beneficiaryIds: [req.params.beneficiaryId],
+  };
+  return disburseProgram(req, res);
+};
+
+const bulkDisburseProgram = async (req, res) => {
+  let beneficiaryIds;
+  try {
+    beneficiaryIds = selectedBeneficiaryIds(req);
+  } catch (error) {
+    return respondError(res, error.status || 400, error.message);
+  }
+
+  if (!beneficiaryIds) {
+    return respondError(
+      res,
+      400,
+      "Select at least one beneficiary for bulk disbursement."
+    );
+  }
+
+  req.body = {
+    ...(req.body || {}),
+    beneficiaryIds,
+    bulkDisbursement: true,
   };
   return disburseProgram(req, res);
 };
@@ -2420,6 +2568,7 @@ module.exports = {
   updateProgram,
   addBeneficiary,
   listBeneficiaries,
+  listEligibleBeneficiaries,
   verifyBeneficiary,
   updateOrganizationStatus,
   updateProgramStatus,
@@ -2434,6 +2583,7 @@ module.exports = {
   createDisbursementPreview,
   disburseProgram,
   disburseBeneficiary,
+  bulkDisburseProgram,
   prepareDisbursementBatch,
   listDisbursementBatches,
   getProgramReport,
