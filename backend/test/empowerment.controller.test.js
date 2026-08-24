@@ -19,6 +19,10 @@ const {
   disburseProgram,
   disburseBeneficiary,
   listDisbursementBatches,
+  listPrograms,
+  getProgramStatistics,
+  getProgramReport,
+  getEmpowermentDashboardSummary,
 } = require("../controllers/empowerment.controller");
 const User = require("../models/user.model");
 const KycProfile = require("../models/kycProfile.model");
@@ -509,6 +513,7 @@ test(
   { timeout: 120_000 },
   async () => {
     const owner = await createUser({
+      role: "HEAD_OFFICE",
       walletBalance: 1_000,
       transactionPin: "1234",
     });
@@ -516,7 +521,7 @@ test(
       owner,
       targetBeneficiaries: 2,
       amountPerBeneficiary: 100,
-      status: "OPEN",
+      status: "APPROVED",
     });
     const options = {
       user: owner,
@@ -568,6 +573,7 @@ test(
   { timeout: 120_000 },
   async () => {
     const owner = await createUser({
+      role: "HEAD_OFFICE",
       walletBalance: 1_000,
       transactionPin: "1234",
     });
@@ -575,7 +581,7 @@ test(
       owner,
       targetBeneficiaries: 2,
       amountPerBeneficiary: 100,
-      status: "OPEN",
+      status: "APPROVED",
     });
     const options = {
       user: owner,
@@ -610,6 +616,267 @@ test(
     const savedProgram = await EmpowermentProgram.findById(program._id);
     assert.equal(savedProgram.totalFundedAmount, 100);
     assert.equal(savedProgram.availableFundingAmount, 100);
+  }
+);
+
+test(
+  "Head Office can top up an approved ₦1,000 program and report an exactly-once payout",
+  { timeout: 120_000 },
+  async () => {
+    const headOffice = await createUser({
+      role: "HEAD_OFFICE",
+      walletBalance: 5_000,
+      transactionPin: "1234",
+    });
+    const recipient = await createUser({ walletBalance: 25 });
+    await createKyc(recipient);
+    const program = await createProgram({
+      owner: headOffice,
+      status: "APPROVED",
+      targetBeneficiaries: 2,
+      amountPerBeneficiary: 1_000,
+    });
+    const beneficiary = await createBeneficiary({ program, user: recipient });
+    await EmpowermentProgram.updateOne(
+      { _id: program._id },
+      { $set: { beneficiaryCount: 1, totalApproved: 1 } }
+    );
+
+    const fundingRequests = [
+      { amount: 1_000, key: "approved-program-funding-1000" },
+      { amount: 1_000, key: "approved-program-topup-1000" },
+    ];
+    for (let index = 0; index < fundingRequests.length; index += 1) {
+      const fundingRequest = fundingRequests[index];
+      const response = await call(fundProgram, {
+        user: headOffice,
+        params: { programId: String(program._id) },
+        body: {
+          amount: fundingRequest.amount,
+          transactionPin: "1234",
+        },
+        headers: { "Idempotency-Key": fundingRequest.key },
+      });
+      assert.equal(response.status, 201);
+      assert.equal(response.body.financials.fundedAmount, (index + 1) * 1_000);
+    }
+
+    const fundedProgram = await EmpowermentProgram.findById(program._id);
+    assert.equal(fundedProgram.totalBudget, 2_000);
+    assert.equal(fundedProgram.totalFundedAmount, 2_000);
+    assert.equal(fundedProgram.availableFundingAmount, 2_000);
+    assert.equal((await User.findById(headOffice._id)).walletBalance, 3_000);
+    assert.equal(await EmpowermentFunding.countDocuments({ program: program._id }), 2);
+    assert.equal(
+      await LedgerEntry.countDocuments({
+        service: "EMPOWERMENT_FUNDING",
+        direction: "DEBIT",
+      }),
+      2
+    );
+    assert.equal(
+      await EmpowermentAuditLog.countDocuments({
+        program: program._id,
+        action: "PROGRAM_FUNDED",
+      }),
+      2
+    );
+
+    const [statistics, report, summary] = await Promise.all([
+      call(getProgramStatistics, {
+        user: headOffice,
+        params: { programId: String(program._id) },
+      }),
+      call(getProgramReport, {
+        user: headOffice,
+        params: { programId: String(program._id) },
+      }),
+      call(getEmpowermentDashboardSummary, { user: headOffice }),
+    ]);
+    assert.equal(statistics.status, 200);
+    assert.equal(statistics.body.statistics.total, 1);
+    assert.equal(statistics.body.statistics.approved, 1);
+    assert.equal(statistics.body.statistics.fundedAmount, 2_000);
+    assert.equal(statistics.body.statistics.availableBalance, 2_000);
+    assert.equal(report.status, 200);
+    assert.equal(report.body.report.financials.totalBudget, 2_000);
+    assert.equal(report.body.report.financials.fundedAmount, 2_000);
+    assert.equal(report.body.report.financials.availableBalance, 2_000);
+    assert.equal(summary.status, 200);
+    assert.equal(summary.body.summary.programs, 1);
+    assert.equal(summary.body.summary.beneficiaryCount, 1);
+    assert.equal(summary.body.summary.paidBeneficiaries, 0);
+    assert.equal(summary.body.summary.financials.availableBalance, 2_000);
+
+    const payoutOptions = {
+      user: headOffice,
+      params: {
+        programId: String(program._id),
+        beneficiaryId: String(beneficiary._id),
+      },
+      body: {},
+      headers: { "Idempotency-Key": "approved-program-payout-1000" },
+    };
+    const firstPayout = await call(disburseBeneficiary, payoutOptions);
+    const payoutRetry = await call(disburseBeneficiary, payoutOptions);
+    assert.equal(firstPayout.status, 201);
+    assert.equal(payoutRetry.status, 200);
+    assert.equal(payoutRetry.body.idempotent, true);
+    assert.equal(
+      String(firstPayout.body.batch._id),
+      String(payoutRetry.body.batch._id)
+    );
+
+    const [
+      paidProgram,
+      paidRecipient,
+      paidStatistics,
+      paidReport,
+      paidSummary,
+      refreshedPrograms,
+    ] =
+      await Promise.all([
+        EmpowermentProgram.findById(program._id),
+        User.findById(recipient._id),
+        call(getProgramStatistics, {
+          user: headOffice,
+          params: { programId: String(program._id) },
+        }),
+        call(getProgramReport, {
+          user: headOffice,
+          params: { programId: String(program._id) },
+        }),
+        call(getEmpowermentDashboardSummary, { user: headOffice }),
+        call(listPrograms, { user: headOffice }),
+      ]);
+    assert.equal(paidRecipient.walletBalance, 1_025);
+    assert.equal(paidProgram.availableFundingAmount, 1_000);
+    assert.equal(paidProgram.totalDisbursedAmount, 1_000);
+    assert.equal(paidProgram.totalPaid, 1);
+    assert.equal(await EmpowermentPayout.countDocuments({ program: program._id }), 1);
+    assert.equal(
+      await LedgerEntry.countDocuments({
+        service: "EMPOWERMENT_DISBURSEMENT",
+        direction: "CREDIT",
+      }),
+      1
+    );
+    assert.equal(paidStatistics.body.statistics.paid, 1);
+    assert.equal(paidStatistics.body.statistics.availableBalance, 1_000);
+    assert.equal(paidReport.body.report.financials.totalDisbursedAmount, 1_000);
+    assert.equal(paidReport.body.report.financials.availableBalance, 1_000);
+    assert.equal(paidSummary.body.summary.paidBeneficiaries, 1);
+    assert.equal(paidSummary.body.summary.financials.availableBalance, 1_000);
+    assert.equal(paidSummary.body.summary.totalDisbursed, 1_000);
+    assert.equal(refreshedPrograms.status, 200);
+    assert.equal(refreshedPrograms.body.programs[0].beneficiaryCounts.total, 1);
+    assert.equal(refreshedPrograms.body.programs[0].beneficiaryCounts.approved, 0);
+    assert.equal(refreshedPrograms.body.programs[0].beneficiaryCounts.paid, 1);
+  }
+);
+
+test(
+  "only Head Office can fund an approved Empowerment program",
+  { timeout: 120_000 },
+  async () => {
+    const owner = await createUser({
+      walletBalance: 2_000,
+      transactionPin: "1234",
+    });
+    const program = await createProgram({
+      owner,
+      status: "APPROVED",
+      targetBeneficiaries: 1,
+      amountPerBeneficiary: 1_000,
+    });
+
+    const response = await call(fundProgram, {
+      user: owner,
+      params: { programId: String(program._id) },
+      body: { amount: 1_000, transactionPin: "1234" },
+      headers: { "Idempotency-Key": "customer-program-funding-1000" },
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await User.findById(owner._id)).walletBalance, 2_000);
+    assert.equal(await EmpowermentFunding.countDocuments(), 0);
+    assert.equal(
+      (await EmpowermentProgram.findById(program._id)).availableFundingAmount,
+      0
+    );
+  }
+);
+
+test(
+  "monetary idempotency keys cannot be reused for another program or beneficiary",
+  { timeout: 120_000 },
+  async () => {
+    const headOffice = await createUser({
+      role: "HEAD_OFFICE",
+      walletBalance: 5_000,
+      transactionPin: "1234",
+    });
+    const firstRecipient = await createUser();
+    const secondRecipient = await createUser();
+    await Promise.all([createKyc(firstRecipient), createKyc(secondRecipient)]);
+    const program = await createProgram({
+      owner: headOffice,
+      status: "APPROVED",
+      targetBeneficiaries: 2,
+      amountPerBeneficiary: 1_000,
+    });
+    const otherProgram = await createProgram({
+      owner: headOffice,
+      status: "APPROVED",
+      targetBeneficiaries: 1,
+      amountPerBeneficiary: 1_000,
+    });
+    const [firstBeneficiary, secondBeneficiary] = await Promise.all([
+      createBeneficiary({ program, user: firstRecipient }),
+      createBeneficiary({ program, user: secondRecipient }),
+    ]);
+
+    const funding = await call(fundProgram, {
+      user: headOffice,
+      params: { programId: String(program._id) },
+      body: { amount: 1_000, transactionPin: "1234" },
+      headers: { "Idempotency-Key": "bound-funding-key-1000" },
+    });
+    assert.equal(funding.status, 201);
+    const crossProgramFunding = await call(fundProgram, {
+      user: headOffice,
+      params: { programId: String(otherProgram._id) },
+      body: { amount: 1_000, transactionPin: "1234" },
+      headers: { "Idempotency-Key": "bound-funding-key-1000" },
+    });
+    assert.equal(crossProgramFunding.status, 409);
+    assert.equal(
+      (await EmpowermentProgram.findById(otherProgram._id)).availableFundingAmount,
+      0
+    );
+
+    const firstPayout = await call(disburseBeneficiary, {
+      user: headOffice,
+      params: {
+        programId: String(program._id),
+        beneficiaryId: String(firstBeneficiary._id),
+      },
+      body: {},
+      headers: { "Idempotency-Key": "bound-payout-key-1000" },
+    });
+    assert.equal(firstPayout.status, 201);
+    const secondPayout = await call(disburseBeneficiary, {
+      user: headOffice,
+      params: {
+        programId: String(program._id),
+        beneficiaryId: String(secondBeneficiary._id),
+      },
+      body: {},
+      headers: { "Idempotency-Key": "bound-payout-key-1000" },
+    });
+    assert.equal(secondPayout.status, 409);
+    assert.equal((await User.findById(secondRecipient._id)).walletBalance, 0);
+    assert.equal(await EmpowermentPayout.countDocuments({ program: program._id }), 1);
   }
 );
 
@@ -1283,6 +1550,7 @@ test(
   { timeout: 120_000 },
   async () => {
     const owner = await createUser({
+      role: "HEAD_OFFICE",
       walletBalance: 1_000,
       transactionPin: "1234",
     });
@@ -1290,7 +1558,7 @@ test(
       owner,
       targetBeneficiaries: 2,
       amountPerBeneficiary: 100,
-      status: "OPEN",
+      status: "APPROVED",
     });
     const originalCreate = EmpowermentFunding.create;
     EmpowermentFunding.create = async () => {

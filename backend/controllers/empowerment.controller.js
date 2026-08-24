@@ -103,6 +103,29 @@ const asMoney = (value) => {
   return Math.round((amount + Number.EPSILON) * 100) / 100;
 };
 
+const programFinancials = (program) => {
+  const totalBudget = Math.max(0, Number(program?.totalBudget || 0));
+  const fundedAmount = Math.max(0, Number(program?.totalFundedAmount || 0));
+  const availableBalance = Math.max(
+    0,
+    Number(program?.availableFundingAmount || 0)
+  );
+  const totalDisbursedAmount = Math.max(
+    0,
+    Number(program?.totalDisbursedAmount || 0)
+  );
+
+  return {
+    totalBudget,
+    fundedAmount,
+    availableBalance,
+    totalDisbursedAmount,
+    remainingFundingCapacity: Math.max(0, totalBudget - fundedAmount),
+    totalFundedAmount: fundedAmount,
+    availableFundingAmount: availableBalance,
+  };
+};
+
 const asPositiveInteger = (value) => {
   const number = Number(value);
 
@@ -162,6 +185,19 @@ const selectedBeneficiaryIds = (req) => {
     );
   }
   return ids;
+};
+
+const sameIdSet = (first, second) => {
+  if (!Array.isArray(first) || !Array.isArray(second)) {
+    return first === second;
+  }
+
+  const normalizedFirst = first.map(String).sort();
+  const normalizedSecond = second.map(String).sort();
+  return (
+    normalizedFirst.length === normalizedSecond.length &&
+    normalizedFirst.every((value, index) => value === normalizedSecond[index])
+  );
 };
 
 const sessionQuery = (query, session) => {
@@ -678,10 +714,49 @@ const listPrograms = async (req, res) => {
         .limit(limit),
       EmpowermentProgram.countDocuments(filter),
     ]);
+    const beneficiaryCounts = programs.length
+      ? await EmpowermentBeneficiary.aggregate([
+          { $match: { program: { $in: programs.map((program) => program._id) } } },
+          {
+            $group: {
+              _id: "$program",
+              total: { $sum: 1 },
+              approved: {
+                $sum: {
+                  $cond: [{ $eq: ["$applicationStatus", "APPROVED"] }, 1, 0],
+                },
+              },
+              paid: {
+                $sum: {
+                  $cond: [{ $eq: ["$applicationStatus", "PAID"] }, 1, 0],
+                },
+              },
+            },
+          },
+        ])
+      : [];
+    const countsByProgramId = new Map(
+      beneficiaryCounts.map((counts) => [
+        String(counts._id),
+        {
+          total: Number(counts.total || 0),
+          approved: Number(counts.approved || 0),
+          paid: Number(counts.paid || 0),
+        },
+      ])
+    );
 
     return res.status(200).json({
       success: true,
-      programs,
+      programs: programs.map((program) => ({
+        ...program.toObject(),
+        financials: programFinancials(program),
+        beneficiaryCounts: countsByProgramId.get(String(program._id)) || {
+          total: 0,
+          approved: 0,
+          paid: 0,
+        },
+      })),
       pagination: { page, limit, total },
     });
   } catch (error) {
@@ -712,7 +787,11 @@ const getProgram = async (req, res) => {
       return respondError(res, 403, "You cannot view this private program.");
     }
 
-    return res.status(200).json({ success: true, program });
+    return res.status(200).json({
+      success: true,
+      program,
+      financials: programFinancials(program),
+    });
   } catch (error) {
     console.error("GET EMPOWERMENT PROGRAM ERROR:", error);
     return respondError(res, 500, "Unable to load empowerment program.");
@@ -1487,7 +1566,7 @@ const getProgramStatistics = async (req, res) => {
       program,
       statistics: {
         ...counts,
-        totalBudget: Number(program.totalBudget || 0),
+        ...programFinancials(program),
         totalFunded: Number(program.totalFundedAmount || 0),
         totalDisbursed: Number(program.totalDisbursedAmount || 0),
         remainingProgramFunding: Number(program.availableFundingAmount || 0),
@@ -1527,8 +1606,18 @@ const verifyTransactionPin = async (req, session) => {
 const fundProgram = async (req, res) => {
   const session = await mongoose.startSession();
   let idempotencyKey = "";
+  let requestedAmount = null;
   try {
+    if (!isHeadOffice(req.user)) {
+      return respondError(
+        res,
+        403,
+        "Only Head Office can fund or top up Empowerment programs."
+      );
+    }
+
     const amount = asMoney(req.body?.amount);
+    requestedAmount = amount;
     idempotencyKey = getIdempotencyKey(req);
     if (!amount || !idempotencyKey || idempotencyKey.length < 12) {
       return respondError(
@@ -1540,6 +1629,7 @@ const fundProgram = async (req, res) => {
 
     let duplicate = null;
     let funding = null;
+    let financials = null;
     await session.withTransaction(async () => {
       const existing = await EmpowermentFunding.findOne({ idempotencyKey }).session(
         session
@@ -1550,7 +1640,22 @@ const fundProgram = async (req, res) => {
             status: 409,
           });
         }
+        if (
+          documentId(existing.program) !== String(req.params.programId) ||
+          Number(existing.amount) !== amount
+        ) {
+          throw Object.assign(
+            new Error(
+              "Idempotency key belongs to a different program funding request."
+            ),
+            { status: 409 }
+          );
+        }
         duplicate = existing;
+        const existingProgram = await EmpowermentProgram.findById(
+          existing.program
+        ).session(session);
+        financials = programFinancials(existingProgram);
         return;
       }
 
@@ -1558,10 +1663,11 @@ const fundProgram = async (req, res) => {
       if (!program) {
         throw Object.assign(new Error("You cannot fund this program."), { status: 403 });
       }
-      if (!["OPEN", "APPROVED", "DISBURSING"].includes(program.status)) {
-        throw Object.assign(new Error("This program cannot receive funding."), {
-          status: 409,
-        });
+      if (!["APPROVED", "DISBURSING"].includes(program.status)) {
+        throw Object.assign(
+          new Error("Program must be approved before it can receive funding."),
+          { status: 409 }
+        );
       }
       await requireActiveOrganization(program, session);
       const remainingBudget = Math.round(
@@ -1659,6 +1765,7 @@ const fundProgram = async (req, res) => {
           { session }
         )
       )[0];
+      financials = programFinancials(updatedProgram);
 
       await audit({
         req,
@@ -1667,7 +1774,7 @@ const fundProgram = async (req, res) => {
         entityId: funding._id,
         program: program._id,
         reference,
-        after: { amount, availableFundingAmount: updatedProgram.availableFundingAmount },
+        after: programFinancials(updatedProgram),
         session,
       });
     });
@@ -1676,18 +1783,29 @@ const fundProgram = async (req, res) => {
       success: true,
       idempotent: Boolean(duplicate),
       funding: duplicate || funding,
+      financials,
     });
   } catch (error) {
     if (error?.code === 11000 && idempotencyKey) {
       const existing = await EmpowermentFunding.findOne({ idempotencyKey });
       if (existing) {
-        if (documentId(existing.fundedBy) !== actorId(req)) {
-          return respondError(res, 409, "Idempotency key is already in use.");
+        if (
+          documentId(existing.fundedBy) !== actorId(req) ||
+          documentId(existing.program) !== String(req.params.programId) ||
+          Number(existing.amount) !== requestedAmount
+        ) {
+          return respondError(
+            res,
+            409,
+            "Idempotency key is already in use for a different funding request."
+          );
         }
+        const program = await EmpowermentProgram.findById(existing.program);
         return res.status(200).json({
           success: true,
           idempotent: true,
           funding: existing,
+          financials: programFinancials(program),
         });
       }
     }
@@ -1723,6 +1841,7 @@ const createDisbursementPreview = async (req, res) => {
         amountPerBeneficiary: Number(program.amountPerBeneficiary || 0),
         totalAmount,
         availableFunding: Number(program.availableFundingAmount || 0),
+        financials: programFinancials(program),
         payable,
       },
     });
@@ -1735,6 +1854,7 @@ const createDisbursementPreview = async (req, res) => {
 const disburseProgram = async (req, res) => {
   const session = await mongoose.startSession();
   let idempotencyKey = "";
+  let requestedSelection = null;
   try {
     if (!isHeadOffice(req.user)) {
       return respondError(
@@ -1745,6 +1865,7 @@ const disburseProgram = async (req, res) => {
     }
 
     const beneficiaryIds = selectedBeneficiaryIds(req);
+    requestedSelection = beneficiaryIds ? [...beneficiaryIds].sort() : null;
     idempotencyKey = getIdempotencyKey(req);
     if (!idempotencyKey || idempotencyKey.length < 12) {
       return respondError(
@@ -1765,6 +1886,26 @@ const disburseProgram = async (req, res) => {
           throw Object.assign(new Error("Idempotency key is already in use."), {
             status: 409,
           });
+        }
+        const recordedSelection = Array.isArray(
+          existing.metadata?.selectedBeneficiaryIds
+        )
+          ? existing.metadata.selectedBeneficiaryIds
+          : null;
+        const selectionMatches =
+          requestedSelection === null
+            ? recordedSelection === null
+            : sameIdSet(recordedSelection || existing.beneficiaryIds, requestedSelection);
+        if (
+          documentId(existing.program) !== String(req.params.programId) ||
+          !selectionMatches
+        ) {
+          throw Object.assign(
+            new Error(
+              "Idempotency key belongs to a different Empowerment disbursement request."
+            ),
+            { status: 409 }
+          );
         }
         duplicate = existing;
         return;
@@ -1856,6 +1997,9 @@ const disburseProgram = async (req, res) => {
               status: "PROCESSING",
               beneficiaryIds: beneficiaries.map((beneficiary) => beneficiary._id),
               createdBy: req.user._id,
+              metadata: {
+                selectedBeneficiaryIds: requestedSelection,
+              },
             },
           ],
           { session }
@@ -2023,8 +2167,25 @@ const disburseProgram = async (req, res) => {
         idempotencyKey,
       });
       if (existing) {
-        if (documentId(existing.createdBy) !== actorId(req)) {
-          return respondError(res, 409, "Idempotency key is already in use.");
+        const recordedSelection = Array.isArray(
+          existing.metadata?.selectedBeneficiaryIds
+        )
+          ? existing.metadata.selectedBeneficiaryIds
+          : null;
+        const selectionMatches =
+          requestedSelection === null
+            ? recordedSelection === null
+            : sameIdSet(recordedSelection || existing.beneficiaryIds, requestedSelection);
+        if (
+          documentId(existing.createdBy) !== actorId(req) ||
+          documentId(existing.program) !== String(req.params.programId) ||
+          !selectionMatches
+        ) {
+          return respondError(
+            res,
+            409,
+            "Idempotency key is already in use for a different disbursement request."
+          );
         }
         return res.status(200).json({
           success: true,
@@ -2143,7 +2304,7 @@ const getProgramReport = async (req, res) => {
         generatedAt: new Date().toISOString(),
         program,
         financials: {
-          totalBudget: Number(program.totalBudget || 0),
+          ...programFinancials(program),
           totalFunded: Number(program.totalFundedAmount || 0),
           totalDisbursed: Number(program.totalDisbursedAmount || 0),
           remainingProgramFunding: Number(program.availableFundingAmount || 0),
@@ -2164,28 +2325,52 @@ const getEmpowermentDashboardSummary = async (req, res) => {
     if (!isAdmin(req.user)) {
       return respondError(res, 403, "Administrator access is required.");
     }
-    const [organizations, programs, beneficiaries, fundings, payouts] =
+    const [
+      organizations,
+      programs,
+      beneficiaries,
+      programFinancialRows,
+      payouts,
+    ] =
       await Promise.all([
         EmpowermentOrganization.countDocuments(),
         EmpowermentProgram.countDocuments(),
         EmpowermentBeneficiary.aggregate([
           { $group: { _id: "$applicationStatus", count: { $sum: 1 } } },
         ]),
-        EmpowermentFunding.aggregate([
-          { $group: { _id: null, total: { $sum: "$amount" } } },
+        EmpowermentProgram.aggregate([
+          {
+            $group: {
+              _id: null,
+              totalBudget: { $sum: "$totalBudget" },
+              totalFundedAmount: { $sum: "$totalFundedAmount" },
+              availableFundingAmount: { $sum: "$availableFundingAmount" },
+              totalDisbursedAmount: { $sum: "$totalDisbursedAmount" },
+            },
+          },
         ]),
         EmpowermentPayout.aggregate([
           { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
         ]),
       ]);
+    const beneficiaryCount = beneficiaries.reduce(
+      (total, row) => total + Number(row.count || 0),
+      0
+    );
+    const financials = programFinancials(programFinancialRows[0]);
+
     return res.status(200).json({
       success: true,
       summary: {
         organizations,
         programs,
         beneficiaries,
-        totalFunded: Number(fundings[0]?.total || 0),
-        totalDisbursed: Number(payouts[0]?.total || 0),
+        beneficiaryCount,
+        financials,
+        totalBudget: financials.totalBudget,
+        totalFunded: financials.fundedAmount,
+        availableBalance: financials.availableBalance,
+        totalDisbursed: financials.totalDisbursedAmount,
         paidBeneficiaries: Number(payouts[0]?.count || 0),
       },
     });

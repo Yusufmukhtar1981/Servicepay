@@ -16,6 +16,32 @@ class EmpowermentApiException implements Exception {
 class EmpowermentApiService {
   static const String _baseUrl = 'https://api.servicepay.ng/api/empowerment';
 
+  String _pendingOperationPreferenceKey(String operation) =>
+      'empowerment_pending_operation_$operation';
+
+  Future<String> beginMonetaryOperation(String operation) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final String preferenceKey = _pendingOperationPreferenceKey(operation);
+    final String? existingKey = preferences.getString(preferenceKey);
+    if (existingKey != null && existingKey.trim().isNotEmpty) {
+      return existingKey.trim();
+    }
+
+    final String key =
+        'empowerment-$operation-${DateTime.now().microsecondsSinceEpoch}';
+    await preferences.setString(preferenceKey, key);
+    return key;
+  }
+
+  Future<void> completeMonetaryOperation(String operation) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_pendingOperationPreferenceKey(operation));
+  }
+
+  Future<void> abandonMonetaryOperation(String operation) async {
+    await completeMonetaryOperation(operation);
+  }
+
   Future<Map<String, String>> _headers({
     String? idempotencyKey,
   }) async {

@@ -54,6 +54,25 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
           ? value.toString().trim()
           : fallback;
 
+  int? _moneyKobo(String value) {
+    final Match? match =
+        RegExp(r'^(\d+)(?:\.(\d+))?$').firstMatch(value.trim());
+    if (match == null) return null;
+
+    final int? naira = int.tryParse(match.group(1) ?? '');
+    if (naira == null || naira < 0) return null;
+    final String fraction = match.group(2) ?? '';
+    final int koboBeforeRounding =
+        int.parse('${fraction}00'.substring(0, 2));
+    final bool roundUp =
+        fraction.length > 2 && int.parse(fraction[2]) >= 5;
+    final int kobo = naira * 100 + koboBeforeRounding + (roundUp ? 1 : 0);
+    return kobo > 0 ? kobo : null;
+  }
+
+  String _moneyFromKobo(int kobo) =>
+      '${kobo ~/ 100}.${(kobo % 100).toString().padLeft(2, '0')}';
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -314,6 +333,157 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
     }
   }
 
+  Future<bool> _fundProgram(Map<String, dynamic> program) async {
+    final TextEditingController amount = TextEditingController();
+    final TextEditingController transactionPin = TextEditingController();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    final bool? submitted = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text('Fund ${_text(program['name'], 'program')}'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Text(
+                'Funding debits the active Head Office ServicePay wallet and '
+                'can only be used up to the program budget.',
+              ),
+              const SizedBox(height: 16),
+              _formField(
+                amount,
+                'Funding amount (₦)',
+                keyboard: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              _formField(
+                transactionPin,
+                'Transaction PIN',
+                keyboard: TextInputType.number,
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() == true) {
+                Navigator.of(dialogContext).pop(true);
+              }
+            },
+            child: const Text('Fund program'),
+          ),
+        ],
+      ),
+    );
+
+    if (submitted != true) {
+      amount.dispose();
+      transactionPin.dispose();
+      return false;
+    }
+
+    final int? amountKobo = _moneyKobo(amount.text);
+    if (amountKobo == null) {
+      amount.dispose();
+      transactionPin.dispose();
+      _notice('Enter a valid positive funding amount.', error: true);
+      return false;
+    }
+    final String operation = 'fund-${_id(program)}-$amountKobo';
+    final String normalizedAmount = _moneyFromKobo(amountKobo);
+
+    try {
+      final String idempotencyKey =
+          await _api.beginMonetaryOperation(operation);
+      await _api.post(
+        '/programs/${_id(program)}/funding',
+        body: <String, dynamic>{
+          'amount': normalizedAmount,
+          'transactionPin': transactionPin.text.trim(),
+        },
+        idempotencyKey: idempotencyKey,
+      );
+      await _api.completeMonetaryOperation(operation);
+      _notice('Program funding recorded successfully.');
+      await _load();
+      return true;
+    } on EmpowermentApiException catch (error) {
+      if (error.statusCode != null && error.statusCode! < 500) {
+        await _api.abandonMonetaryOperation(operation);
+      }
+      _notice(error.message, error: true);
+      return false;
+    } catch (_) {
+      _notice(
+        'Funding outcome is still being confirmed. Retry the same top-up to reconcile it safely.',
+        error: true,
+      );
+      return false;
+    } finally {
+      amount.dispose();
+      transactionPin.dispose();
+    }
+  }
+
+  Future<bool> _payBeneficiary(
+    Map<String, dynamic> program,
+    Map<String, dynamic> beneficiary,
+  ) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Pay beneficiary'),
+        content: Text(
+          'Credit ${_text(beneficiary['fullName'], 'this beneficiary')} '
+          'with the program amount? This payment can only be completed once.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Pay beneficiary'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return false;
+
+    final String operation =
+        'payout-${_id(program)}-${_id(beneficiary)}';
+    try {
+      final String idempotencyKey =
+          await _api.beginMonetaryOperation(operation);
+      await _api.post(
+        '/programs/${_id(program)}/beneficiaries/${_id(beneficiary)}/disbursement',
+        idempotencyKey: idempotencyKey,
+      );
+      await _api.completeMonetaryOperation(operation);
+      _notice('Beneficiary wallet credited successfully.');
+      await _load();
+      return true;
+    } on EmpowermentApiException catch (error) {
+      if (error.statusCode != null && error.statusCode! < 500) {
+        await _api.abandonMonetaryOperation(operation);
+      }
+      _notice(error.message, error: true);
+      return false;
+    } catch (_) {
+      _notice(
+        'Payment outcome is still being confirmed. Retry this beneficiary payment to reconcile it safely.',
+        error: true,
+      );
+      return false;
+    }
+  }
+
   Future<void> _createProgram() async {
     if (_eligibleOrganizations.isEmpty) {
       _notice(
@@ -517,11 +687,26 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                         spacing: 8,
                         runSpacing: 8,
                         children: <Widget>[
+                          _metric('Beneficiaries', statistics['total']),
                           _metric('Approved', statistics['approved']),
                           _metric('Paid', statistics['paid']),
-                          _metric('Funded', financials['totalFunded']),
+                          _metric('Budget', financials['totalBudget']),
+                          _metric('Funded', financials['fundedAmount']),
+                          _metric('Available', financials['availableBalance']),
                           _metric('Disbursed', financials['totalDisbursed']),
                         ],
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            final bool funded = await _fundProgram(program);
+                            if (funded) Navigator.of(sheetContext).pop();
+                          },
+                          icon: const Icon(Icons.add_card_rounded),
+                          label: const Text('Fund / top up program'),
+                        ),
                       ),
                       const SizedBox(height: 18),
                       const Text(
@@ -538,21 +723,46 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                               title: Text(_text(beneficiary['fullName'])),
                               subtitle: Text(
                                 '${_text(beneficiary['phone'])} • '
-                                '${_text(beneficiary['verificationStatus'], 'PENDING')}',
+                                 '${_text(beneficiary['applicationStatus'], 'PENDING')} • '
+                                 '${_text(beneficiary['verificationStatus'], 'PENDING')}',
                               ),
                               trailing: PopupMenuButton<String>(
-                                onSelected: (String value) =>
-                                    _beneficiaryStatus(beneficiary, value),
-                                itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                                  PopupMenuItem(
-                                      value: 'VERIFIED',
-                                      child: Text('Verify')),
-                                  PopupMenuItem(
-                                      value: 'APPROVED',
-                                      child: Text('Approve')),
-                                  PopupMenuItem(
-                                      value: 'REJECTED',
-                                      child: Text('Reject')),
+                                onSelected: (String value) async {
+                                  if (value == 'PAY') {
+                                    final bool paid = await _payBeneficiary(
+                                      program,
+                                      beneficiary,
+                                    );
+                                    if (paid) {
+                                      Navigator.of(sheetContext).pop();
+                                    }
+                                    return;
+                                  }
+                                  await _beneficiaryStatus(beneficiary, value);
+                                },
+                                itemBuilder: (_) => <PopupMenuEntry<String>>[
+                                  const PopupMenuItem(
+                                    value: 'VERIFIED',
+                                    child: Text('Verify'),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'APPROVED',
+                                    child: Text('Approve'),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'REJECTED',
+                                    child: Text('Reject'),
+                                  ),
+                                  if (_text(beneficiary['applicationStatus'])
+                                          .toUpperCase() ==
+                                      'APPROVED' &&
+                                      _text(beneficiary['verificationStatus'])
+                                              .toUpperCase() ==
+                                          'VERIFIED')
+                                    const PopupMenuItem(
+                                      value: 'PAY',
+                                      child: Text('Pay beneficiary'),
+                                    ),
                                 ],
                               ),
                             ),
@@ -683,7 +893,6 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
   }
 
   Widget _overview() {
-    final dynamic beneficiaries = _summary['beneficiaries'];
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -705,11 +914,11 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
             children: <Widget>[
               _metric('Organizations', _summary['organizations']),
               _metric('Programs', _summary['programs']),
+              _metric('Beneficiaries', _summary['beneficiaryCount']),
               _metric('Total funded', _summary['totalFunded']),
+              _metric('Available funding', _summary['availableBalance']),
               _metric('Total disbursed', _summary['totalDisbursed']),
               _metric('Paid recipients', _summary['paidBeneficiaries']),
-              _metric('Beneficiary states',
-                  beneficiaries is List ? beneficiaries.length : 0),
             ],
           ),
           const SizedBox(height: 24),
@@ -767,16 +976,30 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
   Widget _programsView() => ListView(
         padding: const EdgeInsets.all(16),
         children: _programs
-            .map(
-              (Map<String, dynamic> program) => Card(
+            .map((Map<String, dynamic> program) {
+              final Map<String, dynamic> financials =
+                  program['financials'] is Map
+                      ? Map<String, dynamic>.from(program['financials'] as Map)
+                      : <String, dynamic>{};
+              final Map<String, dynamic> beneficiaryCounts =
+                  program['beneficiaryCounts'] is Map
+                      ? Map<String, dynamic>.from(
+                          program['beneficiaryCounts'] as Map)
+                      : <String, dynamic>{};
+              return Card(
                 child: ListTile(
                   leading: const Icon(Icons.volunteer_activism_outlined,
                       color: Color(0xFF08783E)),
                   title: Text(_text(program['name'])),
                   subtitle: Text(
                     'Budget: ₦${_text(program['totalBudget'], '0')} • '
-                    '${_text(program['state'])}',
+                    'Funded: ₦${_text(financials['fundedAmount'], '0')} • '
+                    'Available: ₦${_text(financials['availableBalance'], '0')}\n'
+                    'Beneficiaries: ${_text(beneficiaryCounts['total'], '0')} • '
+                    'Approved: ${_text(beneficiaryCounts['approved'], '0')} • '
+                    'Paid: ${_text(beneficiaryCounts['paid'], '0')}',
                   ),
+                  isThreeLine: true,
                   onTap: () => _showProgram(program),
                   trailing: PopupMenuButton<String>(
                     child: _status(_text(program['status'], 'DRAFT')),
@@ -789,8 +1012,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                     ],
                   ),
                 ),
-              ),
-            )
+              );
+            })
             .toList(),
       );
 
