@@ -509,13 +509,12 @@ test(
 );
 
 test(
-  "funding retry is idempotent and preserves wallet, ledger and program totals",
+  "program-ledger funding is idempotent without a wallet or transaction PIN",
   { timeout: 120_000 },
   async () => {
     const owner = await createUser({
       role: "HEAD_OFFICE",
-      walletBalance: 1_000,
-      transactionPin: "1234",
+      walletBalance: 0,
     });
     const program = await createProgram({
       owner,
@@ -526,7 +525,11 @@ test(
     const options = {
       user: owner,
       params: { programId: String(program._id) },
-      body: { amount: 100, transactionPin: "1234" },
+      body: {
+        amount: 100,
+        reference: "HEAD-OFFICE-RESERVE-100",
+        note: "Reserved directly for beneficiary payouts.",
+      },
       headers: { "Idempotency-Key": "funding-retry-1234" },
     };
 
@@ -540,42 +543,47 @@ test(
 
     const savedOwner = await User.findById(owner._id);
     const savedProgram = await EmpowermentProgram.findById(program._id);
-    assert.equal(savedOwner.walletBalance, 900);
+    assert.equal(savedOwner.walletBalance, 0);
     assert.equal(await EmpowermentFunding.countDocuments(), 1);
     assert.equal(
       await Transaction.countDocuments({ serviceType: "EMPOWERMENT_FUNDING" }),
-      1
+      0
     );
     assert.equal(
       await LedgerEntry.countDocuments({
         service: "EMPOWERMENT_FUNDING",
-        direction: "DEBIT",
       }),
-      1
+      0
     );
     assert.equal(savedProgram.totalFundedAmount, 100);
     assert.equal(savedProgram.availableFundingAmount, 100);
-    const transaction = await Transaction.findOne({
-      serviceType: "EMPOWERMENT_FUNDING",
+    assert.equal(savedProgram.totalFunded, 100);
+    assert.equal(savedProgram.remainingBalance, 100);
+    assert.equal(first.body.funding.transaction, null);
+    assert.equal(first.body.funding.sourceReference, "HEAD-OFFICE-RESERVE-100");
+    assert.equal(
+      first.body.funding.note,
+      "Reserved directly for beneficiary payouts."
+    );
+    const fundingAudit = await EmpowermentAuditLog.findOne({
+      action: "PROGRAM_FUNDED",
+      program: program._id,
     });
-    const ledger = await LedgerEntry.findOne({
-      service: "EMPOWERMENT_FUNDING",
-    });
-    assert.equal(String(first.body.funding.transaction), String(transaction._id));
-    assert.equal(first.body.funding.reference, transaction.reference);
-    assert.equal(ledger.reference, transaction.reference);
-    assert.equal(String(ledger.transactionId), String(transaction._id));
+    assert.equal(fundingAudit.metadata.fundingType, "PROGRAM_LEDGER_CREDIT");
+    assert.equal(
+      fundingAudit.metadata.fundingReference,
+      "HEAD-OFFICE-RESERVE-100"
+    );
   }
 );
 
 test(
-  "simultaneous funding retries share one debit, funding record and ledger row",
+  "simultaneous program-ledger funding retries create one funding record",
   { timeout: 120_000 },
   async () => {
     const owner = await createUser({
       role: "HEAD_OFFICE",
-      walletBalance: 1_000,
-      transactionPin: "1234",
+      walletBalance: 0,
     });
     const program = await createProgram({
       owner,
@@ -586,7 +594,7 @@ test(
     const options = {
       user: owner,
       params: { programId: String(program._id) },
-      body: { amount: 100, transactionPin: "1234" },
+      body: { amount: 100 },
       headers: { "Idempotency-Key": "concurrent-funding-1234" },
     };
 
@@ -603,19 +611,57 @@ test(
       String(responses[0].body.funding._id),
       String(responses[1].body.funding._id)
     );
-    assert.equal((await User.findById(owner._id)).walletBalance, 900);
+    assert.equal((await User.findById(owner._id)).walletBalance, 0);
     assert.equal(await EmpowermentFunding.countDocuments(), 1);
     assert.equal(
       await Transaction.countDocuments({ serviceType: "EMPOWERMENT_FUNDING" }),
-      1
+      0
     );
     assert.equal(
       await LedgerEntry.countDocuments({ service: "EMPOWERMENT_FUNDING" }),
-      1
+      0
     );
     const savedProgram = await EmpowermentProgram.findById(program._id);
     assert.equal(savedProgram.totalFundedAmount, 100);
     assert.equal(savedProgram.availableFundingAmount, 100);
+    assert.equal(savedProgram.totalFunded, 100);
+    assert.equal(savedProgram.remainingBalance, 100);
+  }
+);
+
+test(
+  "funding safely normalizes legacy program balances before adding funds",
+  { timeout: 120_000 },
+  async () => {
+    const owner = await createUser({
+      role: "HEAD_OFFICE",
+      walletBalance: 0,
+    });
+    const program = await createProgram({
+      owner,
+      targetBeneficiaries: 2,
+      amountPerBeneficiary: 100,
+      status: "APPROVED",
+      totalFundedAmount: 100,
+      totalDisbursedAmount: 40,
+      availableFundingAmount: 0,
+    });
+
+    const response = await call(fundProgram, {
+      user: owner,
+      params: { programId: String(program._id) },
+      body: { amount: 25 },
+      headers: { "Idempotency-Key": "legacy-normalization-funding-25" },
+    });
+
+    assert.equal(response.status, 201);
+    const savedProgram = await EmpowermentProgram.findById(program._id);
+    assert.equal(savedProgram.totalFunded, 125);
+    assert.equal(savedProgram.totalFundedAmount, 125);
+    assert.equal(savedProgram.totalDisbursed, 40);
+    assert.equal(savedProgram.totalDisbursedAmount, 40);
+    assert.equal(savedProgram.remainingBalance, 85);
+    assert.equal(savedProgram.availableFundingAmount, 85);
   }
 );
 
@@ -625,8 +671,7 @@ test(
   async () => {
     const headOffice = await createUser({
       role: "HEAD_OFFICE",
-      walletBalance: 5_000,
-      transactionPin: "1234",
+      walletBalance: 0,
     });
     const recipient = await createUser({ walletBalance: 25 });
     await createKyc(recipient);
@@ -653,7 +698,6 @@ test(
         params: { programId: String(program._id) },
         body: {
           amount: fundingRequest.amount,
-          transactionPin: "1234",
         },
         headers: { "Idempotency-Key": fundingRequest.key },
       });
@@ -665,14 +709,13 @@ test(
     assert.equal(fundedProgram.totalBudget, 2_000);
     assert.equal(fundedProgram.totalFundedAmount, 2_000);
     assert.equal(fundedProgram.availableFundingAmount, 2_000);
-    assert.equal((await User.findById(headOffice._id)).walletBalance, 3_000);
+    assert.equal((await User.findById(headOffice._id)).walletBalance, 0);
     assert.equal(await EmpowermentFunding.countDocuments({ program: program._id }), 2);
     assert.equal(
       await LedgerEntry.countDocuments({
         service: "EMPOWERMENT_FUNDING",
-        direction: "DEBIT",
       }),
-      2
+      0
     );
     assert.equal(
       await EmpowermentAuditLog.countDocuments({
