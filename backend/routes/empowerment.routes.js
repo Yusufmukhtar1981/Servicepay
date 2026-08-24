@@ -15,6 +15,7 @@ const {
   getProgram,
   updateProgram,
   listBeneficiaries,
+  listEligibleBeneficiaries,
   verifyBeneficiary,
   updateOrganizationStatus,
   updateProgramStatus,
@@ -29,6 +30,7 @@ const {
   createDisbursementPreview,
   disburseProgram,
   disburseBeneficiary,
+  bulkDisburseProgram,
   prepareDisbursementBatch,
   listDisbursementBatches,
   getProgramReport,
@@ -90,6 +92,11 @@ router.post(
 router.get(
   "/programs/:programId/beneficiaries",
   listBeneficiaries
+);
+
+router.get(
+  "/programs/:programId/eligible-beneficiaries",
+  listEligibleBeneficiaries
 );
 
 
@@ -174,6 +181,11 @@ router.get(
 router.post(
   "/programs/:programId/disbursements",
   disburseProgram
+);
+
+router.post(
+  "/programs/:programId/bulk-disbursement",
+  bulkDisburseProgram
 );
 
 router.post(
