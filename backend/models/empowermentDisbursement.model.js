@@ -3,6 +3,13 @@ const mongoose = require("mongoose");
 const empowermentDisbursementSchema =
   new mongoose.Schema(
     {
+      organization: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "EmpowermentOrganization",
+        required: true,
+        index: true,
+      },
+
       program: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "EmpowermentProgram",
@@ -87,6 +94,16 @@ const empowermentDisbursementSchema =
             type: Number,
             required: true,
             min: 0.01,
+          },
+          walletBalanceBefore: {
+            type: Number,
+            required: true,
+            min: 0,
+          },
+          walletBalanceAfter: {
+            type: Number,
+            required: true,
+            min: 0,
           },
           transactionReference: {
             type: String,

@@ -31,6 +31,16 @@ const empowermentPayoutSchema = new mongoose.Schema(
       required: true,
       min: 0.01,
     },
+    walletBalanceBefore: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    walletBalanceAfter: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
     reference: {
       type: String,
       required: true,

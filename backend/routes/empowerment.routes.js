@@ -27,6 +27,7 @@ const {
   fundProgram,
   createDisbursementPreview,
   disburseProgram,
+  disburseBeneficiary,
   prepareDisbursementBatch,
   listDisbursementBatches,
   getProgramReport,
@@ -154,9 +155,19 @@ router.post(
   createDisbursementPreview
 );
 
+router.get(
+  "/programs/:programId/disbursements",
+  listDisbursementBatches
+);
+
 router.post(
   "/programs/:programId/disbursements",
   disburseProgram
+);
+
+router.post(
+  "/programs/:programId/beneficiaries/:beneficiaryId/disbursement",
+  disburseBeneficiary
 );
 
 router.post(

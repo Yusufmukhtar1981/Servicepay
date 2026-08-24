@@ -70,6 +70,9 @@ const isAdmin = (user) =>
       .toUpperCase()
   );
 
+const isHeadOffice = (user) =>
+  String(user?.role || "").trim().toUpperCase() === "HEAD_OFFICE";
+
 const isProgramEligibleOrganization = (organization) =>
   String(organization?.status || "").toUpperCase() === "ACTIVE";
 
@@ -137,6 +140,29 @@ const dateOrNull = (value) => {
 
 const respondError = (res, status, message) =>
   res.status(status).json({ success: false, message });
+
+const selectedBeneficiaryIds = (req) => {
+  if (req.body?.beneficiaryIds === undefined) return null;
+  if (!Array.isArray(req.body.beneficiaryIds)) {
+    throw Object.assign(new Error("beneficiaryIds must be an array."), {
+      status: 400,
+    });
+  }
+
+  const ids = req.body.beneficiaryIds.map((value) => String(value || "").trim());
+  if (
+    !ids.length ||
+    ids.length > 200 ||
+    ids.some((id) => !objectIdIsValid(id)) ||
+    new Set(ids).size !== ids.length
+  ) {
+    throw Object.assign(
+      new Error("Select between 1 and 200 unique beneficiaries."),
+      { status: 400 }
+    );
+  }
+  return ids;
+};
 
 const sessionQuery = (query, session) => {
   if (session) query.session(session);
@@ -1621,8 +1647,8 @@ const fundProgram = async (req, res) => {
         await EmpowermentFunding.create(
           [
             {
-              program: program._id,
               organization: program.organization,
+              program: program._id,
               fundedBy: funder._id,
               amount,
               reference,
@@ -1710,6 +1736,15 @@ const disburseProgram = async (req, res) => {
   const session = await mongoose.startSession();
   let idempotencyKey = "";
   try {
+    if (!isHeadOffice(req.user)) {
+      return respondError(
+        res,
+        403,
+        "Only Head Office can disburse Empowerment funds."
+      );
+    }
+
+    const beneficiaryIds = selectedBeneficiaryIds(req);
     idempotencyKey = getIdempotencyKey(req);
     if (!idempotencyKey || idempotencyKey.length < 12) {
       return respondError(
@@ -1748,18 +1783,31 @@ const disburseProgram = async (req, res) => {
       }
       await requireActiveOrganization(program, session);
 
-      const beneficiaries = await EmpowermentBeneficiary.find({
+      const beneficiaryFilter = {
         program: program._id,
         applicationStatus: "APPROVED",
         verificationStatus: "VERIFIED",
         user: { $ne: null },
-      })
+      };
+      if (beneficiaryIds) {
+        beneficiaryFilter._id = { $in: beneficiaryIds };
+      }
+
+      const beneficiaries = await EmpowermentBeneficiary.find(beneficiaryFilter)
         .sort({ createdAt: 1 })
         .session(session);
       if (!beneficiaries.length) {
         throw Object.assign(new Error("No verified approved beneficiaries are payable."), {
           status: 409,
         });
+      }
+      if (beneficiaryIds && beneficiaries.length !== beneficiaryIds.length) {
+        throw Object.assign(
+          new Error(
+            "Every selected beneficiary must be approved, verified, linked to this program, and unpaid."
+          ),
+          { status: 409 }
+        );
       }
 
       const existingPayout = await EmpowermentPayout.findOne({
@@ -1784,6 +1832,7 @@ const disburseProgram = async (req, res) => {
       const recipients = await User.find({
         _id: { $in: beneficiaries.map((beneficiary) => beneficiary.user) },
         status: "ACTIVE",
+        walletBalance: { $gte: 0 },
       }).session(session);
       if (recipients.length !== beneficiaries.length) {
         throw Object.assign(
@@ -1797,6 +1846,7 @@ const disburseProgram = async (req, res) => {
         await EmpowermentDisbursement.create(
           [
             {
+              organization: program.organization,
               program: program._id,
               batchReference,
               idempotencyKey,
@@ -1861,10 +1911,16 @@ const disburseProgram = async (req, res) => {
                 status: "SUCCESSFUL",
                 providerResponse: {
                   transactionDirection: "CREDIT",
+                  narration: "ServicePay Empowerment Disbursement",
+                  organizationId: String(program.organization),
                   programId: String(program._id),
                   beneficiaryId: String(beneficiary._id),
                   batchReference,
                   payer: String(req.user._id),
+                  walletBalanceBefore: Number(
+                    (Number(credited.walletBalance) - amount).toFixed(2)
+                  ),
+                  walletBalanceAfter: Number(credited.walletBalance),
                 },
               },
             ],
@@ -1899,6 +1955,10 @@ const disburseProgram = async (req, res) => {
               beneficiary: beneficiary._id,
               recipient: credited._id,
               amount,
+              walletBalanceBefore: Number(
+                (Number(credited.walletBalance) - amount).toFixed(2)
+              ),
+              walletBalanceAfter: Number(credited.walletBalance),
               reference,
               transaction: transaction._id,
             },
@@ -1909,6 +1969,10 @@ const disburseProgram = async (req, res) => {
           beneficiary: beneficiary._id,
           recipient: credited._id,
           amount,
+          walletBalanceBefore: Number(
+            (Number(credited.walletBalance) - amount).toFixed(2)
+          ),
+          walletBalanceAfter: Number(credited.walletBalance),
           transactionReference: reference,
           status: "SUCCESSFUL",
         });
@@ -1980,6 +2044,14 @@ const disburseProgram = async (req, res) => {
   }
 };
 
+const disburseBeneficiary = async (req, res) => {
+  req.body = {
+    ...(req.body || {}),
+    beneficiaryIds: [req.params.beneficiaryId],
+  };
+  return disburseProgram(req, res);
+};
+
 const prepareDisbursementBatch = async (req, res) =>
   respondError(
     res,
@@ -1989,12 +2061,58 @@ const prepareDisbursementBatch = async (req, res) =>
 
 const listDisbursementBatches = async (req, res) => {
   try {
+    if (!isHeadOffice(req.user)) {
+      return respondError(
+        res,
+        403,
+        "Only Head Office can view Empowerment disbursement history."
+      );
+    }
     const program = await getManagedProgram(req, req.params.programId);
     if (!program) return respondError(res, 403, "You cannot view this program.");
-    const batches = await EmpowermentDisbursement.find({ program: program._id })
-      .populate("createdBy", "fullName phone")
-      .sort({ createdAt: -1 });
-    return res.status(200).json({ success: true, batches });
+    const [batches, statusTotals] = await Promise.all([
+      EmpowermentDisbursement.find({ program: program._id })
+        .populate("organization", "name status")
+        .populate("createdBy", "fullName phone")
+        .populate(
+          "results.beneficiary",
+          "fullName phone applicationStatus verificationStatus"
+        )
+        .populate("results.recipient", "fullName phone email")
+        .sort({ createdAt: -1 }),
+      EmpowermentDisbursement.aggregate([
+        { $match: { program: program._id } },
+        { $unwind: "$results" },
+        {
+          $group: {
+            _id: "$results.status",
+            count: { $sum: 1 },
+            amount: { $sum: "$results.amount" },
+          },
+        },
+      ]),
+    ]);
+    const totals = Object.fromEntries(
+      statusTotals.map((row) => [
+        String(row._id || "").toUpperCase(),
+        { count: Number(row.count || 0), amount: Number(row.amount || 0) },
+      ])
+    );
+    const successful = totals.SUCCESSFUL || { count: 0, amount: 0 };
+    const failed = totals.FAILED || { count: 0, amount: 0 };
+    const pending = totals.PENDING || { count: 0, amount: 0 };
+    return res.status(200).json({
+      success: true,
+      batches,
+      summary: {
+        totalDisbursed: successful.amount,
+        successfulCount: successful.count,
+        failedCount: failed.count,
+        pendingCount: pending.count,
+        remainingProgramFunding: Number(program.availableFundingAmount || 0),
+        remainingProgramBudget: Number(program.availableFundingAmount || 0),
+      },
+    });
   } catch (error) {
     console.error("LIST EMPOWERMENT DISBURSEMENTS ERROR:", error);
     return respondError(res, 500, "Unable to load disbursements.");
@@ -2118,6 +2236,7 @@ module.exports = {
   fundProgram,
   createDisbursementPreview,
   disburseProgram,
+  disburseBeneficiary,
   prepareDisbursementBatch,
   listDisbursementBatches,
   getProgramReport,
