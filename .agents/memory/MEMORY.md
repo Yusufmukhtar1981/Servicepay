@@ -1,0 +1,1 @@
+- [Mongoose 9 middleware](mongoose-9-middleware.md) — Callback-style model middleware must be converted before transaction safeguards can run.

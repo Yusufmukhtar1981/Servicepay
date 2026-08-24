@@ -129,20 +129,35 @@ ledgerEntrySchema.index({
 /*
  * Ledger entries must never be modified or deleted.
  */
-const denyMutation = function (next) {
-  next(
-    new Error(
-      "Ledger entries are immutable and cannot be modified or deleted."
-    )
+const denyMutation = function () {
+  throw new Error(
+    "Ledger entries are immutable and cannot be modified or deleted."
   );
 };
 
-ledgerEntrySchema.pre("updateOne", denyMutation);
-ledgerEntrySchema.pre("updateMany", denyMutation);
-ledgerEntrySchema.pre("findOneAndUpdate", denyMutation);
-ledgerEntrySchema.pre("deleteOne", denyMutation);
-ledgerEntrySchema.pre("deleteMany", denyMutation);
-ledgerEntrySchema.pre("findOneAndDelete", denyMutation);
+ledgerEntrySchema.pre("save", function () {
+  if (!this.isNew) denyMutation();
+});
+
+[
+  "updateOne",
+  "updateMany",
+  "findOneAndUpdate",
+  "replaceOne",
+  "findOneAndReplace",
+  "deleteOne",
+  "deleteMany",
+  "findOneAndDelete",
+  "bulkWrite",
+].forEach((operation) => {
+  ledgerEntrySchema.pre(operation, { document: false, query: true }, denyMutation);
+});
+
+ledgerEntrySchema.pre(
+  "deleteOne",
+  { document: true, query: false },
+  denyMutation
+);
 
 module.exports = mongoose.model(
   "LedgerEntry",

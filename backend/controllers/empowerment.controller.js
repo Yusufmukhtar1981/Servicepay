@@ -1335,9 +1335,10 @@ const verifyTransactionPin = async (req, session) => {
 
 const fundProgram = async (req, res) => {
   const session = await mongoose.startSession();
+  let idempotencyKey = "";
   try {
     const amount = asMoney(req.body?.amount);
-    const idempotencyKey = getIdempotencyKey(req);
+    idempotencyKey = getIdempotencyKey(req);
     if (!amount || !idempotencyKey || idempotencyKey.length < 12) {
       return respondError(
         res,
@@ -1486,6 +1487,19 @@ const fundProgram = async (req, res) => {
       funding: duplicate || funding,
     });
   } catch (error) {
+    if (error?.code === 11000 && idempotencyKey) {
+      const existing = await EmpowermentFunding.findOne({ idempotencyKey });
+      if (existing) {
+        if (documentId(existing.fundedBy) !== actorId(req)) {
+          return respondError(res, 409, "Idempotency key is already in use.");
+        }
+        return res.status(200).json({
+          success: true,
+          idempotent: true,
+          funding: existing,
+        });
+      }
+    }
     console.error("FUND EMPOWERMENT PROGRAM ERROR:", error);
     return respondError(res, error.status || 500, error.message || "Unable to fund program.");
   } finally {
@@ -1529,8 +1543,9 @@ const createDisbursementPreview = async (req, res) => {
 
 const disburseProgram = async (req, res) => {
   const session = await mongoose.startSession();
+  let idempotencyKey = "";
   try {
-    const idempotencyKey = getIdempotencyKey(req);
+    idempotencyKey = getIdempotencyKey(req);
     if (!idempotencyKey || idempotencyKey.length < 12) {
       return respondError(
         res,
@@ -1774,6 +1789,21 @@ const disburseProgram = async (req, res) => {
       batch: duplicate || batch,
     });
   } catch (error) {
+    if (error?.code === 11000 && idempotencyKey) {
+      const existing = await EmpowermentDisbursement.findOne({
+        idempotencyKey,
+      });
+      if (existing) {
+        if (documentId(existing.createdBy) !== actorId(req)) {
+          return respondError(res, 409, "Idempotency key is already in use.");
+        }
+        return res.status(200).json({
+          success: true,
+          idempotent: true,
+          batch: existing,
+        });
+      }
+    }
     console.error("EMPOWERMENT DISBURSEMENT ERROR:", error);
     return respondError(
       res,

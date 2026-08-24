@@ -170,7 +170,7 @@ const empowermentProgramSchema = new mongoose.Schema(
   }
 );
 
-empowermentProgramSchema.pre("save", function (next) {
+empowermentProgramSchema.pre("save", function () {
   const calculatedBudget =
     Number(this.amountPerBeneficiary || 0) *
     Number(this.targetBeneficiaries || 0);
@@ -178,8 +178,6 @@ empowermentProgramSchema.pre("save", function (next) {
   if (calculatedBudget > 0) {
     this.totalBudget = calculatedBudget;
   }
-
-  next();
 });
 
 empowermentProgramSchema.index({
