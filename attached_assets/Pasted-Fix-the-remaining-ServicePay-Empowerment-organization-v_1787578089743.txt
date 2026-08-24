@@ -1,0 +1,112 @@
+Fix the remaining ServicePay Empowerment organization verification flow end-to-end.
+
+CURRENT LIVE BUG:
+- Customers can create organizations successfully.
+- Customer-created organizations correctly appear as PENDING.
+- Admin Empowerment > Organizations lists them, but there is no way for an admin to open a pending organization and APPROVE/VERIFY or REJECT it.
+- Because no organization can be verified from admin, the Create Empowerment Program form has an empty Organization dropdown and programs cannot be created.
+
+IMPORTANT:
+Do not redesign the customer dashboard.
+Do not modify unrelated ServicePay features.
+Do not recreate the Empowerment system.
+Fix only this verification/program-eligibility gap using the existing models/routes/controllers/UI.
+
+IMPLEMENT:
+
+1. ADMIN ORGANIZATION DETAILS
+In Admin > Empowerment > Organizations:
+- Make each organization record clickable/openable.
+- Show full organization details:
+  - organization name
+  - type
+  - registration number
+  - contact person
+  - phone
+  - email
+  - address
+  - state
+  - description if available
+  - owner/createdBy
+  - created date
+  - current verification/status
+
+2. ADMIN ACTIONS
+For PENDING organizations provide:
+- Approve / Verify
+- Reject
+
+For approved organizations provide appropriate:
+- Active/Verified status
+- Suspend/Deactivate where supported
+
+Admin actions must call protected backend endpoints.
+Do not allow frontend-only status changes.
+
+3. BACKEND AUTHORIZATION
+Ensure only authorized admin/head-office roles can approve/reject/suspend an organization.
+
+Add or repair endpoints as required, for example using the project’s existing route conventions:
+- GET organization detail
+- PATCH/POST approve organization
+- PATCH/POST reject organization
+- PATCH/POST suspend/deactivate where supported
+
+Do not duplicate routes if equivalent routes already exist; repair and reuse them.
+
+4. STATUS RULES
+Normalize organization lifecycle safely:
+- PENDING
+- ACTIVE or VERIFIED (use the existing canonical value already used in the codebase)
+- REJECTED
+- SUSPENDED if supported
+
+Approval must persist to MongoDB and create an audit record if the Empowerment audit system already exists.
+
+5. CREATE PROGRAM ORGANIZATION DROPDOWN
+Fix both admin and customer Create Program forms so the Organization dropdown loads only organizations that:
+- are verified/ACTIVE according to the existing canonical status
+- the current user owns/is authorized to use on customer side
+- are eligible for program creation
+
+Admin should be able to create/manage programs for eligible verified organizations according to existing admin permissions.
+
+Pending, rejected, or suspended organizations must NOT appear as eligible selections.
+
+6. REFRESH AFTER APPROVAL
+After admin approves an organization:
+- Organization list should immediately show the new verified/ACTIVE status.
+- Customer Organizations screen should show the updated status after refresh.
+- Create Program Organization dropdown should include that approved organization without needing a new organization record.
+
+7. DUPLICATE SAFETY
+Do not delete existing organizations.
+Do not merge the two Yumpay Global Tech. Ltd records automatically.
+They are legitimate separate existing records created at different times.
+However, retain or improve duplicate prevention for future accidental duplicate submissions where safe and consistent with the existing model.
+
+8. TESTS
+Add/update tests to verify:
+- unauthorized user cannot approve an organization
+- admin can approve pending organization
+- admin can reject pending organization
+- approved organization persists correctly
+- pending organization does not appear in program-eligible query
+- approved organization appears in program-eligible query
+- customer cannot create a program under another user’s organization
+- rejected/suspended organizations cannot be used for program creation
+
+Run all available backend tests and frontend checks possible in this environment.
+
+9. FINISHING
+Commit the fix locally but DO NOT invent credentials or secrets.
+
+At the end report:
+- exact files changed
+- endpoints added/fixed
+- canonical organization status values used
+- admin UI actions added
+- program dropdown filtering logic
+- test results
+
+Do not stop after analysis. Implement the fix directly now.
