@@ -1,1 +1,2 @@
 - [Mongoose 9 middleware](mongoose-9-middleware.md) — Callback-style model middleware must be converted before transaction safeguards can run.
+- [Attachment commits](attachment-commits.md) — Verify HEAD before amending; attachment handling may create a commit between turns.
