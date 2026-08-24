@@ -1,0 +1,133 @@
+Implement the complete ServicePay manual KYC verification workflow end-to-end in the existing codebase.
+
+IMPORTANT:
+Do not redesign the dashboard.
+Do not remove or break existing KYC, Empowerment, wallet, authentication, transaction, or admin functionality.
+Do not downgrade dependencies.
+Use the existing User/KYC models, authentication middleware, API conventions, audit patterns, and current production API structure.
+
+GOAL
+
+ServicePay customer KYC must no longer require live NIN/BVN provider verification before submission.
+
+Customers should be able to enter their NIN and BVN and submit KYC for manual review by ServicePay Admin.
+
+BACKEND REQUIREMENTS
+
+1. CUSTOMER KYC SUBMISSION
+- Allow a customer to submit NIN and BVN as plain KYC identity references.
+- Validate basic format only:
+  - NIN: 11 numeric digits
+  - BVN: 11 numeric digits
+- Do NOT require an external NIN/BVN verification API to accept the submission.
+- Store the submitted NIN/BVN safely using the existing KYC/User schema patterns.
+- Set KYC status to a canonical pending/manual-review state compatible with the existing system.
+- Existing already-approved KYC users must remain approved.
+- Do not accidentally downgrade existing verified customers.
+
+2. ADMIN KYC SEARCH API
+Add or extend a protected admin KYC endpoint supporting search by:
+- full name
+- phone number
+- email
+- NIN
+- BVN
+
+Use partial/case-insensitive matching where appropriate for name/email/phone.
+NIN/BVN exact match is acceptable.
+Support a query such as:
+GET /api/.../admin/kyc?search=<value>
+
+Reuse the existing KYC admin route if one already exists instead of creating a duplicate system.
+
+Return enough information for admin review:
+- user id
+- full name
+- phone
+- email
+- ServicePay account identity
+- NIN
+- BVN
+- KYC tier
+- current KYC status
+- submitted KYC fields/documents if they exist
+- created/submitted date
+- last verification information
+
+3. MANUAL ADMIN VERIFICATION / OVERRIDE
+
+Add or extend the existing protected admin KYC approval endpoint.
+
+Authorized ServicePay Admin/Head Office must be able to manually verify a customer even if normal optional KYC requirements are incomplete.
+
+This is an explicit ADMIN OVERRIDE.
+
+When manual verification succeeds:
+- mark the customer's ServicePay KYC as VERIFIED/APPROVED using the canonical status already used by the application
+- persist verifiedBy admin id
+- persist verifiedAt timestamp
+- persist verificationMethod = MANUAL_ADMIN_OVERRIDE (or equivalent existing field)
+- preserve submitted NIN/BVN
+- update any user-level KYC status/tier fields required by existing ServicePay logic
+- create an audit record
+- return the updated KYC/customer record
+
+Do not allow ordinary customers to call this endpoint.
+Do not weaken admin authentication or authorization.
+
+4. EMPOWERMENT COMPATIBILITY
+
+The existing Empowerment beneficiary verification checks ServicePay KYC.
+
+After an admin manually verifies a customer's KYC, Empowerment must recognize that customer as KYC verified immediately.
+
+Do not add a fake bypass inside Empowerment.
+The source of truth must remain the customer's actual persisted ServicePay KYC status.
+
+5. CUSTOMER KYC UI
+
+Update the existing customer KYC screen so:
+- NIN field accepts 11 digits
+- BVN field accepts 11 digits
+- customer can proceed/submit without live NIN/BVN provider verification
+- explain clearly that identity details will be reviewed by ServicePay
+- after submission show an appropriate Pending Review status
+- keep all already-existing customer details and KYC screens working
+- do not redesign unrelated pages
+
+6. SECURITY / DATA INTEGRITY
+
+- Prevent a non-admin from manually approving KYC.
+- Validate identifiers.
+- Do not create duplicate KYC records unnecessarily.
+- Make submission idempotent where possible.
+- Existing VERIFIED KYC must not be reset by resubmission without an authorized workflow.
+- Record manual admin approval in the audit trail.
+- Never log full NIN/BVN values in application logs.
+
+7. TESTS
+
+Add/update backend tests covering:
+- customer NIN/BVN manual-review submission
+- invalid NIN/BVN format rejection
+- admin search by full name
+- admin search by phone
+- admin search by email
+- admin search by NIN
+- admin search by BVN
+- unauthorized manual approval blocked
+- authorized manual KYC approval succeeds
+- admin override succeeds even when optional requirements are incomplete
+- verifiedBy/verifiedAt/method persisted
+- audit record created
+- already verified customers are not downgraded
+- Empowerment beneficiary verification accepts the customer after manual KYC approval
+
+Run the existing backend test suite and fix only regressions caused by this task.
+
+After implementation:
+1. report exact files changed
+2. report the final routes/endpoints used
+3. report tests passed/failed
+4. commit the completed changes locally
+5. do not redesign or modify unrelated ServicePay features.
