@@ -17,6 +17,20 @@ const empowermentDisbursementSchema =
         index: true,
       },
 
+      idempotencyKey: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true,
+        index: true,
+      },
+
+      fundingReference: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+
       beneficiaryCount: {
         type: Number,
         required: true,
@@ -57,6 +71,41 @@ const empowermentDisbursementSchema =
         },
       ],
 
+      results: [
+        {
+          beneficiary: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "EmpowermentBeneficiary",
+            required: true,
+          },
+          recipient: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+          },
+          amount: {
+            type: Number,
+            required: true,
+            min: 0.01,
+          },
+          transactionReference: {
+            type: String,
+            required: true,
+            trim: true,
+          },
+          status: {
+            type: String,
+            enum: ["SUCCESSFUL", "FAILED", "PENDING"],
+            required: true,
+          },
+          failureReason: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+        },
+      ],
+
       createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -72,6 +121,11 @@ const empowermentDisbursementSchema =
       timestamps: true,
     }
   );
+
+empowermentDisbursementSchema.index({
+  program: 1,
+  createdAt: -1,
+});
 
 module.exports = mongoose.model(
   "EmpowermentDisbursement",

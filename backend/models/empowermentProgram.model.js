@@ -42,6 +42,13 @@ const empowermentProgramSchema = new mongoose.Schema(
       default: "GENERAL",
     },
 
+    eligibilityRequirements: {
+      type: String,
+      trim: true,
+      maxlength: 4000,
+      default: "",
+    },
+
     state: {
       type: String,
       trim: true,
@@ -72,6 +79,12 @@ const empowermentProgramSchema = new mongoose.Schema(
       min: 1,
     },
 
+    beneficiaryCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     totalBudget: {
       type: Number,
       default: 0,
@@ -91,6 +104,18 @@ const empowermentProgramSchema = new mongoose.Schema(
     totalDisbursedAmount: {
       type: Number,
       default: 0,
+    },
+
+    totalFundedAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    availableFundingAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     status: {
@@ -119,6 +144,11 @@ const empowermentProgramSchema = new mongoose.Schema(
       default: null,
     },
 
+    disbursementDate: {
+      type: Date,
+      default: null,
+    },
+
     publicApplicationEnabled: {
       type: Boolean,
       default: false,
@@ -141,17 +171,20 @@ const empowermentProgramSchema = new mongoose.Schema(
 );
 
 empowermentProgramSchema.pre("save", function (next) {
-  if (
-    (!this.totalBudget || this.totalBudget <= 0) &&
-    this.amountPerBeneficiary &&
-    this.targetBeneficiaries
-  ) {
-    this.totalBudget =
-      Number(this.amountPerBeneficiary) *
-      Number(this.targetBeneficiaries);
+  const calculatedBudget =
+    Number(this.amountPerBeneficiary || 0) *
+    Number(this.targetBeneficiaries || 0);
+
+  if (calculatedBudget > 0) {
+    this.totalBudget = calculatedBudget;
   }
 
   next();
+});
+
+empowermentProgramSchema.index({
+  createdBy: 1,
+  createdAt: -1,
 });
 
 module.exports = mongoose.model(

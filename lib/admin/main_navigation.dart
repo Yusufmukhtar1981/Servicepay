@@ -4,6 +4,7 @@ import 'admin_dashboard_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_kyc_review_screen.dart';
+import 'admin_empowerment_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 
@@ -32,6 +33,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     ),
     AdminAirtimeToCashScreen(),
     AdminKycReviewScreen(),
+    AdminEmpowermentScreen(),
   ];
 
   @override
@@ -111,6 +113,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             icon: Icon(Icons.verified_user_outlined),
             activeIcon: Icon(Icons.verified_user),
             label: 'KYC',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.volunteer_activism_outlined),
+            activeIcon: Icon(Icons.volunteer_activism),
+            label: 'Empowerment',
           ),
         ],
       ),

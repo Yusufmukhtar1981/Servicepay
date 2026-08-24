@@ -7,9 +7,12 @@ const {
 const {
   createOrganization,
   listOrganizations,
+  updateOrganization,
   createProgram,
   addBeneficiary,
   listPrograms,
+  getProgram,
+  updateProgram,
   listBeneficiaries,
   updateOrganizationStatus,
   updateProgramStatus,
@@ -19,9 +22,12 @@ const {
   listAvailablePrograms,
   bulkAddBeneficiaries,
   getProgramStatistics,
+  fundProgram,
   createDisbursementPreview,
+  disburseProgram,
   prepareDisbursementBatch,
   listDisbursementBatches,
+  getProgramReport,
   getEmpowermentDashboardSummary,
   getEmpowermentAuditTrail,
 } = require(
@@ -42,6 +48,11 @@ router.get(
   listOrganizations
 );
 
+router.patch(
+  "/organizations/:id",
+  updateOrganization
+);
+
 router.post(
   "/programs",
   createProgram
@@ -50,6 +61,16 @@ router.post(
 router.get(
   "/programs",
   listPrograms
+);
+
+router.get(
+  "/programs/:programId",
+  getProgram
+);
+
+router.patch(
+  "/programs/:programId",
+  updateProgram
 );
 
 router.post(
@@ -105,10 +126,25 @@ router.get(
   getProgramStatistics
 );
 
+router.get(
+  "/programs/:programId/report",
+  getProgramReport
+);
+
+router.post(
+  "/programs/:programId/funding",
+  fundProgram
+);
+
 
 router.post(
   "/programs/:programId/disbursement-preview",
   createDisbursementPreview
+);
+
+router.post(
+  "/programs/:programId/disbursements",
+  disburseProgram
 );
 
 router.post(

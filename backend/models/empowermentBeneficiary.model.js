@@ -28,6 +28,13 @@ const empowermentBeneficiarySchema = new mongoose.Schema(
       trim: true,
     },
 
+    normalizedPhone: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+
     email: {
       type: String,
       trim: true,
@@ -53,6 +60,34 @@ const empowermentBeneficiarySchema = new mongoose.Schema(
       default: "",
     },
 
+    gender: {
+      type: String,
+      enum: ["FEMALE", "MALE", "OTHER", "PREFER_NOT_TO_SAY", ""],
+      default: "",
+    },
+
+    dateOfBirth: {
+      type: Date,
+      default: null,
+    },
+
+    address: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: "",
+    },
+
+    /*
+     * Store a KYC record reference only. Do not persist raw NIN/BVN
+     * values in the Empowerment domain.
+     */
+    kycReference: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     kycStatus: {
       type: String,
       enum: [
@@ -63,6 +98,24 @@ const empowermentBeneficiarySchema = new mongoose.Schema(
         "REJECTED",
       ],
       default: "NOT_STARTED",
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["PENDING", "VERIFIED", "REJECTED"],
+      default: "PENDING",
+      index: true,
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    verifiedAt: {
+      type: Date,
+      default: null,
     },
 
     applicationStatus: {
@@ -115,8 +168,18 @@ const empowermentBeneficiarySchema = new mongoose.Schema(
 );
 
 empowermentBeneficiarySchema.index(
-  { program: 1, phone: 1 },
+  { program: 1, normalizedPhone: 1 },
   { unique: true }
+);
+
+empowermentBeneficiarySchema.index(
+  { program: 1, user: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      user: { $type: "objectId" },
+    },
+  }
 );
 
 module.exports = mongoose.model(

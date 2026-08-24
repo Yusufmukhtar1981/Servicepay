@@ -11,17 +11,24 @@ const empowermentOrganizationSchema = new mongoose.Schema(
     organizationType: {
       type: String,
       enum: [
+        "GOVERNMENT",
         "STATE_GOVERNMENT",
         "LOCAL_GOVERNMENT",
         "POLITICIAN",
         "NGO",
-        "FOUNDATION",
         "COMPANY",
         "COOPERATIVE",
+        "FOUNDATION",
         "INDIVIDUAL",
         "OTHER",
       ],
       required: true,
+    },
+
+    registrationNumber: {
+      type: String,
+      trim: true,
+      default: "",
     },
 
     contactName: {
@@ -55,11 +62,41 @@ const empowermentOrganizationSchema = new mongoose.Schema(
       default: "",
     },
 
+    address: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 2000,
+      default: "",
+    },
+
     status: {
       type: String,
       enum: ["PENDING", "ACTIVE", "SUSPENDED", "REJECTED"],
       default: "PENDING",
       index: true,
+    },
+
+    verification: {
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      verifiedAt: {
+        type: Date,
+        default: null,
+      },
+      rejectionReason: {
+        type: String,
+        trim: true,
+        default: "",
+      },
     },
 
     createdBy: {
@@ -72,6 +109,11 @@ const empowermentOrganizationSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+empowermentOrganizationSchema.index({
+  createdBy: 1,
+  createdAt: -1,
+});
 
 module.exports = mongoose.model(
   "EmpowermentOrganization",

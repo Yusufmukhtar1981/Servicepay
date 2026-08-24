@@ -58,6 +58,8 @@ const transactionSchema =
           "DELIVERY",
           "ID_VERIFICATION",
           "AMANA",
+          "EMPOWERMENT_FUNDING",
+          "EMPOWERMENT_DISBURSEMENT",
         ],
         required: true,
         index: true,
