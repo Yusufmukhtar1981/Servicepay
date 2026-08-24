@@ -106,7 +106,19 @@ const empowermentProgramSchema = new mongoose.Schema(
       default: 0,
     },
 
+    totalDisbursed: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     totalFundedAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalFunded: {
       type: Number,
       default: 0,
       min: 0,
@@ -116,6 +128,23 @@ const empowermentProgramSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+
+    remainingBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    lastFundedAt: {
+      type: Date,
+      default: null,
+    },
+
+    lastFundedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
 
     status: {
