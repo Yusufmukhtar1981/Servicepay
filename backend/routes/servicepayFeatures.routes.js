@@ -57,11 +57,6 @@ router.get(
   controller.myGroups
 );
 
-module.exports = router;
-
-/*
- * Secure transactional feature routes.
- */
 router.post(
   "/money-requests/:id/pay",
   controller.payMoneyRequest
@@ -87,6 +82,26 @@ router.post(
   controller.addGroupMember
 );
 
+router.delete(
+  "/groups/:id/members/:memberId",
+  controller.removeGroupMember
+);
+
+router.get(
+  "/groups/:id",
+  controller.getGroupDetails
+);
+
+router.patch(
+  "/groups/:id",
+  controller.updateGroup
+);
+
+router.post(
+  "/groups/:id/leave",
+  controller.leaveGroup
+);
+
 router.post(
   "/groups/:id/contribute",
   controller.contributeToGroup
@@ -96,3 +111,5 @@ router.get(
   "/groups/:id/contributions",
   controller.groupContributions
 );
+
+module.exports = router;

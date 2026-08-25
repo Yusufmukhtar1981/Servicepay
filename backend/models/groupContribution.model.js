@@ -24,6 +24,19 @@ const groupContributionSchema =
         index: true,
       },
 
+      idempotencyKey: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true,
+      },
+
+      cycle: {
+        type: String,
+        required: true,
+        index: true,
+      },
+
       amount: {
         type: Number,
         required: true,
@@ -36,6 +49,12 @@ const groupContributionSchema =
         default: "SUCCESSFUL",
         index: true,
       },
+
+      balanceAfter: {
+        type: Number,
+        min: 0,
+        default: null,
+      },
     },
     {
       timestamps: true,
@@ -45,4 +64,12 @@ const groupContributionSchema =
 module.exports = mongoose.model(
   "GroupContribution",
   groupContributionSchema
+);
+
+groupContributionSchema.index(
+  { group: 1, member: 1, cycle: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: "SUCCESSFUL" },
+  }
 );
