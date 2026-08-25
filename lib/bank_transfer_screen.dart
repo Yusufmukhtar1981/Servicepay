@@ -870,7 +870,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
     }
 
     return DropdownButtonFormField<String>(
-      initialValue: selectedBankCode,
+      value: selectedBankCode,
       isExpanded: true,
       decoration: InputDecoration(
         labelText: 'Select Bank',
