@@ -1127,7 +1127,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                initialValue: selectedDiscoCode,
+                value: selectedDiscoCode,
                 isExpanded: true,
                 decoration: inputDecoration(
                   label: 'Electricity Company',
@@ -1168,7 +1168,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                initialValue: selectedMeterTypeCode,
+                value: selectedMeterTypeCode,
                 decoration: inputDecoration(
                   label: 'Meter Type',
                   hint: 'Select meter type',
