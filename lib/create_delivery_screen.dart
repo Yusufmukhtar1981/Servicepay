@@ -814,7 +814,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
         bottom: 14,
       ),
       child: DropdownButtonFormField<String>(
-        initialValue: selectedValue.isEmpty ? null : selectedValue,
+        value: selectedValue.isEmpty ? null : selectedValue,
         isExpanded: true,
         decoration: InputDecoration(
           labelText: label,
