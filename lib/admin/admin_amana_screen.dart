@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/amana_api_service.dart';
 
@@ -10,7 +13,6 @@ class AdminAmanaScreen extends StatefulWidget {
 
 class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
   final AmanaApiService _api = AmanaApiService();
-  final ImagePicker _picker = ImagePicker();
   bool _loading = true;
   String _error = '', _filter = 'ALL';
   List<Map<String, dynamic>> _items = <Map<String, dynamic>>[];
@@ -76,7 +78,28 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
     on AmanaApiException catch (e) { _notice(e.message, error: true); }
   }
   Future<void> _upload(Map<String, dynamic> o, {required bool payment}) async {
-    final XFile? file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final FilePickerResult? selection = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: <String>['pdf', 'jpg', 'jpeg', 'png'],
+      withData: true,
+    );
+    final PlatformFile? picked = selection?.files.isNotEmpty == true ? selection!.files.single : null;
+    final Uint8List? bytes = picked?.bytes;
+    if (picked == null || bytes == null || bytes.isEmpty) {
+      if (picked != null) {
+        _notice('Unable to read that file. Please choose another document.', error: true);
+      }
+      return;
+    }
+    final AmanaUploadFile file = AmanaUploadFile(
+      name: picked.name,
+      bytes: bytes,
+      mimeType: amanaMimeTypeForName(picked.name),
+    );
+    if (file.mimeType == 'application/octet-stream') {
+      _notice('Unable to read that file. Please choose another document.', error: true);
+      return;
+    }
     if (file == null) return;
     final String? amount = payment ? await _input('Provider payment', 'Amount (₦)', amount: true) : null;
     if (payment && amount == null) return;
@@ -84,7 +107,7 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
     if (payment && reference == null) return;
     final String? notes = !payment ? await _input('Fulfilment proof', 'Notes', required: false) : null;
     try {
-      await _api.adminMultipart('/${_id(o)}/${payment ? 'provider-payment' : 'fulfilment-proof'}', files: <XFile>[file], fileField: payment ? 'paymentReceipt' : 'proof', fields: <String, dynamic>{
+       await _api.adminMultipart('/${_id(o)}/${payment ? 'provider-payment' : 'fulfilment-proof'}', files: <AmanaUploadFile>[file], fileField: payment ? 'paymentReceipt' : 'proof', fields: <String, dynamic>{
         if (payment) 'amount': amount!, if (payment) 'paymentReference': reference!, if (payment) 'idempotencyKey': 'amana-payment-${_id(o)}-${DateTime.now().microsecondsSinceEpoch}', if (!payment && notes != null) 'notes': notes,
       });
       _notice(payment ? 'Provider payment proof uploaded.' : 'Fulfilment proof uploaded.'); await _load();
@@ -95,8 +118,22 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
     try { final Map<String, dynamic> b = await _api.adminGet('/${_id(order)}'); o = _map(b['order'] ?? (b['data'] is Map ? b['data']['order'] : null) ?? order); } catch (_) {}
     if (!mounted) return;
     final String status = _text(o['status'], '').toUpperCase(), id = _id(o);
+    final List<dynamic> evidence = o['supportingDocuments'] is List ? o['supportingDocuments'] as List : <dynamic>[];
+    final Map<String, dynamic> providerPayment = _map(o['providerPayment']);
+    final Map<String, dynamic> providerReceipt = _map(providerPayment['receipt']);
+    final Map<String, dynamic> fulfilment = _map(o['fulfilmentProof']);
+    final Map<String, dynamic> fulfilmentReceipt = _map(fulfilment['receipt']);
+    final List<dynamic> fulfilmentDocuments = fulfilment['documents'] is List ? fulfilment['documents'] as List : <dynamic>[];
     await showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (BuildContext s) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: <Widget>[
-      Text(_text(o['title'], 'Amana request'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)), const SizedBox(height: 12), _row('Reference', _text(o['reference'])), _row('Status', status), _row('Category', _text(o['category']).replaceAll('_', ' ')), _row('Amount', '₦${_text(o['amount'] ?? o['totalAmount'], '0')}'), _row('Description', _text(o['description'])), _row('ID', id),
+       Text(_text(o['title'], 'Amana request'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)), const SizedBox(height: 12), _row('Reference', _text(o['reference'])), _row('Status', status), _row('Category', _text(o['category']).replaceAll('_', ' ')), _row('Amount', '₦${_text(o['amount'] ?? o['totalAmount'], '0')}'), _row('Description', _text(o['description'])), _row('ID', id),
+       const SizedBox(height: 10), const Text('Customer evidence', style: TextStyle(fontWeight: FontWeight.w800)),
+       if (evidence.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('No customer evidence attached.')) else ...evidence.map((dynamic document) => _documentLink(document, 'Open customer evidence')),
+       if (providerReceipt.isNotEmpty) ...<Widget>[const SizedBox(height: 10), const Text('Provider payment proof', style: TextStyle(fontWeight: FontWeight.w800)), _documentLink(providerReceipt, 'Open provider payment receipt')],
+       if (fulfilmentReceipt.isNotEmpty || fulfilmentDocuments.isNotEmpty) ...<Widget>[
+         const SizedBox(height: 10), const Text('Fulfilment proof', style: TextStyle(fontWeight: FontWeight.w800)),
+         if (fulfilmentReceipt.isNotEmpty) _documentLink(fulfilmentReceipt, 'Open fulfilment receipt'),
+         ...fulfilmentDocuments.map((dynamic document) => _documentLink(document, 'Open fulfilment document')),
+       ],
       const SizedBox(height: 10), const Text('Protected actions', style: TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 8),
       Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
         if (<String>['SUBMITTED','UNDER_REVIEW','MORE_INFORMATION_REQUIRED'].contains(status)) OutlinedButton(onPressed: () { Navigator.pop(s); _noteAction(o, 'request-information', 'Request information'); }, child: const Text('Request info')),
@@ -112,7 +149,25 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
       ]),
     ])))));
   }
-  Widget _row(String l, String v) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[SizedBox(width: 96, child: Text(l, style: const TextStyle(color: Color(0xFF667085))), Expanded(child: Text(v))]));
+  Widget _documentLink(dynamic value, String action) {
+    final Map<String, dynamic> document = _map(value);
+    final String url = _text(document['url'], '');
+    final String name = _text(document['originalName'], 'Amana document');
+    final String mime = _text(document['mimeType'], '');
+    if (url.isEmpty) return ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.lock_outline), title: Text(name), subtitle: const Text('Secure link unavailable'));
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          final Uri uri = Uri.tryParse(url) ?? Uri();
+          if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) _notice('Unable to open this document.', error: true);
+        },
+        icon: Icon(mime == 'application/pdf' ? Icons.picture_as_pdf : Icons.image_outlined),
+        label: SizedBox(width: 210, child: Text('$action: $name', maxLines: 2, overflow: TextOverflow.ellipsis)),
+      ),
+    );
+  }
+  Widget _row(String l, String v) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[SizedBox(width: 96, child: Text(l, style: const TextStyle(color: Color(0xFF667085)))), Expanded(child: Text(v))]));
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Amana Management'), actions: <Widget>[IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]), body: Column(children: <Widget>[
     Padding(padding: const EdgeInsets.all(12), child: DropdownButtonFormField<String>(value: _filter, decoration: const InputDecoration(labelText: 'Status filter', border: OutlineInputBorder()), items: const <String>['ALL','SUBMITTED','MORE_INFORMATION_REQUIRED','UNDER_REVIEW','APPROVED','FUNDING_IN_PROGRESS','FULLY_FUNDED','PAID_TO_PROVIDER','FULFILLED','COMPLETED','REJECTED','CANCELLED'].map((String x) => DropdownMenuItem(value: x, child: Text(x))).toList(), onChanged: (String? x) { if (x != null) { setState(() => _filter = x); _load(); } })),
     Expanded(child: _loading ? const Center(child: CircularProgressIndicator()) : _error.isNotEmpty ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[Text(_error), TextButton(onPressed: _load, child: const Text('Retry'))])) : _items.isEmpty ? const Center(child: Text('No Amana requests found.')) : RefreshIndicator(onRefresh: _load, child: ListView.builder(itemCount: _items.length, itemBuilder: (_, int i) { final Map<String, dynamic> o = _items[i]; return Card(child: ListTile(onTap: () => _detail(o), leading: const CircleAvatar(child: Icon(Icons.volunteer_activism_outlined)), title: Text(_text(o['title'], _text(o['reference'], 'Amana request'))), subtitle: Text('${_text(o['category']).replaceAll('_', ' ')} • ${_text(o['status'])}'), trailing: const Icon(Icons.chevron_right))); }))),

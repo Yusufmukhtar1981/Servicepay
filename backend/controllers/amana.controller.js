@@ -159,7 +159,7 @@ const createAmanaOrder = async (req, res) => {
 
     let reference = generateReference();
     while (await AmanaOrder.exists({ reference })) reference = generateReference();
-    const documents = await uploadMany(files, `servicepay/amana/${customerId}/${reference}`);
+    const documents = await uploadMany(files, `servicepay/amana/${customerId}/${reference}`, { requestReference: reference, uploadedBy: customerId });
     const order = await AmanaOrder.create({
       customer: customerId,
       reference,
@@ -244,7 +244,7 @@ const provideRequestedInformation = async (req, res) => {
     const note = cleanText(req.body.note);
     const files = getFiles(req);
     if (note.length < 3 && !files.length) return res.status(400).json({ success: false, message: "Provide a response or an additional supporting document." });
-    if (files.length) order.supportingDocuments.push(...await uploadMany(files, `servicepay/amana/${customerId}/${order.reference}`));
+    if (files.length) order.supportingDocuments.push(...await uploadMany(files, `servicepay/amana/${customerId}/${order.reference}`, { requestReference: order.reference, uploadedBy: customerId }));
     const previous = order.status;
     order.status = "SUBMITTED";
     order.moreInformationRequest = "";

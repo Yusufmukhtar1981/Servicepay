@@ -19,11 +19,13 @@ let uploaded = 0;
 
 const models = [User, AmanaOrder, AmanaFundingRecord, AdminAuditLog];
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+const pdf = Buffer.from("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n", "ascii");
 
-const makeFile = (name = "evidence.jpg") => ({
-  mimetype: "image/jpeg",
+const makeFile = (name = "evidence.jpg", mimetype = "image/jpeg", buffer = jpeg) => ({
+  mimetype,
   originalname: name,
-  buffer: jpeg,
+  buffer,
 });
 
 const makeRequest = ({
@@ -134,6 +136,89 @@ test("creates protected Food, School Fees, and Medical requests with evidence", 
     assert.match(result.body.data.order.reference, /^AMANA-[A-F0-9]{12}$/);
     assert.equal(result.body.data.order.supportingDocuments.length, 1);
   }
+});
+
+test("accepts JPEG, PNG, and PDF evidence and returns it to customer and Head Office views", async () => {
+  const customerUser = await createUser();
+  const headOffice = await createUser("HEAD_OFFICE");
+  const files = [
+    makeFile("school-invoice.jpeg"),
+    makeFile("medical-prescription.png", "image/png", png),
+    makeFile("food-support.pdf", "application/pdf", pdf),
+  ];
+  const created = await call(customer.createAmanaOrder, {
+    user: customerUser,
+    body: requestBody("FOOD_PACKAGE"),
+    files: { attachments: files },
+  });
+  assert.equal(created.status, 201);
+  const order = await AmanaOrder.findById(created.body.data.order._id);
+  assert.equal(order.supportingDocuments.length, 3);
+  assert.deepEqual(order.supportingDocuments.map((document) => document.mimeType), ["image/jpeg", "image/png", "application/pdf"]);
+  assert.ok(order.supportingDocuments.every((document) => document.requestReference === order.reference));
+  assert.ok(order.supportingDocuments.every((document) => String(document.uploadedBy) === String(customerUser._id)));
+
+  const customerList = await call(customer.getMyAmanaOrders, { user: customerUser, method: "GET" });
+  assert.equal(customerList.status, 200);
+  assert.equal(customerList.body.data.orders[0].supportingDocuments.length, 3);
+  assert.ok(customerList.body.data.orders[0].supportingDocuments.every((document) => document.url));
+
+  const adminDetail = await call(admin.getAmanaOrderById, {
+    user: headOffice,
+    params: { id: order._id.toString() },
+    method: "GET",
+  });
+  assert.equal(adminDetail.status, 200);
+  assert.equal(adminDetail.body.data.order.supportingDocuments.length, 3);
+  assert.equal(adminDetail.body.data.order.providerPayment?.receipt ?? null, null);
+  assert.ok(adminDetail.body.data.order.supportingDocuments.some((document) => document.mimeType === "application/pdf"));
+});
+
+test("rejects unsupported, empty, and missing Amana evidence files", async () => {
+  const user = await createUser();
+  const invalid = await call(customer.createAmanaOrder, {
+    user,
+    body: requestBody("FOOD_PACKAGE"),
+    files: { attachment: [makeFile("malware.exe", "application/x-msdownload", Buffer.from("MZ"))] },
+  });
+  assert.equal(invalid.status, 400);
+  assert.match(invalid.body.message, /valid JPEG, PNG, or PDF/i);
+  assert.equal(await AmanaOrder.countDocuments(), 0);
+
+  const empty = await call(customer.createAmanaOrder, {
+    user,
+    body: requestBody("FOOD_PACKAGE"),
+    files: { attachment: [makeFile("empty.pdf", "application/pdf", Buffer.alloc(0))] },
+  });
+  assert.equal(empty.status, 400);
+  assert.equal(await AmanaOrder.countDocuments(), 0);
+
+  const spoofed = await call(customer.createAmanaOrder, {
+    user,
+    body: requestBody("FOOD_PACKAGE"),
+    files: { attachment: [makeFile("not-a-real-jpeg.jpg", "image/jpeg", pdf)] },
+  });
+  assert.equal(spoofed.status, 400);
+  assert.match(spoofed.body.message, /valid JPEG, PNG, or PDF/i);
+  assert.equal(await AmanaOrder.countDocuments(), 0);
+
+  const oversized = await call(customer.createAmanaOrder, {
+    user,
+    body: requestBody("FOOD_PACKAGE"),
+    files: { attachment: [makeFile("large-evidence.jpg", "image/jpeg", Buffer.concat([jpeg, Buffer.alloc((8 * 1024 * 1024) + 1)]))] },
+  });
+  assert.equal(oversized.status, 400);
+  assert.match(oversized.body.message, /8 MB or smaller/i);
+  assert.equal(await AmanaOrder.countDocuments(), 0);
+
+  const missing = await call(customer.createAmanaOrder, {
+    user,
+    body: requestBody("FOOD_PACKAGE"),
+    files: {},
+  });
+  assert.equal(missing.status, 400);
+  assert.match(missing.body.message, /supporting document/i);
+  assert.equal(await AmanaOrder.countDocuments(), 0);
 });
 
 test("rejects incomplete protected category data before storage/payment", async () => {

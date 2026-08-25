@@ -35,6 +35,8 @@ const documentSchema = new mongoose.Schema(
     mimeType: { type: String, required: true, trim: true },
     resourceType: { type: String, enum: ["image", "raw"], default: "image" },
     uploadedAt: { type: Date, default: Date.now },
+    requestReference: { type: String, default: "", trim: true, maxlength: 80 },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   },
   { _id: false }
 );

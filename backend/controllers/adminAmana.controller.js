@@ -29,7 +29,15 @@ const documentWithUrl = (document) => {
   if (!document?.assetId) return null;
   let url = "";
   try { url = buildSignedUrl(document); } catch (_) {}
-  return { assetId: document.assetId, originalName: document.originalName, mimeType: document.mimeType, uploadedAt: document.uploadedAt, url };
+  return {
+    assetId: document.assetId,
+    originalName: document.originalName,
+    mimeType: document.mimeType,
+    uploadedAt: document.uploadedAt,
+    requestReference: document.requestReference || "",
+    uploadedBy: document.uploadedBy || null,
+    url,
+  };
 };
 const adminOrder = (order) => {
   const result = order?.toObject ? order.toObject() : { ...order };
@@ -426,7 +434,7 @@ const recordProviderPayment = async (req, res) => {
     if (paidAmount === null || paidAmount !== Number(order.fundingRequired) || !reference || !idempotencyKey) return res.status(400).json({ success: false, message: "Manual provider payment must include an idempotency key, reference, and the exact approved amount." });
     const receiptFile = getFiles(req)[0];
     if (!receiptFile) return res.status(400).json({ success: false, message: "Attach the external-payment receipt before recording provider payment." });
-    const receipt = await uploadOne(receiptFile, `servicepay/amana/${order.customer}/${order.reference}/provider-payment`);
+    const receipt = await uploadOne(receiptFile, `servicepay/amana/${order.customer}/${order.reference}/provider-payment`, { requestReference: order.reference, uploadedBy: getAdminId(req) });
     let paidOrder;
     let duplicate = false;
     await session.withTransaction(async () => {
@@ -526,7 +534,7 @@ const addAmanaFulfilmentProof = async (req, res) => {
     if (!order) return res.status(404).json({ success: false, message: "ServicePay Amana request not found." });
     requireStatus(order, ["PAID_TO_PROVIDER"], "Fulfilment proof can only be recorded after verified provider payment.");
     if (!files.length && notes.length < 3) return res.status(400).json({ success: false, message: "Attach fulfilment proof or provide a clear fulfilment note." });
-    const documents = files.length ? await uploadMany(files, `servicepay/amana/${order.customer}/${order.reference}/fulfilment`) : [];
+    const documents = files.length ? await uploadMany(files, `servicepay/amana/${order.customer}/${order.reference}/fulfilment`, { requestReference: order.reference, uploadedBy: getAdminId(req) }) : [];
     const previous = order.status;
     order.fulfilmentProof = { receipt: documents[0] || null, documents, notes, uploadedBy: getAdminId(req), uploadedAt: new Date() };
     order.status = "FULFILLED";

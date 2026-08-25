@@ -1,7 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AmanaApiException implements Exception {
@@ -12,10 +13,33 @@ class AmanaApiException implements Exception {
   String toString() => message;
 }
 
+class AmanaUploadFile {
+  const AmanaUploadFile({
+    required this.name,
+    required this.bytes,
+    required this.mimeType,
+  });
+
+  final String name;
+  final Uint8List bytes;
+  final String mimeType;
+
+  bool get isImage => mimeType == 'image/jpeg' || mimeType == 'image/png';
+  bool get isPdf => mimeType == 'application/pdf';
+}
+
+String amanaMimeTypeForName(String name) {
+  final String extension = name.split('.').last.toLowerCase();
+  if (extension == 'jpg' || extension == 'jpeg') return 'image/jpeg';
+  if (extension == 'png') return 'image/png';
+  if (extension == 'pdf') return 'application/pdf';
+  return 'application/octet-stream';
+}
+
 /// Authenticated client for the protected Amana endpoints.
 ///
 /// Multipart uploads deliberately use the same authentication and error
-/// handling as JSON requests; callers only need to supply an [XFile].
+/// handling as JSON requests; callers only need to supply an [AmanaUploadFile].
 class AmanaApiService {
   static const String _baseUrl = 'https://api.servicepay.ng/api/amana';
   static const String _adminBaseUrl = 'https://api.servicepay.ng/api/admin/amana';
@@ -57,7 +81,7 @@ class AmanaApiService {
   Future<Map<String, dynamic>> postMultipart(
     String path, {
     Map<String, dynamic> fields = const <String, dynamic>{},
-    XFile? attachment,
+    AmanaUploadFile? attachment,
     String attachmentField = 'attachment',
   }) async {
     final http.MultipartRequest request = http.MultipartRequest('POST', _uri(path));
@@ -68,8 +92,9 @@ class AmanaApiService {
     if (attachment != null) {
       request.files.add(http.MultipartFile.fromBytes(
         attachmentField,
-        await attachment.readAsBytes(),
+        attachment.bytes,
         filename: attachment.name,
+        contentType: MediaType.parse(attachment.mimeType),
       ));
     }
     final http.StreamedResponse streamed =
@@ -100,7 +125,7 @@ class AmanaApiService {
   Future<Map<String, dynamic>> adminMultipart(
     String path, {
     Map<String, dynamic> fields = const <String, dynamic>{},
-    List<XFile> files = const <XFile>[],
+    List<AmanaUploadFile> files = const <AmanaUploadFile>[],
     String fileField = 'attachments',
   }) async {
     final http.MultipartRequest request =
@@ -109,11 +134,12 @@ class AmanaApiService {
     fields.forEach((String key, dynamic value) {
       if (value != null) request.fields[key] = value is String ? value : jsonEncode(value);
     });
-    for (final XFile file in files) {
+    for (final AmanaUploadFile file in files) {
       request.files.add(http.MultipartFile.fromBytes(
         fileField,
-        await file.readAsBytes(),
+        file.bytes,
         filename: file.name,
+        contentType: MediaType.parse(file.mimeType),
       ));
     }
     final http.StreamedResponse streamed =

@@ -37,7 +37,7 @@ const validateFile = (file) => {
   }
 };
 
-const uploadOne = async (file, folder) => {
+const uploadOne = async (file, folder, metadata = {}) => {
   validateFile(file);
   configureCloudinary();
   const resourceType = String(file.mimetype).toLowerCase() === "application/pdf" ? "raw" : "image";
@@ -56,10 +56,12 @@ const uploadOne = async (file, folder) => {
     mimeType: String(file.mimetype).toLowerCase(),
     resourceType,
     uploadedAt: new Date(),
+    requestReference: String(metadata.requestReference || "").trim().slice(0, 80),
+    uploadedBy: metadata.uploadedBy || metadata.uploaderId || null,
   };
 };
 
-const uploadMany = async (files, folder) => Promise.all((files || []).map((file) => uploadOne(file, folder)));
+const uploadMany = async (files, folder, metadata = {}) => Promise.all((files || []).map((file) => uploadOne(file, folder, metadata)));
 
 const buildSignedUrl = (document) => {
   if (!document?.assetId) return "";
