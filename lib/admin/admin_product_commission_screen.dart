@@ -1026,7 +1026,7 @@ class _ProductCommissionFormSheetState
               ),
               const SizedBox(height: 22),
               DropdownButtonFormField<String>(
-                initialValue: selectedServiceType,
+                value: selectedServiceType,
                 decoration: const InputDecoration(
                   labelText: 'Service Type',
                   border: OutlineInputBorder(),
