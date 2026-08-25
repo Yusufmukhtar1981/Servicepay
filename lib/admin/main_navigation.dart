@@ -5,6 +5,7 @@ import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_kyc_review_screen.dart';
 import 'admin_empowerment_screen.dart';
+import 'admin_amana_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 
@@ -34,6 +35,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     AdminAirtimeToCashScreen(),
     AdminKycReviewScreen(),
     AdminEmpowermentScreen(),
+    AdminAmanaScreen(),
   ];
 
   @override
@@ -118,6 +120,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             icon: Icon(Icons.volunteer_activism_outlined),
             activeIcon: Icon(Icons.volunteer_activism),
             label: 'Empowerment',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_basket_outlined),
+            activeIcon: Icon(Icons.shopping_basket),
+            label: 'Amana',
           ),
         ],
       ),

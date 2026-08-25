@@ -94,6 +94,8 @@ const airtimeToCashRoutes = require("./routes/airtimeToCash.routes");
 
 const adminKycRoutes = require("./routes/adminKyc.routes");
 const kycRoutes = require("./routes/kyc.routes");
+const amanaRoutes = require("./routes/amana.routes");
+const adminAmanaRoutes = require("./routes/adminAmana.routes");
 const staffManagementRoutes = require("./routes/staffManagement.routes");
 const adminRoleUsersRoutes = require("./routes/adminRoleUsers.routes");
 
@@ -254,6 +256,8 @@ app.use("/api/admin/partners", adminPartnerRoutes);
 app.use("/api/admin/partner-applications", adminPartnerApplicationRoutes);
 /* ServicePay restored API modules */
 app.use("/api/empowerment", empowermentRoutes);
+app.use("/api/amana", amanaRoutes);
+app.use("/api/admin/amana", adminAmanaRoutes);
 app.use("/api/ai-support", aiSupportRoutes);
 app.use("/api/servicepay-features", servicepayFeaturesRoutes);
 app.use("/api/business-wallet", businessWalletRoutes);
