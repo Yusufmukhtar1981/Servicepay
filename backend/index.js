@@ -1,6 +1,7 @@
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
+const http = require("http");
 
 const partnerRoutes = require("./routes/partner.routes");
 const partnerApplicationRoutes = require("./routes/partnerApplication.routes");
@@ -295,29 +296,21 @@ app.use(
   }
 );
 
-const configuredPort = process.env.PORT || "3000";
-const PORT = Number(configuredPort);
+const PORT = process.env.PORT || 5000;
+const server = http.createServer(app);
 
-if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
-  throw new Error(`Invalid PORT value: ${configuredPort}`);
-}
+console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 
-const server = app.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
-    console.log(
-      `🚀 Server running on port ${PORT}`
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
+
+  connectDB().catch((error) => {
+    console.error(
+      `Fatal startup error: ${error.message}`
     );
-
-    connectDB().catch((error) => {
-      console.error(
-        `Fatal startup error: ${error.message}`
-      );
-      server.close(() => process.exit(1));
-    });
-  }
-);
+    server.close(() => process.exit(1));
+  });
+});
 
 server.on("error", (error) => {
   console.error(
