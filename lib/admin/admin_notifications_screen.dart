@@ -518,7 +518,7 @@ class _AdminNotificationsScreenState
                     ),
                     const SizedBox(height: 18),
                     DropdownButtonFormField<String>(
-                      initialValue: selectedType,
+                    value: selectedType,
                       decoration: InputDecoration(
                         labelText: 'Notification Type',
                         prefixIcon: Icon(
