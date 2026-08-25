@@ -8,6 +8,13 @@ function hashSecret(secret) {
     .digest('hex');
 }
 
+function hasPartnerPermission(partner, permission) {
+  const permissions = Array.isArray(partner?.permissions)
+    ? partner.permissions.map((value) => String(value || "").trim().toUpperCase())
+    : [];
+  return permissions.includes("*") || permissions.includes(String(permission).toUpperCase());
+}
+
 async function partnerAuth(req, res, next) {
   try {
     const apiKey =
@@ -27,7 +34,7 @@ async function partnerAuth(req, res, next) {
 
     const partner = await Partner.findOne({
       apiKey: String(apiKey).trim(),
-    });
+    }).select("+apiSecretHash");
 
     if (!partner) {
       return res.status(401).json({
@@ -39,7 +46,7 @@ async function partnerAuth(req, res, next) {
     if (partner.status !== 'ACTIVE') {
       return res.status(403).json({
         success: false,
-        message: `Partner account is ${partner.status}.`,
+        message: 'Partner API access is not active.',
       });
     }
 
@@ -69,17 +76,13 @@ async function partnerAuth(req, res, next) {
     }
 
     partner.lastUsedAt = new Date();
+    partner.lastRequestAt = new Date();
     await partner.save();
 
     req.partner = partner;
 
     next();
-  } catch (error) {
-    console.error(
-      'Partner authentication error:',
-      error
-    );
-
+  } catch (_) {
     return res.status(500).json({
       success: false,
       message: 'Partner authentication failed.',
@@ -93,13 +96,7 @@ function requirePartnerPermission(permission) {
     res,
     next
   ) {
-    const permissions =
-      req.partner?.permissions || [];
-
-    if (
-      permissions.includes('*') ||
-      permissions.includes(permission)
-    ) {
+    if (hasPartnerPermission(req.partner, permission)) {
       return next();
     }
 
@@ -114,5 +111,6 @@ function requirePartnerPermission(permission) {
 module.exports = {
   partnerAuth,
   requirePartnerPermission,
+  hasPartnerPermission,
   hashSecret,
 };

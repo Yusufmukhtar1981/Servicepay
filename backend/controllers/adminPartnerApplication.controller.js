@@ -7,6 +7,7 @@ const PartnerApplication = require(
 const Partner = require(
   '../models/partner.model'
 );
+const PartnerAuditLog = require("../models/partnerAuditLog.model");
 
 function generateApiKey() {
   return `sp_live_${crypto.randomBytes(18).toString('hex')}`;
@@ -130,8 +131,18 @@ exports.approveApplication = async (req, res) => {
       permissions: [],
       walletBalance: 0,
       dailyLimit: 1000000,
+      perTransactionLimit: null,
+      approvedAt: new Date(),
+      initialCredentialDeliveryPending: true,
       createdBy:
         application.user || null,
+    });
+
+    await PartnerAuditLog.create({
+      partner: partner._id,
+      action: "CREDENTIALS_CREATED",
+      actor: req.user?._id || req.user?.id || null,
+      metadata: { source: "APPLICATION_APPROVAL" },
     });
 
     application.status = 'APPROVED';
@@ -180,15 +191,6 @@ exports.approveApplication = async (req, res) => {
           partner.dailyLimit,
       },
 
-      /*
-       * IMPORTANT:
-       * API Secret is returned only now.
-       * It is not stored in plain text.
-       */
-      credentials: {
-        apiKey,
-        apiSecret,
-      },
     });
   } catch (error) {
     console.error(

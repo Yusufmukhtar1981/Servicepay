@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +15,7 @@ class PartnerApplicationScreen extends StatefulWidget {
 
 class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
+  static const Color _green = Color(0xFF08783E);
 
   final businessNameController = TextEditingController();
   final contactNameController = TextEditingController();
@@ -21,306 +23,26 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
   final phoneController = TextEditingController();
 
   bool loading = true;
-
-  Map<String, dynamic>? partnerProfile;
-  bool loadingPartnerProfile = false;
-  String partnerProfileError = '';
-
-  String get partnerApiKey => (partnerProfile?['apiKey'] ?? '').toString();
-
-  List<dynamic> get partnerPermissions {
-    final value = partnerProfile?['permissions'];
-    return value is List ? value : <dynamic>[];
-  }
-
-  double _partnerNumber(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  Future<void> _loadPartnerProfile() async {
-    if (loadingPartnerProfile) return;
-
-    if (mounted) {
-      setState(() {
-        loadingPartnerProfile = true;
-        partnerProfileError = '';
-      });
-    }
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token =
-          prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
-
-      if (token.isEmpty) {
-        throw Exception('Login session not found.');
-      }
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/partner/me'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      dynamic decoded;
-      try {
-        decoded = jsonDecode(response.body);
-      } catch (_) {
-        decoded = null;
-      }
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final message = decoded is Map
-            ? (decoded['message'] ?? 'Unable to load Partner API profile.')
-            : 'Unable to load Partner API profile.';
-        throw Exception(message.toString());
-      }
-
-      final Map<String, dynamic> body =
-          decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
-
-      final dynamic rawPartner = body['partner'] ?? body['data'] ?? body;
-
-      if (rawPartner is! Map) {
-        throw Exception('Partner API profile was not returned.');
-      }
-
-      if (mounted) {
-        setState(() {
-          partnerProfile = Map<String, dynamic>.from(rawPartner as Map);
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          partnerProfileError = e.toString().replaceFirst('Exception: ', '');
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          loadingPartnerProfile = false;
-        });
-      }
-    }
-  }
-
-  Widget _partnerApiProfileCard() {
-    if (loadingPartnerProfile && partnerProfile == null) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 18),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (partnerProfileError.isNotEmpty && partnerProfile == null) {
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(top: 14),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF3F2),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFFFC9C5)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              partnerProfileError,
-              style: const TextStyle(
-                color: Color(0xFFB42318),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: _loadPartnerProfile,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (partnerProfile == null) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 14),
-        child: OutlinedButton.icon(
-          onPressed: _loadPartnerProfile,
-          icon: const Icon(Icons.key_rounded),
-          label: const Text('Load API Credentials'),
-        ),
-      );
-    }
-
-    final wallet = _partnerNumber(partnerProfile?['walletBalance']);
-    final dailyLimit = _partnerNumber(partnerProfile?['dailyLimit']);
-    final dailySpent = _partnerNumber(partnerProfile?['dailySpent']);
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFF08783E).withValues(alpha: 0.22),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(
-                Icons.vpn_key_rounded,
-                color: Color(0xFF08783E),
-              ),
-              SizedBox(width: 8),
-              Text(
-                'Partner API Access',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17,
-                  color: Color(0xFF153B2A),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'API Key',
-            style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 5),
-          SelectableText(
-            partnerApiKey.isEmpty
-                ? 'API Key has not been generated yet.'
-                : partnerApiKey,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 18,
-            runSpacing: 12,
-            children: [
-              _partnerMetric(
-                'Wallet',
-                '₦${wallet.toStringAsFixed(2)}',
-              ),
-              _partnerMetric(
-                'Daily Limit',
-                '₦${dailyLimit.toStringAsFixed(2)}',
-              ),
-              _partnerMetric(
-                'Daily Spent',
-                '₦${dailySpent.toStringAsFixed(2)}',
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          const Text(
-            'Approved Services',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF334155),
-            ),
-          ),
-          const SizedBox(height: 9),
-          if (partnerPermissions.isEmpty)
-            const Text(
-              'No permissions assigned yet.',
-              style: TextStyle(color: Color(0xFF64748B)),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: partnerPermissions
-                  .map(
-                    (permission) => Chip(
-                      label: Text(
-                        permission.toString(),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          const SizedBox(height: 12),
-          const Text(
-            'For security, your API Secret is shown only when credentials are generated or regenerated. Never share it publicly.',
-            style: TextStyle(
-              fontSize: 12,
-              height: 1.45,
-              color: Color(0xFF64748B),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _partnerMetric(String label, String value) {
-    return SizedBox(
-      width: 125,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   bool submitting = false;
-
+  bool actionLoading = false;
+  bool showApiKey = false;
+  String error = '';
   Map<String, dynamic>? application;
+  Map<String, dynamic>? partner;
+  List<dynamic> activity = [];
 
-  String get status =>
+  String get applicationStatus =>
       (application?['status'] ?? 'NOT_APPLIED').toString().toUpperCase();
+
+  String get partnerStatus =>
+      (partner?['status'] ?? applicationStatus).toString().toUpperCase();
+
+  bool get isApproved => applicationStatus == 'APPROVED' && partner != null;
 
   @override
   void initState() {
     super.initState();
-    _loadApplication();
+    _loadPortal();
   }
 
   @override
@@ -334,76 +56,30 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
 
   Future<String?> _token() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+    return prefs.getString('auth_token') ?? prefs.getString('token');
   }
 
-  Future<void> _loadApplication() async {
-    try {
-      final token = await _token();
-
-      if (token == null || token.isEmpty) {
-        if (mounted) {
-          setState(() => loading = false);
-        }
-        return;
-      }
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/partner-applications/my'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
-      );
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(response.body);
-
-        Map<String, dynamic>? found;
-
-        if (decoded is Map<String, dynamic>) {
-          if (decoded['application'] is Map) {
-            found = Map<String, dynamic>.from(decoded['application']);
-          } else if (decoded['data'] is Map) {
-            found = Map<String, dynamic>.from(decoded['data']);
-          } else if (decoded['status'] != null ||
-              decoded['businessName'] != null) {
-            found = decoded;
-          }
-        }
-
-        if (mounted) {
-          setState(() {
-            application = found;
-            loading = false;
-          });
-        }
-        return;
-      }
-
-      if (response.statusCode == 404) {
-        if (mounted) {
-          setState(() {
-            application = null;
-            loading = false;
-          });
-        }
-        return;
-      }
-
-      if (mounted) {
-        setState(() => loading = false);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => loading = false);
-      }
+  Future<Map<String, String>> _headers() async {
+    final token = await _token();
+    if (token == null || token.isEmpty) {
+      throw Exception('Please log in again to access Partner API.');
     }
+    return {
+      'Authorization': 'Bearer $token',
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
   }
 
-  String _messageFrom(dynamic decoded, String fallback) {
+  Map<String, dynamic>? _mapFromResponse(dynamic decoded, String key) {
+    if (decoded is! Map) return null;
+    final value = decoded[key] ?? decoded['data'];
+    return value is Map ? Map<String, dynamic>.from(value) : null;
+  }
+
+  String _message(dynamic decoded, String fallback) {
     if (decoded is Map) {
-      final value = decoded['message'] ?? decoded['error'] ?? decoded['detail'];
+      final value = decoded['message'] ?? decoded['error'];
       if (value != null && value.toString().trim().isNotEmpty) {
         return value.toString();
       }
@@ -411,191 +87,747 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
     return fallback;
   }
 
-  Future<void> _submit() async {
-    final businessName = businessNameController.text.trim();
-    final contactName = contactNameController.text.trim();
-    final email = emailController.text.trim();
-    final phone = phoneController.text.trim();
-
-    if (businessName.isEmpty ||
-        contactName.isEmpty ||
-        email.isEmpty ||
-        phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please complete all required fields.'),
-        ),
-      );
-      return;
+  Future<void> _loadPortal() async {
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = '';
+      });
     }
-
-    setState(() => submitting = true);
-
     try {
-      final token = await _token();
+      final headers = await _headers();
+      final appResponse = await http.get(
+        Uri.parse('$baseUrl/partner-applications/my'),
+        headers: headers,
+      );
+      dynamic appDecoded;
+      try {
+        appDecoded = jsonDecode(appResponse.body);
+      } catch (_) {}
 
-      if (token == null || token.isEmpty) {
-        throw Exception('Please login again.');
+      Map<String, dynamic>? loadedApplication;
+      if (appResponse.statusCode >= 200 && appResponse.statusCode < 300) {
+        loadedApplication = _mapFromResponse(appDecoded, 'application');
+        if (loadedApplication == null && appDecoded is Map) {
+          loadedApplication = Map<String, dynamic>.from(appDecoded);
+        }
+      } else if (appResponse.statusCode != 404) {
+        throw Exception(_message(appDecoded, 'Unable to load Partner API status.'));
       }
 
+      Map<String, dynamic>? loadedPartner;
+      List<dynamic> loadedActivity = [];
+      if ((loadedApplication?['status'] ?? '').toString().toUpperCase() ==
+          'APPROVED') {
+        final results = await Future.wait([
+          http.get(Uri.parse('$baseUrl/partner/me'), headers: headers),
+          http.get(
+            Uri.parse('$baseUrl/partner/me/transactions'),
+            headers: headers,
+          ),
+        ]);
+        final profileResponse = results[0];
+        final activityResponse = results[1];
+        dynamic profileDecoded;
+        dynamic activityDecoded;
+        try {
+          profileDecoded = jsonDecode(profileResponse.body);
+        } catch (_) {}
+        try {
+          activityDecoded = jsonDecode(activityResponse.body);
+        } catch (_) {}
+        if (profileResponse.statusCode >= 200 &&
+            profileResponse.statusCode < 300) {
+          loadedPartner = _mapFromResponse(profileDecoded, 'partner');
+        } else if (profileResponse.statusCode != 404) {
+          throw Exception(
+            _message(profileDecoded, 'Unable to load developer dashboard.'),
+          );
+        }
+        if (activityResponse.statusCode >= 200 &&
+            activityResponse.statusCode < 300 &&
+            activityDecoded is Map &&
+            activityDecoded['transactions'] is List) {
+          loadedActivity = List<dynamic>.from(activityDecoded['transactions']);
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        application = loadedApplication;
+        partner = loadedPartner;
+        activity = loadedActivity;
+      });
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _submit() async {
+    final values = {
+      'businessName': businessNameController.text.trim(),
+      'contactName': contactNameController.text.trim(),
+      'email': emailController.text.trim(),
+      'phone': phoneController.text.trim(),
+    };
+    if (values.values.any((value) => value.isEmpty)) {
+      _toast('Please complete all required business details.');
+      return;
+    }
+    setState(() => submitting = true);
+    try {
       final response = await http.post(
         Uri.parse('$baseUrl/partner-applications/apply'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'businessName': businessName,
-          'contactName': contactName,
-          'email': email,
-          'phone': phone,
-        }),
+        headers: await _headers(),
+        body: jsonEncode(values),
       );
-
       dynamic decoded;
       try {
         decoded = jsonDecode(response.body);
-      } catch (_) {
-        decoded = null;
+      } catch (_) {}
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(_message(decoded, 'Unable to submit application.'));
       }
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _messageFrom(
-                decoded,
-                'Partner application submitted successfully.',
-              ),
-            ),
-          ),
-        );
-
-        businessNameController.clear();
-        contactNameController.clear();
-        emailController.clear();
-        phoneController.clear();
-
-        await _loadApplication();
-        return;
-      }
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _messageFrom(
-              decoded,
-              'Unable to submit partner application.',
-            ),
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error.toString().replaceFirst('Exception: ', ''),
-          ),
-        ),
-      );
+      businessNameController.clear();
+      contactNameController.clear();
+      emailController.clear();
+      phoneController.clear();
+      _toast(_message(decoded, 'Partner application submitted.'));
+      await _loadPortal();
+    } catch (exception) {
+      _toast(exception.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) {
-        setState(() => submitting = false);
+      if (mounted) setState(() => submitting = false);
+    }
+  }
+
+  Future<void> _regenerateCredentials() async {
+    final confirmed = await _confirm(
+      title: 'Regenerate API credentials?',
+      message:
+          'Your current API key and secret will stop working immediately. Update your integration before sending new requests.',
+      confirmText: 'Regenerate',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    await _postPartnerAction(
+      path: '/partner/me/regenerate-credentials',
+      onSuccess: (decoded) async {
+        final credentials = _mapFromResponse(decoded, 'credentials');
+        if (credentials == null) {
+          throw Exception('Credentials were not returned securely.');
+        }
+        if (!mounted) return;
+        await _credentialsDialog(
+          apiKey: (credentials['apiKey'] ?? '').toString(),
+          apiSecret: (credentials['apiSecret'] ?? '').toString(),
+        );
+        await _loadPortal();
+      },
+    );
+  }
+
+  Future<void> _activateCredentials() async {
+    final confirmed = await _confirm(
+      title: 'Activate API credentials?',
+      message:
+          'Your API Key and one-time API Secret will be shown next. Save the secret securely before closing the dialog.',
+      confirmText: 'Activate credentials',
+    );
+    if (!confirmed) return;
+    await _postPartnerAction(
+      path: '/partner/me/activate-credentials',
+      onSuccess: (decoded) async {
+        final credentials = _mapFromResponse(decoded, 'credentials');
+        if (credentials == null) {
+          throw Exception('Credentials were not returned securely.');
+        }
+        if (!mounted) return;
+        await _credentialsDialog(
+          apiKey: (credentials['apiKey'] ?? '').toString(),
+          apiSecret: (credentials['apiSecret'] ?? '').toString(),
+        );
+        await _loadPortal();
+      },
+    );
+  }
+
+  Future<void> _revokeAccess() async {
+    final confirmed = await _confirm(
+      title: 'Revoke Partner API access?',
+      message:
+          'This immediately blocks all API credentials. Transaction history is retained, but only ServicePay Head Office can restore access.',
+      confirmText: 'Revoke access',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    await _postPartnerAction(
+      path: '/partner/me/revoke',
+      onSuccess: (_) async {
+        _toast('Partner API access revoked.');
+        await _loadPortal();
+      },
+    );
+  }
+
+  Future<void> _postPartnerAction({
+    required String path,
+    required Future<void> Function(dynamic decoded) onSuccess,
+  }) async {
+    setState(() => actionLoading = true);
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl$path'),
+        headers: await _headers(),
+        body: '{}',
+      );
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {}
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(_message(decoded, 'Unable to complete this action.'));
       }
+      await onSuccess(decoded);
+    } catch (exception) {
+      _toast(exception.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => actionLoading = false);
     }
   }
 
-  Color _statusColor() {
-    switch (status) {
-      case 'APPROVED':
-        return Colors.green;
-      case 'REJECTED':
-        return Colors.red;
-      case 'PENDING':
-        return Colors.orange;
-      default:
-        return Colors.blueGrey;
-    }
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required String confirmText,
+    bool destructive = false,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: destructive ? const Color(0xFFB42318) : _green,
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(confirmText),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
-  Widget _statusCard() {
+  Future<void> _credentialsDialog({
+    required String apiKey,
+    required String apiSecret,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.security_rounded, color: _green),
+            SizedBox(width: 10),
+            Expanded(child: Text('Save your API Secret')),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This is the only time ServicePay will show this API Secret. Store it in a secure secret manager and never put it in a mobile app, browser code, URL, or public repository.',
+                style: TextStyle(height: 1.45),
+              ),
+              const SizedBox(height: 18),
+              _secretValue('API Key', apiKey),
+              const SizedBox(height: 12),
+              _secretValue('API Secret', apiSecret),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () => _copy('$apiKey\n$apiSecret', 'API key and secret copied.'),
+            icon: const Icon(Icons.copy_all_rounded),
+            label: const Text('Copy both'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('I saved it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _secretValue(String label, String value) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _statusColor().withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: _statusColor().withValues(alpha: 0.25),
-        ),
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                status == 'APPROVED'
-                    ? Icons.verified_rounded
-                    : status == 'REJECTED'
-                        ? Icons.cancel_rounded
-                        : Icons.schedule_rounded,
-                color: _statusColor(),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Application Status: $status',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: _statusColor(),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 5),
+          SelectableText(
+            value,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _copy(value, '$label copied.'),
+              icon: const Icon(Icons.copy_rounded, size: 17),
+              label: const Text('Copy'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copy(String text, String message) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) _toast(message);
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  double _number(dynamic value) =>
+      value is num ? value.toDouble() : double.tryParse('${value ?? 0}') ?? 0;
+
+  String _money(dynamic value) => '₦${_number(value).toStringAsFixed(2)}';
+
+  String _maskedKey(String key) {
+    if (key.length <= 12) return '••••••••';
+    return '${key.substring(0, 8)}••••••••${key.substring(key.length - 4)}';
+  }
+
+  Color _statusColor(String value) {
+    switch (value) {
+      case 'ACTIVE':
+      case 'APPROVED':
+      case 'SUCCESSFUL':
+        return const Color(0xFF08783E);
+      case 'PENDING':
+      case 'PROCESSING':
+        return const Color(0xFFB54708);
+      case 'SUSPENDED':
+      case 'REVOKED':
+      case 'REJECTED':
+      case 'REVERSED':
+        return const Color(0xFFB42318);
+      default:
+        return const Color(0xFF475569);
+    }
+  }
+
+  Widget _statusPill(String value) {
+    final color = _statusColor(value);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.11),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        value.replaceAll('_', ' '),
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+
+  Widget _hero() {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF064E2A), Color(0xFF0F9D58)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.developer_mode_rounded, size: 38, color: Colors.white),
+          SizedBox(height: 13),
+          Text(
+            'ServicePay Developer Portal',
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Manage secure credentials, partner wallet limits and your live ServicePay API activity.',
+            style: TextStyle(color: Colors.white, height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metric(String label, String value, IconData icon) {
+    return Container(
+      width: 155,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: _green),
+          const SizedBox(height: 10),
+          Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+        ],
+      ),
+    );
+  }
+
+  Widget _credentialsCard() {
+    final apiKey = (partner?['apiKey'] ?? '').toString();
+    final activationPending =
+        partner?['initialCredentialDeliveryPending'] == true;
+    return _card(
+      title: 'API credentials',
+      icon: Icons.key_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (activationPending) ...[
+            const Text(
+              'Your application is approved. Activate your credentials to receive your one-time API Secret.',
+              style: TextStyle(height: 1.45, color: Color(0xFF475569)),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: _green),
+              onPressed: actionLoading ? null : _activateCredentials,
+              icon: const Icon(Icons.lock_open_rounded),
+              label: const Text('Activate credentials'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'ServicePay will not display the API Secret again after this one-time secure delivery.',
+              style: TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF64748B)),
+            ),
+          ] else ...[
+          const Text('API Key', style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SelectableText(
+                    showApiKey ? apiKey : _maskedKey(apiKey),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
                 ),
+                IconButton(
+                  tooltip: showApiKey ? 'Hide API key' : 'Reveal API key',
+                  onPressed: apiKey.isEmpty ? null : () => setState(() => showApiKey = !showApiKey),
+                  icon: Icon(showApiKey ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+                ),
+                IconButton(
+                  tooltip: 'Copy API key',
+                  onPressed: apiKey.isEmpty ? null : () => _copy(apiKey, 'API key copied.'),
+                  icon: const Icon(Icons.copy_rounded),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Your API Secret is never stored in this portal. Regeneration immediately invalidates both current credentials.',
+            style: TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: actionLoading || partnerStatus != 'ACTIVE' ? null : _regenerateCredentials,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Regenerate'),
+              ),
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: const Color(0xFFB42318)),
+                onPressed: actionLoading || partnerStatus != 'ACTIVE' ? null : _revokeAccess,
+                icon: const Icon(Icons.block_rounded),
+                label: const Text('Revoke access'),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            status == 'APPROVED'
-                ? 'Your ServicePay Partner application has been approved.'
-                : status == 'REJECTED'
-                    ? 'Your application was not approved. Contact ServicePay support if you need clarification.'
-                    : 'Your application is under review by ServicePay Head Office.',
-            style: const TextStyle(
-              height: 1.45,
-              color: Color(0xFF475569),
-            ),
-          ),
-          if (status == 'APPROVED') ...[
-            _partnerApiProfileCard(),
-            const SizedBox(height: 12),
-            const Text(
-              'API credentials are issued securely after approval. Keep your API Secret private.',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF334155),
-              ),
-            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _field({
-    required TextEditingController controller,
-    required String label,
+  Widget _portalDashboard() {
+    final permissions = partner?['permissions'] is List
+        ? List<dynamic>.from(partner?['permissions'])
+        : <dynamic>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _card(
+          title: 'Partner API status',
+          icon: Icons.verified_user_rounded,
+          trailing: _statusPill(partnerStatus),
+          child: Text(
+            partnerStatus == 'ACTIVE'
+                ? 'Your live API access is active. Server-side permissions, wallet balance and limits apply to every request.'
+                : partnerStatus == 'SUSPENDED'
+                    ? 'Your API access is temporarily suspended. Contact ServicePay Head Office for a review.'
+                    : 'Your API credentials no longer have access. Transaction history remains available for reconciliation.',
+            style: const TextStyle(height: 1.45, color: Color(0xFF475569)),
+          ),
+        ),
+        const SizedBox(height: 14),
+        _credentialsCard(),
+        const SizedBox(height: 14),
+        const Text('Wallet & limits', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _metric('Partner wallet', _money(partner?['walletBalance']), Icons.account_balance_wallet_rounded),
+            _metric('Daily remaining', _money(partner?['dailyRemaining']), Icons.today_rounded),
+            _metric(
+              'Per transaction',
+              partner?['perTransactionLimit'] == null ? 'Not set' : _money(partner?['perTransactionLimit']),
+              Icons.shield_rounded,
+            ),
+            _metric('Daily limit', _money(partner?['dailyLimit']), Icons.speed_rounded),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _card(
+          title: 'Approved live services',
+          icon: Icons.rocket_launch_rounded,
+          child: permissions.isEmpty
+              ? const Text('No live services are assigned yet. ServicePay Head Office must assign a supported service before you can make API requests.', style: TextStyle(height: 1.45, color: Color(0xFF64748B)))
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: permissions
+                      .map((permission) => Chip(
+                            avatar: const Icon(Icons.check_circle_rounded, color: _green, size: 18),
+                            label: Text(permission.toString()),
+                          ))
+                      .toList(),
+                ),
+        ),
+        const SizedBox(height: 14),
+        _documentationCard(),
+        const SizedBox(height: 14),
+        _activityCard(),
+      ],
+    );
+  }
+
+  Widget _documentationCard() {
+    return _card(
+      title: 'Live API documentation',
+      icon: Icons.menu_book_rounded,
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Authentication', style: TextStyle(fontWeight: FontWeight.w900)),
+          SizedBox(height: 5),
+          SelectableText(
+            'X-API-Key: sp_live_...\\nX-API-Secret: your secret\\nIdempotency-Key: a unique value per purchase',
+            style: TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.5),
+          ),
+          SizedBox(height: 13),
+          Text('Supported endpoints', style: TextStyle(fontWeight: FontWeight.w900)),
+          SizedBox(height: 5),
+          Text('GET  /api/partner/profile\\nGET  /api/partner/balance\\nGET  /api/partner/transactions\\nGET  /api/partner/data-plans/:network  (DATA)\\nPOST /api/partner/airtime  (AIRTIME)\\nPOST /api/partner/data  (DATA)', style: TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.55)),
+          SizedBox(height: 13),
+          Text('Airtime body: network, phone, amount. Data body: network, phone, planCode. Every purchase requires an Idempotency-Key and is restricted by your wallet, permissions, daily and per-transaction limits.', style: TextStyle(fontSize: 12, height: 1.45, color: Color(0xFF64748B))),
+          SizedBox(height: 12),
+          Text('Airtime request example', style: TextStyle(fontWeight: FontWeight.w900)),
+          SizedBox(height: 5),
+          SelectableText('POST /api/partner/airtime\\n{ "network": "MTN", "phone": "08030000000", "amount": 100 }', style: TextStyle(fontFamily: 'monospace', fontSize: 11, height: 1.45)),
+          SizedBox(height: 10),
+          Text('Data request example', style: TextStyle(fontWeight: FontWeight.w900)),
+          SizedBox(height: 5),
+          SelectableText('POST /api/partner/data\\n{ "network": "MTN", "phone": "08030000000", "planCode": "provider-plan-code" }', style: TextStyle(fontFamily: 'monospace', fontSize: 11, height: 1.45)),
+        ],
+      ),
+    );
+  }
+
+  Widget _activityCard() {
+    return _card(
+      title: 'Recent API activity',
+      icon: Icons.history_rounded,
+      child: activity.isEmpty
+          ? const Text('No Partner API requests yet. Successful and reversed requests will appear here.', style: TextStyle(color: Color(0xFF64748B)))
+          : Column(
+              children: activity.take(8).map((item) {
+                final map = item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
+                final status = (map['status'] ?? 'UNKNOWN').toString().toUpperCase();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: _statusColor(status).withValues(alpha: 0.12),
+                        foregroundColor: _statusColor(status),
+                        child: Icon(status == 'SUCCESSFUL' ? Icons.check_rounded : Icons.sync_rounded),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${map['service'] ?? 'API request'} · ${_money(map['amount'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 2),
+                            Text((map['reference'] ?? '').toString(), style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: Color(0xFF64748B))),
+                          ],
+                        ),
+                      ),
+                      _statusPill(status),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+
+  Widget _card({
+    required String title,
     required IconData icon,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: _green),
+              const SizedBox(width: 8),
+              Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)))),
+              if (trailing != null) trailing,
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _applicationCard() {
+    final color = _statusColor(applicationStatus);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [Icon(Icons.assignment_turned_in_rounded, color: color), const SizedBox(width: 8), Expanded(child: Text('Application status', style: TextStyle(fontWeight: FontWeight.w900, color: color))), _statusPill(applicationStatus)]),
+          const SizedBox(height: 10),
+          Text(
+            applicationStatus == 'PENDING'
+                ? 'ServicePay Head Office is reviewing your application. API credentials cannot be used until approval.'
+                : 'This application was not approved. Contact ServicePay support if you need clarification before applying again.',
+            style: const TextStyle(height: 1.45, color: Color(0xFF475569)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _applicationForm() {
+    return _card(
+      title: 'Partner application',
+      icon: Icons.handshake_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Submit your business details for Head Office review before credentials and service permissions are issued.', style: TextStyle(height: 1.45, color: Color(0xFF64748B))),
+          const SizedBox(height: 16),
+          _field(businessNameController, 'Business / Company name', Icons.business_rounded),
+          _field(contactNameController, 'Contact person', Icons.person_rounded),
+          _field(emailController, 'Business email', Icons.email_rounded, keyboardType: TextInputType.emailAddress),
+          _field(phoneController, 'Phone number', Icons.phone_rounded, keyboardType: TextInputType.phone),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: _green),
+              onPressed: submitting ? null : _submit,
+              icon: submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send_rounded),
+              label: Text(submitting ? 'Submitting...' : 'Submit application'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _field(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
     TextInputType? keyboardType,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
@@ -603,16 +835,8 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
           labelText: label,
           prefixIcon: Icon(icon),
           filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(
-              color: Color(0xFFE2E8F0),
-            ),
-          ),
+          fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
         ),
       ),
     );
@@ -620,150 +844,41 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const green = Color(0xFF08783E);
-
-    if (status == 'APPROVED' &&
-        partnerProfile == null &&
-        !loadingPartnerProfile) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted &&
-            status == 'APPROVED' &&
-            partnerProfile == null &&
-            !loadingPartnerProfile) {
-          _loadPartnerProfile();
-        }
-      });
-    }
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('ServicePay Partner API'),
-        backgroundColor: green,
+        title: const Text('Partner API'),
+        backgroundColor: _green,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(onPressed: loading ? null : _loadPortal, icon: const Icon(Icons.refresh_rounded), tooltip: 'Refresh'),
+        ],
       ),
       body: loading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _loadApplication,
+              onRefresh: _loadPortal,
               child: ListView(
                 padding: const EdgeInsets.all(18),
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF08783E),
-                          Color(0xFF0F9D58),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(22),
+                  _hero(),
+                  const SizedBox(height: 16),
+                  if (error.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(color: const Color(0xFFFFF3F2), borderRadius: BorderRadius.circular(14)),
+                      child: Text(error, style: const TextStyle(color: Color(0xFFB42318))),
                     ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.handshake_rounded,
-                          size: 38,
-                          color: Colors.white,
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          'Become a ServicePay API Partner',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 21,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Connect your business or platform to approved ServicePay services through our Partner API.',
-                          style: TextStyle(
-                            color: Colors.white,
-                            height: 1.45,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  if (application != null) ...[
-                    _statusCard(),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 14),
                   ],
-                  if (application == null || status == 'REJECTED') ...[
-                    const Text(
-                      'Partner Application',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Submit your business details. ServicePay Head Office will review your application before API access is activated.',
-                      style: TextStyle(
-                        color: Color(0xFF64748B),
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    _field(
-                      controller: businessNameController,
-                      label: 'Business / Company Name',
-                      icon: Icons.business_rounded,
-                    ),
-                    _field(
-                      controller: contactNameController,
-                      label: 'Contact Person',
-                      icon: Icons.person_rounded,
-                    ),
-                    _field(
-                      controller: emailController,
-                      label: 'Business Email',
-                      icon: Icons.email_rounded,
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    _field(
-                      controller: phoneController,
-                      label: 'Phone Number',
-                      icon: Icons.phone_rounded,
-                      keyboardType: TextInputType.phone,
-                    ),
-                    const SizedBox(height: 4),
-                    SizedBox(
-                      height: 54,
-                      child: ElevatedButton.icon(
-                        onPressed: submitting ? null : _submit,
-                        icon: submitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.send_rounded),
-                        label: Text(
-                          submitting
-                              ? 'Submitting...'
-                              : 'Submit Partner Application',
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: green,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
-                    ),
+                  if (isApproved) _portalDashboard() else ...[
+                    if (application != null) ...[
+                      _applicationCard(),
+                      const SizedBox(height: 14),
+                    ],
+                    if (application == null || applicationStatus == 'REJECTED') _applicationForm(),
                   ],
+                  const SizedBox(height: 28),
                 ],
               ),
             ),

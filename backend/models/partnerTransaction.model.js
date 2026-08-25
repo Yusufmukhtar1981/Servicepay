@@ -22,6 +22,13 @@ const partnerTransactionSchema = new mongoose.Schema(
       index: true,
     },
 
+    idempotencyKey: {
+      type: String,
+      default: "",
+      index: true,
+      trim: true,
+    },
+
     service: {
       type: String,
       enum: ["AIRTIME", "DATA"],
@@ -93,6 +100,21 @@ const partnerTransactionSchema = new mongoose.Schema(
       default: 0,
     },
 
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+
+    dailyLimitAtRequest: {
+      type: Number,
+      default: 0,
+    },
+
+    perTransactionLimitAtRequest: {
+      type: Number,
+      default: null,
+    },
+
     errorMessage: {
       type: String,
       default: "",
@@ -115,6 +137,16 @@ partnerTransactionSchema.index(
         $type: "string",
         $gt: "",
       },
+    },
+  }
+);
+
+partnerTransactionSchema.index(
+  { partner: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: { $type: "string", $gt: "" },
     },
   }
 );

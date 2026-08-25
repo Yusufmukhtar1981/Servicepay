@@ -38,6 +38,12 @@ const partnerSchema = new mongoose.Schema(
     apiSecretHash: {
       type: String,
       required: true,
+      select: false,
+    },
+
+    initialCredentialDeliveryPending: {
+      type: Boolean,
+      default: false,
     },
 
     status: {
@@ -50,6 +56,18 @@ const partnerSchema = new mongoose.Schema(
     permissions: {
       type: [String],
       default: [],
+    },
+
+    environment: {
+      type: String,
+      enum: ["LIVE"],
+      default: "LIVE",
+    },
+
+    perTransactionLimit: {
+      type: Number,
+      default: null,
+      min: 0,
     },
 
     walletBalance: {
@@ -78,6 +96,22 @@ const partnerSchema = new mongoose.Schema(
     lastUsedAt: {
       type: Date,
       default: null,
+    },
+
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    lastRequestAt: {
+      type: Date,
+      default: null,
+    },
+
+    failedRequestCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     createdBy: {
