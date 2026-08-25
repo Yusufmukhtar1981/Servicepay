@@ -38,7 +38,6 @@ const bankTransferSchema =
         type: String,
         trim: true,
         default: undefined,
-        index: true,
       },
 
       providerTransactionId: {
