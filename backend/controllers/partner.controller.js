@@ -431,6 +431,8 @@ exports.getDocumentation = (req, res) => {
       { method: "GET", path: "/profile", permission: "Authenticated partner", description: "Retrieve current partner profile and limits." },
       { method: "GET", path: "/balance", permission: "Authenticated partner", description: "Retrieve available partner wallet balance." },
       { method: "GET", path: "/transactions", permission: "Authenticated partner", description: "List your API transaction records." },
+      { method: "GET", path: "/transactions/:reference", permission: "Authenticated partner", description: "Retrieve one of your API transactions and its finality." },
+      { method: "POST", path: "/transactions/:reference/requery", permission: "Authenticated partner", description: "Request a safe status confirmation for an unresolved transaction. This never repeats the purchase." },
       { method: "GET", path: "/data-plans/:network", permission: "DATA", description: "List current purchasable data plans." },
       { method: "POST", path: "/airtime", permission: "AIRTIME", description: "Buy airtime. Body: network, phone, amount. Requires Idempotency-Key." },
       { method: "POST", path: "/data", permission: "DATA", description: "Buy data. Body: network, phone, planCode. Requires Idempotency-Key." },
@@ -446,6 +448,12 @@ exports.getDocumentation = (req, res) => {
       },
     },
     successResponse: { success: true, data: { reference: "SPP-AIRTIME-...", status: "SUCCESSFUL" } },
+    pendingResponse: {
+      success: false,
+      status: "PROCESSING",
+      reference: "SPP-AIRTIME-...",
+      message: "Transaction is being confirmed. Do not resubmit this purchase; query the same reference or reuse the same idempotency key.",
+    },
     errorResponse: { success: false, message: "Safe error message", reference: "SPP-AIRTIME-..." },
   });
 };

@@ -7,6 +7,7 @@ const Partner = require(
 const partnerController = require(
   '../controllers/partner.controller'
 );
+const partnerApiController = require("../controllers/partnerApi.controller");
 
 const {
   protect,
@@ -66,6 +67,9 @@ router.patch(
 
 router.patch('/:id/limits', partnerController.updatePartnerLimits);
 router.get('/:id/usage', partnerController.getPartnerUsage);
+router.get('/reconciliation', partnerApiController.listUnresolvedTransactions);
+router.post('/reconciliation/:reference/requery', partnerApiController.requeryPartnerTransaction);
+router.post('/reconciliation/:reference/resolve', partnerApiController.resolvePartnerTransaction);
 
 /*
  * Partner Wallet Administration

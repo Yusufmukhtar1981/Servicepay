@@ -20,6 +20,11 @@ const partnerAuditLogSchema = new mongoose.Schema(
         "PERMISSIONS_CHANGED",
         "LIMITS_CHANGED",
         "API_REQUEST_FAILED",
+        "API_REQUEST_PENDING_RECONCILIATION",
+        "API_REQUERY_ATTEMPTED",
+        "API_TRANSACTION_CONFIRMED",
+        "API_TRANSACTION_REVERSED",
+        "API_TRANSACTION_MANUALLY_RESOLVED",
       ],
     },
     actor: {

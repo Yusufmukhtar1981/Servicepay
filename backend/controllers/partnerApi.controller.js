@@ -11,6 +11,22 @@ const { hasPartnerPermission } = require("../middleware/partnerAuth.middleware")
 const AIRTIME_URL = "https://www.nellobytesystems.com/APIAirtimeV1.asp";
 const DATA_URL = "https://www.nellobytesystems.com/APIDatabundleV1.asp";
 const DATA_PLANS_URL = "https://www.nellobytesystems.com/APIDatabundlePlansV2.asp";
+const PROVIDER_NAME = "CLUBKONNECT";
+const IN_FLIGHT_STATUSES = ["PENDING", "PROCESSING"];
+const RECONCILIATION_STATUSES = ["REQUERY_REQUIRED"];
+const PROVIDER_FAILURE_WORDS = [
+  "INVALID",
+  "FAILED",
+  "FAILURE",
+  "ERROR",
+  "MISSING",
+  "INSUFFICIENT",
+  "DECLINED",
+  "REJECTED",
+  "UNAUTHORIZED",
+  "NOT_FOUND",
+  "CANCELLED",
+];
 
 const NETWORK_CODES = {
   MTN: "01",
@@ -76,8 +92,13 @@ const providerMessage = (data) =>
     .trim()
     .slice(0, 250);
 
+const providerStatus = (data) =>
+  String(field(data, ["status", "response_description", "response", "message"]))
+    .trim()
+    .toUpperCase();
+
 const providerSucceeded = (data) => {
-  const status = String(field(data, ["status", "response_description", "response", "message"])).toUpperCase();
+  const status = providerStatus(data);
   return [
     "SUCCESS",
     "SUCCESSFUL",
@@ -88,20 +109,62 @@ const providerSucceeded = (data) => {
   ].includes(status) || status.includes("SUCCESS");
 };
 
+const providerFailed = (data) => {
+  const status = providerStatus(data);
+  return Boolean(status) && PROVIDER_FAILURE_WORDS.some((word) => status.includes(word));
+};
+
+const providerOutcome = (data, httpStatus) => {
+  if (httpStatus >= 200 && httpStatus < 300 && providerSucceeded(data)) return "SUCCESS";
+  if (providerFailed(data) && httpStatus >= 200 && httpStatus < 500) return "FAILED";
+  return "UNKNOWN";
+};
+
+const sanitizeProviderPayload = (value, depth = 0) => {
+  if (depth > 4 || value === null || value === undefined) return value ?? null;
+  if (Array.isArray(value)) return value.slice(0, 50).map((item) => sanitizeProviderPayload(item, depth + 1));
+  if (typeof value !== "object") return String(value).slice(0, 1000);
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !/(api.?key|secret|password|token|authorization|user.?id)/i.test(key))
+      .slice(0, 100)
+      .map(([key, item]) => [key, sanitizeProviderPayload(item, depth + 1)])
+  );
+};
+
+const isInFlight = (transaction) =>
+  IN_FLIGHT_STATUSES.includes(String(transaction?.status || "").toUpperCase());
+
+const isReconciliationEligible = (transaction) =>
+  RECONCILIATION_STATUSES.includes(String(transaction?.status || "").toUpperCase());
+
 const responseTransaction = (transaction) => ({
   reference: transaction.reference,
   requestReference: transaction.externalReference,
   service: transaction.service,
   amount: Number(transaction.amount || 0),
   status: transaction.status,
+  provider: transaction.provider || PROVIDER_NAME,
   providerReference: transaction.providerReference || "",
   createdAt: transaction.createdAt,
   completedAt: transaction.completedAt || null,
   walletBefore: Number(transaction.walletBefore || 0),
   walletAfter: Number(transaction.walletAfter || 0),
+  walletDebitStatus: transaction.walletDebitStatus || "DEBITED",
+  lastRequeryAt: transaction.lastRequeryAt || null,
+  requeryCount: Number(transaction.requeryCount || 0),
+  uncertaintyReason: transaction.uncertaintyReason || "",
+  resolvedAt: transaction.resolvedAt || null,
+  resolutionSource: transaction.resolutionSource || null,
 });
 
 const dayKey = () => new Date().toISOString().slice(0, 10);
+
+const transactionDebitDay = (transaction) =>
+  String(
+    transaction.dailySpentDateAtRequest ||
+    (transaction.createdAt ? new Date(transaction.createdAt).toISOString().slice(0, 10) : "")
+  );
 
 const idempotencyKey = (req) =>
   String(
@@ -209,9 +272,13 @@ const reserveRequest = async ({ partnerId, service, amount, requestKey, network,
         amount,
         planCode,
         status: "PROCESSING",
+        provider: PROVIDER_NAME,
+        walletDebitStatus: "DEBITED",
+        requestPayload: { network, phone, amount, planCode },
         walletBefore: before,
         walletAfter: partner.walletBalance,
         dailyLimitAtRequest: Number(partner.dailyLimit || 0),
+        dailySpentDateAtRequest: today,
         perTransactionLimitAtRequest: partner.perTransactionLimit ?? null,
       }], { session });
       reserved = { duplicate: false, partner, transaction: created[0] };
@@ -222,42 +289,124 @@ const reserveRequest = async ({ partnerId, service, amount, requestKey, network,
   }
 };
 
-const refundRequest = async ({ transaction, reason, providerResponse }) => {
+const refundRequest = async ({
+  transaction,
+  reason,
+  providerResponse,
+  actor = null,
+  resolutionSource = "PROVIDER_RESPONSE",
+  resolutionNote = "",
+  providerReference = "",
+  allowedStatuses = IN_FLIGHT_STATUSES,
+}) => {
   const session = await mongoose.startSession();
   try {
+    let result = { applied: false, transaction: null };
     await session.withTransaction(async () => {
       const current = await PartnerTransaction.findById(transaction._id).session(session);
-      if (!current || current.status !== "PROCESSING") return;
+      if (!current || !allowedStatuses.includes(current.status)) {
+        result = { applied: false, transaction: current };
+        return;
+      }
       const partner = await Partner.findById(current.partner).session(session);
-      if (!partner) return;
+      if (!partner || current.walletDebitStatus === "REFUNDED") {
+        result = { applied: false, transaction: current };
+        return;
+      }
       partner.walletBalance = Number((Number(partner.walletBalance || 0) + Number(current.amount || 0)).toFixed(2));
-      partner.dailySpent = Math.max(0, Number((Number(partner.dailySpent || 0) - Number(current.amount || 0)).toFixed(2)));
+      if (partner.dailySpentDate === transactionDebitDay(current)) {
+        partner.dailySpent = Math.max(0, Number((Number(partner.dailySpent || 0) - Number(current.amount || 0)).toFixed(2)));
+      }
       partner.failedRequestCount = Number(partner.failedRequestCount || 0) + 1;
       await partner.save({ session });
       current.status = "REVERSED";
       current.errorMessage = String(reason || "Provider request failed.").slice(0, 250);
-      current.providerResponse = providerResponse || null;
+      current.providerResponse = sanitizeProviderPayload(providerResponse);
+      current.responsePayload = sanitizeProviderPayload(providerResponse);
+      current.providerReference = String(providerReference || current.providerReference || "").slice(0, 250);
+      current.walletDebitStatus = "REFUNDED";
       current.walletAfter = partner.walletBalance;
       current.completedAt = new Date();
+      current.resolvedAt = new Date();
+      current.resolvedBy = actor;
+      current.resolutionSource = resolutionSource;
+      current.resolutionNote = String(resolutionNote || "").slice(0, 500);
       await current.save({ session });
       await PartnerAuditLog.create([{
         partner: partner._id,
-        action: "API_REQUEST_FAILED",
-        metadata: { reference: current.reference, service: current.service, reason: current.errorMessage },
+        action: resolutionSource === "HEAD_OFFICE_MANUAL"
+          ? "API_TRANSACTION_MANUALLY_RESOLVED"
+          : "API_TRANSACTION_REVERSED",
+        actor,
+        metadata: {
+          reference: current.reference,
+          service: current.service,
+          outcome: "FAILED",
+          reason: current.errorMessage,
+          walletReversal: "ONE_TIME",
+          providerReference: current.providerReference || null,
+        },
       }], { session });
+      result = { applied: true, transaction: current };
     });
+    return result;
   } finally {
     await session.endSession();
   }
 };
 
-const markRequestForReconciliation = async (transaction) => {
-  await PartnerTransaction.findByIdAndUpdate(transaction._id, {
+const markRequestForReconciliation = async (transaction, {
+  reason = "Provider outcome pending reconciliation.",
+  providerResponse = null,
+} = {}) => {
+  const updated = await PartnerTransaction.findOneAndUpdate({
+    _id: transaction._id,
+    status: { $in: IN_FLIGHT_STATUSES },
+  }, {
     $set: {
-      errorMessage: "Provider outcome pending reconciliation.",
+      status: "REQUERY_REQUIRED",
+      provider: PROVIDER_NAME,
+      walletDebitStatus: "DEBITED",
+      errorMessage: String(reason).slice(0, 250),
+      uncertaintyReason: String(reason).slice(0, 250),
+      providerResponse: sanitizeProviderPayload(providerResponse),
+      responsePayload: sanitizeProviderPayload(providerResponse),
     },
-  });
+  }, { returnDocument: "after" });
+  if (updated) {
+    await PartnerAuditLog.create({
+      partner: updated.partner,
+      action: "API_REQUEST_PENDING_RECONCILIATION",
+      metadata: {
+        reference: updated.reference,
+        service: updated.service,
+        provider: PROVIDER_NAME,
+        reason: updated.uncertaintyReason,
+      },
+    });
+  }
+  return updated;
 };
+
+const finalizeProviderSuccess = async ({ transaction, providerResponse }) =>
+  PartnerTransaction.findOneAndUpdate({
+    _id: transaction._id,
+    status: { $in: IN_FLIGHT_STATUSES },
+    walletDebitStatus: "DEBITED",
+  }, {
+    $set: {
+      status: "SUCCESSFUL",
+      provider: PROVIDER_NAME,
+      providerResponse: sanitizeProviderPayload(providerResponse),
+      responsePayload: sanitizeProviderPayload(providerResponse),
+      providerReference: String(field(providerResponse, ["reference", "transaction_id", "request_id"]) || "").slice(0, 250),
+      walletDebitStatus: "DEBITED",
+      resolutionSource: "PROVIDER_RESPONSE",
+      completedAt: new Date(),
+      resolvedAt: new Date(),
+      errorMessage: "",
+    },
+  }, { returnDocument: "after" });
 
 const purchase = async (req, res, service) => {
   let reservation;
@@ -337,16 +486,33 @@ const purchase = async (req, res, service) => {
         }
       );
     } catch (_) {
-      await markRequestForReconciliation(reservation.transaction);
+      await markRequestForReconciliation(reservation.transaction, {
+        reason: "Provider transport failed or timed out after the purchase request was sent.",
+      });
       return res.status(202).json({
         success: false,
-        message: "The provider outcome is pending reconciliation. Do not retry with a new idempotency key.",
+        message: "Transaction is being confirmed. Do not resubmit this purchase; query the same reference or reuse the same idempotency key.",
         reference: reservation.transaction.reference,
         status: "PROCESSING",
       });
     }
     const parsed = parseProviderResponse(providerResponse.data);
-    if (providerResponse.status < 200 || providerResponse.status >= 300 || !providerSucceeded(parsed)) {
+    const outcome = providerOutcome(parsed, providerResponse.status);
+    if (outcome === "UNKNOWN") {
+      await markRequestForReconciliation(reservation.transaction, {
+        reason: providerResponse.status >= 500
+          ? "The provider returned a server error and its purchase outcome is unknown."
+          : "The provider response was delayed, malformed, or did not establish a final outcome.",
+        providerResponse: parsed,
+      });
+      return res.status(202).json({
+        success: false,
+        message: "Transaction is being confirmed. Do not resubmit this purchase; query the same reference or reuse the same idempotency key.",
+        reference: reservation.transaction.reference,
+        status: "PROCESSING",
+      });
+    }
+    if (outcome === "FAILED") {
       await refundRequest({ transaction: reservation.transaction, reason: providerMessage(parsed), providerResponse: parsed });
       return res.status(422).json({
         success: false,
@@ -356,20 +522,44 @@ const purchase = async (req, res, service) => {
       });
     }
 
-    reservation.transaction.status = "SUCCESSFUL";
-    reservation.transaction.providerResponse = parsed;
-    reservation.transaction.providerReference = String(field(parsed, ["reference", "transaction_id", "request_id"]) || "");
-    reservation.transaction.completedAt = new Date();
-    await reservation.transaction.save();
+    const completed = await finalizeProviderSuccess({
+      transaction: reservation.transaction,
+      providerResponse: parsed,
+    });
+    if (!completed) {
+      const current = await PartnerTransaction.findById(reservation.transaction._id);
+      return res.status(202).json({
+        success: current?.status === "SUCCESSFUL",
+        message: "Transaction finality changed while confirmation was being recorded. Query the same reference for its current status.",
+        data: current ? responseTransaction(current) : null,
+      });
+    }
+    try {
+      await PartnerAuditLog.create({
+        partner: completed.partner,
+        action: "API_TRANSACTION_CONFIRMED",
+        metadata: {
+          reference: completed.reference,
+          service: completed.service,
+          outcome: "SUCCESSFUL",
+          providerReference: completed.providerReference || null,
+          source: "PROVIDER_RESPONSE",
+        },
+      });
+    } catch (auditError) {
+      console.error("Partner API success audit error:", auditError);
+    }
     return res.status(201).json({
       success: true,
       message: `${service === "AIRTIME" ? "Airtime" : "Data"} purchase completed.`,
-      data: responseTransaction(reservation.transaction),
+      data: responseTransaction(completed),
     });
   } catch (error) {
     if (reservation?.transaction) {
       try {
-        await markRequestForReconciliation(reservation.transaction);
+        await markRequestForReconciliation(reservation.transaction, {
+          reason: "The Partner API could not verify the provider outcome.",
+        });
       } catch (_) {
         // The processing record remains available for controlled reconciliation.
       }
@@ -394,5 +584,235 @@ exports.getDataPlans = async (req, res) => {
     return res.json({ success: true, data: plans });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ success: false, message: "Unable to retrieve data plans." });
+  }
+};
+
+const findTransaction = async ({ reference, partnerId = null }) => {
+  const filter = { reference: String(reference || "").trim() };
+  if (partnerId) filter.partner = partnerId;
+  return PartnerTransaction.findOne(filter);
+};
+
+exports.requeryPartnerTransaction = async (req, res) => {
+  try {
+    if (req.partner && req.partner.status !== "ACTIVE") {
+      return res.status(403).json({ success: false, message: "Partner API access is not active." });
+    }
+    const transaction = await findTransaction({
+      reference: req.params.reference,
+      partnerId: req.partner?._id || null,
+    });
+    if (!transaction) return res.status(404).json({ success: false, message: "Transaction not found." });
+    if (!isReconciliationEligible(transaction)) {
+      if (isInFlight(transaction)) {
+        return res.status(202).json({
+          success: false,
+          status: "PROCESSING",
+          reference: transaction.reference,
+          message: "The provider request is still in flight. Do not resubmit this purchase; query the same reference again shortly.",
+          data: responseTransaction(transaction),
+        });
+      }
+      return res.json({
+        success: true,
+        message: "Transaction already has a final outcome.",
+        data: responseTransaction(transaction),
+      });
+    }
+
+    const requeryed = await PartnerTransaction.findOneAndUpdate({
+      _id: transaction._id,
+      status: { $in: RECONCILIATION_STATUSES },
+    }, {
+      $set: {
+        status: "REQUERY_REQUIRED",
+        lastRequeryAt: new Date(),
+        errorMessage: "Provider status confirmation is required.",
+      },
+      $inc: { requeryCount: 1 },
+    }, { returnDocument: "after" });
+    if (!requeryed) {
+      const current = await findTransaction({
+        reference: req.params.reference,
+        partnerId: req.partner?._id || null,
+      });
+      if (!current) return res.status(404).json({ success: false, message: "Transaction not found." });
+      return res.json({
+        success: true,
+        message: "Transaction already has a final outcome.",
+        data: responseTransaction(current),
+      });
+    }
+    await PartnerAuditLog.create({
+      partner: requeryed.partner,
+      action: "API_REQUERY_ATTEMPTED",
+      actor: req.user?._id || req.user?.id || null,
+      metadata: {
+        reference: requeryed.reference,
+        provider: requeryed.provider || PROVIDER_NAME,
+        providerStatusEndpointAvailable: false,
+        purchaseReplayed: false,
+        requeryCount: requeryed.requeryCount,
+      },
+    });
+
+    return res.status(202).json({
+      success: false,
+      status: "PENDING",
+      reference: requeryed.reference,
+      message: "Transaction is being confirmed. This provider does not expose a supported status lookup, so the purchase was not replayed.",
+      data: responseTransaction(requeryed),
+    });
+  } catch (error) {
+    console.error("Partner transaction requery error:", error);
+    return res.status(500).json({ success: false, message: "Unable to requery transaction." });
+  }
+};
+
+exports.listUnresolvedTransactions = async (req, res) => {
+  try {
+    const filter = { status: { $in: RECONCILIATION_STATUSES } };
+    if (req.query?.partnerId) filter.partner = req.query.partnerId;
+    const limit = Math.min(Math.max(Number(req.query?.limit || 100), 1), 200);
+    const transactions = await PartnerTransaction.find(filter)
+      .select("-requestPayload -responsePayload")
+      .sort({ lastRequeryAt: 1, createdAt: 1 })
+      .limit(limit)
+      .lean();
+    return res.json({
+      success: true,
+      count: transactions.length,
+      providerStatusEndpointAvailable: false,
+      message: "ClubKonnect does not expose a supported transaction-status endpoint. Verify outcomes with the provider before resolving.",
+      transactions,
+    });
+  } catch (error) {
+    console.error("Unresolved Partner API transaction list error:", error);
+    return res.status(500).json({ success: false, message: "Unable to load unresolved transactions." });
+  }
+};
+
+const resolveSuccessfulTransaction = async ({ transaction, providerReference, note, actor }) => {
+  const session = await mongoose.startSession();
+  try {
+    let result = null;
+    await session.withTransaction(async () => {
+      const current = await PartnerTransaction.findOneAndUpdate({
+        _id: transaction._id,
+        status: { $in: RECONCILIATION_STATUSES },
+        walletDebitStatus: "DEBITED",
+      }, {
+        $set: {
+          status: "SUCCESSFUL",
+          provider: transaction.provider || PROVIDER_NAME,
+          providerReference: String(providerReference || transaction.providerReference || "").slice(0, 250),
+          walletDebitStatus: "DEBITED",
+          completedAt: new Date(),
+          resolvedAt: new Date(),
+          resolvedBy: actor,
+          resolutionSource: "HEAD_OFFICE_MANUAL",
+          resolutionNote: String(note || "").slice(0, 500),
+          errorMessage: "",
+        },
+      }, {
+        session,
+        returnDocument: "after",
+      });
+      if (!current) {
+        result = {
+          alreadyFinal: true,
+          transaction: await PartnerTransaction.findById(transaction._id).session(session),
+        };
+        return;
+      }
+      await PartnerAuditLog.create([{
+        partner: current.partner,
+        action: "API_TRANSACTION_CONFIRMED",
+        actor,
+        metadata: {
+          reference: current.reference,
+          service: current.service,
+          outcome: "SUCCESSFUL",
+          providerReference: current.providerReference,
+          source: "HEAD_OFFICE_MANUAL",
+        },
+      }], { session });
+      result = { alreadyFinal: false, transaction: current };
+    });
+    return result;
+  } finally {
+    await session.endSession();
+  }
+};
+
+exports.resolvePartnerTransaction = async (req, res) => {
+  try {
+    const outcome = String(req.body?.outcome || req.body?.status || "").trim().toUpperCase();
+    const note = String(req.body?.verificationNote || req.body?.note || "").trim();
+    const providerReference = String(req.body?.providerReference || "").trim();
+    if (!["SUCCESSFUL", "FAILED"].includes(outcome)) {
+      return res.status(400).json({ success: false, message: "Outcome must be SUCCESSFUL or FAILED." });
+    }
+    if (note.length < 10) {
+      return res.status(400).json({ success: false, message: "A verification note of at least 10 characters is required." });
+    }
+
+    const transaction = await findTransaction({ reference: req.params.reference });
+    if (!transaction) return res.status(404).json({ success: false, message: "Transaction not found." });
+    if (!isReconciliationEligible(transaction)) {
+      return res.status(409).json({
+        success: false,
+        message: isInFlight(transaction)
+          ? "This transaction is still being sent to the provider and cannot be manually resolved."
+          : "This transaction already has a final outcome.",
+        data: responseTransaction(transaction),
+      });
+    }
+    const actor = req.user?._id || req.user?.id || null;
+
+    if (outcome === "SUCCESSFUL") {
+      if (!providerReference && !transaction.providerReference) {
+        return res.status(400).json({ success: false, message: "A verified provider reference is required to confirm success." });
+      }
+      const result = await resolveSuccessfulTransaction({ transaction, providerReference, note, actor });
+      if (result.alreadyFinal) {
+        return res.status(409).json({
+          success: false,
+          message: "This transaction already has a final outcome.",
+          data: responseTransaction(result.transaction),
+        });
+      }
+      return res.json({
+        success: true,
+        message: "Partner API transaction confirmed successful. The existing wallet debit was retained.",
+        data: responseTransaction(result.transaction),
+      });
+    }
+
+    const refund = await refundRequest({
+      transaction,
+      reason: note,
+      providerResponse: { resolution: "FAILED", verificationNote: note },
+      actor,
+      resolutionSource: "HEAD_OFFICE_MANUAL",
+      resolutionNote: note,
+      providerReference,
+      allowedStatuses: RECONCILIATION_STATUSES,
+    });
+    if (!refund.applied) {
+      return res.status(409).json({
+        success: false,
+        message: "This transaction already has a final outcome.",
+        data: responseTransaction(refund.transaction),
+      });
+    }
+    return res.json({
+      success: true,
+      message: "Partner API transaction marked failed and the partner wallet was reversed exactly once.",
+      data: responseTransaction(refund.transaction),
+    });
+  } catch (error) {
+    console.error("Partner transaction resolution error:", error);
+    return res.status(500).json({ success: false, message: "Unable to resolve Partner API transaction." });
   }
 };

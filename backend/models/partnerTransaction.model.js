@@ -62,6 +62,7 @@ const partnerTransactionSchema = new mongoose.Schema(
       enum: [
         "PENDING",
         "PROCESSING",
+        "REQUERY_REQUIRED",
         "SUCCESSFUL",
         "FAILED",
         "REVERSED",
@@ -73,6 +74,12 @@ const partnerTransactionSchema = new mongoose.Schema(
     providerReference: {
       type: String,
       default: "",
+    },
+
+    provider: {
+      type: String,
+      default: "CLUBKONNECT",
+      trim: true,
     },
 
     providerResponse: {
@@ -100,14 +107,65 @@ const partnerTransactionSchema = new mongoose.Schema(
       default: 0,
     },
 
+    walletDebitStatus: {
+      type: String,
+      enum: ["DEBITED", "REFUNDED"],
+      default: "DEBITED",
+    },
+
     completedAt: {
       type: Date,
       default: null,
     },
 
+    lastRequeryAt: {
+      type: Date,
+      default: null,
+    },
+
+    requeryCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    uncertaintyReason: {
+      type: String,
+      default: "",
+      maxlength: 250,
+    },
+
+    resolvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    resolvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    resolutionSource: {
+      type: String,
+      enum: ["PROVIDER_RESPONSE", "HEAD_OFFICE_MANUAL"],
+      default: null,
+    },
+
+    resolutionNote: {
+      type: String,
+      default: "",
+      maxlength: 500,
+    },
+
     dailyLimitAtRequest: {
       type: Number,
       default: 0,
+    },
+
+    dailySpentDateAtRequest: {
+      type: String,
+      default: "",
     },
 
     perTransactionLimitAtRequest: {
@@ -150,6 +208,12 @@ partnerTransactionSchema.index(
     },
   }
 );
+
+partnerTransactionSchema.index({
+  status: 1,
+  lastRequeryAt: 1,
+  createdAt: -1,
+});
 
 module.exports =
   mongoose.models.PartnerTransaction ||

@@ -1,3 +1,5 @@
 - [Mongoose 9 middleware](mongoose-9-middleware.md) — Callback-style model middleware must be converted before transaction safeguards can run.
 - [Attachment commits](attachment-commits.md) — Verify HEAD before amending; attachment handling may create a commit between turns.
+- [GitHub connector publishing](github-connector-publishing.md) — Local GitHub HTTPS may lack auth; publish via the connector only after file-level remote safety checks.
 - [Marketplace funds](marketplace-funds.md) — Marketplace checkout holds customer funds; never credit sellers without an approved settlement path.
+- [Partner reconciliation states](partner-reconciliation-states.md) — Only explicit provider uncertainty may be manually reconciled; in-flight purchases must stay immutable.

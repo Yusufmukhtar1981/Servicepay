@@ -88,6 +88,12 @@ router.get(
   partnerTransactionsController.getTransaction
 );
 
+router.post(
+  "/transactions/:reference/requery",
+  partnerAuth,
+  partnerApiController.requeryPartnerTransaction
+);
+
 router.get(
   "/data-plans/:network",
   partnerAuth,
