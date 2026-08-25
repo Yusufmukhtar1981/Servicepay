@@ -31,4 +31,5 @@ analyzer:
   exclude:
     - backups/**
     - speed_backup/**
+    - rider_pin_backup_20260820_152526/**
     - '**/*.bak'
