@@ -13,11 +13,12 @@ const connectDB = async () => {
       `MongoDB connected: ${connection.connection.host}`
     );
   } catch (error) {
-    console.error(
-      `MongoDB connection error: ${error.message}`
+    const connectionError = new Error(
+      `MongoDB connection failed: ${error.message}`
     );
-
-    process.exit(1);
+    connectionError.cause = error;
+    console.error(connectionError.message);
+    throw connectionError;
   }
 };
 

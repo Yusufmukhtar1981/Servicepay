@@ -82,8 +82,6 @@ const transactionPinRoutes = require(
 );
 
 const app = express();
-
-connectDB();
 const adminPartnerApplicationRoutes = require("./routes/adminPartnerApplication.routes");
 
 const empowermentRoutes = require("./routes/empowerment.routes");
@@ -297,15 +295,33 @@ app.use(
   }
 );
 
-const PORT =
-  process.env.PORT || 3000;
+const configuredPort = process.env.PORT || "3000";
+const PORT = Number(configuredPort);
 
-app.listen(
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error(`Invalid PORT value: ${configuredPort}`);
+}
+
+const server = app.listen(
   PORT,
   "0.0.0.0",
   () => {
     console.log(
       `🚀 Server running on port ${PORT}`
     );
+
+    connectDB().catch((error) => {
+      console.error(
+        `Fatal startup error: ${error.message}`
+      );
+      server.close(() => process.exit(1));
+    });
   }
 );
+
+server.on("error", (error) => {
+  console.error(
+    `Fatal server startup error: ${error.message}`
+  );
+  process.exit(1);
+});
