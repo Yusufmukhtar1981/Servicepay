@@ -326,7 +326,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            initialValue: selectedNetwork,
+            value: selectedNetwork,
             decoration: InputDecoration(
               filled: true,
               fillColor: Colors.white,
