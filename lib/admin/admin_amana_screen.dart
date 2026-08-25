@@ -69,6 +69,7 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
   Future<void> _fund(Map<String, dynamic> o) async {
     final String? amount = await _input('Fund request', 'Amount (₦)', amount: true);
     if (amount == null) return;
+    if (!mounted) return;
     final String? source = await showDialog<String>(context: context, builder: (BuildContext d) => SimpleDialog(title: const Text('Controlled funding source'), children: <String>['HEAD_OFFICE', 'NGO', 'COMPANY', 'DONOR_RESERVED'].map((String value) => SimpleDialogOption(onPressed: () => Navigator.pop(d, value), child: Text(value.replaceAll('_', ' ')))).toList()));
     final String? reference = await _input('Fund request', 'Funding reference');
     final String? receiptReference = await _input('Fund request', 'Reconciliation / receipt reference');
@@ -85,12 +86,8 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
     );
     final PlatformFile? picked = selection?.files.isNotEmpty == true ? selection!.files.single : null;
     final Uint8List? bytes = picked?.bytes;
-    if (picked == null || bytes == null || bytes.isEmpty) {
-      if (picked != null) {
-        _notice('Unable to read that file. Please choose another document.', error: true);
-      }
-      return;
-    }
+    if (picked == null) return;
+    if (bytes == null || bytes.isEmpty) { _notice('Unable to read that file. Please choose another document.', error: true); return; }
     final AmanaUploadFile file = AmanaUploadFile(
       name: picked.name,
       bytes: bytes,
@@ -100,7 +97,6 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
       _notice('Unable to read that file. Please choose another document.', error: true);
       return;
     }
-    if (file == null) return;
     final String? amount = payment ? await _input('Provider payment', 'Amount (₦)', amount: true) : null;
     if (payment && amount == null) return;
     final String? reference = payment ? await _input('Provider payment', 'Payment reference') : null;
