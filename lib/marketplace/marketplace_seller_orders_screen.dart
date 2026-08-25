@@ -125,9 +125,7 @@ class _MarketplaceSellerOrdersScreenState
       }
 
       _showMessage(
-        status == 'DELIVERED'
-            ? 'Order delivered successfully. Seller settlement will be processed automatically.'
-            : 'Order updated to $status.',
+        'Order updated to $status.',
       );
 
       await _loadOrders();
@@ -343,7 +341,23 @@ class _MarketplaceSellerOrdersScreenState
               ],
             ),
             const SizedBox(height: 14),
-            if (status == 'PENDING' || status == 'PLACED')
+            if (status == 'PAID' ||
+                status == 'PLACED' ||
+                status == 'CONFIRMED')
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: id.isEmpty
+                      ? null
+                      : () => _updateStatus(
+                            id,
+                            'ACCEPTED',
+                          ),
+                  icon: const Icon(Icons.task_alt_outlined),
+                  label: const Text('Accept Order'),
+                ),
+              ),
+            if (status == 'ACCEPTED')
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -365,6 +379,20 @@ class _MarketplaceSellerOrdersScreenState
                       ? null
                       : () => _updateStatus(
                             id,
+                            'READY',
+                          ),
+                  icon: const Icon(Icons.inventory_2_outlined),
+                  label: const Text('Mark as Ready'),
+                ),
+              ),
+            if (status == 'READY' || status == 'READY_FOR_DELIVERY')
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: id.isEmpty
+                      ? null
+                      : () => _updateStatus(
+                            id,
                             'SHIPPED',
                           ),
                   icon: const Icon(Icons.local_shipping_outlined),
@@ -372,13 +400,23 @@ class _MarketplaceSellerOrdersScreenState
                 ),
               ),
             if (status == 'SHIPPED')
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: id.isEmpty ? null : () => _confirmDelivery(id),
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('Mark as Delivered'),
-                ),
+              const Row(
+                children: [
+                  Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.blue,
+                  ),
+                  SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      'Shipped — delivery confirmation is managed outside the seller dashboard.',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             if (status == 'DELIVERED' || status == 'COMPLETED')
               const Row(
@@ -390,7 +428,7 @@ class _MarketplaceSellerOrdersScreenState
                   SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      'Completed — seller settlement processed.',
+                      'Delivered — payment remains protected until settlement is safely available.',
                       style: TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.w700,
@@ -403,34 +441,6 @@ class _MarketplaceSellerOrdersScreenState
         ),
       ),
     );
-  }
-
-  Future<void> _confirmDelivery(String orderId) async {
-    final yes = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Confirm delivery'),
-          content: const Text(
-            'Mark this order as delivered? Seller settlement is triggered at delivery/completion.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delivered'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (yes == true) {
-      await _updateStatus(orderId, 'DELIVERED');
-    }
   }
 
   @override

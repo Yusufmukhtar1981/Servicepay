@@ -438,6 +438,13 @@ router.get(
   adminMarketplaceController.listMarketplaceProducts
 );
 
+router.get(
+  '/marketplace/orders',
+  protect,
+  adminOnly('HEAD_OFFICE'),
+  adminMarketplaceController.listMarketplaceOrders
+);
+
 router.patch(
   '/marketplace/products/:id/status',
   protect,

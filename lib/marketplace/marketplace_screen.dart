@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'marketplace_seller_screen.dart';
+import 'marketplace_my_orders_screen.dart';
 
 import 'marketplace_product_details_screen.dart';
 import 'marketplace_cart_screen.dart';
@@ -110,6 +111,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         foregroundColor: const Color(0xFF15201B),
         elevation: 0,
         actions: [
+          IconButton(
+            tooltip: 'My Orders',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const MarketplaceMyOrdersScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.receipt_long_outlined),
+          ),
           ValueListenableBuilder<List<Map<String, dynamic>>>(
             valueListenable: MarketplaceCartStore.items,
             builder: (context, cartItems, _) {

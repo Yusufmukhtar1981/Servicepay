@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -28,15 +29,18 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
   final stateController = TextEditingController();
   final lgaController = TextEditingController();
   final noteController = TextEditingController();
+  final transactionPinController = TextEditingController();
 
   bool loadingProfile = true;
   bool placingOrder = false;
 
-  String paymentMethod = 'WALLET';
+  late final String checkoutIdempotencyKey;
 
   @override
   void initState() {
     super.initState();
+    checkoutIdempotencyKey =
+        'marketplace-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
     _loadSavedCustomerDetails();
   }
 
@@ -48,6 +52,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
     stateController.dispose();
     lgaController.dispose();
     noteController.dispose();
+    transactionPinController.dispose();
     super.dispose();
   }
 
@@ -211,6 +216,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
               'Authorization': 'Bearer ${token.trim()}',
+              'Idempotency-Key': checkoutIdempotencyKey,
             },
             body: jsonEncode({
               'items': orderItems,
@@ -220,7 +226,8 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
               'state': stateController.text.trim(),
               'lga': lgaController.text.trim(),
               'deliveryNote': noteController.text.trim(),
-              'paymentMethod': paymentMethod,
+              'paymentMethod': 'WALLET',
+              'transactionPin': transactionPinController.text.trim(),
             }),
           )
           .timeout(const Duration(seconds: 45));
@@ -541,47 +548,72 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
                       ),
                       const SizedBox(height: 20),
                       const Text(
-                        'Payment Method',
+                        'Secure Wallet Payment',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 16,
                         ),
                       ),
                       const SizedBox(height: 10),
-                      RadioGroup<String>(
-                        groupValue: paymentMethod,
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setState(() {
-                            paymentMethod = value;
-                          });
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: const Color(0xFFE2E8F0),
-                            ),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: softGreen,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: const Color(0xFFBCE3CC),
                           ),
-                          child: const RadioListTile<String>(
-                            value: 'WALLET',
-                            activeColor: primary,
-                            title: Text(
-                              'ServicePay Wallet',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Text(
-                              'Pay securely using your ServicePay wallet.',
-                            ),
-                            secondary: Icon(
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(
                               Icons.account_balance_wallet_outlined,
                               color: primary,
                             ),
-                          ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'ServicePay Wallet',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  SizedBox(height: 3),
+                                  Text(
+                                    'Your final total is confirmed securely by ServicePay.',
+                                    style: TextStyle(
+                                      color: Color(0xFF466353),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: transactionPinController,
+                        keyboardType: TextInputType.number,
+                        obscureText: true,
+                        maxLength: 4,
+                        textInputAction: TextInputAction.done,
+                        decoration: _inputDecoration(
+                          label: 'Transaction PIN',
+                          icon: Icons.lock_outline_rounded,
+                          hint: 'Enter your 4-digit PIN',
+                        ).copyWith(counterText: ''),
+                        validator: (value) {
+                          if (!RegExp(r'^\d{4}$')
+                              .hasMatch((value ?? '').trim())) {
+                            return 'Enter your 4-digit transaction PIN';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 22),
                       const Text(

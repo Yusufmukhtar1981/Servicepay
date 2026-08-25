@@ -181,6 +181,11 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
       return;
     }
 
+    if (productImageController.text.trim().isEmpty) {
+      showMessage('Add a product image URL before saving.');
+      return;
+    }
+
     setState(() => addingProduct = true);
 
     try {
@@ -227,6 +232,57 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
       if (mounted) {
         setState(() => addingProduct = false);
       }
+    }
+  }
+
+  Future<void> deactivateProduct(Map<String, dynamic> product) async {
+    final id = '${product['_id'] ?? product['id'] ?? ''}'.trim();
+    if (id.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Deactivate product?'),
+        content: const Text(
+          'This product will be removed from Marketplace browsing. It can only return after review.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep active'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Deactivate'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final authToken = await token();
+      final response = await http.delete(
+        Uri.parse('$baseUrl/products/$id'),
+        headers: headers(authToken),
+      );
+      final body = jsonDecode(response.body);
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          body is! Map ||
+          body['success'] != true) {
+        showMessage(
+          body is Map
+              ? '${body['message'] ?? 'Unable to deactivate product.'}'
+              : 'Unable to deactivate product.',
+        );
+        return;
+      }
+      showMessage('Product deactivated.');
+      await loadSellerData();
+    } catch (_) {
+      showMessage('Unable to deactivate product.');
     }
   }
 
@@ -515,12 +571,31 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
                             subtitle: Text(
                               '₦${product['price'] ?? 0} • Stock ${product['stock'] ?? 0}',
                             ),
-                            trailing: Text(
-                              '${product['status'] ?? 'ACTIVE'}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
+                            trailing: PopupMenuButton<String>(
+                              tooltip: 'Product options',
+                              onSelected: (value) {
+                                if (value == 'deactivate') {
+                                  deactivateProduct(product);
+                                }
+                              },
+                              itemBuilder: (_) => [
+                                PopupMenuItem<String>(
+                                  enabled: false,
+                                  value: 'status',
+                                  child: Text(
+                                    '${product['status'] ?? 'ACTIVE'}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                if ('${product['status']}'.toUpperCase() !=
+                                    'SUSPENDED')
+                                  const PopupMenuItem<String>(
+                                    value: 'deactivate',
+                                    child: Text('Deactivate product'),
+                                  ),
+                              ],
                             ),
                           ),
                         ),

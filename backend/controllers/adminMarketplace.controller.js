@@ -1,4 +1,5 @@
 const MarketplaceProduct = require('../models/marketplace.model');
+const MarketplaceOrder = require('../models/marketplaceOrder.model');
 
 /*
  * ============================================================
@@ -86,6 +87,59 @@ exports.listMarketplaceProducts = async (req, res) => {
       success: false,
       message:
         'Unable to load Marketplace products.',
+    });
+  }
+};
+
+exports.listMarketplaceOrders = async (req, res) => {
+  try {
+    const {
+      status = '',
+      paymentStatus = '',
+      page = 1,
+      limit = 50,
+    } = req.query;
+    const filter = {};
+    const normalizedStatus = String(status).trim().toUpperCase();
+    const normalizedPaymentStatus = String(paymentStatus)
+      .trim()
+      .toUpperCase();
+
+    if (normalizedStatus) {
+      filter.orderStatus = normalizedStatus;
+    }
+
+    if (normalizedPaymentStatus) {
+      filter.paymentStatus = normalizedPaymentStatus;
+    }
+
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const safePage = Math.max(Number(page) || 1, 1);
+    const [orders, total] = await Promise.all([
+      MarketplaceOrder.find(filter)
+        .populate('buyer', 'fullName phone email')
+        .sort({ createdAt: -1 })
+        .skip((safePage - 1) * safeLimit)
+        .limit(safeLimit)
+        .lean(),
+      MarketplaceOrder.countDocuments(filter),
+    ]);
+
+    return res.json({
+      success: true,
+      orders,
+      pagination: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        pages: Math.max(Math.ceil(total / safeLimit), 1),
+      },
+    });
+  } catch (error) {
+    console.error('ADMIN_MARKETPLACE_ORDERS_ERROR', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load Marketplace orders.',
     });
   }
 };

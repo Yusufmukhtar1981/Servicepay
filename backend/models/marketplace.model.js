@@ -52,6 +52,36 @@ const marketplaceProductSchema = new mongoose.Schema(
       default: '',
     },
 
+    imageUrls: {
+      type: [String],
+      default: [],
+    },
+
+    sku: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
+
+    brand: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    condition: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    weight: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     state: {
       type: String,
       trim: true,
@@ -86,6 +116,12 @@ marketplaceProductSchema.index({
   description: 'text',
   category: 'text',
   merchantName: 'text',
+});
+
+marketplaceProductSchema.index({
+  merchant: 1,
+  status: 1,
+  createdAt: -1,
 });
 
 module.exports = mongoose.model(

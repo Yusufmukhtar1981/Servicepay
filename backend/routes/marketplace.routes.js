@@ -3,6 +3,9 @@ const express = require('express');
 const {
   protect,
 } = require('../middleware/auth.middleware');
+const {
+  requireTransactionPin,
+} = require('../middleware/transactionPin.middleware');
 
 const marketplaceController = require(
   '../controllers/marketplace.controller'
@@ -33,8 +36,28 @@ router.post(
   marketplaceController.createProduct
 );
 
+router.get(
+  '/products/mine',
+  protect,
+  marketplaceController.myProducts
+);
 
+router.get(
+  '/products/:productId',
+  marketplaceController.getProduct
+);
 
+router.patch(
+  '/products/:productId',
+  protect,
+  marketplaceController.updateProduct
+);
+
+router.delete(
+  '/products/:productId',
+  protect,
+  marketplaceController.deactivateProduct
+);
 router.get(
   '/merchant/me',
   protect,
@@ -48,9 +71,9 @@ router.post(
 );
 
 router.get(
-  '/products/mine',
+  '/seller/dashboard',
   protect,
-  marketplaceController.myProducts
+  marketplaceController.sellerDashboard
 );
 
 
@@ -59,6 +82,7 @@ router.get(
 router.post(
   '/orders',
   protect,
+  requireTransactionPin,
   marketplaceController.createOrder
 );
 

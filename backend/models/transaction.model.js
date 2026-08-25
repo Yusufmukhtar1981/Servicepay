@@ -60,6 +60,7 @@ const transactionSchema =
           "AMANA",
           "EMPOWERMENT_FUNDING",
           "EMPOWERMENT_DISBURSEMENT",
+          "MARKETPLACE",
         ],
         required: true,
         index: true,
