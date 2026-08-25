@@ -13,6 +13,7 @@ const FintechWatchlist = require("../models/fintechWatchlist.model");
 const FintechFraudAlert = require("../models/fintechFraudAlert.model");
 const FintechFinancialAction = require("../models/fintechFinancialAction.model");
 const LoginSecurityEvent = require("../models/loginSecurityEvent.model");
+const FintechDispute = require("../models/fintechDispute.model");
 const {
   searchCustomers,
   createRestriction,
@@ -21,12 +22,19 @@ const {
   releaseWalletHold,
   listFailedTransactions,
   listVirtualAccounts,
+  listDedicatedAccounts,
+  listBankPartners,
+  listRoutingStatus,
   listFraudAlerts,
   updateFraudAlert,
   createWatchlistEntry,
   clearWatchlistEntry,
   listLoginRisk,
   executeFinancialAction,
+  listFinancialActions,
+  listDisputes,
+  createDispute,
+  updateDispute,
 } = require("../controllers/adminFintechOperations.controller");
 const { requireNoRestriction } = require("../middleware/accountRestriction.middleware");
 
@@ -35,6 +43,7 @@ let sequence = 0;
 const models = [
   User, Transaction, LedgerEntry, AdminAuditLog, AccountRestriction, WalletHold,
   FintechWatchlist, FintechFraudAlert, FintechFinancialAction, LoginSecurityEvent,
+  FintechDispute,
 ];
 
 const headOffice = () => ({
@@ -170,6 +179,27 @@ test("Virtual Accounts exposes only provisioned customer account data", async ()
   assert.equal(result.body.providerActions.deactivate, false);
 });
 
+test("Dedicated accounts, partners and routing report only real code-backed states", async () => {
+  await createCustomer({
+    virtualAccount: {
+      provider: "SECUREWAVE",
+      accountNumber: `002${sequence}12345`,
+      accountName: "Dedicated Customer Account",
+      bankName: "Test Bank",
+      status: "ACTIVE",
+    },
+  });
+  const accounts = await call(listDedicatedAccounts, { method: "GET" });
+  assert.equal(accounts.status, 200);
+  assert.equal(accounts.body.accounts.length, 1);
+  const partners = await call(listBankPartners, { method: "GET" });
+  assert.equal(partners.status, 200);
+  assert.ok(partners.body.providers.every((provider) => provider.credentialsExposed === false));
+  const routing = await call(listRoutingStatus, { method: "GET" });
+  assert.equal(routing.status, 200);
+  assert.ok(routing.body.routes.every((route) => route.mode === "READ_ONLY"));
+});
+
 test("Fraud Monitoring records and audits a reviewer decision", async () => {
   const customer = await createCustomer();
   const transaction = await createTransaction(customer);
@@ -232,4 +262,31 @@ test("Refund and reversal credit an eligible failed debit exactly once each", as
   const balance = await User.findById(customer._id);
   assert.equal(balance.walletBalance, 200);
   assert.equal(await FintechFinancialAction.countDocuments({ status: "COMPLETED" }), 2);
+  const listed = await call(listFinancialActions, { method: "GET", query: { type: "REFUND" } });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.actions.length, 1);
+});
+
+test("Disputes are tied to real transactions and carry an audited review state", async () => {
+  const customer = await createCustomer();
+  const transaction = await createTransaction(customer, { amount: 400, status: "PENDING", providerResponse: {} });
+  const created = await call(createDispute, {
+    body: {
+      transactionId: transaction._id.toString(),
+      category: "SERVICE_NOT_RECEIVED",
+      reason: "Customer reports that the purchased service was not received.",
+    },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.dispute.amount, 400);
+  const updated = await call(updateDispute, {
+    params: { disputeId: created.body.dispute._id.toString() },
+    body: { status: "RESOLVED", note: "Provider evidence reviewed and the support resolution was recorded." },
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.dispute.status, "RESOLVED");
+  const listed = await call(listDisputes, { method: "GET", query: { search: customer.phone } });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.disputes.length, 1);
+  assert.equal(await FintechFinancialAction.countDocuments(), 0);
 });

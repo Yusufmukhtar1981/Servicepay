@@ -12,6 +12,7 @@ const FintechWatchlist = require("../models/fintechWatchlist.model");
 const FintechFraudAlert = require("../models/fintechFraudAlert.model");
 const FintechFinancialAction = require("../models/fintechFinancialAction.model");
 const LoginSecurityEvent = require("../models/loginSecurityEvent.model");
+const FintechDispute = require("../models/fintechDispute.model");
 
 const PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
@@ -356,6 +357,88 @@ exports.listVirtualAccounts = async (req, res) => {
   }
 };
 
+exports.listDedicatedAccounts = exports.listVirtualAccounts;
+
+const integrationStatus = () => {
+  const squad = Boolean(
+    text(process.env.SQUAD_SECRET_KEY) &&
+    text(process.env.SQUAD_MERCHANT_ID) &&
+    text(process.env.SQUAD_TRANSFER_ENABLED).toLowerCase() === "true"
+  );
+  const clubKonnect = Boolean(
+    text(process.env.CLUBKONNECT_USER_ID) && text(process.env.CLUBKONNECT_API_KEY)
+  );
+  const secureWave = Boolean(
+    text(process.env.SECUREWAVE_API_KEY) ||
+    text(process.env.SECUREWAVE_SECRET_KEY) ||
+    text(process.env.SECUREWAVE_MERCHANT_ID)
+  );
+  return { squad, clubKonnect, secureWave };
+};
+
+exports.listBankPartners = async (req, res) => {
+  const configured = integrationStatus();
+  return res.json({
+    success: true,
+    providers: [
+      {
+        code: "SECUREWAVE",
+        name: "SecureWave",
+        status: configured.secureWave ? "CONFIGURED" : "NOT_CONFIGURED",
+        capabilities: ["Dedicated account provisioning", "Bank account name enquiry"],
+        credentialsExposed: false,
+      },
+      {
+        code: "SQUAD",
+        name: "Squad",
+        status: configured.squad ? "CONFIGURED" : "NOT_CONFIGURED",
+        capabilities: ["Bank transfer routing", "Transfer requery"],
+        credentialsExposed: false,
+      },
+      {
+        code: "CLUBKONNECT",
+        name: "NelloBytes / ClubKonnect integration",
+        status: configured.clubKonnect ? "CONFIGURED" : "NOT_CONFIGURED",
+        capabilities: ["Airtime", "Data", "Cable TV", "Exam PIN"],
+        credentialsExposed: false,
+      },
+    ],
+    pagination: { page: 1, limit: 3, total: 3, pages: 1 },
+  });
+};
+
+exports.listRoutingStatus = async (req, res) => {
+  const configured = integrationStatus();
+  const routes = [
+    {
+      service: "Dedicated Accounts",
+      provider: "SecureWave",
+      status: configured.secureWave ? "CONFIGURED" : "NOT_CONFIGURED",
+      mode: "READ_ONLY",
+      detail: "Customer dedicated-account records are provisioned by the configured provider.",
+    },
+    {
+      service: "Bank Transfers",
+      provider: "Squad",
+      status: configured.squad ? "CONFIGURED" : "NOT_CONFIGURED",
+      mode: "READ_ONLY",
+      detail: "Existing transfer routing is preserved; automatic switching is not implemented.",
+    },
+    {
+      service: "Airtime, Data, Cable and Exam PIN",
+      provider: "NelloBytes / ClubKonnect integration",
+      status: configured.clubKonnect ? "CONFIGURED" : "NOT_CONFIGURED",
+      mode: "READ_ONLY",
+      detail: "Existing service routing is preserved; no imaginary failover is exposed.",
+    },
+  ];
+  return res.json({
+    success: true,
+    routes,
+    pagination: { page: 1, limit: routes.length, total: routes.length, pages: 1 },
+  });
+};
+
 exports.listFraudAlerts = async (req, res) => {
   try {
     /*
@@ -578,5 +661,104 @@ exports.executeFinancialAction = async (req, res) => {
     return res.status(error.statusCode || 500).json({ success: false, code: error.code, message: error.message || "Unable to complete financial action." });
   } finally {
     await session.endSession();
+  }
+};
+
+exports.listDisputes = async (req, res) => {
+  try {
+    const { page, limit, skip } = pageOptions(req.query);
+    const query = {};
+    if (req.query.status && normalize(req.query.status) !== "ALL") query.status = normalize(req.query.status);
+    if (text(req.query.search)) {
+      const search = text(req.query.search);
+      const customerIds = await User.find(customerSearchQuery(search)).distinct("_id");
+      query.$or = [
+        { reference: new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") },
+        { customer: { $in: customerIds } },
+      ];
+    }
+    const [disputes, total] = await Promise.all([
+      FintechDispute.find(query)
+        .populate("customer", "fullName phone email")
+        .populate("transaction", "reference amount status serviceType provider")
+        .populate("createdBy", "fullName")
+        .populate("resolvedBy", "fullName")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      FintechDispute.countDocuments(query),
+    ]);
+    return res.json({ success: true, disputes, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+  } catch (error) {
+    console.error("LIST FINTECH DISPUTES ERROR:", error);
+    return res.status(500).json({ success: false, message: "Unable to load disputes." });
+  }
+};
+
+exports.createDispute = async (req, res) => {
+  const reason = text(req.body.reason);
+  const category = normalize(req.body.category);
+  if (!isObjectId(req.body.transactionId) || !["UNRECOGNISED", "SERVICE_NOT_RECEIVED", "DUPLICATE_CHARGE", "INCORRECT_AMOUNT", "OTHER"].includes(category) || !requireReason(res, reason)) {
+    return res.status(400).json({ success: false, message: "Provide a transaction, valid category and clear reason." });
+  }
+  try {
+    const transaction = await Transaction.findById(req.body.transactionId);
+    if (!transaction) return res.status(404).json({ success: false, message: "Transaction not found." });
+    const dispute = await FintechDispute.create({
+      reference: reference("DSP"),
+      transaction: transaction._id,
+      customer: transaction.customerId,
+      category,
+      reason,
+      amount: Number(transaction.amount),
+      notes: [{ note: reason, author: req.user._id }],
+      createdBy: req.user._id,
+    });
+    await audit(req, {
+      targetUser: transaction.customerId,
+      action: "DISPUTE_CREATED",
+      reason,
+      newData: { disputeReference: dispute.reference, category, amount: dispute.amount },
+      metadata: { disputeId: dispute._id, transactionId: transaction._id },
+    });
+    return res.status(201).json({ success: true, dispute });
+  } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ success: false, code: "DISPUTE_ALREADY_EXISTS", message: "A dispute already exists for this transaction." });
+    console.error("CREATE FINTECH DISPUTE ERROR:", error);
+    return res.status(500).json({ success: false, message: "Unable to create dispute." });
+  }
+};
+
+exports.updateDispute = async (req, res) => {
+  const status = normalize(req.body.status);
+  const note = text(req.body.note);
+  if (!["OPEN", "IN_REVIEW", "RESOLVED", "REJECTED", "CLOSED"].includes(status) || !requireReason(res, note)) {
+    return res.status(400).json({ success: false, message: "Provide a valid status and clear note." });
+  }
+  try {
+    const dispute = await FintechDispute.findById(req.params.disputeId);
+    if (!dispute) return res.status(404).json({ success: false, message: "Dispute not found." });
+    const previousStatus = dispute.status;
+    dispute.status = status;
+    dispute.notes.push({ note, author: req.user._id });
+    if (status === "RESOLVED" || status === "REJECTED" || status === "CLOSED") {
+      dispute.resolution = note;
+      dispute.resolvedBy = req.user._id;
+      dispute.resolvedAt = new Date();
+    }
+    await dispute.save();
+    await audit(req, {
+      targetUser: dispute.customer,
+      action: "DISPUTE_UPDATED",
+      reason: note,
+      previousData: { status: previousStatus },
+      newData: { status },
+      metadata: { disputeId: dispute._id },
+    });
+    return res.json({ success: true, dispute });
+  } catch (error) {
+    console.error("UPDATE FINTECH DISPUTE ERROR:", error);
+    return res.status(500).json({ success: false, message: "Unable to update dispute." });
   }
 };

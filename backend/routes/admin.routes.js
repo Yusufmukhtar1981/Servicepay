@@ -503,6 +503,9 @@ router.post("/fintech-operations/wallet-holds/:holdId/release", protect, adminOn
 router.get("/fintech-operations/failed-transactions", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFailedTransactions);
 router.post("/fintech-operations/failed-transactions/:transactionId/investigate", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.markTransactionInvestigation);
 router.get("/fintech-operations/virtual-accounts", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listVirtualAccounts);
+router.get("/fintech-operations/dedicated-accounts", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listDedicatedAccounts);
+router.get("/fintech-operations/bank-partners", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listBankPartners);
+router.get("/fintech-operations/routing-status", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listRoutingStatus);
 router.get("/fintech-operations/fraud-alerts", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFraudAlerts);
 router.post("/fintech-operations/fraud-alerts/:alertId", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.updateFraudAlert);
 router.get("/fintech-operations/watchlist", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listWatchlist);
@@ -511,5 +514,8 @@ router.post("/fintech-operations/watchlist/:entryId/clear", protect, adminOnly("
 router.get("/fintech-operations/login-risk", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listLoginRisk);
 router.get("/fintech-operations/financial-actions", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFinancialActions);
 router.post("/fintech-operations/financial-actions/:type", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.executeFinancialAction);
+router.get("/fintech-operations/disputes", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listDisputes);
+router.post("/fintech-operations/disputes", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.createDispute);
+router.post("/fintech-operations/disputes/:disputeId", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.updateDispute);
 
 module.exports = router;
