@@ -262,7 +262,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  initialValue: selectedNetwork,
+                  value: selectedNetwork,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(
                       Icons.sim_card_outlined,
