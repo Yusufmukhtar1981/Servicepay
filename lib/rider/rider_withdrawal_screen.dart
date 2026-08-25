@@ -1132,7 +1132,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                           ),
                           const SizedBox(height: 14),
                           DropdownButtonFormField<String>(
-                            initialValue: selectedBankCode.isEmpty
+                            value: selectedBankCode.isEmpty
                                 ? null
                                 : selectedBankCode,
                             decoration: const InputDecoration(
