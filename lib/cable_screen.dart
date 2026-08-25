@@ -89,7 +89,7 @@ class _CableScreenState extends State<CableScreen> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              initialValue: selectedProvider,
+              value: selectedProvider,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.tv_outlined),
                 border: OutlineInputBorder(),
@@ -120,7 +120,7 @@ class _CableScreenState extends State<CableScreen> {
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               key: ValueKey(selectedProvider),
-              initialValue: selectedPackage,
+              value: selectedPackage,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.inventory_2_outlined),
                 border: OutlineInputBorder(),
