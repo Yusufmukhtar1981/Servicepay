@@ -1,24 +1,17 @@
 const express = require('express');
-const multer = require('multer');
 
 const {
   protect,
 } = require('../middleware/auth.middleware');
 const {
-  requireTransactionPin,
-} = require('../middleware/transactionPin.middleware');
+  requireNoRestriction,
+} = require('../middleware/accountRestriction.middleware');
 
 const marketplaceController = require(
   '../controllers/marketplace.controller'
 );
 
 const router = express.Router();
-const marketplaceImageUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 8 * 1024 * 1024,
-  },
-});
 
 router.get(
   '/',
@@ -43,48 +36,8 @@ router.post(
   marketplaceController.createProduct
 );
 
-router.get(
-  '/products/mine',
-  protect,
-  marketplaceController.myProducts
-);
 
-router.post(
-  '/products/image',
-  protect,
-  (req, res, next) => {
-    marketplaceImageUpload.single('image')(req, res, (error) => {
-      if (error) {
-        return res.status(400).json({
-          success: false,
-          message:
-            error.code === 'LIMIT_FILE_SIZE'
-              ? 'Marketplace product photos must be 8 MB or smaller.'
-              : 'Unable to process this product photo.',
-        });
-      }
-      return next();
-    });
-  },
-  marketplaceController.uploadProductImage
-);
 
-router.get(
-  '/products/:productId',
-  marketplaceController.getProduct
-);
-
-router.patch(
-  '/products/:productId',
-  protect,
-  marketplaceController.updateProduct
-);
-
-router.delete(
-  '/products/:productId',
-  protect,
-  marketplaceController.deactivateProduct
-);
 router.get(
   '/merchant/me',
   protect,
@@ -98,9 +51,9 @@ router.post(
 );
 
 router.get(
-  '/seller/dashboard',
+  '/products/mine',
   protect,
-  marketplaceController.sellerDashboard
+  marketplaceController.myProducts
 );
 
 
@@ -109,7 +62,7 @@ router.get(
 router.post(
   '/orders',
   protect,
-  requireTransactionPin,
+  requireNoRestriction('BLOCK_MARKETPLACE_PURCHASE', 'BLOCK_WALLET_DEBIT'),
   marketplaceController.createOrder
 );
 
@@ -123,18 +76,6 @@ router.get(
   '/orders/:orderId',
   protect,
   marketplaceController.getOrder
-);
-
-router.post(
-  '/orders/:orderId/confirm-delivery',
-  protect,
-  marketplaceController.confirmOrderDelivery
-);
-
-router.post(
-  '/orders/:orderId/cancel',
-  protect,
-  marketplaceController.cancelMyOrder
 );
 
 
