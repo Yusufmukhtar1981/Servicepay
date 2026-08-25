@@ -3,6 +3,7 @@ const express = require("express");
 const adminTransactionRequeryController = require("../controllers/adminTransactionRequery.controller");
 const bankTransferController = require("../controllers/bankTransfer.controller");
 const adminBankReconciliationController = require("../controllers/adminBankReconciliation.controller");
+const fintechOperationsController = require("../controllers/adminFintechOperations.controller");
 
 const {
   getAdminDashboard,
@@ -487,5 +488,28 @@ router.get(
   adminOnly("HEAD_OFFICE"),
   adminBankReconciliationController.listBankReconciliation
 );
+
+/*
+ * Fintech operational workspaces. All mutations carry immutable AdminAuditLog
+ * entries and each financial action requires an idempotency key.
+ */
+router.get("/fintech-operations/customers", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.searchCustomers);
+router.get("/fintech-operations/customers/:userId", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.getCustomerOperations);
+router.post("/fintech-operations/restrictions", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.createRestriction);
+router.post("/fintech-operations/restrictions/:restrictionId/remove", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.removeRestriction);
+router.get("/fintech-operations/wallet-holds", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listWalletHolds);
+router.post("/fintech-operations/wallet-holds", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.createWalletHold);
+router.post("/fintech-operations/wallet-holds/:holdId/release", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.releaseWalletHold);
+router.get("/fintech-operations/failed-transactions", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFailedTransactions);
+router.post("/fintech-operations/failed-transactions/:transactionId/investigate", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.markTransactionInvestigation);
+router.get("/fintech-operations/virtual-accounts", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listVirtualAccounts);
+router.get("/fintech-operations/fraud-alerts", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFraudAlerts);
+router.post("/fintech-operations/fraud-alerts/:alertId", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.updateFraudAlert);
+router.get("/fintech-operations/watchlist", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listWatchlist);
+router.post("/fintech-operations/watchlist", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.createWatchlistEntry);
+router.post("/fintech-operations/watchlist/:entryId/clear", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.clearWatchlistEntry);
+router.get("/fintech-operations/login-risk", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listLoginRisk);
+router.get("/fintech-operations/financial-actions", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFinancialActions);
+router.post("/fintech-operations/financial-actions/:type", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.executeFinancialAction);
 
 module.exports = router;

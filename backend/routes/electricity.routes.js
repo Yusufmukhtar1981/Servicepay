@@ -3,6 +3,10 @@ const express = require("express");
 const {
   protect,
 } = require("../middleware/auth.middleware");
+const {
+  requireNoRestriction,
+  requireSpendableBalance,
+} = require("../middleware/accountRestriction.middleware");
 
 const AppSettings = require(
   "../models/appSettings.model"
@@ -107,6 +111,8 @@ router.post(
 router.post(
   "/pay",
   protect,
+  requireNoRestriction("BLOCK_BILL_PURCHASES", "BLOCK_WALLET_DEBIT"),
+  requireSpendableBalance,
   electricityEnabled,
   electricityController.payElectricity
 );

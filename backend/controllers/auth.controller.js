@@ -2,6 +2,9 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+const AccountRestriction = require("../models/accountRestriction.model");
+const FintechWatchlist = require("../models/fintechWatchlist.model");
+const LoginSecurityEvent = require("../models/loginSecurityEvent.model");
 
 const { v2: cloudinary } = require("cloudinary");
 
@@ -207,6 +210,49 @@ const generateToken = (userId) => {
       expiresIn: "7d",
     }
   );
+};
+
+const recordLoginSecurityEvent = async (req, {
+  user = null,
+  identifier = "",
+  outcome,
+}) => {
+  try {
+    await LoginSecurityEvent.create({
+      user: user?._id || null,
+      identifier: String(identifier || "").trim().toLowerCase(),
+      outcome,
+      ipAddress: String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim(),
+      userAgent: String(req.headers["user-agent"] || "").slice(0, 1000),
+    });
+  } catch (error) {
+    console.error("LOGIN SECURITY EVENT ERROR:", error.message);
+  }
+};
+
+const loginIsRestricted = async (user) => {
+  const identifiers = [
+    String(user._id || "").toLowerCase(),
+    String(user.phone || "").trim().toLowerCase(),
+    String(user.email || "").trim().toLowerCase(),
+  ].filter(Boolean);
+  const active = {
+    status: "ACTIVE",
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  };
+  const [restriction, blacklist] = await Promise.all([
+    AccountRestriction.findOne({
+      ...active,
+      user: user._id,
+      type: { $in: ["FULL_FREEZE", "BLOCK_LOGIN"] },
+    }).lean(),
+    FintechWatchlist.findOne({
+      status: "BLACKLISTED",
+      identifierValue: { $in: identifiers },
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }).lean(),
+  ]);
+  return Boolean(restriction || blacklist);
 };
 
 const formatUser = (user) => {
@@ -775,6 +821,10 @@ exports.loginUser = async (
     }).select("+password");
 
     if (!user) {
+      await recordLoginSecurityEvent(req, {
+        identifier: cleanLoginValue,
+        outcome: "FAILED",
+      });
       return res.status(401).json({
         success: false,
         message:
@@ -791,6 +841,11 @@ exports.loginUser = async (
     if (
       userStatus !== "ACTIVE"
     ) {
+      await recordLoginSecurityEvent(req, {
+        user,
+        identifier: cleanLoginValue,
+        outcome: "FAILED",
+      });
       return res.status(403).json({
         success: false,
         message:
@@ -893,6 +948,11 @@ await user.save();
     }
 
     if (!passwordIsCorrect) {
+      await recordLoginSecurityEvent(req, {
+        user,
+        identifier: cleanLoginValue,
+        outcome: "FAILED",
+      });
       return res.status(401).json({
         success: false,
         message:
@@ -933,6 +993,24 @@ await user.save();
         validateBeforeSave: false,
       });
     }
+
+    if (await loginIsRestricted(user)) {
+      await recordLoginSecurityEvent(req, {
+        user,
+        identifier: cleanLoginValue,
+        outcome: "FAILED",
+      });
+      return res.status(403).json({
+        success: false,
+        message: "This account is restricted from signing in. Contact ServicePay support.",
+      });
+    }
+
+    await recordLoginSecurityEvent(req, {
+      user,
+      identifier: cleanLoginValue,
+      outcome: "SUCCESS",
+    });
 
     return res.status(200).json({
       success: true,

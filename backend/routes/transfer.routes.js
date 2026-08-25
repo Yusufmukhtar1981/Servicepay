@@ -3,6 +3,10 @@ const express = require("express");
 const {
   protect,
 } = require("../middleware/auth.middleware");
+const {
+  requireNoRestriction,
+  requireSpendableBalance,
+} = require("../middleware/accountRestriction.middleware");
 
 const transferController = require(
   "../controllers/transfer.controller"
@@ -39,6 +43,8 @@ router.get(
 router.post(
   "/servicepay",
   protect,
+  requireNoRestriction("BLOCK_OUTGOING_TRANSFERS", "BLOCK_WALLET_DEBIT"),
+  requireSpendableBalance,
   transferController.transfer
 );
 
@@ -68,6 +74,8 @@ router.post(
 router.post(
   "/bank",
   protect,
+  requireNoRestriction("BLOCK_OUTGOING_TRANSFERS", "BLOCK_WITHDRAWALS", "BLOCK_WALLET_DEBIT"),
+  requireSpendableBalance,
   bankTransferController.initiateBankTransfer
 );
 

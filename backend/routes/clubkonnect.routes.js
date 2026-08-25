@@ -20,6 +20,10 @@ const {
 } = require(
   "../middleware/auth.middleware"
 );
+const {
+  requireNoRestriction,
+  requireSpendableBalance,
+} = require("../middleware/accountRestriction.middleware");
 
 const router = express.Router();
 
@@ -55,6 +59,8 @@ router.get(
 router.post(
   "/airtime",
   protect,
+  requireNoRestriction("BLOCK_BILL_PURCHASES", "BLOCK_WALLET_DEBIT"),
+  requireSpendableBalance,
   require("../middleware/transactionPin.middleware").requireTransactionPin,
   buyAirtime
 );
@@ -62,6 +68,8 @@ router.post(
 router.post(
   "/data",
   protect,
+  requireNoRestriction("BLOCK_BILL_PURCHASES", "BLOCK_WALLET_DEBIT"),
+  requireSpendableBalance,
   require("../middleware/transactionPin.middleware").requireTransactionPin,
   buyData
 );
