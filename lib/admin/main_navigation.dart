@@ -6,6 +6,7 @@ import 'admin_notifications_screen.dart';
 import 'admin_kyc_review_screen.dart';
 import 'admin_empowerment_screen.dart';
 import 'admin_amana_screen.dart';
+import 'admin_fintech_operations_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 
@@ -23,15 +24,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     AdminDashboardScreen(),
     AdminManualFundingScreen(),
     AdminNotificationsScreen(),
-    Center(
-      child: Text(
-        'Admin Profile',
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    ),
+    AdminFintechOperationsScreen(),
     AdminAirtimeToCashScreen(),
     AdminKycReviewScreen(),
     AdminEmpowermentScreen(),
@@ -100,7 +93,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             activeIcon: Icon(
               Icons.admin_panel_settings_rounded,
             ),
-            label: 'Profile',
+            label: 'Control',
           ),
           BottomNavigationBarItem(
             icon: Icon(

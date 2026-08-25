@@ -6,8 +6,7 @@ class AdminEmpowermentScreen extends StatefulWidget {
   const AdminEmpowermentScreen({super.key});
 
   @override
-  State<AdminEmpowermentScreen> createState() =>
-      _AdminEmpowermentScreenState();
+  State<AdminEmpowermentScreen> createState() => _AdminEmpowermentScreenState();
 }
 
 class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
@@ -19,8 +18,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
   String _error = '';
   Map<String, dynamic> _summary = <String, dynamic>{};
   List<Map<String, dynamic>> _organizations = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _eligibleOrganizations =
-      <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _eligibleOrganizations = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _programs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _audit = <Map<String, dynamic>>[];
 
@@ -62,10 +60,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
     final int? naira = int.tryParse(match.group(1) ?? '');
     if (naira == null || naira < 0) return null;
     final String fraction = match.group(2) ?? '';
-    final int koboBeforeRounding =
-        int.parse('${fraction}00'.substring(0, 2));
-    final bool roundUp =
-        fraction.length > 2 && int.parse(fraction[2]) >= 5;
+    final int koboBeforeRounding = int.parse('${fraction}00'.substring(0, 2));
+    final bool roundUp = fraction.length > 2 && int.parse(fraction[2]) >= 5;
     final int kobo = naira * 100 + koboBeforeRounding + (roundUp ? 1 : 0);
     return kobo > 0 ? kobo : null;
   }
@@ -122,7 +118,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: error ? const Color(0xFFB42318) : const Color(0xFF08783E),
+          backgroundColor:
+              error ? const Color(0xFFB42318) : const Color(0xFF08783E),
         ),
       );
   }
@@ -166,8 +163,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                   : <String, dynamic>{};
           final Map<String, dynamic> verifier =
               verification['verifiedBy'] is Map
-                  ? Map<String, dynamic>.from(
-                      verification['verifiedBy'] as Map)
+                  ? Map<String, dynamic>.from(verification['verifiedBy'] as Map)
                   : <String, dynamic>{};
 
           return SafeArea(
@@ -200,8 +196,10 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                       ],
                     ),
                     const SizedBox(height: 18),
-                    _detailRow('Type', _text(details['organizationType'])
-                        .replaceAll('_', ' ')),
+                    _detailRow(
+                        'Type',
+                        _text(details['organizationType'])
+                            .replaceAll('_', ' ')),
                     _detailRow('Registration number',
                         _text(details['registrationNumber'], 'Not supplied')),
                     _detailRow('Contact person', _text(details['contactName'])),
@@ -210,8 +208,10 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                     _detailRow('Address', _text(details['address'])),
                     _detailRow('State / LGA',
                         '${_text(details['state'])} / ${_text(details['lga'], '—')}'),
-                    _detailRow('Description',
-                        _text(details['description'], 'No description supplied.')),
+                    _detailRow(
+                        'Description',
+                        _text(details['description'],
+                            'No description supplied.')),
                     _detailRow(
                       'Owner',
                       _text(owner['fullName'], 'Unknown owner'),
@@ -456,8 +456,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
     );
     if (confirmed != true) return false;
 
-    final String operation =
-        'payout-${_id(program)}-${_id(beneficiary)}';
+    final String operation = 'payout-${_id(program)}-${_id(beneficiary)}';
     try {
       final String idempotencyKey =
           await _api.beginMonetaryOperation(operation);
@@ -546,7 +545,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                     ),
                   ),
                   _formField(name, 'Program name'),
-                  _formField(description, 'Description', required: false, lines: 3),
+                  _formField(description, 'Description',
+                      required: false, lines: 3),
                   _formField(amount, 'Amount per beneficiary',
                       keyboard: TextInputType.number),
                   _formField(beneficiaries, 'Number of beneficiaries',
@@ -657,15 +657,13 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                     : <String, dynamic>{};
             final List<Map<String, dynamic>> beneficiaries =
                 _list(snapshot.data![1], 'beneficiaries');
-            final Map<String, dynamic> report =
-                snapshot.data![2]['report'] is Map
-                    ? Map<String, dynamic>.from(
-                        snapshot.data![2]['report'] as Map)
-                    : <String, dynamic>{};
-            final Map<String, dynamic> financials =
-                report['financials'] is Map
-                    ? Map<String, dynamic>.from(report['financials'] as Map)
-                    : <String, dynamic>{};
+            final Map<String, dynamic> report = snapshot.data![2]['report']
+                    is Map
+                ? Map<String, dynamic>.from(snapshot.data![2]['report'] as Map)
+                : <String, dynamic>{};
+            final Map<String, dynamic> financials = report['financials'] is Map
+                ? Map<String, dynamic>.from(report['financials'] as Map)
+                : <String, dynamic>{};
 
             return SafeArea(
               child: Padding(
@@ -702,7 +700,9 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                         child: FilledButton.icon(
                           onPressed: () async {
                             final bool funded = await _fundProgram(program);
-                            if (funded) Navigator.of(sheetContext).pop();
+                            if (funded && sheetContext.mounted) {
+                              Navigator.of(sheetContext).pop();
+                            }
                           },
                           icon: const Icon(Icons.add_card_rounded),
                           label: const Text('Fund / top up program'),
@@ -723,8 +723,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                               title: Text(_text(beneficiary['fullName'])),
                               subtitle: Text(
                                 '${_text(beneficiary['phone'])} • '
-                                 '${_text(beneficiary['applicationStatus'], 'PENDING')} • '
-                                 '${_text(beneficiary['verificationStatus'], 'PENDING')}',
+                                '${_text(beneficiary['applicationStatus'], 'PENDING')} • '
+                                '${_text(beneficiary['verificationStatus'], 'PENDING')}',
                               ),
                               trailing: PopupMenuButton<String>(
                                 onSelected: (String value) async {
@@ -733,7 +733,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                                       program,
                                       beneficiary,
                                     );
-                                    if (paid) {
+                                    if (paid && sheetContext.mounted) {
                                       Navigator.of(sheetContext).pop();
                                     }
                                     return;
@@ -754,8 +754,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                                     child: Text('Reject'),
                                   ),
                                   if (_text(beneficiary['applicationStatus'])
-                                          .toUpperCase() ==
-                                      'APPROVED' &&
+                                              .toUpperCase() ==
+                                          'APPROVED' &&
                                       _text(beneficiary['verificationStatus'])
                                               .toUpperCase() ==
                                           'VERIFIED')
@@ -788,7 +788,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
         if (status == 'VERIFIED') 'status': 'UNDER_REVIEW',
         if (status == 'VERIFIED') 'verificationStatus': 'VERIFIED',
         if (status != 'VERIFIED') 'status': status,
-        if (status == 'REJECTED') 'rejectionReason': 'Not eligible after review.',
+        if (status == 'REJECTED')
+          'rejectionReason': 'Not eligible after review.',
       };
       await _api.patch('/beneficiaries/${_id(beneficiary)}/status', body: body);
       _notice('Beneficiary updated.');
@@ -871,11 +872,13 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const Icon(Icons.admin_panel_settings_outlined, size: 50),
+                        const Icon(Icons.admin_panel_settings_outlined,
+                            size: 50),
                         const SizedBox(height: 12),
                         Text(_error, textAlign: TextAlign.center),
                         const SizedBox(height: 12),
-                        OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                        OutlinedButton(
+                            onPressed: _load, child: const Text('Retry')),
                       ],
                     ),
                   ),
@@ -962,7 +965,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                     onSelected: (String status) =>
                         _organizationStatus(organization, status),
                     itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                      PopupMenuItem(value: 'ACTIVE', child: Text('Verify / activate')),
+                      PopupMenuItem(
+                          value: 'ACTIVE', child: Text('Verify / activate')),
                       PopupMenuItem(value: 'REJECTED', child: Text('Reject')),
                       PopupMenuItem(value: 'SUSPENDED', child: Text('Suspend')),
                     ],
@@ -975,53 +979,52 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
 
   Widget _programsView() => ListView(
         padding: const EdgeInsets.all(16),
-        children: _programs
-            .map((Map<String, dynamic> program) {
-              final Map<String, dynamic> financials =
-                  program['financials'] is Map
-                      ? Map<String, dynamic>.from(program['financials'] as Map)
-                      : <String, dynamic>{};
-              final Map<String, dynamic> beneficiaryCounts =
-                  program['beneficiaryCounts'] is Map
-                      ? Map<String, dynamic>.from(
-                          program['beneficiaryCounts'] as Map)
-                      : <String, dynamic>{};
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.volunteer_activism_outlined,
-                      color: Color(0xFF08783E)),
-                  title: Text(_text(program['name'])),
-                  subtitle: Text(
-                    'Budget: ₦${_text(program['totalBudget'], '0')} • '
-                    'Funded: ₦${_text(financials['fundedAmount'], '0')} • '
-                    'Available: ₦${_text(financials['availableBalance'], '0')}\n'
-                    'Beneficiaries: ${_text(beneficiaryCounts['total'], '0')} • '
-                    'Approved: ${_text(beneficiaryCounts['approved'], '0')} • '
-                    'Paid: ${_text(beneficiaryCounts['paid'], '0')}',
-                  ),
-                  isThreeLine: true,
-                  onTap: () => _showProgram(program),
-                  trailing: PopupMenuButton<String>(
-                    child: _status(_text(program['status'], 'DRAFT')),
-                    onSelected: (String status) => _programStatus(program, status),
-                    itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                      PopupMenuItem(value: 'APPROVED', child: Text('Approve')),
-                      PopupMenuItem(value: 'OPEN', child: Text('Open')),
-                      PopupMenuItem(value: 'SUSPENDED', child: Text('Suspend')),
-                      PopupMenuItem(value: 'CANCELLED', child: Text('Close / cancel')),
-                    ],
-                  ),
-                ),
-              );
-            })
-            .toList(),
+        children: _programs.map((Map<String, dynamic> program) {
+          final Map<String, dynamic> financials = program['financials'] is Map
+              ? Map<String, dynamic>.from(program['financials'] as Map)
+              : <String, dynamic>{};
+          final Map<String, dynamic> beneficiaryCounts =
+              program['beneficiaryCounts'] is Map
+                  ? Map<String, dynamic>.from(
+                      program['beneficiaryCounts'] as Map)
+                  : <String, dynamic>{};
+          return Card(
+            child: ListTile(
+              leading: const Icon(Icons.volunteer_activism_outlined,
+                  color: Color(0xFF08783E)),
+              title: Text(_text(program['name'])),
+              subtitle: Text(
+                'Budget: ₦${_text(program['totalBudget'], '0')} • '
+                'Funded: ₦${_text(financials['fundedAmount'], '0')} • '
+                'Available: ₦${_text(financials['availableBalance'], '0')}\n'
+                'Beneficiaries: ${_text(beneficiaryCounts['total'], '0')} • '
+                'Approved: ${_text(beneficiaryCounts['approved'], '0')} • '
+                'Paid: ${_text(beneficiaryCounts['paid'], '0')}',
+              ),
+              isThreeLine: true,
+              onTap: () => _showProgram(program),
+              trailing: PopupMenuButton<String>(
+                child: _status(_text(program['status'], 'DRAFT')),
+                onSelected: (String status) => _programStatus(program, status),
+                itemBuilder: (_) => const <PopupMenuEntry<String>>[
+                  PopupMenuItem(value: 'APPROVED', child: Text('Approve')),
+                  PopupMenuItem(value: 'OPEN', child: Text('Open')),
+                  PopupMenuItem(value: 'SUSPENDED', child: Text('Suspend')),
+                  PopupMenuItem(
+                      value: 'CANCELLED', child: Text('Close / cancel')),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
       );
 
   Widget _auditView() => ListView(
         padding: const EdgeInsets.all(16),
         children: _audit.isEmpty
             ? const <Widget>[
-                Center(child: Padding(
+                Center(
+                    child: Padding(
                   padding: EdgeInsets.all(28),
                   child: Text('No Empowerment audit events recorded yet.'),
                 )),
@@ -1037,7 +1040,10 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen>
                         '${_text(item['entityType'])} • ${_text(item['reference'])}',
                       ),
                       trailing: Text(
-                        _text(item['createdAt']).replaceFirst('T', '\n').split('.').first,
+                        _text(item['createdAt'])
+                            .replaceFirst('T', '\n')
+                            .split('.')
+                            .first,
                         textAlign: TextAlign.end,
                         style: const TextStyle(fontSize: 10),
                       ),
