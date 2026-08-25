@@ -1,4 +1,6 @@
 const Transaction = require("../models/transaction.model");
+const BankTransfer = require("../models/bankTransfer.model");
+const bankTransferController = require("./bankTransfer.controller");
 
 /**
  * HEAD OFFICE central ServicePay transaction lookup/requery.
@@ -25,6 +27,17 @@ exports.adminRequeryTransaction = async (req, res) => {
       });
     }
 
+    const bankTransfer = await BankTransfer.findOne({
+      reference: {
+        $regex: `^${reference.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+        $options: "i",
+      },
+    }).lean();
+
+    if (bankTransfer) {
+      return bankTransferController.adminRequeryBankTransfer(req, res);
+    }
+
     const transaction = await Transaction.findOne({
       reference: {
         $regex: `^${reference.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
@@ -44,9 +57,10 @@ exports.adminRequeryTransaction = async (req, res) => {
 
     const customer = transaction.customerId || null;
 
-    return res.status(200).json({
-      success: true,
-      message: "Transaction found successfully.",
+    return res.status(202).json({
+      success: false,
+      manualReviewRequired: true,
+      message: "Provider requery is not supported for this transaction type. Manual review is required; no debit, credit, or provider request was made.",
       source: "SERVICEPAY_TRANSACTION_LEDGER",
       liveProviderRequery: false,
       transaction: {

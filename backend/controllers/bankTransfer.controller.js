@@ -1902,6 +1902,45 @@ exports.adminRequeryBankTransfer = async (req, res) => {
       });
     }
 
+    if (["SUCCESSFUL", "REFUNDED"].includes(record.status)) {
+      return res.status(200).json({
+        success: true,
+        message: "Bank transfer already has a final outcome; no provider requery was sent.",
+        liveProviderRequery: false,
+        data: {
+          reference: record.reference,
+          status: record.status,
+          amount: record.amount,
+          refundProcessed: record.refundProcessed,
+        },
+      });
+    }
+
+    const locked = await BankTransfer.findOneAndUpdate(
+      {
+        _id: record._id,
+        requeryInProgress: { $ne: true },
+        status: { $in: ["PENDING", "PROCESSING", "FAILED"] },
+      },
+      {
+        $set: {
+          requeryInProgress: true,
+          lastRequeryAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    if (!locked) {
+      return res.status(202).json({
+        success: false,
+        code: "REQUERY_ALREADY_PROCESSING",
+        manualReviewRequired: true,
+        message: "An identical bank-transfer requery is already processing. Do not retry or resend the transfer.",
+        data: { reference: record.reference, status: record.status },
+      });
+    }
+
     const adminActor = req.user;
 
     // Preserve the real HEAD OFFICE actor for audit/debug purposes.
@@ -1923,7 +1962,14 @@ exports.adminRequeryBankTransfer = async (req, res) => {
       reference,
     };
 
-    return exports.requeryBankTransfer(req, res);
+    try {
+      return await exports.requeryBankTransfer(req, res);
+    } finally {
+      await BankTransfer.updateOne(
+        { _id: record._id },
+        { $set: { requeryInProgress: false } }
+      );
+    }
   } catch (error) {
     console.error("Admin bank transfer requery error:", error);
 

@@ -139,6 +139,17 @@ const bankTransferSchema =
         min: 0,
       },
 
+      requeryInProgress: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+
+      lastRequeryAt: {
+        type: Date,
+        default: null,
+      },
+
       failureReason: {
         type: String,
         trim: true,

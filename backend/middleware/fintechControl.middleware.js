@@ -191,10 +191,34 @@ async function loadFintechControl() {
     .sort({ updatedAt: -1 })
     .lean();
 
-  return (
-    settings?.fintechControl ||
-    {}
-  );
+  return {
+    ...(settings?.fintechControl || {}),
+    featureToggles: settings?.services || {},
+  };
+}
+
+function disabledService(req, control) {
+  const path = String(req.originalUrl || req.url || "").toLowerCase();
+  const toggles = control?.featureToggles || {};
+  const map = [
+    ["/airtime", "airtime"],
+    ["/data", "data"],
+    ["/electricity", "electricity"],
+    ["/cable", "cableTv"],
+    ["/exam", "examPin"],
+    ["/transfer/bank", "bankTransfer"],
+    ["/transfer/servicepay", "servicepayTransfer"],
+    ["/wallet/fund", "walletFunding"],
+    ["/delivery", "delivery"],
+    ["/amana", "amana"],
+    ["/notifications", "notifications"],
+  ];
+  for (const [fragment, key] of map) {
+    if (path.includes(fragment) && boolValue(toggles[key], true) === false) {
+      return key;
+    }
+  }
+  return null;
 }
 
 async function fintechControlMiddleware(req, res, next) {
@@ -289,6 +313,16 @@ async function fintechControlMiddleware(req, res, next) {
           message:
             maintenanceMessage ||
             "ServicePay transactions are temporarily unavailable.",
+        });
+      }
+
+      const service = disabledService(req, control);
+      if (service) {
+        return res.status(503).json({
+          success: false,
+          code: "FEATURE_DISABLED",
+          service,
+          message: "This ServicePay feature is temporarily unavailable.",
         });
       }
     }

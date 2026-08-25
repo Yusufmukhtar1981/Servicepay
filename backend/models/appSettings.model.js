@@ -469,16 +469,6 @@ const supportSettingsSchema =
         default: "",
       },
 
-      aiSupportEnabled: {
-        type: Boolean,
-        default: true,
-      },
-
-      humanEscalationEnabled: {
-        type: Boolean,
-        default: true,
-      },
-
       officeAddress: {
         type: String,
         trim: true,
@@ -585,6 +575,65 @@ const appVersionSettingsSchema =
 
 /*
 |--------------------------------------------------------------------------
+| FINTECH CONTROL SETTINGS
+|--------------------------------------------------------------------------
+|
+| The admin control centre and request middleware share this one persisted
+| contract.  Service availability remains in `services` so legacy
+| controllers continue to use the same source of truth.
+|
+*/
+const fintechControlSettingsSchema =
+  new mongoose.Schema(
+    {
+      maintenance: {
+        enabled: { type: Boolean, default: false },
+        customerAppEnabled: { type: Boolean, default: true },
+        apiEnabled: { type: Boolean, default: true },
+        message: {
+          type: String,
+          trim: true,
+          maxlength: 500,
+          default:
+            "ServicePay is temporarily undergoing maintenance. Please try again shortly.",
+        },
+        scheduledStartAt: { type: Date, default: null },
+        scheduledEndAt: { type: Date, default: null },
+      },
+      serviceLimits: {
+        tier1Daily: { type: Number, min: 0, default: 0 },
+        tier1PerTransaction: { type: Number, min: 0, default: 0 },
+        tier2Daily: { type: Number, min: 0, default: 0 },
+        tier2PerTransaction: { type: Number, min: 0, default: 0 },
+        tier3Daily: { type: Number, min: 0, default: 0 },
+        tier3PerTransaction: { type: Number, min: 0, default: 0 },
+        servicepayTransfer: { type: Number, min: 0, default: 0 },
+        bankTransfer: { type: Number, min: 0, default: 0 },
+        walletFunding: { type: Number, min: 0, default: 0 },
+        withdrawal: { type: Number, min: 0, default: 0 },
+      },
+      transactionFees: {
+        servicepayTransfer: { type: Number, min: 0, default: 0 },
+        bankTransfer: { type: Number, min: 0, default: 0 },
+        walletFunding: { type: Number, min: 0, default: 0 },
+        withdrawal: { type: Number, min: 0, default: 0 },
+        merchantPayment: { type: Number, min: 0, default: 0 },
+        airtime: { type: Number, min: 0, default: 0 },
+        data: { type: Number, min: 0, default: 0 },
+      },
+      legalPolicies: {
+        privacyPolicyUrl: { type: String, trim: true, maxlength: 1000, default: "" },
+        termsAndConditionsUrl: { type: String, trim: true, maxlength: 1000, default: "" },
+        amlPolicyUrl: { type: String, trim: true, maxlength: 1000, default: "" },
+        complaintsPolicyUrl: { type: String, trim: true, maxlength: 1000, default: "" },
+        dataProtectionPolicyUrl: { type: String, trim: true, maxlength: 1000, default: "" },
+      },
+    },
+    { _id: false }
+  );
+
+/*
+|--------------------------------------------------------------------------
 | MAIN APPLICATION SETTINGS
 |--------------------------------------------------------------------------
 */
@@ -668,6 +717,11 @@ const appSettingsSchema =
 
       appVersion: {
         type: appVersionSettingsSchema,
+        default: () => ({}),
+      },
+
+      fintechControl: {
+        type: fintechControlSettingsSchema,
         default: () => ({}),
       },
 

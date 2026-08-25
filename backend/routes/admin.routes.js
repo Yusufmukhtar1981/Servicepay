@@ -2,6 +2,7 @@ const express = require("express");
 
 const adminTransactionRequeryController = require("../controllers/adminTransactionRequery.controller");
 const bankTransferController = require("../controllers/bankTransfer.controller");
+const adminBankReconciliationController = require("../controllers/adminBankReconciliation.controller");
 
 const {
   getAdminDashboard,
@@ -438,13 +439,6 @@ router.get(
   adminMarketplaceController.listMarketplaceProducts
 );
 
-router.get(
-  '/marketplace/orders',
-  protect,
-  adminOnly('HEAD_OFFICE'),
-  adminMarketplaceController.listMarketplaceOrders
-);
-
 router.patch(
   '/marketplace/products/:id/status',
   protect,
@@ -485,6 +479,13 @@ router.post(
   protect,
   adminOnly("HEAD_OFFICE"),
   adminTransactionRequeryController.adminRequeryTransaction
+);
+
+router.get(
+  "/bank-reconciliation",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  adminBankReconciliationController.listBankReconciliation
 );
 
 module.exports = router;
