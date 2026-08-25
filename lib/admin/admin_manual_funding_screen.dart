@@ -528,7 +528,7 @@ class _AdminManualFundingScreenState extends State<AdminManualFundingScreen> {
                       height: 14,
                     ),
                     DropdownButtonFormField<String>(
-                      initialValue: action,
+                      value: action,
                       decoration: const InputDecoration(
                         labelText: 'Action',
                       ),
