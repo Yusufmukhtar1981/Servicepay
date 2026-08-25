@@ -419,17 +419,19 @@ class _MarketplaceSellerOrdersScreenState
                 ],
               ),
             if (status == 'DELIVERED' || status == 'COMPLETED')
-              const Row(
+              Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.verified_rounded,
                     color: Colors.green,
                   ),
-                  SizedBox(width: 7),
+                  const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      'Delivered — payment remains protected until settlement is safely available.',
-                      style: TextStyle(
+                      '${order['fundsStatus'] ?? 'HELD'}'.toUpperCase() == 'SETTLED'
+                          ? 'Delivered — payment was released after the buyer confirmed delivery.'
+                          : 'Delivered — payment remains held until an authorized settlement is completed.',
+                      style: const TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.w700,
                       ),

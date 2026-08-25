@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 
 const {
   protect,
@@ -12,6 +13,12 @@ const marketplaceController = require(
 );
 
 const router = express.Router();
+const marketplaceImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+  },
+});
 
 router.get(
   '/',
@@ -40,6 +47,26 @@ router.get(
   '/products/mine',
   protect,
   marketplaceController.myProducts
+);
+
+router.post(
+  '/products/image',
+  protect,
+  (req, res, next) => {
+    marketplaceImageUpload.single('image')(req, res, (error) => {
+      if (error) {
+        return res.status(400).json({
+          success: false,
+          message:
+            error.code === 'LIMIT_FILE_SIZE'
+              ? 'Marketplace product photos must be 8 MB or smaller.'
+              : 'Unable to process this product photo.',
+        });
+      }
+      return next();
+    });
+  },
+  marketplaceController.uploadProductImage
 );
 
 router.get(
@@ -96,6 +123,18 @@ router.get(
   '/orders/:orderId',
   protect,
   marketplaceController.getOrder
+);
+
+router.post(
+  '/orders/:orderId/confirm-delivery',
+  protect,
+  marketplaceController.confirmOrderDelivery
+);
+
+router.post(
+  '/orders/:orderId/cancel',
+  protect,
+  marketplaceController.cancelMyOrder
 );
 
 

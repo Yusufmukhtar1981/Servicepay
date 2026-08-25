@@ -18,6 +18,7 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
 
   bool loading = true;
   String errorMessage = '';
+  String? actingOrderId;
   List<Map<String, dynamic>> orders = [];
 
   @override
@@ -104,6 +105,100 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
     return status.isEmpty ? 'PAID' : status.replaceAll('_', ' ');
   }
 
+  Future<void> _actOnOrder(
+    Map<String, dynamic> order,
+    String action,
+  ) async {
+    final orderId = '${order['_id'] ?? order['id'] ?? ''}'.trim();
+    if (orderId.isEmpty) return;
+
+    final isDeliveryConfirmation = action == 'confirm-delivery';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          isDeliveryConfirmation ? 'Confirm delivery?' : 'Cancel this order?',
+        ),
+        content: Text(
+          isDeliveryConfirmation
+              ? 'Confirm only after you have received the complete order. This will release the held payment to the seller.'
+              : 'This is available only before the seller accepts the order. Your wallet payment will be returned immediately.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Go back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              isDeliveryConfirmation ? 'Confirm delivery' : 'Cancel and refund',
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => actingOrderId = orderId);
+
+    try {
+      final token = await _token();
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Your login session was not found.');
+      }
+
+      final endpoint = isDeliveryConfirmation
+          ? 'confirm-delivery'
+          : 'cancel';
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/marketplace/orders/$orderId/$endpoint'),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer ${token.trim()}',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+      final decoded = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          decoded is Map
+              ? '${decoded['message'] ?? 'Unable to update the order.'}'
+              : 'Unable to update the order.',
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            decoded is Map
+                ? '${decoded['message'] ?? 'Marketplace order updated.'}'
+                : 'Marketplace order updated.',
+          ),
+        ),
+      );
+      await _loadOrders();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => actingOrderId = null);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,6 +255,11 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
                         itemBuilder: (context, index) {
                           final order = orders[index];
                           final status = _statusLabel(order);
+                          final fundsStatus =
+                              '${order['fundsStatus'] ?? 'HELD'}'.trim().toUpperCase();
+                          final orderId =
+                              '${order['_id'] ?? order['id'] ?? ''}'.trim();
+                          final isActing = actingOrderId == orderId;
                           final items = (order['items'] is List)
                               ? (order['items'] as List)
                                   .whereType<Map>()
@@ -225,6 +325,18 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                                 const SizedBox(height: 6),
+                                 Text(
+                                   fundsStatus == 'SETTLED'
+                                       ? 'Payment released to seller after your delivery confirmation.'
+                                       : fundsStatus == 'REFUNDED'
+                                           ? 'Wallet payment refunded.'
+                                           : 'Payment held safely until delivery is confirmed.',
+                                   style: const TextStyle(
+                                     color: Color(0xFF718078),
+                                     fontSize: 12,
+                                   ),
+                                 ),
                                 if ('${order['deliveryAddress']}'.trim().isNotEmpty)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 6),
@@ -238,6 +350,44 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
                                       ),
                                     ),
                                   ),
+                                 if (status == 'PAID') ...[
+                                   const SizedBox(height: 14),
+                                   SizedBox(
+                                     width: double.infinity,
+                                     child: OutlinedButton.icon(
+                                       onPressed: isActing
+                                           ? null
+                                           : () => _actOnOrder(order, 'cancel'),
+                                       icon: const Icon(Icons.cancel_outlined),
+                                       label: Text(
+                                         isActing
+                                             ? 'Updating order...'
+                                             : 'Cancel and refund',
+                                       ),
+                                     ),
+                                   ),
+                                 ],
+                                 if (status == 'SHIPPED' ||
+                                     status == 'OUT FOR DELIVERY') ...[
+                                   const SizedBox(height: 14),
+                                   SizedBox(
+                                     width: double.infinity,
+                                     child: FilledButton.icon(
+                                       onPressed: isActing
+                                           ? null
+                                           : () => _actOnOrder(
+                                                 order,
+                                                 'confirm-delivery',
+                                               ),
+                                       icon: const Icon(Icons.verified_rounded),
+                                       label: Text(
+                                         isActing
+                                             ? 'Confirming delivery...'
+                                             : 'Confirm delivery and release payment',
+                                       ),
+                                     ),
+                                   ),
+                                 ],
                               ],
                             ),
                           );

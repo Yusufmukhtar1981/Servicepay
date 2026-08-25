@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'marketplace_seller_orders_screen.dart';
@@ -32,10 +35,14 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
   final productPriceController = TextEditingController();
   final productStockController = TextEditingController();
   final productImageController = TextEditingController();
+  final ImagePicker productImagePicker = ImagePicker();
 
   bool loading = true;
   bool savingMerchant = false;
   bool addingProduct = false;
+  bool uploadingProductImage = false;
+  Uint8List? productImageBytes;
+  String productImageFilename = '';
 
   Map<String, dynamic>? merchant;
   List<Map<String, dynamic>> products = [];
@@ -182,7 +189,12 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
     }
 
     if (productImageController.text.trim().isEmpty) {
-      showMessage('Add a product image URL before saving.');
+      showMessage('Choose and upload a product photo before saving.');
+      return;
+    }
+
+    if (uploadingProductImage) {
+      showMessage('Wait for the product photo upload to finish.');
       return;
     }
 
@@ -231,6 +243,106 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
     } finally {
       if (mounted) {
         setState(() => addingProduct = false);
+      }
+    }
+  }
+
+  MediaType productImageContentType(String filename) {
+    final extension = filename.split('.').last.toLowerCase();
+
+    if (extension == 'png') {
+      return MediaType('image', 'png');
+    }
+
+    if (extension == 'webp') {
+      return MediaType('image', 'webp');
+    }
+
+    return MediaType('image', 'jpeg');
+  }
+
+  Future<void> chooseAndUploadProductImage() async {
+    try {
+      final selected = await productImagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 88,
+        maxWidth: 2000,
+        maxHeight: 2000,
+      );
+
+      if (selected == null) return;
+
+      final bytes = await selected.readAsBytes();
+      final filename = selected.name.trim().isEmpty
+          ? 'marketplace-product.jpg'
+          : selected.name.trim();
+      final authToken = await token();
+
+      if (authToken.isEmpty) {
+        showMessage('Your login session has expired. Please sign in again.');
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          uploadingProductImage = true;
+          productImageBytes = bytes;
+          productImageFilename = filename;
+        });
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/products/image'),
+      );
+      request.headers['Authorization'] = 'Bearer $authToken';
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          bytes,
+          filename: filename,
+          contentType: productImageContentType(filename),
+        ),
+      );
+
+      final streamed = await request.send().timeout(
+            const Duration(seconds: 60),
+          );
+      final response = await http.Response.fromStream(streamed);
+      final decoded = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded is! Map ||
+          decoded['success'] != true) {
+        final message = decoded is Map
+            ? '${decoded['message'] ?? 'Unable to upload the product photo.'}'
+            : 'Unable to upload the product photo.';
+        throw Exception(message);
+      }
+
+      final imageUrl = '${decoded['imageUrl'] ?? ''}'.trim();
+
+      if (imageUrl.isEmpty) {
+        throw Exception('Product image storage did not return a secure image URL.');
+      }
+
+      productImageController.text = imageUrl;
+      showMessage('Product photo uploaded.');
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          productImageBytes = null;
+          productImageFilename = '';
+          productImageController.clear();
+        });
+      }
+      showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => uploadingProductImage = false);
       }
     }
   }
@@ -509,7 +621,40 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: productImageController,
-                      decoration: decoration('Product Image URL'),
+                      readOnly: true,
+                      decoration: decoration('Product Photo *').copyWith(
+                        hintText: productImageBytes == null
+                            ? 'Choose a photo from this device'
+                            : 'Photo ready: $productImageFilename',
+                        suffixIcon: uploadingProductImage
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : IconButton(
+                                tooltip: 'Choose product photo',
+                                onPressed: chooseAndUploadProductImage,
+                                icon: const Icon(Icons.add_photo_alternate_outlined),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: uploadingProductImage
+                          ? null
+                          : chooseAndUploadProductImage,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: Text(
+                        productImageBytes == null
+                            ? 'Choose product photo'
+                            : 'Replace product photo',
+                      ),
                     ),
                     const SizedBox(height: 14),
                     SizedBox(

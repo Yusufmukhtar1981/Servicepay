@@ -206,6 +206,39 @@ const marketplaceOrderSchema = new mongoose.Schema(
       index: true,
     },
 
+    settlementLedgerEntry: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'LedgerEntry',
+      default: null,
+    },
+
+    refundLedgerEntry: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'LedgerEntry',
+      default: null,
+    },
+
+    deliveryConfirmedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    deliveryConfirmedAt: {
+      type: Date,
+      default: null,
+    },
+
+    settledAt: {
+      type: Date,
+      default: null,
+    },
+
+    refundedAt: {
+      type: Date,
+      default: null,
+    },
+
     statusHistory: {
       type: [
         {

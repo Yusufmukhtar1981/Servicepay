@@ -1,7 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
+const { Writable } = require("node:stream");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
+const { v2: cloudinary } = require("cloudinary");
 
 const User = require("../models/user.model");
 const MarketplaceMerchant = require("../models/marketplaceMerchant.model");
@@ -29,11 +31,13 @@ const makeRequest = ({
   params = {},
   query = {},
   headers = {},
+  file = null,
 } = {}) => ({
   user,
   body,
   params,
   query,
+  file,
   get(name) {
     return headers[String(name).toLowerCase()];
   },
@@ -151,6 +155,91 @@ test("seller product creation requires a real product image", async () => {
 
   assert.equal(result.status, 400);
   assert.match(result.body.message, /image/i);
+});
+
+test("Marketplace product upload rejects forged or unsupported image files", async () => {
+  const seller = await createUser();
+  await MarketplaceMerchant.create({
+    user: seller._id,
+    storeName: "Secure Image Store",
+    status: "ACTIVE",
+  });
+
+  const result = await call(marketplace.uploadProductImage, {
+    user: seller,
+    file: {
+      mimetype: "image/png",
+      buffer: Buffer.from("this is not a PNG file"),
+    },
+  });
+
+  assert.equal(result.status, 400);
+  assert.equal(result.body.code, "UNSUPPORTED_IMAGE");
+});
+
+test("Marketplace product upload returns a verified secure image URL", async () => {
+  const seller = await createUser();
+  await MarketplaceMerchant.create({
+    user: seller._id,
+    storeName: "Cloud Image Store",
+    status: "ACTIVE",
+  });
+
+  const originalUploadStream = cloudinary.uploader.upload_stream;
+  const originalCloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const originalApiKey = process.env.CLOUDINARY_API_KEY;
+  const originalApiSecret = process.env.CLOUDINARY_API_SECRET;
+  process.env.CLOUDINARY_CLOUD_NAME = "marketplace-test";
+  process.env.CLOUDINARY_API_KEY = "marketplace-test-key";
+  process.env.CLOUDINARY_API_SECRET = "marketplace-test-secret";
+  cloudinary.uploader.upload_stream = (_options, callback) => {
+    const stream = new Writable({
+      write(_chunk, _encoding, done) {
+        done();
+      },
+    });
+    queueMicrotask(() =>
+      callback(null, {
+        secure_url: "https://res.cloudinary.example/servicepay/product.webp",
+        public_id: "servicepay/marketplace/products/test/product",
+      })
+    );
+    return stream;
+  };
+
+  try {
+    const result = await call(marketplace.uploadProductImage, {
+      user: seller,
+      file: {
+        mimetype: "image/webp",
+        buffer: Buffer.from([
+          0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45,
+          0x42, 0x50,
+        ]),
+      },
+    });
+
+    assert.equal(result.status, 201);
+    assert.equal(result.body.success, true);
+    assert.match(result.body.imageUrl, /^https:/);
+  } finally {
+    cloudinary.uploader.upload_stream = originalUploadStream;
+    if (originalCloudName === undefined) {
+      delete process.env.CLOUDINARY_CLOUD_NAME;
+    } else {
+      process.env.CLOUDINARY_CLOUD_NAME = originalCloudName;
+    }
+    if (originalApiKey === undefined) {
+      delete process.env.CLOUDINARY_API_KEY;
+    } else {
+      process.env.CLOUDINARY_API_KEY = originalApiKey;
+    }
+    if (originalApiSecret === undefined) {
+      delete process.env.CLOUDINARY_API_SECRET;
+    } else {
+      process.env.CLOUDINARY_API_SECRET = originalApiSecret;
+    }
+  }
 });
 
 test("checkout uses server price, reserves stock, debits wallet and posts ledger atomically", async () => {
@@ -281,6 +370,211 @@ test("seller status changes are ownership-filtered and follow the fulfillment se
   });
   assert.equal(accepted.status, 200);
   assert.equal(accepted.body.order.orderStatus, "ACCEPTED");
+});
+
+test("buyer-confirmed delivery settles held funds exactly once", async () => {
+  const { seller, product } = await createStoreWithProduct({
+    price: 1750,
+    stock: 2,
+  });
+  const buyer = await createUser({ walletBalance: 5000 });
+  const created = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product),
+    headers: { "idempotency-key": "marketplace-settlement-order" },
+  });
+  const orderId = String(created.body.order._id);
+
+  for (const status of ["ACCEPTED", "PROCESSING", "READY", "SHIPPED"]) {
+    const result = await call(marketplace.updateSellerOrderStatus, {
+      user: seller,
+      params: { orderId },
+      body: { status },
+    });
+    assert.equal(result.status, 200);
+  }
+
+  const settlement = await call(marketplace.confirmOrderDelivery, {
+    user: buyer,
+    params: { orderId },
+  });
+  const duplicate = await call(marketplace.confirmOrderDelivery, {
+    user: buyer,
+    params: { orderId },
+  });
+
+  assert.equal(settlement.status, 200);
+  assert.equal(settlement.body.order.orderStatus, "DELIVERED");
+  assert.equal(settlement.body.order.fundsStatus, "SETTLED");
+  assert.equal(duplicate.status, 200);
+  assert.equal(duplicate.body.duplicate, true);
+
+  const storedSeller = await User.findById(seller._id);
+  const storedBuyer = await User.findById(buyer._id);
+  const storedOrder = await MarketplaceOrder.findById(orderId);
+  const settlementEntries = await LedgerEntry.find({
+    service: "MARKETPLACE_SETTLEMENT",
+    reference: storedOrder.orderReference,
+  });
+
+  assert.equal(storedSeller.walletBalance, 1750);
+  assert.equal(storedBuyer.walletBalance, 3250);
+  assert.equal(settlementEntries.length, 1);
+  assert.equal(settlementEntries[0].direction, "CREDIT");
+  assert.equal(storedOrder.settlementLedgerEntry.toString(), settlementEntries[0]._id.toString());
+});
+
+test("buyer cancellation refunds held funds and restores stock exactly once", async () => {
+  const { product } = await createStoreWithProduct({
+    price: 900,
+    stock: 2,
+  });
+  const buyer = await createUser({ walletBalance: 5000 });
+  const created = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product),
+    headers: { "idempotency-key": "marketplace-refund-order" },
+  });
+  const orderId = String(created.body.order._id);
+
+  const refund = await call(marketplace.cancelMyOrder, {
+    user: buyer,
+    params: { orderId },
+  });
+  const duplicate = await call(marketplace.cancelMyOrder, {
+    user: buyer,
+    params: { orderId },
+  });
+
+  assert.equal(refund.status, 200);
+  assert.equal(refund.body.order.orderStatus, "REFUNDED");
+  assert.equal(refund.body.order.paymentStatus, "REFUNDED");
+  assert.equal(refund.body.order.fundsStatus, "REFUNDED");
+  assert.equal(duplicate.status, 200);
+  assert.equal(duplicate.body.duplicate, true);
+
+  const storedBuyer = await User.findById(buyer._id);
+  const storedProduct = await MarketplaceProduct.findById(product._id);
+  const storedOrder = await MarketplaceOrder.findById(orderId);
+  const originalTransaction = await Transaction.findById(storedOrder.transaction);
+  const refundEntries = await LedgerEntry.find({
+    service: "MARKETPLACE_REFUND",
+    reference: storedOrder.orderReference,
+  });
+
+  assert.equal(storedBuyer.walletBalance, 5000);
+  assert.equal(storedProduct.stock, 2);
+  assert.equal(refundEntries.length, 1);
+  assert.equal(refundEntries[0].direction, "CREDIT");
+  assert.equal(originalTransaction.status, "REFUNDED");
+});
+
+test("accepted Marketplace orders cannot be self-refunded by the buyer", async () => {
+  const { seller, product } = await createStoreWithProduct();
+  const buyer = await createUser({ walletBalance: 5000 });
+  const created = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product),
+    headers: { "idempotency-key": "marketplace-refund-after-acceptance" },
+  });
+  const orderId = String(created.body.order._id);
+
+  const accepted = await call(marketplace.updateSellerOrderStatus, {
+    user: seller,
+    params: { orderId },
+    body: { status: "ACCEPTED" },
+  });
+  const refund = await call(marketplace.cancelMyOrder, {
+    user: buyer,
+    params: { orderId },
+  });
+
+  assert.equal(accepted.status, 200);
+  assert.equal(refund.status, 409);
+  assert.equal((await User.findById(buyer._id)).walletBalance, 3800);
+  assert.equal((await MarketplaceProduct.findById(product._id)).stock, 3);
+  assert.equal(await LedgerEntry.countDocuments({ service: "MARKETPLACE_REFUND" }), 0);
+});
+
+test("concurrent buyer cancellation and seller acceptance cannot create a refunded fulfillment order", async () => {
+  const { seller, product } = await createStoreWithProduct({
+    price: 1100,
+    stock: 2,
+  });
+  const buyer = await createUser({ walletBalance: 5000 });
+  const created = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product),
+    headers: { "idempotency-key": "marketplace-cancel-accept-race" },
+  });
+  const orderId = String(created.body.order._id);
+
+  await Promise.all([
+    call(marketplace.cancelMyOrder, {
+      user: buyer,
+      params: { orderId },
+    }),
+    call(marketplace.updateSellerOrderStatus, {
+      user: seller,
+      params: { orderId },
+      body: { status: "ACCEPTED" },
+    }),
+  ]);
+
+  const storedOrder = await MarketplaceOrder.findById(orderId);
+  const isRefunded = storedOrder.orderStatus === "REFUNDED";
+  const isAcceptedAndHeld =
+    storedOrder.orderStatus === "ACCEPTED" &&
+    storedOrder.paymentStatus === "PAID" &&
+    storedOrder.fundsStatus === "HELD";
+
+  assert.equal(
+    isRefunded || isAcceptedAndHeld,
+    true,
+    "an order may be refunded or accepted, but never both"
+  );
+  assert.notEqual(
+    storedOrder.orderStatus === "ACCEPTED" &&
+      storedOrder.fundsStatus === "REFUNDED",
+    true
+  );
+});
+
+test("delivery settlement refuses orders with unallocated delivery fees", async () => {
+  const { seller, product } = await createStoreWithProduct({
+    price: 1500,
+    stock: 2,
+  });
+  const buyer = await createUser({ walletBalance: 5000 });
+  const created = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product),
+    headers: { "idempotency-key": "marketplace-delivery-fee-block" },
+  });
+  const orderId = String(created.body.order._id);
+
+  for (const status of ["ACCEPTED", "PROCESSING", "READY", "SHIPPED"]) {
+    const result = await call(marketplace.updateSellerOrderStatus, {
+      user: seller,
+      params: { orderId },
+      body: { status },
+    });
+    assert.equal(result.status, 200);
+  }
+
+  await MarketplaceOrder.updateOne(
+    { _id: orderId },
+    { $set: { deliveryFee: 200, totalAmount: 1700 } }
+  );
+  const settlement = await call(marketplace.confirmOrderDelivery, {
+    user: buyer,
+    params: { orderId },
+  });
+
+  assert.equal(settlement.status, 409);
+  assert.equal(settlement.body.code, "DELIVERY_FEE_SETTLEMENT_BLOCKED");
+  assert.equal((await User.findById(seller._id)).walletBalance, 0);
+  assert.equal((await MarketplaceOrder.findById(orderId)).fundsStatus, "HELD");
 });
 
 test("suspended sellers cannot edit or sell existing active products", async () => {

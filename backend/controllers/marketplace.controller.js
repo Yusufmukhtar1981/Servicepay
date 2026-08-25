@@ -6,7 +6,12 @@ const MarketplaceProduct = require("../models/marketplace.model");
 const MarketplaceMerchant = require("../models/marketplaceMerchant.model");
 const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
-const { postDebit } = require("../services/ledger.service");
+const { postDebit, postCredit } = require("../services/ledger.service");
+const {
+  SUPPORTED_MARKETPLACE_IMAGE_TYPES,
+  hasSupportedMarketplaceImageSignature,
+  uploadMarketplaceProductImage,
+} = require("../services/marketplaceImage.service");
 
 const PRODUCT_STATUSES = new Set([
   "PENDING",
@@ -163,6 +168,40 @@ const activeMerchant = (merchant) =>
   merchant &&
   String(merchant.status || "ACTIVE").toUpperCase() ===
     "ACTIVE";
+
+const getSingleMerchantId = (order) => {
+  const merchants = [
+    ...new Set(
+      (order?.items || [])
+        .map((item) => String(item?.merchant || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  return merchants.length === 1 ? merchants[0] : "";
+};
+
+const marketplaceError = (message, statusCode = 409, code = "") =>
+  Object.assign(new Error(message), { statusCode, code });
+
+const restoreOrderStock = async (order, session) => {
+  for (const item of order.items || []) {
+    const quantity = Number(item?.quantity || 0);
+    if (!item?.product || !Number.isInteger(quantity) || quantity < 1) {
+      throw marketplaceError(
+        "This Marketplace order has invalid stock data and requires support review.",
+        409,
+        "INVALID_ORDER_STOCK"
+      );
+    }
+
+    await MarketplaceProduct.updateOne(
+      { _id: item.product },
+      { $inc: { stock: quantity } },
+      { session }
+    );
+  }
+};
 
 const serializeProduct = (product) => {
   const value = product?.toObject
@@ -746,6 +785,82 @@ exports.sellerDashboard = async (req, res) => {
   }
 };
 
+exports.uploadProductImage = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
+
+    const merchant = await getMerchantForUser(userId);
+
+    if (!activeMerchant(merchant)) {
+      return res.status(403).json({
+        success: false,
+        message: "An active Marketplace seller account is required to upload product photos.",
+      });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: "Select a JPEG, PNG, or WebP product photo.",
+      });
+    }
+
+    const mimeType = String(req.file.mimetype || "").toLowerCase();
+
+    if (
+      !SUPPORTED_MARKETPLACE_IMAGE_TYPES.has(mimeType) ||
+      !hasSupportedMarketplaceImageSignature(req.file.buffer, mimeType)
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "UNSUPPORTED_IMAGE",
+        message: "Marketplace product photos must be valid JPEG, PNG, or WebP images.",
+      });
+    }
+
+    const result = await uploadMarketplaceProductImage({
+      buffer: req.file.buffer,
+      userId,
+    });
+    const imageUrl = String(result?.secure_url || "").trim();
+    const assetId = String(result?.public_id || "").trim();
+
+    if (!imageUrl || !isSafeImageUrl(imageUrl) || !assetId) {
+      return res.status(502).json({
+        success: false,
+        message: "Product image storage did not confirm the upload. Please retry.",
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Product photo uploaded successfully.",
+      imageUrl,
+      assetId,
+    });
+  } catch (error) {
+    console.error("MARKETPLACE_PRODUCT_IMAGE_UPLOAD_ERROR", error);
+    return res.status(error?.code === "STORAGE_UNAVAILABLE" ? 503 : 500).json({
+      success: false,
+      code:
+        error?.code === "STORAGE_UNAVAILABLE"
+          ? "STORAGE_UNAVAILABLE"
+          : "MARKETPLACE_IMAGE_UPLOAD_FAILED",
+      message:
+        error?.code === "STORAGE_UNAVAILABLE"
+          ? "Marketplace image storage is temporarily unavailable. Please try again later."
+          : "Unable to upload the product photo. Please retry.",
+    });
+  }
+};
+
 exports.createOrder = async (req, res) => {
   const userId = getUserId(req);
   const idempotencyKey = getIdempotencyKey(req);
@@ -1206,6 +1321,337 @@ exports.getOrder = async (req, res) => {
   }
 };
 
+exports.confirmOrderDelivery = async (req, res) => {
+  const userId = getUserId(req);
+  const orderId = String(req.params?.orderId || "").trim();
+
+  try {
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
+
+    if (!mongoose.isValidObjectId(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Marketplace order ID.",
+      });
+    }
+
+    const session = await mongoose.startSession();
+    let settledOrder = null;
+    let duplicate = false;
+
+    try {
+      await session.withTransaction(async () => {
+        const order = await MarketplaceOrder.findOne({
+          _id: orderId,
+          buyer: userId,
+        }).session(session);
+
+        if (!order) {
+          throw marketplaceError("Marketplace order not found.", 404);
+        }
+
+        if (
+          order.orderStatus === "DELIVERED" &&
+          order.fundsStatus === "SETTLED"
+        ) {
+          settledOrder = order;
+          duplicate = true;
+          return;
+        }
+
+        if (
+          order.paymentStatus !== "PAID" ||
+          order.fundsStatus !== "HELD" ||
+          !order.transaction ||
+          !order.ledgerEntry
+        ) {
+          throw marketplaceError(
+            "This Marketplace order is not eligible for automatic settlement.",
+            409,
+            "ORDER_NOT_SETTLEABLE"
+          );
+        }
+
+        if (!["SHIPPED", "OUT_FOR_DELIVERY"].includes(order.orderStatus)) {
+          throw marketplaceError(
+            "You can confirm delivery after the seller marks this order as shipped.",
+            409,
+            "DELIVERY_NOT_READY"
+          );
+        }
+
+        const sellerId = getSingleMerchantId(order);
+
+        if (!sellerId) {
+          throw marketplaceError(
+            "This order requires support review before settlement.",
+            409,
+            "MULTI_SELLER_SETTLEMENT_BLOCKED"
+          );
+        }
+
+        const seller = await User.findById(sellerId).session(session);
+
+        if (!seller) {
+          throw marketplaceError(
+            "The Marketplace seller account is unavailable for settlement.",
+            409,
+            "SELLER_UNAVAILABLE"
+          );
+        }
+
+        const settlementAmount = toMoney(order.subtotal);
+        const deliveryFee = toMoney(order.deliveryFee || 0);
+        const totalAmount = toMoney(order.totalAmount);
+
+        if (
+          !settlementAmount ||
+          settlementAmount <= 0 ||
+          deliveryFee === null ||
+          totalAmount === null
+        ) {
+          throw marketplaceError(
+            "This order has an invalid settlement amount.",
+            409,
+            "INVALID_SETTLEMENT_AMOUNT"
+          );
+        }
+
+        if (deliveryFee !== 0 || totalAmount !== settlementAmount) {
+          throw marketplaceError(
+            "This Marketplace order requires support review before delivery settlement because its delivery fee has no configured allocation.",
+            409,
+            "DELIVERY_FEE_SETTLEMENT_BLOCKED"
+          );
+        }
+
+        const openingBalance = toMoney(seller.walletBalance || 0);
+        const creditedSeller = await User.findByIdAndUpdate(
+          seller._id,
+          { $inc: { walletBalance: settlementAmount } },
+          { new: true, session }
+        );
+
+        if (!creditedSeller) {
+          throw marketplaceError(
+            "The Marketplace seller account is unavailable for settlement.",
+            409,
+            "SELLER_UNAVAILABLE"
+          );
+        }
+
+        const ledger = await postCredit({
+          userId: seller._id,
+          amount: settlementAmount,
+          openingBalance,
+          closingBalance: toMoney(creditedSeller.walletBalance),
+          service: "MARKETPLACE_SETTLEMENT",
+          reference: order.orderReference,
+          idempotencyKey: `marketplace:${order._id}:seller-settlement:${seller._id}`,
+          transactionId: order.transaction,
+          relatedUser: order.buyer,
+          narration: `Marketplace delivery settlement for ${order.orderReference}`,
+          metadata: {
+            marketplace: true,
+            orderId: String(order._id),
+            settlementType: "BUYER_CONFIRMED_DELIVERY",
+          },
+          session,
+        });
+
+        const now = new Date();
+        order.orderStatus = "DELIVERED";
+        order.fundsStatus = "SETTLED";
+        order.settlementLedgerEntry = ledger.entry._id;
+        order.deliveryConfirmedBy = userId;
+        order.deliveryConfirmedAt = now;
+        order.deliveredAt = now;
+        order.settledAt = now;
+        order.statusHistory.push({
+          status: "DELIVERED",
+          changedBy: userId,
+          changedAt: now,
+          note: "Delivery confirmed by the buyer; seller settlement posted.",
+        });
+        await order.save({ session });
+        settledOrder = order;
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    return res.json({
+      success: true,
+      duplicate,
+      message: duplicate
+        ? "This Marketplace order was already settled."
+        : "Delivery confirmed and seller payment released.",
+      order: settledOrder,
+    });
+  } catch (error) {
+    console.error("MARKETPLACE_DELIVERY_SETTLEMENT_ERROR", error);
+    return res.status(error?.statusCode || 500).json({
+      success: false,
+      code: error?.code,
+      message:
+        error?.statusCode && error?.message
+          ? error.message
+          : "Unable to confirm Marketplace delivery.",
+    });
+  }
+};
+
+exports.cancelMyOrder = async (req, res) => {
+  const userId = getUserId(req);
+  const orderId = String(req.params?.orderId || "").trim();
+
+  try {
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
+
+    if (!mongoose.isValidObjectId(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Marketplace order ID.",
+      });
+    }
+
+    const session = await mongoose.startSession();
+    let refundedOrder = null;
+    let duplicate = false;
+
+    try {
+      await session.withTransaction(async () => {
+        const order = await MarketplaceOrder.findOne({
+          _id: orderId,
+          buyer: userId,
+        }).session(session);
+
+        if (!order) {
+          throw marketplaceError("Marketplace order not found.", 404);
+        }
+
+        if (
+          order.orderStatus === "REFUNDED" &&
+          order.fundsStatus === "REFUNDED"
+        ) {
+          refundedOrder = order;
+          duplicate = true;
+          return;
+        }
+
+        if (
+          order.orderStatus !== "PAID" ||
+          order.paymentStatus !== "PAID" ||
+          order.fundsStatus !== "HELD" ||
+          !order.transaction ||
+          !order.ledgerEntry
+        ) {
+          throw marketplaceError(
+            "Only paid Marketplace orders that have not been accepted can be cancelled and refunded automatically.",
+            409,
+            "ORDER_NOT_REFUNDABLE"
+          );
+        }
+
+        const buyer = await User.findById(userId).session(session);
+
+        if (!buyer || String(buyer.status || "").toUpperCase() !== "ACTIVE") {
+          throw marketplaceError("Your account is not active.", 403);
+        }
+
+        const refundAmount = toMoney(order.totalAmount);
+
+        if (!refundAmount || refundAmount <= 0) {
+          throw marketplaceError(
+            "This Marketplace order has an invalid refund amount.",
+            409,
+            "INVALID_REFUND_AMOUNT"
+          );
+        }
+
+        const openingBalance = toMoney(buyer.walletBalance || 0);
+        const creditedBuyer = await User.findByIdAndUpdate(
+          buyer._id,
+          { $inc: { walletBalance: refundAmount } },
+          { new: true, session }
+        );
+
+        const ledger = await postCredit({
+          userId: buyer._id,
+          amount: refundAmount,
+          openingBalance,
+          closingBalance: toMoney(creditedBuyer.walletBalance),
+          service: "MARKETPLACE_REFUND",
+          reference: order.orderReference,
+          idempotencyKey: `marketplace:${order._id}:buyer-refund`,
+          transactionId: order.transaction,
+          narration: `Marketplace refund for ${order.orderReference}`,
+          metadata: {
+            marketplace: true,
+            orderId: String(order._id),
+            refundType: "BUYER_CANCELLED_BEFORE_ACCEPTANCE",
+          },
+          session,
+        });
+
+        await restoreOrderStock(order, session);
+        await Transaction.updateOne(
+          { _id: order.transaction },
+          { $set: { status: "REFUNDED" } },
+          { session }
+        );
+
+        const now = new Date();
+        order.orderStatus = "REFUNDED";
+        order.paymentStatus = "REFUNDED";
+        order.fundsStatus = "REFUNDED";
+        order.refundLedgerEntry = ledger.entry._id;
+        order.refundedAt = now;
+        order.cancelledAt = now;
+        order.statusHistory.push({
+          status: "REFUNDED",
+          changedBy: userId,
+          changedAt: now,
+          note: "Cancelled by the buyer before seller acceptance; wallet payment refunded.",
+        });
+        await order.save({ session });
+        refundedOrder = order;
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    return res.json({
+      success: true,
+      duplicate,
+      message: duplicate
+        ? "This Marketplace order was already refunded."
+        : "Marketplace order cancelled and wallet payment refunded.",
+      order: refundedOrder,
+    });
+  } catch (error) {
+    console.error("MARKETPLACE_REFUND_ERROR", error);
+    return res.status(error?.statusCode || 500).json({
+      success: false,
+      code: error?.code,
+      message:
+        error?.statusCode && error?.message
+          ? error.message
+          : "Unable to refund this Marketplace order.",
+    });
+  }
+};
+
 exports.mySellerOrders = async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -1307,7 +1753,7 @@ exports.updateSellerOrderStatus = async (req, res) => {
     const order = await MarketplaceOrder.findOne({
       _id: orderId,
       "items.merchant": userId,
-    });
+    }).lean();
 
     if (!order) {
       return res.status(404).json({
@@ -1342,21 +1788,48 @@ exports.updateSellerOrderStatus = async (req, res) => {
       });
     }
 
-    order.orderStatus = requestedStatus;
-    order.statusHistory.push({
-      status: requestedStatus,
-      changedBy: userId,
-      changedAt: new Date(),
-      note: isLegacyStatus
-        ? `Legacy status ${currentStatus} moved into the controlled fulfillment workflow.`
-        : "Updated by the seller.",
-    });
-    await order.save();
+    const updatedOrder = await MarketplaceOrder.findOneAndUpdate(
+      {
+        _id: orderId,
+        "items.merchant": userId,
+        orderStatus: currentStatus,
+        paymentStatus: "PAID",
+        fundsStatus: { $in: ["HELD", null] },
+      },
+      {
+        $set: {
+          orderStatus: requestedStatus,
+          fundsStatus: "HELD",
+        },
+        $push: {
+          statusHistory: {
+            status: requestedStatus,
+            changedBy: userId,
+            changedAt: new Date(),
+            note: isLegacyStatus
+              ? `Legacy status ${currentStatus} moved into the controlled fulfillment workflow.`
+              : "Updated by the seller.",
+          },
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updatedOrder) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This Marketplace order changed before the update could be applied. Refresh and try again.",
+      });
+    }
 
     return res.json({
       success: true,
       message: "Marketplace order status updated successfully.",
-      order,
+      order: updatedOrder,
     });
   } catch (error) {
     console.error("MARKETPLACE_SELLER_STATUS_ERROR", error);

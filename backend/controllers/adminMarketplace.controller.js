@@ -13,6 +13,11 @@ const allowedStatuses = new Set([
   'REJECTED',
   'SUSPENDED',
 ]);
+const allowedFundsStatuses = new Set([
+  'HELD',
+  'SETTLED',
+  'REFUNDED',
+]);
 
 exports.listMarketplaceProducts = async (req, res) => {
   try {
@@ -96,12 +101,16 @@ exports.listMarketplaceOrders = async (req, res) => {
     const {
       status = '',
       paymentStatus = '',
+      fundsStatus = '',
       page = 1,
       limit = 50,
     } = req.query;
     const filter = {};
     const normalizedStatus = String(status).trim().toUpperCase();
     const normalizedPaymentStatus = String(paymentStatus)
+      .trim()
+      .toUpperCase();
+    const normalizedFundsStatus = String(fundsStatus)
       .trim()
       .toUpperCase();
 
@@ -111,6 +120,16 @@ exports.listMarketplaceOrders = async (req, res) => {
 
     if (normalizedPaymentStatus) {
       filter.paymentStatus = normalizedPaymentStatus;
+    }
+
+    if (normalizedFundsStatus) {
+      if (!allowedFundsStatuses.has(normalizedFundsStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid Marketplace funds status.',
+        });
+      }
+      filter.fundsStatus = normalizedFundsStatus;
     }
 
     const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
@@ -128,6 +147,7 @@ exports.listMarketplaceOrders = async (req, res) => {
     return res.json({
       success: true,
       orders,
+      fundsStatuses: [...allowedFundsStatuses],
       pagination: {
         page: safePage,
         limit: safeLimit,
