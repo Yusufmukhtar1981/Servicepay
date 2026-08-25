@@ -658,7 +658,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
     required ValueChanged<String?> onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      initialValue: value,
+      value: value,
       isExpanded: true,
       decoration: inputDecoration(
         label: label,
@@ -816,7 +816,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            initialValue: selectedCabinClass,
+            value: selectedCabinClass,
             isExpanded: true,
             decoration: inputDecoration(
               label: 'Cabin Class',
