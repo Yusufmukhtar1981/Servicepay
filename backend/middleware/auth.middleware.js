@@ -145,7 +145,29 @@ const adminOnly = (...roles) => {
   };
 };
 
+const customerOnly = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized.",
+    });
+  }
+
+  const userRole = normalizeRole(req.user.role);
+
+  if (userRole !== "CUSTOMER") {
+    return res.status(403).json({
+      success: false,
+      message: "This feature is available to customer accounts only.",
+    });
+  }
+
+  req.user.role = userRole;
+  return next();
+};
+
 module.exports = {
+  customerOnly,
   protect,
   adminOnly,
 };
