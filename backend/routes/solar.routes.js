@@ -17,7 +17,10 @@ router.get("/finance/:financeId/payments", protect, customerOnly, controller.fin
 router.post("/finance/:financeId/pay", protect, customerOnly, controller.payFinance);
 router.get("/admin/settings", protect, admins, controller.getSettings);
 router.put("/admin/settings", protect, admins, controller.updateSettings);
+router.get("/admin/packages", protect, admins, controller.listAdminPackages);
 router.post("/admin/packages", protect, admins, controller.createPackage);
+router.patch("/admin/packages/:packageId/activate", protect, admins, controller.activatePackage);
+router.patch("/admin/packages/:packageId/deactivate", protect, admins, controller.deactivatePackage);
 router.patch("/admin/packages/:packageId", protect, admins, controller.updatePackage);
 router.delete("/admin/packages/:packageId", protect, admins, controller.deletePackage);
 router.get("/admin/applications", protect, admins, controller.adminApplications);

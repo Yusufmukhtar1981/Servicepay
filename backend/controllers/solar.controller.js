@@ -22,8 +22,6 @@ const id = (req) => req.user?._id || req.user?.id;
 const problem = (message, statusCode = 409) => Object.assign(new Error(message), { statusCode });
 const reference = () => `SPS-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 const keyFor = (req) => text(req.get?.("idempotency-key") || req.body?.idempotencyKey, 160);
-const adminRoles = new Set(["HEAD_OFFICE", "ADMIN", "SUPER_ADMIN"]);
-const isAdmin = (user) => adminRoles.has(String(user?.role || "").toUpperCase());
 const audit = (req, action, reason, previousData, newData, session) => AdminAuditLog.create([{
   actorId: id(req), actorRole: String(req.user.role || "").toUpperCase(), actorName: req.user.fullName || "",
   action, reason: text(reason, 500) || action, previousData, newData,
@@ -40,7 +38,7 @@ const packagePayload = (body) => {
     !Number.isFinite(depositPercent) || depositPercent < 0 || depositPercent > 100 ||
     !Number.isInteger(installmentMonths) || installmentMonths < 1 || installmentMonths > 120 ||
     !Number.isFinite(interestPercent) || interestPercent < 0 || interestPercent > 100) return null;
-  const stock = Number(body.stock ?? body.stockQuantity);
+  const stock = Number(body.stockQuantity ?? body.stock);
   if (!Number.isInteger(stock) || stock < 0) return null;
   const financedPrice = body.financedPrice === undefined ? null : money(body.financedPrice);
   if (body.financedPrice !== undefined && (financedPrice === null || financedPrice < 0)) return null;
@@ -54,6 +52,14 @@ const packagePayload = (body) => {
     eligibilityNotes: text(body.eligibilityNotes, 2000), termsSummary: text(body.termsSummary, 2000),
     terms: body.terms && typeof body.terms === "object" ? body.terms : {}, active: body.active !== false };
 };
+const packageFields = [
+  "name", "description", "capacityKw", "cashPrice", "financedPrice",
+  "depositPercent", "installmentMonths", "interestPercent",
+  "repaymentFrequency", "images", "specifications", "warranty",
+  "installmentIncluded", "minimumKycTier", "eligibilityNotes",
+  "termsSummary", "terms", "active",
+];
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const serializePackage = (pack) => {
   const value = pack?.toObject ? pack.toObject() : pack;
   const base = money(value.financedPrice ?? value.cashPrice) || 0;
@@ -88,26 +94,94 @@ const financeView = async (finance) => {
 };
 
 exports.listPackages = async (req, res) => {
-  const filter = isAdmin(req.user) && req.query.includeInactive === "true" ? {} : { active: true };
-  const packages = await SolarPackage.find(filter).sort({ name: 1 }).lean();
+  const packages = await SolarPackage.find({ active: true }).sort({ name: 1 }).lean();
+  res.json({ success: true, packages: packages.map(serializePackage) });
+};
+exports.listAdminPackages = async (req, res) => {
+  const includeInactive = String(req.query.includeInactive || "").toLowerCase() === "true";
+  const packages = await SolarPackage.find(includeInactive ? {} : { active: true }).sort({ name: 1 }).lean();
   res.json({ success: true, packages: packages.map(serializePackage) });
 };
 exports.createPackage = async (req, res) => {
-  try { const payload = packagePayload(req.body || {}); if (!payload) return res.status(400).json({ success:false,message:"Invalid Solar package details." });
-    const item = await SolarPackage.create({ ...payload, createdBy: id(req) }); await audit(req, "SOLAR_PACKAGE_CREATED", "Created Solar package", null, item.toObject());
+  const session = await mongoose.startSession();
+  try {
+    const payload = packagePayload(req.body || {});
+    if (!payload) return res.status(400).json({ success:false,message:"Invalid Solar package details." });
+    let item;
+    await session.withTransaction(async () => {
+      [item] = await SolarPackage.create([{ ...payload, createdBy: id(req) }], { session });
+      await audit(req, "SOLAR_PACKAGE_CREATED", "Created Solar package", null, item.toObject(), session);
+    });
     res.status(201).json({ success:true, package:serializePackage(item) });
-  } catch (e) { res.status(500).json({ success:false,message:e.message }); }
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ success:false,message:e.message });
+  } finally {
+    await session.endSession();
+  }
 };
 exports.updatePackage = async (req, res) => {
-  try { const item = await SolarPackage.findById(req.params.packageId); if (!item) return res.status(404).json({success:false,message:"Solar package not found."});
-    const payload = packagePayload({ ...item.toObject(), ...(req.body || {}) }); if (!payload) return res.status(400).json({success:false,message:"Invalid Solar package details."});
-    const before=item.toObject(); Object.assign(item,payload); await item.save(); await audit(req,"SOLAR_PACKAGE_UPDATED","Updated Solar package",before,item.toObject()); res.json({success:true,package:serializePackage(item)});
-  } catch(e) { res.status(500).json({success:false,message:e.message}); }
+  const session = await mongoose.startSession();
+  try {
+    let item;
+    await session.withTransaction(async () => {
+      const current = await SolarPackage.findById(req.params.packageId).session(session);
+      if (!current) throw problem("Solar package not found.", 404);
+      const body = req.body || {};
+      const payload = packagePayload({ ...current.toObject(), ...body });
+      if (!payload) throw problem("Invalid Solar package details.", 400);
+      const updates = {};
+      for (const field of packageFields) {
+        if (hasOwn(body, field)) updates[field] = payload[field];
+      }
+      if (hasOwn(body, "stock") || hasOwn(body, "stockQuantity")) {
+        updates.stock = payload.stock;
+      }
+      const before = current.toObject();
+      item = await SolarPackage.findByIdAndUpdate(
+        current._id,
+        { $set: updates },
+        { new:true, runValidators:true, session }
+      );
+      await audit(req, "SOLAR_PACKAGE_UPDATED", "Updated Solar package", before, item.toObject(), session);
+    });
+    res.json({success:true,package:serializePackage(item)});
+  } catch(e) {
+    res.status(e.statusCode || 500).json({success:false,message:e.message});
+  } finally {
+    await session.endSession();
+  }
 };
-exports.deletePackage = async (req,res) => {
-  const item=await SolarPackage.findById(req.params.packageId); if(!item)return res.status(404).json({success:false,message:"Solar package not found."});
-  item.active=false; await item.save(); await audit(req,"SOLAR_PACKAGE_DELETED","Deactivated Solar package",null,{packageId:String(item._id)}); res.json({success:true,package:serializePackage(item)});
+const setPackageActive = async (req, res, active) => {
+  const session = await mongoose.startSession();
+  try {
+    let item;
+    await session.withTransaction(async () => {
+      const current = await SolarPackage.findById(req.params.packageId).session(session);
+      if (!current) throw problem("Solar package not found.", 404);
+      item = await SolarPackage.findByIdAndUpdate(
+        current._id,
+        { $set:{ active } },
+        { new:true, runValidators:true, session }
+      );
+      await audit(
+        req,
+        active ? "SOLAR_PACKAGE_UPDATED" : "SOLAR_PACKAGE_DELETED",
+        active ? "Activated Solar package" : "Deactivated Solar package",
+        { active:current.active },
+        { packageId:String(item._id), active:item.active },
+        session
+      );
+    });
+    return res.json({ success:true, package:serializePackage(item) });
+  } catch (e) {
+    return res.status(e.statusCode || 500).json({ success:false, message:e.message });
+  } finally {
+    await session.endSession();
+  }
 };
+exports.activatePackage = (req, res) => setPackageActive(req, res, true);
+exports.deactivatePackage = (req, res) => setPackageActive(req, res, false);
+exports.deletePackage = exports.deactivatePackage;
 exports.getSettings = async (req,res) => res.json({success:true,settings:await SolarSettings.findOne({key:"default"}).lean() || {overdueGraceDays:0,applicationEnabled:true}});
 exports.updateSettings = async (req,res) => {
   const days=Number(req.body?.overdueGraceDays); if(!Number.isInteger(days)||days<0||days>365)return res.status(400).json({success:false,message:"overdueGraceDays must be between 0 and 365."});
