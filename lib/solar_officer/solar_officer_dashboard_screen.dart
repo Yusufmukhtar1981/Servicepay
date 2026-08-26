@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../login_screen.dart';
 import '../services/solar_officer_api_service.dart';
 
 const Color _green = Color(0xFF08783E);
@@ -548,6 +550,70 @@ class _SolarOfficerDashboardScreenState
     }
   }
 
+  Future<void> _logout() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text(
+          'Are you sure you want to log out of your Solar Officer account?',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    final SharedPreferences preferences =
+        await SharedPreferences.getInstance();
+    for (final String key in <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+      'user_id',
+      'user_name',
+      'user_phone',
+      'user_email',
+      'user_role',
+      'user_status',
+      'wallet_balance',
+      'rider_id',
+      'rider_verification_status',
+      'rider_availability_status',
+      'rider_vehicle_type',
+      'rider_plate_number',
+      'rider_state',
+      'rider_lga',
+      'rider_is_online',
+    ]) {
+      await preferences.remove(key);
+    }
+
+    if (!mounted) {
+      return;
+    }
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => const LoginScreen(),
+      ),
+      (Route<dynamic> route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool wide =
@@ -1062,6 +1128,15 @@ class _SolarOfficerDashboardScreenState
                   leading: const Icon(Icons.home),
                   title: Text(_text(_profile['address']))),
             ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        OutlinedButton.icon(
+          onPressed: _logout,
+          icon: const Icon(Icons.logout),
+          label: const Text('Log out'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFFB42318),
           ),
         ),
       ],

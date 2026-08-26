@@ -136,6 +136,14 @@ void main() {
       expect(find.text('Assigned Customer'), findsOneWidget);
       expect(find.text('Verify'), findsOneWidget);
       expect(find.text('Approve'), findsNothing);
+
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Profile').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Field Officer'), findsOneWidget);
+      expect(find.text('SSO-000001 • ACTIVE'), findsOneWidget);
+      expect(find.text('Log out'), findsOneWidget);
     },
   );
 }

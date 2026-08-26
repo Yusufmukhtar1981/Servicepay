@@ -6,11 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'forgot_password_screen.dart';
-import 'main_navigation.dart';
+import 'login_routing.dart';
 import 'register_screen.dart';
-import 'rider/rider_main_navigation.dart';
-import 'role_dashboard_screen.dart';
-import 'solar_officer/solar_officer_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
@@ -18,22 +15,17 @@ class LoginScreen extends StatefulWidget {
   });
 
   @override
-  State<LoginScreen> createState() =>
-      _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryColor =
-      Color(0xFF0F766E);
+  static const Color primaryColor = Color(0xFF0F766E);
 
-  final TextEditingController emailController =
-      TextEditingController();
+  final TextEditingController emailController = TextEditingController();
 
-  final TextEditingController passwordController =
-      TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
 
   bool hidePassword = true;
   bool isLoading = false;
@@ -62,19 +54,15 @@ class _LoginScreenState extends State<LoginScreen> {
           duration: const Duration(
             seconds: 4,
           ),
-          backgroundColor: isError
-              ? Colors.red.shade700
-              : primaryColor,
+          backgroundColor: isError ? Colors.red.shade700 : primaryColor,
         ),
       );
   }
 
   bool validateFields() {
-    final String email =
-        emailController.text.trim();
+    final String email = emailController.text.trim();
 
-    final String password =
-        passwordController.text;
+    final String password = passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
       showMessage(
@@ -119,33 +107,28 @@ class _LoginScreenState extends State<LoginScreen> {
   String extractToken(
     Map<String, dynamic> result,
   ) {
-    final Map<String, dynamic> data =
-        mapFromDynamic(result['data']);
+    final Map<String, dynamic> data = mapFromDynamic(result['data']);
 
-    final Map<String, dynamic> authentication =
-        mapFromDynamic(
+    final Map<String, dynamic> authentication = mapFromDynamic(
       result['authentication'],
     );
 
-    final Map<String, dynamic> auth =
-        mapFromDynamic(result['auth']);
+    final Map<String, dynamic> auth = mapFromDynamic(result['auth']);
 
-    final dynamic tokenValue =
-        result['token'] ??
-            result['accessToken'] ??
-            result['access_token'] ??
-            result['jwt'] ??
-            data['token'] ??
-            data['accessToken'] ??
-            data['access_token'] ??
-            data['jwt'] ??
-            authentication['token'] ??
-            authentication['accessToken'] ??
-            auth['token'] ??
-            auth['accessToken'];
+    final dynamic tokenValue = result['token'] ??
+        result['accessToken'] ??
+        result['access_token'] ??
+        result['jwt'] ??
+        data['token'] ??
+        data['accessToken'] ??
+        data['access_token'] ??
+        data['jwt'] ??
+        authentication['token'] ??
+        authentication['accessToken'] ??
+        auth['token'] ??
+        auth['accessToken'];
 
-    String token =
-        tokenValue?.toString().trim() ?? '';
+    String token = tokenValue?.toString().trim() ?? '';
 
     if (token.toLowerCase().startsWith(
           'bearer ',
@@ -159,29 +142,25 @@ class _LoginScreenState extends State<LoginScreen> {
   Map<String, dynamic> extractUser(
     Map<String, dynamic> result,
   ) {
-    final Map<String, dynamic> directUser =
-        mapFromDynamic(result['user']);
+    final Map<String, dynamic> directUser = mapFromDynamic(result['user']);
 
     if (directUser.isNotEmpty) {
       return directUser;
     }
 
-    final Map<String, dynamic> data =
-        mapFromDynamic(result['data']);
+    final Map<String, dynamic> data = mapFromDynamic(result['data']);
 
-    final Map<String, dynamic> nestedUser =
-        mapFromDynamic(data['user']);
+    final Map<String, dynamic> nestedUser = mapFromDynamic(data['user']);
 
     if (nestedUser.isNotEmpty) {
       return nestedUser;
     }
 
-    final bool dataLooksLikeUser =
-        data.containsKey('_id') ||
-            data.containsKey('id') ||
-            data.containsKey('email') ||
-            data.containsKey('phone') ||
-            data.containsKey('fullName');
+    final bool dataLooksLikeUser = data.containsKey('_id') ||
+        data.containsKey('id') ||
+        data.containsKey('email') ||
+        data.containsKey('phone') ||
+        data.containsKey('fullName');
 
     if (dataLooksLikeUser) {
       return data;
@@ -217,13 +196,11 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
 
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     await clearOldLoginData(prefs);
 
-    final bool tokenSaved =
-        await prefs.setString(
+    final bool tokenSaved = await prefs.setString(
       'auth_token',
       token.trim(),
     );
@@ -236,9 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await prefs.setString(
       'user_id',
-      user['_id']?.toString() ??
-          user['id']?.toString() ??
-          '',
+      user['_id']?.toString() ?? user['id']?.toString() ?? '',
     );
 
     await prefs.setString(
@@ -251,9 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await prefs.setString(
       'user_phone',
-      user['phone']?.toString() ??
-          user['phoneNumber']?.toString() ??
-          '',
+      user['phone']?.toString() ?? user['phoneNumber']?.toString() ?? '',
     );
 
     await prefs.setString(
@@ -273,27 +246,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await prefs.setString(
       'rider_id',
-      user['riderId']?.toString() ??
-          user['rider_id']?.toString() ??
-          '',
+      user['riderId']?.toString() ?? user['rider_id']?.toString() ?? '',
     );
 
     await prefs.setString(
       'rider_verification_status',
-      user['riderVerificationStatus']
-              ?.toString()
-              .trim()
-              .toUpperCase() ??
+      user['riderVerificationStatus']?.toString().trim().toUpperCase() ??
           'PENDING',
     );
 
     await prefs.setString(
       'rider_availability_status',
-      user['availabilityStatus']
-              ?.toString()
-              .trim()
-              .toUpperCase() ??
-          'OFFLINE',
+      user['availabilityStatus']?.toString().trim().toUpperCase() ?? 'OFFLINE',
     );
 
     await prefs.setString(
@@ -308,23 +272,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await prefs.setString(
       'rider_state',
-      user['riderState']?.toString() ??
-          user['state']?.toString() ??
-          '',
+      user['riderState']?.toString() ?? user['state']?.toString() ?? '',
     );
 
     await prefs.setString(
       'rider_lga',
-      user['riderLga']?.toString() ??
-          user['lga']?.toString() ??
-          '',
+      user['riderLga']?.toString() ?? user['lga']?.toString() ?? '',
     );
 
     final String riderAvailability =
-        user['availabilityStatus']
-                ?.toString()
-                .trim()
-                .toUpperCase() ??
+        user['availabilityStatus']?.toString().trim().toUpperCase() ??
             'OFFLINE';
 
     await prefs.setBool(
@@ -333,26 +290,21 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     final dynamic balanceValue =
-        user['walletBalance'] ??
-            user['wallet_balance'] ??
-            user['balance'];
+        user['walletBalance'] ?? user['wallet_balance'] ?? user['balance'];
 
-    final double walletBalance =
-        double.tryParse(
-              balanceValue?.toString() ?? '0',
-            ) ??
-            0.0;
+    final double walletBalance = double.tryParse(
+          balanceValue?.toString() ?? '0',
+        ) ??
+        0.0;
 
     await prefs.setDouble(
       'wallet_balance',
       walletBalance,
     );
 
-    final String? savedToken =
-        prefs.getString('auth_token');
+    final String? savedToken = prefs.getString('auth_token');
 
-    if (savedToken == null ||
-        savedToken.trim().isEmpty) {
+    if (savedToken == null || savedToken.trim().isEmpty) {
       throw Exception(
         'The login session could not be saved.',
       );
@@ -375,32 +327,25 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final Uri endpoint =
-          Uri.parse('$baseUrl/auth/login');
+      final Uri endpoint = Uri.parse('$baseUrl/auth/login');
 
-      final http.Response response =
-          await http
-              .post(
-                endpoint,
-                headers: const {
-                  'Content-Type':
-                      'application/json',
-                  'Accept':
-                      'application/json',
-                },
-                body: jsonEncode({
-                  'email': emailController.text
-                      .trim()
-                      .toLowerCase(),
-                  'password':
-                      passwordController.text,
-                }),
-              )
-              .timeout(
-                const Duration(
-                  seconds: 30,
-                ),
-              );
+      final http.Response response = await http
+          .post(
+            endpoint,
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'email': emailController.text.trim().toLowerCase(),
+              'password': passwordController.text,
+            }),
+          )
+          .timeout(
+            const Duration(
+              seconds: 30,
+            ),
+          );
 
       debugPrint(
         'Login status: ${response.statusCode}',
@@ -410,8 +355,7 @@ class _LoginScreenState extends State<LoginScreen> {
         'Login response: ${response.body}',
       );
 
-      final String responseBody =
-          response.body.trim();
+      final String responseBody = response.body.trim();
 
       if (responseBody.isEmpty) {
         showMessage(
@@ -420,8 +364,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final dynamic decodedResponse =
-          jsonDecode(responseBody);
+      final dynamic decodedResponse = jsonDecode(responseBody);
 
       if (decodedResponse is! Map) {
         showMessage(
@@ -430,18 +373,12 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final Map<String, dynamic> result =
-          Map<String, dynamic>.from(
+      final Map<String, dynamic> result = Map<String, dynamic>.from(
         decodedResponse,
       );
 
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
-        final String serverMessage =
-            result['message']
-                    ?.toString()
-                    .trim() ??
-                '';
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final String serverMessage = result['message']?.toString().trim() ?? '';
 
         showMessage(
           serverMessage.isNotEmpty
@@ -452,19 +389,16 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final bool successValue =
-          result['success'] == true ||
-              result['success'] == null;
+          result['success'] == true || result['success'] == null;
 
       if (!successValue) {
         showMessage(
-          result['message']?.toString() ??
-              'Login was not successful.',
+          result['message']?.toString() ?? 'Login was not successful.',
         );
         return;
       }
 
-      final String token =
-          extractToken(result);
+      final String token = extractToken(result);
 
       if (token.isEmpty) {
         showMessage(
@@ -477,8 +411,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final Map<String, dynamic> user =
-          extractUser(result);
+      final Map<String, dynamic> user = extractUser(result);
 
       if (user.isEmpty) {
         showMessage(
@@ -487,19 +420,13 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final String role =
-          user['role']
-                  ?.toString()
-                  .trim()
-                  .toUpperCase() ??
-              'CUSTOMER';
+      final String role = loginRoleFromResponse(
+        result,
+        user,
+      );
 
       final String status =
-          user['status']
-                  ?.toString()
-                  .trim()
-                  .toUpperCase() ??
-              'ACTIVE';
+          user['status']?.toString().trim().toUpperCase() ?? 'ACTIVE';
 
       const Set<String> adminRoles = {
         'ADMIN',
@@ -542,21 +469,7 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (
             BuildContext context,
           ) {
-            if (role == 'DELIVERY_RIDER') {
-              return const RiderMainNavigation();
-            }
-
-            if (role == 'CUSTOMER') {
-              return const MainNavigation();
-            }
-
-            if (role == 'SOLAR_OFFICER') {
-              return const SolarOfficerDashboardScreen();
-            }
-
-            return RoleDashboardScreen(
-              role: role,
-            );
+            return authenticatedHomeForRole(role);
           },
         ),
         (
@@ -717,8 +630,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius:
-                      BorderRadius.circular(
+                  borderRadius: BorderRadius.circular(
                     26,
                   ),
                   border: Border.all(
@@ -740,8 +652,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(
+                  padding: const EdgeInsets.fromLTRB(
                     28,
                     24,
                     28,
@@ -749,12 +660,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: AutofillGroup(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.stretch,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Center(
-                          child:
-                              buildServicePayLogo(),
+                          child: buildServicePayLogo(),
                         ),
                         const SizedBox(
                           height: 4,
@@ -764,8 +673,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 23,
-                            fontWeight:
-                                FontWeight.w800,
+                            fontWeight: FontWeight.w800,
                             color: Color(
                               0xFF172033,
                             ),
@@ -780,44 +688,34 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: TextStyle(
                             fontSize: 14,
                             height: 1.45,
-                            color:
-                                Colors.grey.shade600,
+                            color: Colors.grey.shade600,
                           ),
                         ),
                         const SizedBox(
                           height: 28,
                         ),
                         TextField(
-                          controller:
-                              emailController,
-                          keyboardType:
-                              TextInputType
-                                  .emailAddress,
-                          textInputAction:
-                              TextInputAction.next,
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
                           autofillHints: const [
                             AutofillHints.email,
                             AutofillHints.username,
                           ],
                           enabled: !isLoading,
-                          decoration:
-                              inputDecoration(
+                          decoration: inputDecoration(
                             label: 'Email address',
-                            hint:
-                                'customer@example.com',
-                            icon:
-                                Icons.email_outlined,
+                            hint: 'customer@example.com',
+                            icon: Icons.email_outlined,
                           ),
                         ),
                         const SizedBox(
                           height: 18,
                         ),
                         TextField(
-                          controller:
-                              passwordController,
+                          controller: passwordController,
                           obscureText: hidePassword,
-                          textInputAction:
-                              TextInputAction.done,
+                          textInputAction: TextInputAction.done,
                           autofillHints: const [
                             AutofillHints.password,
                           ],
@@ -827,13 +725,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               login();
                             }
                           },
-                          decoration:
-                              inputDecoration(
+                          decoration: inputDecoration(
                             label: 'Password',
-                            hint:
-                                'Enter your password',
-                            icon: Icons
-                                .lock_outline_rounded,
+                            hint: 'Enter your password',
+                            icon: Icons.lock_outline_rounded,
                             suffixIcon: IconButton(
                               tooltip: hidePassword
                                   ? 'Show password'
@@ -842,16 +737,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ? null
                                   : () {
                                       setState(() {
-                                        hidePassword =
-                                            !hidePassword;
+                                        hidePassword = !hidePassword;
                                       });
                                     },
                               icon: Icon(
                                 hidePassword
-                                    ? Icons
-                                        .visibility_off_outlined
-                                    : Icons
-                                        .visibility_outlined,
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
                               ),
                             ),
                           ),
@@ -860,18 +752,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 7,
                         ),
                         Align(
-                          alignment:
-                              Alignment.centerRight,
+                          alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: isLoading
-                                ? null
-                                : openForgotPasswordScreen,
+                            onPressed:
+                                isLoading ? null : openForgotPasswordScreen,
                             child: const Text(
                               'Forgot Password?',
                               style: TextStyle(
                                 color: primaryColor,
-                                fontWeight:
-                                    FontWeight.w800,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
@@ -882,24 +771,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         SizedBox(
                           height: 54,
                           child: ElevatedButton(
-                            onPressed:
-                                isLoading ? null : login,
-                            style:
-                                ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  primaryColor,
-                              foregroundColor:
-                                  Colors.white,
-                              disabledBackgroundColor:
-                                  primaryColor
-                                      .withValues(
+                            onPressed: isLoading ? null : login,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: primaryColor.withValues(
                                 alpha: 0.45,
                               ),
                               elevation: 0,
-                              shape:
-                                  RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
                                   14,
                                 ),
                               ),
@@ -908,19 +789,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? const SizedBox(
                                     width: 24,
                                     height: 24,
-                                    child:
-                                        CircularProgressIndicator(
+                                    child: CircularProgressIndicator(
                                       strokeWidth: 2.5,
-                                      color:
-                                          Colors.white,
+                                      color: Colors.white,
                                     ),
                                   )
                                 : const Text(
                                     'Sign in',
                                     style: TextStyle(
                                       fontSize: 17,
-                                      fontWeight:
-                                          FontWeight.bold,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                           ),
@@ -932,29 +810,24 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             Expanded(
                               child: Divider(
-                                color:
-                                    Colors.grey.shade300,
+                                color: Colors.grey.shade300,
                               ),
                             ),
                             Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(
+                              padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                               ),
                               child: Text(
                                 'or',
                                 style: TextStyle(
-                                  color:
-                                      Colors.grey.shade500,
-                                  fontWeight:
-                                      FontWeight.w600,
+                                  color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                             Expanded(
                               child: Divider(
-                                color:
-                                    Colors.grey.shade300,
+                                color: Colors.grey.shade300,
                               ),
                             ),
                           ],
@@ -964,37 +837,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         SizedBox(
                           height: 52,
-                          child:
-                              OutlinedButton.icon(
-                            onPressed: isLoading
-                                ? null
-                                : openRegisterScreen,
-                            style: OutlinedButton
-                                .styleFrom(
-                              foregroundColor:
-                                  primaryColor,
+                          child: OutlinedButton.icon(
+                            onPressed: isLoading ? null : openRegisterScreen,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: primaryColor,
                               side: const BorderSide(
                                 color: primaryColor,
                                 width: 1.4,
                               ),
-                              shape:
-                                  RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
                                   14,
                                 ),
                               ),
                             ),
                             icon: const Icon(
-                              Icons
-                                  .person_add_alt_1_rounded,
+                              Icons.person_add_alt_1_rounded,
                             ),
                             label: const Text(
                               'Create account',
                               style: TextStyle(
                                 fontSize: 16,
-                                fontWeight:
-                                    FontWeight.bold,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
@@ -1003,24 +867,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 20,
                         ),
                         Container(
-                          padding:
-                              const EdgeInsets.all(
+                          padding: const EdgeInsets.all(
                             13,
                           ),
                           decoration: BoxDecoration(
-                            color: primaryColor
-                                .withValues(
+                            color: primaryColor.withValues(
                               alpha: 0.07,
                             ),
-                            borderRadius:
-                                BorderRadius.circular(
+                            borderRadius: BorderRadius.circular(
                               13,
                             ),
                           ),
                           child: const Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
                                 Icons.security_rounded,
@@ -1039,8 +898,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     color: Color(
                                       0xFF334155,
                                     ),
-                                    fontWeight:
-                                        FontWeight.w600,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -1055,10 +913,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 12,
-                            color:
-                                Colors.grey.shade600,
-                            fontWeight:
-                                FontWeight.w700,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
