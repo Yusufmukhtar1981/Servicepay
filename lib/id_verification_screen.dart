@@ -9,8 +9,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
 
-import 'package:qr_flutter/qr_flutter.dart';
-
 class IdVerificationScreen extends StatefulWidget {
   final String initialIdType;
 
@@ -830,7 +828,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
 
           final String cardType =
               result['status']?.toString().toUpperCase() == 'SUCCESSFUL'
-                  ? 'Premium identity card'
+                  ? 'Premium NIN verification result'
                   : 'NIN verification';
 
           return Card(
@@ -974,7 +972,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                     const SizedBox(height: 28),
                     buildSectionNumber(
                       '3',
-                      'Premium Identity Card',
+                      'Premium NIN Verification',
                     ),
                     const SizedBox(height: 16),
                     Container(
@@ -1004,7 +1002,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Premium identity card',
+                                  'Premium NIN verification result',
                                   style: TextStyle(
                                     color: Color(0xFF07512D),
                                     fontSize: 15,
@@ -1013,7 +1011,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                                 ),
                                 SizedBox(height: 3),
                                 Text(
-                                  'One secure Nigerian identity card is generated after successful verification.',
+                                  'One secure verification result is generated after a successful provider check.',
                                   style: TextStyle(
                                     color: Color(0xFF4D6A5A),
                                     fontSize: 12,
@@ -1378,7 +1376,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
 
       await SharePlus.instance.share(
         ShareParams(
-          text: 'Premium NIN identity card',
+          text: 'ServicePay Premium NIN verification result',
           files: [
             XFile.fromData(
               imageBytes,
@@ -1438,8 +1436,8 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
     final String title =
         isPending ? 'Verification Pending' : 'Verification Failed';
     final String message = isPending
-        ? 'This verification is still being processed. No identity card is available yet.'
-        : 'This verification was not successful. No identity card was generated.';
+        ? 'This verification is still being processed. No verification result is available yet.'
+        : 'This verification was not successful. No verification result was generated.';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
@@ -1873,7 +1871,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                 ),
                 ResultRow(
                   label: 'Card Type',
-                  value: 'Premium Identity Card',
+                  value: 'Premium NIN Verification Result',
                 ),
                 ResultRow(
                   label: 'Status',
@@ -1978,13 +1976,6 @@ class VerifiedNinCard extends StatelessWidget {
     required this.nationality,
   });
 
-  String get qrData {
-    if (reference.trim().isNotEmpty) {
-      return 'NIN:${reference.trim()}';
-    }
-    return 'NIN:$nin';
-  }
-
   String get sexCode {
     final String value = gender.trim().toUpperCase();
     if (value.startsWith('M')) return 'M';
@@ -2030,72 +2021,53 @@ class VerifiedNinCard extends StatelessWidget {
             Positioned.fill(
               child: IgnorePointer(
                 child: Center(
-                  child: Opacity(
-                    opacity: 0.10,
-                    child: Image.asset(
-                      'assets/images/nigeria_coat_of_arms.png',
-                      width: 220,
-                      fit: BoxFit.contain,
+                  child: Transform.rotate(
+                    angle: -0.42,
+                    child: Text(
+                      'NOT GOVERNMENT ISSUED',
+                      style: TextStyle(
+                        color: deepGreen.withValues(alpha: 0.10),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(11, 5, 11, 5),
+              padding: const EdgeInsets.fromLTRB(11, 4, 11, 4),
               child: Column(
                 children: [
                   SizedBox(
-                    height: 50,
-                    child: Stack(
-                      alignment: Alignment.center,
+                    height: 46,
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Positioned(
-                          left: 0,
-                          top: 0,
-                          bottom: 0,
-                          child: Image(
-                            image: AssetImage(
-                              'assets/images/nigeria_coat_of_arms.png',
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'SERVICEPAY NIN VERIFICATION RESULT',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: deepGreen,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.35,
                             ),
-                            width: 42,
-                            fit: BoxFit.contain,
                           ),
                         ),
-                        const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'FEDERAL REPUBLIC OF NIGERIA',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: deepGreen,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 0.35,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(height: 1),
-                              Text(
-                                'National Identity Card',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: darkText,
-                                  fontSize: 8.4,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ],
+                        SizedBox(height: 1),
+                        Text(
+                          'Premium provider verification record',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: darkText,
+                            fontSize: 8.4,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3,
                           ),
-                        ),
-                        const Positioned(
-                          right: 0,
-                          child: _NigeriaFlagMark(),
                         ),
                       ],
                     ),
@@ -2163,26 +2135,25 @@ class VerifiedNinCard extends StatelessWidget {
                           child: Column(
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(3),
+                                width: 56,
+                                height: 56,
+                                alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.92),
+                                  color: green.withValues(alpha: 0.10),
                                   border: Border.all(
                                     color: const Color(0xFF8DAF91),
                                   ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: QrImageView(
-                                  data: qrData,
-                                  version: QrVersions.auto,
-                                  size: 52,
-                                  padding: EdgeInsets.zero,
-                                  gapless: true,
-                                  errorCorrectionLevel: QrErrorCorrectLevel.M,
+                                child: const Icon(
+                                  Icons.fact_check_outlined,
+                                  color: deepGreen,
+                                  size: 31,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               const Text(
-                                'SCAN TO VERIFY',
+                                'VERIFIED RECORD',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: deepGreen,
@@ -2282,16 +2253,17 @@ class VerifiedNinCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      const _NigeriaFlagMark(
-                        width: 31,
-                        height: 8,
+                      const Icon(
+                        Icons.verified_user_outlined,
+                        color: green,
+                        size: 10,
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           reference.isNotEmpty
                               ? 'REFERENCE: $reference'
-                              : 'NATIONAL IDENTITY CARD',
+                              : 'SERVICEPAY VERIFICATION RECORD',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -2302,7 +2274,7 @@ class VerifiedNinCard extends StatelessWidget {
                         ),
                       ),
                       const Text(
-                        'NIGERIA',
+                        'PREMIUM',
                         style: TextStyle(
                           color: deepGreen,
                           fontSize: 5.5,
@@ -2312,50 +2284,31 @@ class VerifiedNinCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 1),
-                  const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'VERIFICATION RESULT • NOT AN OFFICIAL NIMC-ISSUED IDENTITY DOCUMENT',
-                      style: TextStyle(
-                        color: Color(0xFF5D6B62),
-                        fontSize: 4.2,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.15,
+                  const SizedBox(height: 2),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    color: Color(0xFFFDECEC),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'NOT A GOVERNMENT ID • NOT NIMC-ISSUED',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF9B1C1C),
+                          fontSize: 6.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.35,
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NigeriaFlagMark extends StatelessWidget {
-  final double width;
-  final double height;
-
-  const _NigeriaFlagMark({
-    this.width = 36,
-    this.height = 10,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(2),
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: const Row(
-          children: [
-            Expanded(child: ColoredBox(color: VerifiedNinCard.green)),
-            Expanded(child: ColoredBox(color: Colors.white)),
-            Expanded(child: ColoredBox(color: VerifiedNinCard.green)),
           ],
         ),
       ),

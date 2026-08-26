@@ -40,7 +40,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Premium identity card'), findsOneWidget);
+    expect(find.text('Premium NIN verification result'), findsOneWidget);
     expect(find.text('Standard'), findsNothing);
     expect(find.text('Regular'), findsNothing);
     expect(find.text('Information'), findsNothing);
@@ -62,22 +62,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(VerifiedNinCard), findsOneWidget);
-    expect(find.text('FEDERAL REPUBLIC OF NIGERIA'), findsOneWidget);
-    expect(find.text('National Identity Card'), findsOneWidget);
+    expect(find.text('SERVICEPAY NIN VERIFICATION RESULT'), findsOneWidget);
+    expect(find.text('Premium provider verification record'), findsOneWidget);
     expect(find.text('OKAFOR'), findsOneWidget);
     expect(find.text('ADA'), findsOneWidget);
     expect(find.text('NNEKA'), findsOneWidget);
     expect(find.text('123 456 789 01'), findsWidgets);
     expect(
         find.byKey(const ValueKey<String>('nin-card-photo')), findsOneWidget);
-    expect(find.textContaining('Verified by ServicePay'), findsNothing);
-    expect(find.textContaining('Verified via ServicePay'), findsNothing);
     expect(
-      find.text(
-        'VERIFICATION RESULT • NOT AN OFFICIAL NIMC-ISSUED IDENTITY DOCUMENT',
-      ),
+      find.text('NOT A GOVERNMENT ID • NOT NIMC-ISSUED'),
       findsOneWidget,
     );
+    expect(find.text('NOT GOVERNMENT ISSUED'), findsOneWidget);
+    expect(find.text('SCAN TO VERIFY'), findsNothing);
     expect(find.text('STANDARD'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -99,12 +97,12 @@ void main() {
     expect(find.text('Verification Failed'), findsOneWidget);
     expect(
       find.text(
-        'This verification was not successful. No identity card was generated.',
+        'This verification was not successful. No verification result was generated.',
       ),
       findsOneWidget,
     );
     expect(find.byType(VerifiedNinCard), findsNothing);
-    expect(find.text('FEDERAL REPUBLIC OF NIGERIA'), findsNothing);
+    expect(find.text('SERVICEPAY NIN VERIFICATION RESULT'), findsNothing);
     expect(find.text('Download'), findsNothing);
     expect(find.text('Share'), findsNothing);
   });
