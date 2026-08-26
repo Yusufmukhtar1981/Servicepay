@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_notifications_screen.dart';
 import 'admin_product_commission_screen.dart';
+import 'admin_solar_screen.dart';
 import 'admin_trust_profiles_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -59,10 +60,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     await loadAdminDetails();
   }
 
-  Future<void> openPage(Widget page) async {
+  Future<void> openPage(
+    Widget page, {
+    String? routeName,
+  }) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
+        settings: RouteSettings(name: routeName),
         builder: (_) => page,
       ),
     );
@@ -365,6 +370,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
+                  buildAdminAction(
+                    title: 'ServicePay Solar',
+                    subtitle:
+                        'Manage Solar packages, applications, finance and recovery.',
+                    icon: Icons.solar_power_rounded,
+                    onTap: () {
+                      openPage(
+                        const AdminSolarScreen(),
+                        routeName: '/admin/solar',
+                      );
+                    },
+                  ),
                   buildAdminAction(
                     title: 'Trust Profiles',
                     subtitle: 'Search and review ServicePay Trust profiles.',

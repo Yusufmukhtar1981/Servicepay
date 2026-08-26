@@ -9,6 +9,7 @@ import 'admin_amana_screen.dart';
 import 'admin_fintech_operations_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
+import 'admin_solar_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
@@ -29,6 +30,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     AdminKycReviewScreen(),
     AdminEmpowermentScreen(),
     AdminAmanaScreen(),
+    AdminSolarScreen(),
   ];
 
   @override
@@ -118,6 +120,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             icon: Icon(Icons.shopping_basket_outlined),
             activeIcon: Icon(Icons.shopping_basket),
             label: 'Amana',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.solar_power_outlined),
+            activeIcon: Icon(Icons.solar_power),
+            label: 'ServicePay Solar',
           ),
         ],
       ),

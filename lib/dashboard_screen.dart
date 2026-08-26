@@ -45,6 +45,7 @@ import 'partner_application_screen.dart';
 import 'qr_pay_screen.dart';
 
 import 'mini_apps_screen.dart';
+import 'solar_screen.dart';
 
 import 'marketplace/marketplace_screen.dart';
 import 'trust/trust_dashboard_entry.dart';
@@ -429,9 +430,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     return '₦${formatted.toString()}.${parts.last}';
   }
 
-  void openScreen(Widget screen) {
+  void openScreen(
+    Widget screen, {
+    String? routeName,
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: RouteSettings(name: routeName),
         builder: (_) => screen,
       ),
     );
@@ -529,6 +534,21 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   List<_DashboardService> moreServices() {
     return <_DashboardService>[
+      _DashboardService(
+        title: 'ServicePay Solar',
+        subtitle: 'Solar power & finance',
+        icon: Icons.solar_power_rounded,
+        iconColor: const Color(0xFFF59E0B),
+        backgroundColor: const Color(0xFFFFF7DF),
+        keywords:
+            'solar power energy inverter battery panel electricity finance installment',
+        onTap: () {
+          openScreen(
+            const SolarScreen(),
+            routeName: '/solar',
+          );
+        },
+      ),
       _DashboardService(
         title: 'AI Support',
         subtitle: 'Ask ServicePay',
@@ -1483,6 +1503,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         'Delivery',
         'NIN',
         'Empowerment',
+        'ServicePay Solar',
         'AI Support',
         'Cards',
       ])
