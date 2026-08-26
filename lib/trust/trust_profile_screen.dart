@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'trust_api_service.dart';
 import 'trust_models.dart';
+import 'trust_deals_screen.dart';
 
 class TrustProfileScreen extends StatefulWidget {
   const TrustProfileScreen({
@@ -117,11 +118,26 @@ class _TrustProfileScreenState extends State<TrustProfileScreen> {
                           _discoverabilityCard(profile),
                         ],
                         const SizedBox(height: 20),
-                        _disabledAction(
-                            'PAY SAFELY', Icons.lock_outline_rounded),
-                        const SizedBox(height: 10),
-                        _disabledAction(
-                            'CREATE PROTECTED DEAL', Icons.handshake_outlined),
+                        SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                  backgroundColor: _green,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 15)),
+                              onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute<void>(
+                                      builder: (_) =>
+                                          const TrustDealsScreen())),
+                              icon: const Icon(Icons.handshake_outlined),
+                              label: const Text('VIEW PROTECTED DEALS'),
+                            )),
+                        const SizedBox(height: 12),
+                        const Text(
+                            'Trust information helps you make a more informed decision. It is not a guarantee against fraud.',
+                            style:
+                                TextStyle(color: Colors.black54, fontSize: 12)),
                       ]),
                 ),
     );
@@ -272,25 +288,4 @@ class _TrustProfileScreenState extends State<TrustProfileScreen> {
             child: Text(label, style: const TextStyle(color: Colors.black54))),
         Text(value, style: const TextStyle(fontWeight: FontWeight.w700))
       ]));
-  Widget _disabledAction(String label, IconData icon) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: null,
-              icon: Icon(icon),
-              label: Text(label),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 15),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'This feature is coming in the next ServicePay Trust phase.',
-            style: TextStyle(color: Colors.black54, fontSize: 12),
-          ),
-        ],
-      );
 }

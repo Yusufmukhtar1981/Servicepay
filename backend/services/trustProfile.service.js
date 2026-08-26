@@ -3,6 +3,8 @@ const crypto = require("crypto");
 const User = require("../models/user.model");
 const KycProfile = require("../models/kycProfile.model");
 const IdVerification = require("../models/idVerification.model");
+const ProtectedDeal = require("../models/protectedDeal.model");
+const TrustDispute = require("../models/trustDispute.model");
 const TrustProfile = require("../models/trustProfile.model");
 const {
   calculateTrustScore,
@@ -68,7 +70,7 @@ const toPlainProfile = (profile) => {
   return profile;
 };
 
-const profileSourceValues = (user, calculation) => ({
+const profileSourceValues = (user, calculation, metrics = {}) => ({
   displayName: String(user?.fullName || "ServicePay Member").trim(),
   displayNameNormalized: normalizeText(user?.fullName),
   businessName: String(user?.businessName || "").trim(),
@@ -79,11 +81,11 @@ const profileSourceValues = (user, calculation) => ({
   accountOwnershipVerified:
     calculation.scoreInputs.accountOwnershipVerified,
   memberSince: user?.createdAt || new Date(),
-  protectedTransactionsCount: 0,
-  protectedTradeVolume: 0,
-  completionRate: 0,
-  disputesCount: 0,
-  resolvedDisputesCount: 0,
+  protectedTransactionsCount: metrics.protectedTransactionsCount || 0,
+  protectedTradeVolume: metrics.protectedTradeVolume || 0,
+  completionRate: metrics.completionRate || 0,
+  disputesCount: metrics.disputesCount || 0,
+  resolvedDisputesCount: metrics.resolvedDisputesCount || 0,
   trustScore: calculation.trustScore,
   trustLevel: calculation.trustLevel,
   restricted: calculation.restricted,
@@ -91,8 +93,24 @@ const profileSourceValues = (user, calculation) => ({
   scoreInputs: calculation.scoreInputs,
 });
 
+const loadProtectedMetrics = async (userId) => {
+  const [deals, disputesCount, resolvedDisputesCount] = await Promise.all([
+    ProtectedDeal.find({ $or: [{ buyer: userId }, { seller: userId }], status: { $in: ["COMPLETED", "REFUNDED"] } }).select("amount status").lean(),
+    TrustDispute.countDocuments({ $or: [{ buyer: userId }, { seller: userId }] }),
+    TrustDispute.countDocuments({ $or: [{ buyer: userId }, { seller: userId }], status: "RESOLVED" }),
+  ]);
+  const completed = deals.filter((deal) => deal.status === "COMPLETED");
+  return {
+    protectedTransactionsCount: deals.length,
+    protectedTradeVolume: deals.reduce((total, deal) => total + (Number(deal.amount) || 0), 0),
+    completionRate: deals.length ? Math.round((completed.length / deals.length) * 10000) / 100 : 0,
+    disputesCount,
+    resolvedDisputesCount,
+  };
+};
+
 const loadScoreSources = async (userId) => {
-  const [user, kycProfile, successfulIdentityVerifications] =
+  const [user, kycProfile, successfulIdentityVerifications, metrics] =
     await Promise.all([
       User.findById(userId).lean(),
       KycProfile.findOne({ user: userId }).lean(),
@@ -101,12 +119,14 @@ const loadScoreSources = async (userId) => {
         status: "SUCCESSFUL",
         consentAccepted: true,
       }),
+      loadProtectedMetrics(userId),
     ]);
 
   return {
     user,
     kycProfile,
     successfulIdentityVerifications,
+    metrics,
   };
 };
 
@@ -116,6 +136,7 @@ const calculationFor = (sources, profile) =>
     kycProfile: sources.kycProfile,
     successfulIdentityVerifications:
       sources.successfulIdentityVerifications,
+    protectedMetrics: sources.metrics,
     restricted: profile?.restricted === true,
   });
 
@@ -149,7 +170,7 @@ const ensureOwnTrustProfile = async (userId) => {
   }
 
   const calculation = calculationFor(sources, existing);
-  const values = profileSourceValues(sources.user, calculation);
+  const values = profileSourceValues(sources.user, calculation, sources.metrics);
 
   if (existing) {
     return TrustProfile.findOneAndUpdate(
@@ -191,7 +212,7 @@ const refreshProfileForRead = async (profile) => {
 
   return {
     ...profile,
-    ...profileSourceValues(sources.user, calculation),
+    ...profileSourceValues(sources.user, calculation, sources.metrics),
     restricted: calculation.restricted,
   };
 };
@@ -207,11 +228,11 @@ const toPublicTrustProfile = (profile, user) => ({
   accountOwnershipVerified:
     profile.accountOwnershipVerified === true,
   memberSince: profile.memberSince,
-  protectedTransactionsCount: 0,
-  protectedTradeVolume: 0,
-  completionRate: 0,
-  disputesCount: 0,
-  resolvedDisputesCount: 0,
+  protectedTransactionsCount: Number(profile.protectedTransactionsCount || 0),
+  protectedTradeVolume: Number(profile.protectedTradeVolume || 0),
+  completionRate: Number(profile.completionRate || 0),
+  disputesCount: Number(profile.disputesCount || 0),
+  resolvedDisputesCount: Number(profile.resolvedDisputesCount || 0),
   trustScore: Number(profile.trustScore || 0),
   trustLevel: profile.trustLevel,
   restricted: profile.restricted === true,
@@ -415,7 +436,7 @@ const getOwnProfile = async (userId) => {
   const calculation = calculationFor(sources, profile);
   const refreshed = {
     ...profile,
-    ...profileSourceValues(user, calculation),
+    ...profileSourceValues(user, calculation, sources.metrics),
     restricted: calculation.restricted,
   };
 

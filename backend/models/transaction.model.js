@@ -64,6 +64,7 @@ const transactionSchema =
           "REFERRAL_BONUS",
            "SOLAR_DEPOSIT",
            "SOLAR_INSTALLMENT",
+           "PROTECTED_DEAL",
         ],
         required: true,
         index: true,

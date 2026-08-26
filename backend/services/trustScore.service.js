@@ -1,7 +1,6 @@
 const TRUST_LEVELS = Object.freeze({
   NEW: "NEW",
   BASIC: "BASIC",
-  VERIFIED: "VERIFIED",
   TRUSTED: "TRUSTED",
   HIGHLY_TRUSTED: "HIGHLY_TRUSTED",
   RESTRICTED: "RESTRICTED",
@@ -43,8 +42,7 @@ const hasVerifiedKyc = (user, kycProfile) => {
 
 const levelForScore = (score) => {
   if (score >= 85) return TRUST_LEVELS.HIGHLY_TRUSTED;
-  if (score >= 70) return TRUST_LEVELS.TRUSTED;
-  if (score >= 45) return TRUST_LEVELS.VERIFIED;
+  if (score >= 45) return TRUST_LEVELS.TRUSTED;
   if (score >= 15) return TRUST_LEVELS.BASIC;
   return TRUST_LEVELS.NEW;
 };
@@ -53,6 +51,7 @@ const calculateTrustScore = ({
   user,
   kycProfile,
   successfulIdentityVerifications = 0,
+  protectedMetrics = {},
   restricted = false,
   now = new Date(),
 } = {}) => {
@@ -84,6 +83,9 @@ const calculateTrustScore = ({
     successfulIdentityVerifications: verifiedIdentityCount,
     businessVerified,
     accountOwnershipVerified,
+    protectedTransactionsCount: Math.max(0, Number(protectedMetrics.protectedTransactionsCount) || 0),
+    completionRate: Math.max(0, Math.min(100, Number(protectedMetrics.completionRate) || 0)),
+    resolvedDisputesCount: Math.max(0, Number(protectedMetrics.resolvedDisputesCount) || 0),
   };
 
   if (restricted || !accountActive) {
@@ -103,6 +105,11 @@ const calculateTrustScore = ({
   }
 
   trustScore += Math.min(verifiedIdentityCount, 2) * 5;
+  // Only completed, persisted protected deals qualify; no client metric is accepted.
+  if (scoreInputs.protectedTransactionsCount > 0) {
+    trustScore += Math.min(10, scoreInputs.protectedTransactionsCount);
+    if (scoreInputs.completionRate >= 90) trustScore += 5;
+  }
   trustScore = Math.min(100, trustScore);
 
   return {

@@ -46,6 +46,8 @@ const STAFF_PERMISSIONS = Object.freeze({
   KYC_REJECT: "kyc.reject",
 
   TRUST_VIEW: "trust.view",
+  TRUST_RESOLVE: "trust.resolve",
+  TRUST_RESTRICT: "trust.restrict",
 
   AUDIT_VIEW: "audit.view",
   AUDIT_EXPORT: "audit.export",

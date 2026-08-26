@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'trust_api_service.dart';
 import 'trust_models.dart';
 import 'trust_profile_screen.dart';
+import 'trust_deals_screen.dart';
 
 typedef TrustProfileSearch = Future<List<TrustProfile>> Function({
   required String query,
@@ -92,136 +93,177 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
             ),
           ],
         ),
-        body: Column(children: <Widget>[
-          Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(children: <Widget>[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF7F0),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Verify Before You Pay',
-                        style: TextStyle(
-                          color: Color(0xFF08783E),
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Search a discoverable ServicePay member or business '
-                        'before you decide who to pay.',
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                    controller: _controller,
-                    onSubmitted: (_) => _search(),
-                    decoration: InputDecoration(
-                        hintText: 'Search by phone, Trust ID, or business name',
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: IconButton(
-                            onPressed: _search,
-                            icon: const Icon(Icons.arrow_forward)),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none))),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                    value: _kind,
-                    decoration: const InputDecoration(labelText: 'Search by'),
-                    items: const <DropdownMenuItem<String>>[
-                      DropdownMenuItem(
-                          value: 'phone', child: Text('Phone number')),
-                      DropdownMenuItem(
-                          value: 'servicepay_id', child: Text('ServicePay ID')),
-                      DropdownMenuItem(
-                          value: 'business_name', child: Text('Business name')),
-                    ],
-                    onChanged: (String? value) =>
-                        setState(() => _kind = value!)),
-              ])),
-          if (_loading) const LinearProgressIndicator(),
-          if (_error != null)
-            Padding(
-                padding: const EdgeInsets.all(16),
-                child:
-                    Text(_error!, style: const TextStyle(color: Colors.red))),
-          Expanded(
-              child: _profiles.isEmpty && !_loading
-                  ? Center(
-                      child: Text(
-                        _hasSearched
-                            ? 'No Trust profile found.'
-                            : 'Search for a ServicePay Trust profile.',
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _profiles.length,
-                      itemBuilder: (_, int index) {
-                        final TrustProfile p = _profiles[index];
-                        return Card(
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 5),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 6),
-                              leading: CircleAvatar(
-                                backgroundColor: const Color(0xFFEAF7F0),
-                                backgroundImage: p.profilePhotoUrl == null
-                                    ? null
-                                    : NetworkImage(p.profilePhotoUrl!),
-                                child: p.profilePhotoUrl == null
-                                    ? Text(p.displayName.substring(0, 1))
-                                    : null,
+        body: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) =>
+                Column(children: <Widget>[
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                          maxWidth: constraints.maxWidth > 760
+                              ? 720
+                              : double.infinity),
+                      child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(children: <Widget>[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEAF7F0),
+                                borderRadius: BorderRadius.circular(14),
                               ),
-                              title: Column(
+                              child: const Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
-                                  Text(p.displayName),
-                                  const SizedBox(height: 3),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 3,
-                                    children: <Widget>[
-                                      _levelBadge(p.trustLevel),
-                                      if (p.identityVerified)
-                                        _verificationBadge('Identity'),
-                                      if (p.businessVerified)
-                                        _verificationBadge('Business'),
-                                    ],
+                                  Text(
+                                    'Verify Before You Pay',
+                                    style: TextStyle(
+                                      color: Color(0xFF08783E),
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Search a discoverable ServicePay member or business '
+                                    'before you decide who to pay.',
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Trust information helps you make a more informed decision. It is not a guarantee against fraud.',
+                                    style: TextStyle(
+                                        color: Color(0xFF405047), fontSize: 12),
                                   ),
                                 ],
                               ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 7),
-                                child: Text(
-                                  [
-                                    if (p.businessName != null) p.businessName!,
-                                    p.maskedPhone ?? p.servicePayId,
-                                  ].join(' • '),
-                                ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                                controller: _controller,
+                                onSubmitted: (_) => _search(),
+                                decoration: InputDecoration(
+                                    hintText:
+                                        'Search by phone, Trust ID, or business name',
+                                    prefixIcon: const Icon(Icons.search),
+                                    suffixIcon: IconButton(
+                                        onPressed: _search,
+                                        icon: const Icon(Icons.arrow_forward)),
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: BorderSide.none))),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<String>(
+                                value: _kind,
+                                decoration: const InputDecoration(
+                                    labelText: 'Search by'),
+                                items: const <DropdownMenuItem<String>>[
+                                  DropdownMenuItem(
+                                      value: 'phone',
+                                      child: Text('Phone number')),
+                                  DropdownMenuItem(
+                                      value: 'servicepay_id',
+                                      child: Text('ServicePay ID')),
+                                  DropdownMenuItem(
+                                      value: 'business_name',
+                                      child: Text('Business name')),
+                                ],
+                                onChanged: (String? value) =>
+                                    setState(() => _kind = value!)),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  icon: const Icon(Icons.shield_outlined),
+                                  label: const Text('View my protected deals'),
+                                  onPressed: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              const TrustDealsScreen())),
+                                )),
+                          ])),
+                    ),
+                  ),
+                  if (_loading) const LinearProgressIndicator(),
+                  if (_error != null)
+                    Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(_error!,
+                            style: const TextStyle(color: Colors.red))),
+                  Expanded(
+                      child: _profiles.isEmpty && !_loading
+                          ? Center(
+                              child: Text(
+                                _hasSearched
+                                    ? 'No Trust profile found.'
+                                    : 'Search for a ServicePay Trust profile.',
                               ),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute<void>(
-                                      builder: (_) => TrustProfileScreen(
-                                          servicePayId: p.servicePayId))),
-                            ));
-                      })),
-        ]),
+                            )
+                          : ListView.builder(
+                              itemCount: _profiles.length,
+                              itemBuilder: (_, int index) {
+                                final TrustProfile p = _profiles[index];
+                                return Card(
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 5),
+                                    child: ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 14, vertical: 6),
+                                      leading: CircleAvatar(
+                                        backgroundColor:
+                                            const Color(0xFFEAF7F0),
+                                        backgroundImage: p.profilePhotoUrl ==
+                                                null
+                                            ? null
+                                            : NetworkImage(p.profilePhotoUrl!),
+                                        child: p.profilePhotoUrl == null
+                                            ? Text(
+                                                p.displayName.substring(0, 1))
+                                            : null,
+                                      ),
+                                      title: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Text(p.displayName),
+                                          const SizedBox(height: 3),
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 3,
+                                            children: <Widget>[
+                                              _levelBadge(p.trustLevel),
+                                              if (p.identityVerified)
+                                                _verificationBadge('Identity'),
+                                              if (p.businessVerified)
+                                                _verificationBadge('Business'),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      subtitle: Padding(
+                                        padding: const EdgeInsets.only(top: 7),
+                                        child: Text(
+                                          [
+                                            if (p.businessName != null)
+                                              p.businessName!,
+                                            p.maskedPhone ?? p.servicePayId,
+                                          ].join(' • '),
+                                        ),
+                                      ),
+                                      trailing: const Icon(Icons.chevron_right),
+                                      onTap: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  TrustProfileScreen(
+                                                      servicePayId:
+                                                          p.servicePayId))),
+                                    ));
+                              })),
+                ])),
       );
 
   Widget _levelBadge(String level) => Container(

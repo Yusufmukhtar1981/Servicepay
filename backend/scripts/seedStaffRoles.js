@@ -211,6 +211,8 @@ const defaultRoles = [
       P.KYC_APPROVE,
       P.KYC_REJECT,
       P.TRUST_VIEW,
+      P.TRUST_RESOLVE,
+      P.TRUST_RESTRICT,
 
       P.AUDIT_VIEW,
       P.AUDIT_EXPORT,

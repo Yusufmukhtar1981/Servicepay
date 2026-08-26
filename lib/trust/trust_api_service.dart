@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -53,6 +54,73 @@ class TrustApiService {
         'profile',
       );
 
+  static Future<List<TrustDeal>> deals({String? status}) async {
+    final Uri uri = Uri.parse('$baseUrl/trust/deals').replace(
+      queryParameters:
+          status == null ? null : <String, String>{'status': status},
+    );
+    return _dealList(await _get(uri), 'deals');
+  }
+
+  static Future<TrustDeal> getDeal(String id) async => _deal(
+      await _get(Uri.parse('$baseUrl/trust/deals/${Uri.encodeComponent(id)}')),
+      'deal');
+
+  static Future<TrustDeal> createDeal(Map<String, dynamic> payload) async =>
+      _deal(
+          await _request('POST', Uri.parse('$baseUrl/trust/deals'),
+              payload: payload),
+          'deal');
+
+  static Future<TrustDeal> fundDeal(String id, String pin) async => _deal(
+      await _request('POST',
+          Uri.parse('$baseUrl/trust/deals/${Uri.encodeComponent(id)}/fund'),
+          payload: <String, dynamic>{'transactionPin': pin}),
+      'deal');
+
+  static Future<TrustDeal> dealAction(String id, String action,
+          {Map<String, dynamic>? payload}) async =>
+      _deal(
+          await _request(
+              'POST',
+              Uri.parse(
+                  '$baseUrl/trust/deals/${Uri.encodeComponent(id)}/$action'),
+              payload: payload ?? <String, dynamic>{}),
+          'deal');
+
+  static Future<TrustDispute> createDispute(
+          String dealId, Map<String, dynamic> payload) async =>
+      _dispute(
+          await _request(
+              'POST',
+              Uri.parse(
+                  '$baseUrl/trust/deals/${Uri.encodeComponent(dealId)}/disputes'),
+              payload: payload),
+          'dispute');
+
+  static Future<List<TrustDeal>> adminDeals({String? status}) async =>
+      _dealList(
+          await _get(Uri.parse('$baseUrl/admin/trust/deals').replace(
+              queryParameters:
+                  status == null ? null : <String, String>{'status': status})),
+          'deals');
+
+  static Future<List<TrustDispute>> adminDisputes() async => _disputeList(
+      await _get(Uri.parse('$baseUrl/admin/trust/disputes')), 'disputes');
+
+  static Future<TrustDispute> adminResolveDispute(
+          String id, String resolution, String note) async =>
+      _dispute(
+          await _request(
+              'POST',
+              Uri.parse(
+                  '$baseUrl/admin/trust/disputes/${Uri.encodeComponent(id)}/resolve'),
+              payload: <String, dynamic>{
+                'resolution': resolution,
+                'note': note
+              }),
+          'dispute');
+
   static Future<Map<String, dynamic>> _get(Uri uri) => _request('GET', uri);
 
   static Future<Map<String, dynamic>> _request(
@@ -86,10 +154,14 @@ class TrustApiService {
       'Accept': 'application/json',
       'Authorization': 'Bearer $token',
       if (payload != null) 'Content-Type': 'application/json',
+      if (method != 'GET') 'Idempotency-Key': _idempotencyKey(),
     };
-    final http.Response response = method == 'PATCH'
-        ? await http.patch(uri, headers: headers, body: jsonEncode(payload))
-        : await http.get(uri, headers: headers);
+    final String? encoded = payload == null ? null : jsonEncode(payload);
+    final http.Response response = method == 'GET'
+        ? await http.get(uri, headers: headers)
+        : method == 'PATCH'
+            ? await http.patch(uri, headers: headers, body: encoded)
+            : await http.post(uri, headers: headers, body: encoded);
     dynamic decoded;
     try {
       decoded = jsonDecode(response.body);
@@ -103,6 +175,9 @@ class TrustApiService {
     }
     return body;
   }
+
+  static String _idempotencyKey() =>
+      '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
 
   static TrustProfile _profile(Map<String, dynamic> body, String key) {
     final dynamic data = body['data'];
@@ -122,6 +197,42 @@ class TrustApiService {
         .whereType<Map>()
         .map((Map value) =>
             TrustProfile.fromJson(Map<String, dynamic>.from(value)))
+        .toList();
+  }
+
+  static TrustDeal _deal(Map<String, dynamic> body, String key) {
+    final dynamic data = body['data'];
+    final dynamic raw = data is Map ? data[key] ?? data : body[key] ?? body;
+    if (raw is! Map) throw Exception('The server returned an invalid deal.');
+    return TrustDeal.fromJson(Map<String, dynamic>.from(raw));
+  }
+
+  static List<TrustDeal> _dealList(Map<String, dynamic> body, String key) {
+    final dynamic data = body['data'];
+    final dynamic raw = data is Map ? data[key] ?? data['items'] : body[key];
+    if (raw is! List) return <TrustDeal>[];
+    return raw
+        .whereType<Map>()
+        .map((Map item) => TrustDeal.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  static TrustDispute _dispute(Map<String, dynamic> body, String key) {
+    final dynamic data = body['data'];
+    final dynamic raw = data is Map ? data[key] ?? data : body[key] ?? body;
+    if (raw is! Map) throw Exception('The server returned an invalid dispute.');
+    return TrustDispute.fromJson(Map<String, dynamic>.from(raw));
+  }
+
+  static List<TrustDispute> _disputeList(
+      Map<String, dynamic> body, String key) {
+    final dynamic data = body['data'];
+    final dynamic raw = data is Map ? data[key] ?? data['items'] : body[key];
+    if (raw is! List) return <TrustDispute>[];
+    return raw
+        .whereType<Map>()
+        .map((Map item) =>
+            TrustDispute.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 }

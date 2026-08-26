@@ -98,6 +98,8 @@ const adminAuditLogSchema =
              "SOLAR_OFFICER_WITHDRAWAL_APPROVED",
              "SOLAR_OFFICER_WITHDRAWAL_REJECTED",
              "SOLAR_OFFICER_WITHDRAWAL_PAID",
+              "TRUST_DISPUTE_RESOLVED",
+              "TRUST_PROFILE_RESTRICTED",
         ],
       },
 
