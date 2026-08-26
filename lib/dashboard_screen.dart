@@ -1496,30 +1496,16 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     final List<_DashboardService> selected = <_DashboardService>[
       for (final String title in <String>[
-        'Airtime',
-        'Data',
-        'Electricity',
-        'Cable',
         'Delivery',
-        'NIN',
-        'Empowerment',
         'ServicePay Solar',
-        'AI Support',
-        'Cards',
+        'Empowerment',
+        'Marketplace',
+        'ServicePay Amana',
+        'Data',
+        'NIN Verification',
       ])
         if (findByName(title) case final _DashboardService service) service,
     ];
-
-    for (final _DashboardService service in unique.values) {
-      if (selected.length >= 8) {
-        break;
-      }
-      if (!selected.any(
-        (_DashboardService existing) => existing.title == service.title,
-      )) {
-        selected.add(service);
-      }
-    }
 
     if (selected.isEmpty) {
       return const SizedBox.shrink();
