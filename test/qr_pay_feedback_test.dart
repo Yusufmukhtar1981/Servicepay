@@ -54,7 +54,7 @@ void main() {
   }
 
   testWidgets(
-    'locks immediately, clears the PIN, and ignores repeated taps',
+    'locks immediately, retains the PIN, and ignores repeated taps',
     (WidgetTester tester) async {
       final Completer<http.Response> response = Completer<http.Response>();
       int requests = 0;
@@ -76,7 +76,10 @@ void main() {
             .onPressed,
         isNull,
       );
-      expect(find.text('1234'), findsNothing);
+      final TextField pinField = tester.widget<TextField>(
+        find.byType(TextField).at(1),
+      );
+      expect(pinField.controller?.text, '1234');
 
       await tester.tap(find.byKey(const Key('qr-payment-submit')));
       await tester.pump();

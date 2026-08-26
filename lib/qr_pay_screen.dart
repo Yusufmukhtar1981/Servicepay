@@ -580,10 +580,6 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
       return;
     }
 
-    pinController.clear();
-
-    final String requestKey = idempotencyKey ??= _newIdempotencyKey();
-
     setState(() {
       status = QrPaymentStatus.submitting;
       receipt = null;
@@ -591,6 +587,7 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
     });
 
     try {
+      final String requestKey = idempotencyKey ??= _newIdempotencyKey();
       final prefs = await SharedPreferences.getInstance();
 
       final token =
@@ -722,6 +719,8 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
       await _saveReturnedBalance(prefs, data);
 
       if (!mounted) return;
+
+      pinController.clear();
 
       setState(() {
         status = QrPaymentStatus.success;
