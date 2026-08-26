@@ -32,6 +32,7 @@ const sendEmail = async ({
   subject,
   html,
   text,
+  idempotencyKey,
 }) => {
   try {
     if (!to) {
@@ -86,7 +87,12 @@ const sendEmail = async ({
     }
 
     const { data, error } =
-      await resend.emails.send(payload);
+      await resend.emails.send(
+        payload,
+        idempotencyKey
+          ? { idempotencyKey }
+          : undefined
+      );
 
     if (error) {
       console.error(
@@ -139,22 +145,36 @@ const sendTransactionEmail = async ({
   email,
   name,
   type,
+  direction,
   amount,
   reference,
   status,
   date,
+  balance,
+  counterparty,
+  provider,
+  serviceDetails,
+  message,
+  idempotencyKey,
 }) => {
   const content = transactionEmail({
     name,
     type,
+    direction,
     amount,
     reference,
     status,
     date,
+    balance,
+    counterparty,
+    provider,
+    serviceDetails,
+    message,
   });
 
   return sendEmail({
     to: email,
+    idempotencyKey,
     ...content,
   });
 };

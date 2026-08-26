@@ -16,6 +16,12 @@ const fintechControlMiddleware = require("./middleware/fintechControl.middleware
 require("dotenv").config();
 
 const connectDB = require("./config/db");
+const {
+  startEmailAutomation,
+} = require("./services/emailAutomation.service");
+const {
+  verifyEmailConnection,
+} = require("./services/email.service");
 
 const paystackRoutes = require(
   "./routes/paystack.routes"
@@ -316,12 +322,25 @@ console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
 
-  connectDB().catch((error) => {
-    console.error(
-      `Fatal startup error: ${error.message}`
-    );
-    server.close(() => process.exit(1));
-  });
+  connectDB()
+    .then(async () => {
+      const emailStatus =
+        await verifyEmailConnection();
+
+      console.log(
+        emailStatus.success
+          ? `[EMAIL] Provider configured: ${emailStatus.provider}`
+          : `[EMAIL] Provider unavailable: ${emailStatus.reason}`
+      );
+
+      await startEmailAutomation();
+    })
+    .catch((error) => {
+      console.error(
+        `Fatal startup error: ${error.message}`
+      );
+      server.close(() => process.exit(1));
+    });
 });
 
 server.on("error", (error) => {

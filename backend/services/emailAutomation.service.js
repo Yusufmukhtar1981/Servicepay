@@ -2,15 +2,72 @@ const mongoose = require('mongoose');
 
 const {
   sendWelcomeEmail,
-  sendTransactionEmail,
   sendKycEmail,
-  sendWithdrawalEmail,
-  sendEmpowermentEmail,
   sendSecurityEmail,
 } = require('./email.service');
+const {
+  retryPendingTransactionEmails,
+  sendTransactionNotification,
+} = require('./transactionEmailNotification.service');
 
 let watcher = null;
 let starting = false;
+let restartTimer = null;
+let retryTimer = null;
+let changeQueue = Promise.resolve();
+let lastSourceEventAt = null;
+let reconciliationTimer = null;
+let reconciliationRunning = false;
+
+const AUTOMATION_STATE_ID =
+  'transaction-email-automation-v2';
+const INTERNAL_COLLECTIONS = [
+  'emailautomationstates',
+  'transactionemaildeliveries',
+];
+const WITHDRAWAL_COLLECTIONS =
+  new Set([
+    'withdrawalrequests',
+    'riderwithdrawals',
+    'solarofficerwithdrawals',
+    'businesswalletwithdrawals',
+  ]);
+const EMPOWERMENT_COLLECTIONS =
+  new Set([
+    'empowermentfundings',
+    'empowermentpayouts',
+    'empowermentdisbursements',
+  ]);
+const TRANSACTION_COLLECTIONS =
+  new Set([
+    'transactions',
+    'banktransfers',
+    'manualfundings',
+    'solarpayments',
+    'businesswallettransactions',
+    'airtimetocashes',
+    'amanafundingrecords',
+    'amanaorders',
+    'marketplaceorders',
+    'partnertransactions',
+    'groupwalletledgers',
+    'scheduledpayments',
+    'exampins',
+    'deliveries',
+    'deliveryorders',
+  ]);
+const RECONCILIATION_COLLECTIONS =
+  Array.from(
+    new Set([
+      ...WITHDRAWAL_COLLECTIONS,
+      ...EMPOWERMENT_COLLECTIONS,
+      ...TRANSACTION_COLLECTIONS,
+      'ledgerentries',
+      'transfers',
+      'featurepayments',
+      'paymentlinks',
+    ])
+  );
 
 const text = (value) =>
   value === undefined || value === null
@@ -33,6 +90,12 @@ const getEmailFromDoc = (doc = {}) =>
     doc.email,
     doc.userEmail,
     doc.customerEmail,
+    doc.buyerEmail,
+    doc.borrowerEmail,
+    doc.memberEmail,
+    doc.payerEmail,
+    doc.senderEmail,
+    doc.actorEmail,
     doc.beneficiaryEmail,
     doc.applicantEmail,
     doc.recipientEmail,
@@ -47,6 +110,13 @@ const getNameFromDoc = (doc = {}) =>
     doc.fullName,
     doc.name,
     doc.customerName,
+    doc.buyerName,
+    doc.borrowerName,
+    doc.memberName,
+    doc.payerName,
+    doc.senderName,
+    doc.actorName,
+    doc.recipientName,
     doc.userName,
     doc.beneficiaryName,
     doc.applicantName,
@@ -64,6 +134,22 @@ const getUserReference = (doc = {}) =>
     doc.user,
     doc.customerId,
     doc.customer,
+    doc.paidBy,
+    doc.payerId,
+    doc.payer,
+    doc.senderId,
+    doc.sender,
+    doc.actorId,
+    doc.actor,
+    doc.requestedBy,
+    doc.buyerId,
+    doc.buyer,
+    doc.borrowerId,
+    doc.borrower,
+    doc.memberId,
+    doc.member,
+    doc.recipientId,
+    doc.recipient,
     doc.ownerId,
     doc.owner,
     doc.beneficiaryId,
@@ -113,8 +199,14 @@ const resolveUser = async (doc = {}) => {
   const ref = asObjectId(
     getUserReference(doc)
   );
+  const partnerRef = asObjectId(
+    firstValue(
+      doc.partnerId,
+      doc.partner
+    )
+  );
 
-  if (!ref) {
+  if (!ref && !partnerRef) {
     return {
       email: null,
       name: getNameFromDoc(doc),
@@ -131,24 +223,46 @@ const resolveUser = async (doc = {}) => {
       };
     }
 
-    const user = await db
-      .collection('users')
-      .findOne(
-        { _id: ref },
-        {
-          projection: {
-            email: 1,
-            fullName: 1,
-            name: 1,
-          },
-        }
-      );
+    const user = ref
+      ? await db
+          .collection('users')
+          .findOne(
+            { _id: ref },
+            {
+              projection: {
+                email: 1,
+                fullName: 1,
+                name: 1,
+              },
+            }
+          )
+      : null;
+    const partner =
+      !user && partnerRef
+        ? await db
+            .collection('partners')
+            .findOne(
+              { _id: partnerRef },
+              {
+                projection: {
+                  email: 1,
+                  contactName: 1,
+                  businessName: 1,
+                },
+              }
+            )
+        : null;
 
     return {
-      email: user?.email || null,
+      email:
+        user?.email ||
+        partner?.email ||
+        null,
       name:
         user?.fullName ||
         user?.name ||
+        partner?.contactName ||
+        partner?.businessName ||
         getNameFromDoc(doc),
     };
   } catch (error) {
@@ -187,6 +301,39 @@ const hasChanged = (
       )
     )
   );
+};
+
+const getChangeSourceTime = (
+  change = {}
+) => {
+  const wallTime = new Date(
+    change.wallTime || ''
+  );
+
+  if (!Number.isNaN(wallTime.getTime())) {
+    return wallTime;
+  }
+
+  const clusterTime =
+    change.clusterTime;
+  const seconds =
+    typeof clusterTime?.getHighBits ===
+    'function'
+      ? clusterTime.getHighBits()
+      : Number(
+          clusterTime?.t ??
+            clusterTime?.high ??
+            NaN
+        );
+
+  if (
+    Number.isFinite(seconds) &&
+    seconds > 0
+  ) {
+    return new Date(seconds * 1000);
+  }
+
+  return null;
 };
 
 const processUserEvent = async (
@@ -272,7 +419,8 @@ const processUserEvent = async (
 
 const processTransactionEvent = async (
   change,
-  doc
+  doc,
+  collection = 'transactions'
 ) => {
   if (
     !['insert', 'update', 'replace'].includes(
@@ -287,6 +435,10 @@ const processTransactionEvent = async (
     !hasChanged(change, [
       'status',
       'amount',
+      'payment',
+      'funds',
+      'refund',
+      'orderstatus',
     ])
   ) {
     return;
@@ -304,6 +456,7 @@ const processTransactionEvent = async (
     doc.service,
     doc.category,
     doc.product,
+    collection,
     'Transaction'
   );
 
@@ -312,6 +465,9 @@ const processTransactionEvent = async (
       doc.amount,
       doc.totalAmount,
       doc.debitAmount,
+      doc.totalDebit,
+      doc.airtimeAmount,
+      doc.cashAmount,
       doc.value,
       0
     )
@@ -323,6 +479,9 @@ const processTransactionEvent = async (
     doc.ref,
     doc.paymentReference,
     doc.requestReference,
+    doc.orderReference,
+    doc.providerReference,
+    doc.trackingNumber,
     doc._id
   );
 
@@ -330,14 +489,64 @@ const processTransactionEvent = async (
     firstValue(
       doc.status,
       doc.transactionStatus,
+      doc.paymentStatus,
+      doc.fundsStatus,
+      doc.orderStatus,
+      doc.providerStatus,
       'PENDING'
     )
   );
 
-  await sendTransactionEmail({
+  const providerResponse =
+    doc.providerResponse &&
+    typeof doc.providerResponse === 'object'
+      ? doc.providerResponse
+      : {};
+
+  const creditTypes = new Set([
+    'WALLET_FUNDING',
+    'MANUAL_FUNDING',
+    'EMPOWERMENT_DISBURSEMENT',
+    'REFERRAL_BONUS',
+    'REFUND',
+    'REVERSAL',
+  ]);
+
+  const normalizedType =
+    text(type).trim().toUpperCase();
+
+  const direction = [
+    'REFUNDED',
+    'REVERSED',
+  ].includes(normalizeStatus(status))
+    ? 'CREDIT'
+    : firstValue(
+        doc.direction,
+        doc.transactionDirection,
+        providerResponse.transactionDirection,
+        ['DEBIT', 'CREDIT'].includes(
+          normalizedType
+        )
+          ? normalizedType
+          : null,
+        collection === 'airtimetocashes'
+          ? 'CREDIT'
+          : null,
+        creditTypes.has(normalizedType)
+          ? 'CREDIT'
+          : 'DEBIT'
+      );
+
+  const userReference = asObjectId(
+    getUserReference(doc)
+  );
+
+  await sendTransactionNotification({
     email,
+    userId: userReference,
     name,
     type,
+    direction,
     amount,
     reference: text(reference),
     status,
@@ -346,11 +555,358 @@ const processTransactionEvent = async (
       doc.createdAt,
       new Date()
     ),
+    balance: firstValue(
+      doc.closingBalance,
+      doc.balanceAfter,
+      doc.walletBalance,
+      providerResponse.balanceAfter,
+      providerResponse.walletBalance
+    ),
+    counterparty: firstValue(
+      doc.counterparty,
+      doc.recipientName,
+      doc.senderName,
+      providerResponse.narration
+    ),
+    provider: firstValue(
+      doc.provider,
+      doc.network,
+      doc.serviceProvider,
+      providerResponse.provider,
+      providerResponse.network
+    ),
+    serviceDetails: firstValue(
+      doc.description,
+      doc.narration,
+      doc.phone,
+      doc.meterNumber,
+      doc.smartCardNumber,
+      providerResponse.narration,
+      providerResponse.phone,
+      providerResponse.meterNumber,
+      providerResponse.smartCardNumber,
+      providerResponse.token,
+      collection
+    ),
   });
 
   console.log(
     `[EMAIL AUTO] Transaction email processed for ${email} (${status})`
   );
+};
+
+const processFeaturePaymentEvent = async (
+  change,
+  doc,
+  {
+    resolve = resolveUser,
+    notify = sendTransactionNotification,
+  } = {}
+) => {
+  if (
+    !['insert', 'update', 'replace'].includes(
+      change.operationType
+    ) ||
+    (change.operationType === 'update' &&
+      !hasChanged(change, [
+        'status',
+        'amount',
+      ]))
+  ) {
+    return;
+  }
+
+  const [payer, beneficiary] =
+    await Promise.all([
+      resolve({ userId: doc.payer }),
+      doc.beneficiary
+        ? resolve({
+            userId: doc.beneficiary,
+          })
+        : Promise.resolve({
+            email: null,
+            name: '',
+          }),
+    ]);
+  const status = normalizeStatus(
+    firstValue(doc.status, 'PENDING')
+  );
+  const reversed = [
+    'REVERSED',
+    'REFUNDED',
+  ].includes(status);
+  const reference = text(
+    firstValue(doc.reference, doc._id)
+  );
+  const common = {
+    type: firstValue(
+      doc.featureType,
+      'FEATURE PAYMENT'
+    ),
+    amount: doc.amount,
+    reference,
+    status,
+    date: firstValue(
+      doc.completedAt,
+      doc.updatedAt,
+      doc.createdAt,
+      new Date()
+    ),
+    serviceDetails: doc.description,
+  };
+
+  await Promise.all([
+    payer.email
+      ? notify({
+          ...common,
+          email: payer.email,
+          userId: doc.payer,
+          name: payer.name,
+          direction: reversed
+            ? 'CREDIT'
+            : 'DEBIT',
+          counterparty:
+            beneficiary.name,
+        })
+      : Promise.resolve(),
+    beneficiary.email && !reversed
+      ? notify({
+          ...common,
+          email: beneficiary.email,
+          userId: doc.beneficiary,
+          name: beneficiary.name,
+          direction: 'CREDIT',
+          counterparty: payer.name,
+        })
+      : Promise.resolve(),
+  ]);
+};
+
+const processPaymentLinkEvent = async (
+  change,
+  doc,
+  {
+    resolve = resolveUser,
+    notify = sendTransactionNotification,
+  } = {}
+) => {
+  if (
+    !['insert', 'update', 'replace'].includes(
+      change.operationType
+    )
+  ) {
+    return;
+  }
+
+  const status = normalizeStatus(
+    firstValue(doc.status, 'ACTIVE')
+  );
+
+  if (
+    !['PAID', 'SUCCESSFUL'].includes(
+      status
+    )
+  ) {
+    return;
+  }
+
+  const [payer, owner] =
+    await Promise.all([
+      resolve({ userId: doc.paidBy }),
+      resolve({ userId: doc.owner }),
+    ]);
+  const reference = text(
+    firstValue(
+      doc.reference,
+      doc.code,
+      doc._id
+    )
+  );
+  const common = {
+    type: 'PAY BY LINK',
+    amount: doc.amount,
+    reference,
+    status,
+    date: firstValue(
+      doc.paidAt,
+      doc.updatedAt,
+      new Date()
+    ),
+    serviceDetails: firstValue(
+      doc.title,
+      doc.description
+    ),
+  };
+
+  await Promise.all([
+    payer.email
+      ? notify({
+          ...common,
+          email: payer.email,
+          userId: doc.paidBy,
+          name: payer.name,
+          direction: 'DEBIT',
+          counterparty: owner.name,
+        })
+      : Promise.resolve(),
+    owner.email
+      ? notify({
+          ...common,
+          email: owner.email,
+          userId: doc.owner,
+          name: owner.name,
+          direction: 'CREDIT',
+          counterparty: payer.name,
+        })
+      : Promise.resolve(),
+  ]);
+};
+
+const processLedgerEvent = async (
+  change,
+  doc,
+  {
+    resolve = resolveUser,
+    notify = sendTransactionNotification,
+  } = {}
+) => {
+  if (change.operationType !== 'insert') {
+    return;
+  }
+
+  const { email, name } =
+    await resolve({
+      userId: doc.user,
+    });
+
+  if (!email) return;
+
+  let counterparty = '';
+
+  if (doc.relatedUser) {
+    const related = await resolve({
+      userId: doc.relatedUser,
+    });
+    counterparty = related.name;
+  }
+
+  const service = text(
+    firstValue(
+      doc.service,
+      'WALLET TRANSACTION'
+    )
+  ).toUpperCase();
+  const isRefund =
+    normalizeStatus(doc.status) ===
+      'REVERSED' ||
+    service.includes('REFUND') ||
+    service.includes('REVERSAL');
+
+  await notify({
+    email,
+    userId: doc.user,
+    name,
+    type: service,
+    direction: doc.direction,
+    amount: doc.amount,
+    reference: text(
+      firstValue(doc.reference, doc._id)
+    ),
+    status: isRefund
+      ? 'REFUNDED'
+      : 'SUCCESSFUL',
+    date: firstValue(
+      doc.createdAt,
+      new Date()
+    ),
+    balance: doc.closingBalance,
+    counterparty,
+    serviceDetails: doc.narration,
+    message:
+      doc.direction === 'CREDIT'
+        ? 'Your ServicePay wallet has been credited successfully.'
+        : 'A debit was completed successfully on your ServicePay wallet.',
+  });
+};
+
+const processTransferEvent = async (
+  change,
+  doc,
+  {
+    resolve = resolveUser,
+    notify = sendTransactionNotification,
+  } = {}
+) => {
+  if (
+    !['insert', 'update', 'replace'].includes(
+      change.operationType
+    )
+  ) {
+    return;
+  }
+
+  if (
+    change.operationType === 'update' &&
+    !hasChanged(change, ['status'])
+  ) {
+    return;
+  }
+
+  const [sender, receiver] =
+    await Promise.all([
+      resolve({ userId: doc.sender }),
+      resolve({ userId: doc.receiver }),
+    ]);
+  const status = normalizeStatus(
+    firstValue(doc.status, 'SUCCESSFUL')
+  );
+  const reference = text(
+    firstValue(doc.reference, doc._id)
+  );
+  const date = firstValue(
+    doc.updatedAt,
+    doc.createdAt,
+    new Date()
+  );
+
+  await Promise.all([
+    sender.email
+      ? notify({
+          email: sender.email,
+          userId: doc.sender,
+          name: sender.name,
+          type: 'SERVICEPAY TRANSFER',
+          direction: 'DEBIT',
+          amount: doc.amount,
+          reference,
+          status,
+          date,
+          balance:
+            doc.senderBalanceAfter,
+          counterparty: receiver.name,
+          message:
+            'Your ServicePay transfer was sent to the recipient.',
+        })
+      : Promise.resolve(),
+    receiver.email
+      ? notify({
+          email: receiver.email,
+          userId: doc.receiver,
+          name: receiver.name,
+          type: 'SERVICEPAY TRANSFER',
+          direction: 'CREDIT',
+          amount: doc.amount,
+          reference,
+          status,
+          date,
+          balance:
+            doc.receiverBalanceAfter,
+          counterparty: sender.name,
+          message:
+            'You received a ServicePay wallet transfer.',
+        })
+      : Promise.resolve(),
+  ]);
 };
 
 const processKycEvent = async (
@@ -441,9 +997,16 @@ const processWithdrawalEvent = async (
 
   if (!email) return;
 
-  await sendWithdrawalEmail({
+  const userReference = asObjectId(
+    getUserReference(doc)
+  );
+
+  await sendTransactionNotification({
     email,
+    userId: userReference,
     name,
+    type: 'WITHDRAWAL',
+    direction: 'DEBIT',
     amount: Number(
       firstValue(
         doc.amount,
@@ -465,11 +1028,24 @@ const processWithdrawalEvent = async (
         'PENDING'
       )
     ),
-    reason: firstValue(
+    message: firstValue(
       doc.reason,
       doc.rejectionReason,
       doc.adminNote,
-      ''
+      'There has been an update on your withdrawal request.'
+    ),
+    date: firstValue(
+      doc.updatedAt,
+      doc.createdAt,
+      new Date()
+    ),
+    balance: firstValue(
+      doc.balanceAfter,
+      doc.walletBalance
+    ),
+    provider: firstValue(
+      doc.provider,
+      doc.bankName
     ),
   });
 
@@ -507,10 +1083,28 @@ const processEmpowermentEvent = async (
 
   if (!email) return;
 
-  await sendEmpowermentEmail({
+  const userReference = asObjectId(
+    getUserReference(doc)
+  );
+  const eventType = text(
+    firstValue(
+      doc.type,
+      doc.transactionType,
+      'EMPOWERMENT DISBURSEMENT'
+    )
+  ).toUpperCase();
+
+  await sendTransactionNotification({
     email,
+    userId: userReference,
     name,
-    programName: firstValue(
+    type: eventType,
+    direction: eventType.includes(
+      'FUNDING'
+    )
+      ? 'DEBIT'
+      : 'CREDIT',
+    serviceDetails: firstValue(
       doc.programName,
       doc.programTitle,
       doc.title,
@@ -541,6 +1135,15 @@ const processEmpowermentEvent = async (
       doc.message,
       doc.adminMessage,
       doc.note
+    ),
+    date: firstValue(
+      doc.updatedAt,
+      doc.createdAt,
+      new Date()
+    ),
+    balance: firstValue(
+      doc.balanceAfter,
+      doc.walletBalance
     ),
   });
 
@@ -585,7 +1188,9 @@ const handleChange = async (change) => {
     }
 
     if (
-      collection.includes('withdraw')
+      WITHDRAWAL_COLLECTIONS.has(
+        collection
+      )
     ) {
       return await processWithdrawalEvent(
         change,
@@ -594,11 +1199,8 @@ const handleChange = async (change) => {
     }
 
     if (
-      collection.includes(
-        'empowerment'
-      ) ||
-      collection.includes(
-        'beneficiar'
+      EMPOWERMENT_COLLECTIONS.has(
+        collection
       )
     ) {
       return await processEmpowermentEvent(
@@ -607,23 +1209,43 @@ const handleChange = async (change) => {
       );
     }
 
+    if (collection === 'ledgerentries') {
+      return await processLedgerEvent(
+        change,
+        doc
+      );
+    }
+
+    if (collection === 'transfers') {
+      return await processTransferEvent(
+        change,
+        doc
+      );
+    }
+
+    if (collection === 'featurepayments') {
+      return await processFeaturePaymentEvent(
+        change,
+        doc
+      );
+    }
+
+    if (collection === 'paymentlinks') {
+      return await processPaymentLinkEvent(
+        change,
+        doc
+      );
+    }
+
     if (
-      collection.includes(
-        'transaction'
-      ) ||
-      collection.includes('transfer') ||
-      collection.includes('payment') ||
-      collection.includes('airtime') ||
-      collection.includes('data') ||
-      collection.includes(
-        'electric'
-      ) ||
-      collection.includes('cable') ||
-      collection.includes('funding')
+      TRANSACTION_COLLECTIONS.has(
+        collection
+      )
     ) {
       return await processTransactionEvent(
         change,
-        doc
+        doc,
+        collection
       );
     }
   } catch (error) {
@@ -632,6 +1254,226 @@ const handleChange = async (change) => {
       error
     );
   }
+};
+
+const reconcileRecentTransactionEvents =
+  async ({
+    stateCollection,
+    reconciliation,
+  }) => {
+    const db = mongoose.connection.db;
+    const since = new Date(
+      reconciliation?.since
+    );
+    const highWaterMark = new Date(
+      reconciliation?.highWaterMark
+    );
+
+    if (
+      !db ||
+      !stateCollection ||
+      Number.isNaN(since.getTime()) ||
+      Number.isNaN(
+        highWaterMark.getTime()
+      )
+    ) {
+      throw new Error(
+        'A valid reconciliation range is required.'
+      );
+    }
+
+    let collectionIndex = Number(
+      reconciliation.collectionIndex || 0
+    );
+    let lastEventAt =
+      reconciliation.lastEventAt
+        ? new Date(
+            reconciliation.lastEventAt
+          )
+        : null;
+    let lastId =
+      reconciliation.lastId || null;
+    let processed = Number(
+      reconciliation.processed || 0
+    );
+    const batchSize = 250;
+
+    while (
+      collectionIndex <
+      RECONCILIATION_COLLECTIONS.length
+    ) {
+      const collection =
+        RECONCILIATION_COLLECTIONS[
+          collectionIndex
+        ];
+      const cursorMatch =
+        lastEventAt && lastId
+          ? {
+              $or: [
+                {
+                  __emailEventAt: {
+                    $gt: lastEventAt,
+                  },
+                },
+                {
+                  __emailEventAt:
+                    lastEventAt,
+                  _id: { $gt: lastId },
+                },
+              ],
+            }
+          : {};
+      const documents = await db
+        .collection(collection)
+        .aggregate([
+          {
+            $addFields: {
+              __emailEventAt: {
+                $ifNull: [
+                  '$updatedAt',
+                  '$createdAt',
+                ],
+              },
+            },
+          },
+          {
+            $match: {
+              __emailEventAt: {
+                $gte: since,
+                $lte: highWaterMark,
+              },
+              ...cursorMatch,
+            },
+          },
+          {
+            $sort: {
+              __emailEventAt: 1,
+              _id: 1,
+            },
+          },
+          { $limit: batchSize },
+        ])
+        .toArray();
+
+      for (const document of documents) {
+        const eventAt =
+          document.__emailEventAt;
+        delete document.__emailEventAt;
+
+        await handleChange({
+          operationType: 'insert',
+          ns: { coll: collection },
+          fullDocument: document,
+        });
+
+        lastEventAt = eventAt;
+        lastId = document._id;
+        processed += 1;
+      }
+
+      if (documents.length < batchSize) {
+        collectionIndex += 1;
+        lastEventAt = null;
+        lastId = null;
+      }
+
+      await stateCollection.updateOne(
+        { _id: AUTOMATION_STATE_ID },
+        {
+          $set: {
+            'reconciliation.collectionIndex':
+              collectionIndex,
+            'reconciliation.lastEventAt':
+              lastEventAt,
+            'reconciliation.lastId':
+              lastId,
+            'reconciliation.processed':
+              processed,
+            'reconciliation.updatedAt':
+              new Date(),
+          },
+        }
+      );
+    }
+
+    await stateCollection.updateOne(
+      { _id: AUTOMATION_STATE_ID },
+      {
+        $set: {
+          'reconciliation.status':
+            'COMPLETED',
+          'reconciliation.completedAt':
+            new Date(),
+          'reconciliation.processed':
+            processed,
+        },
+        $unset: {
+          'reconciliation.lastEventAt': '',
+          'reconciliation.lastId': '',
+        },
+      }
+    );
+
+    console.log(
+      `[EMAIL AUTO] Reconciled ${processed} financial events through ${highWaterMark.toISOString()}`
+    );
+
+    return { processed };
+  };
+
+const scheduleReconciliation = (
+  stateCollection,
+  delay = 0
+) => {
+  clearTimeout(reconciliationTimer);
+  reconciliationTimer = setTimeout(
+    async () => {
+      if (reconciliationRunning) {
+        scheduleReconciliation(
+          stateCollection,
+          30000
+        );
+        return;
+      }
+
+      reconciliationRunning = true;
+
+      try {
+        const current =
+          await stateCollection.findOne({
+            _id: AUTOMATION_STATE_ID,
+          });
+
+        if (
+          current?.reconciliation
+            ?.status !== 'PENDING'
+        ) {
+          return;
+        }
+
+        await reconcileRecentTransactionEvents(
+          {
+            stateCollection,
+            reconciliation:
+              current.reconciliation,
+          }
+        );
+      } catch (error) {
+        console.error(
+          '[EMAIL AUTO] Recovery reconciliation failed:',
+          error.message
+        );
+        scheduleReconciliation(
+          stateCollection,
+          30000
+        );
+      } finally {
+        reconciliationRunning = false;
+      }
+    },
+    delay
+  );
+  reconciliationTimer.unref?.();
 };
 
 const startEmailAutomation = async () => {
@@ -646,44 +1488,237 @@ const startEmailAutomation = async () => {
   starting = true;
 
   try {
+    const stateCollection =
+      mongoose.connection.db.collection(
+        'emailautomationstates'
+      );
+    const state =
+      await stateCollection.findOne({
+        _id: AUTOMATION_STATE_ID,
+      });
+    lastSourceEventAt =
+      state?.lastSourceEventAt ||
+      state?.lastProcessedAt ||
+      lastSourceEventAt;
+    const watchOptions = {
+      fullDocument: 'updateLookup',
+    };
+
+    if (state?.resumeToken) {
+      watchOptions.resumeAfter =
+        state.resumeToken;
+    }
+
     watcher =
       mongoose.connection.watch(
-        [],
-        {
-          fullDocument:
-            'updateLookup',
-        }
+        [
+          {
+            $match: {
+              'ns.coll': {
+                $nin: INTERNAL_COLLECTIONS,
+              },
+            },
+          },
+        ],
+        watchOptions
       );
 
     watcher.on(
       'change',
       (change) => {
-        handleChange(change).catch(
-          (error) =>
+        changeQueue = changeQueue
+          .then(async () => {
+            await handleChange(change);
+
+            const checkpointAt =
+              new Date();
+            const sourceEventAt =
+              getChangeSourceTime(
+                change
+              ) || checkpointAt;
+            await stateCollection.updateOne(
+              {
+                _id: AUTOMATION_STATE_ID,
+              },
+              {
+                $set: {
+                  resumeToken: change._id,
+                  lastProcessedAt:
+                    checkpointAt,
+                  lastSourceEventAt:
+                    sourceEventAt,
+                  updatedAt: checkpointAt,
+                },
+                $setOnInsert: {
+                  createdAt: new Date(),
+                },
+              },
+              { upsert: true }
+            );
+            lastSourceEventAt =
+              sourceEventAt;
+          })
+          .catch((error) =>
             console.error(
               '[EMAIL AUTO] Handler error:',
               error
             )
-        );
+          );
       }
     );
 
-    watcher.on('error', (error) => {
+    watcher.on('error', async (error) => {
       console.error(
         '[EMAIL AUTO] MongoDB watcher error:',
         error.message
       );
 
+      if (
+        error?.code === 286 ||
+        error?.codeName ===
+          'ChangeStreamHistoryLost'
+      ) {
+        const checkpoint =
+          lastSourceEventAt
+            ? new Date(
+                lastSourceEventAt
+              )
+            : new Date(
+                Date.now() -
+                  15 * 60 * 1000
+              );
+        try {
+          const current =
+            await stateCollection.findOne({
+              _id: AUTOMATION_STATE_ID,
+            });
+          const proposedSince =
+            new Date(
+              checkpoint.getTime() -
+                5 * 60 * 1000
+            );
+          const existingSince =
+            current?.reconciliation
+              ?.status === 'PENDING'
+              ? new Date(
+                  current.reconciliation
+                    .since
+                )
+              : null;
+          const since =
+            existingSince &&
+            !Number.isNaN(
+              existingSince.getTime()
+            ) &&
+            existingSince <
+              proposedSince
+              ? existingSince
+              : proposedSince;
+
+          await stateCollection.updateOne(
+            {
+              _id: AUTOMATION_STATE_ID,
+            },
+            {
+              $set: {
+                reconciliation: {
+                  status: 'PENDING',
+                  since,
+                  highWaterMark:
+                    new Date(),
+                  collectionIndex: 0,
+                  lastEventAt: null,
+                  lastId: null,
+                  processed: 0,
+                  captureHighWaterOnStart:
+                    true,
+                  createdAt: new Date(),
+                },
+                updatedAt: new Date(),
+              },
+              $unset: {
+                resumeToken: '',
+              },
+              $setOnInsert: {
+                createdAt: new Date(),
+              },
+            },
+            { upsert: true }
+          );
+        } catch (stateError) {
+          console.error(
+            '[EMAIL AUTO] Could not persist recovery state:',
+            stateError.message
+          );
+        }
+      }
+
       try {
-        watcher?.close();
+        await watcher?.close();
       } catch (_) {}
 
       watcher = null;
+
+      clearTimeout(restartTimer);
+      restartTimer = setTimeout(
+        startEmailAutomation,
+        5000
+      );
+      restartTimer.unref?.();
     });
 
     watcher.on('close', () => {
       watcher = null;
     });
+
+    if (
+      state?.reconciliation?.status ===
+      'PENDING'
+    ) {
+      if (
+        state.reconciliation
+          .captureHighWaterOnStart
+      ) {
+        const highWaterMark =
+          new Date();
+
+        await stateCollection.updateOne(
+          {
+            _id: AUTOMATION_STATE_ID,
+          },
+          {
+            $set: {
+              'reconciliation.highWaterMark':
+                highWaterMark,
+              'reconciliation.captureHighWaterOnStart':
+                false,
+              'reconciliation.updatedAt':
+                highWaterMark,
+            },
+          }
+        );
+      }
+
+      scheduleReconciliation(
+        stateCollection
+      );
+    }
+
+    retryPendingTransactionEmails().catch(
+      (error) =>
+        console.error(
+          '[EMAIL AUTO] Initial retry failed:',
+          error.message
+        )
+    );
+
+    if (!retryTimer) {
+      retryTimer = setInterval(
+        retryPendingTransactionEmails,
+        60 * 1000
+      );
+      retryTimer.unref?.();
+    }
 
     console.log(
       '✅ ServicePay automatic email notifications active'
@@ -730,5 +1765,14 @@ if (
 }
 
 module.exports = {
+  getChangeSourceTime,
+  handleChange,
+  processFeaturePaymentEvent,
+  processLedgerEvent,
+  processPaymentLinkEvent,
+  processTransactionEvent,
+  processTransferEvent,
+  processWithdrawalEvent,
+  reconcileRecentTransactionEvents,
   startEmailAutomation,
 };

@@ -171,28 +171,96 @@ const welcomeEmail = ({ name }) => ({
 const transactionEmail = ({
   name,
   type,
+  direction,
   amount,
   reference,
   status,
   date,
+  balance,
+  counterparty,
+  provider,
+  serviceDetails,
+  message,
 }) => ({
-  subject: `ServicePay Transaction ${status || 'Update'}`,
+  subject: (() => {
+    const transactionType = String(type || 'Transaction')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const finalStatus = String(status || 'Update').toUpperCase();
+    const statusLabel =
+      finalStatus === 'SUCCESSFUL'
+        ? 'Successful'
+        : finalStatus === 'PENDING'
+        ? 'Received'
+        : finalStatus === 'REFUNDED'
+        ? 'Refunded'
+        : finalStatus.charAt(0) +
+          finalStatus.slice(1).toLowerCase();
+
+    if (
+      transactionType.toUpperCase().includes('WITHDRAWAL') &&
+      finalStatus === 'PENDING'
+    ) {
+      return 'ServicePay Withdrawal Request Received';
+    }
+
+    if (direction === 'CREDIT') {
+      return `ServicePay Wallet Credit – ${money(amount)}`;
+    }
+
+    return `ServicePay ${transactionType} ${statusLabel} – ${money(amount)}`;
+  })(),
   html: baseTemplate({
-    title: 'Transaction Notification',
+    title:
+      direction === 'CREDIT'
+        ? 'Wallet Credit Notification'
+        : direction === 'DEBIT'
+        ? 'Transaction Receipt'
+        : 'Transaction Notification',
     greeting: `Hello ${name || 'Customer'}`,
-    message: 'There has been an update on your ServicePay transaction.',
+    message:
+      message ||
+      (direction === 'CREDIT'
+        ? 'Your ServicePay wallet has been credited.'
+        : direction === 'DEBIT'
+        ? 'A debit transaction was recorded on your ServicePay account.'
+        : 'There has been an update on your ServicePay transaction.'),
     details: [
       { label: 'Service', value: type || 'Transaction' },
+      ...(direction
+        ? [{ label: 'Type', value: direction }]
+        : []),
       { label: 'Amount', value: money(amount) },
       { label: 'Reference', value: reference || 'N/A' },
       { label: 'Status', value: status || 'N/A' },
+      ...(counterparty
+        ? [{ label: 'Sender / Recipient', value: counterparty }]
+        : []),
+      ...(provider
+        ? [{ label: 'Provider', value: provider }]
+        : []),
+      ...(serviceDetails
+        ? [{ label: 'Details', value: serviceDetails }]
+        : []),
+      ...(balance !== null &&
+      balance !== undefined
+        ? [{ label: 'Wallet Balance', value: money(balance) }]
+        : []),
       {
         label: 'Date',
-        value: date || new Date().toLocaleString('en-NG'),
+        value: new Date(
+          date || Date.now()
+        ).toLocaleString('en-NG', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+          timeZone: 'Africa/Lagos',
+        }),
       },
     ],
     buttonText: 'View ServicePay',
     buttonUrl: process.env.FRONTEND_URL || 'https://servicepay.ng',
+    footerMessage:
+      'Need help with this transaction? Contact ServicePay support at support@servicepay.ng.',
   }),
 });
 
