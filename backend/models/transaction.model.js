@@ -60,6 +60,10 @@ const transactionSchema =
           "AMANA",
           "EMPOWERMENT_FUNDING",
           "EMPOWERMENT_DISBURSEMENT",
+          "MARKETPLACE",
+          "REFERRAL_BONUS",
+           "SOLAR_DEPOSIT",
+           "SOLAR_INSTALLMENT",
         ],
         required: true,
         index: true,
@@ -123,20 +127,6 @@ const transactionSchema =
         type:
           mongoose.Schema.Types.Mixed,
         default: null,
-      },
-
-      refundStatus: {
-        type: String,
-        enum: ["NONE", "PENDING", "COMPLETED", "FAILED", "REJECTED"],
-        default: "NONE",
-        index: true,
-      },
-
-      reversalStatus: {
-        type: String,
-        enum: ["NONE", "PENDING", "COMPLETED", "FAILED", "REJECTED"],
-        default: "NONE",
-        index: true,
       },
     },
     {

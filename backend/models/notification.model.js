@@ -35,6 +35,7 @@ const notificationSchema = new mongoose.Schema(
         "EXAM_PIN",
         "ID_VERIFICATION",
         "GROUP_WALLET",
+        "SOLAR",
       ],
       default: "GENERAL",
     },
