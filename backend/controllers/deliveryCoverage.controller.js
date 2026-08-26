@@ -784,17 +784,41 @@ exports.bulkUpdateDeliveryCoverage =
 exports.validateDeliveryCoverage =
   async (req, res, next) => {
     try {
+      const pickupState =
+        req.body?.pickupState;
+
+      const deliveryState =
+        req.body?.deliveryState ??
+        req.body?.destinationState;
+
+      const hasPickupState =
+        normalizeText(pickupState) !== "";
+
+      const hasDeliveryState =
+        normalizeText(deliveryState) !== "";
+
+      /*
+       * The simplified customer request does not collect states.
+       * Legacy clients that still send either state continue through
+       * the complete coverage validation below.
+       */
+      if (
+        !hasPickupState &&
+        !hasDeliveryState
+      ) {
+        return next();
+      }
+
       await ensureCoverageSeeded();
 
       const pickupDefinition =
         stateDefinitionFromValue(
-          req.body.pickupState
+          pickupState
         );
 
       const deliveryDefinition =
         stateDefinitionFromValue(
-          req.body.deliveryState ??
-          req.body.destinationState
+          deliveryState
         );
 
       if (!pickupDefinition) {

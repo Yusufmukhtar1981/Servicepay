@@ -46,15 +46,12 @@ exports.createDelivery = async (req, res) => {
     } = req.body;
 
     if (
-      !pickupState ||
-      !deliveryState ||
       !pickupAddress ||
       !deliveryAddress ||
       !senderName ||
       !senderPhone ||
       !receiverName ||
-      !receiverPhone ||
-      !packageName
+      !receiverPhone
     ) {
       return res.status(400).json({
         success: false,
@@ -75,6 +72,13 @@ exports.createDelivery = async (req, res) => {
           "Package weight must be a valid number.",
       });
     }
+
+    const normalizedPackageName =
+      String(
+        packageName ||
+        "Delivery item"
+      ).trim() ||
+      "Delivery item";
 
     const deliveryFee = 1500;
 
@@ -171,20 +175,28 @@ exports.createDelivery = async (req, res) => {
             pickupState:
               req.deliveryCoverage
                 ?.pickupStateCode ||
-              String(
+              (
                 pickupState
-              )
-                .trim()
-                .toUpperCase(),
+                  ? String(
+                      pickupState
+                    )
+                      .trim()
+                      .toUpperCase()
+                  : null
+              ),
 
             deliveryState:
               req.deliveryCoverage
                 ?.deliveryStateCode ||
-              String(
+              (
                 deliveryState
-              )
-                .trim()
-                .toUpperCase(),
+                  ? String(
+                      deliveryState
+                    )
+                      .trim()
+                      .toUpperCase()
+                  : null
+              ),
 
             pickupAddress:
               String(
@@ -217,9 +229,7 @@ exports.createDelivery = async (req, res) => {
               ).trim(),
 
             packageName:
-              String(
-                packageName
-              ).trim(),
+              normalizedPackageName,
 
             packageDescription:
               String(

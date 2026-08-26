@@ -35,22 +35,19 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
 
   final TextEditingController receiverPhoneController = TextEditingController();
 
-  final TextEditingController packageNameController = TextEditingController();
-
   final TextEditingController packageDescriptionController =
       TextEditingController();
 
-  final TextEditingController packageWeightController = TextEditingController();
-
   bool isLoading = false;
   bool isLoadingCoverage = true;
-
   String coverageError = '';
-
   String selectedPickupStateCode = '';
   String selectedDeliveryStateCode = '';
-
   List<Map<String, dynamic>> deliveryStates = <Map<String, dynamic>>[];
+  String profileName = '';
+  String profilePhone = '';
+  String profileAddress = '';
+  bool useProfileDetails = false;
 
   @override
   void initState() {
@@ -70,18 +67,13 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     receiverNameController.dispose();
     receiverPhoneController.dispose();
 
-    packageNameController.dispose();
     packageDescriptionController.dispose();
-    packageWeightController.dispose();
 
     super.dispose();
   }
 
   Future<void> loadInitialInformation() async {
-    await Future.wait<void>([
-      loadSenderInformation(),
-      loadDeliveryCoverage(),
-    ]);
+    await loadProfileDetails();
   }
 
   Map<String, dynamic> mapFromDynamic(
@@ -171,7 +163,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     return '';
   }
 
-  Future<void> loadSenderInformation() async {
+  Future<void> loadProfileDetails() async {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
 
     if (!mounted) {
@@ -179,15 +171,27 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     }
 
     setState(() {
-      senderNameController.text = preferences.getString(
-            'user_name',
-          ) ??
+      profileName = preferences.getString('user_name') ??
+          preferences.getString('full_name') ??
           '';
+      profilePhone = preferences.getString('user_phone') ??
+          preferences.getString('phone') ??
+          '';
+      profileAddress = preferences.getString('user_address') ??
+          preferences.getString('profile_address') ??
+          preferences.getString('address') ??
+          '';
+    });
+  }
 
-      senderPhoneController.text = preferences.getString(
-            'user_phone',
-          ) ??
-          '';
+  void applyProfileDetails() {
+    setState(() {
+      senderNameController.text = profileName;
+      senderPhoneController.text = profilePhone;
+      if (profileAddress.isNotEmpty) {
+        pickupController.text = profileAddress;
+      }
+      useProfileDetails = true;
     });
   }
 
@@ -510,26 +514,6 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
   Future<void> createDelivery() async {
     FocusScope.of(context).unfocus();
 
-    if (isLoadingCoverage) {
-      showMessage(
-        'Please wait while Delivery Coverage is loading.',
-      );
-
-      return;
-    }
-
-    if (deliveryStates.isEmpty) {
-      showMessage(
-        'Delivery Coverage is unavailable. Please refresh and try again.',
-      );
-
-      return;
-    }
-
-    if (!validateSelectedStates()) {
-      return;
-    }
-
     if (!(formKey.currentState?.validate() ?? false)) {
       return;
     }
@@ -539,22 +523,6 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     if (token.isEmpty) {
       showMessage(
         'Your login session has expired. Please log in again.',
-      );
-
-      return;
-    }
-
-    final String weightText = packageWeightController.text.trim();
-
-    final double? packageWeight = weightText.isEmpty
-        ? 0
-        : double.tryParse(
-            weightText,
-          );
-
-    if (packageWeight == null || packageWeight < 0) {
-      showMessage(
-        'Please enter a valid package weight.',
       );
 
       return;
@@ -576,17 +544,13 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
               'Authorization': 'Bearer $token',
             },
             body: jsonEncode({
-              'pickupState': selectedPickupStateCode,
-              'deliveryState': selectedDeliveryStateCode,
               'pickupAddress': pickupController.text.trim(),
               'deliveryAddress': deliveryController.text.trim(),
               'senderName': senderNameController.text.trim(),
               'senderPhone': senderPhoneController.text.trim(),
               'receiverName': receiverNameController.text.trim(),
               'receiverPhone': receiverPhoneController.text.trim(),
-              'packageName': packageNameController.text.trim(),
               'packageDescription': packageDescriptionController.text.trim(),
-              'packageWeight': packageWeight,
             }),
           )
           .timeout(
@@ -639,12 +603,10 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                   const SizedBox(
                     height: 14,
                   ),
-                  Text(
-                    '${stateName(selectedPickupStateCode)} '
-                    'to '
-                    '${stateName(selectedDeliveryStateCode)}',
+                   const Text(
+                     'Delivery Fee: ₦1,500',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: primaryBlue,
                       fontWeight: FontWeight.w700,
                     ),
@@ -701,34 +663,11 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
           );
         }
       } else {
-        final Map<String, dynamic> root = decodeResponse(response);
-
-        final String errorCode = text(
-          root['code'],
-        );
-
         final String message = getErrorMessage(response);
 
-        if (errorCode == 'PICKUP_STATE_NOT_LIVE' ||
-            errorCode == 'DESTINATION_STATE_NOT_LIVE') {
-          final String code = text(
-            root['stateCode'],
-            fallback: errorCode == 'PICKUP_STATE_NOT_LIVE'
-                ? selectedPickupStateCode
-                : selectedDeliveryStateCode,
-          );
-
-          if (mounted) {
-            await showStateNotLiveDialog(
-              stateCode: code,
-              pickup: errorCode == 'PICKUP_STATE_NOT_LIVE',
-            );
-          }
-        } else {
-          showMessage(
-            message,
-          );
-        }
+        showMessage(
+          message,
+        );
       }
     } on TimeoutException {
       showMessage(
@@ -1153,7 +1092,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
       backgroundColor: const Color(0xFFF5F7FB),
       appBar: AppBar(
         title: const Text(
-          'Create Delivery',
+          'Create Delivery Request',
           style: TextStyle(
             fontWeight: FontWeight.w700,
           ),
@@ -1164,15 +1103,6 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
           0xFF111827,
         ),
         elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: 'Refresh coverage',
-            onPressed: isLoadingCoverage ? null : loadDeliveryCoverage,
-            icon: const Icon(
-              Icons.refresh_rounded,
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: Form(
@@ -1209,7 +1139,8 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                       ),
                       Expanded(
                         child: Text(
-                          'Select the pickup and destination states, then provide the delivery information below.',
+                          'Enter the pickup and receiver details below. '
+                          'Your request will be reviewed and assigned to a rider.',
                           style: TextStyle(
                             color: Color(
                               0xFF1E3A5F,
@@ -1224,54 +1155,66 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                 const SizedBox(
                   height: 18,
                 ),
-                buildCoverageLoadingCard(),
-                buildSectionTitle(
-                  'Pickup and Destination',
+                Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  elevation: 0,
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: CheckboxListTile(
+                    value: useProfileDetails,
+                    onChanged: isLoading
+                        ? null
+                        : (bool? value) {
+                            if (value == true) {
+                              applyProfileDetails();
+                            } else {
+                              setState(() {
+                                useProfileDetails = false;
+                              });
+                            }
+                          },
+                    secondary: const Icon(
+                      Icons.person_pin_circle_outlined,
+                      color: primaryBlue,
+                    ),
+                    title: const Text(
+                      'Use my profile details',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text(
+                      'Automatically fill in your pickup name, phone number, and address.',
+                    ),
+                    controlAffinity: ListTileControlAffinity.trailing,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    activeColor: primaryBlue,
+                  ),
                 ),
-                if (!isLoadingCoverage &&
-                    coverageError.isEmpty &&
-                    deliveryStates.isNotEmpty) ...[
-                  buildStateDropdown(
-                    label: 'Pickup State',
-                    selectedValue: selectedPickupStateCode,
-                    icon: Icons.location_on_outlined,
-                    pickup: true,
-                  ),
-                  buildTextField(
-                    controller: pickupController,
-                    label: 'Pickup Address',
-                    icon: Icons.location_on_outlined,
-                    hint: 'Enter the full pickup address',
-                    maxLines: 2,
-                  ),
-                  buildStateDropdown(
-                    label: 'Destination State',
-                    selectedValue: selectedDeliveryStateCode,
-                    icon: Icons.flag_outlined,
-                    pickup: false,
-                  ),
-                  buildTextField(
-                    controller: deliveryController,
-                    label: 'Delivery Address',
-                    icon: Icons.flag_circle_outlined,
-                    hint: 'Enter the full delivery address',
-                    maxLines: 2,
-                  ),
-                ],
                 buildSectionTitle(
-                  'Sender Information',
+                  'Pickup Details',
                 ),
                 buildTextField(
                   controller: senderNameController,
-                  label: 'Sender Name',
+                  label: 'Pickup Name',
                   icon: Icons.person_outline,
                 ),
                 buildTextField(
                   controller: senderPhoneController,
-                  label: 'Sender Phone',
+                  label: 'Pickup Phone Number',
                   icon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
                   validator: validatePhone,
+                ),
+                buildTextField(
+                  controller: pickupController,
+                  label: 'Pickup Address',
+                  icon: Icons.location_on_outlined,
+                  hint: 'Enter the full pickup address',
+                  maxLines: 2,
                 ),
                 buildSectionTitle(
                   'Receiver Information',
@@ -1288,50 +1231,46 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                   keyboardType: TextInputType.phone,
                   validator: validatePhone,
                 ),
-                buildSectionTitle(
-                  'Package Information',
-                ),
                 buildTextField(
-                  controller: packageNameController,
-                  label: 'Package Name',
-                  icon: Icons.inventory_2_outlined,
-                  hint: 'For example: Documents',
+                  controller: deliveryController,
+                  label: 'Receiver Address',
+                  icon: Icons.flag_circle_outlined,
+                  hint: 'Enter the full receiver address',
+                  maxLines: 2,
                 ),
                 buildTextField(
                   controller: packageDescriptionController,
-                  label: 'Package Description',
+                  label: 'Delivery Note / Item Description',
                   icon: Icons.description_outlined,
-                  hint: 'Describe the package',
+                  hint: 'Optional instructions or item details',
                   maxLines: 3,
                   validator: (_) => null,
                 ),
-                buildTextField(
-                  controller: packageWeightController,
-                  label: 'Package Weight in KG',
-                  icon: Icons.monitor_weight_outlined,
-                  hint: 'For example: 2.5',
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                Card(
+                  margin: const EdgeInsets.only(top: 4, bottom: 16),
+                  elevation: 0,
+                  color: const Color(0xFFEAF7F0),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  validator: (
-                    String? value,
-                  ) {
-                    final String input = value?.trim() ?? '';
-
-                    if (input.isEmpty) {
-                      return null;
-                    }
-
-                    final double? weight = double.tryParse(
-                      input,
-                    );
-
-                    if (weight == null || weight < 0) {
-                      return 'Please enter a valid package weight.';
-                    }
-
-                    return null;
-                  },
+                  child: const ListTile(
+                    leading: Icon(
+                      Icons.payments_outlined,
+                      color: primaryGreen,
+                    ),
+                    title: Text(
+                      'Delivery Fee',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    trailing: Text(
+                      '₦1,500',
+                      style: TextStyle(
+                        color: primaryGreen,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(
                   height: 8,
@@ -1340,12 +1279,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                   width: double.infinity,
                   height: 54,
                   child: FilledButton.icon(
-                    onPressed: isLoading ||
-                            isLoadingCoverage ||
-                            coverageError.isNotEmpty ||
-                            deliveryStates.isEmpty
-                        ? null
-                        : createDelivery,
+                    onPressed: isLoading ? null : createDelivery,
                     icon: isLoading
                         ? const SizedBox(
                             width: 22,
@@ -1359,7 +1293,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                             Icons.send_rounded,
                           ),
                     label: Text(
-                      isLoading ? 'Submitting...' : 'Create Delivery Request',
+                      isLoading ? 'Submitting...' : 'Request Delivery',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -1380,7 +1314,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                 ),
                 const Center(
                   child: Text(
-                    'The delivery fee will be provided after your request is reviewed.',
+                    'A fixed delivery fee of ₦1,500 will be debited from your wallet.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,

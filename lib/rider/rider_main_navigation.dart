@@ -2115,15 +2115,16 @@ class RiderDeliveryDetailsPage extends StatelessWidget {
     final dynamic customerData = delivery['customerId'] ?? delivery['customer'];
 
     final String customer = textValue(
-      delivery['customerName'] ??
+      delivery['senderName'] ??
+          delivery['customerName'] ??
           (customerData is Map
               ? customerData['fullName'] ?? customerData['name']
               : null),
     );
 
     final String phone = textValue(
-      delivery['customerPhone'] ??
-          delivery['senderPhone'] ??
+      delivery['senderPhone'] ??
+          delivery['customerPhone'] ??
           (customerData is Map ? customerData['phone'] : null),
     );
 
@@ -2147,7 +2148,10 @@ class RiderDeliveryDetailsPage extends StatelessWidget {
     );
 
     final String note = textValue(
-      delivery['note'] ?? delivery['notes'] ?? delivery['deliveryNote'],
+      delivery['packageDescription'] ??
+          delivery['note'] ??
+          delivery['notes'] ??
+          delivery['deliveryNote'],
     );
 
     final String fee = textValue(delivery['deliveryFee'], fallback: '1500');
@@ -2209,16 +2213,16 @@ class RiderDeliveryDetailsPage extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _RiderDetailCard(
-            title: 'Customer',
+            title: 'Pickup',
             rows: <_RiderDetailRow>[
               _RiderDetailRow(
                 icon: Icons.person_outline,
-                label: 'Name',
+                label: 'Pickup Name',
                 value: customer,
               ),
               _RiderDetailRow(
                 icon: Icons.phone_outlined,
-                label: 'Phone',
+                label: 'Pickup Phone',
                 value: phone,
               ),
             ],
