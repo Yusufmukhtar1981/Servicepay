@@ -1,0 +1,161 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class SupportApiException implements Exception {
+  const SupportApiException(this.message, {this.statusCode});
+  final String message;
+  final int? statusCode;
+  @override
+  String toString() => message;
+}
+
+class SupportTicket {
+  const SupportTicket(this.data);
+  final Map<String, dynamic> data;
+  String get id => (data['_id'] ?? data['id'] ?? '').toString();
+  String get reference => (data['caseReference'] ??
+          data['reference'] ??
+          data['ticketReference'] ??
+          id)
+      .toString();
+  String get subject => (data['subject'] ?? 'Support request').toString();
+  String get description => (data['description'] ?? '').toString();
+  String get status => (data['status'] ?? 'OPEN').toString().toUpperCase();
+  String get priority =>
+      (data['priority'] ?? 'NORMAL').toString().toUpperCase();
+  String get resolution =>
+      (data['resolution'] ?? data['resolutionNote'] ?? '').toString();
+  List<Map<String, dynamic>> get replies =>
+      _maps(data['replies'] ?? data['messages']);
+  static List<Map<String, dynamic>> _maps(dynamic raw) => raw is List
+      ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+      : <Map<String, dynamic>>[];
+  factory SupportTicket.fromJson(Map<String, dynamic> json) =>
+      SupportTicket(json);
+}
+
+class SupportTicketPage {
+  const SupportTicketPage({required this.tickets, this.total = 0});
+  final List<SupportTicket> tickets;
+  final int total;
+}
+
+class SupportApiService {
+  SupportApiService({http.Client? client})
+      : _client = client ?? http.Client(),
+        _ownsClient = client == null;
+  static const String baseUrl = 'https://api.servicepay.ng/api/support';
+  final http.Client _client;
+  final bool _ownsClient;
+
+  Future<SupportTicketPage> tickets({int page = 1, int limit = 20}) async {
+    final body = await _request('GET', 'tickets',
+        query: {'page': '$page', 'limit': '$limit'});
+    final pageData =
+        body['data'] is Map ? Map<String, dynamic>.from(body['data']) : body;
+    final raw = pageData['tickets'] ?? pageData['items'];
+    final tickets = raw is List
+        ? raw
+            .whereType<Map>()
+            .map((e) => SupportTicket.fromJson(Map<String, dynamic>.from(e)))
+            .toList()
+        : <SupportTicket>[];
+    return SupportTicketPage(
+        tickets: tickets,
+        total: (pageData['total'] as num?)?.toInt() ?? tickets.length);
+  }
+
+  Future<SupportTicket> ticket(String id) async {
+    final body = await _request('GET', 'tickets/${Uri.encodeComponent(id)}');
+    final raw = body['data'] is Map ? body['data'] : body;
+    return SupportTicket.fromJson(Map<String, dynamic>.from(raw as Map));
+  }
+
+  Future<SupportTicket> createTicket({
+    required String subject,
+    required String description,
+    required String priority,
+    required String idempotencyKey,
+  }) async {
+    final body = await _request('POST', 'tickets', payload: {
+      'subject': subject.trim(),
+      'description': description.trim(),
+      'priority': priority,
+      'idempotencyKey': idempotencyKey,
+    });
+    final raw = body['data'] is Map
+        ? body['data']
+        : body['ticket'] is Map
+            ? body['ticket']
+            : body;
+    return SupportTicket.fromJson(Map<String, dynamic>.from(raw as Map));
+  }
+
+  Future<SupportTicket> reply(String id, String message,
+      {required String idempotencyKey}) async {
+    final body = await _request(
+        'POST', 'tickets/${Uri.encodeComponent(id)}/replies',
+        payload: {'message': message.trim(), 'idempotencyKey': idempotencyKey});
+    final raw = body['data'] is Map
+        ? body['data']
+        : body['ticket'] is Map
+            ? body['ticket']
+            : body;
+    return SupportTicket.fromJson(Map<String, dynamic>.from(raw as Map));
+  }
+
+  Future<Map<String, dynamic>> _request(String method, String path,
+      {Map<String, String>? query, Map<String, dynamic>? payload}) async {
+    final uri = Uri.parse('$baseUrl/$path').replace(queryParameters: query);
+    final headers = await _headers(payload != null);
+    final response = method == 'POST'
+        ? await _client
+            .post(uri, headers: headers, body: jsonEncode(payload))
+            .timeout(const Duration(seconds: 30))
+        : await _client
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 30));
+    return _decode(response);
+  }
+
+  Future<Map<String, String>> _headers(bool json) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token')?.trim() ??
+        prefs.getString('token')?.trim() ??
+        '';
+    if (token.isEmpty) {
+      throw const SupportApiException(
+          'Your login session was not found. Please sign in again.');
+    }
+    return {
+      'Accept': 'application/json',
+      'Authorization':
+          'Bearer ${token.replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '')}',
+      if (json) 'Content-Type': 'application/json'
+    };
+  }
+
+  Map<String, dynamic> _decode(http.Response response) {
+    dynamic raw;
+    try {
+      raw = jsonDecode(response.body);
+    } catch (_) {}
+    final data =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        data['success'] == false) {
+      throw SupportApiException(
+          (data['message'] ?? 'Unable to contact support. Please try again.')
+              .toString(),
+          statusCode: response.statusCode);
+    }
+    return data;
+  }
+
+  void close() {
+    if (_ownsClient) _client.close();
+  }
+}

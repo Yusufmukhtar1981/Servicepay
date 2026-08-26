@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'support_tickets_screen.dart';
+import 'services/support_api_service.dart';
 
 class HelpSupportScreen extends StatelessWidget {
   const HelpSupportScreen({super.key});
@@ -89,144 +91,10 @@ class HelpSupportScreen extends StatelessWidget {
   Future<void> _reportProblem(
     BuildContext context,
   ) async {
-    final subjectController =
-        TextEditingController();
-
-    final messageController =
-        TextEditingController();
-
-    final submitted = await showDialog<bool>(
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            'Report a Problem',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          content: SizedBox(
-            width: 450,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: subjectController,
-                    decoration: InputDecoration(
-                      labelText: 'Issue title',
-                      hintText:
-                          'Example: Wallet not updated',
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: messageController,
-                    minLines: 4,
-                    maxLines: 6,
-                    decoration: InputDecoration(
-                      labelText: 'Description',
-                      hintText:
-                          'Explain the problem you experienced.',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
-              child: const Text('Cancel'),
-            ),
-            FilledButton.icon(
-              onPressed: () {
-                if (subjectController.text
-                        .trim()
-                        .isEmpty ||
-                    messageController.text
-                        .trim()
-                        .isEmpty) {
-                  ScaffoldMessenger.of(
-                    dialogContext,
-                  ).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Enter the issue title and description.',
-                      ),
-                    ),
-                  );
-                  return;
-                }
-
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              icon: const Icon(
-                Icons.send_rounded,
-              ),
-              label: const Text('Send'),
-              style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (submitted != true) {
-      subjectController.dispose();
-      messageController.dispose();
-      return;
-    }
-
-    final subject =
-        subjectController.text.trim();
-
-    final description =
-        messageController.text.trim();
-
-    subjectController.dispose();
-    messageController.dispose();
-
-    if (!context.mounted) return;
-
-    await _openLink(
-      context,
-      Uri(
-        scheme: 'mailto',
-        path: supportEmail,
-        queryParameters: {
-          'subject':
-              'Servicepay Problem Report: $subject',
-          'body':
-              'Hello Servicepay Support,\n\n'
-                  'Issue: $subject\n\n'
-                  'Description:\n$description\n\n'
-                  'Please assist me with this issue.',
-        },
-      ),
+      builder: (_) => const _ReportProblemDialog(),
     );
   }
 
@@ -339,8 +207,7 @@ class HelpSupportScreen extends StatelessWidget {
               maxWidth: 750,
             ),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SupportHeader(
                   onWhatsApp: () {
@@ -353,15 +220,11 @@ class HelpSupportScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 SupportActionCard(
-                  icon:
-                      Icons.chat_bubble_outline_rounded,
+                  icon: Icons.chat_bubble_outline_rounded,
                   title: 'WhatsApp Support',
-                  subtitle:
-                      'Chat with Servicepay support on WhatsApp.',
-                  iconColor:
-                      const Color(0xFF16A34A),
-                  iconBackground:
-                      const Color(0xFFDCFCE7),
+                  subtitle: 'Chat with Servicepay support on WhatsApp.',
+                  iconColor: const Color(0xFF16A34A),
+                  iconBackground: const Color(0xFFDCFCE7),
                   onTap: () {
                     _openWhatsApp(context);
                   },
@@ -369,12 +232,9 @@ class HelpSupportScreen extends StatelessWidget {
                 SupportActionCard(
                   icon: Icons.call_outlined,
                   title: 'Call Support',
-                  subtitle:
-                      'Call $supportPhone for assistance.',
-                  iconColor:
-                      const Color(0xFF2563EB),
-                  iconBackground:
-                      const Color(0xFFDBEAFE),
+                  subtitle: 'Call $supportPhone for assistance.',
+                  iconColor: const Color(0xFF2563EB),
+                  iconBackground: const Color(0xFFDBEAFE),
                   onTap: () {
                     _callSupport(context);
                   },
@@ -383,32 +243,37 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.email_outlined,
                   title: 'Email Support',
                   subtitle: supportEmail,
-                  iconColor:
-                      const Color(0xFF7C3AED),
-                  iconBackground:
-                      const Color(0xFFEDE9FE),
+                  iconColor: const Color(0xFF7C3AED),
+                  iconBackground: const Color(0xFFEDE9FE),
                   onTap: () {
                     _emailSupport(context);
                   },
                 ),
                 SupportActionCard(
-                  icon:
-                      Icons.report_problem_outlined,
+                  icon: Icons.report_problem_outlined,
                   title: 'Report a Problem',
                   subtitle:
                       'Send details about a failed service or account issue.',
-                  iconColor:
-                      const Color(0xFFDC2626),
-                  iconBackground:
-                      const Color(0xFFFEE2E2),
+                  iconColor: const Color(0xFFDC2626),
+                  iconBackground: const Color(0xFFFEE2E2),
                   onTap: () {
                     _reportProblem(context);
                   },
                 ),
+                SupportActionCard(
+                  icon: Icons.confirmation_number_outlined,
+                  title: 'My Support Tickets',
+                  subtitle: 'Track problem reports and reply to support.',
+                  iconColor: const Color(0xFF0F766E),
+                  iconBackground: const Color(0xFFCCFBF1),
+                  onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const SupportTicketsScreen())),
+                ),
                 const SizedBox(height: 24),
                 const SectionTitle(
-                  title:
-                      'Frequently Asked Questions',
+                  title: 'Frequently Asked Questions',
                 ),
                 const SizedBox(height: 12),
                 const FaqSection(),
@@ -418,29 +283,21 @@ class HelpSupportScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 SupportActionCard(
-                  icon:
-                      Icons.description_outlined,
+                  icon: Icons.description_outlined,
                   title: 'Terms of Service',
-                  subtitle:
-                      'Read the conditions for using Servicepay.',
-                  iconColor:
-                      const Color(0xFFD97706),
-                  iconBackground:
-                      const Color(0xFFFEF3C7),
+                  subtitle: 'Read the conditions for using Servicepay.',
+                  iconColor: const Color(0xFFD97706),
+                  iconBackground: const Color(0xFFFEF3C7),
                   onTap: () {
                     _openTerms(context);
                   },
                 ),
                 SupportActionCard(
-                  icon:
-                      Icons.privacy_tip_outlined,
+                  icon: Icons.privacy_tip_outlined,
                   title: 'Privacy Policy',
-                  subtitle:
-                      'Learn how Servicepay handles your information.',
-                  iconColor:
-                      const Color(0xFF0F766E),
-                  iconBackground:
-                      const Color(0xFFCCFBF1),
+                  subtitle: 'Learn how Servicepay handles your information.',
+                  iconColor: const Color(0xFF0F766E),
+                  iconBackground: const Color(0xFFCCFBF1),
                   onTap: () {
                     _openPrivacy(context);
                   },
@@ -525,8 +382,7 @@ class SupportHeader extends StatelessWidget {
             ),
             style: FilledButton.styleFrom(
               backgroundColor: Colors.white,
-              foregroundColor:
-                  HelpSupportScreen.primaryGreen,
+              foregroundColor: HelpSupportScreen.primaryGreen,
             ),
           ),
         ],
@@ -583,15 +439,13 @@ class SupportActionCard extends StatelessWidget {
       elevation: 0,
       color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         side: const BorderSide(
           color: Color(0xFFE8EDF3),
         ),
       ),
       child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(
+        contentPadding: const EdgeInsets.symmetric(
           horizontal: 15,
           vertical: 8,
         ),
@@ -600,8 +454,7 @@ class SupportActionCard extends StatelessWidget {
           height: 48,
           decoration: BoxDecoration(
             color: iconBackground,
-            borderRadius:
-                BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(
             icon,
@@ -634,41 +487,34 @@ class SupportActionCard extends StatelessWidget {
 class FaqSection extends StatelessWidget {
   const FaqSection({super.key});
 
-  static const List<Map<String, String>>
-      faqs = [
+  static const List<Map<String, String>> faqs = [
     {
-      'question':
-          'How do I fund my wallet?',
+      'question': 'How do I fund my wallet?',
       'answer':
           'Open Wallet, tap Fund Wallet, transfer to the official Servicepay account and submit your payment details.',
     },
     {
-      'question':
-          'Why is my wallet balance not updated?',
+      'question': 'Why is my wallet balance not updated?',
       'answer':
           'Refresh the Wallet page. Manual funding must first be reviewed and approved by an administrator.',
     },
     {
-      'question':
-          'Can I transfer to another Servicepay user?',
+      'question': 'Can I transfer to another Servicepay user?',
       'answer':
           'Yes. Open Transfer, enter the registered phone number, confirm the amount and submit.',
     },
     {
-      'question':
-          'What should I do if a transaction fails?',
+      'question': 'What should I do if a transaction fails?',
       'answer':
           'Check your wallet balance and internet connection. If money was deducted, contact support with the transaction reference.',
     },
     {
-      'question':
-          'How do I verify my identity?',
+      'question': 'How do I verify my identity?',
       'answer':
           'Open Verify ID, select the identity type, provide the required information and submit.',
     },
     {
-      'question':
-          'How do I keep my account secure?',
+      'question': 'How do I keep my account secure?',
       'answer':
           'Never share your password, login code or verification details with another person.',
     },
@@ -679,19 +525,14 @@ class FaqSection extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: const Color(0xFFE8EDF3),
         ),
       ),
       child: Column(
         children: [
-          for (
-            int index = 0;
-            index < faqs.length;
-            index++
-          ) ...[
+          for (int index = 0; index < faqs.length; index++) ...[
             ExpansionTile(
               title: Text(
                 faqs[index]['question']!,
@@ -700,8 +541,7 @@ class FaqSection extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              childrenPadding:
-                  const EdgeInsets.fromLTRB(
+              childrenPadding: const EdgeInsets.fromLTRB(
                 16,
                 0,
                 16,
@@ -709,8 +549,7 @@ class FaqSection extends StatelessWidget {
               ),
               children: [
                 Align(
-                  alignment:
-                      Alignment.centerLeft,
+                  alignment: Alignment.centerLeft,
                   child: Text(
                     faqs[index]['answer']!,
                     style: const TextStyle(
@@ -722,8 +561,7 @@ class FaqSection extends StatelessWidget {
                 ),
               ],
             ),
-            if (index < faqs.length - 1)
-              const Divider(height: 1),
+            if (index < faqs.length - 1) const Divider(height: 1),
           ],
         ],
       ),
@@ -741,8 +579,7 @@ class LegalSection {
   });
 }
 
-class LegalInformationScreen
-    extends StatelessWidget {
+class LegalInformationScreen extends StatelessWidget {
   final String title;
   final IconData icon;
   final List<LegalSection> sections;
@@ -757,11 +594,9 @@ class LegalInformationScreen
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          HelpSupportScreen.backgroundColor,
+      backgroundColor: HelpSupportScreen.backgroundColor,
       appBar: AppBar(
-        backgroundColor:
-            HelpSupportScreen.primaryGreen,
+        backgroundColor: HelpSupportScreen.primaryGreen,
         foregroundColor: Colors.white,
         title: Text(title),
       ),
@@ -769,8 +604,7 @@ class LegalInformationScreen
         padding: const EdgeInsets.all(18),
         child: Center(
           child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(
+            constraints: const BoxConstraints(
               maxWidth: 750,
             ),
             child: Container(
@@ -778,17 +612,14 @@ class LegalInformationScreen
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius:
-                    BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(22),
               ),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
                     icon,
-                    color: HelpSupportScreen
-                        .primaryGreen,
+                    color: HelpSupportScreen.primaryGreen,
                     size: 48,
                   ),
                   const SizedBox(height: 16),
@@ -796,27 +627,23 @@ class LegalInformationScreen
                     title,
                     style: const TextStyle(
                       fontSize: 24,
-                      fontWeight:
-                          FontWeight.w900,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                   const SizedBox(height: 20),
-                  for (final section
-                      in sections) ...[
+                  for (final section in sections) ...[
                     Text(
                       section.title,
                       style: const TextStyle(
                         fontSize: 16,
-                        fontWeight:
-                            FontWeight.w800,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 7),
                     Text(
                       section.content,
                       style: const TextStyle(
-                        color:
-                            Color(0xFF64748B),
+                        color: Color(0xFF64748B),
                         fontSize: 14,
                         height: 1.6,
                       ),
@@ -831,4 +658,122 @@ class LegalInformationScreen
       ),
     );
   }
+}
+
+class _ReportProblemDialog extends StatefulWidget {
+  const _ReportProblemDialog();
+  @override
+  State<_ReportProblemDialog> createState() => _ReportProblemDialogState();
+}
+
+class _ReportProblemDialogState extends State<_ReportProblemDialog> {
+  final _subject = TextEditingController();
+  final _description = TextEditingController();
+  final _api = SupportApiService();
+  final String _idempotencyKey =
+      'support-${DateTime.now().microsecondsSinceEpoch}';
+  String _priority = 'NORMAL';
+  bool _submitting = false;
+  String _error = '';
+  @override
+  void dispose() {
+    _subject.dispose();
+    _description.dispose();
+    _api.close();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_subject.text.trim().isEmpty || _description.text.trim().isEmpty) {
+      setState(() => _error = 'Enter the issue title and description.');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = '';
+    });
+    try {
+      final ticket = await _api.createTicket(
+          subject: _subject.text,
+          description: _description.text,
+          priority: _priority,
+          idempotencyKey: _idempotencyKey);
+      if (!mounted) return;
+      await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+                title: const Text('Problem reported'),
+                content: Text(
+                    'Your support ticket has been created.\nReference: ${ticket.reference}'),
+                actions: [
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Done'))
+                ],
+              ));
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Report a Problem'),
+        content: SizedBox(
+            width: 450,
+            child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (_error.isNotEmpty)
+                Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(_error,
+                        style: const TextStyle(color: Colors.red))),
+              TextField(
+                  controller: _subject,
+                  enabled: !_submitting,
+                  decoration: const InputDecoration(
+                      labelText: 'Issue title', border: OutlineInputBorder())),
+              const SizedBox(height: 14),
+              TextField(
+                  controller: _description,
+                  enabled: !_submitting,
+                  minLines: 4,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                      labelText: 'Description',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder())),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                  value: _priority,
+                  decoration: const InputDecoration(
+                      labelText: 'Priority', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: 'LOW', child: Text('Low')),
+                    DropdownMenuItem(value: 'NORMAL', child: Text('Normal')),
+                    DropdownMenuItem(value: 'HIGH', child: Text('High')),
+                    DropdownMenuItem(value: 'URGENT', child: Text('Urgent')),
+                  ],
+                  onChanged: _submitting
+                      ? null
+                      : (value) => setState(() => _priority = value!)),
+            ]))),
+        actions: [
+          TextButton(
+              onPressed: _submitting ? null : () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton.icon(
+              onPressed: _submitting ? null : _submit,
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.send_rounded),
+              label: const Text('Submit'))
+        ],
+      );
 }

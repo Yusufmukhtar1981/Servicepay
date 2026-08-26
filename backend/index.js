@@ -22,6 +22,7 @@ const {
 const {
   verifyEmailConnection,
 } = require("./services/email.service");
+const { resumePendingCampaigns } = require("./services/communicationCampaign.service");
 
 const paystackRoutes = require(
   "./routes/paystack.routes"
@@ -55,6 +56,9 @@ const deliveryRoutes = require(
 const notificationRoutes = require(
   "./routes/notification.routes"
 );
+const adminCommunicationsRoutes = require(
+  "./routes/adminCommunications.routes"
+);
 
 const adminRoutes = require(
   "./routes/admin.routes"
@@ -62,6 +66,7 @@ const adminRoutes = require(
 const fintechOperationsRoutes = require(
   "./routes/fintechOperations.routes"
 );
+const supportRoutes = require("./routes/support.routes");
 
 const walletRoutes = require(
   "./routes/wallet.routes"
@@ -208,6 +213,12 @@ app.use(
   "/api/admin/fintech-operations",
   fintechOperationsRoutes
 );
+app.use(
+  "/api/admin/communications",
+  adminCommunicationsRoutes
+);
+app.use("/api/support", supportRoutes.customer);
+app.use("/api/admin/support", supportRoutes.admin);
 
 app.use(
   "/api/wallet",
@@ -333,6 +344,7 @@ server.listen(PORT, "0.0.0.0", () => {
     .then(async () => {
       const emailStatus =
         await verifyEmailConnection();
+      await resumePendingCampaigns();
 
       console.log(
         emailStatus.success

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'admin_dashboard_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_bulk_email_screen.dart';
+import 'admin_customer_support_screen.dart';
 import 'admin_kyc_review_screen.dart';
 import 'admin_empowerment_screen.dart';
 import 'admin_amana_screen.dart';
@@ -26,6 +28,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     AdminDashboardScreen(),
     AdminManualFundingScreen(),
     AdminNotificationsScreen(),
+    AdminBulkEmailScreen(),
+    AdminCustomerSupportScreen(),
     AdminFintechOperationsScreen(),
     AdminCustomerWithdrawalsScreen(),
     AdminAirtimeToCashScreen(),
@@ -89,6 +93,16 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
               Icons.notifications_rounded,
             ),
             label: 'Notifications',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.mark_email_unread_outlined),
+            activeIcon: Icon(Icons.mark_email_unread_rounded),
+            label: 'Bulk Email',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.support_agent_outlined),
+            activeIcon: Icon(Icons.support_agent_rounded),
+            label: 'Support',
           ),
           BottomNavigationBarItem(
             icon: Icon(

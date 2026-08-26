@@ -12,7 +12,7 @@ const {
   sendNotificationToAll,
 } = require("../controllers/notification.controller");
 
-const { protect } = require("../middleware/auth.middleware");
+const { protect, adminOnly } = require("../middleware/auth.middleware");
 
 // Customer
 router.get("/", protect, getMyNotifications);
@@ -23,7 +23,7 @@ router.delete("/:id", protect, deleteNotification);
 router.delete("/", protect, deleteAllNotifications);
 
 // Admin
-router.post("/send", protect, sendNotificationToUser);
-router.post("/broadcast", protect, sendNotificationToAll);
+router.post("/send", protect, adminOnly("HEAD_OFFICE"), sendNotificationToUser);
+router.post("/broadcast", protect, adminOnly("HEAD_OFFICE"), sendNotificationToAll);
 
 module.exports = router;

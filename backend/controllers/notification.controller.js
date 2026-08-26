@@ -244,6 +244,7 @@ exports.sendNotificationToAll = async (req, res) => {
 
     const users = await User.find({
       status: "ACTIVE",
+      role: "CUSTOMER",
     }).select("_id");
 
     if (users.length === 0) {

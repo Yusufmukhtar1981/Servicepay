@@ -3,6 +3,8 @@ import 'admin_manual_funding_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_notifications_screen.dart';
+import 'admin_bulk_email_screen.dart';
+import 'admin_customer_support_screen.dart';
 import 'admin_product_commission_screen.dart';
 import 'admin_solar_screen.dart';
 import 'admin_trust_profiles_screen.dart';
@@ -225,7 +227,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             icon: const Icon(Icons.refresh),
           ),
           IconButton(
-            tooltip: 'Send Notifications',
+            tooltip: 'In-App Notifications',
             onPressed: () {
               openPage(
                 const AdminNotificationsScreen(),
@@ -431,13 +433,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     },
                   ),
                   buildAdminAction(
-                    title: 'Send Notifications',
+                    title: 'In-App Notifications',
                     subtitle:
-                        'Send direct or broadcast notifications to users.',
+                        'Send targeted messages to the customer notification area.',
                     icon: Icons.notifications_active_outlined,
                     onTap: () {
                       openPage(
                         const AdminNotificationsScreen(),
+                      );
+                    },
+                  ),
+                  buildAdminAction(
+                    title: 'Bulk Email',
+                    subtitle:
+                        'Send Resend-powered customer broadcasts and review delivery history.',
+                    icon: Icons.mark_email_unread_outlined,
+                    onTap: () {
+                      openPage(
+                        const AdminBulkEmailScreen(),
+                      );
+                    },
+                  ),
+                  buildAdminAction(
+                    title: 'Customer Support',
+                    subtitle:
+                        'Review, assign, reply to, and resolve customer tickets.',
+                    icon: Icons.support_agent_outlined,
+                    onTap: () {
+                      openPage(
+                        const AdminCustomerSupportScreen(),
                       );
                     },
                   ),

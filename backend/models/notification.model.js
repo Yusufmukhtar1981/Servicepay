@@ -72,6 +72,16 @@ notificationSchema.index({
   userId: 1,
   createdAt: -1,
 });
+notificationSchema.index(
+  { userId: 1, referenceId: 1, referenceType: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      referenceId: { $type: "objectId" },
+      referenceType: "COMMUNICATION_CAMPAIGN",
+    },
+  }
+);
 
 module.exports = mongoose.model(
   "Notification",
