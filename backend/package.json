@@ -12,6 +12,10 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": "20.18.x",
+    "npm": "10.x"
+  },
   "dependencies": {
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
@@ -24,7 +28,6 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.8.0",
     "multer": "^2.2.0",
-    "ngrok": "^5.0.0-beta.2",
     "nodemailer": "^9.0.5",
     "resend": "^6.20.0"
   },

@@ -1,4 +1,12 @@
 {
+  "private": true,
+  "engines": {
+    "node": "20.18.x",
+    "npm": "10.x"
+  },
+  "scripts": {
+    "start": "node backend/index.js"
+  },
   "dependencies": {
     "axios": "^1.19.0",
     "bcryptjs": "^3.0.3",
@@ -13,9 +21,5 @@
     "multer": "^2.2.0",
     "nodemailer": "^9.0.5",
     "resend": "^6.22.0"
-  },
-  "private": true,
-  "scripts": {
-    "start": "node backend/index.js"
   }
 }
