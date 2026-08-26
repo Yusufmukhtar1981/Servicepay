@@ -8,20 +8,14 @@ const PREMBLY_BASE_URL =
   process.env.PREMBLY_BASE_URL || "https://api.prembly.com";
 
 const PREMBLY_APP_ID = process.env.PREMBLY_APP_ID || "";
-const PREMBLY_SECRET_KEY =
-  process.env.PREMBLY_SECRET_KEY || "";
+const PREMBLY_SECRET_KEY = process.env.PREMBLY_SECRET_KEY || "";
 
 const verificationFees = {
   PREMIUM: 250,
-  STANDARD: 250,
-  REGULAR: 200,
-  INFORMATION: 150,
 };
 
 const generateReference = (prefix = "NIN") => {
-  const random = Math.floor(
-    100000 + Math.random() * 900000
-  );
+  const random = Math.floor(100000 + Math.random() * 900000);
   return `${prefix}-${Date.now()}-${random}`;
 };
 
@@ -36,18 +30,8 @@ const maskIdNumber = (value) => {
 };
 
 const normalizeSlipType = (value) => {
-  const slipType = String(value || "")
-    .trim()
-    .toUpperCase();
-
-  if (
-    ["PREMIUM", "STANDARD", "REGULAR", "INFORMATION"].includes(
-      slipType
-    )
-  ) {
-    return slipType;
-  }
-
+  // NIN now has one customer-facing card format. The argument is retained
+  // for compatibility with older clients, but is intentionally ignored.
   return "PREMIUM";
 };
 
@@ -56,11 +40,7 @@ const normalizeSearchType = (value) => {
     .trim()
     .toUpperCase();
 
-  if (
-    ["NIN_NUMBER", "PHONE_NUMBER", "DEMOGRAPHIC"].includes(
-      searchType
-    )
-  ) {
+  if (["NIN_NUMBER", "PHONE_NUMBER", "DEMOGRAPHIC"].includes(searchType)) {
     return searchType;
   }
 
@@ -78,8 +58,10 @@ const getPremblyHeaders = () => {
 const extractNinData = (payload) => {
   const possibleSources = [
     payload?.data,
+    payload?.data?.data,
     payload?.nin_data,
     payload?.data?.nin_data,
+    payload?.data?.data?.nin_data,
     payload?.response?.data,
     payload?.response?.nin_data,
     payload?.verificationData,
@@ -91,42 +73,40 @@ const extractNinData = (payload) => {
       (item) =>
         item &&
         typeof item === "object" &&
-        (
-          item.firstname ||
+        (item.firstname ||
           item.first_name ||
+          item.firstName ||
+          item.middlename ||
+          item.middle_name ||
+          item.middleName ||
           item.surname ||
+          item.lastname ||
+          item.last_name ||
+          item.lastName ||
+          item.fullname ||
+          item.full_name ||
+          item.fullName ||
           item.nin ||
-          item.birthdate
-        )
+          item.number_nin ||
+          item.id_number ||
+          item.birthdate ||
+          item.date_of_birth ||
+          item.dateOfBirth),
     ) || {};
 
-  const firstName =
-    data.firstname ||
-    data.first_name ||
-    data.firstName ||
-    "";
+  const firstName = data.firstname || data.first_name || data.firstName || "";
 
   const middleName =
-    data.middlename ||
-    data.middle_name ||
-    data.middleName ||
-    "";
+    data.middlename || data.middle_name || data.middleName || "";
 
   const lastName =
-    data.surname ||
-    data.lastname ||
-    data.last_name ||
-    data.lastName ||
-    "";
+    data.surname || data.lastname || data.last_name || data.lastName || "";
 
   const fullName =
     data.fullname ||
     data.full_name ||
     data.fullName ||
-    [firstName, middleName, lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
+    [firstName, middleName, lastName].filter(Boolean).join(" ").trim();
 
   return {
     fullName,
@@ -134,23 +114,12 @@ const extractNinData = (payload) => {
     middleName,
     lastName,
 
-    nin:
-      data.nin ||
-      data.number_nin ||
-      data.id_number ||
-      "",
+    nin: data.nin || data.number_nin || data.id_number || "",
 
     phone:
-      data.telephoneno ||
-      data.phone ||
-      data.phone_number ||
-      data.mobile ||
-      "",
+      data.telephoneno || data.phone || data.phone_number || data.mobile || "",
 
-    gender:
-      data.gender ||
-      data.sex ||
-      "",
+    gender: data.gender || data.sex || "",
 
     dateOfBirth:
       data.birthdate ||
@@ -160,29 +129,20 @@ const extractNinData = (payload) => {
       "",
 
     address:
-      data.residence_address ||
-      data.residential_address ||
-      data.address ||
-      "",
+      data.residence_address || data.residential_address || data.address || "",
 
     stateOfOrigin:
-      data.self_origin_state ||
-      data.state_of_origin ||
-      data.birthstate ||
-      "",
+      data.self_origin_state || data.state_of_origin || data.birthstate || "",
 
-    lga:
-      data.self_origin_lga ||
-      data.lga ||
-      data.local_government ||
-      "",
+    lga: data.self_origin_lga || data.lga || data.local_government || "",
 
     photo:
-      data.photo ||
-      data.passport ||
-      data.passport_photo ||
-      data.image ||
-      "",
+      data.photo || data.passport || data.passport_photo || data.image || "",
+
+    nationality: data.nationality || data.country || "",
+
+    dateOfIssue:
+      data.date_of_issue || data.dateOfIssue || data.issued_date || "",
   };
 };
 
@@ -212,10 +172,7 @@ const createWalletTransaction = async ({
       },
     });
   } catch (error) {
-    console.error(
-      "Transaction logging failed:",
-      error.message
-    );
+    console.error("Transaction logging failed:", error.message);
   }
 };
 
@@ -223,19 +180,14 @@ exports.verifyNin = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
 
-    const ninNumber =
-      req.body.ninNumber || req.body.idNumber;
+    const ninNumber = req.body.ninNumber || req.body.idNumber;
 
-    const slipType =
-      req.body.slipType || "PREMIUM";
+    const slipType = req.body.slipType || "PREMIUM";
 
-    const searchType =
-      req.body.searchType || "NIN_NUMBER";
+    const searchType = req.body.searchType || "NIN_NUMBER";
 
     const consentAccepted =
-      req.body.consentAccepted ??
-      req.body.consent ??
-      false;
+      req.body.consentAccepted ?? req.body.consent ?? false;
 
     if (!userId) {
       return res.status(401).json({
@@ -254,18 +206,14 @@ exports.verifyNin = async (req, res) => {
     if (!consentAccepted) {
       return res.status(400).json({
         success: false,
-        message:
-          "Consent confirmation is required before verification.",
+        message: "Consent confirmation is required before verification.",
       });
     }
 
-    const normalizedSlipType =
-      normalizeSlipType(slipType);
-    const normalizedSearchType =
-      normalizeSearchType(searchType);
+    const normalizedSlipType = normalizeSlipType(slipType);
+    const normalizedSearchType = normalizeSearchType(searchType);
 
-    const amount =
-      verificationFees[normalizedSlipType] || 250;
+    const amount = verificationFees.PREMIUM;
 
     const user = await User.findById(userId);
 
@@ -276,21 +224,17 @@ exports.verifyNin = async (req, res) => {
       });
     }
 
-    if (
-      Number(user.walletBalance || 0) < Number(amount)
-    ) {
+    if (Number(user.walletBalance || 0) < Number(amount)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Insufficient wallet balance for NIN verification.",
+        message: "Insufficient wallet balance for NIN verification.",
       });
     }
 
     if (!PREMBLY_SECRET_KEY) {
       return res.status(500).json({
         success: false,
-        message:
-          "Prembly secret key is missing on the server.",
+        message: "Prembly secret key is missing on the server.",
       });
     }
 
@@ -320,7 +264,7 @@ exports.verifyNin = async (req, res) => {
         {
           headers: getPremblyHeaders(),
           timeout: 45000,
-        }
+        },
       );
     } catch (error) {
       verification.status = "FAILED";
@@ -328,15 +272,12 @@ exports.verifyNin = async (req, res) => {
         error?.response?.data?.message ||
         error?.message ||
         "Verification request failed.";
-      verification.rawResponse =
-        error?.response?.data || {};
+      verification.rawResponse = error?.response?.data || {};
       await verification.save();
 
       return res.status(400).json({
         success: false,
-        message:
-          verification.failureReason ||
-          "NIN verification failed.",
+        message: verification.failureReason || "NIN verification failed.",
       });
     }
 
@@ -346,8 +287,7 @@ exports.verifyNin = async (req, res) => {
     if (!ninData.fullName) {
       verification.status = "FAILED";
       verification.failureReason =
-        responseData?.message ||
-        "No valid NIN data returned from provider.";
+        responseData?.message || "No valid NIN data returned from provider.";
       verification.rawResponse = responseData;
       await verification.save();
 
@@ -359,9 +299,7 @@ exports.verifyNin = async (req, res) => {
       });
     }
 
-    const previousBalance = Number(
-      user.walletBalance || 0
-    );
+    const previousBalance = Number(user.walletBalance || 0);
 
     user.walletBalance = previousBalance - Number(amount);
     await user.save();
@@ -384,10 +322,9 @@ exports.verifyNin = async (req, res) => {
       maskedNin,
     });
 
-    const cleanVerificationData =
-      verification.verificationData?.toObject
-        ? verification.verificationData.toObject()
-        : verification.verificationData || {};
+    const cleanVerificationData = verification.verificationData?.toObject
+      ? verification.verificationData.toObject()
+      : verification.verificationData || {};
 
     return res.status(200).json({
       success: true,
@@ -429,6 +366,9 @@ exports.verifyNin = async (req, res) => {
   }
 };
 
+exports.normalizeNinSlipType = normalizeSlipType;
+exports.extractNinData = extractNinData;
+
 exports.getNinVerificationHistory = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
@@ -445,15 +385,11 @@ exports.getNinVerificationHistory = async (req, res) => {
       data: verifications,
     });
   } catch (error) {
-    console.error(
-      "getNinVerificationHistory error:",
-      error.message
-    );
+    console.error("getNinVerificationHistory error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching verification history.",
+      message: "Server error while fetching verification history.",
     });
   }
 };
@@ -481,15 +417,11 @@ exports.getSingleNinVerification = async (req, res) => {
       data: verification,
     });
   } catch (error) {
-    console.error(
-      "getSingleNinVerification error:",
-      error.message
-    );
+    console.error("getSingleNinVerification error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching verification details.",
+      message: "Server error while fetching verification details.",
     });
   }
 };
@@ -514,44 +446,28 @@ const extractBvnData = (payload) => {
       (item) =>
         item &&
         typeof item === "object" &&
-        (
-          item.firstName ||
+        (item.firstName ||
           item.firstname ||
           item.first_name ||
           item.lastName ||
           item.lastname ||
           item.last_name ||
-          item.bvn
-        )
+          item.bvn),
     ) || {};
 
-  const firstName =
-    data.firstName ||
-    data.firstname ||
-    data.first_name ||
-    "";
+  const firstName = data.firstName || data.firstname || data.first_name || "";
 
   const middleName =
-    data.middleName ||
-    data.middlename ||
-    data.middle_name ||
-    "";
+    data.middleName || data.middlename || data.middle_name || "";
 
   const lastName =
-    data.lastName ||
-    data.lastname ||
-    data.last_name ||
-    data.surname ||
-    "";
+    data.lastName || data.lastname || data.last_name || data.surname || "";
 
   const fullName =
     data.fullName ||
     data.fullname ||
     data.full_name ||
-    [firstName, middleName, lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
+    [firstName, middleName, lastName].filter(Boolean).join(" ").trim();
 
   return {
     fullName,
@@ -559,12 +475,7 @@ const extractBvnData = (payload) => {
     middleName,
     lastName,
 
-    bvn:
-      data.bvn ||
-      data.number ||
-      data.bvnNumber ||
-      data.bvn_number ||
-      "",
+    bvn: data.bvn || data.number || data.bvnNumber || data.bvn_number || "",
 
     phone:
       data.phoneNumber ||
@@ -575,10 +486,7 @@ const extractBvnData = (payload) => {
       data.telephoneno ||
       "",
 
-    gender:
-      data.gender ||
-      data.sex ||
-      "",
+    gender: data.gender || data.sex || "",
 
     dateOfBirth:
       data.dateOfBirth ||
@@ -588,29 +496,15 @@ const extractBvnData = (payload) => {
       "",
 
     address:
-      data.address ||
-      data.residence_address ||
-      data.residential_address ||
-      "",
+      data.address || data.residence_address || data.residential_address || "",
 
     stateOfOrigin:
-      data.stateOfOrigin ||
-      data.state_of_origin ||
-      data.state ||
-      "",
+      data.stateOfOrigin || data.state_of_origin || data.state || "",
 
-    lga:
-      data.lga ||
-      data.local_government ||
-      data.localGovernment ||
-      "",
+    lga: data.lga || data.local_government || data.localGovernment || "",
 
     photo:
-      data.photo ||
-      data.image ||
-      data.passport ||
-      data.passport_photo ||
-      "",
+      data.photo || data.image || data.passport || data.passport_photo || "",
   };
 };
 
@@ -638,10 +532,7 @@ const createBvnWalletTransaction = async ({
       },
     });
   } catch (error) {
-    console.error(
-      "BVN transaction logging failed:",
-      error.message
-    );
+    console.error("BVN transaction logging failed:", error.message);
   }
 };
 
@@ -649,15 +540,10 @@ exports.verifyBvn = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
 
-    const bvnNumber =
-      req.body.bvnNumber ||
-      req.body.bvn ||
-      req.body.idNumber;
+    const bvnNumber = req.body.bvnNumber || req.body.bvn || req.body.idNumber;
 
     const consentAccepted =
-      req.body.consentAccepted ??
-      req.body.consent ??
-      false;
+      req.body.consentAccepted ?? req.body.consent ?? false;
 
     if (!userId) {
       return res.status(401).json({
@@ -678,8 +564,7 @@ exports.verifyBvn = async (req, res) => {
     if (!consentAccepted) {
       return res.status(400).json({
         success: false,
-        message:
-          "Consent confirmation is required before BVN verification.",
+        message: "Consent confirmation is required before BVN verification.",
       });
     }
 
@@ -692,22 +577,17 @@ exports.verifyBvn = async (req, res) => {
       });
     }
 
-    if (
-      Number(user.walletBalance || 0) <
-      BVN_VERIFICATION_FEE
-    ) {
+    if (Number(user.walletBalance || 0) < BVN_VERIFICATION_FEE) {
       return res.status(400).json({
         success: false,
-        message:
-          "Insufficient wallet balance for BVN verification.",
+        message: "Insufficient wallet balance for BVN verification.",
       });
     }
 
     if (!PREMBLY_SECRET_KEY) {
       return res.status(500).json({
         success: false,
-        message:
-          "Prembly secret key is missing on the server.",
+        message: "Prembly secret key is missing on the server.",
       });
     }
 
@@ -738,7 +618,7 @@ exports.verifyBvn = async (req, res) => {
         {
           headers: getPremblyHeaders(),
           timeout: 45000,
-        }
+        },
       );
     } catch (error) {
       verification.status = "FAILED";
@@ -748,16 +628,13 @@ exports.verifyBvn = async (req, res) => {
         error?.message ||
         "BVN verification request failed.";
 
-      verification.rawResponse =
-        error?.response?.data || {};
+      verification.rawResponse = error?.response?.data || {};
 
       await verification.save();
 
       return res.status(400).json({
         success: false,
-        message:
-          verification.failureReason ||
-          "BVN verification failed.",
+        message: verification.failureReason || "BVN verification failed.",
       });
     }
 
@@ -781,12 +658,9 @@ exports.verifyBvn = async (req, res) => {
       });
     }
 
-    const previousBalance = Number(
-      user.walletBalance || 0
-    );
+    const previousBalance = Number(user.walletBalance || 0);
 
-    user.walletBalance =
-      previousBalance - BVN_VERIFICATION_FEE;
+    user.walletBalance = previousBalance - BVN_VERIFICATION_FEE;
 
     await user.save();
 
@@ -807,10 +681,9 @@ exports.verifyBvn = async (req, res) => {
       maskedBvn,
     });
 
-    const cleanVerificationData =
-      verification.verificationData?.toObject
-        ? verification.verificationData.toObject()
-        : verification.verificationData || {};
+    const cleanVerificationData = verification.verificationData?.toObject
+      ? verification.verificationData.toObject()
+      : verification.verificationData || {};
 
     return res.status(200).json({
       success: true,
@@ -851,10 +724,7 @@ exports.verifyBvn = async (req, res) => {
   }
 };
 
-exports.getBvnVerificationHistory = async (
-  req,
-  res
-) => {
+exports.getBvnVerificationHistory = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
 
@@ -870,33 +740,25 @@ exports.getBvnVerificationHistory = async (
       data: verifications,
     });
   } catch (error) {
-    console.error(
-      "getBvnVerificationHistory error:",
-      error.message
-    );
+    console.error("getBvnVerificationHistory error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching BVN verification history.",
+      message: "Server error while fetching BVN verification history.",
     });
   }
 };
 
-exports.getSingleBvnVerification = async (
-  req,
-  res
-) => {
+exports.getSingleBvnVerification = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
     const { id } = req.params;
 
-    const verification =
-      await IdVerification.findOne({
-        _id: id,
-        userId,
-        idType: "BVN",
-      });
+    const verification = await IdVerification.findOne({
+      _id: id,
+      userId,
+      idType: "BVN",
+    });
 
     if (!verification) {
       return res.status(404).json({
@@ -910,16 +772,11 @@ exports.getSingleBvnVerification = async (
       data: verification,
     });
   } catch (error) {
-    console.error(
-      "getSingleBvnVerification error:",
-      error.message
-    );
+    console.error("getSingleBvnVerification error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching BVN verification details.",
+      message: "Server error while fetching BVN verification details.",
     });
   }
 };
-

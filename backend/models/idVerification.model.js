@@ -66,10 +66,20 @@ const verificationDataSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+
+    nationality: {
+      type: String,
+      default: "",
+    },
+
+    dateOfIssue: {
+      type: String,
+      default: "",
+    },
   },
   {
     _id: false,
-  }
+  },
 );
 
 const idVerificationSchema = new mongoose.Schema(
@@ -83,37 +93,23 @@ const idVerificationSchema = new mongoose.Schema(
 
     idType: {
       type: String,
-      enum: [
-        "NIN",
-        "BVN",
-        "DRIVER_LICENSE",
-        "PASSPORT",
-        "VOTER_CARD",
-      ],
+      enum: ["NIN", "BVN", "DRIVER_LICENSE", "PASSPORT", "VOTER_CARD"],
       default: "NIN",
       index: true,
     },
 
     searchType: {
       type: String,
-      enum: [
-        "NIN_NUMBER",
-        "PHONE_NUMBER",
-        "DEMOGRAPHIC",
-        "BVN_NUMBER",
-      ],
+      enum: ["NIN_NUMBER", "PHONE_NUMBER", "DEMOGRAPHIC", "BVN_NUMBER"],
       default: "NIN_NUMBER",
     },
 
     slipType: {
       type: String,
-      enum: [
-        "PREMIUM",
-        "STANDARD",
-        "REGULAR",
-        "INFORMATION",
-        "BASIC",
-      ],
+      // Legacy NIN values remain readable for existing records, and BASIC is
+      // still used by BVN. New NIN writes are forced to PREMIUM in the
+      // controller.
+      enum: ["PREMIUM", "STANDARD", "REGULAR", "INFORMATION", "BASIC"],
       default: "PREMIUM",
     },
 
@@ -132,11 +128,7 @@ const idVerificationSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: [
-        "PENDING",
-        "SUCCESSFUL",
-        "FAILED",
-      ],
+      enum: ["PENDING", "SUCCESSFUL", "FAILED"],
       default: "PENDING",
       index: true,
     },
@@ -187,7 +179,7 @@ const idVerificationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 idVerificationSchema.index({
@@ -196,7 +188,4 @@ idVerificationSchema.index({
   createdAt: -1,
 });
 
-module.exports = mongoose.model(
-  "IdVerification",
-  idVerificationSchema
-);
+module.exports = mongoose.model("IdVerification", idVerificationSchema);
