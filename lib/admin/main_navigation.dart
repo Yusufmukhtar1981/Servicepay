@@ -7,6 +7,7 @@ import 'admin_kyc_review_screen.dart';
 import 'admin_empowerment_screen.dart';
 import 'admin_amana_screen.dart';
 import 'admin_fintech_operations_screen.dart';
+import 'admin_customer_withdrawals_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 import 'admin_solar_screen.dart';
@@ -26,6 +27,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     AdminManualFundingScreen(),
     AdminNotificationsScreen(),
     AdminFintechOperationsScreen(),
+    AdminCustomerWithdrawalsScreen(),
     AdminAirtimeToCashScreen(),
     AdminKycReviewScreen(),
     AdminEmpowermentScreen(),
@@ -96,6 +98,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
               Icons.admin_panel_settings_rounded,
             ),
             label: 'Control',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.payments_outlined),
+            activeIcon: Icon(Icons.payments_rounded),
+            label: 'Withdrawals',
           ),
           BottomNavigationBarItem(
             icon: Icon(

@@ -1,13 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'feature_transaction_pin_dialog.dart';
+import 'reset_transaction_pin_screen.dart';
+import 'transaction_pin_screen.dart';
 
 class WithdrawalScreen extends StatefulWidget {
-  const WithdrawalScreen({super.key});
+  const WithdrawalScreen({
+    super.key,
+    this.client,
+  });
+
+  final http.Client? client;
 
   @override
   State<WithdrawalScreen> createState() => _WithdrawalScreenState();
@@ -24,13 +31,24 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   final amountController = TextEditingController();
 
   bool isSubmitting = false;
+  bool isAwaitingPin = false;
   bool isLoadingHistory = true;
+  double minimumWithdrawal = 100;
+  double maximumWithdrawal = 50000;
+  String? pendingRequestKey;
+  String? pendingFingerprint;
+  late final http.Client _client;
+  late final bool _ownsClient;
 
   List<Map<String, dynamic>> withdrawals = [];
 
   @override
   void initState() {
     super.initState();
+    _ownsClient = widget.client == null;
+    _client = widget.client ?? http.Client();
+    loadSavedBankAccount();
+    loadWithdrawalLimits();
     loadWithdrawals();
   }
 
@@ -40,6 +58,9 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     accountNumberController.dispose();
     accountNameController.dispose();
     amountController.dispose();
+    if (_ownsClient) {
+      _client.close();
+    }
     super.dispose();
   }
 
@@ -77,6 +98,129 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     );
   }
 
+  Future<void> loadSavedBankAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+
+    setState(() {
+      bankController.text = prefs.getString('withdrawal_bank_name') ?? '';
+      accountNumberController.text =
+          prefs.getString('withdrawal_account_number') ?? '';
+      accountNameController.text =
+          prefs.getString('withdrawal_account_name') ?? '';
+    });
+  }
+
+  Future<void> saveBankAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'withdrawal_bank_name',
+      bankController.text.trim(),
+    );
+    await prefs.setString(
+      'withdrawal_account_number',
+      accountNumberController.text.trim(),
+    );
+    await prefs.setString(
+      'withdrawal_account_name',
+      accountNameController.text.trim(),
+    );
+  }
+
+  Future<void> loadWithdrawalLimits() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/settings/public'),
+        headers: const {'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 15));
+      final decoded = jsonDecode(response.body);
+      final data = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+      final settings = data['settings'] is Map
+          ? Map<String, dynamic>.from(data['settings'] as Map)
+          : <String, dynamic>{};
+      final limits = settings['transactionLimits'] is Map
+          ? Map<String, dynamic>.from(settings['transactionLimits'] as Map)
+          : <String, dynamic>{};
+      final minimum = (limits['minimumBankTransfer'] as num?)?.toDouble();
+      final maximum = (limits['maximumBankTransfer'] as num?)?.toDouble();
+
+      if (!mounted) return;
+      setState(() {
+        if (minimum != null && minimum >= 100) {
+          minimumWithdrawal = minimum;
+        }
+        if (maximum != null && maximum >= minimumWithdrawal) {
+          maximumWithdrawal = maximum;
+        }
+      });
+    } catch (_) {
+      // Defaults match the backend settings defaults.
+    }
+  }
+
+  Future<String?> showWithdrawalPinDialog({
+    required String bank,
+    required String accountNumber,
+    required double amount,
+  }) {
+    var pin = '';
+
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm Withdrawal'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Request withdrawal of ₦${amount.toStringAsFixed(0)} '
+              'to $bank • $accountNumber.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              autofocus: true,
+              obscureText: true,
+              maxLength: 4,
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                pin = value.replaceAll(RegExp(r'\D'), '');
+              },
+              decoration: const InputDecoration(
+                labelText: 'Transaction PIN',
+                border: OutlineInputBorder(),
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (!RegExp(r'^\d{4}$').hasMatch(pin)) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text('Enter your 4-digit transaction PIN.'),
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(dialogContext, pin);
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> loadWithdrawals() async {
     setState(() {
       isLoadingHistory = true;
@@ -85,7 +229,11 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     try {
       final token = await getToken();
 
-      final response = await http.get(
+      if (token == null) {
+        throw StateError('Login session not found.');
+      }
+
+      final response = await _client.get(
         Uri.parse(
           '$baseUrl/withdrawals/my',
         ),
@@ -93,7 +241,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
-      );
+      ).timeout(const Duration(seconds: 20));
 
       final dynamic decoded = jsonDecode(response.body);
 
@@ -104,6 +252,14 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
           : <String, dynamic>{};
 
       final raw = data['withdrawals'];
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          data['success'] != true) {
+        throw StateError(
+          data['message']?.toString() ?? 'Unable to load withdrawals.',
+        );
+      }
 
       withdrawals = raw is List
           ? raw
@@ -129,6 +285,8 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   }
 
   Future<void> submitWithdrawal() async {
+    if (isSubmitting || isAwaitingPin) return;
+
     final bank = bankController.text.trim();
     final accountNumber = accountNumberController.text.trim();
     final accountName = accountNameController.text.trim();
@@ -141,21 +299,40 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         accountName.isEmpty ||
         accountNumber.length != 10 ||
         amount == null ||
-        amount < 100) {
+        amount < minimumWithdrawal ||
+        amount > maximumWithdrawal) {
       showMessage(
-        'Complete all fields correctly. Minimum withdrawal is ₦100.',
+        'Enter valid details and an amount from '
+        '₦${minimumWithdrawal.toStringAsFixed(0)} to '
+        '₦${maximumWithdrawal.toStringAsFixed(0)}.',
       );
       return;
     }
 
-    final pin = await showFeatureTransactionPinDialog(
-      context,
-      title: 'Confirm Withdrawal',
-      message:
-          'Request withdrawal of ₦${amount.toStringAsFixed(0)} to $bank • $accountNumber.',
+    setState(() {
+      isAwaitingPin = true;
+    });
+
+    final pin = await showWithdrawalPinDialog(
+      bank: bank,
+      accountNumber: accountNumber,
+      amount: amount,
     );
 
+    if (!mounted) return;
+    setState(() {
+      isAwaitingPin = false;
+    });
+
     if (pin == null) return;
+
+    final fingerprint =
+        '$bank|$accountNumber|$accountName|${amount.toStringAsFixed(2)}';
+    if (pendingRequestKey == null || pendingFingerprint != fingerprint) {
+      pendingRequestKey =
+          'withdrawal-${DateTime.now().microsecondsSinceEpoch}-${fingerprint.hashCode.abs()}';
+      pendingFingerprint = fingerprint;
+    }
 
     setState(() {
       isSubmitting = true;
@@ -163,24 +340,30 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
 
     try {
       final token = await getToken();
+      if (token == null) {
+        throw StateError('Your login session was not found.');
+      }
 
-      final response = await http.post(
-        Uri.parse(
-          '$baseUrl/withdrawals/request',
-        ),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'bankName': bank,
-          'accountNumber': accountNumber,
-          'accountName': accountName,
-          'amount': amount,
-          'transactionPin': pin,
-        }),
-      );
+      final response = await _client
+          .post(
+            Uri.parse(
+              '$baseUrl/withdrawals/request',
+            ),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Idempotency-Key': pendingRequestKey!,
+            },
+            body: jsonEncode({
+              'bankName': bank,
+              'accountNumber': accountNumber,
+              'accountName': accountName,
+              'amount': amount,
+              'transactionPin': pin,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       final dynamic decoded = jsonDecode(response.body);
 
@@ -190,23 +373,42 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             )
           : <String, dynamic>{};
 
-      showMessage(
-        data['message']?.toString() ?? 'Withdrawal request submitted.',
-      );
-
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
-          data['success'] == true) {
-        bankController.clear();
-        accountNumberController.clear();
-        accountNameController.clear();
+          data['success'] == true &&
+          data['withdrawal'] is Map &&
+          (data['withdrawal'] as Map)['status'] == 'PENDING') {
+        await saveBankAccount();
         amountController.clear();
+        pendingRequestKey = null;
+        pendingFingerprint = null;
+
+        showMessage(
+          data['message']?.toString() ??
+              'Withdrawal request submitted for approval.',
+        );
 
         await loadWithdrawals();
+      } else {
+        showMessage(
+          data['message']?.toString() ??
+              'The withdrawal request was not accepted.',
+        );
       }
-    } catch (_) {
+    } on TimeoutException {
       showMessage(
-        'Unable to submit withdrawal.',
+        'The request timed out. Your request key is saved; tap again to check '
+        'or safely retry without a second debit.',
+      );
+    } on FormatException {
+      showMessage(
+        'The withdrawal service returned an invalid response. No success was confirmed.',
+      );
+    } catch (error) {
+      showMessage(
+        error is StateError
+            ? error.message
+            : 'Unable to submit withdrawal. Please retry safely.',
       );
     }
 
@@ -315,9 +517,53 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              'Allowed amount: ₦${minimumWithdrawal.toStringAsFixed(0)} – '
+              '₦${maximumWithdrawal.toStringAsFixed(0)}. '
+              'Your bank details are saved on this device after a confirmed request.',
+              style: const TextStyle(
+                color: Colors.black54,
+                height: 1.35,
+              ),
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: isSubmitting
+                      ? null
+                      : () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => const TransactionPinScreen(),
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.pin_outlined),
+                  label: const Text('Create PIN'),
+                ),
+                TextButton.icon(
+                  onPressed: isSubmitting
+                      ? null
+                      : () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ResetTransactionPinScreen(),
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.lock_reset_rounded),
+                  label: const Text('Reset PIN'),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: isSubmitting ? null : submitWithdrawal,
+              onPressed:
+                  isSubmitting || isAwaitingPin ? null : submitWithdrawal,
               style: FilledButton.styleFrom(
                 backgroundColor: primaryGreen,
                 padding: const EdgeInsets.symmetric(
@@ -337,7 +583,11 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                       Icons.arrow_circle_down_rounded,
                     ),
               label: Text(
-                isSubmitting ? 'Submitting...' : 'Request Withdrawal',
+                isSubmitting
+                    ? 'Submitting...'
+                    : isAwaitingPin
+                        ? 'Confirming PIN...'
+                        : 'Request Withdrawal',
               ),
             ),
             const SizedBox(height: 26),
@@ -367,7 +617,18 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             else
               ...withdrawals.map(
                 (item) {
-                  final status = item['status']?.toString() ?? 'PENDING';
+                  final status =
+                      item['status']?.toString().toUpperCase() ?? 'PENDING';
+                  final createdAt =
+                      DateTime.tryParse(item['createdAt']?.toString() ?? '');
+                  final createdLabel = createdAt == null
+                      ? ''
+                      : '${createdAt.toLocal().day.toString().padLeft(2, '0')}/'
+                          '${createdAt.toLocal().month.toString().padLeft(2, '0')}/'
+                          '${createdAt.toLocal().year} '
+                          '${createdAt.toLocal().hour.toString().padLeft(2, '0')}:'
+                          '${createdAt.toLocal().minute.toString().padLeft(2, '0')}';
+                  final note = item['adminNote']?.toString().trim() ?? '';
 
                   return Card(
                     margin: const EdgeInsets.only(
@@ -396,7 +657,10 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                       subtitle: Text(
                         '${item['bankName'] ?? '-'} • '
                         '${item['accountNumber'] ?? '-'}\n'
-                        '${item['reference'] ?? ''}',
+                        '${item['accountName'] ?? '-'}\n'
+                        '${item['reference'] ?? ''}'
+                        '${createdLabel.isEmpty ? '' : '\n$createdLabel'}'
+                        '${note.isEmpty ? '' : '\nNote: $note'}',
                       ),
                       isThreeLine: true,
                       trailing: Text(

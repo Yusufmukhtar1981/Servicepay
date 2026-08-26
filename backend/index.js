@@ -66,6 +66,9 @@ const fintechOperationsRoutes = require(
 const walletRoutes = require(
   "./routes/wallet.routes"
 );
+const withdrawalRoutes = require(
+  "./routes/withdrawal.routes"
+);
 
 const manualFundingRoutes = require(
   "./routes/manualfunding.routes"
@@ -209,6 +212,10 @@ app.use(
 app.use(
   "/api/wallet",
   walletRoutes
+);
+app.use(
+  "/api/withdrawals",
+  withdrawalRoutes
 );
 
 app.use(

@@ -3,6 +3,10 @@ const express = require("express");
 const {
   protect,
 } = require("../middleware/auth.middleware");
+const {
+  requireNoRestriction,
+  requireSpendableBalance,
+} = require("../middleware/accountRestriction.middleware");
 
 const controller = require(
   "../controllers/withdrawal.controller"
@@ -31,6 +35,8 @@ router.use(protect);
 
 router.post(
   "/request",
+  requireNoRestriction("BLOCK_WITHDRAWALS", "BLOCK_WALLET_DEBIT"),
+  requireSpendableBalance,
   controller.createWithdrawal
 );
 

@@ -17,6 +17,13 @@ const withdrawalRequestSchema =
         index: true,
       },
 
+      idempotencyKey: {
+        type: String,
+        trim: true,
+        maxlength: 128,
+        default: null,
+      },
+
       amount: {
         type: Number,
         required: true,
@@ -64,6 +71,23 @@ const withdrawalRequestSchema =
         trim: true,
       },
 
+      balanceAfter: {
+        type: Number,
+        default: null,
+      },
+
+      debitLedgerEntry: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "LedgerEntry",
+        default: null,
+      },
+
+      refundLedgerEntry: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "LedgerEntry",
+        default: null,
+      },
+
       approvedAt: Date,
       rejectedAt: Date,
 
@@ -83,6 +107,21 @@ const withdrawalRequestSchema =
       timestamps: true,
     }
   );
+
+withdrawalRequestSchema.index(
+  {
+    user: 1,
+    idempotencyKey: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: {
+        $type: "string",
+      },
+    },
+  }
+);
 
 module.exports = mongoose.model(
   "WithdrawalRequest",

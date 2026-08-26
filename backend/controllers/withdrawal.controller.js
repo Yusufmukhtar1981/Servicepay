@@ -4,6 +4,13 @@ const User = require("../models/user.model");
 const WithdrawalRequest = require(
   "../models/withdrawalRequest.model"
 );
+const AppSettings = require(
+  "../models/appSettings.model"
+);
+const {
+  postDebit,
+  postCredit,
+} = require("../services/ledger.service");
 
 const getUserId = (req) =>
   req.user?._id ||
@@ -15,6 +22,39 @@ const makeReference = () =>
     .slice(2, 10)
     .toUpperCase()}`;
 
+const getIdempotencyKey = (req) =>
+  String(
+    req.get?.("Idempotency-Key") ||
+      req.body?.idempotencyKey ||
+      ""
+  )
+    .trim()
+    .slice(0, 128);
+
+const getWithdrawalLimits = async () => {
+  const settings =
+    await AppSettings.getGlobalSettings();
+  const limits =
+    settings?.transactionLimits || {};
+
+  return {
+    minimum: Math.max(
+      100,
+      Number(
+        limits.minimumBankTransfer ||
+          100
+      )
+    ),
+    maximum: Math.max(
+      100,
+      Number(
+        limits.maximumBankTransfer ||
+          50000
+      )
+    ),
+  };
+};
+
 exports.createWithdrawal = async (
   req,
   res
@@ -24,11 +64,35 @@ exports.createWithdrawal = async (
 
   try {
     let result = null;
+    const userId = getUserId(req);
+    const idempotencyKey =
+      getIdempotencyKey(req);
+    const limits =
+      await getWithdrawalLimits();
+
+    if (!idempotencyKey) {
+      return res.status(400).json({
+        success: false,
+        code:
+          "IDEMPOTENCY_KEY_REQUIRED",
+        message:
+          "A withdrawal request key is required. Please try again.",
+      });
+    }
 
     await session.withTransaction(
       async () => {
-        const amount =
+        const rawAmount =
           Number(req.body?.amount);
+        const amountInKobo =
+          Math.round(
+            (
+              rawAmount +
+              Number.EPSILON
+            ) * 100
+          );
+        const amount =
+          amountInKobo / 100;
 
         const bankName =
           String(
@@ -51,11 +115,34 @@ exports.createWithdrawal = async (
           ).trim();
 
         if (
-          !Number.isFinite(amount) ||
-          amount < 100
+          !Number.isFinite(rawAmount) ||
+          amount < limits.minimum
         ) {
           const error = new Error(
-            "Minimum withdrawal is ₦100."
+            `Minimum withdrawal is ₦${limits.minimum.toLocaleString("en-NG")}.`
+          );
+
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (
+          Math.abs(
+            rawAmount * 100 -
+              amountInKobo
+          ) > 1e-8
+        ) {
+          const error = new Error(
+            "Withdrawal amount cannot have more than two decimal places."
+          );
+
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (amount > limits.maximum) {
+          const error = new Error(
+            `Maximum withdrawal is ₦${limits.maximum.toLocaleString("en-NG")}.`
           );
 
           error.statusCode = 400;
@@ -75,9 +162,35 @@ exports.createWithdrawal = async (
           throw error;
         }
 
+        const existing =
+          await WithdrawalRequest.findOne({
+            user: userId,
+            idempotencyKey,
+          }).session(session);
+
+        if (existing) {
+          const duplicateUser =
+            await User.findById(userId)
+              .select(
+                "walletBalance withdrawalLockedBalance"
+              )
+              .session(session);
+
+          result = {
+            withdrawal: existing,
+            walletBalance:
+              duplicateUser?.walletBalance,
+            withdrawalLockedBalance:
+              duplicateUser
+                ?.withdrawalLockedBalance,
+            duplicate: true,
+          };
+          return;
+        }
+
         const user =
           await User.findById(
-            getUserId(req)
+            userId
           )
             .select(
               "+transactionPin transactionPinSet walletBalance withdrawalLockedBalance"
@@ -160,13 +273,16 @@ exports.createWithdrawal = async (
           throw error;
         }
 
+        const reference =
+          makeReference();
         const created =
           await WithdrawalRequest.create(
             [
               {
                 reference:
-                  makeReference(),
+                  reference,
                 user: user._id,
+                idempotencyKey,
                 amount,
                 bankName,
                 accountNumber,
@@ -179,6 +295,41 @@ exports.createWithdrawal = async (
             }
           );
 
+        const ledger =
+          await postDebit({
+            userId: user._id,
+            amount,
+            openingBalance:
+              Number(
+                debited.walletBalance
+              ) + amount,
+            closingBalance:
+              debited.walletBalance,
+            service:
+              "WITHDRAWAL_HOLD",
+            reference,
+            idempotencyKey:
+              `withdrawal:${created[0]._id}:hold`,
+            narration:
+              `Withdrawal request to ${bankName} • ${accountNumber.slice(-4)}`,
+            metadata: {
+              withdrawalRequestId:
+                String(created[0]._id),
+              bankName,
+              accountNumberLast4:
+                accountNumber.slice(-4),
+            },
+            session,
+          });
+
+        created[0].balanceAfter =
+          debited.walletBalance;
+        created[0].debitLedgerEntry =
+          ledger.entry._id;
+        await created[0].save({
+          session,
+        });
+
         result = {
           withdrawal:
             created[0],
@@ -187,17 +338,57 @@ exports.createWithdrawal = async (
           withdrawalLockedBalance:
             debited
               .withdrawalLockedBalance,
+          duplicate: false,
         };
       }
     );
 
-    return res.status(201).json({
+    return res
+      .status(
+        result?.duplicate ? 200 : 201
+      )
+      .json({
       success: true,
       message:
-        "Withdrawal request submitted for approval.",
+        result?.duplicate
+          ? "This withdrawal request was already submitted."
+          : "Withdrawal request submitted for approval.",
       ...result,
     });
   } catch (error) {
+    if (
+      error?.code === 11000
+    ) {
+      const existing =
+        await WithdrawalRequest.findOne({
+          user: getUserId(req),
+          idempotencyKey:
+            getIdempotencyKey(req),
+        });
+
+      if (existing) {
+        const user =
+          await User.findById(
+            getUserId(req)
+          ).select(
+            "walletBalance withdrawalLockedBalance"
+          );
+
+        return res.status(200).json({
+          success: true,
+          message:
+            "This withdrawal request was already submitted.",
+          withdrawal: existing,
+          walletBalance:
+            user?.walletBalance,
+          withdrawalLockedBalance:
+            user
+              ?.withdrawalLockedBalance,
+          duplicate: true,
+        });
+      }
+    }
+
     console.error(
       "CREATE WITHDRAWAL ERROR:",
       error
@@ -302,6 +493,21 @@ exports.approveWithdrawal = async (
 
   try {
     let result = null;
+    const payoutReference =
+      String(
+        req.body?.payoutReference || ""
+      ).trim();
+
+    if (
+      !payoutReference ||
+      payoutReference.length > 120
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "A valid bank payout reference is required.",
+      });
+    }
 
     await session.withTransaction(
       async () => {
@@ -358,10 +564,7 @@ exports.approveWithdrawal = async (
             req.body?.adminNote || ""
           ).trim();
         item.payoutReference =
-          String(
-            req.body
-              ?.payoutReference || ""
-          ).trim();
+          payoutReference;
 
         await item.save({
           session,
@@ -453,6 +656,31 @@ exports.rejectWithdrawal = async (
           throw error;
         }
 
+        const refundLedger =
+          await postCredit({
+            userId: item.user,
+            amount: item.amount,
+            openingBalance:
+              Number(
+                updatedUser.walletBalance
+              ) - item.amount,
+            closingBalance:
+              updatedUser.walletBalance,
+            service:
+              "WITHDRAWAL_REFUND",
+            reference:
+              item.reference,
+            idempotencyKey:
+              `withdrawal:${item._id}:refund`,
+            narration:
+              "Rejected withdrawal refund",
+            metadata: {
+              withdrawalRequestId:
+                String(item._id),
+            },
+            session,
+          });
+
         item.status = "REJECTED";
         item.rejectedAt = new Date();
         item.rejectedBy =
@@ -461,6 +689,10 @@ exports.rejectWithdrawal = async (
           String(
             req.body?.adminNote || ""
           ).trim();
+        item.refundLedgerEntry =
+          refundLedger.entry._id;
+        item.balanceAfter =
+          updatedUser.walletBalance;
 
         await item.save({
           session,
