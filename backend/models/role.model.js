@@ -84,15 +84,6 @@ const roleSchema = new mongoose.Schema(
   }
 );
 
-roleSchema.index(
-  {
-    name: 1,
-  },
-  {
-    unique: true,
-  }
-);
-
 roleSchema.index({
   department: 1,
   status: 1,

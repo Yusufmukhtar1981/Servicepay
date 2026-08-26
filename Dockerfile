@@ -1,15 +1,15 @@
-FROM node:22-alpine
+FROM node:20.18-alpine
 
 WORKDIR /app
 
-COPY backend/package*.json ./
+COPY package.json package-lock.json ./
 
-RUN npm install --omit=dev
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
-COPY backend/ .
+COPY backend ./backend
 
 ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["node", "index.js"] # Fly.io deployment
+CMD ["node", "backend/index.js"]
