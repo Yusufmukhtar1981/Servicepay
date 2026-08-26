@@ -137,7 +137,9 @@ const getOfficerApplications = async (officerId, applicationId = null) => {
     .populate("officer");
   const applications = await SolarApplication.find({
     _id: { $in: assignments.map((item) => item.application) },
-  }).sort({ createdAt: -1 });
+  })
+    .sort({ createdAt: -1 })
+    .populate("customer", "fullName phone email state lga address");
   const applicationMap = new Map(applications.map((item) => [String(item._id), item]));
   const verifications = await SolarVerification.find({
     application: { $in: applications.map((item) => item._id) },

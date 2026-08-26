@@ -36,6 +36,65 @@ const pushHistory = (app, status, actor, note = "") => {
   app.status = status;
   app.statusHistory.push({ status, changedBy: actor, note: text(note), changedAt: new Date() });
 };
+const object = (value) =>
+  value && typeof value === "object" && !Array.isArray(value) ? value : {};
+const SOLAR_INCOME_RANGES = new Set([
+  "Below ₦50,000",
+  "₦50,000 - ₦100,000",
+  "₦100,001 - ₦250,000",
+  "₦250,001 - ₦500,000",
+  "Above ₦500,000",
+]);
+const SOLAR_UPFRONT_OPTIONS = new Set([
+  "Standard package deposit",
+  "Pay a larger upfront amount",
+  "Pay in full upfront",
+]);
+const applicationPreferencesPayload = (body) => {
+  const preferences = object(body.applicationPreferences);
+  const business = object(body.business);
+  const occupationBusiness = text(
+    preferences.occupationBusiness ||
+      body.occupationBusiness ||
+      business.occupationBusiness,
+    200
+  );
+  const monthlyIncomeRange = text(
+    preferences.monthlyIncomeRange ||
+      body.monthlyIncomeRange ||
+      business.monthlyIncomeRange,
+    100
+  );
+  const preferredRepaymentPeriod = text(
+    preferences.preferredRepaymentPeriod ||
+      body.preferredRepaymentPeriod ||
+      business.preferredRepaymentPeriod,
+    60
+  );
+  const upfrontPaymentOption = text(
+    preferences.upfrontPaymentOption ||
+      body.upfrontPaymentOption ||
+      business.upfrontPaymentOption,
+    120
+  );
+  const repaymentMonths = Number(preferredRepaymentPeriod);
+  if (
+    !occupationBusiness ||
+    !SOLAR_INCOME_RANGES.has(monthlyIncomeRange) ||
+    !Number.isInteger(repaymentMonths) ||
+    repaymentMonths < 1 ||
+    repaymentMonths > 120 ||
+    !SOLAR_UPFRONT_OPTIONS.has(upfrontPaymentOption)
+  ) {
+    return null;
+  }
+  return {
+    occupationBusiness,
+    monthlyIncomeRange,
+    preferredRepaymentPeriod: String(repaymentMonths),
+    upfrontPaymentOption,
+  };
+};
 const packagePayload = (body) => {
   const name = text(body.name, 160), capacityKw = Number(body.capacityKw), cashPrice = money(body.cashPrice);
   const depositPercent = Number(body.depositPercent ?? 20), installmentMonths = Number(body.installmentMonths ?? 12), interestPercent = Number(body.interestPercent || 0);
@@ -195,18 +254,31 @@ exports.updateSettings = async (req,res) => {
 };
 exports.submitApplication = async (req,res) => {
   try {
+    const body = object(req.body);
     const settings=await SolarSettings.findOne({key:"default"}).lean(); if(settings && !settings.applicationEnabled)return res.status(409).json({success:false,message:"Solar applications are currently unavailable."});
-    const packageId=text(req.body?.packageId,100); const pack=await SolarPackage.findOne({_id:packageId,active:true,stock:{$gt:0}}); if(!pack)return res.status(404).json({success:false,message:"Active in-stock Solar package not found."});
-    const declarations = req.body?.declarations || {};
+    const packageId=text(body.packageId,100); const pack=await SolarPackage.findOne({_id:packageId,active:true,stock:{$gt:0}}); if(!pack)return res.status(404).json({success:false,message:"Active in-stock Solar package not found."});
+    const applicationPreferences = applicationPreferencesPayload(body);
+    if (!applicationPreferences) return res.status(400).json({success:false,message:"Occupation, a supported monthly income range, a repayment period from 1 to 120 months, and a supported upfront payment option are required."});
+    const declarations = object(body.declarations);
     const accurate = declarations.informationAccurate === true || declarations.accepted === true;
     const termsAccepted = declarations.termsAccepted === true || declarations.accepted === true;
     const recoveryAccepted = declarations.recoveryAgreementAccepted === true || declarations.accepted === true;
     if (!accurate || !termsAccepted || !recoveryAccepted) return res.status(400).json({success:false,message:"Information accuracy, terms, and recovery agreement declarations are required."});
     const customer=await User.findById(id(req)).lean(); const kyc=await KycProfile.findOne({user:id(req)}).lean();
     if(!customer)return res.status(401).json({success:false,message:"Customer account not found."});
-    const profileSnapshot={fullName:customer.fullName,phone:customer.phone,email:customer.email,state:customer.state,lga:customer.lga,address:customer.address};
+    const submittedProfile=object(body.profile);
+    const profileSnapshot={
+      fullName:text(body.fullName || submittedProfile.fullName || customer.fullName,160),
+      phone:text(body.phone || submittedProfile.phone || customer.phone,40),
+      email:text(body.email || submittedProfile.email || customer.email,254).toLowerCase(),
+      state:text(body.state || submittedProfile.state || customer.state,120),
+      lga:text(body.lga || submittedProfile.lga || customer.lga,120),
+      address:text(body.residentialAddress || body.address || submittedProfile.address || customer.address,500),
+    };
+    if(!profileSnapshot.fullName || !profileSnapshot.phone || !profileSnapshot.state || !profileSnapshot.lga || !profileSnapshot.address)return res.status(400).json({success:false,message:"Full name, phone number, installation address, state, and local government area are required."});
+    if(profileSnapshot.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileSnapshot.email))return res.status(400).json({success:false,message:"Enter a valid email address."});
     const packageSnapshot={name:pack.name,capacityKw:pack.capacityKw,cashPrice:pack.cashPrice,financedPrice:pack.financedPrice,depositPercent:pack.depositPercent,installmentMonths:pack.installmentMonths,interestPercent:pack.interestPercent,repaymentFrequency:pack.repaymentFrequency,terms:pack.terms};
-    const app=await SolarApplication.create({customer:id(req),package:pack._id,packageSnapshot,profileSnapshot,kycSnapshot:kyc||null,business:req.body.business||{},guarantor:req.body.guarantor||{},declarations:{...declarations,informationAccurate:accurate,termsAccepted,recoveryAgreementAccepted:recoveryAccepted},statusHistory:[{status:"SUBMITTED",changedBy:id(req),note:"Application submitted"}]});
+    const app=await SolarApplication.create({customer:id(req),package:pack._id,packageSnapshot,profileSnapshot,kycSnapshot:kyc||null,business:object(body.business),guarantor:object(body.guarantor),applicationPreferences,declarations:{...declarations,informationAccurate:accurate,termsAccepted,recoveryAgreementAccepted:recoveryAccepted},statusHistory:[{status:"SUBMITTED",changedBy:id(req),note:"Application submitted"}]});
     res.status(201).json({success:true,application:app});
   } catch(e){res.status(500).json({success:false,message:e.message});}
 };

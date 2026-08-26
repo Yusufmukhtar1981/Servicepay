@@ -222,7 +222,7 @@ test("Solar approval snapshots price and allocates rounded installment balances 
   const admin = await user({ role: "HEAD_OFFICE" });
   const customer = await user();
   const pack = await SolarPackage.create({ name: "1kW", capacityKw: 1, cashPrice: 1000, depositPercent: 10, installmentMonths: 3, interestPercent: 0, stock: 1, createdBy: admin._id });
-  const submitted = await call(solar.submitApplication, { user: customer, body: { packageId: String(pack._id), business: { name: "Shop" }, guarantor: { phone: "0801" }, declarations: { accepted: true } } });
+  const submitted = await call(solar.submitApplication, { user: customer, body: { packageId: String(pack._id), residentialAddress: "1 Solar Approval Street", business: { name: "Shop" }, guarantor: { phone: "0801" }, applicationPreferences: { occupationBusiness: "Shop", monthlyIncomeRange: "₦50,000 - ₦100,000", preferredRepaymentPeriod: "3", upfrontPaymentOption: "Standard package deposit" }, declarations: { accepted: true } } });
   assert.equal(submitted.status, 201);
   const reviewing = await call(solar.transitionApplication, { user: admin, params: { applicationId: String(submitted.body.application._id) }, body: { status: "UNDER_REVIEW" } });
   assert.equal(reviewing.status, 200);

@@ -116,6 +116,197 @@ test.beforeEach(async () => {
   await Promise.all(models.map((model) => model.collection.deleteMany({})));
 });
 
+test("customer application reaches Admin assignment and the assigned Solar Officer", async () => {
+  const admin = await createUser({ role: "HEAD_OFFICE" });
+  const customer = await createUser();
+  const createdOfficer = await api({
+    method: "POST",
+    path: "/api/solar/officer/admin/officers",
+    actor: admin,
+    body: {
+      fullName: "Customer Flow Officer",
+      phone: "08069991001",
+      email: "customer-flow-officer@example.test",
+      password: "officer123",
+      state: "Lagos",
+      lga: "Ikeja",
+      address: "5 Solar Operations Road",
+    },
+  });
+  assert.equal(createdOfficer.status, 201, createdOfficer.body?.message);
+  const officerUser = await User.findOne({
+    email: "customer-flow-officer@example.test",
+  });
+  const solarPackage = await SolarPackage.create({
+    name: "Customer Flow Solar",
+    capacityKw: 2,
+    cashPrice: 850000,
+    financedPrice: 900000,
+    depositPercent: 20,
+    installmentMonths: 12,
+    interestPercent: 0,
+    repaymentFrequency: "MONTHLY",
+    stock: 5,
+    active: true,
+    createdBy: admin._id,
+  });
+
+  const submitted = await api({
+    method: "POST",
+    path: "/api/solar/applications",
+    actor: customer,
+    body: {
+      packageId: String(solarPackage._id),
+      fullName: "Amina Solar Customer",
+      phone: "08030000000",
+      email: "amina-solar@example.test",
+      residentialAddress: "12 Solar Installation Street",
+      state: "Ogun",
+      lga: "Abeokuta South",
+      business: {
+        occupationBusiness: "Food retail business",
+        monthlyIncomeRange: "₦100,001 - ₦250,000",
+        preferredRepaymentPeriod: "12",
+        upfrontPaymentOption: "Standard package deposit",
+      },
+      applicationPreferences: {
+        occupationBusiness: "Food retail business",
+        monthlyIncomeRange: "₦100,001 - ₦250,000",
+        preferredRepaymentPeriod: "12",
+        upfrontPaymentOption: "Standard package deposit",
+      },
+      declarations: {
+        informationAccurate: true,
+        termsAccepted: true,
+        recoveryAgreementAccepted: true,
+      },
+    },
+  });
+  assert.equal(submitted.status, 201, submitted.body?.message);
+  const applicationId = submitted.body.application._id;
+  assert.equal(
+    submitted.body.application.applicationPreferences.monthlyIncomeRange,
+    "₦100,001 - ₦250,000"
+  );
+  assert.deepEqual(submitted.body.application.profileSnapshot, {
+    fullName: "Amina Solar Customer",
+    phone: "08030000000",
+    email: "amina-solar@example.test",
+    state: "Ogun",
+    lga: "Abeokuta South",
+    address: "12 Solar Installation Street",
+  });
+
+  const customerApplications = await api({
+    path: "/api/solar/my-applications",
+    actor: customer,
+  });
+  assert.equal(customerApplications.status, 200);
+  assert.equal(customerApplications.body.applications.length, 1);
+  assert.equal(
+    customerApplications.body.applications[0].applicationPreferences
+      .preferredRepaymentPeriod,
+    "12"
+  );
+
+  const adminApplications = await api({
+    path: "/api/solar/admin/applications",
+    actor: admin,
+  });
+  assert.equal(adminApplications.status, 200);
+  assert.equal(adminApplications.body.applications.length, 1);
+  assert.equal(
+    adminApplications.body.applications[0].applicationPreferences
+      .upfrontPaymentOption,
+    "Standard package deposit"
+  );
+
+  const assigned = await api({
+    method: "POST",
+    path: `/api/solar/officer/admin/applications/${applicationId}/assign`,
+    actor: admin,
+    body: { officerId: createdOfficer.body.officer._id },
+  });
+  assert.equal(assigned.status, 201, assigned.body?.message);
+
+  const officerApplications = await api({
+    path: "/api/solar/officer/applications",
+    actor: officerUser,
+  });
+  assert.equal(officerApplications.status, 200);
+  assert.equal(officerApplications.body.applications.length, 1);
+  assert.equal(
+    officerApplications.body.applications[0].customer.fullName,
+    customer.fullName
+  );
+  assert.equal(
+    officerApplications.body.applications[0].applicationPreferences
+      .occupationBusiness,
+    "Food retail business"
+  );
+  assert.equal(
+    officerApplications.body.applications[0].profileSnapshot.address,
+    "12 Solar Installation Street"
+  );
+});
+
+test("customer application rejects malformed or incomplete preferences", async () => {
+  const admin = await createUser({ role: "HEAD_OFFICE" });
+  const customer = await createUser();
+  const solarPackage = await SolarPackage.create({
+    name: "Validation Solar",
+    capacityKw: 1,
+    cashPrice: 400000,
+    depositPercent: 20,
+    installmentMonths: 12,
+    interestPercent: 0,
+    repaymentFrequency: "MONTHLY",
+    stock: 5,
+    active: true,
+    createdBy: admin._id,
+  });
+  const baseBody = {
+    packageId: String(solarPackage._id),
+    declarations: {
+      informationAccurate: true,
+      termsAccepted: true,
+      recoveryAgreementAccepted: true,
+    },
+  };
+  const invalidPreferences = [
+    {},
+    {
+      occupationBusiness: "Retail",
+      monthlyIncomeRange: "Any amount",
+      preferredRepaymentPeriod: "12",
+      upfrontPaymentOption: "Standard package deposit",
+    },
+    {
+      occupationBusiness: "Retail",
+      monthlyIncomeRange: "₦50,000 - ₦100,000",
+      preferredRepaymentPeriod: "121",
+      upfrontPaymentOption: "Standard package deposit",
+    },
+    {
+      occupationBusiness: "Retail",
+      monthlyIncomeRange: "₦50,000 - ₦100,000",
+      preferredRepaymentPeriod: "12",
+      upfrontPaymentOption: "No deposit",
+    },
+  ];
+
+  for (const applicationPreferences of invalidPreferences) {
+    const response = await api({
+      method: "POST",
+      path: "/api/solar/applications",
+      actor: customer,
+      body: { ...baseBody, applicationPreferences },
+    });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(await SolarApplication.countDocuments(), 0);
+});
+
 test("Solar Officer flow enforces assignment, commissions, withdrawal locks, and Admin approval", async () => {
   const admin = await createUser({ role: "HEAD_OFFICE" });
   const customer = await createUser({ walletBalance: 500 });

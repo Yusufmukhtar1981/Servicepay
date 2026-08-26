@@ -26,27 +26,17 @@ class _SolarOfficerDashboardScreenState
   bool _loading = true;
   String _error = '';
   int _section = 0;
-  Map<String, dynamic> _dashboard =
-      <String, dynamic>{};
-  Map<String, dynamic> _profile =
-      <String, dynamic>{};
-  Map<String, dynamic> _wallet =
-      <String, dynamic>{};
-  Map<String, dynamic> _performance =
-      <String, dynamic>{};
-  List<Map<String, dynamic>> _applications =
-      <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _repayments =
-      <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _overdue =
-      <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _commissions =
-      <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _withdrawals =
-      <Map<String, dynamic>>[];
+  Map<String, dynamic> _dashboard = <String, dynamic>{};
+  Map<String, dynamic> _profile = <String, dynamic>{};
+  Map<String, dynamic> _wallet = <String, dynamic>{};
+  Map<String, dynamic> _performance = <String, dynamic>{};
+  List<Map<String, dynamic>> _applications = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _repayments = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _overdue = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _commissions = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _withdrawals = <Map<String, dynamic>>[];
 
-  static const List<_OfficerSection> _sections =
-      <_OfficerSection>[
+  static const List<_OfficerSection> _sections = <_OfficerSection>[
     _OfficerSection('Dashboard', Icons.dashboard_outlined),
     _OfficerSection('Customers', Icons.people_outline),
     _OfficerSection('Applications', Icons.assignment_outlined),
@@ -67,17 +57,11 @@ class _SolarOfficerDashboardScreenState
   }
 
   Map<String, dynamic> _map(dynamic value) =>
-      value is Map
-          ? Map<String, dynamic>.from(value)
-          : <String, dynamic>{};
+      value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
 
-  List<Map<String, dynamic>> _list(dynamic value) =>
-      value is List
-          ? value
-              .whereType<Map>()
-              .map((Map item) => _map(item))
-              .toList()
-          : <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _list(dynamic value) => value is List
+      ? value.whereType<Map>().map((Map item) => _map(item)).toList()
+      : <Map<String, dynamic>>[];
 
   String _text(dynamic value, [String fallback = '—']) {
     final String result = value?.toString().trim() ?? '';
@@ -85,8 +69,7 @@ class _SolarOfficerDashboardScreenState
   }
 
   String _money(dynamic value) {
-    final num amount =
-        value is num ? value : num.tryParse('$value') ?? 0;
+    final num amount = value is num ? value : num.tryParse('$value') ?? 0;
     return '₦${amount.toStringAsFixed(2)}';
   }
 
@@ -110,17 +93,13 @@ class _SolarOfficerDashboardScreenState
       if (!mounted) return;
       setState(() {
         _dashboard = _map(responses[0]['dashboard']);
-        _applications =
-            _list(responses[1]['applications']);
+        _applications = _list(responses[1]['applications']);
         _repayments = _list(responses[2]['repayments']);
         _overdue = _list(responses[3]['overdue']);
         _wallet = _map(responses[4]['wallet']);
-        _commissions =
-            _list(responses[4]['commissions']);
-        _withdrawals =
-            _list(responses[5]['withdrawals']);
-        _performance =
-            _map(responses[6]['performance']);
+        _commissions = _list(responses[4]['commissions']);
+        _withdrawals = _list(responses[5]['withdrawals']);
+        _performance = _map(responses[6]['performance']);
         _profile = _map(responses[7]['officer']);
         _loading = false;
       });
@@ -146,8 +125,7 @@ class _SolarOfficerDashboardScreenState
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor:
-              error ? const Color(0xFFB42318) : _green,
+          backgroundColor: error ? const Color(0xFFB42318) : _green,
         ),
       );
   }
@@ -155,8 +133,7 @@ class _SolarOfficerDashboardScreenState
   String _id(Map<String, dynamic> application) =>
       _text(application['_id'] ?? application['id'], '');
 
-  Future<void> _verify(
-      Map<String, dynamic> application) async {
+  Future<void> _verify(Map<String, dynamic> application) async {
     final List<String> fields = <String>[
       'identityConfirmed',
       'phoneConfirmed',
@@ -170,17 +147,13 @@ class _SolarOfficerDashboardScreenState
     final Map<String, bool> checklist = <String, bool>{
       for (final String field in fields) field: false,
     };
-    final TextEditingController notes =
-        TextEditingController();
-    final TextEditingController visit =
-        TextEditingController();
+    final TextEditingController notes = TextEditingController();
+    final TextEditingController visit = TextEditingController();
     String recommendation = 'NEEDS_REVIEW';
     final bool? save = await showDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) =>
-          StatefulBuilder(
-        builder: (BuildContext context,
-                StateSetter setDialogState) =>
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
             AlertDialog(
           title: const Text('Field verification'),
           content: SizedBox(
@@ -198,15 +171,12 @@ class _SolarOfficerDashboardScreenState
                         field
                             .replaceAllMapped(
                               RegExp(r'([A-Z])'),
-                              (Match match) =>
-                                  ' ${match.group(1)}',
+                              (Match match) => ' ${match.group(1)}',
                             )
                             .toLowerCase(),
                       ),
-                      onChanged: (bool? value) =>
-                          setDialogState(() =>
-                              checklist[field] =
-                                  value == true),
+                      onChanged: (bool? value) => setDialogState(
+                          () => checklist[field] = value == true),
                     ),
                   TextField(
                     controller: notes,
@@ -237,17 +207,13 @@ class _SolarOfficerDashboardScreenState
                       'NOT_RECOMMENDED',
                       'NEEDS_REVIEW',
                     ]
-                        .map((String value) =>
-                            DropdownMenuItem<String>(
+                        .map((String value) => DropdownMenuItem<String>(
                               value: value,
-                              child: Text(
-                                  value.replaceAll('_', ' ')),
+                              child: Text(value.replaceAll('_', ' ')),
                             ))
                         .toList(),
-                    onChanged: (String? value) =>
-                        setDialogState(() =>
-                            recommendation =
-                                value ?? 'NEEDS_REVIEW'),
+                    onChanged: (String? value) => setDialogState(
+                        () => recommendation = value ?? 'NEEDS_REVIEW'),
                   ),
                 ],
               ),
@@ -255,13 +221,11 @@ class _SolarOfficerDashboardScreenState
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, false),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, true),
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text('Submit verification'),
             ),
           ],
@@ -293,10 +257,8 @@ class _SolarOfficerDashboardScreenState
     }
   }
 
-  Future<void> _handover(
-      Map<String, dynamic> application) async {
-    final TextEditingController notes =
-        TextEditingController();
+  Future<void> _handover(Map<String, dynamic> application) async {
+    final TextEditingController notes = TextEditingController();
     final bool? save = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
@@ -311,13 +273,11 @@ class _SolarOfficerDashboardScreenState
         ),
         actions: <Widget>[
           TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Send to Admin'),
           ),
         ],
@@ -331,8 +291,7 @@ class _SolarOfficerDashboardScreenState
       await _api.post(
         '/applications/${_id(application)}/handover',
         body: <String, dynamic>{
-          'installationDate':
-              DateTime.now().toIso8601String(),
+          'installationDate': DateTime.now().toIso8601String(),
           'handoverNotes': notes.text.trim(),
         },
       );
@@ -346,20 +305,15 @@ class _SolarOfficerDashboardScreenState
     }
   }
 
-  Future<void> _followUp(
-      Map<String, dynamic> record) async {
-    final TextEditingController notes =
-        TextEditingController();
-    final TextEditingController response =
-        TextEditingController();
+  Future<void> _followUp(Map<String, dynamic> record) async {
+    final TextEditingController notes = TextEditingController();
+    final TextEditingController response = TextEditingController();
     String method = 'PHONE';
     String outcome = 'CONTACTED';
     final bool? save = await showDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) =>
-          StatefulBuilder(
-        builder: (BuildContext context,
-                StateSetter setDialogState) =>
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
             AlertDialog(
           title: const Text('Record customer follow-up'),
           content: SizedBox(
@@ -369,8 +323,8 @@ class _SolarOfficerDashboardScreenState
               children: <Widget>[
                 DropdownButtonFormField<String>(
                   value: method,
-                  decoration: const InputDecoration(
-                      labelText: 'Contact method'),
+                  decoration:
+                      const InputDecoration(labelText: 'Contact method'),
                   items: const <String>[
                     'PHONE',
                     'SMS',
@@ -378,19 +332,15 @@ class _SolarOfficerDashboardScreenState
                     'VISIT',
                     'OTHER'
                   ]
-                      .map((String value) =>
-                          DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(value)))
+                      .map((String value) => DropdownMenuItem<String>(
+                          value: value, child: Text(value)))
                       .toList(),
                   onChanged: (String? value) =>
-                      setDialogState(
-                          () => method = value ?? 'PHONE'),
+                      setDialogState(() => method = value ?? 'PHONE'),
                 ),
                 DropdownButtonFormField<String>(
                   value: outcome,
-                  decoration:
-                      const InputDecoration(labelText: 'Outcome'),
+                  decoration: const InputDecoration(labelText: 'Outcome'),
                   items: const <String>[
                     'CONTACTED',
                     'PROMISE_TO_PAY',
@@ -399,40 +349,35 @@ class _SolarOfficerDashboardScreenState
                     'RECOVERY_RECOMMENDED',
                     'REPOSSESSION_RECOMMENDED',
                   ]
-                      .map((String value) =>
-                          DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(value
-                                  .replaceAll('_', ' '))))
+                      .map((String value) => DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value.replaceAll('_', ' '))))
                       .toList(),
                   onChanged: (String? value) =>
-                      setDialogState(() =>
-                          outcome = value ?? 'CONTACTED'),
+                      setDialogState(() => outcome = value ?? 'CONTACTED'),
                 ),
                 TextField(
                   controller: notes,
                   maxLines: 3,
-                  decoration: const InputDecoration(
-                      labelText: 'Follow-up notes'),
+                  decoration:
+                      const InputDecoration(labelText: 'Follow-up notes'),
                 ),
                 TextField(
                   controller: response,
                   maxLines: 2,
-                  decoration: const InputDecoration(
-                      labelText: 'Customer response'),
+                  decoration:
+                      const InputDecoration(labelText: 'Customer response'),
                 ),
               ],
             ),
           ),
           actions: <Widget>[
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, false),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, true),
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text('Save follow-up'),
             ),
           ],
@@ -482,24 +427,19 @@ class _SolarOfficerDashboardScreenState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: fields.entries
-                .map((MapEntry<String, TextEditingController> entry) =>
-                    Padding(
-                      padding:
-                          const EdgeInsets.only(bottom: 10),
+                .map((MapEntry<String, TextEditingController> entry) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
                       child: TextField(
                         controller: entry.value,
-                        keyboardType: <String>[
-                          'amount',
-                          'accountNumber'
-                        ].contains(entry.key)
+                        keyboardType: <String>['amount', 'accountNumber']
+                                .contains(entry.key)
                             ? TextInputType.number
                             : TextInputType.text,
                         decoration: InputDecoration(
                           labelText: entry.key
                               .replaceAllMapped(
                                 RegExp(r'([A-Z])'),
-                                (Match match) =>
-                                    ' ${match.group(1)}',
+                                (Match match) => ' ${match.group(1)}',
                               )
                               .toUpperCase(),
                           border: const OutlineInputBorder(),
@@ -511,40 +451,34 @@ class _SolarOfficerDashboardScreenState
         ),
         actions: <Widget>[
           TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Request withdrawal'),
           ),
         ],
       ),
     );
     if (save != true) {
-      for (final TextEditingController item
-          in fields.values) {
+      for (final TextEditingController item in fields.values) {
         item.dispose();
       }
       return;
     }
     try {
-      await _api.post('/withdrawals',
-          body: <String, dynamic>{
-            for (final MapEntry<String,
-                    TextEditingController> entry
-                in fields.entries)
-              entry.key: entry.value.text.trim(),
-          });
+      await _api.post('/withdrawals', body: <String, dynamic>{
+        for (final MapEntry<String, TextEditingController> entry
+            in fields.entries)
+          entry.key: entry.value.text.trim(),
+      });
       _notice('Withdrawal request submitted for Admin review.');
       await _load();
     } on SolarOfficerApiException catch (error) {
       _notice(error.message, error: true);
     } finally {
-      for (final TextEditingController item
-          in fields.values) {
+      for (final TextEditingController item in fields.values) {
         item.dispose();
       }
     }
@@ -574,8 +508,7 @@ class _SolarOfficerDashboardScreenState
       return;
     }
 
-    final SharedPreferences preferences =
-        await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
     for (final String key in <String>[
       'auth_token',
       'token',
@@ -616,14 +549,12 @@ class _SolarOfficerDashboardScreenState
 
   @override
   Widget build(BuildContext context) {
-    final bool wide =
-        MediaQuery.sizeOf(context).width >= 900;
+    final bool wide = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
       key: const Key('solar-officer-dashboard'),
       backgroundColor: const Color(0xFFF4F8F5),
       appBar: AppBar(
-        title: Text(
-            'Solar Officer • ${_sections[_section].label}'),
+        title: Text('Solar Officer • ${_sections[_section].label}'),
         backgroundColor: _ink,
         foregroundColor: Colors.white,
         actions: <Widget>[
@@ -635,8 +566,7 @@ class _SolarOfficerDashboardScreenState
       ),
       drawer: wide ? null : _drawer(),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: _green))
+          ? const Center(child: CircularProgressIndicator(color: _green))
           : _error.isNotEmpty
               ? _errorView()
               : Row(
@@ -646,17 +576,14 @@ class _SolarOfficerDashboardScreenState
                         selectedIndex: _section,
                         onDestinationSelected: (int value) =>
                             setState(() => _section = value),
-                        labelType:
-                            NavigationRailLabelType.all,
-                        selectedIconTheme:
-                            const IconThemeData(color: _green),
+                        labelType: NavigationRailLabelType.all,
+                        selectedIconTheme: const IconThemeData(color: _green),
                         destinations: _sections
                             .map((_OfficerSection section) =>
                                 NavigationRailDestination(
                                   icon: Icon(section.icon),
-                                  selectedIcon: Icon(
-                                      section.icon,
-                                      color: _green),
+                                  selectedIcon:
+                                      Icon(section.icon, color: _green),
                                   label: Text(section.label),
                                 ))
                             .toList(),
@@ -672,16 +599,12 @@ class _SolarOfficerDashboardScreenState
           child: ListView(
             children: <Widget>[
               const ListTile(
-                leading:
-                    Icon(Icons.solar_power, color: _green),
+                leading: Icon(Icons.solar_power, color: _green),
                 title: Text('ServicePay Solar Officer',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w900)),
+                    style: TextStyle(fontWeight: FontWeight.w900)),
               ),
               const Divider(),
-              for (int index = 0;
-                  index < _sections.length;
-                  index++)
+              for (int index = 0; index < _sections.length; index++)
                 ListTile(
                   selected: _section == index,
                   leading: Icon(_sections[index].icon),
@@ -728,8 +651,7 @@ class _SolarOfficerDashboardScreenState
   }
 
   Widget _dashboardView() {
-    final List<MapEntry<String, dynamic>> metrics =
-        _dashboard.entries.toList();
+    final List<MapEntry<String, dynamic>> metrics = _dashboard.entries.toList();
     return RefreshIndicator(
       onRefresh: _load,
       color: _green,
@@ -738,8 +660,7 @@ class _SolarOfficerDashboardScreenState
         children: <Widget>[
           Text(
             'Welcome, ${_text(_map(_profile['user'])['fullName'], 'Solar Officer')}',
-            style: const TextStyle(
-                fontSize: 24, fontWeight: FontWeight.w900),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 4),
           const Text(
@@ -751,13 +672,10 @@ class _SolarOfficerDashboardScreenState
             spacing: 12,
             runSpacing: 12,
             children: metrics
-                .map((MapEntry<String, dynamic> entry) =>
-                    _metricCard(
+                .map((MapEntry<String, dynamic> entry) => _metricCard(
                       entry.key,
                       entry.key.toLowerCase().contains('commission') ||
-                              entry.key
-                                  .toLowerCase()
-                                  .contains('sales')
+                              entry.key.toLowerCase().contains('sales')
                           ? _money(entry.value)
                           : _text(entry.value, '0'),
                     ))
@@ -768,8 +686,7 @@ class _SolarOfficerDashboardScreenState
     );
   }
 
-  Widget _metricCard(String label, String value) =>
-      SizedBox(
+  Widget _metricCard(String label, String value) => SizedBox(
         width: 190,
         child: Card(
           elevation: 0,
@@ -782,12 +699,10 @@ class _SolarOfficerDashboardScreenState
                   label
                       .replaceAllMapped(
                         RegExp(r'([A-Z])'),
-                        (Match match) =>
-                            ' ${match.group(1)}',
+                        (Match match) => ' ${match.group(1)}',
                       )
                       .trim(),
-                  style: const TextStyle(
-                      color: Color(0xFF587064)),
+                  style: const TextStyle(color: Color(0xFF587064)),
                 ),
                 const SizedBox(height: 8),
                 Text(value,
@@ -811,12 +726,9 @@ class _SolarOfficerDashboardScreenState
           padding: const EdgeInsets.all(18),
           children: <Widget>[
             Text(title,
-                style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900)),
-            Text(subtitle,
-                style: const TextStyle(
-                    color: Color(0xFF587064))),
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+            Text(subtitle, style: const TextStyle(color: Color(0xFF587064))),
             const SizedBox(height: 14),
             if (_applications.isEmpty)
               _empty('No assigned applications.')
@@ -826,30 +738,57 @@ class _SolarOfficerDashboardScreenState
         ),
       );
 
-  Widget _applicationCard(
-      Map<String, dynamic> application) {
-    final Map<String, dynamic> customer =
-        _map(application['customer']);
-    final Map<String, dynamic> package =
-        _map(application['packageSnapshot']);
-    final Map<String, dynamic> verification =
-        _map(application['verification']);
+  Widget _applicationCard(Map<String, dynamic> application) {
+    final Map<String, dynamic> customer = _map(application['customer']);
+    final Map<String, dynamic> package = _map(application['packageSnapshot']);
+    final Map<String, dynamic> verification = _map(application['verification']);
+    final Map<String, dynamic> business = _map(application['business']);
+    final Map<String, dynamic> preferences =
+        _map(application['applicationPreferences']);
     return Card(
       elevation: 0,
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(14),
-        leading: const CircleAvatar(
-          backgroundColor: Color(0xFFDDF4E6),
-          child: Icon(Icons.person, color: _green),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const CircleAvatar(
+              backgroundColor: Color(0xFFDDF4E6),
+              child: Icon(Icons.person, color: _green),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    _text(customer['fullName'], 'Assigned customer'),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_text(package['name'], 'Solar package')} • ${_text(application['status'])}',
+                  ),
+                  Text(
+                      '${_text(customer['phone'])} • ${_text(customer['address'])}'),
+                  Text(
+                    'Occupation: ${_text(preferences['occupationBusiness'] ?? business['occupationBusiness'], 'Not provided')}',
+                  ),
+                  Text(
+                    'Income: ${_text(preferences['monthlyIncomeRange'], 'Not provided')} • '
+                    'Preferred term: ${_text(preferences['preferredRepaymentPeriod'], 'Not provided')} months',
+                  ),
+                  Text(
+                    'Upfront: ${_text(preferences['upfrontPaymentOption'], 'Not provided')}',
+                  ),
+                  Text(
+                    'Recommendation: ${_text(verification['recommendation'], 'PENDING')}',
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        title: Text(_text(
-            customer['fullName'], 'Assigned customer')),
-        subtitle: Text(
-          '${_text(package['name'], 'Solar package')}\n'
-          '${_text(customer['phone'])} • ${_text(application['status'])}\n'
-          'Recommendation: ${_text(verification['recommendation'], 'PENDING')}',
-        ),
-        isThreeLine: true,
       ),
     );
   }
@@ -858,9 +797,7 @@ class _SolarOfficerDashboardScreenState
         padding: const EdgeInsets.all(18),
         children: <Widget>[
           const Text('Customer verification',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900)),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
           if (_applications.isEmpty)
             _empty('No applications require verification.')
@@ -870,8 +807,7 @@ class _SolarOfficerDashboardScreenState
                 elevation: 0,
                 child: ListTile(
                   title: Text(_text(
-                      _map(application['customer'])['fullName'],
-                      'Customer')),
+                      _map(application['customer'])['fullName'], 'Customer')),
                   subtitle: Text(
                       'Current recommendation: ${_text(_map(application['verification'])['recommendation'], 'PENDING')}'),
                   trailing: FilledButton(
@@ -899,8 +835,7 @@ class _SolarOfficerDashboardScreenState
       padding: const EdgeInsets.all(18),
       children: <Widget>[
         const Text('Solar deliveries & handover',
-            style: TextStyle(
-                fontSize: 22, fontWeight: FontWeight.w900)),
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
         const Text(
             'Field handover reports do not release stock or activate finance; Admin retains final control.'),
         const SizedBox(height: 12),
@@ -911,21 +846,17 @@ class _SolarOfficerDashboardScreenState
             (Map<String, dynamic> item) => Card(
               elevation: 0,
               child: ListTile(
-                title: Text(_text(
-                    _map(item['customer'])['fullName'],
-                    'Customer')),
+                title:
+                    Text(_text(_map(item['customer'])['fullName'], 'Customer')),
                 subtitle: Text(
                     '${_text(_map(item['packageSnapshot'])['name'])} • ${_text(item['status'])}'),
-                trailing: <String>[
-                  'DEPOSIT_PAID',
-                  'READY_FOR_INSTALLATION'
-                ].contains(_text(item['status']).toUpperCase())
+                trailing: <String>['DEPOSIT_PAID', 'READY_FOR_INSTALLATION']
+                        .contains(_text(item['status']).toUpperCase())
                     ? FilledButton(
                         onPressed: () => _handover(item),
                         child: const Text('Handover'),
                       )
-                    : const Icon(Icons.check_circle,
-                        color: _green),
+                    : const Icon(Icons.check_circle, color: _green),
               ),
             ),
           ),
@@ -937,9 +868,7 @@ class _SolarOfficerDashboardScreenState
         padding: const EdgeInsets.all(18),
         children: <Widget>[
           const Text('Repayment monitoring',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900)),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
           if (_repayments.isEmpty)
             _empty('No active repayment accounts.')
@@ -948,9 +877,8 @@ class _SolarOfficerDashboardScreenState
               (Map<String, dynamic> item) => Card(
                 elevation: 0,
                 child: ListTile(
-                  title: Text(_text(
-                      _map(item['customer'])['fullName'],
-                      'Customer')),
+                  title: Text(
+                      _text(_map(item['customer'])['fullName'], 'Customer')),
                   subtitle: Text(
                     '${_text(_map(item['package'])['name'])} • ${_text(item['paymentStatus'])}\n'
                     'Paid: ${_money(item['amountPaidSoFar'])} • Remaining: ${_money(item['remainingBalance'])}',
@@ -970,9 +898,7 @@ class _SolarOfficerDashboardScreenState
         padding: const EdgeInsets.all(18),
         children: <Widget>[
           const Text('Overdue & recovery follow-up',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900)),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
           if (_overdue.isEmpty)
             _empty('No assigned overdue accounts.')
@@ -981,9 +907,8 @@ class _SolarOfficerDashboardScreenState
               (Map<String, dynamic> item) => Card(
                 elevation: 0,
                 child: ListTile(
-                  title: Text(_text(
-                      _map(item['customer'])['fullName'],
-                      'Customer')),
+                  title: Text(
+                      _text(_map(item['customer'])['fullName'], 'Customer')),
                   subtitle: Text(
                       '${item['daysOverdue'] ?? 0} days overdue • Due ${_money(item['amountDue'])}\n'
                       'Outstanding ${_money(item['totalOutstanding'])}'),
@@ -1005,9 +930,8 @@ class _SolarOfficerDashboardScreenState
             children: <Widget>[
               const Expanded(
                 child: Text('Commission wallet',
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900)),
+                    style:
+                        TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
               ),
               FilledButton.icon(
                 onPressed: _requestWithdrawal,
@@ -1021,43 +945,35 @@ class _SolarOfficerDashboardScreenState
             spacing: 12,
             runSpacing: 12,
             children: <Widget>[
-              _metricCard('Pending Commission',
-                  _money(_wallet['pendingBalance'])),
-              _metricCard('Available Commission',
-                  _money(_wallet['availableBalance'])),
-              _metricCard('Total Earned',
-                  _money(_wallet['totalEarned'])),
-              _metricCard('Total Withdrawn',
-                  _money(_wallet['totalWithdrawn'])),
+              _metricCard(
+                  'Pending Commission', _money(_wallet['pendingBalance'])),
+              _metricCard(
+                  'Available Commission', _money(_wallet['availableBalance'])),
+              _metricCard('Total Earned', _money(_wallet['totalEarned'])),
+              _metricCard('Total Withdrawn', _money(_wallet['totalWithdrawn'])),
             ],
           ),
           const SizedBox(height: 18),
           const Text('Commission history',
-              style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 17)),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
           if (_commissions.isEmpty)
             _empty('No Solar commission entries yet.')
           else
             ..._commissions.map(
               (Map<String, dynamic> item) => ListTile(
-                title: Text(_text(item['commissionType'])
-                    .replaceAll('_', ' ')),
+                title: Text(_text(item['commissionType']).replaceAll('_', ' ')),
                 subtitle: Text(
                     'Base ${_money(item['baseAmount'])} at ${item['percentage'] ?? 0}% • ${_text(item['status'])}'),
                 trailing: Text(
                   _money(item['commissionAmount']),
                   style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: _green),
+                      fontWeight: FontWeight.w900, color: _green),
                 ),
               ),
             ),
           const Divider(),
           const Text('Withdrawal requests',
-              style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 17)),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
           ..._withdrawals.map(
             (Map<String, dynamic> item) => ListTile(
               title: Text(_money(item['amount'])),
@@ -1072,9 +988,7 @@ class _SolarOfficerDashboardScreenState
         padding: const EdgeInsets.all(18),
         children: <Widget>[
           const Text('Performance report',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900)),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
           const Text(
               'These figures are calculated by ServicePay and cannot be edited.'),
           const SizedBox(height: 14),
@@ -1083,16 +997,14 @@ class _SolarOfficerDashboardScreenState
             runSpacing: 12,
             children: _performance.entries
                 .map((MapEntry<String, dynamic> entry) =>
-                    _metricCard(
-                        entry.key, _text(entry.value, '0')))
+                    _metricCard(entry.key, _text(entry.value, '0')))
                 .toList(),
           ),
         ],
       );
 
   Widget _profileView() {
-    final Map<String, dynamic> user =
-        _map(_profile['user']);
+    final Map<String, dynamic> user = _map(_profile['user']);
     return ListView(
       padding: const EdgeInsets.all(18),
       children: <Widget>[
@@ -1101,8 +1013,7 @@ class _SolarOfficerDashboardScreenState
         Center(
           child: Text(
             _text(user['fullName'], 'Solar Officer'),
-            style: const TextStyle(
-                fontSize: 24, fontWeight: FontWeight.w900),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
           ),
         ),
         Center(

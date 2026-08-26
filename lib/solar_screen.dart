@@ -6,49 +6,79 @@ import 'services/solar_api_service.dart';
 const Color _solarGreen = Color(0xFF08783E);
 
 class SolarScreen extends StatefulWidget {
-  const SolarScreen({super.key});
+  const SolarScreen({
+    super.key,
+    this.api,
+  });
+
+  final SolarApiService? api;
 
   @override
   State<SolarScreen> createState() => _SolarScreenState();
 }
 
 class _SolarScreenState extends State<SolarScreen> {
-  final SolarApiService _api = SolarApiService();
+  late final SolarApiService _api;
   int _tab = 0;
+  int _applicationsRefreshToken = 0;
   late Future<Map<String, dynamic>> _packages;
   late Future<List<Map<String, dynamic>>> _existingPlans;
 
   @override
   void initState() {
     super.initState();
+    _api = widget.api ?? SolarApiService();
     _packages = _api.getPackages();
-    _existingPlans = Future.wait(<Future<Map<String, dynamic>>>[
-      _api.getApplications(),
-      _api.getFinance(),
-    ]);
+    _existingPlans = _loadExistingPlans();
   }
 
   void _openApplications() => setState(() => _tab = 1);
   void _openFinance() => setState(() => _tab = 2);
+  Future<List<Map<String, dynamic>>> _loadExistingPlans() =>
+      Future.wait(<Future<Map<String, dynamic>>>[
+        _api.getApplications(),
+        _api.getFinance(),
+      ]);
+
+  void _handleApplicationSubmitted() {
+    if (!mounted) return;
+    setState(() {
+      _tab = 1;
+      _applicationsRefreshToken++;
+      _existingPlans = _loadExistingPlans();
+    });
+  }
+
   void _reloadHome() => setState(() {
         _packages = _api.getPackages();
-        _existingPlans = Future.wait(<Future<Map<String, dynamic>>>[
-          _api.getApplications(),
-          _api.getFinance(),
-        ]);
+        _existingPlans = _loadExistingPlans();
       });
 
   @override
   Widget build(BuildContext context) {
     final List<Widget> pages = <Widget>[
       _SolarHome(
+        api: _api,
         packages: _packages,
         existingPlans: _existingPlans,
         onRetry: _reloadHome,
         onApplications: _openApplications,
         onFinance: _openFinance,
+        onApply: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SolarPackageSelectionScreen(
+              api: _api,
+              packages: _packages,
+              onSubmitted: _handleApplicationSubmitted,
+            ),
+          ),
+        ),
+        onApplicationSubmitted: _handleApplicationSubmitted,
       ),
-      SolarApplicationsScreen(api: _api),
+      SolarApplicationsScreen(
+        key: ValueKey<int>(_applicationsRefreshToken),
+        api: _api,
+      ),
       SolarFinanceScreen(api: _api),
     ];
     return Scaffold(
@@ -79,16 +109,22 @@ class _SolarScreenState extends State<SolarScreen> {
 
 class _SolarHome extends StatelessWidget {
   const _SolarHome(
-      {required this.packages,
+      {required this.api,
+      required this.packages,
       required this.existingPlans,
       required this.onRetry,
       required this.onApplications,
-      required this.onFinance});
+      required this.onFinance,
+      required this.onApply,
+      required this.onApplicationSubmitted});
+  final SolarApiService api;
   final Future<Map<String, dynamic>> packages;
   final Future<List<Map<String, dynamic>>> existingPlans;
   final VoidCallback onRetry;
   final VoidCallback onApplications;
   final VoidCallback onFinance;
+  final VoidCallback onApply;
+  final VoidCallback onApplicationSubmitted;
 
   @override
   Widget build(BuildContext context) => RefreshIndicator(
@@ -102,8 +138,14 @@ class _SolarHome extends StatelessWidget {
                     onPressed: () => Navigator.of(context).maybePop(),
                     icon: const Icon(Icons.arrow_back)),
                 const SizedBox(width: 4),
-                const Text('ServicePay Solar',
-                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900))
+                const Expanded(
+                  child: Text(
+                    'ServicePay Solar',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                )
               ]),
               const SizedBox(height: 16),
               Container(
@@ -111,23 +153,38 @@ class _SolarHome extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: _solarGreen,
                     borderRadius: BorderRadius.circular(24)),
-                child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Icon(Icons.solar_power_rounded,
-                          color: Color(0xFFFFD565), size: 40),
-                      SizedBox(height: 14),
-                      Text('Power your home or business',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 25,
-                              fontWeight: FontWeight.w900)),
-                      SizedBox(height: 7),
-                      Text(
-                          'Choose a quality solar package and spread your payment with ServicePay finance.',
-                          style:
-                              TextStyle(color: Color(0xFFD9F1E2), height: 1.4)),
-                    ]),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Icon(Icons.solar_power_rounded,
+                        color: Color(0xFFFFD565), size: 40),
+                    const SizedBox(height: 14),
+                    const Text('Power your home or business',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 25,
+                            fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 7),
+                    const Text(
+                        'Choose a quality solar package and spread your payment with ServicePay finance.',
+                        style:
+                            TextStyle(color: Color(0xFFD9F1E2), height: 1.4)),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: onApply,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: _solarGreen,
+                          minimumSize: const Size.fromHeight(50),
+                        ),
+                        icon: const Icon(Icons.assignment_rounded),
+                        label: const Text('Apply for Solar'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 22),
               Row(children: <Widget>[
@@ -211,7 +268,11 @@ class _SolarHome extends StatelessWidget {
                             const SizedBox(height: 14),
                             ...items.map((Map<String, dynamic> item) => Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
-                                child: _PackageCard(item: item)))
+                                child: _PackageCard(
+                                  api: api,
+                                  item: item,
+                                  onSubmitted: onApplicationSubmitted,
+                                )))
                           ]);
                     },
                   );
@@ -294,15 +355,25 @@ bool _terminalSolarStatus(dynamic value) => <String>[
     ].contains(value?.toString().toUpperCase());
 
 class _PackageCard extends StatelessWidget {
-  const _PackageCard({required this.item});
+  const _PackageCard({
+    required this.api,
+    required this.item,
+    required this.onSubmitted,
+  });
+  final SolarApiService api;
   final Map<String, dynamic> item;
+  final VoidCallback onSubmitted;
   @override
   Widget build(BuildContext context) {
     final String name = _packageName(item, 'Solar package');
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => SolarPackageDetailsScreen(package: item))),
+          builder: (_) => SolarPackageDetailsScreen(
+                api: api,
+                package: item,
+                onSubmitted: onSubmitted,
+              ))),
       child: Ink(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -346,9 +417,90 @@ class _PackageCard extends StatelessWidget {
   }
 }
 
+class SolarPackageSelectionScreen extends StatelessWidget {
+  const SolarPackageSelectionScreen({
+    super.key,
+    required this.api,
+    required this.packages,
+    required this.onSubmitted,
+  });
+
+  final SolarApiService api;
+  final Future<Map<String, dynamic>> packages;
+  final VoidCallback onSubmitted;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFFF7FAF8),
+        appBar: AppBar(
+          title: const Text('Choose a Solar package'),
+          backgroundColor: const Color(0xFFF7FAF8),
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: FutureBuilder<Map<String, dynamic>>(
+          future: packages,
+          builder: (BuildContext context,
+              AsyncSnapshot<Map<String, dynamic>> snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(
+                  child: CircularProgressIndicator(color: _solarGreen));
+            }
+            if (snapshot.hasError) {
+              return _StateCard(
+                message: snapshot.error.toString(),
+                action: 'Go back',
+                onTap: () => Navigator.of(context).pop(),
+              );
+            }
+            final List<Map<String, dynamic>> items = _items(
+              snapshot.data,
+              const <String>['packages', 'data'],
+            );
+            if (items.isEmpty) {
+              return const _StateCard(
+                message: 'No solar packages are available right now.',
+              );
+            }
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: <Widget>[
+                const Text(
+                  'Select the system that fits your needs',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'You can review the package details before completing your application.',
+                  style: TextStyle(color: Color(0xFF68776E)),
+                ),
+                const SizedBox(height: 16),
+                ...items.map(
+                  (Map<String, dynamic> item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _PackageCard(
+                      api: api,
+                      item: item,
+                      onSubmitted: onSubmitted,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+}
+
 class SolarPackageDetailsScreen extends StatelessWidget {
-  const SolarPackageDetailsScreen({super.key, required this.package});
+  const SolarPackageDetailsScreen({
+    super.key,
+    required this.package,
+    this.api,
+    this.onSubmitted,
+  });
   final Map<String, dynamic> package;
+  final SolarApiService? api;
+  final VoidCallback? onSubmitted;
   @override
   Widget build(BuildContext context) {
     final Map<String, dynamic> specifications = package['specifications'] is Map
@@ -357,11 +509,10 @@ class SolarPackageDetailsScreen extends StatelessWidget {
     final Map<String, dynamic> terms = package['terms'] is Map
         ? Map<String, dynamic>.from(package['terms'] as Map)
         : <String, dynamic>{};
-    final List<dynamic> features = (package['features'] ??
-            package['benefits'] ??
-            const <dynamic>[]) is List
-        ? package['features'] ?? package['benefits']
-        : const <dynamic>[];
+    final dynamic rawFeatures =
+        package['features'] ?? package['benefits'] ?? const <dynamic>[];
+    final List<dynamic> features =
+        rawFeatures is List ? rawFeatures : const <dynamic>[];
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAF8),
       appBar: AppBar(
@@ -455,10 +606,13 @@ class SolarPackageDetailsScreen extends StatelessWidget {
                   style: FilledButton.styleFrom(
                       backgroundColor: _solarGreen,
                       minimumSize: const Size.fromHeight(52)),
-                  onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                          builder: (_) =>
-                              SolarApplicationFormScreen(package: package))),
+                  onPressed: () =>
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                          builder: (_) => SolarApplicationFormScreen(
+                                package: package,
+                                api: api,
+                                onSubmitted: onSubmitted,
+                              ))),
                   icon: const Icon(Icons.assignment_rounded),
                   label: const Text('Apply for this package')))),
     );
@@ -466,8 +620,15 @@ class SolarPackageDetailsScreen extends StatelessWidget {
 }
 
 class SolarApplicationFormScreen extends StatefulWidget {
-  const SolarApplicationFormScreen({super.key, required this.package});
+  const SolarApplicationFormScreen({
+    super.key,
+    required this.package,
+    this.api,
+    this.onSubmitted,
+  });
   final Map<String, dynamic> package;
+  final SolarApiService? api;
+  final VoidCallback? onSubmitted;
   @override
   State<SolarApplicationFormScreen> createState() =>
       _SolarApplicationFormScreenState();
@@ -476,7 +637,7 @@ class SolarApplicationFormScreen extends StatefulWidget {
 class _SolarApplicationFormScreenState
     extends State<SolarApplicationFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final SolarApiService _api = SolarApiService();
+  late final SolarApiService _api;
   final Map<String, TextEditingController> _fields =
       <String, TextEditingController>{
     for (final String key in <String>[
@@ -492,7 +653,8 @@ class _SolarApplicationFormScreenState
       'businessState',
       'businessLga',
       'yearsInBusiness',
-      'estimatedMonthlyIncome',
+      'occupationBusiness',
+      'preferredRepaymentPeriod',
       'purposeOfSolar',
       'guarantorName',
       'guarantorPhone',
@@ -502,7 +664,28 @@ class _SolarApplicationFormScreenState
     ])
       key: TextEditingController()
   };
+  static const List<String> _incomeRanges = <String>[
+    'Below ₦50,000',
+    '₦50,000 - ₦100,000',
+    '₦100,001 - ₦250,000',
+    '₦250,001 - ₦500,000',
+    'Above ₦500,000',
+  ];
+  static const List<String> _upfrontPaymentOptions = <String>[
+    'Standard package deposit',
+    'Pay a larger upfront amount',
+    'Pay in full upfront',
+  ];
+  String? _monthlyIncomeRange;
+  String? _upfrontPaymentOption;
   bool _terms = false, _truth = false, _recovery = false, _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = widget.api ?? SolarApiService();
+  }
+
   @override
   void dispose() {
     for (final TextEditingController controller in _fields.values) {
@@ -540,19 +723,25 @@ class _SolarApplicationFormScreenState
           'businessState',
           'businessLga',
           'yearsInBusiness',
-          'estimatedMonthlyIncome',
+          'occupationBusiness',
           'purposeOfSolar',
         ]),
-        'business': _group(<String>[
-          'businessName',
-          'businessType',
-          'businessAddress',
-          'businessState',
-          'businessLga',
-          'yearsInBusiness',
-          'estimatedMonthlyIncome',
-          'purposeOfSolar',
-        ]),
+        'business': <String, String>{
+          ..._group(<String>[
+            'businessName',
+            'businessType',
+            'businessAddress',
+            'businessState',
+            'businessLga',
+            'yearsInBusiness',
+            'occupationBusiness',
+            'purposeOfSolar',
+          ]),
+          'monthlyIncomeRange': _monthlyIncomeRange ?? '',
+          'preferredRepaymentPeriod':
+              _fields['preferredRepaymentPeriod']!.text.trim(),
+          'upfrontPaymentOption': _upfrontPaymentOption ?? '',
+        },
         'guarantorFullName': _fields['guarantorName']!.text.trim(),
         ..._group(<String>[
           'guarantorPhone',
@@ -566,6 +755,13 @@ class _SolarApplicationFormScreenState
           'relationship': _fields['guarantorRelationship']!.text.trim(),
           'address': _fields['guarantorAddress']!.text.trim(),
           'occupation': _fields['guarantorOccupation']!.text.trim(),
+        },
+        'applicationPreferences': <String, String>{
+          'occupationBusiness': _fields['occupationBusiness']!.text.trim(),
+          'monthlyIncomeRange': _monthlyIncomeRange ?? '',
+          'preferredRepaymentPeriod':
+              _fields['preferredRepaymentPeriod']!.text.trim(),
+          'upfrontPaymentOption': _upfrontPaymentOption ?? '',
         },
         'declarations': <String, bool>{
           'termsAccepted': _terms,
@@ -585,7 +781,11 @@ class _SolarApplicationFormScreenState
           content: Text(response['message']?.toString() ??
               'Application submitted successfully.'),
           backgroundColor: _solarGreen));
-      Navigator.of(context).pop();
+      widget.onSubmitted?.call();
+      Navigator.of(context).popUntil(
+        (Route<dynamic> route) =>
+            route.settings.name == '/solar' || route.isFirst,
+      );
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -601,18 +801,24 @@ class _SolarApplicationFormScreenState
   Map<String, String> _group(List<String> names) => <String, String>{
         for (final String name in names) name: _fields[name]!.text.trim()
       };
-  Widget _input(String key, String label,
-          {bool required = true, TextInputType type = TextInputType.text}) =>
+  Widget _input(
+    String key,
+    String label, {
+    bool required = true,
+    TextInputType type = TextInputType.text,
+    String? Function(String?)? validator,
+  }) =>
       Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: TextFormField(
               controller: _fields[key],
               keyboardType: type,
-              validator: required
-                  ? (String? value) => value == null || value.trim().isEmpty
-                      ? '$label is required.'
-                      : null
-                  : null,
+              validator: validator ??
+                  (required
+                      ? (String? value) => value == null || value.trim().isEmpty
+                          ? '$label is required.'
+                          : null
+                      : null),
               decoration: InputDecoration(
                   labelText: label,
                   border: OutlineInputBorder(
@@ -633,6 +839,7 @@ class _SolarApplicationFormScreenState
               _input('lga', 'Local government area')
             ]),
             _section('Business information', <Widget>[
+              _input('occupationBusiness', 'Occupation / business'),
               _input('businessName', 'Business name', required: false),
               _input('businessType', 'Business type', required: false),
               _input('businessAddress', 'Business address', required: false),
@@ -641,19 +848,79 @@ class _SolarApplicationFormScreenState
                   required: false),
               _input('yearsInBusiness', 'Years in business',
                   required: false, type: TextInputType.number),
-              _input('estimatedMonthlyIncome', 'Estimated monthly income',
-                  required: false, type: TextInputType.number),
+              DropdownButtonFormField<String>(
+                key: const Key('solar_income_range'),
+                value: _monthlyIncomeRange,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Monthly income range',
+                  border: OutlineInputBorder(),
+                ),
+                items: _incomeRanges
+                    .map((String value) => DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        ))
+                    .toList(),
+                validator: (String? value) =>
+                    value == null ? 'Monthly income range is required.' : null,
+                onChanged: (String? value) =>
+                    setState(() => _monthlyIncomeRange = value),
+              ),
+              const SizedBox(height: 12),
+              _input(
+                'preferredRepaymentPeriod',
+                'Preferred repayment period (months)',
+                type: TextInputType.number,
+                validator: (String? value) {
+                  final int? months = int.tryParse(value?.trim() ?? '');
+                  if (months == null || months < 1 || months > 120) {
+                    return 'Enter a repayment period from 1 to 120 months.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: const Key('solar_upfront_payment'),
+                value: _upfrontPaymentOption,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Upfront payment option',
+                  border: OutlineInputBorder(),
+                ),
+                items: _upfrontPaymentOptions
+                    .map((String value) => DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        ))
+                    .toList(),
+                validator: (String? value) => value == null
+                    ? 'Upfront payment option is required.'
+                    : null,
+                onChanged: (String? value) =>
+                    setState(() => _upfrontPaymentOption = value),
+              ),
+              const SizedBox(height: 12),
               _input('purposeOfSolar', 'Purpose of solar', required: false)
             ]),
             _section('Guarantor', <Widget>[
-              _input('guarantorName', 'Guarantor full name'),
+              const Text(
+                'Optional unless requested during review.',
+                style: TextStyle(color: Color(0xFF68776E)),
+              ),
+              const SizedBox(height: 8),
+              _input('guarantorName', 'Guarantor full name', required: false),
               _input('guarantorPhone', 'Guarantor phone',
-                  type: TextInputType.phone),
-              _input('guarantorRelationship', 'Relationship to guarantor'),
-              _input('guarantorAddress', 'Guarantor address'),
-              _input('guarantorOccupation', 'Guarantor occupation / business')
+                  required: false, type: TextInputType.phone),
+              _input('guarantorRelationship', 'Relationship to guarantor',
+                  required: false),
+              _input('guarantorAddress', 'Guarantor address', required: false),
+              _input('guarantorOccupation', 'Guarantor occupation / business',
+                  required: false)
             ]),
             CheckboxListTile(
+                key: const Key('solar_declaration_truth'),
                 value: _truth,
                 onChanged: (bool? value) =>
                     setState(() => _truth = value ?? false),
@@ -661,6 +928,7 @@ class _SolarApplicationFormScreenState
                 title: const Text(
                     'I confirm that the information supplied is accurate.')),
             CheckboxListTile(
+                key: const Key('solar_declaration_terms'),
                 value: _terms,
                 onChanged: (bool? value) =>
                     setState(() => _terms = value ?? false),
@@ -668,6 +936,7 @@ class _SolarApplicationFormScreenState
                 title: const Text(
                     'I accept the Solar finance terms and consent to assessment.')),
             CheckboxListTile(
+                key: const Key('solar_declaration_recovery'),
                 value: _recovery,
                 onChanged: (bool? value) =>
                     setState(() => _recovery = value ?? false),
@@ -676,6 +945,7 @@ class _SolarApplicationFormScreenState
                     'I understand the equipment remains subject to the ServicePay recovery agreement until all obligations are completed.')),
             const SizedBox(height: 10),
             FilledButton(
+                key: const Key('solar_submit_application'),
                 onPressed: _submitting ? null : _submit,
                 style: FilledButton.styleFrom(
                     backgroundColor: _solarGreen,
@@ -736,6 +1006,18 @@ class _ApplicationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final String id = _text(item, <String>['id', '_id', 'applicationId']);
     final num? depositDue = solarDepositDue(item);
+    final Map<String, dynamic> preferences =
+        item['applicationPreferences'] is Map
+            ? Map<String, dynamic>.from(item['applicationPreferences'] as Map)
+            : <String, dynamic>{};
+    final Map<String, dynamic> business = item['business'] is Map
+        ? Map<String, dynamic>.from(item['business'] as Map)
+        : <String, dynamic>{};
+    final String occupation = _text(
+      preferences,
+      const <String>['occupationBusiness'],
+      _text(business, const <String>['occupationBusiness']),
+    );
     return Card(
         child: Padding(
             padding: const EdgeInsets.all(16),
@@ -746,6 +1028,16 @@ class _ApplicationTile extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 6),
                   Text('Status: ${_text(item, <String>['status'], 'Pending')}'),
+                  if (occupation.isNotEmpty) Text('Occupation: $occupation'),
+                  if (preferences.isNotEmpty)
+                    Text(
+                      'Income: ${_text(preferences, const <String>[
+                            'monthlyIncomeRange'
+                          ], 'Not provided')} • '
+                      'Preferred term: ${_text(preferences, const <String>[
+                            'preferredRepaymentPeriod'
+                          ], 'Not provided')} months',
+                    ),
                   if (depositDue != null && depositDue > 0)
                     Text('Deposit due: ${_money(depositDue)}',
                         style: const TextStyle(
