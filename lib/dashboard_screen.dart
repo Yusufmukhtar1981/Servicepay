@@ -1501,8 +1501,10 @@ class _DashboardScreenState extends State<DashboardScreen>
         'Empowerment',
         'Marketplace',
         'ServicePay Amana',
-        'Data',
         'NIN Verification',
+        'Data',
+        'Airtime',
+        'Electricity',
       ])
         if (findByName(title) case final _DashboardService service) service,
     ];
@@ -1563,16 +1565,15 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(height: 9),
           LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              final int columns = constraints.maxWidth >= 350 ? 4 : 3;
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: selected.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
                   mainAxisSpacing: 9,
                   crossAxisSpacing: 9,
-                  mainAxisExtent: columns == 4 ? 100 : 104,
+                  mainAxisExtent: 104,
                 ),
                 itemBuilder: (BuildContext context, int index) {
                   return _premiumServiceItem(

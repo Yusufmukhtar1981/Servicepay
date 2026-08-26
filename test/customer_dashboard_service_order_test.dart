@@ -14,6 +14,10 @@ class _DashboardRouteObserver extends NavigatorObserver {
   }
 }
 
+Finder _serviceLabel(String value) => find.byWidgetPredicate(
+      (Widget widget) => widget is Text && widget.data == value,
+    );
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -25,7 +29,7 @@ void main() {
     });
   });
 
-  testWidgets('shows the seven priority services in order and opens each tile',
+  testWidgets('shows the nine main services in order and opens each tile',
       (WidgetTester tester) async {
     final _DashboardRouteObserver observer = _DashboardRouteObserver();
 
@@ -42,40 +46,56 @@ void main() {
     final NavigatorState navigator =
         tester.state<NavigatorState>(find.byType(Navigator).first);
 
-    const List<String> priorityServices = <String>[
+    const List<String> mainServices = <String>[
       'Delivery',
       'ServicePay Solar',
       'Empowerment',
       'Marketplace',
       'ServicePay Amana',
-      'Data',
       'NIN Verification',
+      'Data',
+      'Airtime',
+      'Electricity',
     ];
 
-    for (final String service in priorityServices) {
+    for (final String service in mainServices) {
       expect(find.text(service), findsOneWidget);
     }
-    expect(find.text('Airtime'), findsNothing);
-    expect(find.text('Electricity'), findsNothing);
+    expect(find.text('Keke Napep'), findsNothing);
+    expect(find.text('Cable TV'), findsNothing);
+    expect(find.text('Exam PIN'), findsNothing);
+    expect(find.text('AI Support'), findsNothing);
     expect(find.text('All Services'), findsOneWidget);
 
     final List<Offset> positions = <Offset>[
-      for (final String service in priorityServices)
+      for (final String service in mainServices)
         tester.getCenter(find.text(service)),
     ];
-    for (int index = 1; index < positions.length; index++) {
-      final bool sameRow =
-          (positions[index].dy - positions[index - 1].dy).abs() < 20;
+    for (int row = 0; row < 3; row++) {
+      final List<Offset> rowPositions = positions.sublist(row * 3, row * 3 + 3);
       expect(
-        sameRow
-            ? positions[index].dx > positions[index - 1].dx
-            : positions[index].dy > positions[index - 1].dy,
+        rowPositions.every(
+          (Offset position) => (position.dy - rowPositions.first.dy).abs() < 20,
+        ),
         isTrue,
-        reason: 'Priority service order changed at index $index',
+        reason: 'Main service row ${row + 1} is not horizontal',
       );
+      expect(
+        rowPositions[0].dx < rowPositions[1].dx &&
+            rowPositions[1].dx < rowPositions[2].dx,
+        isTrue,
+        reason: 'Main service order changed in row ${row + 1}',
+      );
+      if (row < 2) {
+        expect(
+          rowPositions[0].dy < positions[(row + 1) * 3].dy,
+          isTrue,
+          reason: 'Main service row order changed after row ${row + 1}',
+        );
+      }
     }
 
-    for (final String service in priorityServices) {
+    for (final String service in mainServices) {
       final int routesBeforeTap = observer.pushedRoutes.length;
       await tester.tap(find.text(service));
       expect(observer.pushedRoutes.length, routesBeforeTap + 1);
@@ -102,5 +122,18 @@ void main() {
     final int routesBeforeTap = observer.pushedRoutes.length;
     await tester.tap(find.text('All Services'));
     expect(observer.pushedRoutes.length, routesBeforeTap + 1);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    final Finder search = find.byType(TextField);
+    expect(search, findsOneWidget);
+    for (final String service in <String>[
+      'Cable TV',
+      'AI Support',
+      'Flight Booking',
+    ]) {
+      await tester.enterText(search, service);
+      await tester.pump();
+      expect(_serviceLabel(service), findsOneWidget);
+    }
   });
 }
