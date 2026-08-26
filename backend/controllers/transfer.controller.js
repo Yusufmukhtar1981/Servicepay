@@ -20,6 +20,76 @@ const generateReference = () => {
     .toUpperCase()}`;
 };
 
+const sendCompletedTransfer = ({
+  res,
+  transfer,
+  sender,
+  receiver,
+  transactionId = null,
+  duplicate = false,
+}) => {
+  return res.status(200).json({
+    success: true,
+    duplicate,
+    message: duplicate
+      ? "This payment was already completed."
+      : "Transfer completed successfully.",
+    data: {
+      transferId:
+        transfer._id,
+      transactionId:
+        transactionId ||
+        undefined,
+      reference:
+        transfer.reference,
+      status:
+        transfer.status,
+      amount:
+        transfer.amount,
+      sender: {
+        id:
+          sender._id,
+        fullName:
+          sender.fullName,
+        phone:
+          sender.phone,
+        walletBalance:
+          transfer.senderBalanceAfter,
+      },
+      receiver: {
+        id:
+          receiver._id,
+        fullName:
+          receiver.fullName,
+        phone:
+          receiver.phone,
+      },
+      receipt: {
+        title:
+          "ServicePay Transfer Receipt",
+        reference:
+          transfer.reference,
+        status:
+          transfer.status,
+        amount:
+          transfer.amount,
+        senderName:
+          sender.fullName,
+        senderPhone:
+          sender.phone,
+        beneficiaryName:
+          receiver.fullName,
+        beneficiaryPhone:
+          receiver.phone,
+        createdAt:
+          transfer.createdAt,
+      },
+      createdAt:
+        transfer.createdAt,
+    },
+  });
+};
+
 /*
  * Check a beneficiary before transfer.
  *
@@ -129,13 +199,15 @@ exports.transfer = async (
 ) => {
   const session =
     await mongoose.startSession();
+  let senderId = null;
+  let idempotencyKey = "";
 
   try {
     console.log(
       "========== NEW SERVICEPAY TRANSFER =========="
     );
 
-    const senderId =
+    senderId =
       req.user?._id ||
       req.user?.id ||
       req.userId;
@@ -151,6 +223,12 @@ exports.transfer = async (
     const transferAmount = Number(
       req.body.amount
     );
+
+    idempotencyKey = String(
+      req.get("Idempotency-Key") ||
+      req.body.idempotencyKey ||
+      ""
+    ).trim();
 
     if (!senderId) {
       return res.status(401).json({
@@ -195,6 +273,14 @@ exports.transfer = async (
         success: false,
         message:
           "Enter a valid transfer amount.",
+      });
+    }
+
+    if (idempotencyKey.length > 128) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "The payment request identifier is invalid.",
       });
     }
 
@@ -327,6 +413,27 @@ exports.transfer = async (
       });
     }
 
+    if (idempotencyKey) {
+      const existingTransfer =
+        await Transfer.findOne({
+          sender: sender._id,
+          idempotencyKey,
+        }).session(session);
+
+      if (existingTransfer) {
+        await session.abortTransaction();
+
+        return sendCompletedTransfer({
+          res,
+          transfer:
+            existingTransfer,
+          sender,
+          receiver,
+          duplicate: true,
+        });
+      }
+    }
+
     if (
       Number(sender.walletBalance || 0) <
       amount
@@ -425,6 +532,9 @@ exports.transfer = async (
               updatedReceiver._id,
             amount,
             reference,
+            idempotencyKey:
+              idempotencyKey ||
+              undefined,
             status: "SUCCESSFUL",
             senderBalanceAfter:
               updatedSender.walletBalance,
@@ -646,73 +756,72 @@ exports.transfer = async (
       }
     );
 
-    return res.status(200).json({
-      success: true,
-      message:
-        "Transfer completed successfully.",
-
-      data: {
-        transferId:
-          savedTransfer._id,
-
-        transactionId:
-          savedTransaction._id,
-
-        reference:
-          savedTransfer.reference,
-
-        status:
-          savedTransfer.status,
-
-        amount:
-          savedTransfer.amount,
-
-        sender: {
-          id:
-            updatedSender._id,
-          fullName:
-            updatedSender.fullName,
-          phone:
-            updatedSender.phone,
-          walletBalance:
-            updatedSender.walletBalance,
-        },
-
-        receiver: {
-          id:
-            updatedReceiver._id,
-          fullName:
-            updatedReceiver.fullName,
-          phone:
-            updatedReceiver.phone,
-        },
-
-        receipt: {
-          title:
-            "ServicePay Transfer Receipt",
-          reference,
-          status:
-            "SUCCESSFUL",
-          amount,
-          senderName:
-            updatedSender.fullName,
-          senderPhone:
-            updatedSender.phone,
-          beneficiaryName:
-            updatedReceiver.fullName,
-          beneficiaryPhone:
-            updatedReceiver.phone,
-          createdAt:
-            savedTransfer.createdAt,
-        },
-
-        createdAt:
-          savedTransfer.createdAt,
-      },
+    return sendCompletedTransfer({
+      res,
+      transfer:
+        savedTransfer,
+      sender:
+        updatedSender,
+      receiver:
+        updatedReceiver,
+      transactionId:
+        savedTransaction._id,
     });
   } catch (error) {
     if (session.inTransaction()) {
       await session.abortTransaction();
+    }
+
+    if (idempotencyKey && senderId) {
+      let existingTransfer = null;
+
+      for (
+        let attempt = 0;
+        attempt < 10 && !existingTransfer;
+        attempt += 1
+      ) {
+        existingTransfer =
+          await Transfer.findOne({
+            sender:
+              senderId,
+            idempotencyKey,
+          }).populate([
+            {
+              path: "sender",
+              select:
+                "_id fullName phone",
+            },
+            {
+              path: "receiver",
+              select:
+                "_id fullName phone",
+            },
+          ]);
+
+        if (!existingTransfer && attempt < 9) {
+          await new Promise(
+            (resolve) =>
+              setTimeout(resolve, 50)
+          );
+        }
+      }
+
+      if (
+        existingTransfer &&
+        existingTransfer.sender &&
+        existingTransfer.receiver
+      ) {
+        return sendCompletedTransfer({
+          res,
+          transfer:
+            existingTransfer,
+          sender:
+            existingTransfer.sender,
+          receiver:
+            existingTransfer.receiver,
+          duplicate: true,
+        });
+      }
     }
 
     console.error(

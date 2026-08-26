@@ -26,6 +26,13 @@ const transferSchema = new mongoose.Schema(
       unique: true,
     },
 
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      default: undefined,
+    },
+
     status: {
       type: String,
       enum: ["PENDING", "SUCCESSFUL", "FAILED"],
@@ -44,6 +51,21 @@ const transferSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  }
+);
+
+transferSchema.index(
+  {
+    sender: 1,
+    idempotencyKey: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: {
+        $type: "string",
+      },
+    },
   }
 );
 
