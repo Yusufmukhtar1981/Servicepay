@@ -140,6 +140,7 @@ const userSchema = new mongoose.Schema(
         "STATE_MANAGER",
         "AGENT",
         "DELIVERY_RIDER",
+        "SOLAR_OFFICER",
         "CUSTOMER",
       ],
       default: "CUSTOMER",
@@ -538,6 +539,15 @@ const userSchema = new mongoose.Schema(
   },
 
     commissionBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    /*
+     * Solar Officer commissions are intentionally kept separate from
+     * customer and legacy rider balances.
+     */
+    solarCommissionBalance: {
       type: Number,
       default: 0,
       min: 0,

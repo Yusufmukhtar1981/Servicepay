@@ -38,6 +38,7 @@ const solarApplicationSchema = new mongoose.Schema({
   paymentSchedule: { type: [scheduleSchema], default: [] },
   recovery: { type: mongoose.Schema.Types.Mixed, default: null },
   installation: { type: mongoose.Schema.Types.Mixed, default: null },
+  fieldHandover: { type: mongoose.Schema.Types.Mixed, default: null },
   stockReservation: { type: mongoose.Schema.Types.Mixed, default: null },
 }, { timestamps: true });
 solarApplicationSchema.index({ customer: 1, createdAt: -1 });

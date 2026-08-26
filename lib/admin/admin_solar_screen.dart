@@ -16,6 +16,10 @@ class AdminSolarScreen extends StatefulWidget {
 
 class _AdminSolarScreenState extends State<AdminSolarScreen> {
   final _SolarAdminApi _api = _SolarAdminApi();
+  final _SolarAdminApi _officerApi = _SolarAdminApi(
+    baseUrl:
+        'https://api.servicepay.ng/api/solar/officer/admin',
+  );
   bool _loading = true;
   String _error = '';
   int _tab = 0;
@@ -27,6 +31,12 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
   List<Map<String, dynamic>> _finances = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _repayments = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _overdue = <Map<String, dynamic>>[];
+  Map<String, dynamic> _officerDashboard =
+      <String, dynamic>{};
+  List<Map<String, dynamic>> _officers =
+      <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _officerWithdrawals =
+      <Map<String, dynamic>>[];
 
   @override
   void initState() {
@@ -53,6 +63,9 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
         _api.get('/finance'),
         _api.get('/repayments'),
         _api.get('/overdue'),
+        _officerApi.get('/dashboard'),
+        _officerApi.get('/officers'),
+        _officerApi.get('/withdrawals'),
       ]);
       if (!mounted) return;
       setState(() {
@@ -64,6 +77,11 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
         _finances = _list(results[5]['finance']);
         _repayments = _list(results[6]['payments']);
         _overdue = _list(results[7]['finance']);
+        _officerDashboard =
+            _map(results[8]['dashboard']);
+        _officers = _list(results[9]['officers']);
+        _officerWithdrawals =
+            _list(results[10]['withdrawals']);
         _loading = false;
       });
     } on _SolarAdminException catch (error) {
@@ -561,6 +579,288 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
     }
   }
 
+  Future<void> _createOfficer() async {
+    final Map<String, TextEditingController> fields =
+        <String, TextEditingController>{
+      'fullName': TextEditingController(),
+      'phone': TextEditingController(),
+      'email': TextEditingController(),
+      'password': TextEditingController(),
+      'state': TextEditingController(),
+      'lga': TextEditingController(),
+      'address': TextEditingController(),
+    };
+    final bool? save = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Create Solar Officer'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                for (final MapEntry<String,
+                        TextEditingController> entry
+                    in fields.entries)
+                  _input(
+                    entry.value,
+                    entry.key
+                        .replaceAllMapped(
+                          RegExp(r'([A-Z])'),
+                          (Match match) =>
+                              ' ${match.group(1)}',
+                        )
+                        .toUpperCase(),
+                    lines: entry.key == 'address' ? 2 : 1,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, true),
+            child: const Text('Create officer'),
+          ),
+        ],
+      ),
+    );
+    if (save != true) {
+      for (final TextEditingController item in fields.values) {
+        item.dispose();
+      }
+      return;
+    }
+    try {
+      await _officerApi.post('/officers',
+          body: <String, dynamic>{
+            for (final MapEntry<String,
+                    TextEditingController> entry
+                in fields.entries)
+              entry.key: entry.value.text.trim(),
+          });
+      _notice('Solar Officer created.');
+      await _load();
+    } on _SolarAdminException catch (error) {
+      _notice(error.message, error: true);
+    } finally {
+      for (final TextEditingController item in fields.values) {
+        item.dispose();
+      }
+    }
+  }
+
+  Future<void> _setOfficerStatus(
+    Map<String, dynamic> officer,
+    String status,
+  ) async {
+    try {
+      await _officerApi.patch(
+        '/officers/${_id(officer)}/status',
+        body: <String, dynamic>{'status': status},
+      );
+      _notice('Solar Officer status changed to $status.');
+      await _load();
+    } on _SolarAdminException catch (error) {
+      _notice(error.message, error: true);
+    }
+  }
+
+  Future<void> _viewOfficerPerformance(
+      Map<String, dynamic> officer) async {
+    try {
+      final Map<String, dynamic> response =
+          await _officerApi.get(
+              '/officers/${_id(officer)}/performance');
+      if (!mounted) return;
+      final Map<String, dynamic> performance =
+          _map(response['performance']);
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext dialogContext) =>
+            AlertDialog(
+          title: Text(
+            '${_text(_map(officer['user'])['fullName'], 'Solar Officer')} performance',
+          ),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: performance.entries
+                    .map(
+                      (MapEntry<String, dynamic> entry) =>
+                          _metricCard(
+                        _Metric(
+                          entry.key
+                              .replaceAllMapped(
+                                RegExp(r'([A-Z])'),
+                                (Match match) =>
+                                    ' ${match.group(1)}',
+                              )
+                              .trim(),
+                          entry.key
+                                  .toLowerCase()
+                                  .contains('salesvalue')
+                              ? _money(entry.value)
+                              : _text(entry.value, '0'),
+                          Icons.analytics_outlined,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } on _SolarAdminException catch (error) {
+      _notice(error.message, error: true);
+    }
+  }
+
+  Future<void> _assignOfficer(
+      Map<String, dynamic> application) async {
+    final List<Map<String, dynamic>> active = _officers
+        .where((Map<String, dynamic> officer) =>
+            _text(officer['status']).toUpperCase() ==
+            'ACTIVE')
+        .toList();
+    if (active.isEmpty) {
+      _notice('Create or activate a Solar Officer first.',
+          error: true);
+      return;
+    }
+    String selected = _id(active.first);
+    final bool? save = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) =>
+          StatefulBuilder(
+        builder: (BuildContext context,
+                StateSetter setDialogState) =>
+            AlertDialog(
+          title: const Text('Assign Solar Officer'),
+          content: DropdownButtonFormField<String>(
+            value: selected,
+            decoration: const InputDecoration(
+              labelText: 'Solar Officer',
+              border: OutlineInputBorder(),
+            ),
+            items: active
+                .map((Map<String, dynamic> officer) {
+              final Map<String, dynamic> user =
+                  _map(officer['user']);
+              return DropdownMenuItem<String>(
+                value: _id(officer),
+                child: Text(
+                    '${_text(user['fullName'])} • ${_text(officer['officerId'])}'),
+              );
+            }).toList(),
+            onChanged: (String? value) =>
+                setDialogState(
+                    () => selected = value ?? selected),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, true),
+              child: const Text('Assign'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (save != true) return;
+    try {
+      await _officerApi.post(
+        '/applications/${_id(application)}/assign',
+        body: <String, dynamic>{'officerId': selected},
+      );
+      _notice('Solar application assigned.');
+      await _load();
+    } on _SolarAdminException catch (error) {
+      _notice(error.message, error: true);
+    }
+  }
+
+  Future<void> _reviewOfficerWithdrawal(
+    Map<String, dynamic> withdrawal,
+    String action,
+  ) async {
+    final TextEditingController note =
+        TextEditingController();
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(
+            '${action.toUpperCase()} commission withdrawal?'),
+        content: TextField(
+          controller: note,
+          maxLines: 3,
+          decoration: InputDecoration(
+            labelText: action == 'reject'
+                ? 'Rejection reason'
+                : 'Admin note',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      note.dispose();
+      return;
+    }
+    try {
+      await _officerApi.patch(
+        '/withdrawals/${_id(withdrawal)}/$action',
+        body: <String, dynamic>{
+          if (action == 'reject')
+            'reason': note.text.trim()
+          else
+            'note': note.text.trim(),
+        },
+      );
+      _notice('Withdrawal updated.');
+      await _load();
+    } on _SolarAdminException catch (error) {
+      _notice(error.message, error: true);
+    } finally {
+      note.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> views = <Widget>[
@@ -568,6 +868,7 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       _packagesView(),
       _applicationsView(),
       _portfolioView(),
+      _officersView(),
       _settingsView(),
     ];
     return Scaffold(
@@ -610,6 +911,10 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
               icon: Icon(Icons.account_balance_outlined),
               selectedIcon: Icon(Icons.account_balance),
               label: 'Portfolio'),
+          NavigationDestination(
+              icon: Icon(Icons.badge_outlined),
+              selectedIcon: Icon(Icons.badge),
+              label: 'Officers'),
           NavigationDestination(
               icon: Icon(Icons.tune_outlined),
               selectedIcon: Icon(Icons.tune),
@@ -850,6 +1155,14 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
     final String status =
         _text(application['status'], 'SUBMITTED').toUpperCase();
     final String financeId = _text(application['financeId'], '');
+    final Map<String, dynamic> assignment =
+        _map(application['solarOfficerAssignment']);
+    final Map<String, dynamic> officer =
+        _map(assignment['officer']);
+    final Map<String, dynamic> officerUser =
+        _map(officer['user']);
+    final Map<String, dynamic> verification =
+        _map(application['solarOfficerVerification']);
     final int paidInstallments = schedule
         .where((Map<String, dynamic> item) =>
             _text(item['status']).toUpperCase() == 'PAID')
@@ -884,6 +1197,25 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
             Text('Address: ${_text(profile['address'], 'Not provided')}'),
             Text(
                 'KYC: ${_text(kyc['status'] ?? kyc['verificationStatus'], 'Not recorded')}'),
+            Text(
+              'Solar Officer: ${_text(officerUser['fullName'], 'UNASSIGNED')}'
+              '${officer.isEmpty ? '' : ' • ${_text(officer['officerId'])}'}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            if (verification.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F8F3),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'Officer recommendation: ${_text(verification['recommendation']).replaceAll('_', ' ')}\n'
+                  'Verified: ${_text(verification['verifiedAt'])}\n'
+                  'Notes: ${_text(verification['notes'], 'No notes')}',
+                ),
+              ),
             const SizedBox(height: 8),
             Text(
               'Deposit paid: ${_money(application['depositPaid'])} / ${_money(application['depositRequired'])} • '
@@ -917,6 +1249,13 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
               spacing: 8,
               runSpacing: 8,
               children: <Widget>[
+                OutlinedButton.icon(
+                  onPressed: () => _assignOfficer(application),
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: Text(assignment.isEmpty
+                      ? 'Assign officer'
+                      : 'Reassign officer'),
+                ),
                 if (status == 'SUBMITTED')
                   OutlinedButton(
                     onPressed: () => _transition(application, 'UNDER_REVIEW'),
@@ -1038,6 +1377,235 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
                   .where((Map<String, dynamic> item) =>
                       _text(item['status']).toUpperCase() == 'COMPLETED')
                   .map(_financeTile),
+          ],
+        ),
+      );
+
+  Widget _officersView() => RefreshIndicator(
+        color: _solarGreen,
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const Expanded(
+                  child: Text(
+                    'Solar Officer control centre',
+                    style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: _createOfficer,
+                  icon: const Icon(Icons.person_add),
+                  label: const Text('Create officer'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Manage field staff, assignments, commissions and withdrawals.',
+              style: TextStyle(color: Color(0xFF597066)),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: _officerDashboard.entries
+                  .where((MapEntry<String, dynamic> entry) =>
+                      entry.value is num)
+                  .map((MapEntry<String, dynamic> entry) =>
+                      _metricCard(
+                        _Metric(
+                          entry.key
+                              .replaceAllMapped(
+                                RegExp(r'([A-Z])'),
+                                (Match match) =>
+                                    ' ${match.group(1)}',
+                              )
+                              .trim(),
+                          _text(entry.value, '0'),
+                          Icons.analytics_outlined,
+                        ),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 20),
+            _sectionTitle('Solar Officers'),
+            const SizedBox(height: 10),
+            if (_officers.isEmpty)
+              const _EmptyPanel(
+                icon: Icons.badge_outlined,
+                text: 'No Solar Officers have been created.',
+              )
+            else
+              ..._officers.map(
+                (Map<String, dynamic> officer) {
+                  final Map<String, dynamic> user =
+                      _map(officer['user']);
+                  final String status =
+                      _text(officer['status'], 'INACTIVE')
+                          .toUpperCase();
+                  return Card(
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            children: <Widget>[
+                              const CircleAvatar(
+                                backgroundColor:
+                                    Color(0xFFDDF4E6),
+                                child: Icon(Icons.badge,
+                                    color: _solarGreen),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      _text(user['fullName'],
+                                          'Solar Officer'),
+                                      style: const TextStyle(
+                                          fontWeight:
+                                              FontWeight.w900),
+                                    ),
+                                    Text(
+                                      '${_text(officer['officerId'])} • ${_text(user['phone'])}',
+                                      style: const TextStyle(
+                                          color:
+                                              Color(0xFF597066)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              _StatusBadge(status: status),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '${_text(officer['lga'])}, ${_text(officer['state'])} • '
+                            '${officer['assignedCustomers'] ?? 0} assigned customers',
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: <Widget>[
+                              OutlinedButton.icon(
+                                onPressed: () =>
+                                    _viewOfficerPerformance(
+                                        officer),
+                                icon: const Icon(
+                                    Icons.analytics_outlined),
+                                label: const Text(
+                                    'View performance'),
+                              ),
+                              if (status != 'ACTIVE')
+                                OutlinedButton(
+                                  onPressed: () =>
+                                      _setOfficerStatus(
+                                          officer, 'ACTIVE'),
+                                  child: const Text('Activate'),
+                                ),
+                              if (status == 'ACTIVE')
+                                OutlinedButton(
+                                  onPressed: () =>
+                                      _setOfficerStatus(
+                                          officer, 'SUSPENDED'),
+                                  child: const Text('Suspend'),
+                                ),
+                              if (status != 'INACTIVE')
+                                OutlinedButton(
+                                  onPressed: () =>
+                                      _setOfficerStatus(
+                                          officer, 'INACTIVE'),
+                                  child:
+                                      const Text('Deactivate'),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(height: 20),
+            _sectionTitle('Commission withdrawals'),
+            const SizedBox(height: 10),
+            if (_officerWithdrawals.isEmpty)
+              const _EmptyPanel(
+                icon: Icons.account_balance_wallet_outlined,
+                text: 'No Solar Officer withdrawal requests.',
+              )
+            else
+              ..._officerWithdrawals.map(
+                (Map<String, dynamic> withdrawal) {
+                  final Map<String, dynamic> officer =
+                      _map(withdrawal['officer']);
+                  final Map<String, dynamic> user =
+                      _map(officer['user']);
+                  final String status =
+                      _text(withdrawal['status']).toUpperCase();
+                  return Card(
+                    elevation: 0,
+                    child: ListTile(
+                      title: Text(
+                        '${_text(user['fullName'], 'Solar Officer')} • ${_money(withdrawal['amount'])}',
+                      ),
+                      subtitle: Text(
+                        '${_text(withdrawal['reference'])}\n'
+                        '${_text(withdrawal['bankName'])} • ${_text(withdrawal['accountNumber'])}',
+                      ),
+                      isThreeLine: true,
+                      trailing: Wrap(
+                        spacing: 6,
+                        children: <Widget>[
+                          if (status == 'PENDING')
+                            IconButton(
+                              tooltip: 'Approve',
+                              onPressed: () =>
+                                  _reviewOfficerWithdrawal(
+                                      withdrawal, 'approve'),
+                              icon: const Icon(
+                                  Icons.check_circle,
+                                  color: _solarGreen),
+                            ),
+                          if (<String>[
+                            'PENDING',
+                            'APPROVED'
+                          ].contains(status))
+                            IconButton(
+                              tooltip: 'Reject',
+                              onPressed: () =>
+                                  _reviewOfficerWithdrawal(
+                                      withdrawal, 'reject'),
+                              icon: const Icon(Icons.cancel,
+                                  color: Color(0xFFB42318)),
+                            ),
+                          if (status == 'APPROVED')
+                            IconButton(
+                              tooltip: 'Mark paid',
+                              onPressed: () =>
+                                  _reviewOfficerWithdrawal(
+                                      withdrawal, 'paid'),
+                              icon: const Icon(Icons.paid,
+                                  color: _solarGreen),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       );
@@ -1205,7 +1773,11 @@ class _SolarAdminException implements Exception {
 }
 
 class _SolarAdminApi {
-  static const String _baseUrl = 'https://api.servicepay.ng/api/solar/admin';
+  _SolarAdminApi({
+    this.baseUrl = 'https://api.servicepay.ng/api/solar/admin',
+  });
+
+  final String baseUrl;
 
   Future<Map<String, dynamic>> get(
     String path, {
@@ -1267,7 +1839,7 @@ class _SolarAdminApi {
     Map<String, String>? query,
     Map<String, dynamic>? body,
   }) async {
-    final Uri url = Uri.parse('$_baseUrl$path').replace(
+    final Uri url = Uri.parse('$baseUrl$path').replace(
       queryParameters: query?.isEmpty ?? true ? null : query,
     );
     final Map<String, String> headers = await _headers();

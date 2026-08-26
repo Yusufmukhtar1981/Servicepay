@@ -11,7 +11,12 @@ const KycProfile = require("../models/kycProfile.model");
 const Transaction = require("../models/transaction.model");
 const Notification = require("../models/notification.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
+const SolarAssignment = require("../models/solarAssignment.model");
+const SolarVerification = require("../models/solarVerification.model");
 const { postDebit } = require("../services/ledger.service");
+const {
+  createSolarOfficerCommission,
+} = require("../services/solarOfficerCommission.service");
 
 const money = (value) => {
   const n = Number(value);
@@ -304,7 +309,14 @@ exports.pay = async (req,res) => {
       const allocations=[]; if(paymentType==="DEPOSIT"){app.depositPaid=money(app.depositPaid+requested);if(app.depositPaid>=app.depositRequired)pushHistory(app,"DEPOSIT_PAID",payer._id,"Required deposit paid");}
       else {let left=requested;for(const row of app.paymentSchedule){const owing=money(row.amount-row.paidAmount);if(left<=0)break;if(owing<=0)continue;const part=money(Math.min(left,owing));row.paidAmount=money(row.paidAmount+part);row.status=row.paidAmount>=row.amount?"PAID":"PARTIAL";if(row.status==="PAID")row.paidAt=new Date();left=money(left-part);allocations.push({installmentNumber:row.installmentNumber,amount:part});}}
       app.amountPaid=money(app.amountPaid+requested);app.outstandingBalance=money(app.totalPayable-app.amountPaid);if(app.outstandingBalance===0&&["ACTIVE","RECOVERY"].includes(app.status))pushHistory(app,"COMPLETED",payer._id,"All Solar payments completed");await app.save({session});
-      const payment=(await SolarPayment.create([{application:app._id,customer:payer._id,type:paymentType,amount:requested,idempotencyKey:idem,transaction:transaction[0]._id,ledgerEntry:ledger.entry._id,allocations}],{session}))[0];output={payment,application:app,idempotent:false};
+      const payment=(await SolarPayment.create([{application:app._id,customer:payer._id,type:paymentType,amount:requested,idempotencyKey:idem,transaction:transaction[0]._id,ledgerEntry:ledger.entry._id,allocations}],{session}))[0];
+      if(paymentType==="DEPOSIT"&&app.depositPaid>=app.depositRequired){
+        const commission=await createSolarOfficerCommission({application:app,payment,type:"SOLAR_DEPOSIT_5_PERCENT",session});
+        if(commission.created){
+          await audit(req,"SOLAR_OFFICER_COMMISSION_CREATED","Created confirmed Solar deposit commission",null,{applicationId:String(app._id),commissionId:String(commission.record._id),commissionType:"SOLAR_DEPOSIT_5_PERCENT",amount:commission.record.commissionAmount},session);
+        }
+      }
+      output={payment,application:app,idempotent:false};
     });
     res.status(output.idempotent?200:201).json({success:true,...output});
   }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{await session.endSession();}
@@ -314,7 +326,7 @@ exports.recovery = async (req,res) => {
   const app=await SolarApplication.findById(req.params.applicationId);if(!app)return res.status(404).json({success:false,message:"Solar application not found."});if(!["ACTIVE","RECOVERY"].includes(app.status))return res.status(409).json({success:false,message:"Only active applications may enter recovery."});
   app.recovery={reason,notes,recordedBy:id(req),recordedAt:new Date()};if(app.status!=="RECOVERY")pushHistory(app,"RECOVERY",id(req),reason);await app.save();await audit(req,"SOLAR_RECOVERY_RECORDED",reason,null,{applicationId:String(app._id),notes});res.json({success:true,application:app});
 };
-exports.adminApplications = async(req,res)=>{const filter={};if(req.query.status)filter.status=text(req.query.status,30).toUpperCase();const apps=await SolarApplication.find(filter).sort({createdAt:-1}).populate("customer","fullName phone email");const finances=await SolarFinance.find({application:{$in:apps.map(a=>a._id)}}).select("_id application reference").lean();const byApplication=new Map(finances.map(item=>[String(item.application),item]));const s=await SolarSettings.findOne({key:"default"}).lean();res.json({success:true,applications:apps.map(a=>{const value=applicationView(a,s?.overdueGraceDays||0);const finance=byApplication.get(String(a._id));return {...value,financeId:finance?._id||null,financeReference:finance?.reference||null};})});};
+exports.adminApplications = async(req,res)=>{const filter={};if(req.query.status)filter.status=text(req.query.status,30).toUpperCase();const apps=await SolarApplication.find(filter).sort({createdAt:-1}).populate("customer","fullName phone email");const appIds=apps.map(a=>a._id);const [finances,assignments,verifications]=await Promise.all([SolarFinance.find({application:{$in:appIds}}).select("_id application reference").lean(),SolarAssignment.find({application:{$in:appIds},status:"ACTIVE"}).populate({path:"officer",populate:{path:"user",select:"fullName phone email"}}).lean(),SolarVerification.find({application:{$in:appIds}}).lean()]);const byApplication=new Map(finances.map(item=>[String(item.application),item]));const assignmentByApplication=new Map(assignments.map(item=>[String(item.application),item]));const verificationByApplication=new Map(verifications.map(item=>[String(item.application),item]));const s=await SolarSettings.findOne({key:"default"}).lean();res.json({success:true,applications:apps.map(a=>{const value=applicationView(a,s?.overdueGraceDays||0);const finance=byApplication.get(String(a._id));return {...value,financeId:finance?._id||null,financeReference:finance?.reference||null,solarOfficerAssignment:assignmentByApplication.get(String(a._id))||null,solarOfficerVerification:verificationByApplication.get(String(a._id))||null};})});};
 exports.dashboard = async(req,res)=>{
   const now = new Date(), week = new Date(now.getTime() + 7 * 86400000);
   const [applications, financeRows, availableStock, deposits] = await Promise.all([
@@ -377,6 +389,26 @@ exports.installApplication = async (req, res) => {
       }], { session });
       pushHistory(app, "FINANCE_ACTIVE", id(req), "Solar finance contract activated");
       await app.save({ session });
+      const commission = await createSolarOfficerCommission({
+        application: app,
+        type: "SOLAR_SALE_2_PERCENT",
+        session,
+      });
+      if (commission.created) {
+        await audit(
+          req,
+          "SOLAR_OFFICER_COMMISSION_CREATED",
+          "Created delivered Solar sale commission",
+          null,
+          {
+            applicationId: String(app._id),
+            commissionId: String(commission.record._id),
+            commissionType: "SOLAR_SALE_2_PERCENT",
+            amount: commission.record.commissionAmount,
+          },
+          session
+        );
+      }
       await Notification.create([{ userId: app.customer, title: "Solar installation completed", message: "Your Solar finance contract is now active.", type: "SOLAR", referenceId: app._id, referenceType: "SolarFinance" }], { session });
       result = { application: app, finance: finance[0] };
     });

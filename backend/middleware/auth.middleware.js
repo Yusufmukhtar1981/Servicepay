@@ -165,9 +165,30 @@ const customerOnly = (req, res, next) => {
   return next();
 };
 
+const solarOfficerOnly = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized.",
+    });
+  }
+
+  const userRole = normalizeRole(req.user.role);
+  if (userRole !== "SOLAR_OFFICER") {
+    return res.status(403).json({
+      success: false,
+      message: "This feature is available to Solar Officer accounts only.",
+    });
+  }
+
+  req.user.role = userRole;
+  return next();
+};
+
 module.exports = {
   normalizeRole,
   customerOnly,
+  solarOfficerOnly,
   protect,
   adminOnly,
 };

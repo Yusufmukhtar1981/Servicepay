@@ -10,6 +10,7 @@ import 'main_navigation.dart';
 import 'register_screen.dart';
 import 'rider/rider_main_navigation.dart';
 import 'role_dashboard_screen.dart';
+import 'solar_officer/solar_officer_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
@@ -547,6 +548,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
             if (role == 'CUSTOMER') {
               return const MainNavigation();
+            }
+
+            if (role == 'SOLAR_OFFICER') {
+              return const SolarOfficerDashboardScreen();
             }
 
             return RoleDashboardScreen(
