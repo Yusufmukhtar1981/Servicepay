@@ -57,6 +57,9 @@ router.post(
   riderController.updateAvailability
 );
 
+router.post("/device-tokens", protect, riderController.registerDeviceToken);
+router.delete("/device-tokens", protect, riderController.removeDeviceToken);
+
 /*
  * =====================================================
  * RIDER STATUS

@@ -7,6 +7,11 @@ const Transaction = require(
 const Delivery = require(
   "../models/delivery.model"
 );
+const {
+  sendAssignmentAlertIfOnline,
+  sendAssignmentCancellation,
+} = require("../services/riderDeliveryAlert.service");
+const { randomUUID } = require("crypto");
 
 const {
   creditRiderCommissionIfEligible,
@@ -1822,6 +1827,9 @@ exports.assignRiderToDelivery =
       delivery.assignedAt =
         new Date();
 
+      const previousAssignmentEventId = delivery.assignmentEventId;
+      delivery.assignmentEventId = randomUUID();
+
       delivery.riderAcceptedAt =
         null;
 
@@ -1857,6 +1865,23 @@ exports.assignRiderToDelivery =
           ) + 1;
 
         await rider.save();
+      }
+
+      // Alerts are best-effort and run only after all business persistence.
+      try {
+        if (previousRiderId && !sameRider && previousAssignmentEventId) {
+          await sendAssignmentCancellation({
+            riderId: previousRiderId,
+            delivery,
+            assignmentEventId: previousAssignmentEventId,
+          });
+        }
+        await sendAssignmentAlertIfOnline({ rider, delivery });
+      } catch (error) {
+        console.error(
+          "DELIVERY ASSIGNMENT ALERT ERROR:",
+          error?.message || "Unable to dispatch the rider alert."
+        );
       }
 
       const updatedDelivery =
@@ -2041,6 +2066,7 @@ exports.unassignRiderFromDelivery =
                 .assignedRiderId
             )
           : "";
+      const previousAssignmentEventId = delivery.assignmentEventId;
 
       delivery.assignedRiderId =
         null;
@@ -2055,6 +2081,9 @@ exports.unassignRiderFromDelivery =
         null;
 
       delivery.assignedAt =
+        null;
+
+      delivery.assignmentEventId =
         null;
 
       delivery.riderAcceptedAt =
@@ -2100,6 +2129,20 @@ exports.unassignRiderFromDelivery =
             },
           }
         );
+        if (previousAssignmentEventId) {
+          try {
+            await sendAssignmentCancellation({
+              riderId: previousRiderId,
+              delivery,
+              assignmentEventId: previousAssignmentEventId,
+            });
+          } catch (error) {
+            console.error(
+              "DELIVERY CANCELLATION ALERT ERROR:",
+              error?.message || "Unable to dispatch the rider cancellation."
+            );
+          }
+        }
       }
 
       const updatedDelivery =

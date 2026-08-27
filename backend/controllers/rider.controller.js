@@ -1,4 +1,5 @@
 const User = require("../models/user.model");
+const RiderDeviceToken = require("../models/riderDeviceToken.model");
 
 /*
  * =====================================================
@@ -20,6 +21,48 @@ const normalizeAvailabilityStatus = (value) => {
   return String(value || "")
     .trim()
     .toUpperCase();
+};
+
+const requireDeliveryRider = async (req, res) => {
+  const rider = await User.findById(req.user._id).select("role status");
+  if (!rider || rider.role !== "DELIVERY_RIDER" || rider.status !== "ACTIVE") {
+    res.status(403).json({ success: false, message: "Only active delivery riders can manage device registrations." });
+    return null;
+  }
+  return rider;
+};
+
+exports.registerDeviceToken = async (req, res) => {
+  try {
+    const rider = await requireDeliveryRider(req, res);
+    if (!rider) return;
+    const token = String(req.body?.token || "").trim();
+    const platform = String(req.body?.platform || "UNKNOWN").trim().toUpperCase();
+    if (!token || token.length > 4096 || !["ANDROID", "IOS", "WEB", "UNKNOWN"].includes(platform)) {
+      return res.status(400).json({ success: false, message: "A valid device token and platform are required." });
+    }
+    await RiderDeviceToken.findOneAndUpdate(
+      { token },
+      { $set: { riderId: rider._id, platform, active: true, lastSeenAt: new Date() } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    return res.status(200).json({ success: true, message: "Device registered for delivery alerts." });
+  } catch (_) {
+    return res.status(500).json({ success: false, message: "Unable to register this device." });
+  }
+};
+
+exports.removeDeviceToken = async (req, res) => {
+  try {
+    const rider = await requireDeliveryRider(req, res);
+    if (!rider) return;
+    const token = String(req.body?.token || "").trim();
+    if (!token) return res.status(400).json({ success: false, message: "A device token is required." });
+    await RiderDeviceToken.updateOne({ riderId: rider._id, token }, { $set: { active: false, lastSeenAt: new Date() } });
+    return res.status(200).json({ success: true, message: "Device removed from delivery alerts." });
+  } catch (_) {
+    return res.status(500).json({ success: false, message: "Unable to remove this device." });
+  }
 };
 
 /*

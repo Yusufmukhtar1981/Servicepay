@@ -264,6 +264,12 @@ const deliverySchema =
         default: null,
       },
 
+      assignmentEventId: {
+        type: String,
+        default: null,
+        index: true,
+      },
+
       riderAcceptedAt: {
         type: Date,
         default: null,
