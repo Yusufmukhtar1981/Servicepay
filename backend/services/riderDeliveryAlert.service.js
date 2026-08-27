@@ -1,32 +1,76 @@
-const admin = require("firebase-admin");
 const RiderDeviceToken = require("../models/riderDeviceToken.model");
 const DeliveryAlertDispatch = require("../models/deliveryAlertDispatch.model");
 
 let firebaseInitializationAttempted = false;
 let firebaseUnavailableReason = null;
+let firebaseAdmin = null;
+
+const firebaseConfiguration = () => {
+  const source = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!source) {
+    return {
+      source: null,
+      reason: "FIREBASE_SERVICE_ACCOUNT_JSON is not configured",
+    };
+  }
+
+  try {
+    const serviceAccount = JSON.parse(source);
+    if (
+      !serviceAccount.project_id ||
+      !serviceAccount.client_email ||
+      !serviceAccount.private_key
+    ) {
+      return {
+        source: null,
+        reason: "FIREBASE_SERVICE_ACCOUNT_JSON is invalid",
+      };
+    }
+
+    return { source: serviceAccount, reason: null };
+  } catch (_) {
+    return {
+      source: null,
+      reason: "FIREBASE_SERVICE_ACCOUNT_JSON is invalid",
+    };
+  }
+};
+
+const logFirebaseConfigurationStatus = () => {
+  const configuration = firebaseConfiguration();
+  if (configuration.reason) {
+    console.warn(
+      `[PUSH] Rider delivery alerts unavailable: ${configuration.reason}.`
+    );
+    return false;
+  }
+
+  console.log("[PUSH] Rider delivery alerts configured.");
+  return true;
+};
 
 const firebaseMessaging = () => {
   if (!firebaseInitializationAttempted) {
     firebaseInitializationAttempted = true;
-    try {
-      // Set FIREBASE_SERVICE_ACCOUNT_JSON to the complete Firebase service-account JSON.
-      // Keeping credentials in this environment secret prevents startup and source exposure.
-      const source = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-      if (!source) {
-        firebaseUnavailableReason = "Firebase is not configured";
-      } else {
-        const serviceAccount = JSON.parse(source);
-        if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
-          firebaseUnavailableReason = "Firebase configuration is invalid";
-        } else if (!admin.apps.length) {
-          admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    const configuration = firebaseConfiguration();
+    if (configuration.reason) {
+      firebaseUnavailableReason = configuration.reason;
+    } else {
+      try {
+        // Load Firebase only when a push is actually needed so API startup never
+        // depends on the optional notification SDK or its production secret.
+        firebaseAdmin = require("firebase-admin");
+        if (!firebaseAdmin.apps.length) {
+          firebaseAdmin.initializeApp({
+            credential: firebaseAdmin.credential.cert(configuration.source),
+          });
         }
+      } catch (_) {
+        firebaseUnavailableReason = "Firebase SDK is unavailable";
       }
-    } catch (_) {
-      firebaseUnavailableReason = "Firebase configuration is invalid";
     }
   }
-  return firebaseUnavailableReason ? null : admin.messaging();
+  return firebaseUnavailableReason ? null : firebaseAdmin.messaging();
 };
 
 const safeLocation = (value) => String(value || "").trim().slice(0, 500);
@@ -121,4 +165,5 @@ module.exports = {
   sendAssignmentAlertIfOnline,
   sendAssignmentCancellation,
   invalidTokenIds,
+  logFirebaseConfigurationStatus,
 };

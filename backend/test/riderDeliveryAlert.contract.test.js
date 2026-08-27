@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
 
 const Delivery = require("../models/delivery.model");
 const RiderDeviceToken = require("../models/riderDeviceToken.model");
@@ -96,4 +98,49 @@ test("invalid or expired multicast registrations are selected for deactivation",
     [{ _id: "ok" }, { _id: "expired" }, { _id: "invalid" }, { _id: "retry" }]
   );
   assert.deepEqual(ids, ["expired", "invalid"]);
+});
+
+test("Rider alert service loads when the optional Firebase SDK is unavailable", () => {
+  const servicePath = path.resolve(
+    __dirname,
+    "../services/riderDeliveryAlert.service.js"
+  );
+  const script = `
+    const Module = require("node:module");
+    const originalLoad = Module._load;
+    Module._load = function(request, parent, isMain) {
+      if (request === "firebase-admin") {
+        throw new Error("firebase-admin unavailable");
+      }
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    require(${JSON.stringify(servicePath)});
+  `;
+  const result = spawnSync(process.execPath, ["-e", script], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("missing Firebase credentials produce a safe non-fatal warning", () => {
+  const originalValue = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  const originalWarn = console.warn;
+  const warnings = [];
+
+  delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  console.warn = (message) => warnings.push(String(message));
+  try {
+    assert.equal(alerts.logFirebaseConfigurationStatus(), false);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /Rider delivery alerts unavailable/);
+    assert.match(warnings[0], /not configured/);
+  } finally {
+    console.warn = originalWarn;
+    if (originalValue === undefined) {
+      delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    } else {
+      process.env.FIREBASE_SERVICE_ACCOUNT_JSON = originalValue;
+    }
+  }
 });

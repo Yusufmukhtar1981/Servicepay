@@ -23,6 +23,9 @@ const {
   verifyEmailConnection,
 } = require("./services/email.service");
 const { resumePendingCampaigns } = require("./services/communicationCampaign.service");
+const {
+  logFirebaseConfigurationStatus,
+} = require("./services/riderDeliveryAlert.service");
 
 const paystackRoutes = require(
   "./routes/paystack.routes"
@@ -339,6 +342,7 @@ console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
+  logFirebaseConfigurationStatus();
 
   connectDB()
     .then(async () => {
