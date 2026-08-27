@@ -38,6 +38,10 @@ test.before(async () => {
   const app = express();
   app.use(express.json());
   app.use("/api/solar", solarRoutes);
+  app.use((req, res) => res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
+  }));
   await new Promise((resolve) => {
     apiServer = app.listen(0, "127.0.0.1", () => {
       apiBaseUrl = `http://127.0.0.1:${apiServer.address().port}`;
@@ -107,6 +111,26 @@ test("Solar package HTTP contract keeps customer listing active-only and support
   assert.equal(created.body.package.stock, 3);
   assert.equal(created.body.package.stockQuantity, 3);
   const packageId = String(created.body.package._id);
+  const second = await api({
+    method: "POST",
+    path: "/api/solar/admin/packages",
+    actor: admin,
+    body: {
+      name: "ServicePay HomePlus 2KW",
+      capacityKw: 2,
+      cashPrice: 700000,
+      financedPrice: 760000,
+      depositPercent: 20,
+      installmentMonths: 12,
+      interestPercent: 5,
+      repaymentFrequency: "MONTHLY",
+      stockQuantity: 5,
+      active: true,
+    },
+  });
+  assert.equal(second.status, 201, second.body?.message);
+  assert.notEqual(String(second.body.package._id), packageId);
+  const secondPackageId = String(second.body.package._id);
 
   const updated = await api({
     method: "PATCH",
@@ -133,7 +157,11 @@ test("Solar package HTTP contract keeps customer listing active-only and support
   assert.equal(adminPackages.status, 200, adminPackages.body?.message);
   assert.deepEqual(
     adminPackages.body.packages.map((item) => item.name),
-    ["Inactive Existing", "Production Solar Plus"],
+    ["Inactive Existing", "Production Solar Plus", "ServicePay HomePlus 2KW"],
+  );
+  assert.equal(
+    adminPackages.body.packages.find((item) => String(item._id) === secondPackageId).active,
+    true,
   );
 
   const inactiveCustomerView = await api({
@@ -141,7 +169,10 @@ test("Solar package HTTP contract keeps customer listing active-only and support
     actor: customer,
   });
   assert.equal(inactiveCustomerView.status, 200, inactiveCustomerView.body?.message);
-  assert.deepEqual(inactiveCustomerView.body.packages, []);
+  assert.deepEqual(
+    inactiveCustomerView.body.packages.map((item) => item.name),
+    ["ServicePay HomePlus 2KW"],
+  );
 
   const activated = await api({
     method: "PATCH",
@@ -158,7 +189,7 @@ test("Solar package HTTP contract keeps customer listing active-only and support
   assert.equal(activeCustomerView.status, 200, activeCustomerView.body?.message);
   assert.deepEqual(
     activeCustomerView.body.packages.map((item) => item.name),
-    ["Production Solar Plus"],
+    ["Production Solar Plus", "ServicePay HomePlus 2KW"],
   );
   assert.equal(await AdminAuditLog.countDocuments({
     action: {
@@ -168,7 +199,7 @@ test("Solar package HTTP contract keeps customer listing active-only and support
         "SOLAR_PACKAGE_DELETED",
       ],
     },
-  }), 4);
+  }), 5);
 });
 
 test("Solar package updates preserve concurrent stock reservations and roll back when audit storage fails", async () => {
@@ -216,6 +247,167 @@ test("Solar package updates preserve concurrent stock reservations and roll back
     AdminAuditLog.create = createAudit;
   }
   assert.equal((await SolarPackage.findById(pack._id)).active, true);
+});
+
+test("Solar admin HTTP routes approve once and preserve the canonical status actions", async () => {
+  const admin = await user({ role: "HEAD_OFFICE" });
+  const customer = await user({ balance: 250000 });
+  const pack = await SolarPackage.create({
+    name: "ServicePay HomeLite 1KW",
+    capacityKw: 1,
+    cashPrice: 1000,
+    financedPrice: 1000,
+    depositPercent: 20,
+    installmentMonths: 4,
+    interestPercent: 10,
+    repaymentFrequency: "MONTHLY",
+    stock: 2,
+    active: true,
+    createdBy: admin._id,
+  });
+  const application = await SolarApplication.create({
+    customer: customer._id,
+    package: pack._id,
+    packageSnapshot: {
+      name: pack.name,
+      capacityKw: pack.capacityKw,
+      cashPrice: pack.cashPrice,
+      financedPrice: pack.financedPrice,
+      depositPercent: pack.depositPercent,
+      installmentMonths: pack.installmentMonths,
+      interestPercent: pack.interestPercent,
+      repaymentFrequency: pack.repaymentFrequency,
+      terms: pack.terms,
+    },
+    profileSnapshot: { fullName: customer.fullName },
+    status: "UNDER_REVIEW",
+    statusHistory: [{ status: "UNDER_REVIEW", changedBy: admin._id }],
+  });
+  const approvalPath = `/api/solar/admin/applications/${application._id}/approve`;
+  const approvalBody = { approvedPrice: 1000, note: "Approved for HomeLite" };
+
+  assert.equal((await api({
+    method: "PATCH",
+    path: approvalPath,
+    body: approvalBody,
+  })).status, 401);
+  assert.equal((await api({
+    method: "PATCH",
+    path: approvalPath,
+    actor: customer,
+    body: approvalBody,
+  })).status, 403);
+  assert.equal((await api({
+    method: "POST",
+    path: approvalPath,
+    actor: admin,
+    body: approvalBody,
+  })).status, 404);
+
+  const approved = await api({
+    method: "PATCH",
+    path: approvalPath,
+    actor: admin,
+    body: approvalBody,
+  });
+  assert.equal(approved.status, 200, approved.body?.message);
+  assert.equal(approved.body.application.status, "AWAITING_DEPOSIT");
+
+  const saved = await SolarApplication.findById(application._id);
+  assert.equal(String(saved.customer), String(customer._id));
+  assert.equal(String(saved.package), String(pack._id));
+  assert.equal(String(saved.approvedBy), String(admin._id));
+  assert.ok(saved.approvedAt);
+  assert.equal(saved.approvalSnapshot.approvedPrice, 1000);
+  assert.equal(saved.depositRequired, 200);
+  assert.equal(saved.totalPayable, 1100);
+  assert.equal(saved.outstandingBalance, 1100);
+  assert.equal(saved.paymentSchedule.length, 4);
+  assert.equal(
+    saved.paymentSchedule.reduce((sum, row) => sum + row.amount, 0),
+    900,
+  );
+  assert.equal((await SolarPackage.findById(pack._id)).stock, 1);
+  assert.equal(await Notification.countDocuments({
+    userId: customer._id,
+    type: "SOLAR",
+  }), 1);
+  assert.equal(await Transaction.countDocuments(), 0);
+  assert.equal(await LedgerEntry.countDocuments(), 0);
+
+  const duplicate = await api({
+    method: "PATCH",
+    path: approvalPath,
+    actor: admin,
+    body: approvalBody,
+  });
+  assert.equal(duplicate.status, 409);
+  assert.equal((await SolarPackage.findById(pack._id)).stock, 1);
+  assert.equal(await Notification.countDocuments({
+    userId: customer._id,
+    type: "SOLAR",
+  }), 1);
+
+  const missing = await api({
+    method: "PATCH",
+    path: `/api/solar/admin/applications/${new mongoose.Types.ObjectId()}/approve`,
+    actor: admin,
+    body: approvalBody,
+  });
+  assert.equal(missing.status, 404);
+  const invalid = await api({
+    method: "PATCH",
+    path: "/api/solar/admin/applications/not-an-object-id/approve",
+    actor: admin,
+    body: approvalBody,
+  });
+  assert.equal(invalid.status, 400);
+
+  const persisted = await api({
+    path: "/api/solar/admin/applications",
+    actor: admin,
+  });
+  assert.equal(persisted.status, 200, persisted.body?.message);
+  assert.equal(
+    persisted.body.applications.find(
+      (item) => String(item._id) === String(application._id),
+    ).status,
+    "AWAITING_DEPOSIT",
+  );
+
+  const requestInfoApplication = await SolarApplication.create({
+    customer: customer._id,
+    package: pack._id,
+    packageSnapshot: saved.packageSnapshot,
+    profileSnapshot: saved.profileSnapshot,
+    status: "SUBMITTED",
+    statusHistory: [{ status: "SUBMITTED", changedBy: customer._id }],
+  });
+  const requestInfo = await api({
+    method: "PATCH",
+    path: `/api/solar/admin/applications/${requestInfoApplication._id}/status`,
+    actor: admin,
+    body: { status: "MORE_INFORMATION_REQUIRED", note: "Upload invoice" },
+  });
+  assert.equal(requestInfo.status, 200, requestInfo.body?.message);
+  assert.equal(requestInfo.body.application.status, "MORE_INFORMATION_REQUIRED");
+
+  const rejectedApplication = await SolarApplication.create({
+    customer: customer._id,
+    package: pack._id,
+    packageSnapshot: saved.packageSnapshot,
+    profileSnapshot: saved.profileSnapshot,
+    status: "SUBMITTED",
+    statusHistory: [{ status: "SUBMITTED", changedBy: customer._id }],
+  });
+  const rejected = await api({
+    method: "PATCH",
+    path: `/api/solar/admin/applications/${rejectedApplication._id}/status`,
+    actor: admin,
+    body: { status: "REJECTED", note: "Eligibility requirements not met" },
+  });
+  assert.equal(rejected.status, 200, rejected.body?.message);
+  assert.equal(rejected.body.application.status, "REJECTED");
 });
 
 test("Solar approval snapshots price and allocates rounded installment balances exactly", async () => {

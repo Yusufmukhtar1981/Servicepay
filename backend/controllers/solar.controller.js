@@ -335,8 +335,10 @@ exports.approveApplication = async (req,res) => {
   const session = await mongoose.startSession();
   try { let result;
     await session.withTransaction(async () => {
-    const app=await SolarApplication.findOne({_id:req.params.applicationId,status:"UNDER_REVIEW"}).session(session); if(!app)throw problem("Only applications under review may be approved.",409);
-    if(app.status!=="UNDER_REVIEW")return res.status(409).json({success:false,message:"Only applications under review may be approved."});
+    if(!mongoose.isValidObjectId(req.params.applicationId))throw problem("Invalid solar application ID.",400);
+    const app=await SolarApplication.findById(req.params.applicationId).session(session);
+    if(!app)throw problem("Solar application not found.",404);
+    if(app.status!=="UNDER_REVIEW")throw problem("Only applications under review may be approved.",409);
     const quotedPrice = req.body?.approvedPrice ?? app.packageSnapshot.financedPrice ?? app.packageSnapshot.cashPrice;
     const price=money(quotedPrice); if(price===null||price<=0)throw problem("Approved price must be greater than zero.",400);
     const snap=app.packageSnapshot, deposit=money(price*snap.depositPercent/100), total=money(price*(1+snap.interestPercent/100)), remaining=money(total-deposit);

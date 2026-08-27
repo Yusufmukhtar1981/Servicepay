@@ -8,17 +8,22 @@ const Color _solarGreen = Color(0xFF08783E);
 const Color _solarInk = Color(0xFF18322A);
 
 class AdminSolarScreen extends StatefulWidget {
-  const AdminSolarScreen({super.key});
+  const AdminSolarScreen({
+    super.key,
+    this.api,
+    this.officerApi,
+  });
+
+  final SolarAdminApiClient? api;
+  final SolarAdminApiClient? officerApi;
 
   @override
   State<AdminSolarScreen> createState() => _AdminSolarScreenState();
 }
 
 class _AdminSolarScreenState extends State<AdminSolarScreen> {
-  final _SolarAdminApi _api = _SolarAdminApi();
-  final _SolarAdminApi _officerApi = _SolarAdminApi(
-    baseUrl: 'https://api.servicepay.ng/api/solar/officer/admin',
-  );
+  late final SolarAdminApiClient _api;
+  late final SolarAdminApiClient _officerApi;
   bool _loading = true;
   String _error = '';
   int _tab = 0;
@@ -37,6 +42,11 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
   @override
   void initState() {
     super.initState();
+    _api = widget.api ?? _SolarAdminApi();
+    _officerApi = widget.officerApi ??
+        _SolarAdminApi(
+          baseUrl: 'https://api.servicepay.ng/api/solar/officer/admin',
+        );
     _load();
   }
 
@@ -233,9 +243,6 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       ),
     );
     if (save != true) {
-      for (final TextEditingController controller in fields.values) {
-        controller.dispose();
-      }
       return;
     }
     try {
@@ -271,10 +278,6 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       await _load();
     } on _SolarAdminException catch (error) {
       _notice(error.message, error: true);
-    } finally {
-      for (final TextEditingController controller in fields.values) {
-        controller.dispose();
-      }
     }
   }
 
@@ -375,12 +378,10 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       ),
     );
     if (confirmed != true) {
-      price.dispose();
-      note.dispose();
       return;
     }
     try {
-      await _api.post('/applications/${_id(application)}/approve', body: {
+      await _api.patch('/applications/${_id(application)}/approve', body: {
         'approvedPrice': price.text.trim(),
         'note': note.text.trim(),
       });
@@ -388,9 +389,6 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       await _load();
     } on _SolarAdminException catch (error) {
       _notice(error.message, error: true);
-    } finally {
-      price.dispose();
-      note.dispose();
     }
   }
 
@@ -1712,36 +1710,62 @@ class _EmptyPanel extends StatelessWidget {
       );
 }
 
+abstract class SolarAdminApiClient {
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, String>? query,
+  });
+
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Map<String, dynamic> body = const <String, dynamic>{},
+  });
+
+  Future<Map<String, dynamic>> put(
+    String path, {
+    Map<String, dynamic> body = const <String, dynamic>{},
+  });
+
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    Map<String, dynamic> body = const <String, dynamic>{},
+  });
+}
+
 class _SolarAdminException implements Exception {
   const _SolarAdminException(this.message);
   final String message;
 }
 
-class _SolarAdminApi {
+class _SolarAdminApi implements SolarAdminApiClient {
   _SolarAdminApi({
     this.baseUrl = 'https://api.servicepay.ng/api/solar/admin',
   });
 
   final String baseUrl;
 
+  @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, String>? query,
   }) =>
       _request('GET', path, query: query);
 
+  @override
   Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic> body = const <String, dynamic>{},
   }) =>
       _request('POST', path, body: body);
 
+  @override
   Future<Map<String, dynamic>> put(
     String path, {
     Map<String, dynamic> body = const <String, dynamic>{},
   }) =>
       _request('PUT', path, body: body);
 
+  @override
   Future<Map<String, dynamic>> patch(
     String path, {
     Map<String, dynamic> body = const <String, dynamic>{},
