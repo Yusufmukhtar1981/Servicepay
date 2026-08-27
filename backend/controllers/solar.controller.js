@@ -95,26 +95,89 @@ const applicationPreferencesPayload = (body) => {
     upfrontPaymentOption,
   };
 };
+const firstDefined = (body, ...keys) => keys.map((key) => body[key]).find((value) => value !== undefined && value !== null);
+const numericInput = (value) => {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const normalized = typeof value === "string" ? value.replace(/,/g, "").trim() : value;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const booleanInput = (value, fallback = true) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string" && value.trim().toLowerCase() === "true") return true;
+  if (typeof value === "string" && value.trim().toLowerCase() === "false") return false;
+  return null;
+};
 const packagePayload = (body) => {
-  const name = text(body.name, 160), capacityKw = Number(body.capacityKw), cashPrice = money(body.cashPrice);
-  const depositPercent = Number(body.depositPercent ?? 20), installmentMonths = Number(body.installmentMonths ?? 12), interestPercent = Number(body.interestPercent || 0);
-  if (!name || !Number.isFinite(capacityKw) || capacityKw <= 0 || cashPrice === null || cashPrice < 0 ||
-    !Number.isFinite(depositPercent) || depositPercent < 0 || depositPercent > 100 ||
-    !Number.isInteger(installmentMonths) || installmentMonths < 1 || installmentMonths > 120 ||
-    !Number.isFinite(interestPercent) || interestPercent < 0 || interestPercent > 100) return null;
-  const stock = Number(body.stockQuantity ?? body.stock);
-  if (!Number.isInteger(stock) || stock < 0) return null;
-  const financedPrice = body.financedPrice === undefined ? null : money(body.financedPrice);
-  if (body.financedPrice !== undefined && (financedPrice === null || financedPrice < 0)) return null;
+  const name = text(firstDefined(body, "name", "packageName"), 160);
+  if (!name) return { error: "name is required." };
+  const capacityKw = numericInput(firstDefined(body, "capacityKw", "systemCapacityKw"));
+  if (capacityKw === null || capacityKw <= 0) return { error: "capacityKw must be a valid number greater than 0." };
+  const cashPrice = numericInput(body.cashPrice);
+  if (cashPrice === null || cashPrice < 0) return { error: "cashPrice must be a valid number greater than or equal to 0." };
+  const financedRaw = firstDefined(body, "financedPrice");
+  const financedPrice = numericInput(financedRaw);
+  if (financedRaw !== undefined && financedRaw !== null && financedRaw !== "" &&
+      (financedPrice === null || financedPrice < 0)) {
+    return { error: "financedPrice must be a valid number greater than or equal to 0." };
+  }
+  const depositRaw = firstDefined(body, "depositPercent", "depositPercentage");
+  const depositPercent = numericInput(depositRaw === undefined ? 20 : depositRaw);
+  if (depositPercent === null || depositPercent < 0 || depositPercent > 100) {
+    return { error: "depositPercent must be a number between 0 and 100." };
+  }
+  const monthsRaw = firstDefined(body, "installmentMonths", "repaymentDurationMonths");
+  const installmentMonths = numericInput(monthsRaw === undefined ? 12 : monthsRaw);
+  if (installmentMonths === null || !Number.isInteger(installmentMonths) ||
+      installmentMonths < 1 || installmentMonths > 120) {
+    return { error: "installmentMonths must be a whole number between 1 and 120." };
+  }
+  const interestPercent = numericInput(body.interestPercent === undefined ? 0 : body.interestPercent);
+  if (interestPercent === null || interestPercent < 0 || interestPercent > 100) {
+    return { error: "interestPercent must be a number between 0 and 100." };
+  }
+  const stockRaw = firstDefined(body, "stockQuantity", "stock");
+  const stock = numericInput(stockRaw);
+  if (stock === null || !Number.isInteger(stock) || stock < 0) {
+    return { error: "stockQuantity must be a whole number greater than or equal to 0." };
+  }
   const repaymentFrequency = text(body.repaymentFrequency || "MONTHLY", 20).toUpperCase();
-  if (!["WEEKLY", "BIWEEKLY", "MONTHLY"].includes(repaymentFrequency)) return null;
-  return { name, description: text(body.description, 4000), capacityKw, cashPrice, financedPrice, depositPercent, installmentMonths, interestPercent, stock,
-    repaymentFrequency, images: Array.isArray(body.images) ? body.images.map((item) => text(item, 2000)).filter(Boolean).slice(0, 12) : [],
-    specifications: body.specifications && typeof body.specifications === "object" ? body.specifications : {},
+  if (!["WEEKLY", "BIWEEKLY", "MONTHLY"].includes(repaymentFrequency)) {
+    return { error: "repaymentFrequency must be MONTHLY, WEEKLY, or BIWEEKLY." };
+  }
+  const active = booleanInput(body.active, true);
+  if (active === null) return { error: "active must be a boolean." };
+  const rawTerms = body.terms && typeof body.terms === "object" && !Array.isArray(body.terms) ? body.terms : {};
+  const gracePeriodRaw = firstDefined(body, "gracePeriodDays");
+  const gracePeriodDays = numericInput(gracePeriodRaw === undefined ? rawTerms.gracePeriodDays : gracePeriodRaw);
+  if (gracePeriodRaw !== undefined && gracePeriodDays === null) {
+    return { error: "gracePeriodDays must be a valid number." };
+  }
+  const terms = {
+    ...rawTerms,
+    includedItems: text(firstDefined(body, "includedItems") ?? rawTerms.includedItems, 4000),
+    gracePeriodDays: gracePeriodDays ?? 0,
+  };
+  const rawSpecifications = body.specifications && typeof body.specifications === "object" && !Array.isArray(body.specifications)
+    ? body.specifications
+    : {};
+  const specifications = {
+    ...rawSpecifications,
+    ...(body.batteryCapacity !== undefined ? { batteryCapacity: text(body.batteryCapacity, 2000) } : {}),
+    ...(body.inverterCapacity !== undefined ? { inverterCapacity: text(body.inverterCapacity, 2000) } : {}),
+  };
+  return { value: {
+    name, description: text(body.description, 4000), capacityKw, cashPrice, financedPrice: financedPrice ?? null,
+    depositPercent, installmentMonths, interestPercent, stock, repaymentFrequency,
+    images: Array.isArray(body.images) ? body.images.map((item) => text(item, 2000)).filter(Boolean).slice(0, 12) : [],
+    specifications,
     warranty: body.warranty && typeof body.warranty === "object" ? body.warranty : {},
     installmentIncluded: body.installmentIncluded !== false, minimumKycTier: text(body.minimumKycTier, 40),
     eligibilityNotes: text(body.eligibilityNotes, 2000), termsSummary: text(body.termsSummary, 2000),
-    terms: body.terms && typeof body.terms === "object" ? body.terms : {}, active: body.active !== false };
+    terms, active,
+  } };
 };
 const packageFields = [
   "name", "description", "capacityKw", "cashPrice", "financedPrice",
@@ -169,8 +232,9 @@ exports.listAdminPackages = async (req, res) => {
 exports.createPackage = async (req, res) => {
   const session = await mongoose.startSession();
   try {
-    const payload = packagePayload(req.body || {});
-    if (!payload) return res.status(400).json({ success:false,message:"Invalid Solar package details." });
+    const parsed = packagePayload(req.body || {});
+    if (parsed.error) return res.status(400).json({ success:false,message:parsed.error });
+    const payload = parsed.value;
     let item;
     await session.withTransaction(async () => {
       [item] = await SolarPackage.create([{ ...payload, createdBy: id(req) }], { session });
@@ -191,8 +255,9 @@ exports.updatePackage = async (req, res) => {
       const current = await SolarPackage.findById(req.params.packageId).session(session);
       if (!current) throw problem("Solar package not found.", 404);
       const body = req.body || {};
-      const payload = packagePayload({ ...current.toObject(), ...body });
-      if (!payload) throw problem("Invalid Solar package details.", 400);
+       const parsed = packagePayload({ ...current.toObject(), ...body });
+       if (parsed.error) throw problem(parsed.error, 400);
+       const payload = parsed.value;
       const updates = {};
       for (const field of packageFields) {
         if (hasOwn(body, field)) updates[field] = payload[field];

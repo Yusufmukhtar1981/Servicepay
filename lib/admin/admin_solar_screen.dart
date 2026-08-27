@@ -123,6 +123,14 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
     return '₦${amount.toStringAsFixed(2)}';
   }
 
+  num? _numberValue(String value, {bool integer = false}) {
+    final String normalized = value.trim().replaceAll(',', '');
+    if (normalized.isEmpty) return null;
+    final num? parsed = num.tryParse(normalized);
+    if (parsed == null || (integer && parsed % 1 != 0)) return null;
+    return integer ? parsed.toInt() : parsed;
+  }
+
   void _notice(String message, {bool error = false}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -249,13 +257,15 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       final Map<String, dynamic> body = <String, dynamic>{
         'name': fields['name']!.text.trim(),
         'description': fields['description']!.text.trim(),
-        'capacityKw': fields['capacityKw']!.text.trim(),
-        'cashPrice': fields['cashPrice']!.text.trim(),
-        'financedPrice': fields['financedPrice']!.text.trim(),
-        'depositPercent': fields['depositPercent']!.text.trim(),
-        'installmentMonths': fields['installmentMonths']!.text.trim(),
-        'stockQuantity': fields['stockQuantity']!.text.trim(),
-        'stock': fields['stockQuantity']!.text.trim(),
+        'capacityKw': _numberValue(fields['capacityKw']!.text),
+        'cashPrice': _numberValue(fields['cashPrice']!.text),
+        'financedPrice': _numberValue(fields['financedPrice']!.text),
+        'depositPercent': _numberValue(fields['depositPercent']!.text),
+        'installmentMonths':
+            _numberValue(fields['installmentMonths']!.text, integer: true),
+        'stockQuantity':
+            _numberValue(fields['stockQuantity']!.text, integer: true),
+        'stock': _numberValue(fields['stockQuantity']!.text, integer: true),
         'repaymentFrequency': frequency,
         'specifications': <String, dynamic>{
           'batteryCapacity': fields['batteryCapacity']!.text.trim(),
@@ -263,7 +273,8 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
         },
         'terms': <String, dynamic>{
           'includedItems': fields['includedItems']!.text.trim(),
-          'gracePeriodDays': fields['gracePeriod']!.text.trim(),
+          'gracePeriodDays':
+              _numberValue(fields['gracePeriod']!.text, integer: true),
         },
         'active': active,
       };

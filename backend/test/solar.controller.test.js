@@ -116,21 +116,53 @@ test("Solar package HTTP contract keeps customer listing active-only and support
     path: "/api/solar/admin/packages",
     actor: admin,
     body: {
-      name: "ServicePay HomePlus 2KW",
-      capacityKw: 2,
-      cashPrice: 700000,
-      financedPrice: 760000,
-      depositPercent: 20,
-      installmentMonths: 12,
-      interestPercent: 5,
-      repaymentFrequency: "MONTHLY",
-      stockQuantity: 5,
-      active: true,
+      packageName: "ServicePay HomePlus 2KW",
+      description: "Reliable 2KW solar solution for family homes.",
+      systemCapacityKw: "2",
+      cashPrice: "2,200,000",
+      financedPrice: "2,600,000",
+      depositPercentage: "20",
+      repaymentDurationMonths: "12",
+      stockQuantity: "10",
+      batteryCapacity: "5kWh Lithium Battery",
+      inverterCapacity: "2KW Hybrid Inverter",
+      includedItems: "2KW Hybrid Inverter, 5kWh Lithium Battery, Solar Panels, Mounting Structure, Cables, Protection Devices, Installation & Basic Setup",
+      gracePeriodDays: "3",
+      repaymentFrequency: "monthly",
+      active: "true",
     },
   });
   assert.equal(second.status, 201, second.body?.message);
   assert.notEqual(String(second.body.package._id), packageId);
+  assert.equal(second.body.package.capacityKw, 2);
+  assert.equal(second.body.package.cashPrice, 2200000);
+  assert.equal(second.body.package.financedPrice, 2600000);
+  assert.equal(second.body.package.stockQuantity, 10);
+  assert.equal(second.body.package.repaymentFrequency, "MONTHLY");
+  assert.equal(second.body.package.specifications.batteryCapacity, "5kWh Lithium Battery");
+  assert.equal(second.body.package.terms.gracePeriodDays, 3);
   const secondPackageId = String(second.body.package._id);
+
+  const invalidPrice = await api({
+    method: "POST",
+    path: "/api/solar/admin/packages",
+    actor: admin,
+    body: {
+      name: "Invalid price",
+      capacityKw: 2,
+      cashPrice: 2200000,
+      financedPrice: "not-a-number",
+      depositPercent: 20,
+      installmentMonths: 12,
+      repaymentFrequency: "MONTHLY",
+      stockQuantity: 10,
+    },
+  });
+  assert.equal(invalidPrice.status, 400);
+  assert.equal(
+    invalidPrice.body.message,
+    "financedPrice must be a valid number greater than or equal to 0.",
+  );
 
   const updated = await api({
     method: "PATCH",

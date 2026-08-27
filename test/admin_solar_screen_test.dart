@@ -168,8 +168,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(
           _field('Package name'), 'ServicePay HomePro 3.5KW');
-      await tester.enterText(_field('Cash price (₦)'), '1100000');
-      await tester.enterText(_field('Financed price (₦)'), '1200000');
+      await tester.enterText(_field('Cash price (₦)'), '1,100,000');
+      await tester.enterText(_field('Financed price (₦)'), '1,200,000');
       await tester.enterText(_field('Stock quantity'), '2');
       await tester.tap(find.text('Create package'));
       await tester.pumpAndSettle();
@@ -185,6 +185,17 @@ void main() {
         ),
         hasLength(1),
       );
+      final _RequestRecord packageRequest = api.requests.firstWhere(
+        (_RequestRecord request) =>
+            request.method == 'POST' && request.path == '/packages',
+      );
+      expect(packageRequest.body['capacityKw'], 1);
+      expect(packageRequest.body['cashPrice'], 1100000);
+      expect(packageRequest.body['financedPrice'], 1200000);
+      expect(packageRequest.body['depositPercent'], 20);
+      expect(packageRequest.body['installmentMonths'], 6);
+      expect(packageRequest.body['stockQuantity'], 2);
+      expect(packageRequest.body['active'], isTrue);
 
       await tester.tap(find.text('Applications'));
       await tester.pumpAndSettle();
