@@ -175,6 +175,8 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
   }
 
   Future<void> addProduct() async {
+    if (addingProduct || uploadingProductImage) return;
+
     if (merchant == null) {
       showMessage('Create your seller account first.');
       return;
@@ -188,13 +190,9 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
       return;
     }
 
-    if (productImageController.text.trim().isEmpty) {
-      showMessage('Choose and upload a product photo before saving.');
-      return;
-    }
-
-    if (uploadingProductImage) {
-      showMessage('Wait for the product photo upload to finish.');
+    if (productImageBytes == null &&
+        productImageController.text.trim().isEmpty) {
+      showMessage('Choose a product photo before saving.');
       return;
     }
 
@@ -202,6 +200,15 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
 
     try {
       final authToken = await token();
+      if (authToken.isEmpty) {
+        showMessage('Your login session has expired. Please sign in again.');
+        return;
+      }
+
+      if (productImageController.text.trim().isEmpty) {
+        setState(() => uploadingProductImage = true);
+        productImageController.text = await uploadProductImage(authToken);
+      }
 
       final response = await http.post(
         Uri.parse('$baseUrl/products'),
@@ -230,6 +237,12 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
         productPriceController.clear();
         productStockController.clear();
         productImageController.clear();
+        if (mounted) {
+          setState(() {
+            productImageBytes = null;
+            productImageFilename = '';
+          });
+        }
 
         showMessage('Product added successfully.');
         await loadSellerData();
@@ -238,11 +251,19 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
           '${body['message'] ?? 'Unable to add product.'}',
         );
       }
-    } catch (_) {
-      showMessage('Unable to add product.');
+    } catch (error) {
+      final message = error.toString().replaceFirst('Exception: ', '');
+      showMessage(
+        message.startsWith('FormatException')
+            ? 'Unable to add product.'
+            : message,
+      );
     } finally {
       if (mounted) {
-        setState(() => addingProduct = false);
+        setState(() {
+          addingProduct = false;
+          uploadingProductImage = false;
+        });
       }
     }
   }
@@ -261,7 +282,61 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
     return MediaType('image', 'jpeg');
   }
 
-  Future<void> chooseAndUploadProductImage() async {
+  Future<String> uploadProductImage(String authToken) async {
+    final bytes = productImageBytes;
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Choose a product photo before saving.');
+    }
+
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/products/image'),
+    );
+    request.headers['Authorization'] = 'Bearer $authToken';
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'image',
+        bytes,
+        filename: productImageFilename,
+        contentType: productImageContentType(productImageFilename),
+      ),
+    );
+
+    final streamed = await request.send().timeout(
+          const Duration(seconds: 60),
+        );
+    final response = await http.Response.fromStream(streamed);
+    dynamic decoded;
+
+    try {
+      decoded = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+    } catch (_) {
+      decoded = {};
+    }
+
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        decoded is! Map ||
+        decoded['success'] != true) {
+      final message = decoded is Map
+          ? '${decoded['message'] ?? 'Unable to upload the product photo.'}'
+          : 'Unable to upload the product photo.';
+      throw Exception(message);
+    }
+
+    final imageUrl = '${decoded['imageUrl'] ?? ''}'.trim();
+    if (imageUrl.isEmpty) {
+      throw Exception(
+        'Product image storage did not return a secure image URL.',
+      );
+    }
+
+    return imageUrl;
+  }
+
+  Future<void> chooseProductImage() async {
+    if (addingProduct || uploadingProductImage) return;
+
     try {
       final selected = await productImagePicker.pickImage(
         source: ImageSource.gallery,
@@ -276,74 +351,28 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
       final filename = selected.name.trim().isEmpty
           ? 'marketplace-product.jpg'
           : selected.name.trim();
-      final authToken = await token();
 
-      if (authToken.isEmpty) {
-        showMessage('Your login session has expired. Please sign in again.');
+      if (bytes.isEmpty) {
+        showMessage('The selected photo is empty. Choose another photo.');
+        return;
+      }
+
+      if (bytes.length > 5 * 1024 * 1024) {
+        showMessage('Marketplace product photos must be 5 MB or smaller.');
         return;
       }
 
       if (mounted) {
         setState(() {
-          uploadingProductImage = true;
           productImageBytes = bytes;
           productImageFilename = filename;
-        });
-      }
-
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/products/image'),
-      );
-      request.headers['Authorization'] = 'Bearer $authToken';
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          'image',
-          bytes,
-          filename: filename,
-          contentType: productImageContentType(filename),
-        ),
-      );
-
-      final streamed = await request.send().timeout(
-            const Duration(seconds: 60),
-          );
-      final response = await http.Response.fromStream(streamed);
-      final decoded = response.body.isNotEmpty ? jsonDecode(response.body) : {};
-
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300 ||
-          decoded is! Map ||
-          decoded['success'] != true) {
-        final message = decoded is Map
-            ? '${decoded['message'] ?? 'Unable to upload the product photo.'}'
-            : 'Unable to upload the product photo.';
-        throw Exception(message);
-      }
-
-      final imageUrl = '${decoded['imageUrl'] ?? ''}'.trim();
-
-      if (imageUrl.isEmpty) {
-        throw Exception('Product image storage did not return a secure image URL.');
-      }
-
-      productImageController.text = imageUrl;
-      showMessage('Product photo uploaded.');
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          productImageBytes = null;
-          productImageFilename = '';
           productImageController.clear();
         });
       }
+    } catch (error) {
       showMessage(
         error.toString().replaceFirst('Exception: ', ''),
       );
-    } finally {
-      if (mounted) {
-        setState(() => uploadingProductImage = false);
-      }
     }
   }
 
@@ -639,16 +668,34 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
                               )
                             : IconButton(
                                 tooltip: 'Choose product photo',
-                                onPressed: chooseAndUploadProductImage,
+                                onPressed: chooseProductImage,
                                 icon: const Icon(Icons.add_photo_alternate_outlined),
                               ),
                       ),
                     ),
+                    if (productImageBytes != null) ...[
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.memory(
+                          productImageBytes!,
+                          width: double.infinity,
+                          height: 190,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const SizedBox(
+                            height: 190,
+                            child: Center(
+                              child: Text('Unable to preview this photo.'),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
-                      onPressed: uploadingProductImage
+                      onPressed: addingProduct || uploadingProductImage
                           ? null
-                          : chooseAndUploadProductImage,
+                          : chooseProductImage,
                       icon: const Icon(Icons.photo_library_outlined),
                       label: Text(
                         productImageBytes == null
@@ -660,12 +707,18 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
                     SizedBox(
                       height: 52,
                       child: FilledButton.icon(
-                        onPressed: addingProduct ? null : addProduct,
+                        onPressed: addingProduct || uploadingProductImage
+                            ? null
+                            : addProduct,
                         icon: const Icon(
                           Icons.add_box_rounded,
                         ),
                         label: Text(
-                          addingProduct ? 'Adding...' : 'Add Product',
+                          uploadingProductImage
+                              ? 'Uploading photo...'
+                              : addingProduct
+                                  ? 'Adding...'
+                                  : 'Add Product',
                         ),
                       ),
                     ),
@@ -699,51 +752,76 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
                       )
                     else
                       ...products.map(
-                        (product) => Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: ListTile(
-                            leading: const CircleAvatar(
-                              child: Icon(
-                                Icons.inventory_2_outlined,
+                        (product) {
+                          final imageUrl =
+                              '${product['imageUrl'] ?? ''}'.trim();
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            child: ListTile(
+                              leading: SizedBox(
+                                width: 56,
+                                height: 56,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: imageUrl.isNotEmpty
+                                      ? Image.network(
+                                          imageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              const ColoredBox(
+                                            color: Color(0xFFE8F5F1),
+                                            child: Icon(
+                                              Icons.inventory_2_outlined,
+                                            ),
+                                          ),
+                                        )
+                                      : const ColoredBox(
+                                          color: Color(0xFFE8F5F1),
+                                          child: Icon(
+                                            Icons.inventory_2_outlined,
+                                          ),
+                                        ),
+                                ),
                               ),
-                            ),
-                            title: Text(
-                              '${product['title'] ?? 'Product'}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
+                              title: Text(
+                                '${product['title'] ?? 'Product'}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                            subtitle: Text(
-                              '₦${product['price'] ?? 0} • Stock ${product['stock'] ?? 0}',
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              tooltip: 'Product options',
-                              onSelected: (value) {
-                                if (value == 'deactivate') {
-                                  deactivateProduct(product);
-                                }
-                              },
-                              itemBuilder: (_) => [
-                                PopupMenuItem<String>(
-                                  enabled: false,
-                                  value: 'status',
-                                  child: Text(
-                                    '${product['status'] ?? 'ACTIVE'}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
+                              subtitle: Text(
+                                '₦${product['price'] ?? 0} • Stock ${product['stock'] ?? 0}',
+                              ),
+                              trailing: PopupMenuButton<String>(
+                                tooltip: 'Product options',
+                                onSelected: (value) {
+                                  if (value == 'deactivate') {
+                                    deactivateProduct(product);
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  PopupMenuItem<String>(
+                                    enabled: false,
+                                    value: 'status',
+                                    child: Text(
+                                      '${product['status'] ?? 'ACTIVE'}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if ('${product['status']}'.toUpperCase() !=
-                                    'SUSPENDED')
-                                  const PopupMenuItem<String>(
-                                    value: 'deactivate',
-                                    child: Text('Deactivate product'),
-                                  ),
-                              ],
+                                  if ('${product['status']}'.toUpperCase() !=
+                                      'SUSPENDED')
+                                    const PopupMenuItem<String>(
+                                      value: 'deactivate',
+                                      child: Text('Deactivate product'),
+                                    ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                   ],
                   const SizedBox(height: 30),

@@ -280,6 +280,11 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
                             ['category'],
                             fallback: 'General',
                           );
+                          final imageUrl = _text(
+                            product,
+                            ['imageUrl'],
+                            fallback: '',
+                          );
 
                           return Card(
                             elevation: 0,
@@ -308,10 +313,21 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
                                             12,
                                           ),
                                         ),
-                                        child: const Icon(
-                                          Icons.storefront_rounded,
-                                          color: primary,
-                                        ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: imageUrl.isNotEmpty
+                                            ? Image.network(
+                                                imageUrl,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) =>
+                                                    const Icon(
+                                                  Icons.storefront_rounded,
+                                                  color: primary,
+                                                ),
+                                              )
+                                            : const Icon(
+                                                Icons.storefront_rounded,
+                                                color: primary,
+                                              ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
