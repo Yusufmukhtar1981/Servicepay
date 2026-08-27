@@ -8,6 +8,10 @@ import 'reset_password_screen.dart';
 
 import 'package:flutter/foundation.dart';
 import 'public_website_screen.dart';
+import 'rider/rider_delivery_alert_service.dart';
+
+final GlobalKey<NavigatorState> servicePayNavigatorKey =
+    GlobalKey<NavigatorState>();
 
 /*
  * =====================================================
@@ -28,9 +32,7 @@ Future<void> firebaseMessagingBackgroundHandler(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  debugPrint(
-    'SERVICEPAY BACKGROUND FCM: ${message.messageId}',
-  );
+  await RiderDeliveryAlertService.handleBackgroundMessage(message);
 }
 
 /*
@@ -48,54 +50,29 @@ Future<void> main() async {
   FirebaseMessaging.onBackgroundMessage(
     firebaseMessagingBackgroundHandler,
   );
+  await RiderDeliveryAlertService.initialize();
 
   runApp(
     const ServicePayApp(),
   );
 
-  // Non-critical notification setup runs after the UI has started.
+  // Messaging listeners are process-wide; RiderMainNavigation supplies the
+  // Rider-facing presentation callback only after an authenticated Rider opens.
   Future<void>.delayed(const Duration(milliseconds: 300), () async {
-    try {
-      await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        announcement: false,
-        carPlay: false,
-        criticalAlert: false,
-        provisional: false,
-      );
-    } catch (error) {
-      debugPrint('SERVICEPAY FCM PERMISSION ERROR: $error');
-    }
-
     FirebaseMessaging.onMessage.listen(
-      (RemoteMessage message) {
-        debugPrint(
-          'SERVICEPAY FOREGROUND FCM: ${message.messageId}',
-        );
-        debugPrint(
-          'SERVICEPAY FCM TITLE: ${message.notification?.title}',
-        );
-        debugPrint(
-          'SERVICEPAY FCM BODY: ${message.notification?.body}',
-        );
-        debugPrint(
-          'SERVICEPAY FCM DATA: ${message.data}',
-        );
-      },
+      RiderDeliveryAlertService.handleForegroundMessage,
     );
 
     FirebaseMessaging.onMessageOpenedApp.listen(
-      (RemoteMessage message) {
-        debugPrint(
-          'SERVICEPAY FCM OPENED: ${message.messageId}',
-        );
-        debugPrint(
-          'SERVICEPAY FCM OPENED DATA: ${message.data}',
-        );
-      },
+      (RemoteMessage message) =>
+          RiderDeliveryAlertService.handleOpenedMessage(message),
     );
+
+    final RemoteMessage? initialMessage =
+        await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      await RiderDeliveryAlertService.handleOpenedMessage(initialMessage);
+    }
   });
 }
 
@@ -138,6 +115,7 @@ class ServicePayApp extends StatelessWidget {
   ) {
     return MaterialApp(
       title: 'ServicePay',
+      navigatorKey: servicePayNavigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(

@@ -10,6 +10,7 @@ import '../login_screen.dart';
 import 'rider_withdrawal_screen.dart';
 
 import 'rider_transaction_pin_screen.dart';
+import 'rider_delivery_alert_service.dart';
 
 class RiderApi {
   static const String baseUrl = 'https://api.servicepay.ng/api';
@@ -322,6 +323,173 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
       RiderEarningsScreen(),
       RiderProfileScreen(),
     ];
+    RiderDeliveryAlertService.activate(
+      onIncoming: _presentIncomingOrder,
+      onOpen: _openDeliveryDetails,
+    );
+    RiderDeliveryAlertService.listenForTokenRefresh();
+    _activateDeliveryAlerts();
+  }
+
+  Future<void> _activateDeliveryAlerts() async {
+    try {
+      await RiderDeliveryAlertService.registerCurrentToken();
+    } catch (error) {
+      debugPrint('Rider delivery alerts unavailable: $error');
+    }
+    if (!mounted) return;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final bool explained =
+        prefs.getBool('rider_delivery_alert_permission_explained') ?? false;
+    if (explained) return;
+    await prefs.setBool('rider_delivery_alert_permission_explained', true);
+    if (!mounted) return;
+    final bool? continueRequest = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Delivery order alerts'),
+        content: const Text(
+          'Allow notifications so ServicePay can alert you immediately when a new delivery is assigned.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Allow alerts'),
+          ),
+        ],
+      ),
+    );
+    if (continueRequest == true) {
+      final bool? notificationsAllowed =
+          await RiderDeliveryAlertService.requestNotificationPermission();
+      if (notificationsAllowed == true) {
+        await RiderDeliveryAlertService.requestFullScreenIntentPermission();
+      }
+    }
+  }
+
+  Future<void> _presentIncomingOrder(
+    RiderDeliveryAlertPayload payload,
+  ) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        insetPadding: const EdgeInsets.all(20),
+        title: Row(
+          children: <Widget>[
+            Image.asset(
+              'assets/image/servicepay_logo.png',
+              width: 30,
+              height: 30,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.local_shipping_rounded,
+                color: Color(0xFF159447),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'NEW DELIVERY ORDER',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _IncomingOrderLine(
+                'Reference', payload.reference, Icons.receipt_long_outlined),
+            _IncomingOrderLine(
+                'Pickup', payload.pickup, Icons.location_on_outlined),
+            _IncomingOrderLine('Dropoff', payload.dropoff, Icons.flag_outlined),
+          ],
+        ),
+        actions: <Widget>[
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF159447)),
+            onPressed: () async {
+              await RiderDeliveryAlertService.cancel(payload.orderId);
+              if (!dialogContext.mounted) return;
+              Navigator.of(dialogContext).pop();
+              await _openDeliveryDetails(payload);
+            },
+            icon: const Icon(Icons.visibility_outlined),
+            label: const Text('View Order'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openDeliveryDetails(RiderDeliveryAlertPayload payload) async {
+    try {
+      final String token = await RiderApi.getToken();
+      if (token.isEmpty) throw Exception('Rider login token was not found.');
+      final http.Response response = await http.get(
+        Uri.parse('${RiderApi.baseUrl}/rider/deliveries/${payload.orderId}'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token'
+        },
+      ).timeout(const Duration(seconds: 20));
+      final Map<String, dynamic> root = RiderApi.decodeResponse(response);
+      final Map<String, dynamic> data = RiderApi.mapFromDynamic(root['data']);
+      final Map<String, dynamic> delivery = RiderApi.mapFromDynamic(
+        root['delivery'] ?? data['delivery'] ?? data,
+      );
+      Map<String, dynamic> resolvedDelivery = delivery;
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          resolvedDelivery.isEmpty) {
+        // Older Rider APIs expose the delivery only in the authenticated list.
+        // Keep this fallback scoped to deep links and select the exact order.
+        final http.Response listResponse = await http.get(
+          Uri.parse('${RiderApi.baseUrl}/rider/deliveries'),
+          headers: <String, String>{
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ).timeout(const Duration(seconds: 20));
+        final Map<String, dynamic> listRoot =
+            RiderApi.decodeResponse(listResponse);
+        final Map<String, dynamic> listData =
+            RiderApi.mapFromDynamic(listRoot['data']);
+        final List<Map<String, dynamic>> deliveries = RiderApi.listFromDynamic(
+          listRoot['deliveries'] ?? listData['deliveries'],
+        );
+        resolvedDelivery = deliveries.firstWhere(
+          (Map<String, dynamic> item) =>
+              RiderApi.text(item['_id'] ?? item['id'] ?? item['deliveryId']) ==
+              payload.orderId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (listResponse.statusCode < 200 ||
+            listResponse.statusCode >= 300 ||
+            resolvedDelivery.isEmpty) {
+          throw Exception(RiderApi.text(listRoot['message'],
+              fallback: 'Unable to open this delivery.'));
+        }
+      }
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => RiderDeliveryDetailsPage(delivery: resolvedDelivery),
+      ));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error.toString().replaceFirst('Exception: ', '')),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   @override
@@ -378,6 +546,39 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
               Icons.person_rounded,
             ),
             label: 'Profile',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IncomingOrderLine extends StatelessWidget {
+  const _IncomingOrderLine(this.label, this.value, this.icon);
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(icon, color: const Color(0xFF159447), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(label,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(value.isEmpty ? 'Not provided' : value),
+              ],
+            ),
           ),
         ],
       ),
@@ -629,6 +830,10 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
       );
 
       return false;
+    }
+
+    if (action == 'ACCEPT' || action == 'REJECT') {
+      await RiderDeliveryAlertService.cancel(deliveryId);
     }
 
     try {
@@ -1101,8 +1306,14 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
 
     final Widget tappableCard = InkWell(
       borderRadius: BorderRadius.circular(18),
-      onTap: () {
-        Navigator.of(context).push(
+      onTap: () async {
+        final NavigatorState navigator = Navigator.of(context);
+        final String deliveryId = RiderApi.text(delivery['_id']);
+        if (deliveryId.isNotEmpty) {
+          await RiderDeliveryAlertService.cancel(deliveryId);
+        }
+        if (!navigator.mounted) return;
+        await navigator.push(
           MaterialPageRoute<void>(
             builder: (_) => RiderDeliveryDetailsPage(
               delivery: delivery,
@@ -1770,6 +1981,8 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
   Future<void> logout(
     BuildContext context,
   ) async {
+    await RiderDeliveryAlertService.unregisterCurrentToken();
+
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     await prefs.clear();
