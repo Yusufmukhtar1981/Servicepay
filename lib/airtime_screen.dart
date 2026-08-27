@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+
 import 'services/api_service.dart';
+import 'services/transaction_authorization_service.dart';
+import 'transaction_pin_dialog.dart';
 
 class AirtimeScreen extends StatefulWidget {
   const AirtimeScreen({super.key});
@@ -9,11 +12,9 @@ class AirtimeScreen extends StatefulWidget {
 }
 
 class _AirtimeScreenState extends State<AirtimeScreen> {
-  final phoneController = TextEditingController();
-  final amountController = TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
 
-  String selectedNetwork = 'MTN';
-  bool isLoading = false;
+  final TextEditingController amountController = TextEditingController();
 
   final List<String> networks = [
     'MTN',
@@ -21,6 +22,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     'Glo',
     '9mobile',
   ];
+
+  String selectedNetwork = 'MTN';
+  bool isLoading = false;
 
   @override
   void dispose() {
@@ -32,40 +36,51 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   Future<void> buyAirtime() async {
-    final phone = phoneController.text.trim();
-    final amountText = amountController.text.trim();
-    final amount = double.tryParse(amountText);
+    final String phone = phoneController.text.trim();
+
+    final String amountText = amountController.text.trim();
+
+    final double? amount = double.tryParse(amountText);
 
     if (phone.isEmpty || amountText.isEmpty) {
-      showMessage('Please enter the phone number and amount.');
+      showMessage(
+        'Please enter the phone number and amount.',
+      );
       return;
     }
 
-    if (!RegExp(r'^[0-9]{11}$').hasMatch(phone) ||
-        !phone.startsWith('0')) {
-      showMessage('Please enter a valid 11-digit phone number.');
+    if (!RegExp(r'^[0-9]{11}$').hasMatch(phone) || !phone.startsWith('0')) {
+      showMessage(
+        'Please enter a valid 11-digit phone number.',
+      );
       return;
     }
 
     if (amount == null || amount < 50) {
-      showMessage('The minimum airtime amount is ₦50.');
+      showMessage(
+        'The minimum airtime amount is ₦50.',
+      );
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('Confirm airtime purchase'),
+          title: const Text(
+            'Confirm airtime purchase',
+          ),
           content: Text(
             'Purchase ₦${amount.toStringAsFixed(0)} '
             '$selectedNetwork airtime for $phone?',
@@ -73,13 +88,19 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
               child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
@@ -94,12 +115,36 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
     if (confirmed != true) return;
 
-    try {
-      setState(() {
-        isLoading = true;
-      });
+    setState(() {
+      isLoading = true;
+    });
 
-      final result = await ApiService.buyAirtime(
+    try {
+      if (!mounted) return;
+      final String? transactionPin =
+          await TransactionAuthorizationService.request(
+        context: context,
+        pinFallback: () => showTransactionPinDialog(context),
+        biometricReason: 'Confirm this airtime purchase',
+      );
+
+      if (transactionPin == null) {
+        return;
+      }
+
+      if (!RegExp(r'^\d{4}$').hasMatch(transactionPin)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enter a valid 4-digit Transaction PIN.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final Map<String, dynamic> result = await ApiService.buyAirtime(
+        transactionPin: transactionPin,
         network: selectedNetwork,
         phone: phone,
         amount: amountText,
@@ -107,30 +152,42 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
       if (!mounted) return;
 
-      final success =
-          result['success'] == true ||
-          result['status'] == true ||
-          result['status']?.toString().toLowerCase() == 'success' ||
-          result['status']?.toString() == '200';
+      final bool success = result['success'] == true;
 
-      final message =
-          result['message']?.toString() ??
+      final String message = result['message']?.toString() ??
           result['response_description']?.toString() ??
           result['description']?.toString() ??
-          result['error']?.toString();
+          result['error']?.toString() ??
+          (success
+              ? 'Airtime purchase was successful.'
+              : 'Airtime purchase failed.');
 
       if (success) {
-        showMessage(message ?? 'Airtime purchase was successful.');
+        showMessage(message);
 
         phoneController.clear();
         amountController.clear();
       } else {
-        showMessage(message ?? 'Airtime purchase failed.');
+        final String? reference = result['reference']?.toString();
+
+        final String? status = result['status']?.toString();
+
+        String finalMessage = message;
+
+        if (status == 'REFUNDED') {
+          finalMessage = '$message Your wallet has been refunded.';
+        }
+
+        if (reference != null && reference.isNotEmpty) {
+          finalMessage = '$finalMessage Reference: $reference';
+        }
+
+        showMessage(finalMessage);
       }
     } catch (error) {
-      showMessage(
-        'Unable to complete the request. Please check the server connection.',
-      );
+      final String message = error.toString().replaceFirst('Exception: ', '');
+
+      showMessage(message);
     } finally {
       if (mounted) {
         setState(() {
@@ -173,29 +230,33 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  initialValue: selectedNetwork,
+                  value: selectedNetwork,
                   decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.sim_card_outlined),
+                    prefixIcon: const Icon(
+                      Icons.sim_card_outlined,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  items: networks.map((network) {
-                    return DropdownMenuItem<String>(
-                      value: network,
-                      child: Text(network),
-                    );
-                  }).toList(),
+                  items: networks
+                      .map(
+                        (String network) => DropdownMenuItem<String>(
+                          value: network,
+                          child: Text(network),
+                        ),
+                      )
+                      .toList(),
                   onChanged: isLoading
                       ? null
-                      : (value) {
-                          if (value != null) {
-                            setState(() {
-                              selectedNetwork = value;
-                            });
-                          }
+                      : (String? value) {
+                          if (value == null) return;
+
+                          setState(() {
+                            selectedNetwork = value;
+                          });
                         },
                 ),
                 const SizedBox(height: 22),
@@ -215,7 +276,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   decoration: InputDecoration(
                     hintText: '08012345678',
                     counterText: '',
-                    prefixIcon: const Icon(Icons.phone_outlined),
+                    prefixIcon: const Icon(
+                      Icons.phone_outlined,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -241,7 +304,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   decoration: InputDecoration(
                     hintText: 'Enter amount',
                     prefixText: '₦ ',
-                    prefixIcon: const Icon(Icons.payments_outlined),
+                    prefixIcon: const Icon(
+                      Icons.payments_outlined,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
