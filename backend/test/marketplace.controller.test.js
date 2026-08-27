@@ -12,6 +12,7 @@ const MarketplaceOrder = require("../models/marketplaceOrder.model");
 const Transaction = require("../models/transaction.model");
 const LedgerEntry = require("../models/ledgerEntry.model");
 const marketplace = require("../controllers/marketplace.controller");
+const marketplaceRoutes = require("../routes/marketplace.routes");
 
 let mongo;
 let sequence = 0;
@@ -155,6 +156,39 @@ test("seller product creation requires a real product image", async () => {
 
   assert.equal(result.status, 400);
   assert.match(result.body.message, /image/i);
+});
+
+test("Marketplace mounts the authenticated product image upload route", () => {
+  const imageRoute = marketplaceRoutes.stack.find(
+    (layer) =>
+      layer.route?.path === "/products/image" &&
+      layer.route.methods?.post
+  );
+
+  assert.ok(imageRoute);
+  assert.equal(imageRoute.route.stack.length, 3);
+});
+
+test("Marketplace product upload rejects photos larger than 5 MB", async () => {
+  const seller = await createUser();
+  await MarketplaceMerchant.create({
+    user: seller._id,
+    storeName: "Image Size Store",
+    status: "ACTIVE",
+  });
+
+  const result = await call(marketplace.uploadProductImage, {
+    user: seller,
+    file: {
+      mimetype: "image/jpeg",
+      originalname: "large-product.jpg",
+      buffer: Buffer.alloc(5 * 1024 * 1024 + 1, 0xff),
+    },
+  });
+
+  assert.equal(result.status, 413);
+  assert.equal(result.body.code, "IMAGE_TOO_LARGE");
+  assert.match(result.body.message, /5 MB/i);
 });
 
 test("Marketplace product upload rejects forged or unsupported image files", async () => {

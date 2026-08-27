@@ -2,9 +2,32 @@ const { v2: cloudinary } = require("cloudinary");
 
 const SUPPORTED_MARKETPLACE_IMAGE_TYPES = new Set([
   "image/jpeg",
+  "image/jpg",
   "image/png",
   "image/webp",
 ]);
+const MAX_MARKETPLACE_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const getMarketplaceImageMimeType = (file = {}) => {
+  const declaredMime = String(file.mimetype || "").toLowerCase();
+
+  if (SUPPORTED_MARKETPLACE_IMAGE_TYPES.has(declaredMime)) {
+    return declaredMime === "image/jpg" ? "image/jpeg" : declaredMime;
+  }
+
+  if (declaredMime === "application/octet-stream") {
+    const extension = String(file.originalname || "")
+      .split(".")
+      .pop()
+      .toLowerCase();
+
+    if (["jpg", "jpeg"].includes(extension)) return "image/jpeg";
+    if (extension === "png") return "image/png";
+    if (extension === "webp") return "image/webp";
+  }
+
+  return "";
+};
 
 const configureCloudinary = () => {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME;
@@ -77,6 +100,8 @@ const uploadMarketplaceProductImage = async ({ buffer, userId }) => {
 
 module.exports = {
   SUPPORTED_MARKETPLACE_IMAGE_TYPES,
+  MAX_MARKETPLACE_IMAGE_BYTES,
+  getMarketplaceImageMimeType,
   hasSupportedMarketplaceImageSignature,
   uploadMarketplaceProductImage,
 };

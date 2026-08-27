@@ -8,7 +8,9 @@ const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
 const { postDebit, postCredit } = require("../services/ledger.service");
 const {
+  MAX_MARKETPLACE_IMAGE_BYTES,
   SUPPORTED_MARKETPLACE_IMAGE_TYPES,
+  getMarketplaceImageMimeType,
   hasSupportedMarketplaceImageSignature,
   uploadMarketplaceProductImage,
 } = require("../services/marketplaceImage.service");
@@ -812,7 +814,15 @@ exports.uploadProductImage = async (req, res) => {
       });
     }
 
-    const mimeType = String(req.file.mimetype || "").toLowerCase();
+    if (req.file.buffer.length > MAX_MARKETPLACE_IMAGE_BYTES) {
+      return res.status(413).json({
+        success: false,
+        code: "IMAGE_TOO_LARGE",
+        message: "Marketplace product photos must be 5 MB or smaller.",
+      });
+    }
+
+    const mimeType = getMarketplaceImageMimeType(req.file);
 
     if (
       !SUPPORTED_MARKETPLACE_IMAGE_TYPES.has(mimeType) ||
