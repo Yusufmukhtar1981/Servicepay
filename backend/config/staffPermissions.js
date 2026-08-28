@@ -17,6 +17,12 @@ const STAFF_PERMISSIONS = Object.freeze({
   USERS_SUSPEND: "users.suspend",
   USERS_BLOCK: "users.block",
 
+  BUSINESS_PARTNERS_VIEW: "business_partners.view",
+  BUSINESS_PARTNERS_CREATE: "business_partners.create",
+  BUSINESS_PARTNERS_UPDATE: "business_partners.update",
+  BUSINESS_PARTNERS_STATUS: "business_partners.status",
+  BUSINESS_PARTNERS_ASSIGN: "business_partners.assign",
+
   TRANSACTIONS_VIEW: "transactions.view",
   TRANSACTIONS_EXPORT: "transactions.export",
   TRANSACTIONS_REVERSE: "transactions.reverse",

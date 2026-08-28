@@ -1,25 +1,31 @@
 const router = require("express").Router();
-const { protect, adminOnly, businessPartnerOnly } = require("../middleware/auth.middleware");
+const { protect, businessPartnerOnly } = require("../middleware/auth.middleware");
+const {
+  loadStaffRole,
+  requirePermission,
+} = require("../middleware/staffPermission.middleware");
+const {
+  STAFF_PERMISSIONS: P,
+} = require("../config/staffPermissions");
 const c = require("../controllers/businessPartner.controller");
-const admin = adminOnly("HEAD_OFFICE", "ADMIN", "SUPER_ADMIN");
 
-// Head Office controls identities, status, permissions and password recovery.
-router.get("/admin/partners", protect, admin, c.adminList);
-router.get("/admin/partners/count", protect, admin, c.adminCount);
-router.post("/admin/partners", protect, admin, c.adminCreate);
-router.get("/admin/partners/:partnerId", protect, admin, c.adminDetail);
-router.patch("/admin/partners/:partnerId", protect, admin, c.adminUpdate);
-router.patch("/admin/partners/:partnerId/status", protect, admin, c.adminStatus);
-router.post("/admin/partners/:partnerId/reset-password", protect, admin, c.adminReset);
-router.post("/admin/partners/:partnerId/applications/:applicationId/assign", protect, admin, c.adminAssignApplication);
+const staffAccess = [protect, loadStaffRole];
+router.get("/admin/partners", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_VIEW), c.adminList);
+router.get("/admin/partners/count", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_VIEW), c.adminCount);
+router.post("/admin/partners", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_CREATE), c.adminCreate);
+router.get("/admin/partners/:partnerId", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_VIEW), c.adminDetail);
+router.patch("/admin/partners/:partnerId", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_UPDATE), c.adminUpdate);
+router.patch("/admin/partners/:partnerId/status", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_STATUS), c.adminStatus);
+router.post("/admin/partners/:partnerId/reset-password", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_UPDATE), c.adminReset);
+router.post("/admin/partners/:partnerId/applications/:applicationId/assign", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_ASSIGN), c.adminAssignApplication);
 // Commission creation is deliberately not exposed: it is recorded only by
 // trusted lifecycle services using a server-derived event key. Reversal has a
 // dedicated append-only compensating entry.
-router.post("/admin/commissions/:commissionId/reverse", protect, admin, c.adminReverseCommission);
-router.get("/admin/commission-rules", protect, admin, c.adminRules);
-router.post("/admin/commission-rules", protect, admin, c.adminCreateRule);
-router.patch("/admin/commission-rules/:ruleId/status", protect, admin, c.adminRuleStatus);
-router.post("/admin/partners/:partnerId/officers/link", protect, admin, c.adminLinkOfficer);
+router.post("/admin/commissions/:commissionId/reverse", ...staffAccess, requirePermission(P.FINANCE_APPROVE), c.adminReverseCommission);
+router.get("/admin/commission-rules", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_VIEW), c.adminRules);
+router.post("/admin/commission-rules", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_UPDATE), c.adminCreateRule);
+router.patch("/admin/commission-rules/:ruleId/status", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_UPDATE), c.adminRuleStatus);
+router.post("/admin/partners/:partnerId/officers/link", ...staffAccess, requirePermission(P.BUSINESS_PARTNERS_ASSIGN), c.adminLinkOfficer);
 
 router.get("/me", protect, businessPartnerOnly, c.me);
 router.get("/dashboard", protect, businessPartnerOnly, c.dashboard);
