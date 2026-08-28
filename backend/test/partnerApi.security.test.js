@@ -88,6 +88,35 @@ const createPartner = async ({
   });
 };
 
+const createDelayedTransaction = async (partner, values = {}) =>
+  PartnerTransaction.create({
+    partner: partner._id,
+    reference: values.reference || `SPP-AIRTIME-query-${++sequence}`,
+    externalReference: `query-key-${sequence}`,
+    idempotencyKey: `query-key-${sequence}`,
+    service: "AIRTIME",
+    amount: 100,
+    status: "REQUERY_REQUIRED",
+    provider: "CLUBKONNECT",
+    walletDebitStatus: "DEBITED",
+    ...values,
+  });
+
+const withProviderCredentials = async (fn) => {
+  const oldUserId = process.env.CLUBKONNECT_USER_ID;
+  const oldApiKey = process.env.CLUBKONNECT_API_KEY;
+  process.env.CLUBKONNECT_USER_ID = "test-user";
+  process.env.CLUBKONNECT_API_KEY = "test-key";
+  try {
+    return await fn();
+  } finally {
+    if (oldUserId === undefined) delete process.env.CLUBKONNECT_USER_ID;
+    else process.env.CLUBKONNECT_USER_ID = oldUserId;
+    if (oldApiKey === undefined) delete process.env.CLUBKONNECT_API_KEY;
+    else process.env.CLUBKONNECT_API_KEY = oldApiKey;
+  }
+};
+
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongo.getUri());
@@ -257,6 +286,310 @@ test("provider transport uncertainty remains processing and does not refund the 
       process.env.CLUBKONNECT_API_KEY = oldApiKey;
     }
   }
+});
+
+test("purchase requests include the stable internal RequestID for Airtime and Data", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const calls = [];
+    axios.get = async (url, config) => {
+      calls.push({ url, params: config.params });
+      if (url.includes("Plans")) return { status: 200, data: [{ code: "PLAN1", name: "Plan", price: 100 }] };
+      return { status: 200, data: { status: "SUCCESS", orderid: `order-${calls.length}` } };
+    };
+    try {
+      const partner = await createPartner({ permissions: ["AIRTIME", "DATA"] });
+      await call(partnerApiController.buyAirtime, { partner, headers: { "idempotency-key": "airtime-request-id" },
+        body: { network: "MTN", phone: "08030000000", amount: 100 } });
+      await call(partnerApiController.buyData, { partner, headers: { "idempotency-key": "data-request-id" },
+        body: { network: "MTN", phone: "08030000000", planCode: "PLAN1" } });
+      const purchases = calls.filter(({ url }) => /APIAirtime|APIDatabundleV1/.test(url));
+      assert.equal(purchases.length, 2);
+      for (const purchase of purchases) assert.match(purchase.params.RequestID, /^SPP-/);
+    } finally { axios.get = originalGet; }
+  });
+});
+
+test("status query prefers OrderID and only exact completed response confirms once", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const partner = await createPartner();
+    const transaction = await createDelayedTransaction(partner, { providerReference: "verified-order-id" });
+    let params;
+    axios.get = async (_url, config) => {
+      params = config.params;
+      return { status: 200, data: { statuscode: "200", orderstatus: "ORDER_COMPLETED", orderid: "verified-order-id" } };
+    };
+    try {
+      const result = await call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: transaction.reference } });
+      assert.equal(result.status, 200);
+      assert.equal(result.body.success, true);
+      assert.equal(params.OrderID, "verified-order-id");
+      assert.equal(params.RequestID, undefined);
+      const latest = await PartnerTransaction.findById(transaction._id);
+      assert.equal(latest.status, "SUCCESSFUL");
+      assert.equal(latest.resolutionSource, "PROVIDER_RESPONSE");
+      assert.equal(await PartnerAuditLog.countDocuments({ action: "API_TRANSACTION_CONFIRMED" }), 1);
+    } finally { axios.get = originalGet; }
+  });
+});
+
+test("already-final records are not queried and concurrent provider confirmations finalize once", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const partner = await createPartner();
+    const final = await createDelayedTransaction(partner, { status: "SUCCESSFUL" });
+    let requests = 0;
+    axios.get = async (_url, config) => {
+      requests += 1;
+      return {
+        status: 200,
+        data: {
+          statuscode: "200",
+          orderstatus: "ORDER_COMPLETED",
+          requestid: config.params.RequestID,
+          orderid: "order",
+        },
+      };
+    };
+    try {
+      await call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: final.reference } });
+      assert.equal(requests, 0);
+      const delayed = await createDelayedTransaction(partner);
+      await Promise.all(Array.from({ length: 2 }, () => call(partnerApiController.requeryPartnerTransaction,
+        { partner, params: { reference: delayed.reference } })));
+      assert.equal((await PartnerTransaction.findById(delayed._id)).status, "SUCCESSFUL");
+      assert.equal(await PartnerAuditLog.countDocuments({ action: "API_TRANSACTION_CONFIRMED", "metadata.reference": delayed.reference }), 1);
+    } finally { axios.get = originalGet; }
+  });
+});
+
+test("on-hold, malformed and timeout query responses remain unresolved and debited", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const partner = await createPartner();
+    const responses = [
+      { status: 200, data: { statuscode: "600", orderstatus: "ORDER_ONHOLD", UserID: "must-not-persist" } },
+      { status: 200, data: { statuscode: "300", orderstatus: "ORDER_PROCESSED" } },
+      { status: 200, data: { statuscode: "400", orderstatus: "ORDER_ERROR" } },
+      { status: 200, data: "not-json" },
+      new Error("timeout"),
+    ];
+    axios.get = async () => {
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    };
+    try {
+      for (let index = 0; index < 5; index += 1) {
+        const transaction = await createDelayedTransaction(partner);
+        const result = await call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: transaction.reference } });
+        assert.equal(result.status, 202);
+        const latest = await PartnerTransaction.findById(transaction._id);
+        assert.equal(latest.status, "REQUERY_REQUIRED");
+        assert.equal(latest.walletDebitStatus, "DEBITED");
+        assert.equal(JSON.stringify(latest.providerResponse).includes("must-not-persist"), false);
+      }
+    } finally { axios.get = originalGet; }
+  });
+});
+
+test("only 500-series ORDER_CANCELLED refunds once and partner scope is enforced", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const partner = await createPartner();
+    const other = await createPartner();
+    const transaction = await createDelayedTransaction(partner);
+    axios.get = async (_url, config) => ({
+      status: 200,
+      data: {
+        statuscode: "500",
+        orderstatus: "ORDER_CANCELLED",
+        requestid: config.params.RequestID,
+        orderid: "cancelled-order",
+      },
+    });
+    try {
+      const foreign = await call(partnerApiController.requeryPartnerTransaction, { partner: other, params: { reference: transaction.reference } });
+      assert.equal(foreign.status, 404);
+      const [first, second] = await Promise.all([
+        call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: transaction.reference } }),
+        call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: transaction.reference } }),
+      ]);
+      assert.equal([first.body.success, second.body.success].includes(true), true);
+      const latest = await PartnerTransaction.findById(transaction._id);
+      assert.equal(latest.status, "REVERSED");
+      assert.equal(latest.walletDebitStatus, "REFUNDED");
+      await call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: transaction.reference } });
+      assert.equal(await PartnerAuditLog.countDocuments({ action: "API_TRANSACTION_REVERSED", "metadata.reference": transaction.reference }), 1);
+    } finally { axios.get = originalGet; }
+  });
+});
+
+test("terminal query replies with mismatched OrderID or RequestID never finalize or poison correlation", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const partner = await createPartner();
+    const byOrder = await createDelayedTransaction(partner, { providerReference: "known-order" });
+    const byRequest = await createDelayedTransaction(partner);
+    const replies = [
+      { status: 200, data: { statuscode: "200", orderstatus: "ORDER_COMPLETED", orderid: "other-order" } },
+      { status: 200, data: { statuscode: "500", orderstatus: "ORDER_CANCELLED", requestid: "wrong-request", orderid: "poison-order" } },
+    ];
+    axios.get = async () => replies.shift();
+    try {
+      for (const transaction of [byOrder, byRequest]) {
+        const result = await call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: transaction.reference } });
+        assert.equal(result.status, 202);
+        const latest = await PartnerTransaction.findById(transaction._id);
+        assert.equal(latest.status, "REQUERY_REQUIRED");
+        assert.equal(latest.walletDebitStatus, "DEBITED");
+      }
+      assert.equal((await PartnerTransaction.findById(byOrder._id)).providerReference, "known-order");
+      assert.equal((await PartnerTransaction.findById(byRequest._id)).providerReference, "");
+      const mismatchAudit = await PartnerAuditLog.findOne({ action: "API_REQUERY_RESULT", "metadata.reference": byOrder.reference });
+      assert.equal(mismatchAudit.metadata.identifierMismatch, true);
+    } finally { axios.get = originalGet; }
+  });
+});
+
+test("foreign OrderID in nonterminal responses never changes subsequent query correlation", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const partner = await createPartner();
+    const cases = [
+      { statuscode: "600", orderstatus: "ORDER_ONHOLD", storedOrderId: "original-order" },
+      { statuscode: "300", orderstatus: "ORDER_PROCESSED", storedOrderId: "" },
+      { statuscode: "400", orderstatus: "ORDER_ERROR", storedOrderId: "" },
+    ];
+    try {
+      for (const item of cases) {
+        const transaction = await createDelayedTransaction(partner, {
+          providerReference: item.storedOrderId,
+        });
+        const queryParams = [];
+        axios.get = async (_url, config) => {
+          queryParams.push({ ...config.params });
+          return {
+            status: 200,
+            data: {
+              statuscode: item.statuscode,
+              orderstatus: item.orderstatus,
+              orderid: "foreign-order",
+              ...(item.storedOrderId ? {} : { requestid: "foreign-request" }),
+            },
+          };
+        };
+
+        await call(partnerApiController.requeryPartnerTransaction, {
+          partner,
+          params: { reference: transaction.reference },
+        });
+        await call(partnerApiController.requeryPartnerTransaction, {
+          partner,
+          params: { reference: transaction.reference },
+        });
+
+        const latest = await PartnerTransaction.findById(transaction._id);
+        assert.equal(latest.status, "REQUERY_REQUIRED");
+        assert.equal(latest.walletDebitStatus, "DEBITED");
+        assert.equal(latest.providerReference, item.storedOrderId);
+        assert.equal(queryParams.length, 2);
+        if (item.storedOrderId) {
+          assert.equal(queryParams[0].OrderID, item.storedOrderId);
+          assert.equal(queryParams[1].OrderID, item.storedOrderId);
+          assert.equal(queryParams[1].RequestID, undefined);
+        } else {
+          assert.equal(queryParams[0].RequestID, transaction.reference);
+          assert.equal(queryParams[1].RequestID, transaction.reference);
+          assert.equal(queryParams[1].OrderID, undefined);
+        }
+        const audits = await PartnerAuditLog.find({
+          action: "API_REQUERY_RESULT",
+          "metadata.reference": transaction.reference,
+        });
+        assert.equal(audits.length, 2);
+        assert.equal(audits.every((audit) =>
+          audit.metadata.identifierMismatch === true &&
+          audit.metadata.identifierCorrelated === false), true);
+      }
+    } finally {
+      axios.get = originalGet;
+    }
+  });
+});
+
+test("immediate provider success is never committed without its confirmation audit", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const originalCreate = PartnerAuditLog.create;
+    axios.get = async () => ({ status: 200, data: { status: "SUCCESS", orderid: "immediate-order" } });
+    PartnerAuditLog.create = async () => { throw new Error("audit unavailable"); };
+    try {
+      const partner = await createPartner({ permissions: ["AIRTIME"] });
+      const result = await call(partnerApiController.buyAirtime, {
+        partner, headers: { "idempotency-key": "atomic-audit-failure" },
+        body: { network: "MTN", phone: "08030000000", amount: 100 },
+      });
+      assert.notEqual(result.status, 201);
+      const transaction = await PartnerTransaction.findOne({ idempotencyKey: "atomic-audit-failure" });
+      assert.notEqual(transaction.status, "SUCCESSFUL");
+      assert.equal(transaction.status, "REQUERY_REQUIRED");
+    } finally {
+      axios.get = originalGet;
+      PartnerAuditLog.create = originalCreate;
+    }
+  });
+});
+
+test("manual and provider success finality race produces one final state and one final audit", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const partner = await createPartner();
+    const transaction = await createDelayedTransaction(partner);
+    axios.get = async (_url, config) => ({
+      status: 200,
+      data: { statuscode: "200", orderstatus: "ORDER_COMPLETED", requestid: config.params.RequestID, orderid: "provider-order" },
+    });
+    try {
+      await Promise.all([
+        call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: transaction.reference } }),
+        call(partnerApiController.resolvePartnerTransaction, { params: { reference: transaction.reference },
+          body: { outcome: "SUCCESSFUL", providerReference: "manual-order", note: "Verified independently with provider." } }),
+      ]);
+      const latest = await PartnerTransaction.findById(transaction._id);
+      assert.equal(latest.status, "SUCCESSFUL");
+      assert.equal(latest.walletDebitStatus, "DEBITED");
+      assert.equal(await PartnerAuditLog.countDocuments({ action: "API_TRANSACTION_CONFIRMED", "metadata.reference": transaction.reference }), 1);
+    } finally { axios.get = originalGet; }
+  });
+});
+
+test("manual and provider cancellation race refunds once with one final audit", async () => {
+  await withProviderCredentials(async () => {
+    const originalGet = axios.get;
+    const partner = await createPartner();
+    const transaction = await createDelayedTransaction(partner);
+    axios.get = async (_url, config) => ({
+      status: 200,
+      data: { statuscode: "500", orderstatus: "ORDER_CANCELLED", requestid: config.params.RequestID, orderid: "provider-cancel" },
+    });
+    try {
+      await Promise.all([
+        call(partnerApiController.requeryPartnerTransaction, { partner, params: { reference: transaction.reference } }),
+        call(partnerApiController.resolvePartnerTransaction, { params: { reference: transaction.reference },
+          body: { outcome: "FAILED", note: "Verified cancellation independently." } }),
+      ]);
+      const latest = await PartnerTransaction.findById(transaction._id);
+      assert.equal(latest.status, "REVERSED");
+      assert.equal(latest.walletDebitStatus, "REFUNDED");
+      const finalAudits = await PartnerAuditLog.countDocuments({
+        "metadata.reference": transaction.reference,
+        action: { $in: ["API_TRANSACTION_REVERSED", "API_TRANSACTION_MANUALLY_RESOLVED"] },
+      });
+      assert.equal(finalAudits, 1);
+    } finally { axios.get = originalGet; }
+  });
 });
 
 test("admin limit controls reject unsafe combinations and partner transaction idempotency is unique", async () => {
