@@ -11,7 +11,7 @@ const deviceSchema = new mongoose.Schema({
   reservedAt: { type: Date, default: null }, reservationExpiresAt: { type: Date, default: null, index: true },
   receivedAt: { type: Date, default: Date.now }, handoverAt: { type: Date, default: null }, activatedAt: { type: Date, default: null },
   customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
-  application: { type: mongoose.Schema.Types.ObjectId, ref: "PhoneApplication", default: null, unique: true, sparse: true },
+  application: { type: mongoose.Schema.Types.ObjectId, ref: "PhoneApplication", default: undefined, unique: true, sparse: true },
   statusHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
 }, { timestamps: true });
 deviceSchema.pre("validate", function () { ["imei1","imei2","serialNumber"].forEach(k => { if (this[k]) this[k] = String(this[k]).replace(/\s+/g, "").toUpperCase(); }); });

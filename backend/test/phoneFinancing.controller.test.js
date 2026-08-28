@@ -45,11 +45,130 @@ test.before(async () => {
 test.after(async()=>{await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));await mongoose.disconnect();await repl.stop();});
 test.beforeEach(async()=>Promise.all(models.map(m=>m.collection.deleteMany({}))));
 
+test("admin device intake validates the canonical payload and updates inventory once", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const product = (await api({
+    method: "POST",
+    path: "/api/phone-financing/admin/products",
+    actor: admin,
+    body: productBody("IMEI-INTAKE"),
+  })).body.product;
+
+  for (const [body, message] of [
+    [{ imei1: "111", serialNumber: "SER-1" }, "phoneProductId is required."],
+    [{ phoneProductId: product._id, serialNumber: "SER-1" }, "imei1 is required."],
+    [{ phoneProductId: product._id, imei1: "111" }, "serialNumber is required."],
+  ]) {
+    const response = await api({
+      method: "POST",
+      path: "/api/phone-financing/admin/devices",
+      actor: admin,
+      body,
+    });
+    assert.equal(response.status, 400);
+    assert.equal(response.body.message, message);
+  }
+
+  const legacyPayload = await api({
+    method: "POST",
+    path: "/api/phone-financing/admin/devices",
+    actor: admin,
+    body: { productId: product._id, imei1: "111", serialNumber: "SER-1" },
+  });
+  assert.equal(legacyPayload.status, 400);
+  assert.equal(legacyPayload.body.message, "phoneProductId is required.");
+
+  const invalidId = await api({
+    method: "POST",
+    path: "/api/phone-financing/admin/devices",
+    actor: admin,
+    body: { phoneProductId: "not-an-id", imei1: "111", serialNumber: "SER-1" },
+  });
+  assert.equal(invalidId.status, 400);
+  assert.equal(invalidId.body.message, "phoneProductId must be a valid Phone Product ID.");
+
+  const missingProduct = await api({
+    method: "POST",
+    path: "/api/phone-financing/admin/devices",
+    actor: admin,
+    body: {
+      phoneProductId: new mongoose.Types.ObjectId(),
+      imei1: "111",
+      serialNumber: "SER-1",
+    },
+  });
+  assert.equal(missingProduct.status, 404);
+  assert.equal(missingProduct.body.message, "Phone product not found.");
+
+  const first = await api({
+    method: "POST",
+    path: "/api/phone-financing/admin/devices",
+    actor: admin,
+    body: {
+      phoneProductId: `  ${product._id}  `,
+      imei1: " 111 111 ",
+      imei2: "   ",
+      serialNumber: " ser-1 ",
+    },
+  });
+  assert.equal(first.status, 201);
+  assert.equal(first.body.device.imei1, "111111");
+  assert.equal(first.body.device.imei2, undefined);
+  assert.equal(first.body.device.serialNumber, "SER-1");
+  assert.equal(first.body.device.status, "AVAILABLE");
+  assert.equal(String(first.body.device.product), String(product._id));
+
+  const second = await api({
+    method: "POST",
+    path: "/api/phone-financing/admin/devices",
+    actor: admin,
+    body: {
+      phoneProductId: product._id,
+      imei1: "222222",
+      imei2: "333333",
+      serialNumber: "SER-2",
+    },
+  });
+  assert.equal(second.status, 201);
+
+  for (const [body, message] of [
+    [
+      { phoneProductId: product._id, imei1: "111111", serialNumber: "SER-3" },
+      "IMEI 1 already exists in inventory.",
+    ],
+    [
+      {
+        phoneProductId: product._id,
+        imei1: "444444",
+        imei2: "333333",
+        serialNumber: "SER-4",
+      },
+      "IMEI 2 already exists in inventory.",
+    ],
+    [
+      { phoneProductId: product._id, imei1: "555555", serialNumber: "ser-1" },
+      "Serial number already exists in inventory.",
+    ],
+  ]) {
+    const response = await api({
+      method: "POST",
+      path: "/api/phone-financing/admin/devices",
+      actor: admin,
+      body,
+    });
+    assert.equal(response.status, 409);
+    assert.equal(response.body.message, message);
+  }
+
+  assert.equal(await Device.countDocuments({ product: product._id }), 2);
+  assert.equal((await Product.findById(product._id)).stock, 2);
+});
+
 test("phone financing protects ownership, money, inventory, schedules, and disabled provider evidence", async () => {
   const admin=await makeUser("HEAD_OFFICE"), customer=await makeUser(), other=await makeUser(), second=await makeUser();
   const p1=(await api({method:"POST",path:"/api/phone-financing/admin/products",actor:admin,body:productBody("PX-ONE")})).body.product;
   const p2=(await api({method:"POST",path:"/api/phone-financing/admin/products",actor:admin,body:productBody("PX-TWO")})).body.product;
-  const device=(await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{productId:p1._id,imei1:"111111111111111",imei2:"222222222222222",serialNumber:"SER-1"}})).body.device;
+  const device=(await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{phoneProductId:p1._id,imei1:"111111111111111",imei2:"222222222222222",serialNumber:"SER-1"}})).body.device;
   assert.equal((await api({path:"/api/phone-financing/products",actor:customer})).body.products.length,1);
   await api({method:"PATCH",path:`/api/phone-financing/admin/products/${p1._id}`,actor:admin,body:{stock:99}});
   assert.equal((await Product.findById(p1._id)).stock,1);
@@ -68,7 +187,7 @@ test("phone financing protects ownership, money, inventory, schedules, and disab
   assert.equal((await api({...dep,body:{amount:201,transactionPin:"1234"}})).status,409);
   assert.equal((await Application.findById(appId)).outstandingBalance,800);
   assert.equal(await Payment.countDocuments({type:"DEPOSIT"}),1); assert.equal(await Transaction.countDocuments({serviceType:"PHONE_FINANCING_DEPOSIT"}),1); assert.equal(await LedgerEntry.countDocuments({service:"PHONE_FINANCING_DEPOSIT"}),1);
-  const dupe=await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{productId:p1._id,imei1:"111111111111111",serialNumber:"SER-2"}});assert.equal(dupe.status,409);
+  const dupe=await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{phoneProductId:p1._id,imei1:"111111111111111",serialNumber:"SER-2"}});assert.equal(dupe.status,409);
   const assign={method:"POST",path:`/api/phone-financing/admin/applications/${appId}/assign-device`,actor:admin,body:{deviceId:device._id}};
   const [a1,a2]=await Promise.all([api(assign),api(assign)]);assert.ok([200,409].includes(a1.status)&&[200,409].includes(a2.status));
   assert.equal((await Product.findById(p1._id)).stock,0);
@@ -99,7 +218,7 @@ test("phone financing protects ownership, money, inventory, schedules, and disab
   for(let i=2;i<=4;i++) assert.equal((await api({method:"POST",path:`/api/phone-financing/finance/${financeId}/pay`,actor:customer,body:{amount:200,transactionPin:"1234"},headers:{"Idempotency-Key":`weekly-${i}`}})).status,201);
   assert.equal((await Finance.findById(financeId)).status,"COMPLETED");assert.equal((await Device.findById(device._id)).status,"COMPLETED");
   assert.equal((await Application.findById(appId)).outstandingBalance,0);
-  const secondDevice=(await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{productId:p2._id,imei1:"333333333333333",serialNumber:"SER-SECOND"}})).body.device;
+  const secondDevice=(await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{phoneProductId:p2._id,imei1:"333333333333333",serialNumber:"SER-SECOND"}})).body.device;
   await api({method:"PATCH",path:`/api/phone-financing/admin/products/${p2._id}`,actor:admin,body:{interestPercent:20}});
   const secondApp=(await api({method:"POST",path:"/api/phone-financing/applications",actor:second,body:applicationBody(p2._id)})).body.application;
   assert.ok(secondApp.reference.startsWith("SPF-PHONE"));
@@ -116,7 +235,7 @@ test("phone financing protects ownership, money, inventory, schedules, and disab
 test("deposit atomically reserves scarce inventory and refund releases it exactly once",async()=>{
   const admin=await makeUser("HEAD_OFFICE"),first=await makeUser(),second=await makeUser();
   const product=(await api({method:"POST",path:"/api/phone-financing/admin/products",actor:admin,body:productBody("SCARCE")})).body.product;
-  const device=(await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{productId:product._id,imei1:"999999999999991",serialNumber:"SCARCE-1"}})).body.device;
+  const device=(await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{phoneProductId:product._id,imei1:"999999999999991",serialNumber:"SCARCE-1"}})).body.device;
   const applications=[];
   for(const customer of [first,second]){
     const submitted=(await api({method:"POST",path:"/api/phone-financing/applications",actor:customer,body:applicationBody(product._id)})).body.application;

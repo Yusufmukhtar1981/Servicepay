@@ -20,6 +20,14 @@ const uid = req => req.user._id;
 const ref = prefix => `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 const key = req => text(req.get("idempotency-key") || req.body.idempotencyKey, 160);
 const error = (message, statusCode = 409) => Object.assign(new Error(message), { statusCode });
+const inventoryCode = value => text(value, 160).replace(/\s+/g, "").toUpperCase();
+const duplicateDeviceMessage = e => {
+  const field = Object.keys(e?.keyPattern || {})[0];
+  if (field === "imei1") return "IMEI 1 already exists in inventory.";
+  if (field === "imei2") return "IMEI 2 already exists in inventory.";
+  if (field === "serialNumber") return "Serial number already exists in inventory.";
+  return "IMEI or serial number already exists in inventory.";
+};
 const history = (doc, status, by, note = "") => { doc.status = status; doc.statusHistory.push({ status, changedBy: by, note: text(note), changedAt: new Date() }); };
 const audit = (req, action, reason, data, session) => AdminAuditLog.create([{ actorId: uid(req), actorRole: req.user.role, actorName: req.user.fullName || "", action, reason: text(reason) || action, newData: data, requestMethod: req.method, requestPath: req.originalUrl }], { session });
 const productSnapshot = p => ({ sku: p.sku, name: p.name, brand: p.brand, cashPrice: p.cashPrice, financedPrice: p.financedPrice, depositPercent: p.depositPercent, interestPercent: p.interestPercent, weeklyInstallments: p.weeklyInstallments, durationOptionsWeeks:p.durationOptionsWeeks, graceDays:p.graceDays, restrictionProvider:p.restrictionProvider, restrictionEnabled:p.restrictionEnabled, terms: p.terms, specifications: p.specifications });
@@ -93,7 +101,78 @@ async function debit(req, app, amount, type, session, finance = null, allocation
  const updated=await User.findOneAndUpdate({_id:payer._id,walletBalance:{$gte:amount}},{$inc:{walletBalance:-amount}},{new:true,session});if(!updated)throw error("Insufficient wallet balance.");const closing=money(updated.walletBalance), opening=money(closing+amount), service=type==="DEPOSIT"?"PHONE_FINANCING_DEPOSIT":"PHONE_FINANCING_INSTALLMENT";const tx=(await Transaction.create([{reference:ref("SPF-PAY"),customerId:payer._id,serviceType:service,provider:"SERVICEPAY_PHONE_FINANCING",amount,status:"SUCCESSFUL",providerResponse:{applicationId:String(app._id),financeId:finance?String(finance._id):null,idempotencyKey:idem}}],{session}))[0];const ledger=await postDebit({userId:payer._id,amount,openingBalance:opening,closingBalance:closing,service,reference:tx.reference,idempotencyKey:`phone:${idem}`,transactionId:tx._id,narration:`Phone financing ${type.toLowerCase()}`,session});if(ledger.duplicate)throw error("Duplicate ledger state requires support review.");const payment=(await Payment.create([{reference:ref("SPF-PAY"),application:app._id,finance:finance?finance._id:null,customer:payer._id,type,amount,idempotencyKey:idem,transaction:tx._id,ledgerEntry:ledger.entry._id,allocation}],{session}))[0];return {payment,idempotent:false};
 }
 exports.deposit = async (req,res) => {const session=await mongoose.startSession();try{let result;await session.withTransaction(async()=>{const app=await Application.findOne({_id:req.params.applicationId,customer:uid(req)}).session(session);if(!app)throw error("Phone application not found.",404);const duplicate=await Payment.findOne({idempotencyKey:key(req)}).session(session);if(duplicate){if(duplicate.type!=="DEPOSIT"||String(duplicate.customer)!==String(uid(req))||String(duplicate.application)!==String(app._id)||money(duplicate.amount)!==money(req.body.amount))throw error("Idempotency key is already associated with a different payment.");result={payment:duplicate,idempotent:true};return;}if(app.status!=="AWAITING_DEPOSIT")throw error("Deposit cannot be paid for this application.");const amount=money(app.depositRequired-app.depositPaid);if(!amount||money(req.body.amount)!==amount)throw error("Deposit amount must equal the server-calculated amount.",400);const now=new Date(),expires=new Date(now.getTime()+7*86400000);const reserved=await Device.findOneAndUpdate({product:app.product,status:"AVAILABLE"},{$set:{status:"RESERVED",reservedForApplication:app._id,reservedForCustomer:app.customer,reservedAt:now,reservationExpiresAt:expires},$push:{statusHistory:{status:"RESERVED",changedBy:uid(req),changedAt:now}}},{new:true,session});if(!reserved)throw error("No available physical device can be reserved for this product.");const product=await Product.findOneAndUpdate({_id:app.product,stock:{$gt:0}},{$inc:{stock:-1}},{new:true,session});if(!product)throw error("Product availability is inconsistent.");app.device=reserved._id;result=await debit(req,app,amount,"DEPOSIT",session);app.depositPaid=amount;app.outstandingBalance=money(app.outstandingBalance-amount);history(app,"DEPOSIT_PAID",uid(req),"Deposit paid and device reserved");await app.save({session});});res.status(result.idempotent?200:201).json({success:true,...result});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{session.endSession();}};
-exports.createDevice = async (req,res) => {const session=await mongoose.startSession();try {let d;await session.withTransaction(async()=>{const product=await Product.findById(req.body.productId).session(session);if(!product)throw error("Phone product not found.",404);d=(await Device.create([{reference:ref("SPF-DEV"),product:product._id,imei1:req.body.imei1,imei2:req.body.imei2||undefined,serialNumber:req.body.serialNumber,statusHistory:[{status:"AVAILABLE",changedBy:uid(req)}]}],{session}))[0];await Product.updateOne({_id:product._id},{$inc:{stock:1}},{session});await audit(req,"PHONE_DEVICE_CREATED","Received available phone device",{deviceId:String(d._id)},session);});res.status(201).json({success:true,device:d});}catch(e){res.status(e.statusCode||(e.code===11000?409:400)).json({success:false,message:e.code===11000?"IMEI or serial number already exists.":e.message});}finally{session.endSession();}};
+exports.createDevice = async (req, res) => {
+  const phoneProductId = text(req.body.phoneProductId, 80);
+  const imei1 = inventoryCode(req.body.imei1);
+  const imei2 = inventoryCode(req.body.imei2);
+  const serialNumber = inventoryCode(req.body.serialNumber);
+
+  if (!phoneProductId) {
+    return res.status(400).json({ success: false, message: "phoneProductId is required." });
+  }
+  if (!mongoose.isValidObjectId(phoneProductId)) {
+    return res.status(400).json({ success: false, message: "phoneProductId must be a valid Phone Product ID." });
+  }
+  if (!imei1) {
+    return res.status(400).json({ success: false, message: "imei1 is required." });
+  }
+  if (!serialNumber) {
+    return res.status(400).json({ success: false, message: "serialNumber is required." });
+  }
+  if (imei2 && imei2 === imei1) {
+    return res.status(409).json({ success: false, message: "IMEI 2 must be different from IMEI 1." });
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    let device;
+    await session.withTransaction(async () => {
+      const product = await Product.findById(phoneProductId).session(session);
+      if (!product) throw error("Phone product not found.", 404);
+
+      const imeis = imei2 ? [imei1, imei2] : [imei1];
+      const duplicate = await Device.findOne({
+        $or: [
+          { imei1: { $in: imeis } },
+          { imei2: { $in: imeis } },
+          { serialNumber },
+        ],
+      }).session(session);
+      if (duplicate) {
+        if (duplicate.serialNumber === serialNumber) {
+          throw error("Serial number already exists in inventory.", 409);
+        }
+        if (duplicate.imei1 === imei1 || duplicate.imei2 === imei1) {
+          throw error("IMEI 1 already exists in inventory.", 409);
+        }
+        throw error("IMEI 2 already exists in inventory.", 409);
+      }
+
+      device = (await Device.create([{
+        reference: ref("SPF-DEV"),
+        product: product._id,
+        imei1,
+        imei2: imei2 || undefined,
+        serialNumber,
+        status: "AVAILABLE",
+        statusHistory: [{ status: "AVAILABLE", changedBy: uid(req) }],
+      }], { session }))[0];
+      await Product.updateOne({ _id: product._id }, { $inc: { stock: 1 } }, { session });
+      await audit(req, "PHONE_DEVICE_CREATED", "Received available phone device", {
+        deviceId: String(device._id),
+        phoneProductId: String(product._id),
+      }, session);
+    });
+    res.status(201).json({ success: true, device });
+  } catch (e) {
+    res.status(e.statusCode || (e.code === 11000 ? 409 : 400)).json({
+      success: false,
+      message: e.code === 11000 ? duplicateDeviceMessage(e) : e.message,
+    });
+  } finally {
+    session.endSession();
+  }
+};
 exports.devices = async(req,res)=>{const q=text(req.query.q,100);let devices=await Device.find({}).populate("product","name sku").populate("customer","fullName phone email").sort({createdAt:-1});if(q){const re=new RegExp(q,"i");devices=devices.filter(d=>re.test(d.reference)||re.test(d.imei1)||re.test(d.imei2||"")||re.test(d.serialNumber)||re.test(d.customer?.fullName||"")||re.test(d.customer?.phone||"")||re.test(d.customer?.email||""));}res.json({success:true,devices});};
 exports.assign = async(req,res)=>{const s=await mongoose.startSession();try{let application;await s.withTransaction(async()=>{const app=await Application.findById(req.params.applicationId).session(s);if(!app)throw error("Application not found.",404);if(app.status==="DEVICE_ASSIGNED"){if(req.body.deviceId&&String(req.body.deviceId)!==String(app.device))throw error("Requested device differs from the existing reservation.");application=app;return;}if(app.status!=="DEPOSIT_PAID"||!app.device)throw error("Application has no paid device reservation.");if(req.body.deviceId&&String(req.body.deviceId)!==String(app.device))throw error("Requested device differs from the existing reservation.");const claimed=await Device.findOneAndUpdate({_id:app.device,status:"RESERVED",reservedForApplication:app._id,reservedForCustomer:app.customer},{$set:{status:"ASSIGNED",customer:app.customer,application:app._id},$unset:{reservedForApplication:1,reservedForCustomer:1,reservedAt:1,reservationExpiresAt:1},$push:{statusHistory:{status:"ASSIGNED",changedBy:uid(req),changedAt:new Date()}}},{new:true,session:s});if(!claimed)throw error("Reserved device is unavailable.");history(app,"DEVICE_ASSIGNED",uid(req),"Reserved physical device assigned");await app.save({session:s});application=app;await audit(req,"PHONE_DEVICE_ASSIGNED","Confirmed reserved phone device assignment",{applicationId:String(app._id),deviceId:String(claimed._id)},s);});res.json({success:true,application});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{s.endSession();}};
 exports.handover = async(req,res)=>{const s=await mongoose.startSession();try{let finance;await s.withTransaction(async()=>{const app=await Application.findById(req.params.applicationId).session(s);if(!app||app.status!=="DEVICE_ASSIGNED"||!app.device)throw error("Assigned application required.",409);const device=await Device.findById(app.device).session(s);const terms=app.approvalSnapshot;let allocated=0;const schedule=Array.from({length:terms.weeklyInstallments},(_,i)=>{const amount=i===terms.weeklyInstallments-1?money(app.totalPayable-app.depositPaid-allocated):money((app.totalPayable-app.depositPaid)/terms.weeklyInstallments);allocated=money(allocated+amount);const due=new Date();due.setDate(due.getDate()+7*(i+1));return{installmentNumber:i+1,dueDate:due,amount};});const now=new Date();finance=(await Finance.create([{reference:ref("SPF-PHONE"),application:app._id,customer:app.customer,device:device._id,termsSnapshot:{...terms,product:app.productSnapshot},totalPayable:app.totalPayable,amountPaid:app.depositPaid,outstandingBalance:money(app.totalPayable-app.depositPaid),graceDays:terms.graceDays,paymentSchedule:schedule,statusHistory:[{status:"ACTIVE",changedBy:uid(req),note:"Handover activated"}]}],{session:s}))[0];device.status="ACTIVE_FINANCE";device.handoverAt=now;device.activatedAt=now;device.statusHistory.push({status:"ACTIVE_FINANCE",changedBy:uid(req)});await device.save({session:s});history(app,"ACTIVE",uid(req),"Handover activated");await app.save({session:s});await audit(req,"PHONE_HANDOVER_ACTIVATED","Activated phone handover",{applicationId:String(app._id),financeId:String(finance._id)},s);});res.status(201).json({success:true,finance});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{s.endSession();}};
