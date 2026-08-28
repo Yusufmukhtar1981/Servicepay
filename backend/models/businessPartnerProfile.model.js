@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const {
+  BUSINESS_PARTNER_PERMISSION_VALUES,
+  BUSINESS_PARTNER_VIEW_PERMISSIONS,
+} = require("../config/businessPartnerPermissions");
 
 const businessPartnerProfileSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, unique: true, index: true },
@@ -12,8 +16,8 @@ const businessPartnerProfileSchema = new mongoose.Schema({
   },
   permissions: {
     type: [String],
-    enum: ["DASHBOARD", "OFFICERS", "CUSTOMERS", "APPLICATIONS", "REPAYMENTS", "REPORTS", "SOLAR_ASSIGNMENT", "PHONE_ASSIGNMENT", "VERIFICATION_REVIEW"],
-    default: ["DASHBOARD", "OFFICERS", "CUSTOMERS", "APPLICATIONS", "REPAYMENTS", "REPORTS"],
+    enum: BUSINESS_PARTNER_PERMISSION_VALUES,
+    default: () => [...BUSINESS_PARTNER_VIEW_PERMISSIONS],
   },
   status: { type: String, enum: ["ACTIVE", "SUSPENDED", "DISABLED"], default: "ACTIVE", index: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

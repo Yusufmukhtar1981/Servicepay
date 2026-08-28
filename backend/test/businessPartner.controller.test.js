@@ -16,6 +16,9 @@ const SolarPackage = require("../models/solarPackage.model");
 const SolarOfficer = require("../models/solarOfficer.model");
 const Notification = require("../models/notification.model");
 const Audit = require("../models/adminAuditLog.model");
+const {
+  BUSINESS_PARTNER_VIEW_PERMISSIONS,
+} = require("../config/businessPartnerPermissions");
 
 const models = [User, Profile, Commission, Rule, PhoneApplication, PhoneProduct, SolarApplication, SolarPackage, SolarOfficer, Notification, Audit];
 let repl, server, base, sequence = 0;
@@ -140,6 +143,52 @@ test("partners are isolated, cannot self-claim, and sensitive customer fields ar
   assert.equal(customers.body.customers[0].nin, undefined);
 });
 
+test("active legacy Business Partners automatically receive module view access only", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const made = await createPartner(admin, "legacy-view", []);
+  const partnerUser = await User.findById(made.body.user._id);
+  const profile = await Profile.findById(made.body.partner._id);
+
+  profile.permissions = [];
+  await profile.save();
+  partnerUser.businessPartnerProfile = null;
+  partnerUser.businessPartnerId = profile._id;
+  await partnerUser.save();
+
+  const customers = await api({
+    path: "/api/business-partner/customers",
+    actor: partnerUser,
+  });
+  assert.equal(customers.status, 200, JSON.stringify(customers.body));
+
+  const repairedProfile = await Profile.findById(profile._id);
+  assert.deepEqual(
+    [...repairedProfile.permissions].sort(),
+    [...BUSINESS_PARTNER_VIEW_PERMISSIONS].sort()
+  );
+  assert.equal(
+    repairedProfile.permissions.includes("PHONE_ASSIGNMENT"),
+    false
+  );
+  assert.equal(
+    repairedProfile.permissions.includes("VERIFICATION_REVIEW"),
+    false
+  );
+
+  const repairedUser = await User.findById(partnerUser._id);
+  assert.equal(
+    String(repairedUser.businessPartnerProfile),
+    String(profile._id)
+  );
+
+  const customer = await makeUser("CUSTOMER");
+  const denied = await api({
+    path: "/api/business-partner/customers",
+    actor: customer,
+  });
+  assert.equal(denied.status, 403);
+});
+
 test("Head Office allocates cases and partner permissions scope officer assignment", async () => {
   const admin = await makeUser("HEAD_OFFICE");
   const partner = await createPartner(admin, "4", ["OFFICERS", "PHONE_ASSIGNMENT"]);
@@ -152,7 +201,9 @@ test("Head Office allocates cases and partner permissions scope officer assignme
   assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${app._id}/assign`, actor: partnerUser, body: { type: "PHONE", officerId: officer._id } })).status, 200);
   assert.equal(String((await PhoneApplication.findById(app._id)).assignedOfficer), String(officer._id));
   const deniedPartner = await createPartner(admin, "5", ["DASHBOARD"]);
-  assert.equal((await api({ path: "/api/business-partner/customers", actor: await User.findById(deniedPartner.body.user._id) })).status, 403);
+  const deniedPartnerUser = await User.findById(deniedPartner.body.user._id);
+  assert.equal((await api({ path: "/api/business-partner/customers", actor: deniedPartnerUser })).status, 200);
+  assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${app._id}/assign`, actor: deniedPartnerUser, body: { type: "PHONE", officerId: officer._id } })).status, 403);
   assert.equal(await Notification.countDocuments({ userId: partner.body.user._id, referenceType: "BusinessPartnerAssignment" }), 1);
 });
 

@@ -5,6 +5,9 @@ const User = require("../models/user.model");
 const AccountRestriction = require("../models/accountRestriction.model");
 const FintechWatchlist = require("../models/fintechWatchlist.model");
 const LoginSecurityEvent = require("../models/loginSecurityEvent.model");
+const {
+  ensureBusinessPartnerViewAccess,
+} = require("../services/businessPartnerAccess.service");
 
 const { v2: cloudinary } = require("cloudinary");
 
@@ -958,6 +961,28 @@ await user.save();
         message:
           "Incorrect email, phone number or password.",
       });
+    }
+
+    if (
+      String(user.role || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "_") === "BUSINESS_PARTNER"
+    ) {
+      const businessPartnerProfile =
+        await ensureBusinessPartnerViewAccess(user);
+      if (!businessPartnerProfile) {
+        await recordLoginSecurityEvent(req, {
+          user,
+          identifier: cleanLoginValue,
+          outcome: "FAILED",
+        });
+        return res.status(403).json({
+          success: false,
+          message:
+            "This Business Partner account is unavailable or inactive.",
+        });
+      }
     }
 
     /*

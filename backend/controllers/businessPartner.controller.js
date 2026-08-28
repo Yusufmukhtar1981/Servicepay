@@ -12,6 +12,11 @@ const Rule = require("../models/businessPartnerCommissionRule.model");
 const Notification = require("../models/notification.model");
 const Audit = require("../models/adminAuditLog.model");
 const { createCommission, reverseCommission } = require("../services/businessPartnerCommission.service");
+const {
+  mergeBusinessPartnerViewPermissions,
+  hasOnlyBusinessPartnerPermissions,
+  normalizeBusinessPartnerPermissions,
+} = require("../config/businessPartnerPermissions");
 const text = (v, n = 500) => String(v || "").trim().slice(0, n);
 const id = req => req.user._id;
 const fail = (message, statusCode = 409) => Object.assign(new Error(message), { statusCode });
@@ -47,7 +52,7 @@ async function audit(req, action, reason, newData, session) {
   return Audit.create([{ actorId: id(req), actorRole: req.user.role, actorName: req.user.fullName || "", action, reason, newData, requestMethod: req.method, requestPath: req.originalUrl }], { session });
 }
 async function ownProfile(req, permission) {
-  const profile = await Profile.findOne({ _id: req.user.businessPartnerProfile, user: id(req), status: "ACTIVE" });
+  const profile = req.businessPartnerProfile || await Profile.findOne({ _id: req.user.businessPartnerProfile, user: id(req), status: "ACTIVE" });
   if (!profile) throw fail("Business Partner account is inactive.", 403);
   if (permission && !profile.permissions.includes(permission)) throw fail("Business Partner permission denied.", 403);
   return profile;
@@ -62,29 +67,37 @@ exports.adminCreate = async (req, res) => {
   try {
     const fullName = text(req.body.fullName, 160), phone = text(req.body.phone, 40), email = text(req.body.email, 160).toLowerCase(), password = String(req.body.password || ""), businessName = text(req.body.businessName, 160);
     if (!fullName || !phone || !email || password.length < 6 || !businessName) throw fail("Full name, phone, email, business name, and a 6-character password are required.", 400);
-    const allowedPermissions=["DASHBOARD","OFFICERS","CUSTOMERS","APPLICATIONS","REPAYMENTS","REPORTS","SOLAR_ASSIGNMENT","PHONE_ASSIGNMENT","VERIFICATION_REVIEW"];
     const permissions=req.body.permissions===undefined?undefined:req.body.permissions;
-    if(permissions!==undefined&&(!Array.isArray(permissions)||permissions.some(value=>!allowedPermissions.includes(value))))throw fail("Invalid Business Partner permissions.",400);
+    if(permissions!==undefined&&!hasOnlyBusinessPartnerPermissions(permissions))throw fail("Invalid Business Partner permissions.",400);
+    const grantedPermissions=mergeBusinessPartnerViewPermissions(permissions);
     const territory=req.body.territory||{};
     if(territory&&typeof territory!=="object"||!Array.isArray(territory.states||[])||!Array.isArray(territory.lgas||[])||[...(territory.states||[]),...(territory.lgas||[])].some(v=>!text(v,120)))throw fail("Territory states and LGAs must be non-empty string arrays.",400);
     let user,profile,profileId,lastError;
     // Unique partnerId is the allocation lock. Retrying the whole transaction
     // means no user/profile/audit fragment survives a contested ID allocation.
-    for(let attempt=0;attempt<4;attempt++){const session=await mongoose.startSession();try{await session.withTransaction(async()=>{profileId=await partnerId(session);user=(await User.create([{fullName,phone,email,password,role:"BUSINESS_PARTNER",status:"ACTIVE"}],{session}))[0];profile=(await Profile.create([{user:user._id,partnerId:profileId,businessName,contactName:text(req.body.contactName,160)||fullName,territory,permissions,createdBy:id(req)}],{session}))[0];user.businessPartnerProfile=profile._id;user.businessPartnerId=profile._id;await user.save({session});await audit(req,"BUSINESS_PARTNER_CREATED","Created Business Partner",{partnerId:String(profile._id),generatedPartnerId:profileId},session);await Notification.create([{userId:user._id,title:"Business Partner account created",message:`Your Business Partner ID is ${profileId}.`,type:"BUSINESS_PARTNER",referenceId:profile._id,referenceType:"BusinessPartnerProfile"}],{session});});lastError=null;break;}catch(error){lastError=error;if(error.code!==11000||attempt===3)break;}finally{await session.endSession();}}
+    for(let attempt=0;attempt<4;attempt++){const session=await mongoose.startSession();try{await session.withTransaction(async()=>{profileId=await partnerId(session);user=(await User.create([{fullName,phone,email,password,role:"BUSINESS_PARTNER",status:"ACTIVE"}],{session}))[0];profile=(await Profile.create([{user:user._id,partnerId:profileId,businessName,contactName:text(req.body.contactName,160)||fullName,territory,permissions:grantedPermissions,createdBy:id(req)}],{session}))[0];user.businessPartnerProfile=profile._id;user.businessPartnerId=profile._id;await user.save({session});await audit(req,"BUSINESS_PARTNER_CREATED","Created Business Partner",{partnerId:String(profile._id),generatedPartnerId:profileId},session);await Notification.create([{userId:user._id,title:"Business Partner account created",message:`Your Business Partner ID is ${profileId}.`,type:"BUSINESS_PARTNER",referenceId:profile._id,referenceType:"BusinessPartnerProfile"}],{session});});lastError=null;break;}catch(error){lastError=error;if(error.code!==11000||attempt===3)break;}finally{await session.endSession();}}
     if(lastError)throw lastError;
     res.status(201).json({ success: true, partner: profile, user: publicUser(user) });
   } catch (e) { res.status(e.statusCode || (e.code === 11000 ? 409 : 500)).json({ success: false, message: e.code === 11000 ? "A user with that phone or email already exists." : e.message }); }
 };
 exports.adminUpdate = async (req, res) => {
   try { const p = await Profile.findById(req.params.partnerId); if (!p) throw fail("Business Partner not found.", 404);
-    for (const key of ["businessName", "contactName", "territory", "permissions"]) if (Object.hasOwn(req.body || {}, key)) p[key] = req.body[key];
+    for (const key of ["businessName", "contactName", "territory"]) if (Object.hasOwn(req.body || {}, key)) p[key] = req.body[key];
+    if (Object.hasOwn(req.body || {}, "permissions")) {
+      if (!hasOnlyBusinessPartnerPermissions(req.body.permissions)) throw fail("Invalid Business Partner permissions.", 400);
+      p.permissions = p.status === "ACTIVE"
+        ? mergeBusinessPartnerViewPermissions(req.body.permissions)
+        : normalizeBusinessPartnerPermissions(req.body.permissions);
+    }
     await p.save(); await audit(req, "BUSINESS_PARTNER_UPDATED", "Updated Business Partner profile", { partnerId: String(p._id) }); res.json({ success: true, partner: p });
   } catch (e) { res.status(e.statusCode || 400).json({ success: false, message: e.message }); }
 };
 exports.adminStatus = async (req, res) => {
   try { const status = text(req.body.status, 20).toUpperCase(); if (!["ACTIVE", "SUSPENDED", "DISABLED"].includes(status)) throw fail("Invalid Business Partner status.", 400);
     const p = await Profile.findById(req.params.partnerId); if (!p) throw fail("Business Partner not found.", 404);
-    p.status = status; p.statusChangedBy = id(req); p.statusChangedAt = new Date(); await p.save();
+    p.status = status; p.statusChangedBy = id(req); p.statusChangedAt = new Date();
+    if (status === "ACTIVE") p.permissions = mergeBusinessPartnerViewPermissions(p.permissions);
+    await p.save();
     await User.updateOne({ _id: p.user }, { $set: { status: status === "ACTIVE" ? "ACTIVE" : "SUSPENDED" } });
     await audit(req, "BUSINESS_PARTNER_STATUS_UPDATED", `Changed status to ${status}`, { partnerId: String(p._id), status }); await Notification.create({ userId: p.user, title: "Business Partner status updated", message: `Your account is now ${status}.`, type: "BUSINESS_PARTNER", referenceId: p._id, referenceType: "BusinessPartnerStatus" });
     res.json({ success: true, partner: p });

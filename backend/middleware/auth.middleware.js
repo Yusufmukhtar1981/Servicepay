@@ -1,5 +1,8 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+const {
+  ensureBusinessPartnerViewAccess,
+} = require("../services/businessPartnerAccess.service");
 
 const normalizeRole = (value = "") => {
   return String(value)
@@ -193,14 +196,24 @@ const phoneFinancingOfficerOnly = (req, res, next) => {
   req.user.role = userRole;
   return next();
 };
-const businessPartnerOnly = (req, res, next) => {
+const businessPartnerOnly = async (req, res, next) => {
   if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized." });
   const userRole = normalizeRole(req.user.role);
-  if (userRole !== "BUSINESS_PARTNER" || !req.user.businessPartnerProfile) {
+  if (userRole !== "BUSINESS_PARTNER") {
     return res.status(403).json({ success: false, message: "This feature is available to active Business Partner accounts only." });
   }
-  req.user.role = userRole;
-  return next();
+  try {
+    const profile = await ensureBusinessPartnerViewAccess(req.user);
+    if (!profile) {
+      return res.status(403).json({ success: false, message: "This feature is available to active Business Partner accounts only." });
+    }
+    req.user.role = userRole;
+    req.businessPartnerProfile = profile;
+    return next();
+  } catch (error) {
+    console.error("Business Partner access normalization error:", error.message);
+    return res.status(500).json({ success: false, message: "Unable to verify Business Partner access." });
+  }
 };
 
 module.exports = {
