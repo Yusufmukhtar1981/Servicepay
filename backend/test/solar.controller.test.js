@@ -9,6 +9,7 @@ const solarRoutes = require("../routes/solar.routes");
 const User = require("../models/user.model");
 const SolarPackage = require("../models/solarPackage.model");
 const SolarApplication = require("../models/solarApplication.model");
+const SolarFinance = require("../models/solarFinance.model");
 const SolarPayment = require("../models/solarPayment.model");
 const SolarSettings = require("../models/solarSettings.model");
 const Transaction = require("../models/transaction.model");
@@ -16,7 +17,7 @@ const LedgerEntry = require("../models/ledgerEntry.model");
 const Notification = require("../models/notification.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 
-const models = [User, SolarPackage, SolarApplication, SolarPayment, SolarSettings, Transaction, LedgerEntry, Notification, AdminAuditLog];
+const models = [User, SolarPackage, SolarApplication, SolarFinance, SolarPayment, SolarSettings, Transaction, LedgerEntry, Notification, AdminAuditLog];
 let mongo, apiServer, apiBaseUrl, sequence = 0;
 const request = ({ user, body = {}, params = {}, query = {}, headers = {} }) => ({
   user, body, params, query, method: "POST", originalUrl: "/api/solar/test", ip: "127.0.0.1",
@@ -542,6 +543,103 @@ test("Solar deposit payment uses the authoritative wallet balance and settles a 
   assert.equal(alreadyPaid.body.message, "Deposit already paid.");
   assert.equal((await User.findById(customer._id)).walletBalance, 100000);
   assert.equal(await SolarPayment.countDocuments({ application: app._id }), 1);
+});
+
+test("Solar installment payment uses the authoritative wallet balance and settles a concurrent double tap once", async () => {
+  const admin = await user({ role: "HEAD_OFFICE" });
+  const customer = await user({ balance: 250000 });
+  const pack = await SolarPackage.create({
+    name: "ServicePay HomeLite Finance",
+    capacityKw: 1,
+    cashPrice: 200000,
+    financedPrice: 200000,
+    depositPercent: 0,
+    installmentMonths: 2,
+    createdBy: admin._id,
+  });
+  const app = await SolarApplication.create({
+    customer: customer._id,
+    package: pack._id,
+    packageSnapshot: pack.toObject(),
+    profileSnapshot: { fullName: customer.fullName },
+    status: "FINANCE_ACTIVE",
+    totalPayable: 200000,
+    outstandingBalance: 200000,
+  });
+  const finance = await SolarFinance.create({
+    reference: "SPF-SOLAR-INSTALLMENT-DOUBLE-TAP",
+    application: app._id,
+    customer: customer._id,
+    termsSnapshot: { installmentMonths: 2 },
+    installationSnapshot: { installedAt: new Date() },
+    totalPayable: 200000,
+    outstandingBalance: 200000,
+    status: "FINANCE_ACTIVE",
+    paymentSchedule: [
+      { installmentNumber: 1, dueDate: new Date(), amount: 100000 },
+      { installmentNumber: 2, dueDate: new Date(Date.now() + 30 * 86400000), amount: 100000 },
+    ],
+  });
+  const payment = {
+    method: "POST",
+    path: `/api/solar/finance/${finance._id}/pay`,
+    actor: customer,
+    body: { amount: 100000, transactionPin: "1234" },
+  };
+
+  for (const invalidAmount of [50000, 150000]) {
+    const rejected = await api({
+      ...payment,
+      body: { ...payment.body, amount: invalidAmount },
+      headers: { "Idempotency-Key": `solar-finance-installment-invalid-${invalidAmount}` },
+    });
+    assert.equal(rejected.status, 409);
+    assert.equal(rejected.body.message, "Payment amount must equal the next installment amount.");
+  }
+  assert.equal((await User.findById(customer._id)).walletBalance, 250000);
+  assert.equal(await SolarPayment.countDocuments({ application: app._id }), 0);
+  assert.equal(await Transaction.countDocuments({ customerId: customer._id, serviceType: "SOLAR_INSTALLMENT" }), 0);
+  assert.equal(await LedgerEntry.countDocuments({ user: customer._id, service: "SOLAR_INSTALLMENT" }), 0);
+
+  const [first, second] = await Promise.all([
+    api({ ...payment, headers: { "Idempotency-Key": "solar-finance-installment-once" } }),
+    api({ ...payment, headers: { "Idempotency-Key": "solar-finance-installment-once" } }),
+  ]);
+  assert.deepEqual([first.status, second.status].sort(), [200, 201]);
+  assert.equal([first, second].filter((result) => result.body.idempotent === true).length, 1);
+  assert.equal((await User.findById(customer._id)).walletBalance, 150000);
+
+  const saved = await SolarFinance.findById(finance._id);
+  assert.equal(saved.amountPaid, 100000);
+  assert.equal(saved.outstandingBalance, 100000);
+  assert.equal(saved.paymentSchedule[0].status, "PAID");
+  assert.equal(saved.paymentSchedule[0].paidAmount, 100000);
+  assert.ok(saved.paymentSchedule[0].paidAt);
+  assert.equal(saved.paymentSchedule[1].status, "PENDING");
+  assert.equal(saved.paymentSchedule[1].paidAmount, 0);
+  assert.equal(await SolarPayment.countDocuments({ application: app._id, type: "INSTALLMENT" }), 1);
+  assert.equal(await Transaction.countDocuments({ customerId: customer._id, serviceType: "SOLAR_INSTALLMENT" }), 1);
+  const ledger = await LedgerEntry.findOne({ user: customer._id, service: "SOLAR_INSTALLMENT" });
+  assert.ok(ledger);
+  assert.equal(ledger.openingBalance, 250000);
+  assert.equal(ledger.amount, 100000);
+  assert.equal(ledger.closingBalance, 150000);
+
+  const schedule = await api({ method: "GET", path: `/api/solar/finance/${finance._id}/schedule`, actor: customer });
+  assert.equal(schedule.status, 200);
+  assert.equal(schedule.body.schedule.find((row) => row.status !== "PAID").installmentNumber, 2);
+  const history = await api({ method: "GET", path: `/api/solar/finance/${finance._id}/payments`, actor: customer });
+  assert.equal(history.status, 200);
+  assert.equal(history.body.payments.length, 1);
+
+  const retry = await api({
+    ...payment,
+    headers: { "Idempotency-Key": "solar-finance-installment-once" },
+  });
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.idempotent, true);
+  assert.equal((await User.findById(customer._id)).walletBalance, 150000);
+  assert.equal(await SolarPayment.countDocuments({ application: app._id, type: "INSTALLMENT" }), 1);
 });
 
 test("Solar guards ownership and recovery requires an admin reason without changing remote state", async () => {

@@ -586,31 +586,49 @@ exports.financePayments = async (req, res) => {
 exports.payFinance = async (req, res) => {
   const session = await mongoose.startSession();
   try {
-    const amount = money(req.body?.amount), idem = keyFor(req);
-    if (amount === null || amount <= 0 || !idem) throw problem("A positive amount and Idempotency-Key are required.", 400);
+    const requestedAmount = money(req.body?.amount), idem = keyFor(req);
+    if (requestedAmount === null || requestedAmount <= 0 || !idem) throw problem("A positive amount and Idempotency-Key are required.", 400);
     let result;
     await session.withTransaction(async () => {
       const duplicate = await SolarPayment.findOne({ idempotencyKey: idem }).session(session);
       if (duplicate) {
         const requestedFinance = await SolarFinance.findOne({ _id:req.params.financeId, customer:id(req) }).session(session);
-        if (!requestedFinance || String(duplicate.customer)!==String(id(req)) || duplicate.type!=="INSTALLMENT" || Number(duplicate.amount)!==amount || String(duplicate.application)!==String(requestedFinance.application)) throw problem("Idempotency key is already associated with a different payment.");
+        if (!requestedFinance || String(duplicate.customer)!==String(id(req)) || duplicate.type!=="INSTALLMENT" || Number(duplicate.amount)!==requestedAmount || String(duplicate.application)!==String(requestedFinance.application)) throw problem("Idempotency key is already associated with a different payment.");
         result = { payment: duplicate, idempotent: true }; return;
       }
       const finance = await SolarFinance.findOne({ _id: req.params.financeId, customer: id(req) }).session(session);
       if (!finance) throw problem("Solar finance contract not found.", 404);
       if (!["FINANCE_ACTIVE", "OVERDUE", "DEFAULT_REVIEW", "RECOVERY_REQUIRED"].includes(finance.status)) throw problem("This finance contract cannot accept payments.");
-      if (amount > money(finance.outstandingBalance)) throw problem("Payment exceeds outstanding balance.");
+      const nextInstallment = finance.paymentSchedule.find((row) => money(row.amount - row.paidAmount) > 0);
+      if (!nextInstallment || money(finance.outstandingBalance) <= 0) throw problem("All installments are already paid.");
+      const amount = money(nextInstallment.amount - nextInstallment.paidAmount);
+      if (amount === null || amount <= 0) throw problem("The next installment amount is invalid.");
+      if (requestedAmount !== amount) throw problem("Payment amount must equal the next installment amount.");
+      const outstanding = money(finance.outstandingBalance);
+      if (outstanding === null || amount > outstanding) throw problem("Payment exceeds outstanding balance.");
       const payer = await User.findById(id(req)).select("+transactionPin transactionPinSet walletBalance").session(session);
       if (!payer?.transactionPinSet || !payer.transactionPin) throw problem("Please create your transaction PIN before making this payment.", 400);
       if (!await payer.compareTransactionPin(text(req.body?.transactionPin, 4))) throw problem("Incorrect transaction PIN.", 401);
-      const opening = money(payer.walletBalance); if (opening < amount) throw problem("Insufficient wallet balance.");
+      const updatedPayer = await User.findOneAndUpdate(
+        { _id: payer._id, walletBalance: { $gte: amount } },
+        { $inc: { walletBalance: -amount } },
+        { new: true, session },
+      );
+      if (!updatedPayer) {
+        const currentPayer = await User.findById(payer._id).select("walletBalance").session(session).lean();
+        if (!currentPayer || money(currentPayer.walletBalance) < amount) throw problem("Insufficient wallet balance.");
+        throw problem("Wallet debit could not be completed. Please try again.");
+      }
+      const closing = money(updatedPayer.walletBalance);
+      const opening = closing === null ? null : money(closing + amount);
+      if (opening === null || closing === null) throw problem("Wallet balance is invalid.");
       const tx = (await Transaction.create([{ reference: reference(), customerId: payer._id, serviceType: "SOLAR_INSTALLMENT", provider: "SERVICEPAY_SOLAR", amount, status: "SUCCESSFUL", providerResponse: { financeId: String(finance._id), idempotencyKey: idem } }], { session }))[0];
-      const ledger = await postDebit({ userId: payer._id, amount, openingBalance: opening, closingBalance: money(opening - amount), service: "SOLAR_INSTALLMENT", reference: tx.reference, idempotencyKey: `solar-finance:${idem}`, transactionId: tx._id, narration: "Solar finance installment", metadata: { financeId: String(finance._id) }, session });
+      const ledger = await postDebit({ userId: payer._id, amount, openingBalance: opening, closingBalance: closing, service: "SOLAR_INSTALLMENT", reference: tx.reference, idempotencyKey: `solar-finance:${idem}`, transactionId: tx._id, narration: "Solar finance installment", metadata: { financeId: String(finance._id) }, session });
       if (ledger.duplicate) throw problem("Solar payment ledger state requires support review.");
-      const updated = await User.findOneAndUpdate({ _id: payer._id, walletBalance: opening }, { $inc: { walletBalance: -amount } }, { new: true, session });
-      if (!updated) throw problem("Wallet balance changed before payment could be completed.");
-      let left = amount; const allocations = [];
-      for (const row of finance.paymentSchedule) { const due = money(row.amount - row.paidAmount); if (left <= 0) break; if (due <= 0) continue; const part = money(Math.min(left, due)); row.paidAmount = money(row.paidAmount + part); row.status = row.paidAmount === row.amount ? "PAID" : "PARTIAL"; if (row.status === "PAID") row.paidAt = new Date(); left = money(left - part); allocations.push({ installmentNumber: row.installmentNumber, amount: part }); }
+      nextInstallment.paidAmount = money(nextInstallment.paidAmount + amount);
+      nextInstallment.status = "PAID";
+      nextInstallment.paidAt = new Date();
+      const allocations = [{ installmentNumber: nextInstallment.installmentNumber, amount }];
       finance.amountPaid = money(finance.amountPaid + amount); finance.outstandingBalance = money(finance.totalPayable - finance.amountPaid);
       if (finance.outstandingBalance === 0) { finance.status = "COMPLETED"; finance.statusHistory.push({ status: "COMPLETED", changedBy: payer._id, note: "Paid in full" }); await SolarApplication.updateOne({ _id: finance.application }, { $set: { status: "COMPLETED", outstandingBalance: 0 }, $push: { statusHistory: { status: "COMPLETED", changedBy: payer._id, note: "Finance paid in full", changedAt: new Date() } } }, { session }); }
       await finance.save({ session });
