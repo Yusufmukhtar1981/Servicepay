@@ -184,11 +184,21 @@ const solarOfficerOnly = (req, res, next) => {
   req.user.role = userRole;
   return next();
 };
+const phoneFinancingOfficerOnly = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized." });
+  const userRole = normalizeRole(req.user.role);
+  if (userRole !== "PHONE_FINANCING_OFFICER" || req.user.isStaff !== true) {
+    return res.status(403).json({ success: false, message: "This feature is available to Phone Financing Officer accounts only." });
+  }
+  req.user.role = userRole;
+  return next();
+};
 
 module.exports = {
   normalizeRole,
   customerOnly,
   solarOfficerOnly,
+  phoneFinancingOfficerOnly,
   protect,
   adminOnly,
 };

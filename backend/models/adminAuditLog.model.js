@@ -111,6 +111,10 @@ const adminAuditLogSchema =
               "PHONE_RESTORE_REQUESTED",
               "PHONE_DEPOSIT_REFUNDED",
               "PHONE_RESERVATION_EXPIRY_RECORDED",
+              "PHONE_FINANCING_OFFICER_CREATED",
+              "PHONE_FINANCING_OFFICER_UPDATED",
+              "PHONE_FINANCING_OFFICER_STATUS_UPDATED",
+              "PHONE_APPLICATION_ASSIGNED",
         ],
       },
 

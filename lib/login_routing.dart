@@ -4,6 +4,7 @@ import 'main_navigation.dart';
 import 'rider/rider_main_navigation.dart';
 import 'role_dashboard_screen.dart';
 import 'solar_officer/solar_officer_dashboard_screen.dart';
+import 'phone_financing_officer/phone_financing_officer_dashboard_screen.dart';
 
 String normalizeLoginRole(dynamic value) {
   return value
@@ -48,6 +49,8 @@ Widget authenticatedHomeForRole(String role) {
       return const MainNavigation();
     case 'SOLAR_OFFICER':
       return const SolarOfficerDashboardScreen();
+    case 'PHONE_FINANCING_OFFICER':
+      return const PhoneFinancingOfficerDashboardScreen();
     default:
       return RoleDashboardScreen(
         role: normalizeLoginRole(role),

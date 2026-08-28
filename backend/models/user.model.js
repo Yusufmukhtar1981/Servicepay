@@ -141,6 +141,7 @@ const userSchema = new mongoose.Schema(
         "AGENT",
         "DELIVERY_RIDER",
         "SOLAR_OFFICER",
+        "PHONE_FINANCING_OFFICER",
         "CUSTOMER",
       ],
       default: "CUSTOMER",

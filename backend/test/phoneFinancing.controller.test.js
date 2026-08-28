@@ -165,7 +165,8 @@ test("admin device intake validates the canonical payload and updates inventory 
 });
 
 test("phone financing protects ownership, money, inventory, schedules, and disabled provider evidence", async () => {
-  const admin=await makeUser("HEAD_OFFICE"), customer=await makeUser(), other=await makeUser(), second=await makeUser();
+  const admin=await makeUser("HEAD_OFFICE"), customer=await makeUser(), other=await makeUser(), second=await makeUser(), officer=await makeUser("PHONE_FINANCING_OFFICER",0);
+  officer.isStaff=true; await officer.save();
   const p1=(await api({method:"POST",path:"/api/phone-financing/admin/products",actor:admin,body:productBody("PX-ONE")})).body.product;
   const p2=(await api({method:"POST",path:"/api/phone-financing/admin/products",actor:admin,body:productBody("PX-TWO")})).body.product;
   const device=(await api({method:"POST",path:"/api/phone-financing/admin/devices",actor:admin,body:{phoneProductId:p1._id,imei1:"111111111111111",imei2:"222222222222222",serialNumber:"SER-1"}})).body.device;
@@ -178,7 +179,7 @@ test("phone financing protects ownership, money, inventory, schedules, and disab
   assert.equal((await api({path:`/api/phone-financing/my-applications/${appId}`,actor:other})).status,404);
   assert.equal((await api({method:"PATCH",path:`/api/phone-financing/admin/applications/${appId}/status`,actor:admin,body:{status:"UNDER_REVIEW"}})).status,200);
   assert.equal((await api({method:"PATCH",path:`/api/phone-financing/admin/applications/${appId}/status`,actor:admin,body:{status:"AWAITING_DEPOSIT"}})).status,409);
-  await api({method:"PATCH",path:`/api/phone-financing/admin/applications/${appId}/assign-officer`,actor:admin,body:{officerId:admin._id}});
+  await api({method:"PATCH",path:`/api/phone-financing/admin/applications/${appId}/assign-officer`,actor:admin,body:{officerId:officer._id}});
   assert.equal((await api({method:"POST",path:`/api/phone-financing/admin/applications/${appId}/approve`,actor:admin,body:{}})).body.application.depositRequired,200);
   const wrongDeposit=await api({method:"POST",path:`/api/phone-financing/applications/${appId}/deposit`,actor:customer,body:{amount:201,transactionPin:"1234"},headers:{"Idempotency-Key":"dep-wrong"}});
   assert.equal(wrongDeposit.status,400);
@@ -199,7 +200,7 @@ test("phone financing protects ownership, money, inventory, schedules, and disab
   const restrict={method:"POST",path:`/api/phone-financing/admin/finance/${financeId}/provider-request`,actor:admin,body:{action:"RESTRICT"},headers:{"Idempotency-Key":"restriction-1"}};
   const r1=await api(restrict),r2=await api(restrict);assert.equal(r1.body.providerEnforcement,"DISABLED");assert.equal(r2.body.idempotent,true);assert.equal(await ProviderEvent.countDocuments(),1);
   assert.equal((await api({method:"POST",path:`/api/phone-financing/admin/finance/${financeId}/provider-request`,actor:admin,body:{action:"RESTORE"},headers:{"Idempotency-Key":"restore-1"}})).status,201);
-  const detail=await api({path:`/api/phone-financing/admin/applications/${appId}`,actor:admin});assert.equal(detail.body.application.assignedOfficer.fullName,admin.fullName);assert.ok(detail.body.providerEvents.length>=2);
+  const detail=await api({path:`/api/phone-financing/admin/applications/${appId}`,actor:admin});assert.equal(detail.body.application.assignedOfficer.fullName,officer.fullName);assert.ok(detail.body.providerEvents.length>=2);
   assert.equal((await api({path:`/api/phone-financing/admin/applications?q=${encodeURIComponent(customer.fullName)}`,actor:admin})).body.applications.length,1);
   assert.equal((await api({path:"/api/phone-financing/admin/devices?q=111111111111111",actor:admin})).body.devices.length,1);
   for(const query of [handover.body.finance.reference,customer.fullName,customer.phone,customer.email,"111111111111111","222222222222222","SER-1"]){
@@ -267,4 +268,77 @@ test("deposit atomically reserves scarce inventory and refund releases it exactl
   assert.equal(expiry.body.expiredPaidReservations.length,1);
   assert.equal((await Device.findById(device._id)).status,"RESERVED");
   assert.equal((await Product.findById(product._id)).stock,0);
+});
+
+test("phone financing officers are lifecycle-scoped and cannot use admin financial or inventory actions", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const customer = await makeUser();
+  const created = await api({
+    method: "POST", path: "/api/phone-financing/admin/officers", actor: admin,
+    body: { fullName: "Finance Officer", phone: "08123456789", email: "finance-officer@test.local", password: "password123", state: "Lagos", lga: "Ikeja" },
+  });
+  assert.equal(created.status, 201);
+  const officer = await User.findById(created.body.officer._id);
+  assert.equal(officer.role, "PHONE_FINANCING_OFFICER");
+  assert.equal(officer.isStaff, true);
+  assert.equal((await api({ path: "/api/phone-financing/admin/officers/count", actor: admin })).body.counts.active, 1);
+
+  const product = (await api({ method: "POST", path: "/api/phone-financing/admin/products", actor: admin, body: productBody("OFFICER-SCOPE") })).body.product;
+  assert.equal((await api({
+    method: "POST", path: "/api/phone-financing/admin/devices", actor: admin,
+    body: { phoneProductId: product._id, imei1: "888888888888888", serialNumber: "OFFICER-SCOPE-1" },
+  })).status, 201);
+  const submitted = await api({ method: "POST", path: "/api/phone-financing/applications", actor: customer, body: applicationBody(product._id) });
+  const applicationId = submitted.body.application._id;
+  assert.equal((await api({ method: "PATCH", path: `/api/phone-financing/admin/applications/${applicationId}/assign-officer`, actor: admin, body: { officerId: officer._id } })).status, 200);
+  const assigned = await Application.findById(applicationId);
+  assert.equal(assigned.assignmentState, "ACTIVE");
+  assert.equal(assigned.assignmentTimeline.length, 1);
+  assert.equal((await api({ path: "/api/phone-financing/officer/applications", actor: officer })).body.count, 1);
+  assert.equal((await api({
+    method: "POST", path: `/api/phone-financing/officer/applications/${applicationId}/verification`, actor: officer,
+    body: { report: { recommendation: "APPROVE", checklist: { identityConfirmed: true, phoneConfirmed: true }, findings: "Identity and address reviewed.", incomeAssessment: "Income is consistent.", notes: "Identity and address reviewed." } },
+  })).status, 200);
+  assert.equal((await api({
+    method: "POST", path: `/api/phone-financing/officer/applications/${applicationId}/follow-ups`, actor: officer,
+    body: { note: "Customer contacted.", outcome: "Reached" },
+  })).status, 201);
+  assert.equal((await api({ path: "/api/phone-financing/admin/devices", actor: officer })).status, 403);
+  assert.equal((await api({ method: "POST", path: `/api/phone-financing/admin/applications/${applicationId}/approve`, actor: officer, body: {} })).status, 403);
+  assert.equal((await api({ method: "PATCH", path: `/api/phone-financing/admin/officers/${officer._id}/status`, actor: admin, body: { status: "SUSPENDED" } })).status, 409);
+});
+
+test("officer assignment and verification enforce active-review and report contracts", async () => {
+  const admin = await makeUser("HEAD_OFFICE"), customer = await makeUser();
+  const makeOfficer = async (suffix) => (await api({
+    method: "POST", path: "/api/phone-financing/admin/officers", actor: admin,
+    body: { fullName: `Officer ${suffix}`, phone: `0819${suffix}00000`, email: `officer-${suffix}@test.local`, password: "password123" },
+  })).body.officer;
+  const first = await makeOfficer("1"), second = await makeOfficer("2");
+  const product = (await api({ method: "POST", path: "/api/phone-financing/admin/products", actor: admin, body: productBody("OFFICER-CONTRACT") })).body.product;
+  await api({ method: "POST", path: "/api/phone-financing/admin/devices", actor: admin, body: { phoneProductId: product._id, imei1: "777777777777777", serialNumber: "OFFICER-CONTRACT-1" } });
+  const applicationId = (await api({ method: "POST", path: "/api/phone-financing/applications", actor: customer, body: applicationBody(product._id) })).body.application._id;
+
+  assert.equal((await api({ method: "PATCH", path: `/api/phone-financing/admin/officers/${second._id}/status`, actor: admin, body: { status: "SUSPENDED" } })).status, 200);
+  assert.equal((await api({ method: "PATCH", path: `/api/phone-financing/admin/applications/${applicationId}/assign-officer`, actor: admin, body: { officerId: second._id } })).status, 400);
+  await api({ method: "PATCH", path: `/api/phone-financing/admin/officers/${second._id}/status`, actor: admin, body: { status: "ACTIVE" } });
+  const assigned = await api({ method: "PATCH", path: `/api/phone-financing/admin/applications/${applicationId}/assign-officer`, actor: admin, body: { officerId: first._id } });
+  assert.equal(assigned.body.application.status, "UNDER_REVIEW");
+  assert.equal(assigned.body.application.statusHistory.at(-1).status, "UNDER_REVIEW");
+  const reassigned = await api({ method: "PATCH", path: `/api/phone-financing/admin/applications/${applicationId}/assign-officer`, actor: admin, body: { officerId: second._id } });
+  assert.equal(reassigned.status, 200);
+  assert.equal(reassigned.body.application.assignmentTimeline.length, 2);
+  assert.equal(reassigned.body.application.assignmentTimeline.at(-1).action, "REASSIGNED");
+  assert.equal(reassigned.body.application.assignmentSnapshot.fullName, "Officer 2");
+  assert.equal((await api({ method: "POST", path: `/api/phone-financing/officer/applications/${applicationId}/verification`, actor: await User.findById(second._id), body: { report: { recommendation: "MAYBE" } } })).status, 400);
+  const officer = await User.findById(second._id);
+  assert.equal((await api({ method: "POST", path: `/api/phone-financing/officer/applications/${applicationId}/verification`, actor: officer, body: { report: { recommendation: "NEED_MORE_INFORMATION", checklist: { identityConfirmed: true }, findings: "Address needs confirmation.", incomeAssessment: "Income evidence reviewed.", notes: "Request utility bill." } } })).status, 200);
+  assert.equal(await Notification.countDocuments({ userId: admin._id, referenceType: "PhoneApplicationVerification" }), 1);
+  assert.equal((await api({ method: "POST", path: `/api/phone-financing/officer/applications/${applicationId}/follow-ups`, actor: officer, body: { note: "Requested utility bill.", outcome: "MORE_INFORMATION_REQUIRED" } })).status, 201);
+  assert.equal(await Notification.countDocuments({ userId: customer._id, referenceType: "PhoneApplicationFollowUp" }), 1);
+  assert.equal((await api({ method: "PATCH", path: `/api/phone-financing/admin/applications/${applicationId}/status`, actor: admin, body: { status: "MORE_INFORMATION_REQUIRED", note: "Upload utility bill" } })).status, 200);
+  assert.equal(await Notification.countDocuments({ userId: customer._id, referenceType: "PhoneApplicationMoreInformation" }), 1);
+  assert.equal((await api({ method: "PATCH", path: `/api/phone-financing/admin/applications/${applicationId}/assign-officer`, actor: admin, body: { officerId: first._id } })).status, 409);
+  const officerList = await api({ path: "/api/phone-financing/admin/officers", actor: admin });
+  assert.equal(officerList.body.officers.find((item) => item._id === second._id).completedVerifications, 1);
 });

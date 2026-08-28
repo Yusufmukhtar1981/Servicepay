@@ -28,10 +28,48 @@ const duplicateDeviceMessage = e => {
   if (field === "serialNumber") return "Serial number already exists in inventory.";
   return "IMEI or serial number already exists in inventory.";
 };
-const history = (doc, status, by, note = "") => { doc.status = status; doc.statusHistory.push({ status, changedBy: by, note: text(note), changedAt: new Date() }); };
+const history = (doc, status, by, note = "") => {
+  doc.status = status;
+  doc.statusHistory.push({ status, changedBy: by, note: text(note), changedAt: new Date() });
+  // Application assignments are active authorizations, not merely a display
+  // field. A terminal application must immediately lose officer access while
+  // retaining its assignment snapshot/timeline for audit.
+  if (doc.assignmentState === "ACTIVE" &&
+      ["REJECTED", "CANCELLED", "REFUNDED", "COMPLETED"].includes(status)) {
+    const version = (doc.assignmentVersion || 0) + 1;
+    doc.assignmentTimeline.push({
+      action: "UNASSIGNED", officer: doc.assignedOfficer,
+      officerSnapshot: doc.assignmentSnapshot || null, assignedBy: by,
+      note: `Assignment closed: ${status}`, changedAt: new Date(), assignmentVersion: version,
+    });
+    doc.assignmentState = "UNASSIGNED";
+    doc.assignmentVersion = version;
+  }
+};
 const audit = (req, action, reason, data, session) => AdminAuditLog.create([{ actorId: uid(req), actorRole: req.user.role, actorName: req.user.fullName || "", action, reason: text(reason) || action, newData: data, requestMethod: req.method, requestPath: req.originalUrl }], { session });
 const productSnapshot = p => ({ sku: p.sku, name: p.name, brand: p.brand, cashPrice: p.cashPrice, financedPrice: p.financedPrice, depositPercent: p.depositPercent, interestPercent: p.interestPercent, weeklyInstallments: p.weeklyInstallments, durationOptionsWeeks:p.durationOptionsWeeks, graceDays:p.graceDays, restrictionProvider:p.restrictionProvider, restrictionEnabled:p.restrictionEnabled, terms: p.terms, specifications: p.specifications });
 const transitions = { SUBMITTED:["UNDER_REVIEW","MORE_INFORMATION_REQUIRED","REJECTED","CANCELLED"], UNDER_REVIEW:["MORE_INFORMATION_REQUIRED","REJECTED"], MORE_INFORMATION_REQUIRED:["UNDER_REVIEW","CANCELLED"], AWAITING_DEPOSIT:["CANCELLED"] };
+const officerPublic = officer => ({
+  _id: officer._id, id: officer._id, fullName: officer.fullName, phone: officer.phone,
+  email: officer.email, role: officer.role, status: officer.status, isStaff: officer.isStaff,
+  staffId: officer.staffId, state: officer.state, lga: officer.lga, createdAt: officer.createdAt, updatedAt: officer.updatedAt,
+});
+const officerSnapshot = officer => ({
+  officerId: String(officer._id), staffId: officer.staffId || "", fullName: officer.fullName,
+  phone: officer.phone, email: officer.email, state: officer.state || "", lga: officer.lga || "",
+});
+const assignmentQuery = (applicationId, officerId) => ({
+  _id: applicationId, assignedOfficer: officerId, assignmentState: "ACTIVE",
+});
+const phoneOfficerId = async () => {
+  let n = (await User.countDocuments({ role: "PHONE_FINANCING_OFFICER" })) + 1;
+  while (n < 10000000) {
+    const candidate = `SP-PFO-${String(n).padStart(5, "0")}`;
+    if (!await User.exists({ staffId: candidate })) return candidate;
+    n++;
+  }
+  throw error("Unable to generate phone financing officer ID.", 500);
+};
 
 exports.validatePaymentReplay = async (req,res,next) => {
   try {
@@ -90,8 +128,129 @@ exports.updateProduct = async (req,res) => { try {const allowed=["sku","name","b
 exports.setProductActive = async (req,res) => { try { const product=await Product.findByIdAndUpdate(req.params.productId,{$set:{active:req.body?.active === true}},{new:true});if(!product)throw error("Phone product not found.",404);await audit(req,"PHONE_PRODUCT_UPDATED",product.active?"Activated phone product":"Deactivated phone product",{productId:String(product._id),active:product.active});res.json({success:true,product}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
 exports.adminApplications = async (req,res) => {const q=text(req.query.q,100),filter={};if(req.query.status)filter.status=text(req.query.status,40).toUpperCase();let applications=await Application.find(filter).populate("customer","fullName phone email").populate("assignedOfficer","fullName phone email role").populate("product","name sku").populate("device").sort({createdAt:-1});if(q){const re=new RegExp(q,"i");applications=applications.filter(a=>re.test(a.reference)||re.test(a.customer?.fullName||"")||re.test(a.customer?.phone||"")||re.test(a.customer?.email||"")||re.test(a.device?.imei1||"")||re.test(a.device?.serialNumber||""));}res.json({success:true,applications});};
 exports.adminApplication = async(req,res)=>{const application=await Application.findById(req.params.applicationId).populate("customer","fullName phone email").populate("assignedOfficer","fullName phone email role").populate("product").populate("device");if(!application)return res.status(404).json({success:false,message:"Phone application not found."});const finance=await Finance.findOne({application:application._id}).lean();res.json({success:true,application,finance,providerEvents:finance?await ProviderEvent.find({finance:finance._id}).sort({createdAt:-1}):[]});};
-exports.transition = async (req,res) => { try {const app=await Application.findById(req.params.applicationId);const status=text(req.body.status,40).toUpperCase();if(!app)throw error("Phone application not found.",404);if(!transitions[app.status]?.includes(status))throw error(`Cannot transition phone application from ${app.status} to ${status}.`,409);history(app,status,uid(req),req.body.note);await app.save();await audit(req,"PHONE_APPLICATION_STATUS_UPDATED",req.body.note,{applicationId:String(app._id),status});res.json({success:true,application:app});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
-exports.assignOfficer = async (req,res) => { try { const officer=await User.findById(req.body.officerId).select("role");if(!officer || !["SOLAR_OFFICER","HEAD_OFFICE","STAFF"].includes(officer.role))throw error("Valid staff officer is required.",400);const application=await Application.findByIdAndUpdate(req.params.applicationId,{$set:{assignedOfficer:officer._id}},{new:true});if(!application)throw error("Phone application not found.",404);await audit(req,"PHONE_APPLICATION_STATUS_UPDATED","Assigned phone financing officer",{applicationId:String(application._id),officerId:String(officer._id)});res.json({success:true,application}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
+exports.transition = async (req,res) => { try {const app=await Application.findById(req.params.applicationId);const status=text(req.body.status,40).toUpperCase();if(!app)throw error("Phone application not found.",404);if(!transitions[app.status]?.includes(status))throw error(`Cannot transition phone application from ${app.status} to ${status}.`,409);history(app,status,uid(req),req.body.note);await app.save();if(status==="MORE_INFORMATION_REQUIRED")await Notification.create([{userId:app.customer,title:"More information required for phone financing",message:"Please provide the additional information requested to continue your phone-financing application.",type:"PHONE",referenceId:app._id,referenceType:"PhoneApplicationMoreInformation"}]);await audit(req,"PHONE_APPLICATION_STATUS_UPDATED",req.body.note,{applicationId:String(app._id),status});res.json({success:true,application:app});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
+exports.adminListOfficers = async (req, res) => {
+  const filter = { role: "PHONE_FINANCING_OFFICER", isStaff: true };
+  if (req.query.status && text(req.query.status, 20).toUpperCase() !== "ALL") filter.status = text(req.query.status, 20).toUpperCase();
+  const q = text(req.query.q || req.query.search, 100);
+  if (q) filter.$or = ["fullName", "phone", "email", "staffId"].map(field => ({ [field]: new RegExp(q, "i") }));
+  const officers = await User.find(filter).select("-password -transactionPin").sort({ createdAt: -1 });
+  const active = await Application.aggregate([{ $match: { assignedOfficer: { $in: officers.map(o => o._id) }, assignmentState: "ACTIVE" } }, { $group: { _id: "$assignedOfficer", count: { $sum: 1 } } }]);
+  const completed = await Application.aggregate([{ $match: { "verificationReport.verifiedBy": { $in: officers.map(o => o._id) }, "verificationReport.verificationStatus": "COMPLETED" } }, { $group: { _id: "$verificationReport.verifiedBy", count: { $sum: 1 } } }]);
+  const counts = new Map(active.map(row => [String(row._id), row.count]));
+  const completedCounts = new Map(completed.map(row => [String(row._id), row.count]));
+  res.json({ success: true, count: officers.length, officers: officers.map(o => ({ ...officerPublic(o), assignedApplications: counts.get(String(o._id)) || 0, completedVerifications: completedCounts.get(String(o._id)) || 0 })) });
+};
+exports.adminOfficer = async (req, res) => {
+  const officer = await User.findOne({ _id: req.params.officerId, role: "PHONE_FINANCING_OFFICER", isStaff: true }).select("-password -transactionPin");
+  if (!officer) return res.status(404).json({ success: false, message: "Phone financing officer not found." });
+  const assignedApplications = await Application.countDocuments({ assignedOfficer: officer._id, assignmentState: "ACTIVE" });
+  res.json({ success: true, officer: { ...officerPublic(officer), assignedApplications } });
+};
+exports.adminCreateOfficer = async (req, res) => {
+  try {
+    const fullName = text(req.body.fullName, 160), phone = text(req.body.phone, 40), email = text(req.body.email, 160).toLowerCase(), password = String(req.body.password || "");
+    if (!fullName || !phone || !email || password.length < 6) throw error("Full name, phone, email, and a password of at least 6 characters are required.", 400);
+    if (await User.exists({ $or: [{ phone }, { email }] })) throw error("An account already exists with this email or phone number.", 409);
+    const officer = await User.create({ fullName, phone, email, password, role: "PHONE_FINANCING_OFFICER", isStaff: true, staffId: await phoneOfficerId(), department: "OPERATIONS", staffCreatedBy: uid(req), status: "ACTIVE", state: text(req.body.state, 120) || null, lga: text(req.body.lga, 120) || null, residentialAddress: text(req.body.address, 500) || "" });
+    await audit(req, "PHONE_FINANCING_OFFICER_CREATED", "Created phone financing officer", { officerId: String(officer._id) });
+    res.status(201).json({ success: true, officer: officerPublic(officer) });
+  } catch (e) { res.status(e.statusCode || (e.code === 11000 ? 409 : 500)).json({ success: false, message: e.code === 11000 ? "An account already exists with this email or phone number." : e.message }); }
+};
+exports.adminUpdateOfficer = async (req, res) => {
+  try {
+    const officer = await User.findOne({ _id: req.params.officerId, role: "PHONE_FINANCING_OFFICER", isStaff: true });
+    if (!officer) throw error("Phone financing officer not found.", 404);
+    for (const field of ["fullName", "phone", "email", "state", "lga"]) if (Object.hasOwn(req.body, field)) officer[field] = text(req.body[field], field === "fullName" ? 160 : 120);
+    if (Object.hasOwn(req.body, "address")) officer.residentialAddress = text(req.body.address, 500);
+    await officer.save();
+    await audit(req, "PHONE_FINANCING_OFFICER_UPDATED", "Updated phone financing officer", { officerId: String(officer._id) });
+    res.json({ success: true, officer: officerPublic(officer) });
+  } catch (e) { res.status(e.statusCode || (e.code === 11000 ? 409 : 500)).json({ success: false, message: e.code === 11000 ? "An account already exists with this email or phone number." : e.message }); }
+};
+exports.adminUpdateOfficerStatus = async (req, res) => {
+  try {
+    const status = text(req.body.status, 20).toUpperCase();
+    if (!["ACTIVE", "SUSPENDED", "BLOCKED"].includes(status)) throw error("Status must be ACTIVE, SUSPENDED or BLOCKED.", 400);
+    const officer = await User.findOne({ _id: req.params.officerId, role: "PHONE_FINANCING_OFFICER", isStaff: true });
+    if (!officer) throw error("Phone financing officer not found.", 404);
+    if (status !== "ACTIVE" && await Application.exists({ assignedOfficer: officer._id, assignmentState: "ACTIVE" })) throw error("Reassign or unassign all active applications before deactivating this officer.", 409);
+    officer.status = status; await officer.save({ validateBeforeSave: false });
+    await audit(req, "PHONE_FINANCING_OFFICER_STATUS_UPDATED", `Changed phone financing officer to ${status}`, { officerId: String(officer._id), status });
+    res.json({ success: true, officer: officerPublic(officer) });
+  } catch (e) { res.status(e.statusCode || 500).json({ success: false, message: e.message }); }
+};
+exports.adminOfficerCount = async (req, res) => {
+  const [total, active, suspended, blocked] = await Promise.all([
+    User.countDocuments({ role: "PHONE_FINANCING_OFFICER", isStaff: true }),
+    User.countDocuments({ role: "PHONE_FINANCING_OFFICER", isStaff: true, status: "ACTIVE" }),
+    User.countDocuments({ role: "PHONE_FINANCING_OFFICER", isStaff: true, status: "SUSPENDED" }),
+    User.countDocuments({ role: "PHONE_FINANCING_OFFICER", isStaff: true, status: "BLOCKED" }),
+  ]);
+  res.json({ success: true, count: total, counts: { total, active, suspended, blocked } });
+};
+exports.adminDeleteOfficer = async (req, res) => {
+  req.body = { ...(req.body || {}), status: "BLOCKED" };
+  return exports.adminUpdateOfficerStatus(req, res);
+};
+exports.assignOfficer = async (req,res) => {
+  const session = await mongoose.startSession();
+  try {
+    let application;
+    await session.withTransaction(async () => {
+      const officer=await User.findOne({_id:req.body.officerId,role:"PHONE_FINANCING_OFFICER",isStaff:true,status:"ACTIVE"}).session(session);
+      if(!officer)throw error("An active Phone Financing Officer is required.",400);
+      const app=await Application.findById(req.params.applicationId).session(session);
+      if(!app)throw error("Phone application not found.",404);
+      if(!["SUBMITTED","UNDER_REVIEW"].includes(app.status))throw error("Only submitted or under-review applications can be assigned or reassigned.",409);
+      const previous = app.assignedOfficer ? String(app.assignedOfficer) : null;
+      if(previous===String(officer._id)&&app.assignmentState==="ACTIVE") { application=app; return; }
+      app.assignedOfficer=officer._id;app.assignmentState="ACTIVE";app.assignmentVersion=(app.assignmentVersion||0)+1;
+      app.assignmentSnapshot={...officerSnapshot(officer),assignedBy:String(uid(req)),assignedAt:new Date(),assignmentVersion:app.assignmentVersion};
+      app.assignmentTimeline.push({action:previous?"REASSIGNED":"ASSIGNED",officer:officer._id,officerSnapshot:officerSnapshot(officer),assignedBy:uid(req),note:text(req.body.note),changedAt:new Date(),assignmentVersion:app.assignmentVersion});
+      if(app.status==="SUBMITTED") history(app,"UNDER_REVIEW",uid(req),"Officer assigned for review");
+      await app.save({session}); application=app;
+      await Notification.create([{userId:officer._id,title:"Phone financing application assigned",message:`You have been assigned application ${app.reference}.`,type:"PHONE",referenceId:app._id,referenceType:"PhoneApplicationAssignment"}],{session});
+      await audit(req,"PHONE_APPLICATION_ASSIGNED",previous?"Reassigned phone financing officer":"Assigned phone financing officer",{applicationId:String(app._id),officerId:String(officer._id),previousOfficerId:previous,assignmentVersion:app.assignmentVersion},session);
+    });
+    res.json({success:true,application,idempotent:false});
+  }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{session.endSession();}
+};
+exports.officerApplications = async (req,res) => {
+  const filter={assignedOfficer:uid(req),assignmentState:"ACTIVE"}; if(req.params.applicationId) filter._id=req.params.applicationId; if(req.query.status) filter.status=text(req.query.status,40).toUpperCase();
+  const applications=await Application.find(filter).populate("customer","fullName phone email").populate("product","name sku").populate("device").sort({createdAt:-1});
+  if(req.params.applicationId&&!applications.length)return res.status(404).json({success:false,message:"Assigned phone application not found."});
+  const completedVerifications = applications.filter(item => item.verificationReport && Object.keys(item.verificationReport).length > 0).length;
+  res.json({
+    success:true, count:applications.length, applications, application:req.params.applicationId?applications[0]:undefined,
+    counts:{ assigned:applications.length, completedVerifications, pendingVerifications:applications.length-completedVerifications },
+  });
+};
+exports.officerVerification = async (req,res) => { try {
+  const app=await Application.findOne(assignmentQuery(req.params.applicationId,uid(req)));if(!app)throw error("Assigned phone application not found.",404);
+  if(["COMPLETED","CANCELLED","REJECTED","REFUNDED"].includes(app.status))throw error("This application cannot be verified.",409);
+  const submittedReport=req.body.report && typeof req.body.report==="object" && !Array.isArray(req.body.report) ? req.body.report : {};
+  const recommendation=text(submittedReport.recommendation,40).toUpperCase();
+  const findings=text(submittedReport.findings,2000), incomeAssessment=text(submittedReport.incomeAssessment,1000), notes=text(submittedReport.notes,2000);
+  const checklist=submittedReport.checklist;
+  if(!["APPROVE","REJECT","NEED_MORE_INFORMATION"].includes(recommendation))throw error("Recommendation must be APPROVE, REJECT, or NEED_MORE_INFORMATION.",400);
+  if(!checklist || typeof checklist!=="object" || Array.isArray(checklist) || !Object.keys(checklist).length || Object.values(checklist).some(value=>typeof value!=="boolean"))throw error("A completed boolean verification checklist is required.",400);
+  if(!findings||!incomeAssessment||!notes)throw error("Verification findings, income assessment, and notes are required.",400);
+  app.verificationReport={recommendation,checklist,findings,incomeAssessment,notes,guarantorDetails:text(submittedReport.guarantorDetails,1000),verificationStatus:"COMPLETED",verifiedBy:uid(req),verifiedAt:new Date(),assignmentVersion:app.assignmentVersion};
+  if(app.status==="SUBMITTED")history(app,"UNDER_REVIEW",uid(req),"Officer verification submitted");
+  await app.save();
+  const heads=await User.find({role:"HEAD_OFFICE",status:"ACTIVE"}).select("_id").lean();
+  await Notification.create(heads.map(head=>({userId:head._id,title:"Phone verification submitted",message:`A field verification report was submitted for ${app.reference}.`,type:"PHONE",referenceId:app._id,referenceType:"PhoneApplicationVerification"})));
+  res.json({success:true,application:app});
+}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
+exports.officerFollowUp = async (req,res) => { try {
+  const app=await Application.findOne(assignmentQuery(req.params.applicationId,uid(req)));if(!app)throw error("Assigned phone application not found.",404);
+  const note=text(req.body.note,2000);if(!note)throw error("Follow-up note is required.",400);
+  const nextFollowUpAt=req.body.nextFollowUpAt ? new Date(req.body.nextFollowUpAt) : null;if(nextFollowUpAt&&Number.isNaN(nextFollowUpAt.getTime()))throw error("nextFollowUpAt must be a valid date.",400);
+  app.followUps.push({note,outcome:text(req.body.outcome,160),nextFollowUpAt,createdBy:uid(req),createdAt:new Date()});await app.save();
+  await Notification.create([{userId:app.customer,title:"Phone financing follow-up recorded",message:"A phone-financing officer recorded a follow-up on your application.",type:"PHONE",referenceId:app._id,referenceType:"PhoneApplicationFollowUp"}]);
+  res.status(201).json({success:true,followUp:app.followUps[app.followUps.length-1],applicationId:app._id});
+}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
 exports.approve = async (req,res) => {
  const session=await mongoose.startSession();try {let application;await session.withTransaction(async()=>{const app=await Application.findById(req.params.applicationId).session(session);if(!app)throw error("Phone application not found.",404);if(!["SUBMITTED","UNDER_REVIEW"].includes(app.status))throw error("Only submitted or under-review applications can be approved.");const terms=app.productSnapshot;const weeks=app.applicationInput.preferredDurationWeeks;if(terms.durationOptionsWeeks?.length&&!terms.durationOptionsWeeks.includes(weeks))throw error("Application duration is no longer valid.",409);const price=money(terms.financedPrice), deposit=money(price*terms.depositPercent/100), total=money(price*(1+terms.interestPercent/100));app.approvalSnapshot={ approvedPrice:price, depositPercent:terms.depositPercent, interestPercent:terms.interestPercent, weeklyInstallments:weeks||terms.weeklyInstallments, graceDays:terms.graceDays, restrictionProvider:terms.restrictionProvider, restrictionEnabled:terms.restrictionEnabled, terms:terms.terms };app.depositRequired=deposit;app.totalPayable=total;app.outstandingBalance=total;app.approvedBy=uid(req);app.approvedAt=new Date();history(app,"AWAITING_DEPOSIT",uid(req),req.body.note||"Approved");await app.save({session});application=app;await Notification.create([{userId:app.customer,title:"Phone financing approved",message:"Your application is approved. Pay your deposit to proceed.",type:"PHONE",referenceId:app._id,referenceType:"PhoneApplication"}],{session});await audit(req,"PHONE_APPLICATION_APPROVED","Approved phone application",{applicationId:String(app._id)},session);});res.json({success:true,application});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{session.endSession();}
 };
