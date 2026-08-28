@@ -434,17 +434,24 @@ exports.pay = async (req,res) => {
       if(existing){if(String(existing.customer)!==String(id(req))||existing.type!==paymentType||Number(existing.amount)!==requested||String(existing.application)!==String(req.params.applicationId))throw problem("Idempotency key is already associated with a different payment."); output={payment:existing,idempotent:true};return;}
       const app=await SolarApplication.findOne({_id:req.params.applicationId,customer:id(req)}).session(session);
       if(!app)throw problem("Solar application not found.",404);
+       if(paymentType==="DEPOSIT"&&(app.status==="DEPOSIT_PAID"||(money(app.depositRequired)>0&&money(app.depositPaid)>=money(app.depositRequired))))throw problem("Deposit already paid.");
       if(paymentType==="DEPOSIT" && !["APPROVED","AWAITING_DEPOSIT"].includes(app.status))throw problem("A deposit can only be paid on an approved application.");
       if(paymentType==="INSTALLMENT" && !["ACTIVE","RECOVERY"].includes(app.status))throw problem("Installments can only be paid on an active Solar application.");
-      const due=paymentType==="DEPOSIT"?money(app.depositRequired-app.depositPaid):money(app.outstandingBalance); if(requested>due)throw problem("Payment exceeds the amount due.");
+       const due=paymentType==="DEPOSIT"?money(app.depositRequired-app.depositPaid):money(app.outstandingBalance); if(requested>due)throw problem("Payment exceeds the amount due.");
       const payer=await User.findById(id(req)).select("+transactionPin transactionPinSet walletBalance").session(session); if(!payer)throw problem("Customer account not found.",401);
       if(!payer.transactionPinSet||!payer.transactionPin)throw problem("Please create your transaction PIN before making this payment.",400);
       if(!await payer.compareTransactionPin(text(req.body?.transactionPin,4)))throw problem("Incorrect transaction PIN.",401);
-      const opening=money(payer.walletBalance); if(opening===null||opening<requested)throw problem("Insufficient wallet balance.");
+       const updatedPayer=await User.findOneAndUpdate({_id:payer._id,walletBalance:{$gte:requested}},{$inc:{walletBalance:-requested}},{new:true,session});
+       if(!updatedPayer){
+         const currentPayer=await User.findById(payer._id).select("walletBalance").session(session).lean();
+         if(!currentPayer||money(currentPayer.walletBalance)<requested)throw problem("Insufficient wallet balance.");
+         throw problem("Wallet debit could not be completed. Please try again.");
+       }
+       const closing=money(updatedPayer.walletBalance); const opening=closing===null?null:money(closing+requested);
+       if(opening===null||closing===null)throw problem("Wallet balance is invalid.");
       const transaction=await Transaction.create([{reference:reference(),customerId:payer._id,serviceType:paymentType==="DEPOSIT"?"SOLAR_DEPOSIT":"SOLAR_INSTALLMENT",provider:"SERVICEPAY_SOLAR",amount:requested,status:"SUCCESSFUL",providerResponse:{applicationId:String(app._id),idempotencyKey:idem}}],{session});
-      const ledger=await postDebit({userId:payer._id,amount:requested,openingBalance:opening,closingBalance:money(opening-requested),service:paymentType==="DEPOSIT"?"SOLAR_DEPOSIT":"SOLAR_INSTALLMENT",reference:transaction[0].reference,idempotencyKey:`solar:${idem}`,transactionId:transaction[0]._id,narration:`Solar ${paymentType.toLowerCase()} payment`,metadata:{applicationId:String(app._id)},session});
+       const ledger=await postDebit({userId:payer._id,amount:requested,openingBalance:opening,closingBalance:closing,service:paymentType==="DEPOSIT"?"SOLAR_DEPOSIT":"SOLAR_INSTALLMENT",reference:transaction[0].reference,idempotencyKey:`solar:${idem}`,transactionId:transaction[0]._id,narration:`Solar ${paymentType.toLowerCase()} payment`,metadata:{applicationId:String(app._id)},session});
       if(ledger.duplicate)throw problem("Solar payment ledger state requires support review.");
-      const updated=await User.findOneAndUpdate({_id:payer._id,walletBalance:opening},{$inc:{walletBalance:-requested}},{new:true,session}); if(!updated)throw problem("Wallet balance changed before payment could be completed.");
       const allocations=[]; if(paymentType==="DEPOSIT"){app.depositPaid=money(app.depositPaid+requested);if(app.depositPaid>=app.depositRequired)pushHistory(app,"DEPOSIT_PAID",payer._id,"Required deposit paid");}
       else {let left=requested;for(const row of app.paymentSchedule){const owing=money(row.amount-row.paidAmount);if(left<=0)break;if(owing<=0)continue;const part=money(Math.min(left,owing));row.paidAmount=money(row.paidAmount+part);row.status=row.paidAmount>=row.amount?"PAID":"PARTIAL";if(row.status==="PAID")row.paidAt=new Date();left=money(left-part);allocations.push({installmentNumber:row.installmentNumber,amount:part});}}
       app.amountPaid=money(app.amountPaid+requested);app.outstandingBalance=money(app.totalPayable-app.amountPaid);if(app.outstandingBalance===0&&["ACTIVE","RECOVERY"].includes(app.status))pushHistory(app,"COMPLETED",payer._id,"All Solar payments completed");await app.save({session});

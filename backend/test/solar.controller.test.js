@@ -56,8 +56,8 @@ test.after(async () => {
 });
 test.beforeEach(async () => Promise.all(models.map((model) => model.collection.deleteMany({}))));
 
-const api = async ({ method = "GET", path, actor, body }) => {
-  const headers = { Accept: "application/json" };
+const api = async ({ method = "GET", path, actor, body, headers: extraHeaders = {} }) => {
+  const headers = { Accept: "application/json", ...extraHeaders };
   if (actor) {
     headers.Authorization = `Bearer ${jwt.sign({ id: String(actor._id) }, process.env.JWT_SECRET)}`;
   }
@@ -480,6 +480,68 @@ test("Solar wallet payment is idempotent, debits once, and completes only at zer
   assert.equal(saved.outstandingBalance, 0);
   assert.equal(saved.status, "COMPLETED");
   assert.equal(await LedgerEntry.countDocuments({ service: { $in: ["SOLAR_DEPOSIT", "SOLAR_INSTALLMENT"] } }), 2);
+});
+
+test("Solar deposit payment uses the authoritative wallet balance and settles a concurrent double tap once", async () => {
+  const admin = await user({ role: "HEAD_OFFICE" });
+  const customer = await user({ balance: 400000 });
+  const pack = await SolarPackage.create({
+    name: "ServicePay HomeLite 1KW",
+    capacityKw: 1,
+    cashPrice: 1000000,
+    financedPrice: 1000000,
+    depositPercent: 30,
+    installmentMonths: 12,
+    createdBy: admin._id,
+  });
+  const app = await SolarApplication.create({
+    customer: customer._id,
+    package: pack._id,
+    packageSnapshot: pack.toObject(),
+    profileSnapshot: { fullName: customer.fullName },
+    status: "AWAITING_DEPOSIT",
+    statusHistory: [{ status: "AWAITING_DEPOSIT", changedBy: admin._id }],
+    approvalSnapshot: { approvedPrice: 1000000 },
+    depositRequired: 300000,
+    totalPayable: 1000000,
+    outstandingBalance: 1000000,
+  });
+  const payment = {
+    method: "POST",
+    path: `/api/solar/applications/${app._id}/pay-deposit`,
+    actor: customer,
+    body: { amount: 300000, transactionPin: "1234" },
+  };
+
+  const [first, second] = await Promise.all([
+    api({ ...payment, headers: { "Idempotency-Key": "solar-home-lite-deposit" } }),
+    api({ ...payment, headers: { "Idempotency-Key": "solar-home-lite-deposit" } }),
+  ]);
+  assert.deepEqual([first.status, second.status].sort(), [200, 201]);
+  assert.equal([first, second].filter((result) => result.body.idempotent === true).length, 1);
+  assert.equal((await User.findById(customer._id)).walletBalance, 100000);
+  const saved = await SolarApplication.findById(app._id);
+  assert.equal(saved.status, "DEPOSIT_PAID");
+  assert.equal(saved.depositPaid, 300000);
+  assert.equal(await SolarPayment.countDocuments({ application: app._id }), 1);
+  assert.equal(await Transaction.countDocuments({ customerId: customer._id }), 1);
+  const ledger = await LedgerEntry.findOne({
+    user: customer._id,
+    service: "SOLAR_DEPOSIT",
+  });
+  assert.ok(ledger);
+  assert.equal(ledger.openingBalance, 400000);
+  assert.equal(ledger.amount, 300000);
+  assert.equal(ledger.closingBalance, 100000);
+
+  const alreadyPaid = await api({
+    ...payment,
+    headers: { "Idempotency-Key": "solar-home-lite-second-deposit" },
+  });
+  assert.equal(alreadyPaid.status, 409);
+  assert.equal(alreadyPaid.body.message, "Deposit already paid.");
+  assert.equal((await User.findById(customer._id)).walletBalance, 100000);
+  assert.equal(await SolarPayment.countDocuments({ application: app._id }), 1);
 });
 
 test("Solar guards ownership and recovery requires an admin reason without changing remote state", async () => {
