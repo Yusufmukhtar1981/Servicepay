@@ -52,9 +52,9 @@ async function ownProfile(req, permission) {
   if (permission && !profile.permissions.includes(permission)) throw fail("Business Partner permission denied.", 403);
   return profile;
 }
-async function partnerId() {
-  let n = (await Profile.countDocuments()) + 1;
-  while (n < 10000000) { const candidate = `SP-BP-${String(n++).padStart(6, "0")}`; if (!await Profile.exists({ partnerId: candidate })) return candidate; }
+async function partnerId(session) {
+  let n = (await Profile.countDocuments({}, { session })) + 1;
+  while (n < 10000000) { const candidate = `SP-BP-${String(n++).padStart(6, "0")}`; if (!await Profile.exists({ partnerId: candidate }).session(session)) return candidate; }
   throw fail("Unable to generate Business Partner ID.", 500);
 }
 exports.adminList = async (req, res) => { const filter={};const status=text(req.query.status,20).toUpperCase();if(status&&status!=="ALL")filter.status=status;const q=text(req.query.q||req.query.search,100);let partners=await Profile.find(filter).populate("user","fullName phone email status").sort({createdAt:-1});if(q){const re=new RegExp(q,"i");partners=partners.filter(p=>re.test(p.partnerId)||re.test(p.businessName)||re.test(p.user?.fullName||"")||re.test(p.user?.email||""));}res.json({success:true,count:partners.length,partners});};
@@ -62,12 +62,16 @@ exports.adminCreate = async (req, res) => {
   try {
     const fullName = text(req.body.fullName, 160), phone = text(req.body.phone, 40), email = text(req.body.email, 160).toLowerCase(), password = String(req.body.password || ""), businessName = text(req.body.businessName, 160);
     if (!fullName || !phone || !email || password.length < 6 || !businessName) throw fail("Full name, phone, email, business name, and a 6-character password are required.", 400);
-    const profileId = await partnerId();
-    const user = await User.create({ fullName, phone, email, password, role: "BUSINESS_PARTNER", status: "ACTIVE" });
-    const profile = await Profile.create({ user: user._id, partnerId: profileId, businessName, contactName: text(req.body.contactName, 160) || fullName, territory: req.body.territory || {}, permissions: Array.isArray(req.body.permissions) ? req.body.permissions : undefined, createdBy: id(req) });
-    user.businessPartnerProfile = profile._id; user.businessPartnerId = profile._id; await user.save();
-    await audit(req, "BUSINESS_PARTNER_CREATED", "Created Business Partner", { partnerId: String(profile._id), generatedPartnerId: profileId });
-    await Notification.create({ userId: user._id, title: "Business Partner account created", message: `Your Business Partner ID is ${profileId}.`, type: "BUSINESS_PARTNER", referenceId: profile._id, referenceType: "BusinessPartnerProfile" });
+    const allowedPermissions=["DASHBOARD","OFFICERS","CUSTOMERS","APPLICATIONS","REPAYMENTS","REPORTS","SOLAR_ASSIGNMENT","PHONE_ASSIGNMENT","VERIFICATION_REVIEW"];
+    const permissions=req.body.permissions===undefined?undefined:req.body.permissions;
+    if(permissions!==undefined&&(!Array.isArray(permissions)||permissions.some(value=>!allowedPermissions.includes(value))))throw fail("Invalid Business Partner permissions.",400);
+    const territory=req.body.territory||{};
+    if(territory&&typeof territory!=="object"||!Array.isArray(territory.states||[])||!Array.isArray(territory.lgas||[])||[...(territory.states||[]),...(territory.lgas||[])].some(v=>!text(v,120)))throw fail("Territory states and LGAs must be non-empty string arrays.",400);
+    let user,profile,profileId,lastError;
+    // Unique partnerId is the allocation lock. Retrying the whole transaction
+    // means no user/profile/audit fragment survives a contested ID allocation.
+    for(let attempt=0;attempt<4;attempt++){const session=await mongoose.startSession();try{await session.withTransaction(async()=>{profileId=await partnerId(session);user=(await User.create([{fullName,phone,email,password,role:"BUSINESS_PARTNER",status:"ACTIVE"}],{session}))[0];profile=(await Profile.create([{user:user._id,partnerId:profileId,businessName,contactName:text(req.body.contactName,160)||fullName,territory,permissions,createdBy:id(req)}],{session}))[0];user.businessPartnerProfile=profile._id;user.businessPartnerId=profile._id;await user.save({session});await audit(req,"BUSINESS_PARTNER_CREATED","Created Business Partner",{partnerId:String(profile._id),generatedPartnerId:profileId},session);await Notification.create([{userId:user._id,title:"Business Partner account created",message:`Your Business Partner ID is ${profileId}.`,type:"BUSINESS_PARTNER",referenceId:profile._id,referenceType:"BusinessPartnerProfile"}],{session});});lastError=null;break;}catch(error){lastError=error;if(error.code!==11000||attempt===3)break;}finally{await session.endSession();}}
+    if(lastError)throw lastError;
     res.status(201).json({ success: true, partner: profile, user: publicUser(user) });
   } catch (e) { res.status(e.statusCode || (e.code === 11000 ? 409 : 500)).json({ success: false, message: e.code === 11000 ? "A user with that phone or email already exists." : e.message }); }
 };

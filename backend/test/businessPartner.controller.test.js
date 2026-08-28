@@ -66,6 +66,57 @@ test("Head Office creates, edits, suspends and resets separately profiled Busine
   assert.equal((await Profile.findById(made.body.partner._id)).status, "DISABLED");
 });
 
+test("invalid partner provisioning payloads do not leave users or profiles", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const invalidPermissions = await createPartner(admin, "invalid-permissions", ["NOT_A_PERMISSION"]);
+  assert.equal(invalidPermissions.status, 400);
+  const invalidTerritory = await api({ method:"POST", path:"/api/business-partner/admin/partners", actor:admin, body:{
+    fullName:"Bad Territory",phone:"09099990001",email:"bad-territory@test.local",password:"password123",businessName:"Bad",territory:{states:"Lagos",lgas:[]},
+  }});
+  assert.equal(invalidTerritory.status, 400);
+  assert.equal(await User.countDocuments({ role:"BUSINESS_PARTNER" }), 0);
+  assert.equal(await Profile.countDocuments(), 0);
+});
+
+test("downstream profile and audit failures roll back provisioning completely", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const originalProfileCreate = Profile.create;
+  Profile.create = async () => { throw new Error("forced profile write failure"); };
+  try {
+    const result = await createPartner(admin, "profile-failure");
+    assert.equal(result.status, 500);
+  } finally { Profile.create = originalProfileCreate; }
+  assert.equal(await User.countDocuments({ role:"BUSINESS_PARTNER" }), 0);
+  assert.equal(await Profile.countDocuments(), 0);
+
+  const originalAuditCreate = Audit.create;
+  Audit.create = async () => { throw new Error("forced audit write failure"); };
+  try {
+    const result = await createPartner(admin, "audit-failure");
+    assert.equal(result.status, 500);
+  } finally { Audit.create = originalAuditCreate; }
+  assert.equal(await User.countDocuments({ role:"BUSINESS_PARTNER" }), 0);
+  assert.equal(await Profile.countDocuments(), 0);
+  assert.equal(await User.countDocuments({ role:"BUSINESS_PARTNER", businessPartnerProfile: { $ne:null } }), 0);
+});
+
+test("concurrent provisioning allocates distinct IDs with reciprocal links", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const results = await Promise.all(Array.from({length:6}, (_, index) => createPartner(admin, `concurrent-${index}`)));
+  assert.ok(results.every(result => result.status === 201), JSON.stringify(results.map(result => result.body)));
+  const ids = results.map(result => result.body.partner.partnerId);
+  assert.equal(new Set(ids).size, ids.length);
+  const users = await User.find({ role:"BUSINESS_PARTNER" });
+  const profiles = await Profile.find({});
+  assert.equal(users.length, 6); assert.equal(profiles.length, 6);
+  for (const user of users) {
+    assert.ok(user.businessPartnerProfile);
+    const profile = profiles.find(row => String(row._id) === String(user.businessPartnerProfile));
+    assert.ok(profile);
+    assert.equal(String(profile.user), String(user._id));
+  }
+});
+
 test("partners are isolated, cannot self-claim, and sensitive customer fields are not projected", async () => {
   const admin = await makeUser("HEAD_OFFICE");
   const a = await createPartner(admin, "2", ["DASHBOARD", "APPLICATIONS", "CUSTOMERS", "OFFICERS", "PHONE_ASSIGNMENT"]);
