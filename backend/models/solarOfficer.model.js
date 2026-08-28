@@ -28,6 +28,8 @@ const solarOfficerSchema = new mongoose.Schema(
     },
     dateJoined: { type: Date, default: Date.now },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    // Optional, backward-compatible ownership link for Business Partner teams.
+    businessPartner: { type: mongoose.Schema.Types.ObjectId, ref: "BusinessPartnerProfile", default: null, index: true },
   },
   { timestamps: true }
 );

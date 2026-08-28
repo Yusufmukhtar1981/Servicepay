@@ -193,12 +193,22 @@ const phoneFinancingOfficerOnly = (req, res, next) => {
   req.user.role = userRole;
   return next();
 };
+const businessPartnerOnly = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized." });
+  const userRole = normalizeRole(req.user.role);
+  if (userRole !== "BUSINESS_PARTNER" || !req.user.businessPartnerProfile) {
+    return res.status(403).json({ success: false, message: "This feature is available to active Business Partner accounts only." });
+  }
+  req.user.role = userRole;
+  return next();
+};
 
 module.exports = {
   normalizeRole,
   customerOnly,
   solarOfficerOnly,
   phoneFinancingOfficerOnly,
+  businessPartnerOnly,
   protect,
   adminOnly,
 };

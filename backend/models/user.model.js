@@ -142,6 +142,7 @@ const userSchema = new mongoose.Schema(
         "DELIVERY_RIDER",
         "SOLAR_OFFICER",
         "PHONE_FINANCING_OFFICER",
+        "BUSINESS_PARTNER",
         "CUSTOMER",
       ],
       default: "CUSTOMER",
@@ -1103,6 +1104,21 @@ userSchema.methods.setRiderLocation =
 // SERVICEPAY_SECURE_ONBOARDING_FIELDS
 // Optional fields: existing users remain fully compatible.
 userSchema.add({
+  // A Business Partner is an authenticated User with a separate operational
+  // profile.  This intentionally does not overlap with the legacy API Partner
+  // model, which represents an integration client.
+  businessPartnerProfile: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "BusinessPartnerProfile",
+    default: null,
+    index: true,
+  },
+  businessPartnerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "BusinessPartnerProfile",
+    default: null,
+    index: true,
+  },
   gender: {
     type: String,
     enum: ['MALE', 'FEMALE', 'OTHER', ''],

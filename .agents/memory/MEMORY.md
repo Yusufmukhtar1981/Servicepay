@@ -3,3 +3,6 @@
 - [GitHub connector publishing](github-connector-publishing.md) — Local GitHub HTTPS may lack auth; publish via the connector only after file-level remote safety checks.
 - [Marketplace funds](marketplace-funds.md) — Marketplace checkout holds customer funds; never credit sellers without an approved settlement path.
 - [Partner reconciliation states](partner-reconciliation-states.md) — Only explicit provider uncertainty may be manually reconciled; in-flight purchases must stay immutable.
+- [Financing inventory reservations](financing-inventory-reservations.md) — Reserve a real device atomically before accepting a financing deposit.
+- [Sparse unique inventory links](sparse-unique-inventory-links.md) — Optional unique device associations must be absent, not null, before assignment.
+- [Business Partner identity](business-partner-identity.md) — Distributor logins and API-client Partners are separate security and financial domains.

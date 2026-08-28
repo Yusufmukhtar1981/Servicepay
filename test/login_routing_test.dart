@@ -6,6 +6,7 @@ import 'package:servicepay_app/rider/rider_main_navigation.dart';
 import 'package:servicepay_app/role_dashboard_screen.dart';
 import 'package:servicepay_app/solar_officer/solar_officer_dashboard_screen.dart';
 import 'package:servicepay_app/phone_financing_officer/phone_financing_officer_dashboard_screen.dart';
+import 'package:servicepay_app/business_partner/business_partner_dashboard_screen.dart';
 
 void main() {
   test('reads and normalizes the authenticated role', () {
@@ -66,6 +67,13 @@ void main() {
     expect(
       authenticatedHomeForRole('phone financing officer'),
       isA<PhoneFinancingOfficerDashboardScreen>(),
+    );
+  });
+
+  test('routes Business Partners to their dedicated dashboard', () {
+    expect(
+      authenticatedHomeForRole('business partner'),
+      isA<BusinessPartnerDashboardScreen>(),
     );
   });
 }

@@ -34,6 +34,8 @@ const phoneApplicationSchema = new mongoose.Schema({
   refundedAt: { type: Date, default: null }, refundPayment: { type: mongoose.Schema.Types.ObjectId, ref: "PhonePayment", default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }, approvedAt: Date,
   assignedOfficer: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+  businessPartner: { type: mongoose.Schema.Types.ObjectId, ref: "BusinessPartnerProfile", default: null, index: true },
+  partnerVerificationReview: { type: mongoose.Schema.Types.Mixed, default: null },
   assignmentState: { type: String, enum: ["UNASSIGNED", "ACTIVE"], default: "UNASSIGNED", index: true },
   assignmentVersion: { type: Number, default: 0, min: 0 },
   assignmentSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },

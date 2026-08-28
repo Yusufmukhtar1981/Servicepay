@@ -17,6 +17,8 @@ const { postDebit } = require("../services/ledger.service");
 const {
   createSolarOfficerCommission,
 } = require("../services/solarOfficerCommission.service");
+const { createCommissionForEvent } = require("../services/businessPartnerCommission.service");
+const BusinessPartnerProfile = require("../models/businessPartnerProfile.model");
 
 const money = (value) => {
   const n = Number(value);
@@ -554,6 +556,28 @@ exports.installApplication = async (req, res) => {
           },
           session
         );
+      }
+      // A Business Partner earns only after the installation handover has
+      // activated the finance contract, never merely on application/deposit.
+      if (app.businessPartner) {
+        const partnerCommission = await createCommissionForEvent({
+          businessPartner: app.businessPartner,
+          application: app._id,
+          sourceType: "SOLAR",
+          sourceAmount: app.totalPayable,
+          eventKey: `solar-finance-activated:${app._id}`,
+          createdBy: id(req),
+          session,
+        });
+        if (partnerCommission && !partnerCommission.idempotent) {
+          const partner = await BusinessPartnerProfile.findById(app.businessPartner).session(session);
+          if (partner) await Notification.create([{
+            userId: partner.user, title: "Commission earned",
+            message: "A solar installation commission was earned.",
+            type: "BUSINESS_PARTNER", referenceId: partnerCommission.commission._id,
+            referenceType: "BusinessPartnerCommission",
+          }], { session });
+        }
       }
       await Notification.create([{ userId: app.customer, title: "Solar installation completed", message: "Your Solar finance contract is now active.", type: "SOLAR", referenceId: app._id, referenceType: "SolarFinance" }], { session });
       result = { application: app, finance: finance[0] };

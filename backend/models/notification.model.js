@@ -38,6 +38,7 @@ const notificationSchema = new mongoose.Schema(
         "SOLAR",
         "PHONE",
         "TRUST",
+        "BUSINESS_PARTNER",
       ],
       default: "GENERAL",
     },

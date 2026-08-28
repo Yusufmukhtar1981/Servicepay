@@ -73,6 +73,9 @@ const solarApplicationSchema = new mongoose.Schema({
   installation: { type: mongoose.Schema.Types.Mixed, default: null },
   fieldHandover: { type: mongoose.Schema.Types.Mixed, default: null },
   stockReservation: { type: mongoose.Schema.Types.Mixed, default: null },
+  // Set when a Business Partner assigns this case. Existing assignments remain valid.
+  businessPartner: { type: mongoose.Schema.Types.ObjectId, ref: "BusinessPartnerProfile", default: null, index: true },
+  partnerVerificationReview: { type: mongoose.Schema.Types.Mixed, default: null },
 }, { timestamps: true });
 solarApplicationSchema.index({ customer: 1, createdAt: -1 });
 solarApplicationSchema.index({ status: 1, createdAt: -1 });
