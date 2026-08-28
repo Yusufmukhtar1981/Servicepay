@@ -12,11 +12,12 @@ const Rule = require("../models/businessPartnerCommissionRule.model");
 const PhoneApplication = require("../models/phoneApplication.model");
 const PhoneProduct = require("../models/phoneProduct.model");
 const SolarApplication = require("../models/solarApplication.model");
+const SolarPackage = require("../models/solarPackage.model");
 const SolarOfficer = require("../models/solarOfficer.model");
 const Notification = require("../models/notification.model");
 const Audit = require("../models/adminAuditLog.model");
 
-const models = [User, Profile, Commission, Rule, PhoneApplication, PhoneProduct, SolarApplication, SolarOfficer, Notification, Audit];
+const models = [User, Profile, Commission, Rule, PhoneApplication, PhoneProduct, SolarApplication, SolarPackage, SolarOfficer, Notification, Audit];
 let repl, server, base, sequence = 0;
 const makeUser = async (role = "CUSTOMER") => {
   sequence += 1;
@@ -72,7 +73,8 @@ test("partners are isolated, cannot self-claim, and sensitive customer fields ar
   const aUser = await User.findById(a.body.user._id), bUser = await User.findById(b.body.user._id);
   assert.equal((await api({ method: "POST", path: "/api/business-partner/officers/link", actor: aUser, body: { type: "PHONE", officerId: new mongoose.Types.ObjectId() } })).status, 403);
   const customer = await makeUser(); customer.nin = "12345678901"; await customer.save();
-  const phone = await PhoneApplication.create({ reference: "BP-PHONE-1", customer: customer._id, product: new mongoose.Types.ObjectId(), productSnapshot: { sku: "BP" }, applicationInput: { occupation: "Trader" }, businessPartner: a.body.partner._id });
+  const phone = await PhoneApplication.create({ reference: "BP-PHONE-1", customer: customer._id, product: new mongoose.Types.ObjectId(), productSnapshot: { sku: "BP", secretCost: 5 }, profileSnapshot:{address:"SECRET"},kycSnapshot:{nin:"SECRET"},applicationInput: { occupation: "Trader", monthlyIncome:999 }, businessPartner: a.body.partner._id });
+  const solar = await SolarApplication.create({customer:customer._id,package:new mongoose.Types.ObjectId(),packageSnapshot:{name:"Home Solar",secretCost:9},profileSnapshot:{address:"SECRET"},kycSnapshot:{nin:"SECRET"},business:{income:999},guarantor:{phone:"SECRET"},businessPartner:a.body.partner._id});
   const unassigned = await PhoneApplication.create({ reference: "BP-PHONE-2", customer: customer._id, product: new mongoose.Types.ObjectId(), productSnapshot: { sku: "BP2" }, applicationInput: { occupation: "Trader" } });
   assert.equal((await api({ path: "/api/business-partner/applications", actor: bUser })).body.applications.phone.length, 0);
   assert.equal((await api({ path: "/api/business-partner/customers", actor: bUser })).body.customers.length, 0);
@@ -80,6 +82,9 @@ test("partners are isolated, cannot self-claim, and sensitive customer fields ar
   assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${unassigned._id}/assign`, actor: aUser, body: { type: "PHONE", officerId: new mongoose.Types.ObjectId() } })).status, 404);
   const apps = await api({ path: "/api/business-partner/applications", actor: aUser });
   assert.equal(apps.status, 200, JSON.stringify(apps.body)); assert.equal(apps.body.applications.phone.length, 1);
+  const serialized=JSON.stringify(apps.body);
+  for(const secret of ["kycSnapshot","profileSnapshot","applicationInput","guarantor","business","monthlyIncome","secretCost"]) assert.equal(serialized.includes(secret),false);
+  assert.equal(apps.body.applications.solar[0].package.name,"Home Solar");
   const customers = await api({ path: "/api/business-partner/customers", actor: aUser });
   assert.equal(customers.body.customers[0].nin, undefined);
 });
@@ -118,4 +123,8 @@ test("commission events are idempotent and immutable reversals are compensating 
   assert.equal(await Commission.countDocuments(), 2);
   const net = await Commission.aggregate([{ $group: { _id: null, net: { $sum: "$amount" } } }]);
   assert.equal(net[0].net, 0);
+  const reverseReversal=await api({method:"POST",path:`/api/business-partner/admin/commissions/${reversal.commission._id}/reverse`,actor:admin,body:{eventKey:"illegal-second-order",reason:"not allowed"}});
+  assert.equal(reverseReversal.status,409);
+  assert.equal(await Commission.countDocuments(),2);
+  assert.equal((await Commission.aggregate([{$group:{_id:null,net:{$sum:"$amount"}}}]))[0].net,0);
 });

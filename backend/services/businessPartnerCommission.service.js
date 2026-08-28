@@ -19,6 +19,12 @@ async function createCommission({ businessPartner, application, sourceType, amou
 async function reverseCommission({ commissionId, eventKey, createdBy, reason, session }) {
   const original = await Commission.findById(commissionId).session(session || null);
   if (!original) throw Object.assign(new Error("Commission not found."), { statusCode: 404 });
+  if (original.reversalOf || original.status === "REVERSED" || Number(original.amount) < 0) {
+    throw Object.assign(new Error("A reversal entry cannot itself be reversed."), { statusCode: 409 });
+  }
+  if (!["PENDING", "EARNED"].includes(original.status)) {
+    throw Object.assign(new Error(`Commission status ${original.status} is not reversible.`), { statusCode: 409 });
+  }
   const existing = await Commission.findOne({ reversalOf: original._id }).session(session || null);
   if (existing) return { commission: existing, idempotent: true };
   try {
