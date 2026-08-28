@@ -169,6 +169,21 @@ test("Marketplace mounts the authenticated product image upload route", () => {
   assert.equal(imageRoute.route.stack.length, 3);
 });
 
+test("Marketplace mounts the canonical authenticated delivery confirmation route", () => {
+  const confirmationRoute = marketplaceRoutes.stack.find(
+    (layer) =>
+      layer.route?.path === "/orders/:orderId/confirm-delivery" &&
+      layer.route.methods?.post
+  );
+
+  assert.ok(confirmationRoute);
+  assert.equal(confirmationRoute.route.stack.length, 2);
+  assert.equal(
+    confirmationRoute.route.stack.at(-1).handle,
+    marketplace.confirmOrderDelivery
+  );
+});
+
 test("Marketplace product upload rejects photos larger than 5 MB", async () => {
   const seller = await createUser();
   await MarketplaceMerchant.create({
@@ -419,6 +434,19 @@ test("buyer-confirmed delivery settles held funds exactly once", async () => {
   });
   const orderId = String(created.body.order._id);
 
+  const nonOwner = await call(marketplace.confirmOrderDelivery, {
+    user: seller,
+    params: { orderId },
+  });
+  assert.equal(nonOwner.status, 404);
+
+  const beforeShipping = await call(marketplace.confirmOrderDelivery, {
+    user: buyer,
+    params: { orderId },
+  });
+  assert.equal(beforeShipping.status, 409);
+  assert.equal(beforeShipping.body.code, "DELIVERY_NOT_READY");
+
   for (const status of ["ACCEPTED", "PROCESSING", "READY", "SHIPPED"]) {
     const result = await call(marketplace.updateSellerOrderStatus, {
       user: seller,
@@ -428,20 +456,25 @@ test("buyer-confirmed delivery settles held funds exactly once", async () => {
     assert.equal(result.status, 200);
   }
 
-  const settlement = await call(marketplace.confirmOrderDelivery, {
-    user: buyer,
-    params: { orderId },
-  });
-  const duplicate = await call(marketplace.confirmOrderDelivery, {
-    user: buyer,
-    params: { orderId },
-  });
+  const [firstConfirmation, secondConfirmation] = await Promise.all([
+    call(marketplace.confirmOrderDelivery, {
+      user: buyer,
+      params: { orderId },
+    }),
+    call(marketplace.confirmOrderDelivery, {
+      user: buyer,
+      params: { orderId },
+    }),
+  ]);
 
-  assert.equal(settlement.status, 200);
-  assert.equal(settlement.body.order.orderStatus, "DELIVERED");
-  assert.equal(settlement.body.order.fundsStatus, "SETTLED");
-  assert.equal(duplicate.status, 200);
-  assert.equal(duplicate.body.duplicate, true);
+  assert.equal(firstConfirmation.status, 200);
+  assert.equal(secondConfirmation.status, 200);
+  assert.equal(
+    [firstConfirmation, secondConfirmation].filter(
+      (result) => result.body.duplicate === true
+    ).length,
+    1
+  );
 
   const storedSeller = await User.findById(seller._id);
   const storedBuyer = await User.findById(buyer._id);
@@ -455,6 +488,12 @@ test("buyer-confirmed delivery settles held funds exactly once", async () => {
   assert.equal(storedBuyer.walletBalance, 3250);
   assert.equal(settlementEntries.length, 1);
   assert.equal(settlementEntries[0].direction, "CREDIT");
+  assert.equal(storedOrder.orderStatus, "DELIVERED");
+  assert.equal(storedOrder.fundsStatus, "SETTLED");
+  assert.equal(storedOrder.deliveryConfirmedBy.toString(), buyer._id.toString());
+  assert.ok(storedOrder.deliveryConfirmedAt instanceof Date);
+  assert.ok(storedOrder.deliveredAt instanceof Date);
+  assert.ok(storedOrder.settledAt instanceof Date);
   assert.equal(storedOrder.settlementLedgerEntry.toString(), settlementEntries[0]._id.toString());
 });
 

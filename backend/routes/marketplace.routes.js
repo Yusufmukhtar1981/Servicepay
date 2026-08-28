@@ -150,6 +150,12 @@ router.get(
   marketplaceController.getOrder
 );
 
+router.post(
+  '/orders/:orderId/confirm-delivery',
+  protect,
+  marketplaceController.confirmOrderDelivery
+);
+
 
 
 /* SERVICEPAY_MARKETPLACE_SELLER_ORDER_ROUTES_V1 */

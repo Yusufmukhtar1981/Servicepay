@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -17,13 +18,29 @@ class _MarketplaceSellerOrdersScreenState
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   bool isLoading = true;
+  bool _refreshInFlight = false;
   String errorMessage = '';
   List<dynamic> orders = [];
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadOrders();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) {
+        if (mounted && !isLoading && !_refreshInFlight) {
+          _loadOrders(showLoading: false);
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<String?> _token() async {
@@ -31,8 +48,11 @@ class _MarketplaceSellerOrdersScreenState
     return prefs.getString('auth_token');
   }
 
-  Future<void> _loadOrders() async {
-    if (mounted) {
+  Future<void> _loadOrders({bool showLoading = true}) async {
+    if (_refreshInFlight) return;
+    _refreshInFlight = true;
+
+    if (mounted && showLoading) {
       setState(() {
         isLoading = true;
         errorMessage = '';
@@ -77,15 +97,19 @@ class _MarketplaceSellerOrdersScreenState
         setState(() {
           orders = rawOrders is List ? rawOrders : <dynamic>[];
           isLoading = false;
+          errorMessage = '';
         });
       }
     } catch (e) {
+      if (!showLoading) return;
       if (mounted) {
         setState(() {
           errorMessage = e.toString().replaceFirst('Exception: ', '');
           isLoading = false;
         });
       }
+    } finally {
+      _refreshInFlight = false;
     }
   }
 
