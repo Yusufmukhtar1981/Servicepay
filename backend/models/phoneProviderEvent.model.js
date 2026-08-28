@@ -1,0 +1,4 @@
+const mongoose = require("mongoose");
+module.exports = mongoose.model("PhoneProviderEvent", new mongoose.Schema({
+ reference: { type: String, required: true, unique: true, index: true }, finance: { type: mongoose.Schema.Types.ObjectId, ref: "PhoneFinance", required: true, index: true }, device: { type: mongoose.Schema.Types.ObjectId, ref: "PhoneDevice", required: true }, action: { type: String, enum: ["RESTRICT","RESTORE"], required: true }, provider: { type: String, enum: ["NONE","SAMSUNG_KNOX_GUARD","EXTERNAL_FINANCING_PROVIDER"], default: "NONE" }, idempotencyKey: { type: String, required: true, unique: true }, outcome: { type: String, enum: ["REQUEST_RECORDED","INTEGRATION_REQUIRED","DISABLED","MOCK","PENDING","FAILED"], default: "REQUEST_RECORDED" }, request: mongoose.Schema.Types.Mixed, response: mongoose.Schema.Types.Mixed, requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+}, { timestamps: true }));

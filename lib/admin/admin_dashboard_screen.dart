@@ -8,6 +8,7 @@ import 'admin_customer_support_screen.dart';
 import 'admin_product_commission_screen.dart';
 import 'admin_solar_screen.dart';
 import 'admin_trust_profiles_screen.dart';
+import 'admin_phone_financing_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -381,6 +382,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       openPage(
                         const AdminSolarScreen(),
                         routeName: '/admin/solar',
+                      );
+                    },
+                  ),
+                  buildAdminAction(
+                    title: 'Phone Financing',
+                    subtitle:
+                        'Manage products, applications, IMEI stock and repayment risk.',
+                    icon: Icons.phone_android_outlined,
+                    onTap: () {
+                      openPage(
+                        const AdminPhoneFinancingScreen(),
+                        routeName: '/admin/phone-financing',
                       );
                     },
                   ),

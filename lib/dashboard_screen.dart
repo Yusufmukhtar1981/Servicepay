@@ -46,6 +46,7 @@ import 'qr_pay_screen.dart';
 
 import 'mini_apps_screen.dart';
 import 'solar_screen.dart';
+import 'phone_financing/phone_financing_screen.dart';
 
 import 'marketplace/marketplace_screen.dart';
 import 'trust/trust_dashboard_entry.dart';
@@ -546,6 +547,20 @@ class _DashboardScreenState extends State<DashboardScreen>
           openScreen(
             const SolarScreen(),
             routeName: '/solar',
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Phone Financing',
+        subtitle: 'Own an Android phone weekly',
+        icon: Icons.phone_android_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'phone financing android smartphone weekly payment device',
+        onTap: () {
+          openScreen(
+            const PhoneFinancingScreen(),
+            routeName: '/phone-financing',
           );
         },
       ),
@@ -1497,6 +1512,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final List<_DashboardService> selected = <_DashboardService>[
       for (final String title in <String>[
         'Delivery',
+        'Phone Financing',
         'ServicePay Solar',
         'Empowerment',
         'Marketplace',

@@ -36,6 +36,7 @@ const notificationSchema = new mongoose.Schema(
         "ID_VERIFICATION",
         "GROUP_WALLET",
         "SOLAR",
+        "PHONE",
         "TRUST",
       ],
       default: "GENERAL",

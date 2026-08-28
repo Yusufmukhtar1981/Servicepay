@@ -1,0 +1,8 @@
+const mongoose = require("mongoose");
+const row = new mongoose.Schema({ installmentNumber: Number, dueDate: Date, amount: { type: Number, min: 0 }, paidAmount: { type: Number, default: 0, min: 0 }, status: { type: String, enum: ["PENDING","PAID","OVERDUE"], default: "PENDING" }, paidAt: Date }, { _id: true });
+const phoneFinanceSchema = new mongoose.Schema({
+ reference: { type: String, required: true, unique: true, index: true }, application: { type: mongoose.Schema.Types.ObjectId, ref: "PhoneApplication", required: true, unique: true }, customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true }, device: { type: mongoose.Schema.Types.ObjectId, ref: "PhoneDevice", required: true, unique: true },
+ termsSnapshot: { type: mongoose.Schema.Types.Mixed, required: true, immutable: true }, totalPayable: { type: Number, required: true }, amountPaid: { type: Number, default: 0 }, outstandingBalance: { type: Number, required: true }, status: { type: String, enum: ["ACTIVE","OVERDUE","COMPLETED"], default: "ACTIVE", index: true }, statusHistory: { type: [mongoose.Schema.Types.Mixed], default: [] }, paymentSchedule: { type: [row], default: [] }, graceDays: { type: Number, default: 3, min: 0 }, restrictionRequestRecordedAt: { type: Date, default: null }, restoreRequestRecordedAt: { type: Date, default: null },
+}, { timestamps: true });
+phoneFinanceSchema.index({ customer: 1, status: 1, createdAt: -1 });
+module.exports = mongoose.model("PhoneFinance", phoneFinanceSchema);
