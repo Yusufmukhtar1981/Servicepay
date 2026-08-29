@@ -154,8 +154,8 @@ test("concurrent provisioning allocates distinct IDs with reciprocal links", asy
 
 test("partners are isolated, cannot self-claim, and sensitive customer fields are not projected", async () => {
   const admin = await makeUser("HEAD_OFFICE");
-  const a = await createPartner(admin, "2", ["DASHBOARD", "APPLICATIONS", "CUSTOMERS", "OFFICERS", "PHONE_ASSIGNMENT"]);
-  const b = await createPartner(admin, "3", ["DASHBOARD", "APPLICATIONS", "CUSTOMERS"]);
+  const a = await createPartner(admin, "2", ["DASHBOARD", "APPLICATIONS", "CUSTOMERS", "OFFICERS", "PHONE_ASSIGNMENT"], ["PHONE"]);
+  const b = await createPartner(admin, "3", ["DASHBOARD", "APPLICATIONS", "CUSTOMERS", "PHONE_ASSIGNMENT"], ["PHONE"]);
   const aUser = await User.findById(a.body.user._id), bUser = await User.findById(b.body.user._id);
   assert.equal((await api({ method: "POST", path: "/api/business-partner/officers/link", actor: aUser, body: { type: "PHONE", officerId: new mongoose.Types.ObjectId() } })).status, 403);
   const customer = await makeUser(); customer.nin = "12345678901"; await customer.save();
@@ -164,7 +164,7 @@ test("partners are isolated, cannot self-claim, and sensitive customer fields ar
   const unassigned = await PhoneApplication.create({ reference: "BP-PHONE-2", customer: customer._id, product: new mongoose.Types.ObjectId(), productSnapshot: { sku: "BP2" }, applicationInput: { occupation: "Trader" } });
   assert.equal((await api({ path: "/api/business-partner/applications", actor: bUser })).body.applications.phone.length, 0);
   assert.equal((await api({ path: "/api/business-partner/customers", actor: bUser })).body.customers.length, 0);
-  assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${phone._id}/assign`, actor: bUser, body: { type: "PHONE", officerId: new mongoose.Types.ObjectId() } })).status, 403);
+  assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${phone._id}/assign`, actor: bUser, body: { type: "PHONE", officerId: new mongoose.Types.ObjectId() } })).status, 404);
   assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${unassigned._id}/assign`, actor: aUser, body: { type: "PHONE", officerId: new mongoose.Types.ObjectId() } })).status, 404);
   const apps = await api({ path: "/api/business-partner/applications", actor: aUser });
   assert.equal(apps.status, 200, JSON.stringify(apps.body)); assert.equal(apps.body.applications.phone.length, 1);
@@ -223,7 +223,7 @@ test("active legacy Business Partners automatically receive module view access o
 
 test("Head Office allocates cases and partner permissions scope officer assignment", async () => {
   const admin = await makeUser("HEAD_OFFICE");
-  const partner = await createPartner(admin, "4", ["OFFICERS", "PHONE_ASSIGNMENT"]);
+  const partner = await createPartner(admin, "4", ["OFFICERS", "PHONE_ASSIGNMENT"], ["PHONE"]);
   const partnerUser = await User.findById(partner.body.user._id);
   const customer = await makeUser();
   const app = await PhoneApplication.create({ reference: "BP-ALLOC-1", customer: customer._id, product: new mongoose.Types.ObjectId(), productSnapshot: { sku: "ALLOC" }, applicationInput: { occupation: "Trader" } });
@@ -236,6 +236,13 @@ test("Head Office allocates cases and partner permissions scope officer assignme
   const deniedPartnerUser = await User.findById(deniedPartner.body.user._id);
   assert.equal((await api({ path: "/api/business-partner/customers", actor: deniedPartnerUser })).status, 200);
   assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${app._id}/assign`, actor: deniedPartnerUser, body: { type: "PHONE", officerId: officer._id } })).status, 403);
+  const revoked = await api({ method: "PATCH", path: `/api/business-partner/admin/partners/${partner.body.partner._id}`, actor: admin, body: { services: [], permissions: ["OFFICERS", "PHONE_ASSIGNMENT"] } });
+  assert.equal(revoked.status, 200, JSON.stringify(revoked.body));
+  assert.equal(revoked.body.partner.permissions.includes("PHONE_ASSIGNMENT"), false);
+  assert.equal(revoked.body.partner.permissions.includes("OFFICER_MANAGEMENT"), false);
+  assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${app._id}/assign`, actor: partnerUser, body: { type: "PHONE", officerId: officer._id } })).status, 403);
+  const emptyServices = await createPartner(admin, "empty-service", ["OFFICERS", "PHONE_ASSIGNMENT"]);
+  assert.equal(emptyServices.body.partner.permissions.includes("PHONE_ASSIGNMENT"), false);
   assert.equal(await Notification.countDocuments({ userId: partner.body.user._id, referenceType: "BusinessPartnerAssignment" }), 1);
 });
 
@@ -266,7 +273,7 @@ test("commission events are idempotent and immutable reversals are compensating 
 test("Business Partners manage only their own normalized officer teams", async () => {
   const admin = await makeUser("HEAD_OFFICE");
   const a = await createPartner(admin, "officer-a", ["OFFICERS", "OFFICER_MANAGEMENT", "SOLAR_ASSIGNMENT", "PHONE_ASSIGNMENT"], ["SOLAR", "PHONE"]);
-  const b = await createPartner(admin, "officer-b", ["OFFICERS", "OFFICER_MANAGEMENT"]);
+  const b = await createPartner(admin, "officer-b", ["OFFICERS", "OFFICER_MANAGEMENT", "SOLAR_ASSIGNMENT", "PHONE_ASSIGNMENT"], ["SOLAR", "PHONE"]);
   const viewOnly = await createPartner(admin, "officer-view", ["OFFICERS"]);
   const solarOnly = await createPartner(admin, "officer-solar-only", ["OFFICERS", "OFFICER_MANAGEMENT", "SOLAR_ASSIGNMENT"], ["SOLAR"]);
   const aUser = await User.findById(a.body.user._id);

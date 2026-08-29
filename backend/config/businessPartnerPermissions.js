@@ -78,10 +78,17 @@ const permissionsForBusinessPartnerServices = (
   permissions = []
 ) => {
   const normalizedServices = normalizeBusinessPartnerServices(services);
+  const explicitPermissions = normalizeBusinessPartnerPermissions(
+    permissions
+  ).filter(
+    (permission) =>
+      permission !== "OFFICER_MANAGEMENT" &&
+      !Object.values(BUSINESS_PARTNER_SERVICE_PERMISSIONS).includes(permission)
+  );
   return [
     ...new Set([
       ...BUSINESS_PARTNER_VIEW_PERMISSIONS,
-      ...normalizeBusinessPartnerPermissions(permissions),
+      ...explicitPermissions,
       ...(normalizedServices.length ? ["OFFICER_MANAGEMENT"] : []),
       ...normalizedServices.map(
         (service) => BUSINESS_PARTNER_SERVICE_PERMISSIONS[service]
