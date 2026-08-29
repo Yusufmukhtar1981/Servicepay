@@ -11,38 +11,42 @@ class _OfficerApi extends BusinessPartnerApiService {
   int statusCalls = 0;
   int resetCalls = 0;
   String? createdType;
+  Map<String, dynamic>? createdOfficer;
 
   @override
-  Future<Map<String, dynamic>> officers(
-          {Map<String, String>? filters}) async =>
-      <String, dynamic>{
-        'officers': <String, dynamic>{
-          'solar': <Map<String, dynamic>>[
-            <String, dynamic>{
-              'id': 'solar-1',
-              'type': 'SOLAR',
-              'officerCode': 'SP-S-104',
-              'fullName': 'Amina Bello',
-              'phone': '08012345678',
-              'email': 'amina@example.com',
-              'state': 'Lagos',
-              'lga': 'Ikeja',
-              'address': '12 Allen Avenue',
-              'status': 'ACTIVE',
-              'createdAt': '2025-01-02T00:00:00Z',
-              'metrics': <String, dynamic>{
-                'assignedApplications': 14,
-                'assignedCustomers': 22,
-                'completedWork': 9,
-                'commissionTotal': 87500,
-              },
-              'permissions': <String>['DO_NOT_RENDER'],
-              '_internalNote': 'never render',
+  Future<Map<String, dynamic>> officers({Map<String, String>? filters}) async {
+    return <String, dynamic>{
+      'officers': <String, dynamic>{
+        'solar': <Map<String, dynamic>>[
+          if (createdOfficer?['type'] == 'SOLAR') createdOfficer!,
+          <String, dynamic>{
+            'id': 'solar-1',
+            'type': 'SOLAR',
+            'officerCode': 'SP-S-104',
+            'fullName': 'Amina Bello',
+            'phone': '08012345678',
+            'email': 'amina@example.com',
+            'state': 'Lagos',
+            'lga': 'Ikeja',
+            'address': '12 Allen Avenue',
+            'status': 'ACTIVE',
+            'createdAt': '2025-01-02T00:00:00Z',
+            'metrics': <String, dynamic>{
+              'assignedApplications': 14,
+              'assignedCustomers': 22,
+              'completedWork': 9,
+              'commissionTotal': 87500,
             },
-          ],
-          'phone': <Map<String, dynamic>>[],
-        },
-      };
+            'permissions': <String>['DO_NOT_RENDER'],
+            '_internalNote': 'never render',
+          },
+        ],
+        'phone': <Map<String, dynamic>>[
+          if (createdOfficer?['type'] == 'PHONE') createdOfficer!,
+        ],
+      },
+    };
+  }
 
   @override
   Future<Map<String, dynamic>> getOfficer({
@@ -77,6 +81,17 @@ class _OfficerApi extends BusinessPartnerApiService {
     required String address,
   }) async {
     createdType = type;
+    createdOfficer = <String, dynamic>{
+      'id': 'created-1',
+      'type': type,
+      'fullName': fullName,
+      'phone': phone,
+      'email': email,
+      'state': state,
+      'lga': lga,
+      'address': address,
+      'status': 'ACTIVE',
+    };
     return <String, dynamic>{'success': true};
   }
 
@@ -128,12 +143,11 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final _OfficerApi api = _OfficerApi(
-        permissions: const <String>[
-          'OFFICER_MANAGEMENT',
-          'SOLAR_ASSIGNMENT',
-          'PHONE_ASSIGNMENT',
-        ]);
+    final _OfficerApi api = _OfficerApi(permissions: const <String>[
+      'OFFICER_MANAGEMENT',
+      'SOLAR_ASSIGNMENT',
+      'PHONE_ASSIGNMENT',
+    ]);
 
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
@@ -171,7 +185,8 @@ void main() {
 
   testWidgets('hides lifecycle and create controls without permission',
       (WidgetTester tester) async {
-    final _OfficerApi api = _OfficerApi(permissions: const <String>['OFFICERS']);
+    final _OfficerApi api =
+        _OfficerApi(permissions: const <String>['OFFICERS']);
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
 
@@ -187,25 +202,24 @@ void main() {
 
   testWidgets('validates create form and sends selected service type',
       (WidgetTester tester) async {
-    final _OfficerApi api = _OfficerApi(
-        permissions: const <String>[
-          'OFFICER_MANAGEMENT',
-          'SOLAR_ASSIGNMENT',
-          'PHONE_ASSIGNMENT',
-        ]);
+    final _OfficerApi api = _OfficerApi(permissions: const <String>[
+      'SOLAR_ASSIGNMENT',
+      'PHONE_ASSIGNMENT',
+    ]);
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('create-officer')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Create officer'), findsWidgets);
+    expect(find.text('Create Officer'), findsWidgets);
+    expect(find.text('ServicePay Solar Officer'), findsOneWidget);
     await tester.tap(find.byKey(const Key('save-officer')));
     await tester.pump();
     expect(find.text('Required'), findsWidgets);
 
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Phone financing').last);
+    await tester.tap(find.text('Phone Financing Officer').last);
     const List<String> values = <String>[
       'Ibrahim Musa',
       '08000000000',
@@ -222,16 +236,17 @@ void main() {
     await tester.tap(find.byKey(const Key('save-officer')));
     await tester.pumpAndSettle();
     expect(api.createdType, 'PHONE');
+    expect(find.text('Officer created successfully.'), findsOneWidget);
+    expect(find.text('Ibrahim Musa'), findsOneWidget);
   });
 
   testWidgets('supports suspend and reset access controls',
       (WidgetTester tester) async {
-    final _OfficerApi api = _OfficerApi(
-        permissions: const <String>[
-          'OFFICER_MANAGEMENT',
-          'SOLAR_ASSIGNMENT',
-          'PHONE_ASSIGNMENT',
-        ]);
+    final _OfficerApi api = _OfficerApi(permissions: const <String>[
+      'OFFICER_MANAGEMENT',
+      'SOLAR_ASSIGNMENT',
+      'PHONE_ASSIGNMENT',
+    ]);
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Amina Bello'));
