@@ -260,6 +260,54 @@ test("Head Office allocates cases and partner permissions scope officer assignme
   assert.equal(await Notification.countDocuments({ userId: partner.body.user._id, referenceType: "BusinessPartnerAssignment" }), 1);
 });
 
+test("Head Office links officers only within the partner's approved service", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const solarOnly = await createPartner(
+    admin,
+    "link-solar-only",
+    ["OFFICERS", "SOLAR_ASSIGNMENT"],
+    ["SOLAR"]
+  );
+  const phoneOnly = await createPartner(
+    admin,
+    "link-phone-only",
+    ["OFFICERS", "PHONE_ASSIGNMENT"],
+    ["PHONE"]
+  );
+  for (const partner of [solarOnly, phoneOnly]) {
+    await Profile.updateOne(
+      { _id: partner.body.partner._id },
+      { $set: { territory: { states: ["Lagos"], lgas: ["Ikeja"] } } }
+    );
+  }
+  const phoneOfficer = await makeUser("PHONE_FINANCING_OFFICER");
+  phoneOfficer.isStaff = true;
+  phoneOfficer.state = "Lagos";
+  phoneOfficer.lga = "Ikeja";
+  await phoneOfficer.save();
+
+  const denied = await api({
+    method: "POST",
+    path: `/api/business-partner/admin/partners/${solarOnly.body.partner._id}/officers/link`,
+    actor: admin,
+    body: { type: "PHONE", officerId: phoneOfficer._id },
+  });
+  assert.equal(denied.status, 403);
+  assert.equal((await User.findById(phoneOfficer._id)).businessPartnerId, null);
+
+  const allowed = await api({
+    method: "POST",
+    path: `/api/business-partner/admin/partners/${phoneOnly.body.partner._id}/officers/link`,
+    actor: admin,
+    body: { type: "PHONE", officerId: phoneOfficer._id },
+  });
+  assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
+  assert.equal(
+    String((await User.findById(phoneOfficer._id)).businessPartnerId),
+    String(phoneOnly.body.partner._id)
+  );
+});
+
 test("commission events are idempotent and immutable reversals are compensating rows", async () => {
   const admin = await makeUser("HEAD_OFFICE");
   const partner = await createPartner(admin, "6");
