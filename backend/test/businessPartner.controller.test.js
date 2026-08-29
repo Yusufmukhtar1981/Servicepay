@@ -427,6 +427,55 @@ test("Business Partners manage only their own normalized officer teams", async (
   assert.equal(oversight.body.officers.phone.length, 1);
 });
 
+test("service-approved partners can manage officers without the legacy management key", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const partner = await createPartner(
+    admin,
+    "service-capability-only",
+    ["OFFICERS", "SOLAR_ASSIGNMENT"],
+    ["SOLAR"],
+  );
+  const partnerUser = await User.findById(partner.body.user._id);
+  const profile = await Profile.findById(partner.body.partner._id);
+  profile.permissions = profile.permissions.filter(
+    (permission) => permission !== "OFFICER_MANAGEMENT",
+  );
+  await profile.save();
+
+  const created = await api({
+    method: "POST",
+    path: "/api/business-partner/officers",
+    actor: partnerUser,
+    body: {
+      type: "SOLAR",
+      fullName: "Capability Solar Officer",
+      phone: "08090000021",
+      email: "capability-solar@test.local",
+      password: "temporary123",
+      state: "Lagos",
+      lga: "Ikeja",
+      address: "Capability Street",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const updated = await api({
+    method: "PATCH",
+    path: `/api/business-partner/officers/SOLAR/${created.body.officer.id}`,
+    actor: partnerUser,
+    body: { fullName: "Updated Capability Officer" },
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.body));
+
+  const suspended = await api({
+    method: "PATCH",
+    path: `/api/business-partner/officers/SOLAR/${created.body.officer.id}/status`,
+    actor: partnerUser,
+    body: { status: "SUSPENDED" },
+  });
+  assert.equal(suspended.status, 200, JSON.stringify(suspended.body));
+});
+
 test("concurrent Business Partner phone assignment and suspension never leave an active suspended officer", async () => {
   const admin = await makeUser("HEAD_OFFICE");
   const partner = await createPartner(admin, "officer-race", ["OFFICERS", "OFFICER_MANAGEMENT", "PHONE_ASSIGNMENT"], ["PHONE"]);

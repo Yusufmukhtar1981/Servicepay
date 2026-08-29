@@ -145,7 +145,7 @@ class _BusinessPartnerOfficersScreenState
                 else if (_visible.isEmpty)
                   _emptyView()
                 else
-                  _list(),
+                  _sectionsView(),
               ]),
         ),
       ),
@@ -154,36 +154,65 @@ class _BusinessPartnerOfficersScreenState
 
   Widget _header() => LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
-          final bool compact = constraints.maxWidth < 560;
-          final Widget action = _canManage
-              ? FilledButton.icon(
-                  key: const Key('create-officer'),
-                  onPressed: () => _openForm(),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Create Officer'))
-              : const SizedBox.shrink();
+          // The two explicit creation actions need a full-width row on tablet
+          // widths as well; otherwise the title and actions compete for the
+          // same narrow horizontal lane.
+          final bool compact = constraints.maxWidth < 900;
+          final List<Widget> actions = <Widget>[
+            if (_allowedTypes.contains('SOLAR'))
+              FilledButton.icon(
+                  key: const Key('create-solar-officer'),
+                  onPressed: () => _openForm(initialType: 'SOLAR'),
+                  icon: const Icon(Icons.wb_sunny_outlined, size: 17),
+                  label: const Text('Create Solar Officer')),
+            if (_allowedTypes.contains('PHONE'))
+              OutlinedButton.icon(
+                  key: const Key('create-phone-financing-officer'),
+                  onPressed: () => _openForm(initialType: 'PHONE'),
+                  icon: const Icon(Icons.smartphone_outlined, size: 17),
+                  label: const Text('Create Phone Financing Officer')),
+          ];
+          final Widget action = actions.isEmpty
+              ? const SizedBox.shrink()
+              : Wrap(spacing: 8, runSpacing: 8, children: actions);
           return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Row(children: <Widget>[
-                  const Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text('My Officers',
-                              style: TextStyle(
-                                  color: _officerInk,
-                                  fontSize: 25,
-                                  fontWeight: FontWeight.w900)),
-                          SizedBox(height: 5),
-                          Text('Your trusted field team, in one clear view.',
-                              style: TextStyle(
-                                  color: _officerMuted, fontSize: 13)),
-                        ]),
-                  ),
-                  if (!compact) action,
-                ]),
-                if (compact) ...<Widget>[const SizedBox(height: 13), action],
+                if (compact)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      const Text('Officer Management',
+                          style: TextStyle(
+                              color: _officerInk,
+                              fontSize: 25,
+                              fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 5),
+                      const Text('Your trusted field team, in one clear view.',
+                          style: TextStyle(color: _officerMuted, fontSize: 13)),
+                      const SizedBox(height: 13),
+                      action,
+                    ],
+                  )
+                else
+                  Row(children: <Widget>[
+                    const Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text('Officer Management',
+                                style: TextStyle(
+                                    color: _officerInk,
+                                    fontSize: 25,
+                                    fontWeight: FontWeight.w900)),
+                            SizedBox(height: 5),
+                            Text('Your trusted field team, in one clear view.',
+                                style: TextStyle(
+                                    color: _officerMuted, fontSize: 13)),
+                          ]),
+                    ),
+                    action,
+                  ]),
                 const SizedBox(height: 18),
                 Wrap(
                   spacing: 8,
@@ -233,6 +262,47 @@ class _BusinessPartnerOfficersScreenState
                         SizedBox(width: (box.maxWidth - 13) / 2, child: card))
                     .toList())
             : Column(children: cards);
+      });
+
+  Widget _sectionsView() {
+    final List<Widget> sections = <Widget>[];
+    for (final String type in <String>['SOLAR', 'PHONE']) {
+      final List<Map<String, dynamic>> rows = _visible
+          .where((Map<String, dynamic> row) =>
+              _text(row['type'], '').toUpperCase() == type)
+          .toList();
+      sections.add(Padding(
+        padding: EdgeInsets.only(bottom: sections.isEmpty ? 16 : 12),
+        child: Text(
+            type == 'SOLAR' ? 'Solar Officers' : 'Phone Financing Officers',
+            style: const TextStyle(
+                color: _officerInk, fontSize: 16, fontWeight: FontWeight.w900)),
+      ));
+      sections.add(rows.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                  type == 'SOLAR'
+                      ? 'No Solar Officers assigned yet.'
+                      : 'No Phone Financing Officers assigned yet.',
+                  style: const TextStyle(color: _officerMuted, fontSize: 12)),
+            )
+          : _cardsFor(rows));
+    }
+    return sections.isEmpty ? _emptyView() : Column(children: sections);
+  }
+
+  Widget _cardsFor(List<Map<String, dynamic>> rows) =>
+      LayoutBuilder(builder: (BuildContext context, BoxConstraints box) {
+        final List<Widget> cards = rows.map(_card).toList();
+        if (box.maxWidth < 760) return Column(children: cards);
+        return Wrap(
+            spacing: 13,
+            runSpacing: 13,
+            children: cards
+                .map((Widget card) =>
+                    SizedBox(width: (box.maxWidth - 13) / 2, child: card))
+                .toList());
       });
 
   Widget _card(Map<String, dynamic> row) {
@@ -361,8 +431,13 @@ class _BusinessPartnerOfficersScreenState
       Icons.groups_outlined,
       'No officers yet',
       'Create your first field officer to start routing work.',
-      'Create Officer',
-      _canManage ? () => _openForm() : null);
+      _allowedTypes.contains('SOLAR')
+          ? 'Create Solar Officer'
+          : 'Create Phone Financing Officer',
+      _canManage
+          ? () => _openForm(
+              initialType: _allowedTypes.contains('SOLAR') ? 'SOLAR' : 'PHONE')
+          : null);
   Widget _message(IconData icon, String title, String body, String action,
           VoidCallback? callback) =>
       Container(
@@ -465,7 +540,8 @@ class _BusinessPartnerOfficersScreenState
       child: Text('$label  $value',
           style: const TextStyle(color: _officerInk, fontSize: 13)));
 
-  Future<void> _openForm({Map<String, dynamic>? existing}) async {
+  Future<void> _openForm(
+      {Map<String, dynamic>? existing, String? initialType}) async {
     final bool editing = existing != null;
     final Map<String, TextEditingController> controllers =
         <String, TextEditingController>{
@@ -483,7 +559,7 @@ class _BusinessPartnerOfficersScreenState
     final List<String> allowedTypes = _allowedTypes;
     if (!editing && allowedTypes.isEmpty) return;
     String type = _text(
-      existing?['type'],
+      existing?['type'] ?? initialType,
       allowedTypes.isEmpty ? 'SOLAR' : allowedTypes.first,
     ).toUpperCase();
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
@@ -526,7 +602,11 @@ class _BusinessPartnerOfficersScreenState
           ];
 
           return AlertDialog(
-            title: Text(editing ? 'Edit officer' : 'Create officer'),
+            title: Text(editing
+                ? 'Edit officer'
+                : type == 'SOLAR'
+                    ? 'Create Solar Officer'
+                    : 'Create Phone Financing Officer'),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: Form(
@@ -536,26 +616,6 @@ class _BusinessPartnerOfficersScreenState
                     spacing: 12,
                     runSpacing: 2,
                     children: <Widget>[
-                      if (!editing)
-                        DropdownButtonFormField<String>(
-                          value: type,
-                          decoration:
-                              const InputDecoration(labelText: 'Officer Type'),
-                          items: allowedTypes
-                              .map(
-                                (String value) => DropdownMenuItem<String>(
-                                  value: value,
-                                  child: Text(
-                                    value == 'SOLAR'
-                                        ? 'ServicePay Solar Officer'
-                                        : 'Phone Financing Officer',
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (String? value) =>
-                              setDialog(() => type = value ?? type),
-                        ),
                       ...fields,
                     ],
                   ),
@@ -633,7 +693,7 @@ class _BusinessPartnerOfficersScreenState
                     }
                   }
                 },
-                child: Text(editing ? 'Save changes' : 'Create Officer'),
+                child: Text(editing ? 'Save changes' : 'Create officer'),
               ),
             ],
           );

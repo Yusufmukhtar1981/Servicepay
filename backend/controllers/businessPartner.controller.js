@@ -206,7 +206,10 @@ exports.createOfficer = async (req, res) => {
   const type=text(req.body?.type,10).toUpperCase(), fullName=text(req.body?.fullName,160), phone=text(req.body?.phone,40), email=text(req.body?.email,160).toLowerCase(), password=String(req.body?.password||""), state=text(req.body?.state,120), lga=text(req.body?.lga,120), address=text(req.body?.address,500);
   let session;
   try {
-    const p=await ownProfile(req,"OFFICER_MANAGEMENT");
+     // Service approval is the authoritative officer-management capability.
+     // Keep OFFICER_MANAGEMENT as a legacy/catalog value for compatibility,
+     // but do not require it for valid existing service-enabled profiles.
+     const p=await ownProfile(req,"OFFICERS");
     requirePartnerService(p,type);
     if (!fullName||!phone||!email||password.length<6||!state||!lga||!address) throw fail("Full name, phone, email, password, state, LGA, and address are required.",400);
     if (!officerTerritoryAllowed(p,state,lga)) throw fail("Officer territory does not match partner territory.",409);
@@ -231,7 +234,7 @@ exports.createOfficer = async (req, res) => {
 exports.officerDetail = async (req,res) => { try { const p=await ownProfile(req,"OFFICERS"), type=text(req.params.type,10).toUpperCase(); requirePartnerService(p,type); const officer=await ownedOfficer(p,type,req.params.officerId);res.json({success:true,officer:await officerDto(type,officer)}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
 exports.updateOfficer = async (req,res) => {
   let session;
-  try { const p=await ownProfile(req,"OFFICER_MANAGEMENT"),type=text(req.params.type,10).toUpperCase();requirePartnerService(p,type);session=await mongoose.startSession();let officer;
+   try { const p=await ownProfile(req,"OFFICERS"),type=text(req.params.type,10).toUpperCase();requirePartnerService(p,type);session=await mongoose.startSession();let officer;
     await session.withTransaction(async()=>{officer=await ownedOfficer(p,type,req.params.officerId,session);const user=type==="SOLAR"?officer.user:officer;
       for(const field of ["fullName","phone","email","state","lga"])if(Object.hasOwn(req.body||{},field))user[field]=text(req.body[field],field==="fullName"?160:120);
       if(Object.hasOwn(req.body||{},"address")){const address=text(req.body.address,500);if(!address)throw fail("Address is required.",400);user.residentialAddress=address;if(type==="SOLAR")officer.address=address;}
@@ -243,7 +246,7 @@ exports.updateOfficer = async (req,res) => {
 };
 exports.officerStatus = async (req,res) => {
   let session;
-  try {const p=await ownProfile(req,"OFFICER_MANAGEMENT"),type=text(req.params.type,10).toUpperCase(),status=text(req.body?.status,20).toUpperCase();requirePartnerService(p,type);if(!["ACTIVE","SUSPENDED"].includes(status))throw fail("Status must be ACTIVE or SUSPENDED.",400);session=await mongoose.startSession();let officer;
+   try {const p=await ownProfile(req,"OFFICERS"),type=text(req.params.type,10).toUpperCase(),status=text(req.body?.status,20).toUpperCase();requirePartnerService(p,type);if(!["ACTIVE","SUSPENDED"].includes(status))throw fail("Status must be ACTIVE or SUSPENDED.",400);session=await mongoose.startSession();let officer;
     await session.withTransaction(async()=>{officer=await ownedOfficer(p,type,req.params.officerId,session);if(status==="SUSPENDED"){const active=type==="SOLAR"?await SolarAssignment.exists({officer:officer._id,status:"ACTIVE"}).session(session):await PhoneApplication.exists({assignedOfficer:officer._id,assignmentState:"ACTIVE"}).session(session);if(active)throw fail("Reassign or unassign all active applications before suspending this officer.",409);}
       if(type==="SOLAR"){officer.status=status;await officer.save({session});await User.updateOne({_id:officer.user._id},{$set:{status}},{session});officer.user.status=status;}else{officer.status=status;await officer.save({session});}
       await audit(req,"BUSINESS_PARTNER_OFFICER_STATUS_UPDATED",`Changed officer status to ${status}`,{partnerId:String(p._id),officerId:String(officer._id),type,status},session);
@@ -252,7 +255,7 @@ exports.officerStatus = async (req,res) => {
 };
 exports.resetOfficerAccess = async (req,res) => {
   let session;
-  try {const p=await ownProfile(req,"OFFICER_MANAGEMENT"),type=text(req.params.type,10).toUpperCase(),password=String(req.body?.password||"");requirePartnerService(p,type);if(password.length<6)throw fail("A temporary password of at least 6 characters is required.",400);session=await mongoose.startSession();
+   try {const p=await ownProfile(req,"OFFICERS"),type=text(req.params.type,10).toUpperCase(),password=String(req.body?.password||"");requirePartnerService(p,type);if(password.length<6)throw fail("A temporary password of at least 6 characters is required.",400);session=await mongoose.startSession();
     await session.withTransaction(async()=>{const officer=await ownedOfficer(p,type,req.params.officerId,session),user=type==="SOLAR"?officer.user:officer;user.password=password;user.mustChangePassword=true;await user.save({session});await audit(req,"BUSINESS_PARTNER_OFFICER_PASSWORD_RESET","Reset Business Partner officer password",{partnerId:String(p._id),officerId:String(officer._id),type},session);});
     res.json({success:true,message:"Password reset. The officer must change it at next login."});
   }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{if(session)await session.endSession();}

@@ -39,10 +39,10 @@ class _BusinessPartnerDashboardScreenState
 
   static const List<_Section> _sections = <_Section>[
     _Section('Dashboard', Icons.grid_view_rounded),
-    _Section('My Officers', Icons.badge_outlined),
+    _Section('Officer Management', Icons.badge_outlined),
     _Section('Customers', Icons.people_alt_outlined),
-    _Section('Solar', Icons.wb_sunny_outlined),
-    _Section('Phone Financing', Icons.smartphone_outlined),
+    _Section('Assigned Solar', Icons.wb_sunny_outlined),
+    _Section('Assigned Phones', Icons.smartphone_outlined),
     _Section('Sales & Applications', Icons.description_outlined),
     _Section('Repayments', Icons.payments_outlined),
     _Section('Commission', Icons.account_balance_wallet_outlined),
@@ -70,7 +70,7 @@ class _BusinessPartnerDashboardScreenState
     final Map<String, Future<Map<String, dynamic>>> calls =
         <String, Future<Map<String, dynamic>>>{
       'Dashboard': _api.dashboard(filters: filters),
-      'My Officers': _api.officers(filters: filters),
+      'Officer Management': _api.officers(filters: filters),
       'Customers': _api.customers(filters: filters),
       'Applications': _api.applications(filters: filters),
       'Repayments': _api.repayments(filters: filters),
@@ -104,8 +104,8 @@ class _BusinessPartnerDashboardScreenState
         ..addAll(received);
       final Map<String, dynamic> applications =
           received['Applications'] ?? <String, dynamic>{};
-      _responses['Solar'] = applications;
-      _responses['Phone Financing'] = applications;
+      _responses['Assigned Solar'] = applications;
+      _responses['Assigned Phones'] = applications;
       _responses['Sales & Applications'] = applications;
       _unavailable
         ..clear()
@@ -658,8 +658,8 @@ class _BusinessPartnerDashboardScreenState
   List<_Metric> _metrics() {
     final List<Map<String, dynamic>> solar = _applications('solar');
     final List<Map<String, dynamic>> phone = _applications('phone');
-    final Map<String, dynamic> officers =
-        _map((_responses['My Officers'] ?? <String, dynamic>{})['officers']);
+    final Map<String, dynamic> officers = _map(
+        (_responses['Officer Management'] ?? <String, dynamic>{})['officers']);
     final int officerCount =
         _list(officers['solar']).length + _list(officers['phone']).length;
     final int customerCount =
@@ -786,7 +786,7 @@ class _BusinessPartnerDashboardScreenState
                 (constraints.maxWidth - gap * (columns - 1)) / columns;
             final List<_QuickAction> actions = <_QuickAction>[
               _QuickAction('Applications', Icons.description_outlined, 5),
-              _QuickAction('My Officers', Icons.badge_outlined, 1),
+              _QuickAction('Officer Management', Icons.badge_outlined, 1),
               _QuickAction('Repayments', Icons.payments_outlined, 6),
               _QuickAction('Reports', Icons.bar_chart_rounded, 9),
             ];
@@ -1008,10 +1008,10 @@ class _BusinessPartnerDashboardScreenState
       icon: Icons.bar_chart_rounded,
       child: Column(
         children: <Widget>[
-          _portfolioBar('Solar', solarValue, maxValue, const Color(0xFF23A768),
-              Icons.wb_sunny_outlined),
+          _portfolioBar('Assigned Solar', solarValue, maxValue,
+              const Color(0xFF23A768), Icons.wb_sunny_outlined),
           const SizedBox(height: 17),
-          _portfolioBar('Phone Financing', phoneValue, maxValue,
+          _portfolioBar('Assigned Phones', phoneValue, maxValue,
               const Color(0xFF77A9E8), Icons.smartphone_outlined),
           const SizedBox(height: 17),
           Row(
@@ -1170,8 +1170,8 @@ class _BusinessPartnerDashboardScreenState
         _responses[title] ?? <String, dynamic>{};
     final bool filterable = <String>[
       'Customers',
-      'Solar',
-      'Phone Financing',
+      'Assigned Solar',
+      'Assigned Phones',
       'Sales & Applications',
       'Repayments'
     ].contains(title);
@@ -1217,10 +1217,11 @@ class _BusinessPartnerDashboardScreenState
 
   String _sectionSubtitle(String title) {
     const Map<String, String> subtitles = <String, String>{
-      'My Officers': 'People supporting your partner portfolio',
+      'Officer Management': 'People supporting your partner portfolio',
       'Customers': 'Customers connected to your applications',
-      'Solar': 'Solar applications in your portfolio',
-      'Phone Financing': 'Phone financing applications in your portfolio',
+      'Assigned Solar': 'Solar applications assigned to your portfolio',
+      'Assigned Phones':
+          'Phone financing applications assigned to your portfolio',
       'Sales & Applications': 'All applications across your services',
       'Repayments': 'Payment activity from your portfolio',
       'Commission': 'Commission activity for your workspace',
@@ -1231,7 +1232,7 @@ class _BusinessPartnerDashboardScreenState
   }
 
   List<Widget> _recordWidgets(String title, Map<String, dynamic> source) {
-    if (title == 'My Officers') {
+    if (title == 'Officer Management') {
       final Map<String, dynamic> officers = _map(source['officers']);
       return <Map<String, dynamic>>[
         ..._list(officers['solar']).map((Map<String, dynamic> row) =>
@@ -1246,12 +1247,12 @@ class _BusinessPartnerDashboardScreenState
           .map(_customerCard)
           .toList();
     }
-    if (title == 'Solar' ||
-        title == 'Phone Financing' ||
+    if (title == 'Assigned Solar' ||
+        title == 'Assigned Phones' ||
         title == 'Sales & Applications') {
-      final List<Map<String, dynamic>> rows = title == 'Solar'
+      final List<Map<String, dynamic>> rows = title == 'Assigned Solar'
           ? _applications('solar')
-          : title == 'Phone Financing'
+          : title == 'Assigned Phones'
               ? _applications('phone')
               : _allApplications();
       return rows.where(_matchesFilter).map(_applicationCard).toList();
@@ -1334,6 +1335,25 @@ class _BusinessPartnerDashboardScreenState
           customer['fullName'] ?? row['customerName'], 'Customer application'),
       subtitle: service,
       details: <_Detail>[
+        _Detail('Customer',
+            _text(customer['fullName'] ?? row['customerName'], 'Customer')),
+        _Detail(
+            'Package / product',
+            _text(row['packageName'] ??
+                row['package'] ??
+                row['productName'] ??
+                row['product'] ??
+                service)),
+        _Detail(
+            'Assigned officer',
+            _text(assignedOfficer['fullName'] ?? row['assignedOfficerName'],
+                'Not assigned')),
+        _Detail(
+            'Repayment',
+            _money(amounts['outstandingBalance'] ??
+                row['outstandingBalance'] ??
+                amounts['totalPayable'] ??
+                row['amount'])),
         _Detail('Value', _money(amounts['totalPayable'] ?? row['amount'])),
         _Detail('Submitted', _date(row['createdAt'])),
         if (assignedOfficer.isNotEmpty)
@@ -1586,10 +1606,10 @@ class _BusinessPartnerDashboardScreenState
     final num max = solarCount > phoneCount ? solarCount : phoneCount;
     return Column(
       children: <Widget>[
-        _portfolioBar('Solar', solarCount, max, const Color(0xFF23A768),
-            Icons.wb_sunny_outlined),
+        _portfolioBar('Assigned Solar', solarCount, max,
+            const Color(0xFF23A768), Icons.wb_sunny_outlined),
         const SizedBox(height: 17),
-        _portfolioBar('Phone Financing', phoneCount, max,
+        _portfolioBar('Assigned Phones', phoneCount, max,
             const Color(0xFF77A9E8), Icons.smartphone_outlined),
       ],
     );
@@ -1823,8 +1843,8 @@ class _BusinessPartnerDashboardScreenState
           error: true);
       return;
     }
-    final Map<String, dynamic> officers =
-        _map((_responses['My Officers'] ?? <String, dynamic>{})['officers']);
+    final Map<String, dynamic> officers = _map(
+        (_responses['Officer Management'] ?? <String, dynamic>{})['officers']);
     final List<Map<String, dynamic>> available =
         _list(officers[type == 'SOLAR' ? 'solar' : 'phone']);
     if (available.isEmpty) {

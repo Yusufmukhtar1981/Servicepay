@@ -153,6 +153,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Amina Bello'), findsOneWidget);
+    expect(find.text('Solar Officers'), findsOneWidget);
+    expect(find.text('Phone Financing Officers'), findsOneWidget);
     expect(find.textContaining('SP-S-104'), findsOneWidget);
     expect(find.text('Applications'), findsOneWidget);
     expect(find.text('14'), findsOneWidget);
@@ -179,7 +181,7 @@ void main() {
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(1200, 900);
     await tester.pumpAndSettle();
-    expect(find.text('My Officers'), findsOneWidget);
+    expect(find.text('Officer Management'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -190,9 +192,9 @@ void main() {
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
 
-    expect(find.text('My Officers'), findsOneWidget);
+    expect(find.text('Officer Management'), findsOneWidget);
     expect(find.text('Amina Bello'), findsOneWidget);
-    expect(find.byKey(const Key('create-officer')), findsNothing);
+    expect(find.byKey(const Key('create-solar-officer')), findsNothing);
     await tester.tap(find.text('Amina Bello'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('edit-officer')), findsNothing);
@@ -208,18 +210,18 @@ void main() {
     ]);
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('create-officer')));
+    final Finder createPhone =
+        find.byKey(const Key('create-phone-financing-officer'));
+    await tester.ensureVisible(createPhone);
+    await tester.pumpAndSettle();
+    await tester.tap(createPhone);
     await tester.pumpAndSettle();
 
-    expect(find.text('Create Officer'), findsWidgets);
-    expect(find.text('ServicePay Solar Officer'), findsOneWidget);
+    expect(find.text('Create Phone Financing Officer'), findsWidgets);
     await tester.tap(find.byKey(const Key('save-officer')));
     await tester.pump();
     expect(find.text('Required'), findsWidgets);
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Phone Financing Officer').last);
     const List<String> values = <String>[
       'Ibrahim Musa',
       '08000000000',

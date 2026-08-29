@@ -128,6 +128,7 @@ const solarRoutes = require("./routes/solar.routes");
 const solarOfficerRoutes = require("./routes/solarOfficer.routes");
 const phoneFinancingRoutes = require("./routes/phoneFinancing.routes");
 const businessPartnerRoutes = require("./routes/businessPartner.routes");
+const adminAssignmentsRoutes = require("./routes/adminAssignments.routes");
 
 app.use(helmet());
 app.use(cors());
@@ -313,6 +314,7 @@ app.use("/api/solar", solarRoutes);
 app.use("/api/solar/officer", solarOfficerRoutes);
 app.use("/api/phone-financing", phoneFinancingRoutes);
 app.use("/api/business-partner", businessPartnerRoutes);
+app.use("/api/admin/assignments", adminAssignmentsRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,

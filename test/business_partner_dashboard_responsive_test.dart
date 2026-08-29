@@ -157,9 +157,9 @@ void main() {
       expect(find.textContaining(technicalField), findsNothing);
     }
 
-    await tester.tap(find.text('Solar').first);
+    await tester.tap(find.text('Assigned Solar').first);
     await tester.pumpAndSettle();
-    expect(find.text('Fatima Garba'), findsOneWidget);
+    expect(find.text('Fatima Garba'), findsWidgets);
     expect(find.byTooltip('Assign officer'), findsOneWidget);
     expect(find.byTooltip('Review verification'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -183,10 +183,10 @@ void main() {
 
     for (final String module in <String>[
       'Dashboard',
-      'My Officers',
+      'Officer Management',
       'Customers',
-      'Solar',
-      'Phone Financing',
+      'Assigned Solar',
+      'Assigned Phones',
       'Sales & Applications',
       'Repayments',
     ]) {
@@ -219,7 +219,7 @@ void main() {
 
     await tester.pumpWidget(_screen(includeSensitivePermissions: false));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Solar').first);
+    await tester.tap(find.text('Assigned Solar').first);
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Assign officer'), findsNothing);
