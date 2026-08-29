@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const BankTransfer = require("../models/bankTransfer.model");
+const { verifyTransactionPin } = require("../services/transactionPin.service");
 
 const SQUAD_BANKS = [
   { code: "000014", name: "Access Bank" },
@@ -968,8 +969,9 @@ exports.initiateBankTransfer =
       const amount =
         parseMoney(req.body.amount);
 
-      const pin =
-        normalizeDigits(req.body.pin);
+      // Normalize legacy request aliases to the canonical PIN field.
+      const transactionPin =
+        req.body.transactionPin ?? req.body.pin;
 
       const narration =
         normalizeText(
@@ -997,14 +999,6 @@ exports.initiateBankTransfer =
           success: false,
           message:
             "Enter a valid 10-digit account number.",
-        });
-      }
-
-      if (!/^\d{4}$/.test(pin)) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Enter your valid 4-digit transaction PIN.",
         });
       }
 
@@ -1036,11 +1030,7 @@ exports.initiateBankTransfer =
       }
 
       const userWithPin =
-        await User.findById(
-          userId
-        ).select(
-          "+transactionPin transactionPinSet"
-        );
+        await User.findById(userId);
 
       if (!userWithPin) {
         return res.status(404).json({
@@ -1061,33 +1051,7 @@ exports.initiateBankTransfer =
         });
       }
 
-      if (
-        !userWithPin.transactionPinSet ||
-        !userWithPin.transactionPin
-      ) {
-        return res.status(400).json({
-          success: false,
-          code:
-            "TRANSACTION_PIN_NOT_SET",
-          message:
-            "Please create your transaction PIN before making a bank transfer.",
-        });
-      }
-
-      const pinIsCorrect =
-        await userWithPin.compareTransactionPin(
-          pin
-        );
-
-      if (!pinIsCorrect) {
-        return res.status(401).json({
-          success: false,
-          code:
-            "INCORRECT_TRANSACTION_PIN",
-          message:
-            "Incorrect transaction PIN.",
-        });
-      }
+      await verifyTransactionPin(userId, transactionPin);
 
       const lookup =
         await lookupAccountWithSquad({
@@ -1352,6 +1316,19 @@ exports.initiateBankTransfer =
             "Insufficient wallet balance.",
           walletBalance:
             user?.walletBalance || 0,
+        });
+      }
+
+      if (error.statusCode && [
+        "INVALID_TRANSACTION_PIN",
+        "TRANSACTION_PIN_NOT_SET",
+        "INCORRECT_TRANSACTION_PIN",
+        "USER_NOT_FOUND",
+      ].includes(error.code)) {
+        return res.status(error.statusCode).json({
+          success: false,
+          code: error.code,
+          message: error.message,
         });
       }
 

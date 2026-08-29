@@ -9,6 +9,7 @@ const crypto = require("crypto");
 
 const User = require("../models/user.model");
 const Transfer = require("../models/transfer.model");
+const { verifyTransactionPin } = require("../services/transactionPin.service");
 const Transaction = require(
   "../models/transaction.model"
 );
@@ -216,9 +217,8 @@ exports.transfer = async (
       req.body.receiverPhone || ""
     ).trim();
 
-    const pin = String(
-      req.body.pin || ""
-    ).trim();
+    // Accept legacy aliases only at the request boundary.
+    const transactionPin = req.body.transactionPin ?? req.body.pin;
 
     const transferAmount = Number(
       req.body.amount
@@ -254,14 +254,6 @@ exports.transfer = async (
         success: false,
         message:
           "Enter a valid 11-digit recipient phone number.",
-      });
-    }
-
-    if (!/^\d{4}$/.test(pin)) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Enter your valid 4-digit transaction PIN.",
       });
     }
 
@@ -303,14 +295,9 @@ exports.transfer = async (
 
     session.startTransaction();
 
-    /*
-     * transactionPin has select:false.
-     */
     const sender = await User.findById(
       senderId
-    )
-      .select("+transactionPin")
-      .session(session);
+    ).session(session);
 
     if (!sender) {
       await session.abortTransaction();
@@ -338,37 +325,7 @@ exports.transfer = async (
       });
     }
 
-    if (
-      sender.transactionPinSet !== true ||
-      !sender.transactionPin
-    ) {
-      await session.abortTransaction();
-
-      return res.status(400).json({
-        success: false,
-        code:
-          "TRANSACTION_PIN_NOT_SET",
-        message:
-          "Please create your transaction PIN before making a transfer.",
-      });
-    }
-
-    const pinIsCorrect =
-      await sender.compareTransactionPin(
-        pin
-      );
-
-    if (!pinIsCorrect) {
-      await session.abortTransaction();
-
-      return res.status(401).json({
-        success: false,
-        code:
-          "INCORRECT_TRANSACTION_PIN",
-        message:
-          "Incorrect transaction PIN.",
-      });
-    }
+    await verifyTransactionPin(senderId, transactionPin, { session });
 
     const receiver = await User.findOne({
       phone: receiverPhone,
@@ -828,6 +785,19 @@ exports.transfer = async (
       "ServicePay transfer error:",
       error
     );
+
+    if (error?.statusCode && [
+      "INVALID_TRANSACTION_PIN",
+      "TRANSACTION_PIN_NOT_SET",
+      "INCORRECT_TRANSACTION_PIN",
+      "USER_NOT_FOUND",
+    ].includes(error.code)) {
+      return res.status(error.statusCode).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
 
     if (error?.code === 11000) {
       return res.status(409).json({

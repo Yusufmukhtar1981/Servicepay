@@ -63,14 +63,25 @@ const protect = async (req, res, next) => {
       });
     }
 
-    const user = await User.findById(
-      userId
-    ).select("-password");
+    const user = await User.findById(userId)
+      .select("-password +authTokenVersion");
 
     if (!user) {
       return res.status(401).json({
         success: false,
         message: "User not found.",
+      });
+    }
+
+    const tokenVersion = decoded.authTokenVersion === undefined
+      ? 0
+      : Number(decoded.authTokenVersion);
+    if (!Number.isInteger(tokenVersion) ||
+        tokenVersion !== Number(user.authTokenVersion || 0)) {
+      return res.status(401).json({
+        success: false,
+        code: "TOKEN_REVOKED",
+        message: "Your password was changed. Please sign in again.",
       });
     }
 

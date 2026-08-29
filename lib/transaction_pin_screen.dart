@@ -1,13 +1,17 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'security_utils.dart';
 
 class TransactionPinScreen extends StatefulWidget {
   const TransactionPinScreen({
     super.key,
+    this.client,
   });
+  final http.Client? client;
 
   @override
   State<TransactionPinScreen> createState() => _TransactionPinScreenState();
@@ -23,11 +27,21 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
   bool hidePin = true;
   bool hideConfirmPin = true;
   bool isLoading = false;
+  late final http.Client _client;
+  late final bool _ownsClient;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsClient = widget.client == null;
+    _client = widget.client ?? http.Client();
+  }
 
   @override
   void dispose() {
     pinController.dispose();
     confirmPinController.dispose();
+    if (_ownsClient) _client.close();
     super.dispose();
   }
 
@@ -50,16 +64,16 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
   }
 
   Future<void> createTransactionPin() async {
+    if (isLoading) return;
     FocusScope.of(context).unfocus();
 
     final String pin = pinController.text.trim();
 
     final String confirmPin = confirmPinController.text.trim();
 
-    if (!RegExp(r'^\d{4}$').hasMatch(pin)) {
-      showMessage(
-        'Transaction PIN must contain exactly 4 digits.',
-      );
+    final pinError = transactionPinError(pin);
+    if (pinError != null) {
+      showMessage(pinError);
       return;
     }
 
@@ -77,7 +91,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
 
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = await readAuthToken() ?? '';
 
       if (token.isEmpty) {
         showMessage(
@@ -86,7 +100,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
         return;
       }
 
-      final http.Response response = await http
+      final http.Response response = await _client
           .post(
             Uri.parse(
               '$baseUrl/transaction-pin/create',
@@ -116,7 +130,9 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
         }
       }
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true) {
         await prefs.setBool(
           'transaction_pin_set',
           true,
@@ -233,6 +249,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                 keyboardType: TextInputType.number,
                 maxLength: 4,
                 obscureText: hidePin,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
                   labelText: 'Enter 4-digit PIN',
                   counterText: '',
@@ -269,6 +286,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                 keyboardType: TextInputType.number,
                 maxLength: 4,
                 obscureText: hideConfirmPin,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
                   labelText: 'Confirm 4-digit PIN',
                   counterText: '',

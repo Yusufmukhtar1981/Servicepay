@@ -8,6 +8,7 @@ const User = require(
 const RiderWithdrawal = require(
   "../models/riderWithdrawal.model"
 );
+const { verifyTransactionPin } = require("../services/transactionPin.service");
 
 /*
 |--------------------------------------------------------------------------
@@ -1143,18 +1144,6 @@ exports.createWithdrawalRequest =
       }
 
       if (
-        !/^\d{4}$/.test(
-          transactionPin
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Transaction PIN must contain exactly 4 digits.",
-        });
-      }
-
-      if (
         narration.length > 120
       ) {
         return res.status(400).json({
@@ -1185,7 +1174,7 @@ exports.createWithdrawalRequest =
           const rider =
             await getAuthenticatedRider(
               req, {
-                includePin: true,
+                includePin: false,
                 session,
               }
             );
@@ -1243,40 +1232,11 @@ exports.createWithdrawalRequest =
             throw error;
           }
 
-          if (
-            rider
-              .transactionPinSet !==
-              true ||
-            !rider.transactionPin
-          ) {
-            const error =
-              new Error(
-                "Please create your 4-digit Transaction PIN before requesting withdrawal."
-              );
-
-            error.statusCode =
-              400;
-
-            throw error;
-          }
-
-          const correctPin =
-            await rider
-              .compareTransactionPin(
-                transactionPin
-              );
-
-          if (!correctPin) {
-            const error =
-              new Error(
-                "Incorrect Transaction PIN."
-              );
-
-            error.statusCode =
-              400;
-
-            throw error;
-          }
+          await verifyTransactionPin(
+            rider._id,
+            transactionPin,
+            { session }
+          );
 
           const existingActive =
             await RiderWithdrawal.findOne({
@@ -1468,6 +1428,7 @@ exports.createWithdrawalRequest =
         )
         .json({
           success: false,
+          ...(error.code ? { code: error.code } : {}),
 
           message:
             error.message ||

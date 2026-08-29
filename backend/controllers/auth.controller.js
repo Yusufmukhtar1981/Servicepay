@@ -197,7 +197,7 @@ const { sendEmail } = require("../services/email.service");
 
 const { validateStrongPassword, validateTransactionPin } = require('../utils/passwordPolicy');
 
-const generateToken = (userId) => {
+const generateToken = (userId, authTokenVersion = 0) => {
   if (!process.env.JWT_SECRET) {
     throw new Error(
       "JWT_SECRET is missing from environment variables."
@@ -207,6 +207,7 @@ const generateToken = (userId) => {
   return jwt.sign(
     {
       id: userId,
+      authTokenVersion: Number(authTokenVersion || 0),
     },
     process.env.JWT_SECRET,
     {
@@ -498,17 +499,31 @@ exports.registerUser = async (
       });
     }
 
-    if (req.body.transactionPin !== undefined &&
-        req.body.transactionPin !== null &&
-        String(req.body.transactionPin).trim() !== '') {
+    const registrationPin = req.body.transactionPin ||
+      req.body.transactionPIN || req.body.pin;
+    const registrationPinConfirmation = req.body.confirmTransactionPin ||
+      req.body.confirmPin;
 
-      const pinCheck = validateTransactionPin(req.body.transactionPin);
+    if (registrationPin !== undefined &&
+        registrationPin !== null &&
+        String(registrationPin).trim() !== '') {
+
+      const pinCheck = validateTransactionPin(registrationPin);
 
       if (!pinCheck.valid) {
         return res.status(400).json({
           success: false,
           message: pinCheck.message,
           code: 'INVALID_TRANSACTION_PIN',
+        });
+      }
+
+      if (registrationPinConfirmation === undefined ||
+          String(registrationPinConfirmation).trim() !== String(registrationPin).trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Transaction PINs do not match.",
+          code: "TRANSACTION_PIN_MISMATCH",
         });
       }
     }
@@ -697,7 +712,7 @@ fullName: cleanFullName,
       commissionBalance: 0,
       totalEarnings: 0,
       totalTransactions: 0,
-      transactionPinSet: Boolean(servicePayRegistrationPin),
+      transactionPin: servicePayRegistrationPin || undefined,
 
       zone:
         String(zone || "").trim() ||
@@ -725,7 +740,7 @@ fullName: cleanFullName,
       success: true,
       message:
         "Account created successfully.",
-      token: generateToken(user._id),
+      token: generateToken(user._id, user.authTokenVersion),
       user: formatUser(user),
     });
   } catch (error) {
@@ -821,7 +836,7 @@ exports.loginUser = async (
           phone: cleanLoginValue,
         },
       ],
-    }).select("+password");
+    }).select("+password +authTokenVersion");
 
     if (!user) {
       await recordLoginSecurityEvent(req, {
@@ -900,46 +915,14 @@ exports.loginUser = async (
       if (passwordIsCorrect) {
         user.password =
           String(password);
+        user.passwordChangedAt = new Date();
 
         /*
          * user.model.js will hash it
          * automatically before saving.
          */
         
-    if (servicePayRegistrationPin) {
-      if ("transactionPin" in user) {
-        user.transactionPin = servicePayRegistrationPin;
-      }
-
-      if ("transactionPIN" in user) {
-        user.transactionPIN = servicePayRegistrationPin;
-      }
-
-      if ("pin" in user && !user.pin) {
-        user.pin = servicePayRegistrationPin;
-      }
-
-      /*
-       * If the model exposes a dedicated setter/method, use it.
-       * Otherwise save a bcrypt hash in the standard transactionPinHash field.
-       */
-      if (typeof user.setTransactionPin === "function") {
-        await user.setTransactionPin(servicePayRegistrationPin);
-      } else if ("transactionPinHash" in user || user.schema?.path?.("transactionPinHash")) {
-        const bcryptLib =
-          typeof bcrypt !== "undefined"
-            ? bcrypt
-            : require("bcryptjs");
-        user.transactionPinHash = await bcryptLib.hash(
-          servicePayRegistrationPin,
-          10
-        );
-      }
-
-      user.transactionPinSet = true;
-    }
-
-await user.save();
+        await user.save();
 
         console.log(
           `Password migrated to bcrypt for ${
@@ -1041,9 +1024,7 @@ await user.save();
       success: true,
       message:
         "Login successful.",
-      token: generateToken(
-        user._id
-      ),
+      token: generateToken(user._id, user.authTokenVersion),
       user: formatUser(user),
     });
   } catch (error) {
@@ -1343,14 +1324,12 @@ exports.changePassword = async (
       });
     }
 
-    if (
-      String(newPassword)
-        .length < 6
-    ) {
+    const passwordCheck = validateStrongPassword(newPassword);
+    if (!passwordCheck.valid) {
       return res.status(400).json({
         success: false,
-        message:
-          "New password must contain at least 6 characters.",
+        code: "WEAK_PASSWORD",
+        message: passwordCheck.message,
       });
     }
 
@@ -1379,7 +1358,7 @@ exports.changePassword = async (
     const user =
       await User.findById(
         userId
-      ).select("+password");
+      ).select("+password +authTokenVersion");
 
     if (!user) {
       return res.status(404).json({
@@ -1396,7 +1375,7 @@ exports.changePassword = async (
         : "";
 
     if (!savedPassword) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
         message:
           "Current password is incorrect.",
@@ -1431,22 +1410,27 @@ exports.changePassword = async (
     }
 
     if (!passwordIsCorrect) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
         message:
           "Current password is incorrect.",
       });
     }
 
-    user.password =
-      String(newPassword);
-
+    user.password = String(newPassword);
+    user.passwordChangedAt = new Date();
     await user.save();
+    const versionedUser = await User.findByIdAndUpdate(
+      user._id,
+      { $inc: { authTokenVersion: 1 } },
+      { new: true }
+    ).select("+authTokenVersion");
 
     return res.status(200).json({
       success: true,
       message:
         "Password changed successfully.",
+      token: generateToken(user._id, versionedUser.authTokenVersion),
     });
   } catch (error) {
     console.error(
@@ -1689,11 +1673,12 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 6) {
+    const passwordCheck = validateStrongPassword(newPassword);
+    if (!passwordCheck.valid) {
       return res.status(400).json({
         success: false,
-        message:
-          "New password must contain at least 6 characters.",
+        code: "WEAK_PASSWORD",
+        message: passwordCheck.message,
       });
     }
 
@@ -1716,7 +1701,7 @@ exports.resetPassword = async (req, res) => {
         $gt: Date.now(),
       },
     }).select(
-      "+password +passwordResetToken +passwordResetExpires"
+      "+password +passwordResetToken +passwordResetExpires +authTokenVersion"
     );
 
     if (!user) {
@@ -1768,11 +1753,17 @@ exports.resetPassword = async (req, res) => {
     await user.save({
       validateBeforeSave: false,
     });
+    const versionedUser = await User.findByIdAndUpdate(
+      user._id,
+      { $inc: { authTokenVersion: 1 } },
+      { new: true }
+    ).select("+authTokenVersion");
 
     return res.status(200).json({
       success: true,
       message:
         "Password reset successfully. You can now log in with your new password.",
+      token: generateToken(user._id, versionedUser.authTokenVersion),
     });
   } catch (error) {
     console.error(

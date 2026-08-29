@@ -11,6 +11,9 @@ const {
   postDebit,
   postCredit,
 } = require("../services/ledger.service");
+const {
+  verifyTransactionPin,
+} = require("../services/transactionPin.service");
 
 const getUserId = (req) =>
   req.user?._id ||
@@ -65,6 +68,13 @@ exports.createWithdrawal = async (
   try {
     let result = null;
     const userId = getUserId(req);
+    // PIN admission maintains durable security state outside financial
+    // transactions. Verify before opening the wallet transaction so its
+    // reservation cannot be rolled back or cause a transaction retry loop.
+    await verifyTransactionPin(
+      userId,
+      String(req.body?.transactionPin || "").trim()
+    );
     const idempotencyKey =
       getIdempotencyKey(req);
     const limits =
@@ -189,12 +199,8 @@ exports.createWithdrawal = async (
         }
 
         const user =
-          await User.findById(
-            userId
-          )
-            .select(
-              "+transactionPin transactionPinSet walletBalance withdrawalLockedBalance"
-            )
+          await User.findById(userId)
+            .select("walletBalance withdrawalLockedBalance")
             .session(session);
 
         if (!user) {
@@ -203,43 +209,6 @@ exports.createWithdrawal = async (
           );
 
           error.statusCode = 404;
-          throw error;
-        }
-
-        if (
-          user.transactionPinSet !== true ||
-          !user.transactionPin
-        ) {
-          const error = new Error(
-            "Please create your transaction PIN first."
-          );
-
-          error.statusCode = 400;
-          error.code =
-            "TRANSACTION_PIN_NOT_SET";
-          throw error;
-        }
-
-        if (!/^\d{4}$/.test(pin)) {
-          const error = new Error(
-            "Enter your 4-digit transaction PIN."
-          );
-
-          error.statusCode = 400;
-          throw error;
-        }
-
-        const pinCorrect =
-          await user.compareTransactionPin(
-            pin
-          );
-
-        if (!pinCorrect) {
-          const error = new Error(
-            "Incorrect transaction PIN."
-          );
-
-          error.statusCode = 401;
           throw error;
         }
 

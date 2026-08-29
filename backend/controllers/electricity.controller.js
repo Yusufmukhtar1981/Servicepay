@@ -6,6 +6,7 @@ const User = require("../models/user.model");
 const Transaction = require(
   "../models/transaction.model"
 );
+const { verifyTransactionPin } = require("../services/transactionPin.service");
 
 const ELECTRICITY_PAYMENT_URL =
   "https://www.nellobytesystems.com/APIElectricityV1.asp";
@@ -625,9 +626,8 @@ exports.payElectricity = async (
       req.body.phoneNumber || ""
     ).trim();
 
-    const pin = String(
-      req.body.pin || ""
-    ).trim();
+    const transactionPin =
+      req.body.transactionPin ?? req.body.pin;
 
     const requestedAmount = Number(
       req.body.amount
@@ -664,14 +664,6 @@ exports.payElectricity = async (
         success: false,
         message:
           "Enter a valid 11-digit phone number.",
-      });
-    }
-
-    if (!/^\d{4}$/.test(pin)) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Enter your valid 4-digit transaction PIN.",
       });
     }
 
@@ -747,10 +739,7 @@ exports.payElectricity = async (
     }
 
     const sender =
-      await User.findById(userId)
-        .select(
-          "+transactionPin"
-        );
+      await User.findById(userId);
 
     if (!sender) {
       return res.status(404).json({
@@ -773,38 +762,7 @@ exports.payElectricity = async (
       });
     }
 
-    if (
-      sender.transactionPinSet !==
-        true ||
-      !sender.transactionPin
-    ) {
-      return res.status(400).json({
-        success: false,
-
-        code:
-          "TRANSACTION_PIN_NOT_SET",
-
-        message:
-          "Please create your transaction PIN before paying an electricity bill.",
-      });
-    }
-
-    const pinIsCorrect =
-      await sender.compareTransactionPin(
-        pin
-      );
-
-    if (!pinIsCorrect) {
-      return res.status(401).json({
-        success: false,
-
-        code:
-          "INCORRECT_TRANSACTION_PIN",
-
-        message:
-          "Incorrect transaction PIN.",
-      });
-    }
+    await verifyTransactionPin(sender._id, transactionPin);
 
     const reference =
       generateReference();
@@ -1236,6 +1194,19 @@ exports.payElectricity = async (
       error.response?.data ||
         error.message
     );
+
+    if (error?.statusCode && [
+      "INVALID_TRANSACTION_PIN",
+      "TRANSACTION_PIN_NOT_SET",
+      "INCORRECT_TRANSACTION_PIN",
+      "USER_NOT_FOUND",
+    ].includes(error.code)) {
+      return res.status(error.statusCode).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
 
     return res.status(500).json({
       success: false,

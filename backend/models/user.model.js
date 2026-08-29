@@ -49,6 +49,23 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    transactionPinFailedAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+      select: false,
+    },
+    transactionPinLockedUntil: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    transactionPinAttemptVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+      select: false,
+    },
 
     /*
      * Password reset
@@ -68,6 +85,12 @@ const userSchema = new mongoose.Schema(
     passwordChangedAt: {
       type: Date,
       default: undefined,
+    },
+    authTokenVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+      select: false,
     },
 
     /*
@@ -896,10 +919,19 @@ userSchema.methods.compareTransactionPin =
       return false;
     }
 
-    return bcrypt.compare(
-      String(enteredPin),
-      this.transactionPin
-    );
+    const storedPin = String(this.transactionPin);
+
+    if (/^\$2[aby]\$\d{2}\$/.test(storedPin)) {
+      return bcrypt.compare(
+        String(enteredPin),
+        storedPin
+      );
+    }
+
+    // Compatibility only: the canonical PIN service upgrades this value after
+    // a successful match. Do not accept malformed legacy values.
+    return /^\d{4}$/.test(storedPin) &&
+      String(enteredPin) === storedPin;
   };
 
 /*

@@ -72,6 +72,7 @@ const createUser = async ({ walletBalance = 0 } = {}) => {
     role: "CUSTOMER",
     status: "ACTIVE",
     walletBalance,
+    transactionPin: "1234",
   });
 };
 
@@ -109,6 +110,7 @@ const checkoutBody = (product, quantity = 1) => ({
   state: "Kano",
   lga: "Nassarawa",
   paymentMethod: "WALLET",
+  transactionPin: "1234",
 });
 
 test.before(async () => {
@@ -357,6 +359,53 @@ test("checkout idempotency prevents duplicate wallet debits and orders", async (
   const storedProduct = await MarketplaceProduct.findById(product._id);
   assert.equal(storedBuyer.walletBalance, 2300);
   assert.equal(storedProduct.stock, 4);
+});
+
+test("checkout verifies canonical PIN errors before debiting and upgrades a legacy PIN", async () => {
+  const { product } = await createStoreWithProduct({
+    price: 700,
+    stock: 4,
+  });
+  const buyer = await createUser({ walletBalance: 3000 });
+  const headers = { "idempotency-key": "marketplace-pin-wrong" };
+
+  const wrongPin = await call(marketplace.createOrder, {
+    user: buyer,
+    body: { ...checkoutBody(product), transactionPin: "9999" },
+    headers,
+  });
+  assert.equal(wrongPin.status, 401);
+  assert.equal(wrongPin.body.code, "INCORRECT_TRANSACTION_PIN");
+  assert.equal((await User.findById(buyer._id)).walletBalance, 3000);
+  assert.equal((await MarketplaceProduct.findById(product._id)).stock, 4);
+
+  await User.collection.updateOne(
+    { _id: buyer._id },
+    { $set: { transactionPin: undefined, transactionPinSet: false } },
+  );
+  const unsetPin = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product),
+    headers: { "idempotency-key": "marketplace-pin-unset" },
+  });
+  assert.equal(unsetPin.status, 400);
+  assert.equal(unsetPin.body.code, "TRANSACTION_PIN_NOT_SET");
+  assert.equal((await User.findById(buyer._id)).walletBalance, 3000);
+
+  await User.collection.updateOne(
+    { _id: buyer._id },
+    { $set: { transactionPin: "1234", transactionPinSet: false } },
+  );
+  const legacyPin = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product),
+    headers: { "idempotency-key": "marketplace-pin-legacy" },
+  });
+  assert.equal(legacyPin.status, 201);
+  const upgraded = await User.findById(buyer._id).select("+transactionPin");
+  assert.match(upgraded.transactionPin, /^\$2[aby]\$/);
+  assert.equal(upgraded.transactionPinSet, true);
+  assert.equal(upgraded.walletBalance, 2300);
 });
 
 test("insufficient stock and self-purchase leave wallet and stock unchanged", async () => {

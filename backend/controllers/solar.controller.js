@@ -14,6 +14,7 @@ const AdminAuditLog = require("../models/adminAuditLog.model");
 const SolarAssignment = require("../models/solarAssignment.model");
 const SolarVerification = require("../models/solarVerification.model");
 const { postDebit } = require("../services/ledger.service");
+const { verifyTransactionPin } = require("../services/transactionPin.service");
 const {
   createSolarOfficerCommission,
 } = require("../services/solarOfficerCommission.service");
@@ -440,9 +441,8 @@ exports.pay = async (req,res) => {
       if(paymentType==="DEPOSIT" && !["APPROVED","AWAITING_DEPOSIT"].includes(app.status))throw problem("A deposit can only be paid on an approved application.");
       if(paymentType==="INSTALLMENT" && !["ACTIVE","RECOVERY"].includes(app.status))throw problem("Installments can only be paid on an active Solar application.");
        const due=paymentType==="DEPOSIT"?money(app.depositRequired-app.depositPaid):money(app.outstandingBalance); if(requested>due)throw problem("Payment exceeds the amount due.");
-      const payer=await User.findById(id(req)).select("+transactionPin transactionPinSet walletBalance").session(session); if(!payer)throw problem("Customer account not found.",401);
-      if(!payer.transactionPinSet||!payer.transactionPin)throw problem("Please create your transaction PIN before making this payment.",400);
-      if(!await payer.compareTransactionPin(text(req.body?.transactionPin,4)))throw problem("Incorrect transaction PIN.",401);
+      const payer=await User.findById(id(req)).select("walletBalance").session(session); if(!payer)throw problem("Customer account not found.",401);
+      await verifyTransactionPin(payer._id, req.body?.transactionPin ?? req.body?.pin, { session });
        const updatedPayer=await User.findOneAndUpdate({_id:payer._id,walletBalance:{$gte:requested}},{$inc:{walletBalance:-requested}},{new:true,session});
        if(!updatedPayer){
          const currentPayer=await User.findById(payer._id).select("walletBalance").session(session).lean();
@@ -630,9 +630,9 @@ exports.payFinance = async (req, res) => {
       if (requestedAmount !== amount) throw problem("Payment amount must equal the next installment amount.");
       const outstanding = money(finance.outstandingBalance);
       if (outstanding === null || amount > outstanding) throw problem("Payment exceeds outstanding balance.");
-      const payer = await User.findById(id(req)).select("+transactionPin transactionPinSet walletBalance").session(session);
-      if (!payer?.transactionPinSet || !payer.transactionPin) throw problem("Please create your transaction PIN before making this payment.", 400);
-      if (!await payer.compareTransactionPin(text(req.body?.transactionPin, 4))) throw problem("Incorrect transaction PIN.", 401);
+      const payer = await User.findById(id(req)).select("walletBalance").session(session);
+      if (!payer) throw problem("Customer account not found.", 401);
+      await verifyTransactionPin(payer._id, req.body?.transactionPin ?? req.body?.pin, { session });
       const updatedPayer = await User.findOneAndUpdate(
         { _id: payer._id, walletBalance: { $gte: amount } },
         { $inc: { walletBalance: -amount } },

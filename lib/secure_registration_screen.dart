@@ -1,10 +1,47 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'security_utils.dart';
+
+Map<String, dynamic> buildRegistrationPayload({
+  required String fullName,
+  required String phone,
+  required String email,
+  required String password,
+  required String transactionPin,
+  required String confirmTransactionPin,
+  required String dateOfBirth,
+  required String gender,
+  required String residentialAddress,
+  required String state,
+  required String lga,
+  required String nin,
+  String? referralCode,
+}) =>
+    <String, dynamic>{
+      'fullName': fullName,
+      'phone': phone,
+      'email': email,
+      'password': password,
+      'transactionPin': transactionPin,
+      'confirmTransactionPin': confirmTransactionPin,
+      'dateOfBirth': dateOfBirth,
+      'gender': gender,
+      'residentialAddress': residentialAddress,
+      'state': state,
+      'lga': lga,
+      'nin': nin,
+      'kycConsent': true,
+      'acceptTerms': true,
+      if (referralCode != null && referralCode.isNotEmpty)
+        'referralCode': referralCode,
+    };
 
 class SecureRegistrationScreen extends StatefulWidget {
-  const SecureRegistrationScreen({super.key});
+  const SecureRegistrationScreen({super.key, this.client});
+  final http.Client? client;
 
   @override
   State<SecureRegistrationScreen> createState() =>
@@ -37,6 +74,8 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
   bool hidePassword = true;
   bool hideConfirmPassword = true;
   bool hidePin = true;
+  late final http.Client _client;
+  late final bool _ownsClient;
 
   bool acceptTerms = false;
   bool kycConsent = false;
@@ -897,6 +936,13 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
   final Color servicePayGreen = const Color(0xFF08783E);
 
   @override
+  void initState() {
+    super.initState();
+    _ownsClient = widget.client == null;
+    _client = widget.client ?? http.Client();
+  }
+
+  @override
   void dispose() {
     _pageController.dispose();
 
@@ -917,6 +963,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     ]) {
       c.dispose();
     }
+    if (_ownsClient) _client.close();
 
     super.dispose();
   }
@@ -1001,17 +1048,9 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
       return false;
     }
 
-    const weakPins = {
-      '0000',
-      '1111',
-      '1234',
-      '4321',
-      '0123',
-      '9876',
-    };
-
-    if (weakPins.contains(pin)) {
-      showMessage('Please choose a less predictable transaction PIN.');
+    final pinError = transactionPinError(pin);
+    if (pinError != null) {
+      showMessage(pinError);
       return false;
     }
 
@@ -1077,25 +1116,23 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     setState(() => loading = true);
 
     try {
-      final payload = {
-        'fullName': fullNameController.text.trim(),
-        'phone': phoneController.text.trim(),
-        'email': emailController.text.trim().toLowerCase(),
-        'password': passwordController.text,
-        'transactionPin': pinController.text.trim(),
-        'dateOfBirth': dobController.text.trim(),
-        'gender': gender,
-        'residentialAddress': addressController.text.trim(),
-        'state': stateController.text.trim(),
-        'lga': lgaController.text.trim(),
-        'nin': ninController.text.trim(),
-        'kycConsent': true,
-        'acceptTerms': true,
-        if (referralController.text.trim().isNotEmpty)
-          'referralCode': referralController.text.trim(),
-      };
+      final payload = buildRegistrationPayload(
+        fullName: fullNameController.text.trim(),
+        phone: phoneController.text.trim(),
+        email: emailController.text.trim().toLowerCase(),
+        password: passwordController.text,
+        transactionPin: pinController.text.trim(),
+        confirmTransactionPin: confirmPinController.text.trim(),
+        dateOfBirth: dobController.text.trim(),
+        gender: gender,
+        residentialAddress: addressController.text.trim(),
+        state: stateController.text.trim(),
+        lga: lgaController.text.trim(),
+        nin: ninController.text.trim(),
+        referralCode: referralController.text.trim(),
+      );
 
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse('$baseUrl/auth/register'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
@@ -1109,7 +1146,10 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
         data = null;
       }
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data is Map &&
+          data['success'] == true) {
         if (!mounted) return;
 
         await showDialog<void>(
@@ -1204,6 +1244,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     bool obscure = false,
     Widget? suffixIcon,
     int maxLength = 80,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -1212,6 +1253,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
         keyboardType: keyboard,
         obscureText: obscure,
         maxLength: maxLength,
+        inputFormatters: inputFormatters,
         decoration: InputDecoration(
           labelText: label,
           counterText: '',
@@ -1423,6 +1465,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
           keyboard: TextInputType.number,
           obscure: hidePin,
           maxLength: 4,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         ),
         field(
           controller: confirmPinController,
@@ -1430,6 +1473,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
           keyboard: TextInputType.number,
           obscure: hidePin,
           maxLength: 4,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         ),
         CheckboxListTile(
           contentPadding: EdgeInsets.zero,

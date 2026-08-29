@@ -11,6 +11,9 @@ const GroupWalletActivity = require("../models/groupWalletActivity.model");
 const FeaturePayment = require("../models/featurePayment.model");
 const Notification = require("../models/notification.model");
 const mongoose = require("mongoose");
+const {
+  verifyTransactionPin: verifyCanonicalTransactionPin,
+} = require("../services/transactionPin.service");
 
 const userId = (req) =>
   req.user?._id || req.user?.id;
@@ -632,61 +635,9 @@ const loadPayerForPin = async (
 ) => {
   return User.findById(id)
     .select(
-      "+transactionPin transactionPinSet walletBalance fullName phone"
+      "walletBalance fullName phone"
     )
     .session(session);
-};
-
-const verifyTransactionPin = async (
-  payer,
-  pin
-) => {
-  if (
-    payer.transactionPinSet !== true ||
-    !payer.transactionPin
-  ) {
-    const error = new Error(
-      "Please create your transaction PIN before making this payment."
-    );
-
-    error.statusCode = 400;
-    error.code =
-      "TRANSACTION_PIN_NOT_SET";
-
-    throw error;
-  }
-
-  const enteredPin =
-    String(pin || "").trim();
-
-  if (!/^\d{4}$/.test(enteredPin)) {
-    const error = new Error(
-      "Enter your 4-digit transaction PIN."
-    );
-
-    error.statusCode = 400;
-    error.code =
-      "INVALID_TRANSACTION_PIN";
-
-    throw error;
-  }
-
-  const correct =
-    await payer.compareTransactionPin(
-      enteredPin
-    );
-
-  if (!correct) {
-    const error = new Error(
-      "Incorrect transaction PIN."
-    );
-
-    error.statusCode = 401;
-    error.code =
-      "INCORRECT_TRANSACTION_PIN";
-
-    throw error;
-  }
 };
 
 const debitWallet = async ({
@@ -830,9 +781,10 @@ exports.payMoneyRequest = async (
           throw error;
         }
 
-        await verifyTransactionPin(
-          payer,
-          req.body?.transactionPin
+        await verifyCanonicalTransactionPin(
+          payer._id,
+          req.body?.transactionPin ?? req.body?.pin,
+          { session }
         );
 
         const debited =
@@ -1102,9 +1054,10 @@ exports.payPaymentLink = async (
           throw error;
         }
 
-        await verifyTransactionPin(
-          payer,
-          req.body?.transactionPin
+        await verifyCanonicalTransactionPin(
+          payer._id,
+          req.body?.transactionPin ?? req.body?.pin,
+          { session }
         );
 
         const debited =
@@ -1570,7 +1523,11 @@ exports.contributeToGroup = async (
       }
 
       const payer = await loadPayerForPin(payerId, session);
-      await verifyTransactionPin(payer, req.body?.transactionPin);
+      await verifyCanonicalTransactionPin(
+        payer._id,
+        req.body?.transactionPin ?? req.body?.pin,
+        { session }
+      );
 
       const debited = await debitWallet({ userId: payerId, amount, session });
       const reference = paymentReference("AJO");

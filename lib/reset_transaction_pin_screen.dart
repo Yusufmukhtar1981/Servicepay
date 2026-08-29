@@ -4,17 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'security_utils.dart';
 
 class ResetTransactionPinScreen extends StatefulWidget {
-  const ResetTransactionPinScreen({super.key});
+  const ResetTransactionPinScreen({super.key, this.client});
+  final http.Client? client;
 
   @override
   State<ResetTransactionPinScreen> createState() =>
       _ResetTransactionPinScreenState();
 }
 
-class _ResetTransactionPinScreenState
-    extends State<ResetTransactionPinScreen> {
+class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
   static const Color primaryGreen = Color(0xFF2E7D32);
 
@@ -26,12 +27,22 @@ class _ResetTransactionPinScreenState
   bool _hideNewPin = true;
   bool _hideConfirmPin = true;
   bool _isSubmitting = false;
+  late final http.Client _client;
+  late final bool _ownsClient;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsClient = widget.client == null;
+    _client = widget.client ?? http.Client();
+  }
 
   @override
   void dispose() {
     _passwordController.dispose();
     _newPinController.dispose();
     _confirmPinController.dispose();
+    if (_ownsClient) _client.close();
     super.dispose();
   }
 
@@ -55,37 +66,7 @@ class _ResetTransactionPinScreenState
   }
 
   String? _validateNewPin(String pin) {
-    if (!RegExp(r'^\d{4}$').hasMatch(pin)) {
-      return 'Transaction PIN must contain exactly 4 digits.';
-    }
-
-    if (RegExp(r'^(\d)\1{3}$').hasMatch(pin)) {
-      return 'Transaction PIN cannot use the same digit four times.';
-    }
-
-    const Set<String> weakPins = <String>{
-      '0123',
-      '1234',
-      '2345',
-      '3456',
-      '4567',
-      '5678',
-      '6789',
-      '9876',
-      '8765',
-      '7654',
-      '6543',
-      '5432',
-      '4321',
-      '1111',
-      '0000',
-    };
-
-    if (weakPins.contains(pin)) {
-      return 'Please choose a less predictable transaction PIN.';
-    }
-
-    return null;
+    return transactionPinError(pin);
   }
 
   Map<String, dynamic> _decodeResponse(String body) {
@@ -106,6 +87,7 @@ class _ResetTransactionPinScreenState
   }
 
   Future<void> _resetTransactionPin() async {
+    if (_isSubmitting) return;
     FocusScope.of(context).unfocus();
 
     final String currentPassword = _passwordController.text;
@@ -134,14 +116,14 @@ class _ResetTransactionPinScreenState
 
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = await readAuthToken() ?? '';
 
       if (token.trim().isEmpty) {
         _showMessage('Your login session has expired. Please sign in again.');
         return;
       }
 
-      final http.Response response = await http
+      final http.Response response = await _client
           .post(
             Uri.parse('$baseUrl/transaction-pin/reset'),
             headers: <String, String>{
@@ -159,7 +141,9 @@ class _ResetTransactionPinScreenState
 
       final Map<String, dynamic> data = _decodeResponse(response.body);
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true) {
         await prefs.setBool('transaction_pin_set', true);
 
         _passwordController.clear();
@@ -167,7 +151,7 @@ class _ResetTransactionPinScreenState
         _confirmPinController.clear();
 
         _showMessage(
-          'Transaction PIN reset successfully.',
+          data['message']?.toString() ?? 'Transaction PIN reset successfully.',
           isError: false,
         );
 

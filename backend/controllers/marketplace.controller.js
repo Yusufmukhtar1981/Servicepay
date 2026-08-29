@@ -7,6 +7,7 @@ const MarketplaceMerchant = require("../models/marketplaceMerchant.model");
 const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
 const { postDebit, postCredit } = require("../services/ledger.service");
+const { verifyTransactionPin } = require("../services/transactionPin.service");
 const {
   MAX_MARKETPLACE_IMAGE_BYTES,
   SUPPORTED_MARKETPLACE_IMAGE_TYPES,
@@ -969,6 +970,14 @@ exports.createOrder = async (req, res) => {
             { statusCode: 403 }
           );
         }
+
+        // Legacy clients may still use `pin`; keep the normalized value at
+        // this controller boundary and verify before stock or wallet movement.
+        await verifyTransactionPin(
+          buyer._id,
+          req.body?.transactionPin ?? req.body?.pin,
+          { session }
+        );
 
         const orderItems = [];
         let subtotal = 0;

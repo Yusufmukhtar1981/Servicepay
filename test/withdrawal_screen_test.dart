@@ -58,6 +58,10 @@ void main() {
         if (request.url.path.endsWith('/settings/public')) {
           return settingsResponse();
         }
+        if (request.url.path.endsWith('/transaction-pin/status')) {
+          return http.Response(
+              '{"success":true,"transactionPinSet":true}', 200);
+        }
         if (request.url.path.endsWith('/withdrawals/my')) {
           return http.Response(
             jsonEncode(<String, dynamic>{
@@ -99,7 +103,7 @@ void main() {
   );
 
   testWidgets(
-    'submits once with an idempotency key and shows pending history',
+    'submits once with an idempotency key and accepts approved history',
     (WidgetTester tester) async {
       final postResponse = Completer<http.Response>();
       var postCount = 0;
@@ -109,6 +113,10 @@ void main() {
       final client = MockClient((request) async {
         if (request.url.path.endsWith('/settings/public')) {
           return settingsResponse();
+        }
+        if (request.url.path.endsWith('/transaction-pin/status')) {
+          return http.Response(
+              '{"success":true,"transactionPinSet":true}', 200);
         }
         if (request.url.path.endsWith('/withdrawals/my')) {
           historyCount += 1;
@@ -124,7 +132,7 @@ void main() {
                         'bankName': 'Saved Test Bank',
                         'accountNumber': '0123456789',
                         'accountName': 'Saved Customer',
-                        'status': 'PENDING',
+                        'status': 'APPROVED',
                       },
                     ]
                   : <Map<String, dynamic>>[],
@@ -167,6 +175,9 @@ void main() {
       expect(postCount, 1);
       expect(requestKey, isNotNull);
       expect(requestKey, startsWith('withdrawal-'));
+      await tester.tap(find.text('Submitting...'), warnIfMissed: false);
+      await tester.pump();
+      expect(postCount, 1);
 
       postResponse.complete(
         http.Response(
@@ -177,7 +188,7 @@ void main() {
               '_id': 'withdrawal-2',
               'reference': 'WDR-TEST-002',
               'amount': 300,
-              'status': 'PENDING',
+              'status': 'APPROVED',
             },
           }),
           201,
@@ -190,10 +201,60 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -500));
       await tester.pumpAndSettle();
       expect(find.textContaining('WDR-TEST-002'), findsOneWidget);
+      expect(find.text('APPROVED'), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField).at(3)).controller?.text,
         '',
       );
     },
   );
+
+  testWidgets('routes customers without a PIN to Create PIN', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/settings/public')) {
+        return settingsResponse();
+      }
+      if (request.url.path.endsWith('/transaction-pin/status')) {
+        return http.Response('{"success":true,"transactionPinSet":false}', 200);
+      }
+      if (request.url.path.endsWith('/withdrawals/my')) {
+        return http.Response('{"success":true,"withdrawals":[]}', 200);
+      }
+      throw StateError('Unexpected request: ${request.url}');
+    });
+    await pumpScreen(tester, client: client);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create PIN'));
+    await tester.pumpAndSettle();
+    expect(find.text('Create Transaction PIN'), findsOneWidget);
+  });
+
+  testWidgets('shows wrong PIN server errors and does not mark it successful',
+      (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/settings/public')) {
+        return settingsResponse();
+      }
+      if (request.url.path.endsWith('/transaction-pin/status')) {
+        return http.Response('{"success":true,"transactionPinSet":true}', 200);
+      }
+      if (request.url.path.endsWith('/withdrawals/my')) {
+        return http.Response('{"success":true,"withdrawals":[]}', 200);
+      }
+      if (request.url.path.endsWith('/withdrawals/request')) {
+        return http.Response(
+            '{"success":false,"message":"Transaction PIN is incorrect"}', 200);
+      }
+      throw StateError('Unexpected request: ${request.url}');
+    });
+    await pumpScreen(tester, client: client);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(3), '300');
+    await tester.tap(find.text('Request Withdrawal'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '2580');
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await tester.pump();
+    expect(find.text('Transaction PIN is incorrect'), findsOneWidget);
+  });
 }

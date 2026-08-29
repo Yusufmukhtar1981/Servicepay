@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:servicepay_app/reset_transaction_pin_screen.dart';
 
 void main() {
-  Future<void> pumpScreen(WidgetTester tester) async {
+  setUp(() => SharedPreferences.setMockInitialValues({'auth_token': 'token'}));
+
+  Future<void> pumpScreen(WidgetTester tester, {http.Client? client}) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: ResetTransactionPinScreen(),
+      MaterialApp(
+        home: ResetTransactionPinScreen(client: client),
       ),
     );
   }
@@ -74,5 +79,20 @@ void main() {
     await tester.pump();
 
     expect(find.text('Transaction PINs do not match.'), findsOneWidget);
+  });
+
+  testWidgets('does not accept a success false reset PIN response',
+      (tester) async {
+    final client = MockClient((_) async => http.Response(
+        '{"success":false,"message":"Password is incorrect"}', 200));
+    await pumpScreen(tester, client: client);
+    await tester.enterText(
+        find.byKey(const Key('reset-pin-current-password')), 'Password123!');
+    await tester.enterText(find.byKey(const Key('reset-pin-new-pin')), '2580');
+    await tester.enterText(
+        find.byKey(const Key('reset-pin-confirm-pin')), '2580');
+    await tester.tap(find.byKey(const Key('reset-transaction-pin-submit')));
+    await tester.pump();
+    expect(find.text('Password is incorrect'), findsOneWidget);
   });
 }

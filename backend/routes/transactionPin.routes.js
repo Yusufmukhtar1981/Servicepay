@@ -31,6 +31,7 @@ router.get(
 
 router.post(
   "/create",
+  transactionPinResetRateLimit,
   createTransactionPin
 );
 
@@ -41,6 +42,7 @@ router.post(
 
 router.put(
   "/change",
+  transactionPinResetRateLimit,
   changeTransactionPin
 );
 

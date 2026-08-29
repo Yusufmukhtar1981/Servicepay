@@ -7,13 +7,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
 import 'reset_transaction_pin_screen.dart';
 import 'transaction_pin_screen.dart';
+import 'change_transaction_pin_screen.dart';
+import 'security_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'referral_screen.dart';
 import 'kyc_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.client});
+  final http.Client? client;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -400,14 +403,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> openTransactionPin() async {
-    final bool hasTransactionPin = user['transactionPinSet'] == true;
-
+  Future<void> openCreateTransactionPin() async {
     final bool? updated = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => hasTransactionPin
-            ? const ResetTransactionPinScreen()
-            : const TransactionPinScreen(),
+        builder: (_) => TransactionPinScreen(client: widget.client),
       ),
     );
 
@@ -418,13 +417,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> openChangeTransactionPin() async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+          builder: (_) => ChangeTransactionPinScreen(client: widget.client)),
+    );
+    if (updated == true) await loadProfile(showRefreshLoader: true);
+  }
+
+  Future<void> openResetTransactionPin() async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+          builder: (_) => ResetTransactionPinScreen(client: widget.client)),
+    );
+    if (updated == true) await loadProfile(showRefreshLoader: true);
+  }
+
   Future<void> openChangePassword() async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return const _ChangePasswordSheet();
+        return _ChangePasswordSheet(client: widget.client);
       },
     );
   }
@@ -710,18 +725,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             subtitle: 'Update your personal information',
                             onTap: openEditProfile,
                           ),
-                          _ProfileActionTile(
-                            icon: user['transactionPinSet'] == true
-                                ? Icons.lock_reset_rounded
-                                : Icons.pin_outlined,
-                            title: user['transactionPinSet'] == true
-                                ? 'Reset Transaction PIN'
-                                : 'Create Transaction PIN',
-                            subtitle: user['transactionPinSet'] == true
-                                ? 'Forgot your PIN? Verify your password to reset it'
-                                : 'Create a 4-digit PIN for transactions',
-                            onTap: openTransactionPin,
-                          ),
+                          if (user['transactionPinSet'] == true) ...[
+                            _ProfileActionTile(
+                              icon: Icons.pin_outlined,
+                              title: 'Change Transaction PIN',
+                              subtitle: 'Update your 4-digit transaction PIN',
+                              onTap: openChangeTransactionPin,
+                            ),
+                            _ProfileActionTile(
+                              icon: Icons.lock_reset_rounded,
+                              title: 'Forgot/Reset PIN',
+                              subtitle:
+                                  'Verify your password to reset your PIN',
+                              onTap: openResetTransactionPin,
+                            ),
+                          ] else
+                            _ProfileActionTile(
+                              icon: Icons.pin_outlined,
+                              title: 'Create Transaction PIN',
+                              subtitle: 'Create a 4-digit PIN for transactions',
+                              onTap: openCreateTransactionPin,
+                            ),
                           _ProfileActionTile(
                             icon: Icons.verified_user_outlined,
                             title: 'KYC Verification',
@@ -1657,7 +1681,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 }
 
 class _ChangePasswordSheet extends StatefulWidget {
-  const _ChangePasswordSheet();
+  const _ChangePasswordSheet({this.client});
+  final http.Client? client;
 
   @override
   State<_ChangePasswordSheet> createState() => _ChangePasswordSheetState();
@@ -1682,6 +1707,15 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
   bool hideNewPassword = true;
   bool hideConfirmPassword = true;
   bool isSaving = false;
+  late final http.Client _client;
+  late final bool _ownsClient;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsClient = widget.client == null;
+    _client = widget.client ?? http.Client();
+  }
 
   @override
   void dispose() {
@@ -1690,6 +1724,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
     newPasswordController.dispose();
 
     confirmPasswordController.dispose();
+    if (_ownsClient) _client.close();
 
     super.dispose();
   }
@@ -1719,6 +1754,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
   }
 
   Future<void> changePassword() async {
+    if (isSaving) return;
     if (!formKey.currentState!.validate()) {
       return;
     }
@@ -1728,14 +1764,13 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
     });
 
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String token = await readAuthToken() ?? '';
+      if (token.isEmpty) {
+        throw Exception(
+            'Your login session has expired. Please sign in again.');
+      }
 
-      final String token = prefs.getString(
-            'auth_token',
-          ) ??
-          '';
-
-      final http.Response response = await http
+      final http.Response response = await _client
           .put(
             Uri.parse(
               '$baseUrl/auth/change-password',
@@ -1759,15 +1794,18 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
 
       final dynamic decoded = _decode(response.body);
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          decoded is Map &&
+          decoded['success'] == true) {
         if (!mounted) return;
 
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                'Password changed successfully.',
+                _message(decoded),
               ),
               backgroundColor: primaryGreen,
               behavior: SnackBarBehavior.floating,
@@ -1889,8 +1927,8 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                     });
                   },
                   validator: (value) {
-                    if (value == null || value.length < 6) {
-                      return 'Password must contain at least 6 characters.';
+                    if (value == null || !isStrongPassword(value)) {
+                      return 'Password must be 8+ characters and include uppercase, lowercase, number and special character.';
                     }
 
                     return null;

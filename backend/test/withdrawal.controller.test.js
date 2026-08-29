@@ -13,6 +13,9 @@ const {
   approveWithdrawal,
   rejectWithdrawal,
 } = require("../controllers/withdrawal.controller");
+const {
+  verifyTransactionPin,
+} = require("../services/transactionPin.service");
 
 const models = [
   User,
@@ -230,6 +233,11 @@ test("creation enforces request key, limits, PIN, and available balance", async 
     { amount: 100, transactionPin: "9999" }
   );
   assert.equal(incorrectPin.status, 401);
+  const afterIncorrectPin = await User.findById(customer._id);
+  assert.equal(afterIncorrectPin.walletBalance, 150);
+  assert.equal(afterIncorrectPin.withdrawalLockedBalance, 0);
+  assert.equal(await WithdrawalRequest.countDocuments(), 0);
+  assert.equal(await LedgerEntry.countDocuments(), 0);
 
   const insufficient = await requestWithdrawal(
     customer,
@@ -238,6 +246,24 @@ test("creation enforces request key, limits, PIN, and available balance", async 
   );
   assert.equal(insufficient.status, 400);
   assert.equal(insufficient.body.message, "Insufficient wallet balance.");
+  assert.equal(await WithdrawalRequest.countDocuments(), 0);
+  assert.equal(await LedgerEntry.countDocuments(), 0);
+});
+
+test("a PIN-locked customer cannot create a withdrawal or debit funds", async () => {
+  const customer = await createUser({ walletBalance: 1000 });
+  for (let index = 0; index < 5; index += 1) {
+    await assert.rejects(
+      verifyTransactionPin(customer._id, "9999"),
+      { code: "INCORRECT_TRANSACTION_PIN" }
+    );
+  }
+  const response = await requestWithdrawal(customer, "withdrawal-pin-locked");
+  assert.equal(response.status, 429);
+  assert.equal(response.body.code, "TRANSACTION_PIN_LOCKED");
+  const stored = await User.findById(customer._id);
+  assert.equal(stored.walletBalance, 1000);
+  assert.equal(stored.withdrawalLockedBalance, 0);
   assert.equal(await WithdrawalRequest.countDocuments(), 0);
   assert.equal(await LedgerEntry.countDocuments(), 0);
 });

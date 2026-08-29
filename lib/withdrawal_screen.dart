@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,6 +34,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   bool isSubmitting = false;
   bool isAwaitingPin = false;
   bool isLoadingHistory = true;
+  bool? hasTransactionPin;
   double minimumWithdrawal = 100;
   double maximumWithdrawal = 50000;
   String? pendingRequestKey;
@@ -50,6 +52,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     loadSavedBankAccount();
     loadWithdrawalLimits();
     loadWithdrawals();
+    loadTransactionPinStatus();
   }
 
   @override
@@ -86,6 +89,41 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     }
 
     return null;
+  }
+
+  Future<void> loadTransactionPinStatus() async {
+    try {
+      final token = await getToken();
+      if (token == null) {
+        return;
+      }
+      final response = await _client.get(
+        Uri.parse('$baseUrl/transaction-pin/status'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token'
+        },
+      ).timeout(const Duration(seconds: 15));
+      final decoded = jsonDecode(response.body);
+      final data = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+      if (!mounted ||
+          response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          data['success'] != true) {
+        return;
+      }
+      setState(() {
+        hasTransactionPin = data['transactionPinSet'] == true ||
+            data['hasTransactionPin'] == true ||
+            (data['data'] is Map &&
+                ((data['data'] as Map)['transactionPinSet'] == true ||
+                    (data['data'] as Map)['hasTransactionPin'] == true));
+      });
+    } catch (_) {
+      // The submission endpoint remains authoritative when status is unavailable.
+    }
   }
 
   void showMessage(String message) {
@@ -308,6 +346,10 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       );
       return;
     }
+    if (hasTransactionPin == false) {
+      showMessage('Create a transaction PIN before requesting a withdrawal.');
+      return;
+    }
 
     setState(() {
       isAwaitingPin = true;
@@ -376,8 +418,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
           data['success'] == true &&
-          data['withdrawal'] is Map &&
-          (data['withdrawal'] as Map)['status'] == 'PENDING') {
+          data['withdrawal'] is Map) {
         await saveBankAccount();
         amountController.clear();
         pendingRequestKey = null;
@@ -490,6 +531,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             TextField(
               controller: accountNumberController,
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               maxLength: 10,
               decoration: const InputDecoration(
                 labelText: 'Account Number',
@@ -530,34 +572,38 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             Wrap(
               spacing: 8,
               children: [
-                TextButton.icon(
-                  onPressed: isSubmitting
-                      ? null
-                      : () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (_) => const TransactionPinScreen(),
-                            ),
-                          );
-                        },
-                  icon: const Icon(Icons.pin_outlined),
-                  label: const Text('Create PIN'),
-                ),
-                TextButton.icon(
-                  onPressed: isSubmitting
-                      ? null
-                      : () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (_) => const ResetTransactionPinScreen(),
-                            ),
-                          );
-                        },
-                  icon: const Icon(Icons.lock_reset_rounded),
-                  label: const Text('Reset PIN'),
-                ),
+                if (hasTransactionPin != true)
+                  TextButton.icon(
+                    onPressed: isSubmitting
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    TransactionPinScreen(client: _client),
+                              ),
+                            );
+                          },
+                    icon: const Icon(Icons.pin_outlined),
+                    label: const Text('Create PIN'),
+                  ),
+                if (hasTransactionPin == true)
+                  TextButton.icon(
+                    onPressed: isSubmitting
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    ResetTransactionPinScreen(client: _client),
+                              ),
+                            );
+                          },
+                    icon: const Icon(Icons.lock_reset_rounded),
+                    label: const Text('Reset PIN'),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
