@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'business_partner_permissions.dart';
+import 'business_partner_officers_screen.dart';
 import '../services/business_partner_api_service.dart';
 
 const Color _green = Color(0xFF078B52);
@@ -536,6 +537,13 @@ class _BusinessPartnerDashboardScreenState
       ]);
     }
     if (_section == 0) return _dashboard();
+    if (_section == 1) {
+      return BusinessPartnerOfficersScreen(
+        key: const Key('business-partner-officers'),
+        api: _api,
+        profile: _profileData(),
+      );
+    }
     if (_section == 8) return _performance();
     if (_section == 11) return _profile();
     return _records(title);

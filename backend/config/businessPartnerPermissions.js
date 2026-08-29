@@ -8,6 +8,7 @@ const BUSINESS_PARTNER_VIEW_PERMISSIONS = Object.freeze([
 ]);
 
 const BUSINESS_PARTNER_ACTION_PERMISSIONS = Object.freeze([
+  "OFFICER_MANAGEMENT",
   "SOLAR_ASSIGNMENT",
   "PHONE_ASSIGNMENT",
   "VERIFICATION_REVIEW",
@@ -75,15 +76,19 @@ const hasOnlyBusinessPartnerServices = (services) =>
 const permissionsForBusinessPartnerServices = (
   services = [],
   permissions = []
-) => [
-  ...new Set([
-    ...BUSINESS_PARTNER_VIEW_PERMISSIONS,
-    ...normalizeBusinessPartnerPermissions(permissions),
-    ...normalizeBusinessPartnerServices(services).map(
-      (service) => BUSINESS_PARTNER_SERVICE_PERMISSIONS[service]
-    ),
-  ]),
-];
+) => {
+  const normalizedServices = normalizeBusinessPartnerServices(services);
+  return [
+    ...new Set([
+      ...BUSINESS_PARTNER_VIEW_PERMISSIONS,
+      ...normalizeBusinessPartnerPermissions(permissions),
+      ...(normalizedServices.length ? ["OFFICER_MANAGEMENT"] : []),
+      ...normalizedServices.map(
+        (service) => BUSINESS_PARTNER_SERVICE_PERMISSIONS[service]
+      ),
+    ]),
+  ];
+};
 
 module.exports = {
   BUSINESS_PARTNER_VIEW_PERMISSIONS,

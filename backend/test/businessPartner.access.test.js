@@ -32,8 +32,10 @@ test("view repair normalizes legacy keys without granting sensitive actions", ()
   assert.equal(repaired.includes("PHONE_ASSIGNMENT"), true);
   assert.equal(repaired.includes("UNKNOWN_PERMISSION"), false);
   assert.equal(repaired.includes("SOLAR_ASSIGNMENT"), false);
+  assert.equal(repaired.includes("OFFICER_MANAGEMENT"), false);
   assert.equal(repaired.includes("VERIFICATION_REVIEW"), false);
   assert.deepEqual(BUSINESS_PARTNER_ACTION_PERMISSIONS, [
+    "OFFICER_MANAGEMENT",
     "SOLAR_ASSIGNMENT",
     "PHONE_ASSIGNMENT",
     "VERIFICATION_REVIEW",

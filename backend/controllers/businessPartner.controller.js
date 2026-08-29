@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const Profile = require("../models/businessPartnerProfile.model");
 const SolarOfficer = require("../models/solarOfficer.model");
+const SolarOfficerWallet = require("../models/solarOfficerWallet.model");
+const SolarOfficerCommission = require("../models/solarOfficerCommission.model");
 const SolarApplication = require("../models/solarApplication.model");
 const SolarAssignment = require("../models/solarAssignment.model");
 const PhoneApplication = require("../models/phoneApplication.model");
@@ -59,6 +61,61 @@ async function ownProfile(req, permission) {
   if (!profile) throw fail("Business Partner account is inactive.", 403);
   if (permission && !profile.permissions.includes(permission)) throw fail("Business Partner permission denied.", 403);
   return profile;
+}
+const officerTerritoryAllowed = (profile, state, lga) =>
+  !!state && !!lga &&
+  (!profile.territory?.states?.length || profile.territory.states.includes(state)) &&
+  (!profile.territory?.lgas?.length || profile.territory.lgas.includes(lga));
+const solarOfficerCode = async session => {
+  let n = (await SolarOfficer.countDocuments({}, { session })) + 1;
+  while (n < 10000000) {
+    const code = `SSO-${String(n++).padStart(6, "0")}`;
+    if (!await SolarOfficer.exists({ officerId: code }).session(session)) return code;
+  }
+  throw fail("Unable to generate a Solar Officer ID.", 500);
+};
+const phoneOfficerCode = async session => {
+  let n = (await User.countDocuments({ role: "PHONE_FINANCING_OFFICER" }, { session })) + 1;
+  while (n < 10000000) {
+    const code = `SP-PFO-${String(n++).padStart(5, "0")}`;
+    if (!await User.exists({ staffId: code }).session(session)) return code;
+  }
+  throw fail("Unable to generate a Phone Financing Officer ID.", 500);
+};
+async function officerMetrics(type, officer) {
+  if (type === "PHONE") {
+    const rows = await PhoneApplication.find({ assignedOfficer: officer._id }).select("customer status").lean();
+    return { assignedApplications: rows.length, assignedCustomers: new Set(rows.map(x => String(x.customer))).size, completedWork: rows.filter(x => x.status === "COMPLETED").length };
+  }
+  const assignments = await SolarAssignment.find({ officer: officer._id }).select("application customer").lean();
+  const apps = assignments.length ? await SolarApplication.find({ _id: { $in: assignments.map(x => x.application) } }).select("status").lean() : [];
+  const commissions = await SolarOfficerCommission.aggregate([{ $match: { officer: officer._id, status: { $ne: "REVERSED" } } }, { $group: { _id: null, total: { $sum: "$commissionAmount" } } }]);
+  return { assignedApplications: assignments.length, assignedCustomers: new Set(assignments.map(x => String(x.customer))).size, completedWork: apps.filter(x => x.status === "COMPLETED").length, commissionTotal: commissions[0]?.total || 0 };
+}
+async function officerDto(type, record) {
+  const solar = type === "SOLAR";
+  const user = solar ? record.user : record;
+  return {
+    id: record._id, type, officerCode: solar ? record.officerId : (record.staffId || ""),
+    fullName: user.fullName, phone: user.phone, email: user.email,
+    state: solar ? record.state : user.state, lga: solar ? record.lga : user.lga,
+    address: solar ? record.address : user.residentialAddress, status: solar ? record.status : user.status,
+    createdAt: record.createdAt, metrics: await officerMetrics(type, record),
+  };
+}
+async function ownedOfficer(profile, type, officerId, session) {
+  if (!isId(officerId)) throw fail("Valid officer ID required.", 400);
+  if (type === "SOLAR") {
+    const officer = await SolarOfficer.findOne({ _id: officerId, businessPartner: profile._id }).populate("user", "fullName phone email state lga residentialAddress status").session(session || null);
+    if (!officer) throw fail("Officer not found.", 404);
+    return officer;
+  }
+  if (type === "PHONE") {
+    const officer = await User.findOne({ _id: officerId, role: "PHONE_FINANCING_OFFICER", businessPartnerId: profile._id }).session(session || null);
+    if (!officer) throw fail("Officer not found.", 404);
+    return officer;
+  }
+  throw fail("Type must be SOLAR or PHONE.", 400);
 }
 async function partnerId(session) {
   let n = (await Profile.countDocuments({}, { session })) + 1;
@@ -123,7 +180,67 @@ exports.adminReset = async (req, res) => {
 };
 exports.me = async (req,res) => { try { const p = await ownProfile(req); res.json({ success:true, partner:p }); } catch(e) { res.status(e.statusCode || 500).json({success:false,message:e.message}); } };
 exports.dashboard = async (req,res) => { try { const p=await ownProfile(req,"DASHBOARD"); const [solar, phone, commissions] = await Promise.all([SolarApplication.countDocuments({businessPartner:p._id}), PhoneApplication.countDocuments({businessPartner:p._id}), Commission.aggregate([{$match:{businessPartner:p._id}},{$group:{_id:"$status",amount:{$sum:"$amount"},count:{$sum:1}}}])]); res.json({success:true,dashboard:{solarApplications:solar,phoneApplications:phone,commissions,permissions:p.permissions,availableModules:p.permissions}}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
-exports.officers = async (req,res) => { try { const p=await ownProfile(req,"OFFICERS"); const [solar, phone]=await Promise.all([SolarOfficer.find({businessPartner:p._id}).populate("user","fullName phone email status state lga"),User.find({businessPartnerId:p._id,role:"PHONE_FINANCING_OFFICER"}).select("fullName phone email status staffId state lga")]);res.json({success:true,officers:{solar,phone}}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
+exports.officers = async (req,res) => { try { const p=await ownProfile(req,"OFFICERS"); const [solar, phone]=await Promise.all([SolarOfficer.find({businessPartner:p._id}).populate("user","fullName phone email status state lga residentialAddress"),User.find({businessPartnerId:p._id,role:"PHONE_FINANCING_OFFICER"})]);res.json({success:true,officers:{solar:await Promise.all(solar.map(x=>officerDto("SOLAR",x))),phone:await Promise.all(phone.map(x=>officerDto("PHONE",x)))}}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
+exports.createOfficer = async (req, res) => {
+  const type=text(req.body?.type,10).toUpperCase(), fullName=text(req.body?.fullName,160), phone=text(req.body?.phone,40), email=text(req.body?.email,160).toLowerCase(), password=String(req.body?.password||""), state=text(req.body?.state,120), lga=text(req.body?.lga,120), address=text(req.body?.address,500);
+  let session;
+  try {
+    const p=await ownProfile(req,"OFFICER_MANAGEMENT");
+    if (!["SOLAR","PHONE"].includes(type)) throw fail("Type must be SOLAR or PHONE.",400);
+    const approvedServices = Array.isArray(p.services) ? p.services : [];
+    const requiredPermission = type === "SOLAR" ? "SOLAR_ASSIGNMENT" : "PHONE_ASSIGNMENT";
+    if (!approvedServices.includes(type) || !p.permissions.includes(requiredPermission)) {
+      throw fail(`This Business Partner is not approved for ${type === "SOLAR" ? "Solar" : "Phone Financing"} officers.`,403);
+    }
+    if (!fullName||!phone||!email||password.length<6||!state||!lga||!address) throw fail("Full name, phone, email, password, state, LGA, and address are required.",400);
+    if (!officerTerritoryAllowed(p,state,lga)) throw fail("Officer territory does not match partner territory.",409);
+    if (await User.exists({$or:[{phone},{email}]})) throw fail("An account already exists with this email or phone number.",409);
+    session=await mongoose.startSession(); let officer;
+    await session.withTransaction(async()=>{
+      if(type==="SOLAR"){
+        const code=await solarOfficerCode(session);
+        const user=(await User.create([{fullName,phone,email,password,role:"SOLAR_OFFICER",isStaff:true,staffId:code,department:"OPERATIONS",staffCreatedBy:id(req),businessPartnerId:p._id,state,lga,residentialAddress:address,status:"ACTIVE",mustChangePassword:true}],{session}))[0];
+        officer=(await SolarOfficer.create([{user:user._id,officerId:code,state,lga,address,status:"ACTIVE",createdBy:id(req),businessPartner:p._id}],{session}))[0];
+        await SolarOfficerWallet.create([{officer:officer._id}],{session});
+        officer.user=user;
+      }else{
+        const code=await phoneOfficerCode(session);
+        officer=(await User.create([{fullName,phone,email,password,role:"PHONE_FINANCING_OFFICER",isStaff:true,staffId:code,department:"OPERATIONS",staffCreatedBy:id(req),businessPartnerId:p._id,state,lga,residentialAddress:address,status:"ACTIVE",mustChangePassword:true}],{session}))[0];
+      }
+      await audit(req,"BUSINESS_PARTNER_OFFICER_CREATED","Created Business Partner officer",{partnerId:String(p._id),officerId:String(officer._id),type},session);
+    });
+    res.status(201).json({success:true,officer:await officerDto(type,officer)});
+  }catch(e){res.status(e.statusCode||(e.code===11000?409:500)).json({success:false,message:e.code===11000?"An account already exists with this email or phone number.":e.message});}finally{if(session)await session.endSession();}
+};
+exports.officerDetail = async (req,res) => { try { const p=await ownProfile(req,"OFFICERS"), type=text(req.params.type,10).toUpperCase(); const officer=await ownedOfficer(p,type,req.params.officerId);res.json({success:true,officer:await officerDto(type,officer)}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
+exports.updateOfficer = async (req,res) => {
+  let session;
+  try { const p=await ownProfile(req,"OFFICER_MANAGEMENT"),type=text(req.params.type,10).toUpperCase();session=await mongoose.startSession();let officer;
+    await session.withTransaction(async()=>{officer=await ownedOfficer(p,type,req.params.officerId,session);const user=type==="SOLAR"?officer.user:officer;
+      for(const field of ["fullName","phone","email","state","lga"])if(Object.hasOwn(req.body||{},field))user[field]=text(req.body[field],field==="fullName"?160:120);
+      if(Object.hasOwn(req.body||{},"address")){const address=text(req.body.address,500);if(!address)throw fail("Address is required.",400);user.residentialAddress=address;if(type==="SOLAR")officer.address=address;}
+      if(!user.fullName||!user.phone||!user.email||!user.state||!user.lga||!officerTerritoryAllowed(p,user.state,user.lga))throw fail("Officer details must remain within partner territory.",409);
+      if(type==="SOLAR"){officer.state=user.state;officer.lga=user.lga;await user.save({session});await officer.save({session});}else await user.save({session});
+      await audit(req,"BUSINESS_PARTNER_OFFICER_UPDATED","Updated Business Partner officer",{partnerId:String(p._id),officerId:String(officer._id),type},session);
+    });res.json({success:true,officer:await officerDto(type,officer)});
+  }catch(e){res.status(e.statusCode||(e.code===11000?409:500)).json({success:false,message:e.code===11000?"An account already exists with this email or phone number.":e.message});}finally{if(session)await session.endSession();}
+};
+exports.officerStatus = async (req,res) => {
+  let session;
+  try {const p=await ownProfile(req,"OFFICER_MANAGEMENT"),type=text(req.params.type,10).toUpperCase(),status=text(req.body?.status,20).toUpperCase();if(!["ACTIVE","SUSPENDED"].includes(status))throw fail("Status must be ACTIVE or SUSPENDED.",400);session=await mongoose.startSession();let officer;
+    await session.withTransaction(async()=>{officer=await ownedOfficer(p,type,req.params.officerId,session);if(status==="SUSPENDED"){const active=type==="SOLAR"?await SolarAssignment.exists({officer:officer._id,status:"ACTIVE"}).session(session):await PhoneApplication.exists({assignedOfficer:officer._id,assignmentState:"ACTIVE"}).session(session);if(active)throw fail("Reassign or unassign all active applications before suspending this officer.",409);}
+      if(type==="SOLAR"){officer.status=status;await officer.save({session});await User.updateOne({_id:officer.user._id},{$set:{status}},{session});officer.user.status=status;}else{officer.status=status;await officer.save({session});}
+      await audit(req,"BUSINESS_PARTNER_OFFICER_STATUS_UPDATED",`Changed officer status to ${status}`,{partnerId:String(p._id),officerId:String(officer._id),type,status},session);
+    });res.json({success:true,officer:await officerDto(type,officer)});
+  }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{if(session)await session.endSession();}
+};
+exports.resetOfficerAccess = async (req,res) => {
+  let session;
+  try {const p=await ownProfile(req,"OFFICER_MANAGEMENT"),type=text(req.params.type,10).toUpperCase(),password=String(req.body?.password||"");if(password.length<6)throw fail("A temporary password of at least 6 characters is required.",400);session=await mongoose.startSession();
+    await session.withTransaction(async()=>{const officer=await ownedOfficer(p,type,req.params.officerId,session),user=type==="SOLAR"?officer.user:officer;user.password=password;user.mustChangePassword=true;await user.save({session});await audit(req,"BUSINESS_PARTNER_OFFICER_PASSWORD_RESET","Reset Business Partner officer password",{partnerId:String(p._id),officerId:String(officer._id),type},session);});
+    res.json({success:true,message:"Password reset. The officer must change it at next login."});
+  }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{if(session)await session.endSession();}
+};
 exports.linkOfficer = async (req,res) => { try { const p=await ownProfile(req,"OFFICERS"); const type=text(req.body.type,10).toUpperCase(), officerId=req.body.officerId;if(!isId(officerId))throw fail("Valid officer ID required.",400);
   if(type==="SOLAR"){const o=await SolarOfficer.findById(officerId);if(!o)throw fail("Solar Officer not found.",404);if(o.businessPartner&&String(o.businessPartner)!==String(p._id))throw fail("Officer belongs to another Business Partner.",403);o.businessPartner=p._id;await o.save();await User.updateOne({_id:o.user},{$set:{businessPartnerId:p._id}});}
   else if(type==="PHONE"){const o=await User.findOne({_id:officerId,role:"PHONE_FINANCING_OFFICER"});if(!o)throw fail("Phone Financing Officer not found.",404);if(o.businessPartnerId&&String(o.businessPartnerId)!==String(p._id))throw fail("Officer belongs to another Business Partner.",403);o.businessPartnerId=p._id;await o.save();} else throw fail("Officer type must be SOLAR or PHONE.",400);
@@ -132,10 +249,37 @@ exports.linkOfficer = async (req,res) => { try { const p=await ownProfile(req,"O
 exports.applications = async (req,res) => { try { const p=await ownProfile(req,"APPLICATIONS"); const [solar,phone]=await Promise.all([SolarApplication.find({businessPartner:p._id}).populate("customer","fullName phone").populate("package","name"),PhoneApplication.find({businessPartner:p._id}).populate("customer","fullName phone").populate("product","name sku").populate("assignedOfficer","fullName staffId")]);res.json({success:true,applications:{solar:solar.map(solarDto),phone:phone.map(phoneDto)}}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
 exports.customers = async (req,res) => { try { const p=await ownProfile(req,"CUSTOMERS");const [solar,phone]=await Promise.all([SolarApplication.find({businessPartner:p._id}).distinct("customer"),PhoneApplication.find({businessPartner:p._id}).distinct("customer")]);const customers=await User.find({_id:{$in:[...new Set([...solar,...phone].map(String))]}}).select("fullName phone email state lga status");res.json({success:true,customers}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
 exports.repayments = async (req,res) => { try { const p=await ownProfile(req,"REPAYMENTS"); const solarApps=await SolarApplication.find({businessPartner:p._id}).select("_id customer status totalPayable amountPaid outstandingBalance");const phoneApps=await PhoneApplication.find({businessPartner:p._id}).select("_id customer status totalPayable outstandingBalance");const [solarPayments,phonePayments]=await Promise.all([SolarPayment.find({application:{$in:solarApps.map(x=>x._id)}}).select("application customer type amount createdAt"),PhonePayment.find({application:{$in:phoneApps.map(x=>x._id)}}).select("application customer type amount createdAt")]);res.json({success:true,repayments:{solar:solarPayments,phone:phonePayments}}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
-exports.assignApplication = async (req,res) => { try { const p=await ownProfile(req, text(req.body.type,10).toUpperCase()==="SOLAR"?"SOLAR_ASSIGNMENT":"PHONE_ASSIGNMENT");const type=text(req.body.type,10).toUpperCase(), applicationId=req.params.applicationId, officerId=req.body.officerId;if(!isId(applicationId)||!isId(officerId))throw fail("Valid application and officer IDs are required.",400);
- if(type==="PHONE"){const officer=await User.findOne({_id:officerId,role:"PHONE_FINANCING_OFFICER",businessPartnerId:p._id,status:"ACTIVE"});const app=await PhoneApplication.findOne({_id:applicationId,businessPartner:p._id});if(!officer||!app)throw fail("Application or active owned officer not found.",404);if(!["SUBMITTED","UNDER_REVIEW"].includes(app.status))throw fail("This phone application cannot be assigned.",409);app.assignedOfficer=officer._id;app.assignmentState="ACTIVE";app.assignmentVersion=(app.assignmentVersion||0)+1;await app.save();await Notification.create({userId:officer._id,title:"Partner application assigned",message:`You have been assigned ${app.reference}.`,type:"BUSINESS_PARTNER",referenceId:app._id,referenceType:"BusinessPartnerPhoneAssignment"});}
- else if(type==="SOLAR"){const officer=await SolarOfficer.findOne({_id:officerId,businessPartner:p._id,status:"ACTIVE"});const app=await SolarApplication.findOne({_id:applicationId,businessPartner:p._id});if(!officer||!app)throw fail("Application or active owned officer not found.",404);const current=await SolarAssignment.findOne({application:app._id,status:"ACTIVE"});if(current){current.status="REASSIGNED";current.endedAt=new Date();await current.save();}await SolarAssignment.create({application:app._id,customer:app.customer,officer:officer._id,assignedBy:id(req),note:text(req.body.note)});await Notification.create({userId:officer.user,title:"Partner solar application assigned",message:"You have a new solar application assignment.",type:"BUSINESS_PARTNER",referenceId:app._id,referenceType:"BusinessPartnerSolarAssignment"});}
- else throw fail("Type must be SOLAR or PHONE.",400);await audit(req,"BUSINESS_PARTNER_APPLICATION_ASSIGNED","Assigned application within partner scope",{partnerId:String(p._id),applicationId,type,officerId});res.json({success:true}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
+exports.assignApplication = async (req,res) => {
+  let session;
+  try {
+    const type=text(req.body.type,10).toUpperCase(), p=await ownProfile(req,type==="SOLAR"?"SOLAR_ASSIGNMENT":"PHONE_ASSIGNMENT"), applicationId=req.params.applicationId, officerId=req.body.officerId;
+    if(!isId(applicationId)||!isId(officerId))throw fail("Valid application and officer IDs are required.",400);
+    if(!["SOLAR","PHONE"].includes(type))throw fail("Type must be SOLAR or PHONE.",400);
+    session=await mongoose.startSession();
+    await session.withTransaction(async()=>{
+      if(type==="PHONE"){
+        // Touching the officer document makes assignment and suspension conflict;
+        // a transaction retry then observes either the active assignment or suspension.
+        const officer=await User.findOneAndUpdate({_id:officerId,role:"PHONE_FINANCING_OFFICER",businessPartnerId:p._id,status:"ACTIVE"},{$set:{updatedAt:new Date()}},{new:true,session});
+        const app=await PhoneApplication.findOne({_id:applicationId,businessPartner:p._id}).session(session);
+        if(!officer||!app)throw fail("Application or active owned officer not found.",404);
+        if(!["SUBMITTED","UNDER_REVIEW"].includes(app.status))throw fail("This phone application cannot be assigned.",409);
+        app.assignedOfficer=officer._id;app.assignmentState="ACTIVE";app.assignmentVersion=(app.assignmentVersion||0)+1;await app.save({session});
+        await Notification.create([{userId:officer._id,title:"Partner application assigned",message:`You have been assigned ${app.reference}.`,type:"BUSINESS_PARTNER",referenceId:app._id,referenceType:"BusinessPartnerPhoneAssignment"}],{session});
+      }else{
+        const officer=await SolarOfficer.findOneAndUpdate({_id:officerId,businessPartner:p._id,status:"ACTIVE"},{$set:{updatedAt:new Date()}},{new:true,session});
+        const app=await SolarApplication.findOne({_id:applicationId,businessPartner:p._id}).session(session);
+        if(!officer||!app)throw fail("Application or active owned officer not found.",404);
+        const current=await SolarAssignment.findOne({application:app._id,status:"ACTIVE"}).session(session);
+        if(current){current.status="REASSIGNED";current.endedAt=new Date();await current.save({session});}
+        await SolarAssignment.create([{application:app._id,customer:app.customer,officer:officer._id,assignedBy:id(req),note:text(req.body.note)}],{session});
+        await Notification.create([{userId:officer.user,title:"Partner solar application assigned",message:"You have a new solar application assignment.",type:"BUSINESS_PARTNER",referenceId:app._id,referenceType:"BusinessPartnerSolarAssignment"}],{session});
+      }
+      await audit(req,"BUSINESS_PARTNER_APPLICATION_ASSIGNED","Assigned application within partner scope",{partnerId:String(p._id),applicationId,type,officerId},session);
+    });
+    res.json({success:true});
+  }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{if(session)await session.endSession();}
+};
 exports.reviewVerification = async (req,res) => { try {const p=await ownProfile(req,"VERIFICATION_REVIEW"),type=text(req.body.type,10).toUpperCase();let app;if(type==="PHONE")app=await PhoneApplication.findOne({_id:req.params.applicationId,businessPartner:p._id});else if(type==="SOLAR")app=await SolarApplication.findOne({_id:req.params.applicationId,businessPartner:p._id});else throw fail("Type must be SOLAR or PHONE.",400);if(!app)throw fail("Partner application not found.",404);const review={decision:text(req.body.decision,30).toUpperCase(),note:text(req.body.note,1000),reviewedBy:id(req),reviewedAt:new Date()};if(!["ACCEPTED","RETURNED"].includes(review.decision))throw fail("Decision must be ACCEPTED or RETURNED.",400);app.partnerVerificationReview=review;await app.save();await audit(req,"BUSINESS_PARTNER_VERIFICATION_REVIEWED","Reviewed field verification",{partnerId:String(p._id),applicationId:String(app._id),type,decision:review.decision});res.json({success:true,review});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
 exports.performance = async (req,res) => { try { const p=await ownProfile(req,"REPORTS");const [solar,phone,payments]=await Promise.all([SolarApplication.aggregate([{$match:{businessPartner:p._id}},{$group:{_id:"$status",count:{$sum:1},outstanding:{$sum:"$outstandingBalance"}}}]),PhoneApplication.aggregate([{$match:{businessPartner:p._id}},{$group:{_id:"$status",count:{$sum:1},outstanding:{$sum:"$outstandingBalance"}}}]),Commission.aggregate([{$match:{businessPartner:p._id}},{$group:{_id:"$status",amount:{$sum:"$amount"}}}])]);res.json({success:true,performance:{solar,phone,commissions:payments}});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
 exports.commissions = async(req,res)=>{try{const p=await ownProfile(req,"REPORTS");res.json({success:true,commissions:await Commission.find({businessPartner:p._id}).sort({createdAt:-1})});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}};

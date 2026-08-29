@@ -1,7 +1,7 @@
 const User = require("../models/user.model");
 const Profile = require("../models/businessPartnerProfile.model");
 const {
-  mergeBusinessPartnerViewPermissions,
+  permissionsForBusinessPartnerServices,
 } = require("../config/businessPartnerPermissions");
 
 const normalizedRole = (value) =>
@@ -24,8 +24,10 @@ async function ensureBusinessPartnerViewAccess(user, options = {}) {
   const existingPermissions = Array.isArray(profile.permissions)
     ? profile.permissions
     : [];
-  const permissions =
-    mergeBusinessPartnerViewPermissions(existingPermissions);
+  const permissions = permissionsForBusinessPartnerServices(
+    profile.services,
+    existingPermissions
+  );
   const permissionsChanged =
     permissions.length !== existingPermissions.length ||
     permissions.some((permission) => !existingPermissions.includes(permission));

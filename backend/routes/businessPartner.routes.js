@@ -30,6 +30,11 @@ router.post("/admin/partners/:partnerId/officers/link", ...staffAccess, requireP
 router.get("/me", protect, businessPartnerOnly, c.me);
 router.get("/dashboard", protect, businessPartnerOnly, c.dashboard);
 router.get("/officers", protect, businessPartnerOnly, c.officers);
+router.post("/officers", protect, businessPartnerOnly, c.createOfficer);
+router.get("/officers/:type/:officerId", protect, businessPartnerOnly, c.officerDetail);
+router.patch("/officers/:type/:officerId", protect, businessPartnerOnly, c.updateOfficer);
+router.patch("/officers/:type/:officerId/status", protect, businessPartnerOnly, c.officerStatus);
+router.post("/officers/:type/:officerId/reset-access", protect, businessPartnerOnly, c.resetOfficerAccess);
 router.post("/officers/link", protect, businessPartnerOnly, (req, res) => res.status(403).json({ success: false, message: "Business Partners cannot link or transfer officers. Head Office assignment is required." }));
 router.get("/customers", protect, businessPartnerOnly, c.customers);
 router.get("/applications", protect, businessPartnerOnly, c.applications);

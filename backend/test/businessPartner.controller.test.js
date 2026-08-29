@@ -14,13 +14,15 @@ const PhoneProduct = require("../models/phoneProduct.model");
 const SolarApplication = require("../models/solarApplication.model");
 const SolarPackage = require("../models/solarPackage.model");
 const SolarOfficer = require("../models/solarOfficer.model");
+const SolarOfficerWallet = require("../models/solarOfficerWallet.model");
+const SolarOfficerCommission = require("../models/solarOfficerCommission.model");
 const Notification = require("../models/notification.model");
 const Audit = require("../models/adminAuditLog.model");
 const {
   BUSINESS_PARTNER_VIEW_PERMISSIONS,
 } = require("../config/businessPartnerPermissions");
 
-const models = [User, Profile, Commission, Rule, PhoneApplication, PhoneProduct, SolarApplication, SolarPackage, SolarOfficer, Notification, Audit];
+const models = [User, Profile, Commission, Rule, PhoneApplication, PhoneProduct, SolarApplication, SolarPackage, SolarOfficer, SolarOfficerWallet, SolarOfficerCommission, Notification, Audit];
 let repl, server, base, sequence = 0;
 const makeUser = async (role = "CUSTOMER") => {
   sequence += 1;
@@ -259,4 +261,124 @@ test("commission events are idempotent and immutable reversals are compensating 
   assert.equal(reverseReversal.status,409);
   assert.equal(await Commission.countDocuments(),2);
   assert.equal((await Commission.aggregate([{$group:{_id:null,net:{$sum:"$amount"}}}]))[0].net,0);
+});
+
+test("Business Partners manage only their own normalized officer teams", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const a = await createPartner(admin, "officer-a", ["OFFICERS", "OFFICER_MANAGEMENT", "SOLAR_ASSIGNMENT", "PHONE_ASSIGNMENT"], ["SOLAR", "PHONE"]);
+  const b = await createPartner(admin, "officer-b", ["OFFICERS", "OFFICER_MANAGEMENT"]);
+  const viewOnly = await createPartner(admin, "officer-view", ["OFFICERS"]);
+  const solarOnly = await createPartner(admin, "officer-solar-only", ["OFFICERS", "OFFICER_MANAGEMENT", "SOLAR_ASSIGNMENT"], ["SOLAR"]);
+  const aUser = await User.findById(a.body.user._id);
+  const bUser = await User.findById(b.body.user._id);
+  const viewOnlyUser = await User.findById(viewOnly.body.user._id);
+  const solarOnlyUser = await User.findById(solarOnly.body.user._id);
+  for (const partner of [a, b]) {
+    const profile = await Profile.findById(partner.body.partner._id);
+    profile.territory = { states: ["Lagos"], lgas: ["Ikeja"] };
+    await profile.save();
+  }
+  const solarPayload = {
+    type: "SOLAR", fullName: "A Solar Officer", phone: "08090000001",
+    email: "a-solar@test.local", password: "temporary123", state: "Lagos",
+    lga: "Ikeja", address: "1 Solar Street",
+  };
+  assert.equal(viewOnly.body.partner.permissions.includes("OFFICER_MANAGEMENT"), false);
+  assert.equal((await api({ method: "POST", path: "/api/business-partner/officers", actor: viewOnlyUser, body: solarPayload })).status, 403);
+  assert.equal((await api({ method: "POST", path: "/api/business-partner/officers", actor: solarOnlyUser, body: { ...solarPayload, type: "PHONE", phone: "08090000006", email: "blocked-phone@test.local" } })).status, 403);
+  const solarCreated = await api({ method: "POST", path: "/api/business-partner/officers", actor: aUser, body: solarPayload });
+  assert.equal(solarCreated.status, 201, JSON.stringify(solarCreated.body));
+  assert.equal(solarCreated.body.officer.type, "SOLAR");
+  assert.match(solarCreated.body.officer.officerCode, /^SSO-\d{6}$/);
+  const solar = await SolarOfficer.findById(solarCreated.body.officer.id);
+  const solarUser = await User.findById(solar.user);
+  assert.equal(String(solar.businessPartner), String(a.body.partner._id));
+  assert.equal(String(solarUser.businessPartnerId), String(a.body.partner._id));
+  assert.equal(solarUser.mustChangePassword, true);
+  assert.equal(await SolarOfficerWallet.countDocuments({ officer: solar._id }), 1);
+
+  const phoneCreated = await api({ method: "POST", path: "/api/business-partner/officers", actor: aUser, body: {
+    type: "PHONE", fullName: "A Phone Officer", phone: "08090000002",
+    email: "a-phone@test.local", password: "temporary123", state: "Lagos",
+    lga: "Ikeja", address: "2 Phone Street",
+  } });
+  assert.equal(phoneCreated.status, 201, JSON.stringify(phoneCreated.body));
+  assert.equal(phoneCreated.body.officer.type, "PHONE");
+  assert.match(phoneCreated.body.officer.officerCode, /^SP-PFO-\d{5}$/);
+  const phone = await User.findById(phoneCreated.body.officer.id);
+  assert.equal(phone.mustChangePassword, true);
+  assert.equal(String(phone.businessPartnerId), String(a.body.partner._id));
+
+  const duplicate = await api({ method: "POST", path: "/api/business-partner/officers", actor: aUser, body: { ...solarPayload, type: "PHONE", phone: "08090000003" } });
+  assert.equal(duplicate.status, 409);
+  assert.equal((await api({ method: "POST", path: "/api/business-partner/officers", actor: aUser, body: { ...solarPayload, type: "RIDER", phone: "08090000004", email: "rider@test.local" } })).status, 400);
+  assert.equal((await api({ method: "POST", path: "/api/business-partner/officers", actor: aUser, body: { ...solarPayload, phone: "08090000005", email: "outside@test.local", state: "Ogun" } })).status, 409);
+
+  const list = await api({ path: "/api/business-partner/officers", actor: aUser });
+  assert.equal(list.status, 200);
+  assert.equal(list.body.officers.solar.length, 1);
+  assert.equal(list.body.officers.phone.length, 1);
+  const otherList = await api({ path: "/api/business-partner/officers", actor: bUser });
+  assert.equal(otherList.status, 200);
+  assert.equal(otherList.body.officers.solar.length, 0);
+  assert.equal(otherList.body.officers.phone.length, 0);
+  const expectedFields = ["address", "createdAt", "email", "fullName", "id", "lga", "metrics", "officerCode", "phone", "state", "status", "type"];
+  assert.deepEqual(Object.keys(list.body.officers.solar[0]).sort(), expectedFields);
+  const serialized = JSON.stringify(list.body);
+  for (const sensitive of ["password", "mustChangePassword", "businessPartnerId", "businessPartner", "staffCreatedBy", "role"]) assert.equal(serialized.includes(sensitive), false);
+  const detail = await api({ path: `/api/business-partner/officers/SOLAR/${solar._id}`, actor: aUser });
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.officer.metrics.assignedApplications, 0);
+
+  for (const request of [
+    { method: "GET", path: `/api/business-partner/officers/SOLAR/${solar._id}` },
+    { method: "PATCH", path: `/api/business-partner/officers/SOLAR/${solar._id}`, body: { fullName: "Stolen" } },
+    { method: "PATCH", path: `/api/business-partner/officers/SOLAR/${solar._id}/status`, body: { status: "SUSPENDED" } },
+    { method: "POST", path: `/api/business-partner/officers/SOLAR/${solar._id}/reset-access`, body: { password: "temporary123" } },
+  ]) assert.equal((await api({ ...request, actor: bUser })).status, 404);
+
+  const edited = await api({ method: "PATCH", path: `/api/business-partner/officers/SOLAR/${solar._id}`, actor: aUser, body: { fullName: "Edited Solar", address: "3 Edited Street", role: "HEAD_OFFICE", businessPartnerId: b.body.partner._id } });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  assert.equal(edited.body.officer.fullName, "Edited Solar");
+  assert.equal((await User.findById(solar.user)).role, "SOLAR_OFFICER");
+  assert.equal(String((await SolarOfficer.findById(solar._id)).businessPartner), String(a.body.partner._id));
+  assert.equal((await api({ method: "PATCH", path: `/api/business-partner/officers/SOLAR/${solar._id}/status`, actor: aUser, body: { status: "SUSPENDED" } })).status, 200);
+  assert.equal((await User.findById(solar.user)).status, "SUSPENDED");
+  assert.equal((await SolarOfficer.findById(solar._id)).status, "SUSPENDED");
+  assert.equal((await api({ method: "POST", path: `/api/business-partner/officers/PHONE/${phone._id}/reset-access`, actor: aUser, body: { password: "newtemporary123" } })).status, 200);
+  assert.equal((await User.findById(phone._id)).mustChangePassword, true);
+  assert.equal((await api({ method: "PATCH", path: `/api/business-partner/officers/PHONE/${phone._id}`, actor: viewOnlyUser, body: { fullName: "Not allowed" } })).status, 403);
+  assert.equal((await api({ method: "PATCH", path: `/api/business-partner/officers/PHONE/${phone._id}/status`, actor: viewOnlyUser, body: { status: "SUSPENDED" } })).status, 403);
+  assert.equal((await api({ method: "POST", path: `/api/business-partner/officers/PHONE/${phone._id}/reset-access`, actor: viewOnlyUser, body: { password: "newtemporary123" } })).status, 403);
+  assert.equal(await Audit.countDocuments({ action: { $in: ["BUSINESS_PARTNER_OFFICER_CREATED", "BUSINESS_PARTNER_OFFICER_UPDATED", "BUSINESS_PARTNER_OFFICER_STATUS_UPDATED", "BUSINESS_PARTNER_OFFICER_PASSWORD_RESET"] } }), 5);
+
+  const oversight = await api({ path: `/api/business-partner/admin/partners/${a.body.partner._id}`, actor: admin });
+  assert.equal(oversight.status, 200, JSON.stringify(oversight.body));
+  assert.equal(oversight.body.officers.solar.length, 1);
+  assert.equal(oversight.body.officers.phone.length, 1);
+});
+
+test("concurrent Business Partner phone assignment and suspension never leave an active suspended officer", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const partner = await createPartner(admin, "officer-race", ["OFFICERS", "OFFICER_MANAGEMENT", "PHONE_ASSIGNMENT"], ["PHONE"]);
+  const partnerUser = await User.findById(partner.body.user._id);
+  const created = await api({ method: "POST", path: "/api/business-partner/officers", actor: partnerUser, body: {
+    type: "PHONE", fullName: "Race Officer", phone: "08090000011", email: "race-officer@test.local",
+    password: "temporary123", state: "Lagos", lga: "Ikeja", address: "Race Street",
+  } });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const customer = await makeUser();
+  const application = await PhoneApplication.create({
+    reference: "BP-OFFICER-RACE", customer: customer._id, product: new mongoose.Types.ObjectId(),
+    productSnapshot: { sku: "RACE" }, applicationInput: { occupation: "Trader" },
+    businessPartner: partner.body.partner._id,
+  });
+  const [assignment, suspension] = await Promise.all([
+    api({ method: "POST", path: `/api/business-partner/applications/${application._id}/assign`, actor: partnerUser, body: { type: "PHONE", officerId: created.body.officer.id } }),
+    api({ method: "PATCH", path: `/api/business-partner/officers/PHONE/${created.body.officer.id}/status`, actor: partnerUser, body: { status: "SUSPENDED" } }),
+  ]);
+  assert.ok([200, 404, 409].includes(assignment.status), JSON.stringify(assignment.body));
+  assert.ok([200, 409].includes(suspension.status), JSON.stringify(suspension.body));
+  const [officer, persistedApplication] = await Promise.all([User.findById(created.body.officer.id), PhoneApplication.findById(application._id)]);
+  assert.equal(officer.status === "SUSPENDED" && persistedApplication.assignmentState === "ACTIVE", false);
 });

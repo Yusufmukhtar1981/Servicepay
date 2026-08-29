@@ -31,6 +31,58 @@ class BusinessPartnerApiService {
       get('/dashboard', query: filters);
   Future<Map<String, dynamic>> officers({Map<String, String>? filters}) =>
       get('/officers', query: filters);
+  Future<Map<String, dynamic>> getOfficer({
+    required String type,
+    required String id,
+  }) =>
+      get('/officers/${Uri.encodeComponent(type)}/${Uri.encodeComponent(id)}');
+
+  Future<Map<String, dynamic>> createOfficer({
+    required String type,
+    required String fullName,
+    required String phone,
+    required String email,
+    required String password,
+    required String state,
+    required String lga,
+    required String address,
+  }) =>
+      post('/officers', <String, dynamic>{
+        'type': type,
+        'fullName': fullName,
+        'phone': phone,
+        'email': email,
+        'password': password,
+        'state': state,
+        'lga': lga,
+        'address': address,
+      });
+
+  Future<Map<String, dynamic>> updateOfficer({
+    required String type,
+    required String id,
+    required Map<String, dynamic> fields,
+  }) =>
+      patch('/officers/${Uri.encodeComponent(type)}/${Uri.encodeComponent(id)}',
+          fields);
+
+  Future<Map<String, dynamic>> updateOfficerStatus({
+    required String type,
+    required String id,
+    required String status,
+  }) =>
+      patch(
+          '/officers/${Uri.encodeComponent(type)}/${Uri.encodeComponent(id)}/status',
+          <String, dynamic>{'status': status});
+
+  Future<Map<String, dynamic>> resetOfficerAccess({
+    required String type,
+    required String id,
+    required String password,
+  }) =>
+      post(
+          '/officers/${Uri.encodeComponent(type)}/${Uri.encodeComponent(id)}/reset-access',
+          <String, dynamic>{'password': password});
   Future<Map<String, dynamic>> customers({Map<String, String>? filters}) =>
       get('/customers', query: filters);
 
@@ -114,6 +166,21 @@ class BusinessPartnerApiService {
   ) async {
     final http.Response response = await _client
         .post(Uri.parse('$baseUrl$path'),
+            headers: <String, String>{
+              ...await _headers(),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body))
+        .timeout(const Duration(seconds: 45));
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> patch(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final http.Response response = await _client
+        .patch(Uri.parse('$baseUrl$path'),
             headers: <String, String>{
               ...await _headers(),
               'Content-Type': 'application/json',
