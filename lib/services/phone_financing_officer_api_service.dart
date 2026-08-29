@@ -24,6 +24,7 @@ class PhoneFinancingOfficerApiService {
   final http.Client _client;
   final String baseUrl;
 
+  Future<Map<String, dynamic>> me() => get('/me');
   Future<Map<String, dynamic>> applications() => get('/applications');
   Future<Map<String, dynamic>> application(String id) =>
       get('/applications/${Uri.encodeComponent(id)}');

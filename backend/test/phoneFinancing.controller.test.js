@@ -308,6 +308,46 @@ test("phone financing officers are lifecycle-scoped and cannot use admin financi
   assert.equal((await api({ method: "PATCH", path: `/api/phone-financing/admin/officers/${officer._id}/status`, actor: admin, body: { status: "SUSPENDED" } })).status, 409);
 });
 
+test("officer profile is safe and isolated to phone financing officers", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const customer = await makeUser();
+  const created = await api({
+    method: "POST", path: "/api/phone-financing/admin/officers", actor: admin,
+    body: {
+      fullName: "Profile Officer", phone: "08123456780",
+      email: "profile-officer@test.local", password: "password123",
+      state: "Lagos", lga: "Ikeja", address: "1 Safe Profile Street",
+    },
+  });
+  assert.equal(created.status, 201);
+  const officer = await User.findById(created.body.officer._id);
+  await User.updateOne(
+    { _id: officer._id },
+    { $set: { passwordResetToken: "secret-reset-token", transactionPin: "secret-pin" } },
+  );
+
+  const response = await api({ path: "/api/phone-financing/officer/me", actor: officer });
+  assert.equal(response.status, 200);
+  assert.deepEqual(Object.keys(response.body.officer).sort(), [
+    "address", "lga", "officerId", "state", "status", "user",
+  ]);
+  assert.deepEqual(response.body.officer, {
+    officerId: String(officer._id), status: "ACTIVE", state: "Lagos",
+    lga: "Ikeja", address: "1 Safe Profile Street",
+    user: {
+      fullName: "Profile Officer", phone: "08123456780",
+      email: "profile-officer@test.local",
+    },
+  });
+  const serialized = JSON.stringify(response.body);
+  for (const sensitive of ["password", "transactionPin", "secret-reset-token", "secret-pin", "token"]) {
+    assert.equal(serialized.includes(sensitive), false);
+  }
+  assert.equal((await api({ path: "/api/phone-financing/officer/me" })).status, 401);
+  assert.equal((await api({ path: "/api/phone-financing/officer/me", actor: customer })).status, 403);
+  assert.equal((await api({ path: "/api/phone-financing/officer/me", actor: admin })).status, 403);
+});
+
 test("officer assignment and verification enforce active-review and report contracts", async () => {
   const admin = await makeUser("HEAD_OFFICE"), customer = await makeUser();
   const makeOfficer = async (suffix) => (await api({

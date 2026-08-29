@@ -218,6 +218,24 @@ exports.assignOfficer = async (req,res) => {
     res.json({success:true,application,idempotent:false});
   }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{session.endSession();}
 };
+exports.officerMe = async (req, res) => {
+  const officer = req.user;
+  res.json({
+    success: true,
+    officer: {
+      officerId: String(officer._id),
+      status: officer.status,
+      state: officer.state,
+      lga: officer.lga,
+      address: officer.residentialAddress,
+      user: {
+        fullName: officer.fullName,
+        phone: officer.phone,
+        email: officer.email,
+      },
+    },
+  });
+};
 exports.officerApplications = async (req,res) => {
   const filter={assignedOfficer:uid(req),assignmentState:"ACTIVE"}; if(req.params.applicationId) filter._id=req.params.applicationId; if(req.query.status) filter.status=text(req.query.status,40).toUpperCase();
   const applications=await Application.find(filter).populate("customer","fullName phone email").populate("product","name sku").populate("device").sort({createdAt:-1});

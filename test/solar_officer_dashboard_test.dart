@@ -111,22 +111,24 @@ void main() {
         find.byKey(const Key('solar-officer-dashboard')),
         findsOneWidget,
       );
-      expect(find.text('Welcome, Field Officer'), findsOneWidget);
+      expect(find.text('Welcome back, Field Officer'), findsOneWidget);
       expect(find.text('Approve'), findsNothing);
 
       await tester.tap(find.byTooltip('Open navigation menu'));
       await tester.pumpAndSettle();
       for (final String section in <String>[
         'Dashboard',
-        'Customers',
-        'Applications',
+        'My Assignments',
         'Verification',
-        'Solar Deliveries',
+        'Installations',
         'Repayments',
-        'Overdue',
-        'Commissions',
+        'Customers',
+        'Solar Packages',
+        'Notifications',
         'Reports',
-        'Profile',
+        'My Profile',
+        'Settings',
+        'Logout',
       ]) {
         expect(find.text(section), findsWidgets);
       }
@@ -139,7 +141,7 @@ void main() {
 
       await tester.tap(find.byTooltip('Open navigation menu'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Profile').last);
+      await tester.tap(find.text('My Profile').last);
       await tester.pumpAndSettle();
       expect(find.text('Field Officer'), findsOneWidget);
       expect(find.text('SSO-000001 • ACTIVE'), findsOneWidget);

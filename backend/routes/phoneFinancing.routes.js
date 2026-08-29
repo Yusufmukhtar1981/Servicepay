@@ -6,6 +6,7 @@ router.get("/products",protect,c.listProducts); router.get("/products/:productId
 router.post("/applications",protect,customerOnly,c.submit); router.get("/my-applications",protect,customerOnly,c.myApplications); router.get("/my-applications/:applicationId",protect,customerOnly,c.myApplication); router.post("/applications/:applicationId/deposit",protect,customerOnly,c.validatePaymentReplay,c.deposit);router.post("/applications/:applicationId/pay-deposit",protect,customerOnly,c.validatePaymentReplay,c.deposit);
 router.get("/my-finance",protect,customerOnly,c.myFinance); router.get("/finance/:financeId",protect,customerOnly,c.finance); router.get("/finance/:financeId/schedule",protect,customerOnly,c.schedule); router.get("/finance/:financeId/payments",protect,customerOnly,c.payments); router.post("/finance/:financeId/payments",protect,customerOnly,c.validatePaymentReplay,c.pay);router.post("/finance/:financeId/pay",protect,customerOnly,c.validatePaymentReplay,c.pay);
 router.get("/officer/applications",protect,phoneFinancingOfficerOnly,c.officerApplications);
+router.get("/officer/me",protect,phoneFinancingOfficerOnly,c.officerMe);
 router.get("/officer/applications/:applicationId",protect,phoneFinancingOfficerOnly,c.officerApplications);
 router.post("/officer/applications/:applicationId/verification",protect,phoneFinancingOfficerOnly,c.officerVerification);
 router.post("/officer/applications/:applicationId/follow-ups",protect,phoneFinancingOfficerOnly,c.officerFollowUp);

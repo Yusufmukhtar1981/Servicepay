@@ -6,6 +6,10 @@ import '../services/solar_officer_api_service.dart';
 
 const Color _green = Color(0xFF08783E);
 const Color _ink = Color(0xFF17352A);
+const Color _greenDark = Color(0xFF123F36);
+const Color _surface = Color(0xFFF3F7F5);
+const Color _line = Color(0xFFE1EAE5);
+const Color _muted = Color(0xFF70807A);
 
 class SolarOfficerDashboardScreen extends StatefulWidget {
   const SolarOfficerDashboardScreen({
@@ -26,6 +30,8 @@ class _SolarOfficerDashboardScreenState
   bool _loading = true;
   String _error = '';
   int _section = 0;
+  String _filter = 'ALL';
+  int _repaymentTab = 0;
   Map<String, dynamic> _dashboard = <String, dynamic>{};
   Map<String, dynamic> _profile = <String, dynamic>{};
   Map<String, dynamic> _wallet = <String, dynamic>{};
@@ -37,16 +43,18 @@ class _SolarOfficerDashboardScreenState
   List<Map<String, dynamic>> _withdrawals = <Map<String, dynamic>>[];
 
   static const List<_OfficerSection> _sections = <_OfficerSection>[
-    _OfficerSection('Dashboard', Icons.dashboard_outlined),
-    _OfficerSection('Customers', Icons.people_outline),
-    _OfficerSection('Applications', Icons.assignment_outlined),
+    _OfficerSection('Dashboard', Icons.grid_view_rounded),
+    _OfficerSection('My Assignments', Icons.assignment_outlined),
     _OfficerSection('Verification', Icons.fact_check_outlined),
-    _OfficerSection('Solar Deliveries', Icons.solar_power_outlined),
-    _OfficerSection('Repayments', Icons.event_repeat_outlined),
-    _OfficerSection('Overdue', Icons.warning_amber_outlined),
-    _OfficerSection('Commissions', Icons.account_balance_wallet_outlined),
+    _OfficerSection('Installations', Icons.solar_power_outlined),
+    _OfficerSection('Repayments', Icons.payments_outlined),
+    _OfficerSection('Customers', Icons.people_outline),
+    _OfficerSection('Solar Packages', Icons.wb_sunny_outlined),
+    _OfficerSection('Notifications', Icons.notifications_none_rounded),
     _OfficerSection('Reports', Icons.analytics_outlined),
-    _OfficerSection('Profile', Icons.badge_outlined),
+    _OfficerSection('My Profile', Icons.badge_outlined),
+    _OfficerSection('Settings', Icons.settings_outlined),
+    _OfficerSection('Logout', Icons.logout_rounded),
   ];
 
   @override
@@ -549,147 +557,505 @@ class _SolarOfficerDashboardScreenState
 
   @override
   Widget build(BuildContext context) {
-    final bool wide = MediaQuery.sizeOf(context).width >= 900;
-    return Scaffold(
-      key: const Key('solar-officer-dashboard'),
-      backgroundColor: const Color(0xFFF4F8F5),
-      appBar: AppBar(
-        title: Text('Solar Officer • ${_sections[_section].label}'),
-        backgroundColor: _ink,
-        foregroundColor: Colors.white,
-        actions: <Widget>[
-          IconButton(
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
+    final bool wide = MediaQuery.sizeOf(context).width >= 960;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        scaffoldBackgroundColor: _surface,
+        colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: _green,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+            ),
+        dividerColor: _line,
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: _line),
           ),
-        ],
+        ),
       ),
-      drawer: wide ? null : _drawer(),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _green))
-          : _error.isNotEmpty
-              ? _errorView()
-              : Row(
-                  children: <Widget>[
-                    if (wide)
-                      NavigationRail(
-                        selectedIndex: _section,
-                        onDestinationSelected: (int value) =>
-                            setState(() => _section = value),
-                        labelType: NavigationRailLabelType.all,
-                        selectedIconTheme: const IconThemeData(color: _green),
-                        destinations: _sections
-                            .map((_OfficerSection section) =>
-                                NavigationRailDestination(
-                                  icon: Icon(section.icon),
-                                  selectedIcon:
-                                      Icon(section.icon, color: _green),
-                                  label: Text(section.label),
-                                ))
-                            .toList(),
-                      ),
-                    Expanded(child: _sectionView()),
-                  ],
+      child: Scaffold(
+        key: const Key('solar-officer-dashboard'),
+        backgroundColor: _surface,
+        drawer: wide ? null : _drawer(),
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(72),
+          child: _topBar(wide),
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator(color: _green))
+            : _error.isNotEmpty
+                ? _errorView()
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      if (wide) _sidebar(),
+                      Expanded(child: _sectionView()),
+                    ],
+                  ),
+        bottomNavigationBar: wide
+            ? null
+            : NavigationBar(
+                selectedIndex: <int>[0, 1, 3, 4].indexOf(_section).clamp(0, 3),
+                onDestinationSelected: (int index) =>
+                    setState(() => _section = <int>[0, 1, 3, 4][index]),
+                destinations: const <NavigationDestination>[
+                  NavigationDestination(
+                      icon: Icon(Icons.grid_view_rounded), label: 'Dashboard'),
+                  NavigationDestination(
+                      icon: Icon(Icons.assignment_outlined),
+                      label: 'Assignments'),
+                  NavigationDestination(
+                      icon: Icon(Icons.solar_power_outlined),
+                      label: 'Installations'),
+                  NavigationDestination(
+                      icon: Icon(Icons.payments_outlined), label: 'Repayments'),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _topBar(bool wide) => Container(
+        color: Colors.white,
+        padding: EdgeInsets.symmetric(horizontal: wide ? 30 : 12, vertical: 12),
+        child: Row(
+          children: <Widget>[
+            if (!wide)
+              Builder(
+                builder: (BuildContext context) => IconButton(
+                  tooltip: 'Open navigation menu',
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  icon: const Icon(Icons.menu_rounded, color: _ink),
                 ),
+              ),
+            if (wide) _brand(),
+            if (wide) const SizedBox(width: 30),
+            Expanded(
+              child: Text(_sections[_section].label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: _ink, fontSize: 18, fontWeight: FontWeight.w800)),
+            ),
+            _onlinePill(),
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: () => setState(() => _section = 7),
+              icon: const Icon(Icons.notifications_none_rounded, color: _muted),
+            ),
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: _loading ? null : _load,
+              icon: const Icon(Icons.refresh_rounded, color: _muted),
+            ),
+            if (!wide) _brand(compact: true),
+          ],
+        ),
+      );
+
+  Widget _brand({bool compact = false}) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: compact ? 34 : 40,
+            height: compact ? 34 : 40,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                  colors: <Color>[_green, Color(0xFF35B875)]),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.wb_sunny_rounded,
+                color: Colors.white, size: compact ? 19 : 22),
+          ),
+          if (!compact) ...<Widget>[
+            const SizedBox(width: 10),
+            const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text('ServicePay',
+                      style: TextStyle(
+                          color: _ink,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900)),
+                  Text('Solar Officer',
+                      style: TextStyle(
+                          color: _muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600)),
+                ]),
+          ],
+        ],
+      );
+
+  Widget _onlinePill() {
+    final String state = _text(_profile['status'], 'ACTIVE').toUpperCase();
+    final bool online = state == 'ACTIVE' || state == 'ONLINE';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: online ? const Color(0xFFE7F7EE) : const Color(0xFFF1F3F2),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+        Icon(Icons.circle, size: 7, color: online ? _green : _muted),
+        const SizedBox(width: 6),
+        Text(online ? 'Online' : 'Offline',
+            style: TextStyle(
+                color: online ? _greenDark : _muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w800)),
+      ]),
+    );
+  }
+
+  Widget _sidebar() => Container(
+        width: 244,
+        color: _greenDark,
+        padding: const EdgeInsets.fromLTRB(15, 22, 15, 16),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              _darkBrand(),
+              const SizedBox(height: 28),
+              const Padding(
+                  padding: EdgeInsets.only(left: 12, bottom: 10),
+                  child: Text('OFFICER WORKSPACE',
+                      style: TextStyle(
+                          color: Color(0xFF91B2A5),
+                          fontSize: 10,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w800))),
+              Expanded(
+                  child: ListView.builder(
+                      itemCount: _sections.length,
+                      itemBuilder: (_, int index) => _navItem(index))),
+              const Text('Field access is scoped to assigned customers.',
+                  style: TextStyle(color: Color(0xFFB9D1C5), fontSize: 11)),
+            ]),
+      );
+
+  Widget _darkBrand() => Row(children: <Widget>[
+        Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+                color: _green, borderRadius: BorderRadius.circular(13)),
+            child: const Icon(Icons.wb_sunny_rounded, color: Colors.white)),
+        const SizedBox(width: 10),
+        const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('ServicePay',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900)),
+              Text('Solar Officer',
+                  style: TextStyle(
+                      color: Color(0xFFB1CEC2),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600)),
+            ]),
+      ]);
+
+  Widget _navItem(int index) {
+    final _OfficerSection item = _sections[index];
+    final bool selected = _section == index;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color:
+            selected ? Colors.white.withValues(alpha: .13) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            if (index == _sections.length - 1) {
+              _logout();
+              return;
+            }
+            setState(() => _section = index);
+            if (MediaQuery.sizeOf(context).width < 960) Navigator.pop(context);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: <Widget>[
+              Icon(item.icon,
+                  size: 18,
+                  color: selected
+                      ? const Color(0xFF7CE1AA)
+                      : const Color(0xFFA6BEB4)),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Text(item.label,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color:
+                              selected ? Colors.white : const Color(0xFFD1E0DA),
+                          fontSize: 12,
+                          fontWeight:
+                              selected ? FontWeight.w800 : FontWeight.w600))),
+              if (selected)
+                const Icon(Icons.chevron_right_rounded,
+                    size: 16, color: Color(0xFF7CE1AA)),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _drawer() => Drawer(
+        backgroundColor: _greenDark,
         child: SafeArea(
-          child: ListView(
-            children: <Widget>[
-              const ListTile(
-                leading: Icon(Icons.solar_power, color: _green),
-                title: Text('ServicePay Solar Officer',
-                    style: TextStyle(fontWeight: FontWeight.w900)),
-              ),
-              const Divider(),
-              for (int index = 0; index < _sections.length; index++)
-                ListTile(
-                  selected: _section == index,
-                  leading: Icon(_sections[index].icon),
-                  title: Text(_sections[index].label),
-                  onTap: () {
-                    setState(() => _section = index);
-                    Navigator.pop(context);
-                  },
-                ),
-            ],
-          ),
-        ),
+            child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+          child: Column(children: <Widget>[
+            Row(children: <Widget>[
+              Expanded(child: _darkBrand()),
+              IconButton(
+                  tooltip: 'Close menu',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.white70)),
+            ]),
+            const SizedBox(height: 24),
+            Expanded(
+                child: ListView.builder(
+              itemCount: _sections.length,
+              itemBuilder: (_, int index) => _navItem(index),
+            )),
+          ]),
+        )),
       );
 
   Widget _sectionView() {
     switch (_section) {
       case 1:
         return _applicationList(
-            title: 'Assigned customers',
+            title: 'My assignments',
             subtitle:
-                'Only customers assigned to your officer account are visible.');
+                'Only applications assigned to your officer account are visible.');
       case 2:
-        return _applicationList(
-            title: 'Solar applications',
-            subtitle:
-                'Review assigned applications and their Admin-controlled status.');
-      case 3:
         return _verificationView();
-      case 4:
+      case 3:
         return _deliveriesView();
+      case 4:
+        return _repaymentsHub();
       case 5:
-        return _repaymentsView();
+        return _applicationList(
+            title: 'Customers',
+            subtitle:
+                'Customers attached to your assigned solar applications.');
       case 6:
-        return _overdueView();
+        return _applicationList(
+            title: 'Solar packages',
+            subtitle: 'Packages currently present in assigned applications.');
       case 7:
-        return _commissionsView();
+        return _emptyPage('Notifications',
+            'No notification feed is available for this officer account.');
       case 8:
         return _reportsView();
       case 9:
         return _profileView();
+      case 10:
+        return _emptyPage('Settings',
+            'Settings are managed by your organisation administrator.');
+      case 11:
+        return _emptyPage(
+            'Logout', 'Use the logout action in your profile or navigation.');
       default:
         return _dashboardView();
     }
   }
 
+  Widget _emptyPage(String title, String message) => ListView(
+        padding: const EdgeInsets.all(24),
+        children: <Widget>[
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.w900, color: _ink)),
+          const SizedBox(height: 16),
+          _empty(message),
+        ],
+      );
+
   Widget _dashboardView() {
-    final List<MapEntry<String, dynamic>> metrics = _dashboard.entries.toList();
+    final int total = _countMetric('assignedCustomers', _applications.length);
+    final int pending = _countMetric(
+        'pendingVerification',
+        _applications
+            .where((Map<String, dynamic> item) => <String>[
+                  'PENDING',
+                  'UNDER_REVIEW',
+                  'SUBMITTED'
+                ].contains(_text(item['status'], '').toUpperCase()))
+            .length);
+    final int active = _countMetric(
+        'activeInstallations',
+        _applications
+            .where((Map<String, dynamic> item) => <String>[
+                  'INSTALLED',
+                  'FINANCE_ACTIVE',
+                  'ACTIVE'
+                ].contains(_text(item['status'], '').toUpperCase()))
+            .length);
+    final int completed = _countMetric(
+        'completed',
+        _applications
+            .where((Map<String, dynamic> item) =>
+                _text(item['status'], '').toUpperCase() == 'COMPLETED')
+            .length);
+    final String name =
+        _text(_map(_profile['user'])['fullName'], 'Solar Officer');
     return RefreshIndicator(
       onRefresh: _load,
       color: _green,
       child: ListView(
         padding: const EdgeInsets.all(18),
         children: <Widget>[
-          Text(
-            'Welcome, ${_text(_map(_profile['user'])['fullName'], 'Solar Officer')}',
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Field verification, handover, repayment and recovery operations.',
-            style: TextStyle(color: Color(0xFF587064)),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: metrics
-                .map((MapEntry<String, dynamic> entry) => _metricCard(
-                      entry.key,
-                      entry.key.toLowerCase().contains('commission') ||
-                              entry.key.toLowerCase().contains('sales')
-                          ? _money(entry.value)
-                          : _text(entry.value, '0'),
-                    ))
-                .toList(),
-          ),
+          _welcomeHeader(name),
+          const SizedBox(height: 20),
+          LayoutBuilder(builder: (_, BoxConstraints constraints) {
+            final double width = (constraints.maxWidth - 36) /
+                (constraints.maxWidth > 700 ? 4 : 2);
+            return Wrap(spacing: 12, runSpacing: 12, children: <Widget>[
+              _metricCard('Total Assignments', '$total', width),
+              _metricCard('Pending Verification', '$pending', width),
+              _metricCard('Active Installations', '$active', width),
+              _metricCard('Completed', '$completed', width),
+            ]);
+          }),
+          const SizedBox(height: 20),
+          _overviewCard(pending, active, completed),
+          const SizedBox(height: 20),
+          _recentActivityCard(),
         ],
       ),
     );
   }
 
-  Widget _metricCard(String label, String value) => SizedBox(
-        width: 190,
+  int _countMetric(String key, int fallback) {
+    final dynamic value = _dashboard[key];
+    if (value is num) return value.toInt();
+    final int? parsed = int.tryParse(_text(value, ''));
+    return parsed ?? fallback;
+  }
+
+  Widget _welcomeHeader(String name) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 19, 18, 18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: <Color>[_greenDark, _green]),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(children: <Widget>[
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                const Text('SOLAR OFFICER PORTAL',
+                    style: TextStyle(
+                        color: Color(0xFFB7EBCB),
+                        fontSize: 9,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 9),
+                Text('Welcome back, $name',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 23,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 6),
+                const Text(
+                    'Keep every field visit and installation moving forward.',
+                    style: TextStyle(color: Color(0xFFC5E7D5), fontSize: 12)),
+              ])),
+          const Icon(Icons.wb_sunny_rounded,
+              color: Color(0xFFBEEFD1), size: 38),
+        ]),
+      );
+
+  Widget _overviewCard(int pending, int active, int completed) => Card(
+      child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text('Assignment overview',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: _ink)),
+                const SizedBox(height: 15),
+                _bar('Pending verification', pending, const Color(0xFFE7A83B)),
+                _bar('Active installations', active, _green),
+                _bar('Completed', completed, const Color(0xFF5B8DEF)),
+              ])));
+
+  Widget _bar(String label, int count, Color color) {
+    final int total = _applications.isEmpty ? 1 : _applications.length;
+    return Padding(
+        padding: const EdgeInsets.only(bottom: 11),
+        child: Row(children: <Widget>[
+          SizedBox(
+              width: 145,
+              child: Text(label,
+                  style: const TextStyle(color: _muted, fontSize: 12))),
+          Expanded(
+              child: ClipRRect(
+                  borderRadius: BorderRadius.circular(5),
+                  child: LinearProgressIndicator(
+                      value: count / total,
+                      minHeight: 8,
+                      backgroundColor: const Color(0xFFEAF0EC),
+                      color: color))),
+          const SizedBox(width: 10),
+          Text('$count', style: const TextStyle(fontWeight: FontWeight.w900)),
+        ]));
+  }
+
+  Widget _recentActivityCard() {
+    final List<Map<String, dynamic>> rows = _applications.take(3).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text('Recent activity',
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
+              const SizedBox(height: 4),
+              const Text('Latest assignment activity from your live portfolio.',
+                  style: TextStyle(color: _muted, fontSize: 12)),
+              const SizedBox(height: 12),
+              if (rows.isEmpty)
+                const Text('No recent activity.',
+                    style: TextStyle(color: _muted))
+              else
+                ...rows.map((Map<String, dynamic> row) {
+                  final Map<String, dynamic> customer = _map(row['customer']);
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.bolt_outlined, color: _green),
+                    title:
+                        Text(_text(customer['fullName'], 'Assigned customer')),
+                    subtitle: Text('Assignment ${_text(_id(row))}'),
+                    trailing: _statusPill(
+                        _text(row['status'], 'PENDING').replaceAll('_', ' ')),
+                  );
+                }),
+            ]),
+      ),
+    );
+  }
+
+  Widget _metricCard(String label, String value, [double width = 190]) =>
+      SizedBox(
+        width: width,
         child: Card(
-          elevation: 0,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -702,7 +1068,7 @@ class _SolarOfficerDashboardScreenState
                         (Match match) => ' ${match.group(1)}',
                       )
                       .trim(),
-                  style: const TextStyle(color: Color(0xFF587064)),
+                  style: const TextStyle(color: _muted, fontSize: 11),
                 ),
                 const SizedBox(height: 8),
                 Text(value,
@@ -730,65 +1096,161 @@ class _SolarOfficerDashboardScreenState
                     const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
             Text(subtitle, style: const TextStyle(color: Color(0xFF587064))),
             const SizedBox(height: 14),
-            if (_applications.isEmpty)
+            Wrap(
+              spacing: 8,
+              children: <String>['ALL', 'PENDING', 'IN_PROGRESS', 'COMPLETED']
+                  .map((String value) => ChoiceChip(
+                      label: Text(
+                          value == 'ALL' ? 'All' : value.replaceAll('_', ' ')),
+                      selected: _filter == value,
+                      onSelected: (_) => setState(() => _filter = value)))
+                  .toList(),
+            ),
+            const SizedBox(height: 14),
+            if (_filteredApplications.isEmpty)
               _empty('No assigned applications.')
             else
-              ..._applications.map(_applicationCard),
+              ..._filteredApplications.map(_applicationCard),
           ],
         ),
       );
+
+  List<Map<String, dynamic>> get _filteredApplications =>
+      _applications.where((Map<String, dynamic> item) {
+        if (_filter == 'ALL') {
+          return true;
+        }
+        final String status = _text(item['status'], '').toUpperCase();
+        if (_filter == 'PENDING') {
+          return <String>['PENDING', 'UNDER_REVIEW', 'SUBMITTED']
+              .contains(status);
+        }
+        if (_filter == 'IN_PROGRESS') {
+          return <String>[
+            'IN_PROGRESS',
+            'PROCESSING',
+            'INSTALLED',
+            'FINANCE_ACTIVE'
+          ].contains(status);
+        }
+        return status == 'COMPLETED';
+      }).toList();
 
   Widget _applicationCard(Map<String, dynamic> application) {
     final Map<String, dynamic> customer = _map(application['customer']);
     final Map<String, dynamic> package = _map(application['packageSnapshot']);
     final Map<String, dynamic> verification = _map(application['verification']);
-    final Map<String, dynamic> business = _map(application['business']);
-    final Map<String, dynamic> preferences =
-        _map(application['applicationPreferences']);
+    final String status =
+        _text(application['status'], 'PENDING').replaceAll('_', ' ');
+    final String assignedDate = _text(
+        application['assignedAt'] ?? application['createdAt'],
+        'Date not provided');
     return Card(
-      elevation: 0,
       child: Padding(
         padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            const CircleAvatar(
-              backgroundColor: Color(0xFFDDF4E6),
-              child: Icon(Icons.person, color: _green),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    _text(customer['fullName'], 'Assigned customer'),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${_text(package['name'], 'Solar package')} • ${_text(application['status'])}',
-                  ),
-                  Text(
-                      '${_text(customer['phone'])} • ${_text(customer['address'])}'),
-                  Text(
-                    'Occupation: ${_text(preferences['occupationBusiness'] ?? business['occupationBusiness'], 'Not provided')}',
-                  ),
-                  Text(
-                    'Income: ${_text(preferences['monthlyIncomeRange'], 'Not provided')} • '
-                    'Preferred term: ${_text(preferences['preferredRepaymentPeriod'], 'Not provided')} months',
-                  ),
-                  Text(
-                    'Upfront: ${_text(preferences['upfrontPaymentOption'], 'Not provided')}',
-                  ),
-                  Text(
-                    'Recommendation: ${_text(verification['recommendation'], 'PENDING')}',
-                  ),
-                ],
-              ),
-            ),
+            Row(children: <Widget>[
+              Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFE7F7EE),
+                      borderRadius: BorderRadius.circular(12)),
+                  child: const Icon(Icons.assignment_outlined, color: _green)),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                    Text(_text(customer['fullName'], 'Assigned customer'),
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    Text('ID ${_text(_id(application))}',
+                        style: const TextStyle(color: _muted, fontSize: 11)),
+                  ])),
+              _statusPill(status),
+            ]),
+            const SizedBox(height: 14),
+            Wrap(spacing: 16, runSpacing: 8, children: <Widget>[
+              _detail(Icons.wb_sunny_outlined,
+                  _text(package['name'], 'Solar package')),
+              _detail(
+                  Icons.location_on_outlined,
+                  _text(customer['address'] ?? application['location'],
+                      'Location not provided')),
+              _detail(Icons.calendar_today_outlined, assignedDate),
+            ]),
+            const SizedBox(height: 10),
+            Text(
+                'Recommendation: ${_text(verification['recommendation'], 'PENDING')}',
+                style: const TextStyle(color: _muted, fontSize: 12)),
+            Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton(
+                  onPressed: () => _showDetails(application),
+                  child: const Text('View Details'),
+                )),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _detail(IconData icon, String text) =>
+      Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+        Icon(icon, size: 15, color: _green),
+        const SizedBox(width: 5),
+        ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(text,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _muted, fontSize: 12))),
+      ]);
+
+  Widget _statusPill(String status) {
+    final String normalized = status.toUpperCase();
+    final Color color = normalized == 'COMPLETED'
+        ? const Color(0xFF247A4D)
+        : normalized.contains('PENDING') || normalized.contains('REVIEW')
+            ? const Color(0xFF9A6718)
+            : _green;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+          color: color.withValues(alpha: .11),
+          borderRadius: BorderRadius.circular(20)),
+      child: Text(status,
+          style: TextStyle(
+              color: color, fontSize: 10, fontWeight: FontWeight.w900)),
+    );
+  }
+
+  Future<void> _showDetails(Map<String, dynamic> application) async {
+    final Map<String, dynamic> customer = _map(application['customer']);
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(_text(customer['fullName'], 'Assignment details')),
+        content: Text('Assignment ${_text(_id(application))}\n'
+            'Package: ${_text(_map(application['packageSnapshot'])['name'])}\n'
+            'Status: ${_text(application['status'])}\n'
+            'Phone: ${_text(customer['phone'])}\n'
+            'Address: ${_text(customer['address'])}'),
+        actions: <Widget>[
+          if (<String>['PENDING', 'UNDER_REVIEW', 'SUBMITTED']
+              .contains(_text(application['status'], '').toUpperCase()))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _verify(application);
+              },
+              child: const Text('Verify'),
+            ),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close')),
+        ],
       ),
     );
   }
@@ -817,6 +1279,31 @@ class _SolarOfficerDashboardScreenState
                 ),
               ),
             ),
+        ],
+      );
+
+  Widget _repaymentsHub() => Column(
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+            child: SegmentedButton<int>(
+              segments: const <ButtonSegment<int>>[
+                ButtonSegment<int>(value: 0, label: Text('Current')),
+                ButtonSegment<int>(value: 1, label: Text('Overdue')),
+                ButtonSegment<int>(value: 2, label: Text('Earnings')),
+              ],
+              selected: <int>{_repaymentTab},
+              onSelectionChanged: (Set<int> values) =>
+                  setState(() => _repaymentTab = values.first),
+            ),
+          ),
+          Expanded(
+            child: _repaymentTab == 0
+                ? _repaymentsView()
+                : _repaymentTab == 1
+                    ? _overdueView()
+                    : _commissionsView(),
+          ),
         ],
       );
 
