@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const {
   BUSINESS_PARTNER_PERMISSION_VALUES,
+  BUSINESS_PARTNER_SERVICES,
   BUSINESS_PARTNER_VIEW_PERMISSIONS,
 } = require("../config/businessPartnerPermissions");
 
@@ -13,6 +14,11 @@ const businessPartnerProfileSchema = new mongoose.Schema({
     states: { type: [String], default: [] },
     lgas: { type: [String], default: [] },
     description: { type: String, trim: true, maxlength: 500, default: "" },
+  },
+  services: {
+    type: [String],
+    enum: BUSINESS_PARTNER_SERVICES,
+    default: [],
   },
   permissions: {
     type: [String],

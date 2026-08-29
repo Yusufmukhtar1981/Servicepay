@@ -33,9 +33,9 @@ const api = async ({ method = "GET", path, actor, body }) => {
   const response = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   return { status: response.status, body: await response.json() };
 };
-const createPartner = async (admin, suffix, permissions) => api({
+const createPartner = async (admin, suffix, permissions, services = []) => api({
   method: "POST", path: "/api/business-partner/admin/partners", actor: admin,
-  body: { fullName: `Partner ${suffix}`, phone: `090${suffix}0000000`, email: `partner-${suffix}@test.local`, password: "password123", businessName: `Business ${suffix}`, permissions },
+  body: { fullName: `Partner ${suffix}`, phone: `090${suffix}0000000`, email: `partner-${suffix}@test.local`, password: "password123", businessName: `Business ${suffix}`, permissions, services },
 });
 
 test.before(async () => {
@@ -67,6 +67,36 @@ test("Head Office creates, edits, suspends and resets separately profiled Busine
   assert.equal(await Notification.countDocuments({ userId: partnerUser._id, type: "BUSINESS_PARTNER" }), 2);
   assert.equal(await Audit.countDocuments({ action: "BUSINESS_PARTNER_STATUS_UPDATED" }), 1);
   assert.equal((await Profile.findById(made.body.partner._id)).status, "DISABLED");
+});
+
+test("Solar, Phone, and combined services remain separate from canonical permissions", async () => {
+  const admin = await makeUser("HEAD_OFFICE");
+  const cases = [
+    ["solar", ["SOLAR"], ["SOLAR_ASSIGNMENT"]],
+    ["phone", ["PHONE"], ["PHONE_ASSIGNMENT"]],
+    ["both", ["SOLAR", "PHONE"], ["SOLAR_ASSIGNMENT", "PHONE_ASSIGNMENT"]],
+  ];
+  for (const [suffix, services, permissions] of cases) {
+    const made = await createPartner(admin, suffix, permissions, services);
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    assert.deepEqual([...made.body.partner.services].sort(), [...services].sort());
+    assert.equal(made.body.partner.permissions.includes("SOLAR"), false);
+    assert.equal(made.body.partner.permissions.includes("PHONE"), false);
+    for (const permission of permissions) {
+      assert.equal(made.body.partner.permissions.includes(permission), true);
+    }
+  }
+});
+
+test("unauthorized customer role cannot create Business Partners", async () => {
+  const customer = await makeUser("CUSTOMER");
+  const result = await createPartner(
+    customer,
+    "unauthorized",
+    ["SOLAR_ASSIGNMENT"],
+    ["SOLAR"]
+  );
+  assert.equal(result.status, 403);
 });
 
 test("invalid partner provisioning payloads do not leave users or profiles", async () => {

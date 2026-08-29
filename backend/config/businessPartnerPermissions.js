@@ -18,6 +18,13 @@ const BUSINESS_PARTNER_PERMISSION_VALUES = Object.freeze([
   ...BUSINESS_PARTNER_ACTION_PERMISSIONS,
 ]);
 
+const BUSINESS_PARTNER_SERVICES = Object.freeze(["SOLAR", "PHONE"]);
+
+const BUSINESS_PARTNER_SERVICE_PERMISSIONS = Object.freeze({
+  SOLAR: "SOLAR_ASSIGNMENT",
+  PHONE: "PHONE_ASSIGNMENT",
+});
+
 const normalizeBusinessPartnerPermissions = (permissions = []) => {
   if (!Array.isArray(permissions)) return [];
   return [
@@ -36,6 +43,18 @@ const mergeBusinessPartnerViewPermissions = (permissions = []) => [
   ]),
 ];
 
+const normalizeBusinessPartnerServices = (services = []) => {
+  if (!Array.isArray(services)) return [];
+  return [
+    ...new Set(
+      services
+        .map((value) => String(value || "").trim().toUpperCase())
+        .map((value) => (value === "PHONE_FINANCING" ? "PHONE" : value))
+        .filter((value) => BUSINESS_PARTNER_SERVICES.includes(value))
+    ),
+  ].sort();
+};
+
 const hasOnlyBusinessPartnerPermissions = (permissions) =>
   Array.isArray(permissions) &&
   permissions.every((value) =>
@@ -44,11 +63,38 @@ const hasOnlyBusinessPartnerPermissions = (permissions) =>
     )
   );
 
+const hasOnlyBusinessPartnerServices = (services) =>
+  Array.isArray(services) &&
+  services.every((value) => {
+    const normalized = String(value || "").trim().toUpperCase();
+    return BUSINESS_PARTNER_SERVICES.includes(
+      normalized === "PHONE_FINANCING" ? "PHONE" : normalized
+    );
+  });
+
+const permissionsForBusinessPartnerServices = (
+  services = [],
+  permissions = []
+) => [
+  ...new Set([
+    ...BUSINESS_PARTNER_VIEW_PERMISSIONS,
+    ...normalizeBusinessPartnerPermissions(permissions),
+    ...normalizeBusinessPartnerServices(services).map(
+      (service) => BUSINESS_PARTNER_SERVICE_PERMISSIONS[service]
+    ),
+  ]),
+];
+
 module.exports = {
   BUSINESS_PARTNER_VIEW_PERMISSIONS,
   BUSINESS_PARTNER_ACTION_PERMISSIONS,
   BUSINESS_PARTNER_PERMISSION_VALUES,
+  BUSINESS_PARTNER_SERVICES,
+  BUSINESS_PARTNER_SERVICE_PERMISSIONS,
   normalizeBusinessPartnerPermissions,
   mergeBusinessPartnerViewPermissions,
+  normalizeBusinessPartnerServices,
   hasOnlyBusinessPartnerPermissions,
+  hasOnlyBusinessPartnerServices,
+  permissionsForBusinessPartnerServices,
 };
