@@ -154,7 +154,7 @@ test("concurrent provisioning allocates distinct IDs with reciprocal links", asy
 
 test("partners are isolated, cannot self-claim, and sensitive customer fields are not projected", async () => {
   const admin = await makeUser("HEAD_OFFICE");
-  const a = await createPartner(admin, "2", ["DASHBOARD", "APPLICATIONS", "CUSTOMERS", "OFFICERS", "PHONE_ASSIGNMENT"], ["PHONE"]);
+  const a = await createPartner(admin, "2", ["DASHBOARD", "APPLICATIONS", "CUSTOMERS", "OFFICERS", "SOLAR_ASSIGNMENT", "PHONE_ASSIGNMENT"], ["SOLAR", "PHONE"]);
   const b = await createPartner(admin, "3", ["DASHBOARD", "APPLICATIONS", "CUSTOMERS", "PHONE_ASSIGNMENT"], ["PHONE"]);
   const aUser = await User.findById(a.body.user._id), bUser = await User.findById(b.body.user._id);
   assert.equal((await api({ method: "POST", path: "/api/business-partner/officers/link", actor: aUser, body: { type: "PHONE", officerId: new mongoose.Types.ObjectId() } })).status, 403);
@@ -241,6 +241,20 @@ test("Head Office allocates cases and partner permissions scope officer assignme
   assert.equal(revoked.body.partner.permissions.includes("PHONE_ASSIGNMENT"), false);
   assert.equal(revoked.body.partner.permissions.includes("OFFICER_MANAGEMENT"), false);
   assert.equal((await api({ method: "POST", path: `/api/business-partner/applications/${app._id}/assign`, actor: partnerUser, body: { type: "PHONE", officerId: officer._id } })).status, 403);
+  const [revokedDashboard, revokedApplications, revokedCustomers, revokedRepayments, revokedPerformance, revokedOfficers] = await Promise.all([
+    api({ path: "/api/business-partner/dashboard", actor: partnerUser }),
+    api({ path: "/api/business-partner/applications", actor: partnerUser }),
+    api({ path: "/api/business-partner/customers", actor: partnerUser }),
+    api({ path: "/api/business-partner/repayments", actor: partnerUser }),
+    api({ path: "/api/business-partner/performance", actor: partnerUser }),
+    api({ path: "/api/business-partner/officers", actor: partnerUser }),
+  ]);
+  assert.equal(revokedDashboard.body.dashboard.phoneApplications, 0);
+  assert.deepEqual(revokedApplications.body.applications.phone, []);
+  assert.deepEqual(revokedCustomers.body.customers, []);
+  assert.deepEqual(revokedRepayments.body.repayments.phone, []);
+  assert.deepEqual(revokedPerformance.body.performance.phone, []);
+  assert.deepEqual(revokedOfficers.body.officers.phone, []);
   const emptyServices = await createPartner(admin, "empty-service", ["OFFICERS", "PHONE_ASSIGNMENT"]);
   assert.equal(emptyServices.body.partner.permissions.includes("PHONE_ASSIGNMENT"), false);
   assert.equal(await Notification.countDocuments({ userId: partner.body.user._id, referenceType: "BusinessPartnerAssignment" }), 1);
