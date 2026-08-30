@@ -29,6 +29,12 @@ const {
   getAdminUserTransactions,
   getAdminAuditLogs,
 } = require("../controllers/adminCustomer.controller");
+const {
+  searchCustomers: searchCustomer360,
+  getCustomerOverview: getCustomer360Overview,
+  getCustomerTimeline: getCustomer360Timeline,
+  getCustomerTransactions: getCustomer360Transactions,
+} = require("../controllers/adminCustomer360.controller");
 
 const {
   getAdminRiders,
@@ -48,6 +54,9 @@ const {
   loadStaffRole,
   requirePermission,
 } = require("../middleware/staffPermission.middleware");
+const {
+  STAFF_PERMISSIONS: P,
+} = require("../config/staffPermissions");
 
 const {
   adjustCustomerWallet,
@@ -321,6 +330,38 @@ router.get(
   protect,
   adminOnly("HEAD_OFFICE"),
   getAdminAuditLogs
+);
+
+router.get(
+  "/customer360/search",
+  protect,
+  loadStaffRole,
+  requirePermission(P.CUSTOMER360_VIEW),
+  searchCustomer360
+);
+
+router.get(
+  "/customer360/:customerId",
+  protect,
+  loadStaffRole,
+  requirePermission(P.CUSTOMER360_VIEW),
+  getCustomer360Overview
+);
+
+router.get(
+  "/customer360/:customerId/timeline",
+  protect,
+  loadStaffRole,
+  requirePermission(P.CUSTOMER360_VIEW),
+  getCustomer360Timeline
+);
+
+router.get(
+  "/customer360/:customerId/transactions",
+  protect,
+  loadStaffRole,
+  requirePermission(P.CUSTOMER360_FINANCIAL),
+  getCustomer360Transactions
 );
 
 /*

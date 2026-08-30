@@ -16,6 +16,10 @@ const STAFF_PERMISSIONS = Object.freeze({
   USERS_UPDATE: "users.update",
   USERS_SUSPEND: "users.suspend",
   USERS_BLOCK: "users.block",
+  CUSTOMER360_VIEW: "customer360.view",
+  CUSTOMER360_FINANCIAL: "customer360.financial",
+  CUSTOMER360_KYC: "customer360.kyc",
+  CUSTOMER360_SECURITY: "customer360.security",
 
   BUSINESS_PARTNERS_VIEW: "business_partners.view",
   BUSINESS_PARTNERS_CREATE: "business_partners.create",
