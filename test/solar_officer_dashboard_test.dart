@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:servicepay_app/login_screen.dart';
 import 'package:servicepay_app/services/solar_officer_api_service.dart';
 import 'package:servicepay_app/solar_officer/solar_officer_dashboard_screen.dart';
 
@@ -92,6 +94,14 @@ class _FakeSolarOfficerApi extends SolarOfficerApiService {
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'solar-officer-token',
+      'user_role': 'SOLAR_OFFICER',
+      'solar_officer_id': 'SSO-000001',
+    });
+  });
+
   testWidgets(
     'Solar Officer gets a dedicated dashboard without Admin approval controls',
     (WidgetTester tester) async {
@@ -145,7 +155,40 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Field Officer'), findsOneWidget);
       expect(find.text('SSO-000001 • ACTIVE'), findsOneWidget);
-      expect(find.text('Log out'), findsOneWidget);
+      expect(
+        find.byKey(const Key('solar-officer-profile-logout')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('solar-officer-profile-logout')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Are you sure you want to log out?'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SolarOfficerDashboardScreen), findsOneWidget);
+      expect(
+        (await SharedPreferences.getInstance()).getString('auth_token'),
+        'solar-officer-token',
+      );
+
+      await tester.tap(
+        find.byKey(const Key('solar-officer-profile-logout')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Logout').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LoginScreen), findsOneWidget);
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+      expect(preferences.getString('auth_token'), isNull);
+      expect(preferences.getString('user_role'), isNull);
+      expect(preferences.getString('solar_officer_id'), isNull);
+      expect(tester.state<NavigatorState>(find.byType(Navigator)).canPop(),
+          isFalse);
     },
   );
 }

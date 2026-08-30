@@ -36,7 +36,8 @@ void main() {
     expect(find.text('Available Balance'), findsOneWidget);
     expect(find.text('Transfer'), findsOneWidget);
     expect(find.text('Withdraw'), findsOneWidget);
-    expect(find.text('Fund Wallet'), findsOneWidget);
+    expect(find.text('Fund Wallet'), findsNothing);
+    expect(find.text('Wallet Funding'), findsNothing);
     expect(find.text('QR Pay'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('dashboard-refresh-tool')));

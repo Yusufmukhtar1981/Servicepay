@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'business_partner_permissions.dart';
 import 'business_partner_officers_screen.dart';
 import '../services/business_partner_api_service.dart';
+import '../login_screen.dart';
 
 const Color _green = Color(0xFF078B52);
 const Color _greenDark = Color(0xFF05633D);
@@ -1645,7 +1647,75 @@ class _BusinessPartnerDashboardScreenState
             ],
           ),
         ),
+      const SizedBox(height: 20),
+      _surfaceCard(
+        title: 'Account & Security',
+        subtitle: 'Manage your signed-in Business Partner session.',
+        icon: Icons.security_outlined,
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            key: const Key('business-partner-profile-logout'),
+            onPressed: _logout,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Logout'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFB42318),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+      ),
     ]);
+  }
+
+  Future<void> _logout() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    for (final String key in <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+      'user_id',
+      'user_name',
+      'user_phone',
+      'user_email',
+      'user_role',
+      'user_status',
+      'wallet_balance',
+      'business_partner_id',
+      'business_partner_profile',
+    ]) {
+      await preferences.remove(key);
+    }
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+      (Route<dynamic> route) => false,
+    );
   }
 
   Widget _profileLine(String label, String value) => Padding(

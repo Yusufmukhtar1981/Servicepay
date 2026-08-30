@@ -113,7 +113,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     'ninVerification': true,
     'delivery': true,
     'flightBooking': true,
-    'walletFunding': true,
     'bankTransfer': true,
     'servicepayTransfer': true,
   };
@@ -969,7 +968,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       'NIN Verification': 'ninVerification',
       'Delivery': 'delivery',
       'Flight Booking': 'flightBooking',
-      'Wallet Funding': 'walletFunding',
       'Withdrawal': 'bankTransfer',
       'ServicePay Transfer': 'servicepayTransfer',
     };
@@ -1354,18 +1352,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () {
           openScreen(
             const FlightBookingScreen(),
-          );
-        },
-      ),
-      _DashboardService(
-        title: 'Wallet Funding',
-        icon: Icons.account_balance_wallet_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
-        keywords: 'wallet funding fund wallet deposit',
-        onTap: () {
-          openScreen(
-            const WalletScreen(),
           );
         },
       ),
@@ -2040,13 +2026,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               onTap: () => openScreen(const WithdrawalScreen()),
             ),
             _premiumWalletAction(
-              icon: Icons.add_card_rounded,
-              label: 'Fund Wallet',
-              detail: 'Add money',
-              key: const Key('dashboard-fund-wallet-action'),
-              onTap: () => openScreen(const WalletScreen()),
-            ),
-            _premiumWalletAction(
               icon: Icons.qr_code_scanner_rounded,
               label: 'QR Pay',
               detail: 'Scan & pay',
@@ -2074,7 +2053,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   thickness: 1,
                   color: Color(0xFFE5EEE8),
                 ),
-                actionPair(2, 3),
+                actions[2],
               ],
             );
           }
@@ -2086,8 +2065,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               Expanded(child: actions[1]),
               _premiumActionDivider(),
               Expanded(child: actions[2]),
-              _premiumActionDivider(),
-              Expanded(child: actions[3]),
             ],
           );
         },

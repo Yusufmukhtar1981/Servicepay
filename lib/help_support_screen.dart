@@ -136,7 +136,7 @@ class HelpSupportScreen extends StatelessWidget {
             LegalSection(
               title: 'Wallet Funding',
               content:
-                  'Manual funding requests are reviewed before a wallet is credited. Only transfer to the official account displayed inside ServicePay.',
+                  'Only transfer to the virtual account displayed inside your ServicePay Wallet. Confirm the account details before sending money.',
             ),
             LegalSection(
               title: 'Prohibited Activities',
@@ -541,12 +541,12 @@ class FaqSection extends StatefulWidget {
     {
       'question': 'How do I fund my wallet?',
       'answer':
-          'Open Wallet, tap Fund Wallet, transfer to the official ServicePay account and submit your payment details.',
+          'Open Wallet and transfer to the virtual account shown there. Confirm the account name, number and bank before sending money.',
     },
     {
       'question': 'Why is my wallet balance not updated?',
       'answer':
-          'Refresh the Wallet page. Manual funding must first be reviewed and approved by an administrator.',
+          'Refresh the Wallet page. If a virtual-account transfer is still missing, contact Support with the transaction reference.',
     },
     {
       'question': 'Can I transfer to another ServicePay user?',

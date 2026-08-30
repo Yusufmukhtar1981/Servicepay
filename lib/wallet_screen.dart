@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'manual_funding_screen.dart';
 import 'qr_pay_screen.dart';
 import 'transfer_screen.dart';
 import 'transactions_screen.dart';
@@ -462,21 +461,6 @@ class _WalletScreenState extends State<WalletScreen> {
     _showMessage(
       'Account number copied.',
       isError: false,
-    );
-  }
-
-  Future<void> _fundWallet() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ManualFundingScreen(),
-      ),
-    );
-
-    if (!mounted) return;
-
-    await _loadWallet(
-      showRefreshLoader: true,
     );
   }
 
@@ -1036,14 +1020,6 @@ class _WalletScreenState extends State<WalletScreen> {
             children: [
               Expanded(
                 child: _walletButton(
-                  icon: Icons.add_rounded,
-                  label: 'Fund Wallet',
-                  onTap: _fundWallet,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _walletButton(
                   icon: Icons.swap_horiz_rounded,
                   label: 'Transfer',
                   onTap: _openTransferScreen,
@@ -1438,16 +1414,6 @@ class _WalletScreenState extends State<WalletScreen> {
             spacing: 12,
             runSpacing: 14,
             children: [
-              SizedBox(
-                width: itemWidth,
-                child: _quickActionItem(
-                  icon: Icons.account_balance_wallet_outlined,
-                  label: 'Fund Wallet',
-                  background: const Color(0xFFDCFCE7),
-                  iconColor: const Color(0xFF15803D),
-                  onTap: _fundWallet,
-                ),
-              ),
               SizedBox(
                 width: itemWidth,
                 child: _quickActionItem(

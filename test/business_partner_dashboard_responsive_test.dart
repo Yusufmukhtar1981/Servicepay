@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:servicepay_app/business_partner/business_partner_dashboard_screen.dart';
+import 'package:servicepay_app/login_screen.dart';
 import 'package:servicepay_app/services/business_partner_api_service.dart';
 
 class _DashboardApi extends BusinessPartnerApiService {
@@ -131,6 +133,14 @@ Widget _screen({bool includeSensitivePermissions = true}) => MaterialApp(
     );
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'business-partner-token',
+      'user_role': 'BUSINESS_PARTNER',
+      'business_partner_id': 'partner-1',
+    });
+  });
+
   testWidgets('renders premium desktop workspace without layout errors',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1440, 1000);
@@ -227,5 +237,47 @@ void main() {
     expect(find.textContaining('permissions'), findsNothing);
     expect(find.textContaining('availableModules'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('profile logout supports cancel and clears the protected session',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_screen());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Profile').first);
+    await tester.pumpAndSettle();
+
+    final Finder logout =
+        find.byKey(const Key('business-partner-profile-logout'));
+    expect(logout, findsOneWidget);
+
+    await tester.tap(logout);
+    await tester.pumpAndSettle();
+    expect(find.text('Are you sure you want to log out?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BusinessPartnerDashboardScreen), findsOneWidget);
+    expect(
+      (await SharedPreferences.getInstance()).getString('auth_token'),
+      'business-partner-token',
+    );
+
+    await tester.tap(logout);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Logout').last);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LoginScreen), findsOneWidget);
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('auth_token'), isNull);
+    expect(preferences.getString('user_role'), isNull);
+    expect(preferences.getString('business_partner_id'), isNull);
+    expect(
+        tester.state<NavigatorState>(find.byType(Navigator)).canPop(), isFalse);
   });
 }

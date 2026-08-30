@@ -496,9 +496,9 @@ class _SolarOfficerDashboardScreenState
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Log out?'),
+        title: const Text('Logout'),
         content: const Text(
-          'Are you sure you want to log out of your Solar Officer account?',
+          'Are you sure you want to log out?',
         ),
         actions: <Widget>[
           TextButton(
@@ -507,7 +507,7 @@ class _SolarOfficerDashboardScreenState
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Log out'),
+            child: const Text('Logout'),
           ),
         ],
       ),
@@ -539,6 +539,8 @@ class _SolarOfficerDashboardScreenState
       'rider_state',
       'rider_lga',
       'rider_is_online',
+      'solar_officer_id',
+      'solar_officer_profile',
     ]) {
       await preferences.remove(key);
     }
@@ -1530,9 +1532,10 @@ class _SolarOfficerDashboardScreenState
         ),
         const SizedBox(height: 20),
         OutlinedButton.icon(
+          key: const Key('solar-officer-profile-logout'),
           onPressed: _logout,
           icon: const Icon(Icons.logout),
-          label: const Text('Log out'),
+          label: const Text('Logout'),
           style: OutlinedButton.styleFrom(
             foregroundColor: const Color(0xFFB42318),
           ),
