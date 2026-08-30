@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   getMyNotifications,
   getUnreadCount,
+  getNotificationDetail,
   markAsRead,
   markAllAsRead,
   deleteNotification,
@@ -17,6 +18,7 @@ const { protect, adminOnly } = require("../middleware/auth.middleware");
 // Customer
 router.get("/", protect, getMyNotifications);
 router.get("/unread-count", protect, getUnreadCount);
+router.get("/:id", protect, getNotificationDetail);
 router.put("/read-all", protect, markAllAsRead);
 router.put("/read/:id", protect, markAsRead);
 router.delete("/:id", protect, deleteNotification);

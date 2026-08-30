@@ -5,6 +5,9 @@ const TransactionEmailDelivery = require(
 const {
   sendTransactionEmail,
 } = require("./email.service");
+const {
+  createTransactionInAppNotification,
+} = require("./inAppNotification.service");
 
 const DIRECTIONS = new Set(["DEBIT", "CREDIT"]);
 const PROCESSING_LEASE_MS = 10 * 60 * 1000;
@@ -259,19 +262,37 @@ const sendTransactionNotification = async (
 ) => {
   const event = normalizeEvent(input);
 
-  if (!event.email || !event.reference) {
+  if (!event.reference) {
     console.log(
-      `[TRANSACTION EMAIL] Skipped ${event.reference || "NO_REFERENCE"}: recipient or reference missing`
+      "[TRANSACTION EMAIL] Skipped NO_REFERENCE: reference missing"
     );
 
     return {
       success: false,
       skipped: true,
-      reason: "RECIPIENT_OR_REFERENCE_MISSING",
+      reason: "REFERENCE_MISSING",
     };
   }
 
   const eventKey = buildEventKey(event);
+  try {
+    await createTransactionInAppNotification(event, eventKey);
+  } catch (error) {
+    console.error(
+      `[IN-APP TRANSACTION] Unable to record ${event.reference}: ${error.message}`
+    );
+  }
+  if (!event.email) {
+    console.log(
+      `[TRANSACTION EMAIL] Skipped ${event.reference}: email recipient missing`
+    );
+    return {
+      success: true,
+      skipped: true,
+      inAppRecorded: true,
+      reason: "EMAIL_RECIPIENT_MISSING",
+    };
+  }
   let claim;
 
   try {

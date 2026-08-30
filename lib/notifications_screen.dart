@@ -1,839 +1,633 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'kyc_screen.dart';
+import 'marketplace/marketplace_my_orders_screen.dart';
+import 'profile_screen.dart';
+import 'solar_screen.dart';
+import 'track_delivery_screen.dart';
+import 'transactions_screen.dart';
+
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  const NotificationsScreen({super.key, this.client});
+
+  final http.Client? client;
 
   @override
-  State<NotificationsScreen> createState() =>
-      _NotificationsScreenState();
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  static const String baseUrl = 'https://api.servicepay.ng/api';
-
-  bool isLoading = true;
-  bool isUpdating = false;
-
-  String errorMessage = '';
-  int unreadCount = 0;
-
-  List<Map<String, dynamic>> notifications = [];
+  static const _baseUrl = 'https://api.servicepay.ng/api';
+  static const _green = Color(0xFF08783E);
+  static const _ink = Color(0xFF15352A);
+  static const _categories = <String>[
+    'ALL',
+    'UNREAD',
+    'TRANSACTION',
+    'SECURITY',
+    'ACCOUNT',
+    'OTHER',
+  ];
+  final _search = TextEditingController();
+  final _scroll = ScrollController();
+  late final http.Client _client = widget.client ?? http.Client();
+  Timer? _debounce;
+  List<Map<String, dynamic>> _items = [];
+  String _filter = 'ALL';
+  String _query = '';
+  String? _cursor;
+  bool _hasMore = false;
+  bool _loading = true;
+  bool _loadingMore = false;
+  bool _updating = false;
+  String? _error;
+  int _unread = 0;
 
   @override
   void initState() {
     super.initState();
-    loadNotifications();
+    _search.addListener(_onSearch);
+    _scroll.addListener(_onScroll);
+    _load();
   }
 
-  Future<String?> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    _scroll.dispose();
+    if (widget.client == null) _client.close();
+    super.dispose();
   }
 
-  Future<void> loadNotifications() async {
-    if (mounted) {
-      setState(() {
-        isLoading = true;
-        errorMessage = '';
-      });
-    }
-
-    try {
-      final token = await _getToken();
-
-      if (token == null || token.isEmpty) {
-        if (!mounted) return;
-
-        setState(() {
-          isLoading = false;
-          errorMessage = 'Your login session has expired. Please log in again.';
-        });
-        return;
+  void _onSearch() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) {
+        setState(() => _query = _search.text.trim());
+        _load();
       }
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/notifications'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 30));
-
-      final Map<String, dynamic> data =
-          jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        final List<dynamic> notificationList =
-            data['notifications'] as List<dynamic>? ?? [];
-
-        setState(() {
-          notifications = notificationList
-              .map(
-                (item) => Map<String, dynamic>.from(
-                  item as Map,
-                ),
-              )
-              .toList();
-
-          unreadCount = data['unreadCount'] is int
-              ? data['unreadCount'] as int
-              : int.tryParse('${data['unreadCount']}') ?? 0;
-
-          isLoading = false;
-          errorMessage = '';
-        });
-      } else {
-        setState(() {
-          isLoading = false;
-          errorMessage =
-              data['message']?.toString() ??
-              'Unable to load notifications.';
-        });
-      }
-    } catch (error) {
-      if (!mounted) return;
-
-      setState(() {
-        isLoading = false;
-        errorMessage = 'Unable to connect to the server.';
-      });
-    }
-  }
-
-  Future<void> markAsRead(String notificationId) async {
-    try {
-      final token = await _getToken();
-
-      if (token == null || token.isEmpty) {
-        _showMessage(
-          'Your login session has expired. Please log in again.',
-          isError: true,
-        );
-        return;
-      }
-
-      final response = await http.put(
-        Uri.parse('$baseUrl/notifications/read/$notificationId'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 30));
-
-      final Map<String, dynamic> data =
-          jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        setState(() {
-          final index = notifications.indexWhere(
-            (notification) =>
-                notification['_id']?.toString() == notificationId,
-          );
-
-          if (index != -1) {
-            notifications[index]['isRead'] = true;
-            notifications[index]['readAt'] =
-                DateTime.now().toIso8601String();
-          }
-
-          if (unreadCount > 0) {
-            unreadCount--;
-          }
-        });
-      } else {
-        _showMessage(
-          data['message']?.toString() ??
-              'Unable to update notification.',
-          isError: true,
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-
-      _showMessage(
-        'Unable to connect to the server.',
-        isError: true,
-      );
-    }
-  }
-
-  Future<void> markAllAsRead() async {
-    if (unreadCount == 0 || isUpdating) return;
-
-    setState(() {
-      isUpdating = true;
     });
+  }
 
-    try {
-      final token = await _getToken();
+  void _onScroll() {
+    if (_scroll.hasClients &&
+        _scroll.position.extentAfter < 360 &&
+        _hasMore &&
+        !_loadingMore) {
+      _load(more: true);
+    }
+  }
 
-      if (token == null || token.isEmpty) {
-        if (!mounted) return;
+  Future<String?> _token() async =>
+      (await SharedPreferences.getInstance()).getString('auth_token');
 
-        setState(() {
-          isUpdating = false;
-        });
-
-        _showMessage(
-          'Your login session has expired. Please log in again.',
-          isError: true,
-        );
-        return;
-      }
-
-      final response = await http.put(
-        Uri.parse('$baseUrl/notifications/read-all'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 30));
-
-      final Map<String, dynamic> data =
-          jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        setState(() {
-          for (final notification in notifications) {
-            notification['isRead'] = true;
-            notification['readAt'] =
-                DateTime.now().toIso8601String();
-          }
-
-          unreadCount = 0;
-          isUpdating = false;
-        });
-
-        _showMessage('All notifications marked as read.');
-      } else {
-        setState(() {
-          isUpdating = false;
-        });
-
-        _showMessage(
-          data['message']?.toString() ??
-              'Unable to update notifications.',
-          isError: true,
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-
+  Future<void> _load({bool more = false}) async {
+    if (more && (_loadingMore || !_hasMore)) return;
+    if (!more && mounted) {
       setState(() {
-        isUpdating = false;
+        _loading = true;
+        _error = null;
+        _cursor = null;
       });
-
-      _showMessage(
-        'Unable to connect to the server.',
-        isError: true,
-      );
+    } else if (mounted) {
+      setState(() => _loadingMore = true);
     }
-  }
-
-  Future<void> deleteNotification(String notificationId) async {
     try {
-      final token = await _getToken();
-
-      if (token == null || token.isEmpty) {
-        _showMessage(
-          'Your login session has expired. Please log in again.',
-          isError: true,
-        );
-        return;
+      final token = await _token();
+      if (token == null || token.isEmpty) throw const _SessionException();
+      final params = <String, String>{'limit': '20'};
+      if (more && _cursor != null) params['before'] = _cursor!;
+      final category = _filter == 'TRANSACTION' ||
+              _filter == 'SECURITY' ||
+              _filter == 'ACCOUNT' ||
+              _filter == 'OTHER'
+          ? _filter
+          : null;
+      if (category != null) params['category'] = category;
+      if (_filter == 'UNREAD') params['unread'] = 'true';
+      if (_query.isNotEmpty) params['search'] = _query;
+      final response = await _client.get(
+          Uri.parse('$_baseUrl/notifications').replace(
+            queryParameters: params,
+          ),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json'
+          }).timeout(const Duration(seconds: 25));
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded is! Map ||
+          decoded['success'] != true) {
+        throw Exception(decoded is Map ? decoded['message'] : null);
       }
-
-      final notification = notifications.firstWhere(
-        (item) => item['_id']?.toString() == notificationId,
-        orElse: () => <String, dynamic>{},
-      );
-
-      final wasUnread = notification['isRead'] != true;
-
-      final response = await http.delete(
-        Uri.parse('$baseUrl/notifications/$notificationId'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 30));
-
-      final Map<String, dynamic> data =
-          jsonDecode(response.body) as Map<String, dynamic>;
-
+      final raw = decoded['notifications'];
+      final incoming = raw is List
+          ? raw
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : <Map<String, dynamic>>[];
+      final pagination = decoded['pagination'];
+      final next = pagination is Map ? pagination['nextCursor'] : null;
+      final has = pagination is Map && pagination['hasMore'] == true;
       if (!mounted) return;
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        setState(() {
-          notifications.removeWhere(
-            (item) => item['_id']?.toString() == notificationId,
-          );
-
-          if (wasUnread && unreadCount > 0) {
-            unreadCount--;
-          }
-        });
-
-        _showMessage('Notification deleted.');
-      } else {
-        _showMessage(
-          data['message']?.toString() ??
-              'Unable to delete notification.',
-          isError: true,
-        );
-      }
-    } catch (error) {
+      setState(() {
+        _items = more ? [..._items, ...incoming] : incoming;
+        _cursor = next?.toString();
+        _hasMore = has && _cursor != null && _cursor!.isNotEmpty;
+        _unread = _number(decoded['unreadCount']);
+        _loading = false;
+        _loadingMore = false;
+        _error = null;
+      });
+    } catch (_) {
       if (!mounted) return;
-
-      _showMessage(
-        'Unable to connect to the server.',
-        isError: true,
-      );
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+        _error =
+            'We couldn’t refresh your activity. Check your connection and try again.';
+      });
     }
   }
 
-  Future<void> deleteAllNotifications() async {
-    if (notifications.isEmpty || isUpdating) return;
+  static int _number(dynamic value) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
-    final shouldDelete = await showDialog<bool>(
+  Future<void> _read(String id) async {
+    final index = _items.indexWhere((n) => '${n['_id']}' == id);
+    if (index < 0 || _items[index]['isRead'] == true) return;
+    final previous = Map<String, dynamic>.from(_items[index]);
+    final previousUnread = _unread;
+    setState(() {
+      _items[index] = {..._items[index], 'isRead': true};
+      if (_unread > 0) _unread--;
+    });
+    try {
+      final token = await _token();
+      if (token == null || token.isEmpty) return;
+      final response = await _client
+          .put(Uri.parse('$_baseUrl/notifications/read/$id'), headers: {
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json'
+      });
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception();
+      }
+      final decoded = jsonDecode(response.body);
+      if (!mounted || decoded is! Map) return;
+      setState(() {
+        _unread = _number(decoded['unreadCount']);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      final currentIndex = _items.indexWhere((n) => '${n['_id']}' == id);
+      setState(() {
+        if (currentIndex >= 0) {
+          _items[currentIndex] = previous;
+        }
+        _unread = previousUnread;
+      });
+      _message('Could not update this notification. Try again.', error: true);
+    }
+  }
+
+  Future<void> _readAll() async {
+    if (_unread == 0 || _updating) return;
+    setState(() => _updating = true);
+    try {
+      final token = await _token();
+      if (token == null || token.isEmpty) throw const _SessionException();
+      final response = await _client
+          .put(Uri.parse('$_baseUrl/notifications/read-all'), headers: {
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json'
+      });
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception();
+      }
+      if (!mounted) return;
+      final decoded = jsonDecode(response.body);
+      setState(() {
+        _items = _items.map((n) => {...n, 'isRead': true}).toList();
+        _unread = decoded is Map ? _number(decoded['unreadCount']) : 0;
+        _updating = false;
+      });
+      _message('Everything is up to date.');
+    } catch (_) {
+      if (mounted) {
+        setState(() => _updating = false);
+        _message('Could not mark notifications as read.', error: true);
+      }
+    }
+  }
+
+  void _open(Map<String, dynamic> n) {
+    final id = n['_id']?.toString();
+    if (id != null && id.isNotEmpty) _read(id);
+    showModalBottomSheet<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Delete all notifications?'),
-          content: const Text(
-            'This action will permanently delete all your notifications.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, false);
-              },
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, true);
-              },
-              child: const Text('Delete All'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldDelete != true) return;
-
-    setState(() {
-      isUpdating = true;
-    });
-
-    try {
-      final token = await _getToken();
-
-      if (token == null || token.isEmpty) {
-        if (!mounted) return;
-
-        setState(() {
-          isUpdating = false;
-        });
-
-        _showMessage(
-          'Your login session has expired. Please log in again.',
-          isError: true,
-        );
-        return;
-      }
-
-      final response = await http.delete(
-        Uri.parse('$baseUrl/notifications'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 30));
-
-      final Map<String, dynamic> data =
-          jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        setState(() {
-          notifications.clear();
-          unreadCount = 0;
-          isUpdating = false;
-        });
-
-        _showMessage('All notifications deleted.');
-      } else {
-        setState(() {
-          isUpdating = false;
-        });
-
-        _showMessage(
-          data['message']?.toString() ??
-              'Unable to delete notifications.',
-          isError: true,
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-
-      setState(() {
-        isUpdating = false;
-      });
-
-      _showMessage(
-        'Unable to connect to the server.',
-        isError: true,
-      );
-    }
-  }
-
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) => _detail(n, modalContext),
     );
   }
 
-  String formatDate(dynamic value) {
-    if (value == null) return '';
-
-    final date = DateTime.tryParse(value.toString());
-
-    if (date == null) return '';
-
-    final localDate = date.toLocal();
-
-    final day = localDate.day.toString().padLeft(2, '0');
-    final month = localDate.month.toString().padLeft(2, '0');
-    final year = localDate.year.toString();
-
-    final hour = localDate.hour.toString().padLeft(2, '0');
-    final minute = localDate.minute.toString().padLeft(2, '0');
-
-    return '$day/$month/$year $hour:$minute';
-  }
-
-  IconData getNotificationIcon(String type) {
-    switch (type.toUpperCase()) {
-      case 'DELIVERY':
-        return Icons.local_shipping_outlined;
-
-      case 'TRANSFER':
-        return Icons.swap_horiz;
-
-      case 'WALLET':
-        return Icons.account_balance_wallet_outlined;
-
-      case 'AIRTIME':
-        return Icons.phone_android;
-
-      case 'DATA':
-        return Icons.wifi;
-
-      case 'CABLE':
-        return Icons.tv_outlined;
-
-      case 'ELECTRICITY':
-        return Icons.bolt_outlined;
-
-      case 'EXAM_PIN':
-        return Icons.school_outlined;
-
-      case 'ID_VERIFICATION':
-        return Icons.verified_user_outlined;
-
-      default:
-        return Icons.notifications_outlined;
-    }
-  }
-
-  Color getNotificationColor(String type) {
-    switch (type.toUpperCase()) {
-      case 'DELIVERY':
-        return Colors.orange;
-
-      case 'TRANSFER':
-        return Colors.blue;
-
-      case 'WALLET':
-        return Colors.green;
-
-      case 'AIRTIME':
-        return Colors.purple;
-
-      case 'DATA':
-        return Colors.indigo;
-
-      case 'CABLE':
-        return Colors.deepOrange;
-
-      case 'ELECTRICITY':
-        return Colors.amber.shade800;
-
-      case 'EXAM_PIN':
-        return Colors.teal;
-
-      case 'ID_VERIFICATION':
-        return Colors.blueGrey;
-
-      default:
-        return Colors.grey.shade700;
-    }
-  }
-
-  Widget buildNotificationCard(Map<String, dynamic> notification) {
-    final notificationId = notification['_id']?.toString() ?? '';
-    final title =
-        notification['title']?.toString() ?? 'Notification';
-    final message = notification['message']?.toString() ?? '';
-    final type = notification['type']?.toString() ?? 'GENERAL';
-    final isRead = notification['isRead'] == true;
-
-    final color = getNotificationColor(type);
-
-    return Dismissible(
-      key: ValueKey(notificationId),
-      direction: DismissDirection.endToStart,
-      confirmDismiss: (_) async {
-        return await showDialog<bool>(
-              context: context,
-              builder: (dialogContext) {
-                return AlertDialog(
-                  title: const Text('Delete notification?'),
-                  content: const Text(
-                    'Are you sure you want to delete this notification?',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(dialogContext, false);
-                      },
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed: () {
-                        Navigator.pop(dialogContext, true);
-                      },
-                      child: const Text('Delete'),
-                    ),
-                  ],
-                );
-              },
-            ) ??
-            false;
-      },
-      onDismissed: (_) {
-        deleteNotification(notificationId);
-      },
-      background: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        alignment: Alignment.centerRight,
-        decoration: BoxDecoration(
-          color: Colors.red,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Icon(
-          Icons.delete_outline,
-          color: Colors.white,
-        ),
+  Widget _detail(Map<String, dynamic> n, BuildContext modalContext) {
+    final action = n['action']?.toString().toUpperCase() ?? '';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FCF9),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        elevation: isRead ? 0 : 2,
-        color: isRead
-            ? Colors.white
-            : color.withValues(alpha: 0.08),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: isRead
-                ? Colors.grey.shade200
-                : color.withValues(alpha: 0.35),
-          ),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            if (!isRead && notificationId.isNotEmpty) {
-              markAsRead(notificationId);
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    getNotificationIcon(type),
-                    color: color,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: isRead
-                                    ? FontWeight.w600
-                                    : FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          if (!isRead)
-                            Container(
-                              width: 9,
-                              height: 9,
-                              margin: const EdgeInsets.only(
-                                top: 5,
-                                left: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        message,
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 1.4,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Text(
-                            type.replaceAll('_', ' '),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: color,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            formatDate(notification['createdAt']),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+      child: SafeArea(
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                  child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFC8D9CF),
+                          borderRadius: BorderRadius.circular(9)))),
+              const SizedBox(height: 22),
+              Text(n['title']?.toString() ?? 'Activity',
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.w800, color: _ink)),
+              const SizedBox(height: 10),
+              Text(
+                  n['message']?.toString() ??
+                      'No additional details are available.',
+                  style: const TextStyle(
+                      fontSize: 16, height: 1.45, color: Color(0xFF53675D))),
+              if ((n['reference']?.toString().trim().isNotEmpty ?? false) ||
+                  (n['referenceId']?.toString().trim().isNotEmpty ??
+                      false)) ...[
+                const SizedBox(height: 14),
+                Text(
+                    'Reference  ${n['reference']?.toString().trim().isNotEmpty == true ? n['reference'] : n['referenceId']}',
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFF71857A))),
               ],
-            ),
-          ),
-        ),
+              if (_destination(action) != null) ...[
+                const SizedBox(height: 22),
+                SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pop(modalContext);
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                                builder: (_) => _destination(action)!));
+                      },
+                      icon: const Icon(Icons.arrow_forward_rounded),
+                      label: Text(_actionLabel(action)),
+                    )),
+              ],
+            ]),
       ),
     );
+  }
+
+  Widget? _destination(String action) {
+    switch (action) {
+      case 'TRANSACTION':
+        return const TransactionsScreen();
+      case 'KYC':
+        return const KycScreen();
+      case 'SECURITY':
+      case 'ACCOUNT':
+        return const ProfileScreen();
+      case 'DELIVERY':
+        return const TrackDeliveryScreen();
+      case 'MARKETPLACE':
+        return const MarketplaceMyOrdersScreen();
+      case 'SOLAR':
+        return const SolarScreen();
+      default:
+        return null;
+    }
+  }
+
+  String _actionLabel(String action) => action == 'TRANSACTION'
+      ? 'Open transactions'
+      : 'Open ${action.toLowerCase()}';
+
+  void _message(String text, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(text),
+      backgroundColor: error ? const Color(0xFFB33A35) : _green,
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  String _time(dynamic raw) {
+    final date = DateTime.tryParse('$raw')?.toLocal();
+    if (date == null) return 'Recently';
+    final now = DateTime.now();
+    if (now.difference(date).inHours < 24) {
+      final hours = now.difference(date).inHours;
+      return hours == 0 ? 'Just now' : '${hours}h ago';
+    }
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  IconData _icon(String type) {
+    final t = type.toUpperCase();
+    if (t.contains('SECURITY') || t.contains('LOGIN')) {
+      return Icons.shield_outlined;
+    }
+    if (t.contains('DELIVERY')) return Icons.local_shipping_outlined;
+    if (t.contains('KYC') || t.contains('VERIFY')) {
+      return Icons.verified_user_outlined;
+    }
+    if (t.contains('SOLAR')) return Icons.wb_sunny_outlined;
+    if (t.contains('PHONE')) return Icons.phone_android_outlined;
+    if (t.contains('TRANSACTION') || t.contains('TRANSFER')) {
+      return Icons.swap_horiz_rounded;
+    }
+    return Icons.notifications_none_rounded;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Text('Notifications'),
-            if (unreadCount > 0) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  unreadCount.toString(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
+    return PopScope<int>(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, int? result) {
+        if (!didPop) {
+          Navigator.pop(context, _unread);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF2F8F4),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFFF2F8F4),
+          elevation: 0,
+          title: const Text('Activity center',
+              style: TextStyle(color: _ink, fontWeight: FontWeight.w800)),
+          actions: [
+            if (_unread > 0)
+              TextButton(
+                  onPressed: _updating ? null : _readAll,
+                  child: const Text('Read all')),
+            PopupMenuButton<String>(
+                onSelected: (v) => v == 'read' ? _readAll() : null,
+                itemBuilder: (_) => const [
+                      PopupMenuItem(
+                          value: 'read', child: Text('Mark all as read')),
+                    ]),
           ],
         ),
-        actions: [
-          PopupMenuButton<String>(
-            enabled: !isUpdating,
-            onSelected: (value) {
-              if (value == 'read-all') {
-                markAllAsRead();
-              } else if (value == 'delete-all') {
-                deleteAllNotifications();
-              }
-            },
-            itemBuilder: (context) {
-              return [
-                PopupMenuItem<String>(
-                  value: 'read-all',
-                  enabled: unreadCount > 0,
-                  child: const Row(
-                    children: [
-                      Icon(Icons.done_all),
-                      SizedBox(width: 10),
-                      Text('Mark all as read'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem<String>(
-                  value: 'delete-all',
-                  enabled: notifications.isNotEmpty,
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.delete_outline,
-                        color: Colors.red,
-                      ),
-                      SizedBox(width: 10),
-                      Text(
-                        'Delete all',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ],
-                  ),
-                ),
-              ];
-            },
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: loadNotifications,
-        child: isLoading
-            ? const Center(
-                child: CircularProgressIndicator(),
-              )
-            : errorMessage.isNotEmpty
-            ? ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(24),
-                children: [
-                  const SizedBox(height: 100),
-                  Icon(
-                    Icons.cloud_off_outlined,
-                    size: 70,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    errorMessage,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Center(
-                    child: FilledButton.icon(
-                      onPressed: loadNotifications,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Try Again'),
-                    ),
-                  ),
-                ],
-              )
-            : notifications.isEmpty
-            ? ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(24),
-                children: [
-                  const SizedBox(height: 120),
-                  Icon(
-                    Icons.notifications_none,
-                    size: 80,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'No notifications yet',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Important account updates will appear here.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              )
-            : ListView.builder(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
-                  16,
-                  16,
-                  16,
-                  30,
-                ),
-                itemCount: notifications.length,
-                itemBuilder: (context, index) {
-                  return buildNotificationCard(
-                    notifications[index],
-                  );
-                },
-              ),
+        body: LayoutBuilder(builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 700;
+          final content = Column(children: [
+            _header(),
+            _tabs(),
+            Expanded(child: _body()),
+          ]);
+          return Center(
+              child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: wide ? 900 : double.infinity),
+            child: content,
+          ));
+        }),
       ),
     );
   }
+
+  Widget _header() => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+              _unread == 0 ? 'You’re all caught up' : '$_unread unread updates',
+              style: const TextStyle(
+                  fontSize: 14, color: _green, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _search,
+            decoration: InputDecoration(
+              hintText: 'Search your activity',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _search.text.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: _search.clear,
+                      icon: const Icon(Icons.close_rounded)),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none),
+            ),
+          ),
+        ]),
+      );
+
+  Widget _tabs() => SizedBox(
+        height: 48,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          scrollDirection: Axis.horizontal,
+          itemCount: _categories.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (_, i) {
+            final value = _categories[i];
+            final selected = value == _filter;
+            return ChoiceChip(
+              label: Text(value == 'ACCOUNT'
+                  ? 'Account & KYC'
+                  : value[0] + value.substring(1).toLowerCase()),
+              selected: selected,
+              onSelected: (_) {
+                setState(() => _filter = value);
+                _load();
+              },
+              selectedColor: _green,
+              labelStyle: TextStyle(
+                  color: selected ? Colors.white : _ink,
+                  fontWeight: FontWeight.w700),
+              backgroundColor: Colors.white,
+              side: BorderSide.none,
+            );
+          },
+        ),
+      );
+
+  Widget _body() {
+    if (_loading) {
+      return _skeleton();
+    }
+    if (_error != null) {
+      return _state(Icons.cloud_off_outlined,
+          'Activity is temporarily unavailable', _error!, 'Try again', _load);
+    }
+    if (_items.isEmpty) {
+      return _state(
+          Icons.inbox_outlined,
+          _query.isEmpty ? 'Nothing here yet' : 'No matching activity',
+          _query.isEmpty
+              ? 'Important updates about your money and account will appear here.'
+              : 'Try a different search or view.',
+          'Refresh',
+          _load);
+    }
+    return RefreshIndicator(
+      color: _green,
+      onRefresh: () => _load(),
+      child: ListView.builder(
+        controller: _scroll,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+        itemCount: _items.length + (_loadingMore ? 1 : 0),
+        itemBuilder: (_, i) =>
+            i == _items.length ? const _LoadingRow() : _card(_items[i]),
+      ),
+    );
+  }
+
+  Widget _card(Map<String, dynamic> n) {
+    final read = n['isRead'] == true;
+    return Semantics(
+      button: true,
+      label: '${n['title'] ?? 'Activity'}. ${read ? 'Read' : 'Unread'}',
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        elevation: 0,
+        color: read ? Colors.white : const Color(0xFFE3F3E8),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+                color:
+                    read ? const Color(0xFFE2ECE5) : const Color(0xFFB8DEC4))),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _open(n),
+          child: Padding(
+              padding: const EdgeInsets.all(16),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                        color: _green.withValues(alpha: .1),
+                        borderRadius: BorderRadius.circular(14)),
+                    child: Icon(_icon('${n['type']}'), color: _green)),
+                const SizedBox(width: 13),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Row(children: [
+                        Expanded(
+                            child: Text(n['title']?.toString() ?? 'Activity',
+                                style: TextStyle(
+                                    fontWeight: read
+                                        ? FontWeight.w600
+                                        : FontWeight.w800,
+                                    color: _ink))),
+                        Text(_time(n['createdAt']),
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFF71857A))),
+                      ]),
+                      const SizedBox(height: 6),
+                      Text(n['message']?.toString() ?? '',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              height: 1.35, color: Color(0xFF53675D))),
+                      if (!read) ...[
+                        const SizedBox(height: 9),
+                        const Text('NEW',
+                            style: TextStyle(
+                                fontSize: 10,
+                                letterSpacing: 1.2,
+                                color: _green,
+                                fontWeight: FontWeight.w900))
+                      ],
+                    ])),
+              ])),
+        ),
+      ),
+    );
+  }
+
+  Widget _state(IconData icon, String title, String body, String action,
+          VoidCallback onTap) =>
+      ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(32),
+        children: [
+          const SizedBox(height: 70),
+          Icon(icon, size: 52, color: Color(0xFF79A58A)),
+          const SizedBox(height: 18),
+          Text(title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w800, color: _ink)),
+          const SizedBox(height: 8),
+          Text(body,
+              textAlign: TextAlign.center,
+              style: const TextStyle(height: 1.4, color: Color(0xFF61776B))),
+          const SizedBox(height: 22),
+          Center(child: OutlinedButton(onPressed: onTap, child: Text(action)))
+        ],
+      );
+
+  Widget _skeleton() => ListView(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        children: List.generate(5, (_) => const _LoadingRow()),
+      );
+}
+
+class _LoadingRow extends StatelessWidget {
+  const _LoadingRow();
+  @override
+  Widget build(BuildContext context) => Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        elevation: 0,
+        color: Colors.white,
+        child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(children: [
+              Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFE1EEE5),
+                      borderRadius: BorderRadius.circular(14))),
+              const SizedBox(width: 14),
+              Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Container(
+                        height: 13, width: 170, color: const Color(0xFFE1EEE5)),
+                    const SizedBox(height: 10),
+                    Container(
+                        height: 11,
+                        width: double.infinity,
+                        color: const Color(0xFFEAF2EC)),
+                    const SizedBox(height: 6),
+                    Container(
+                        height: 11, width: 220, color: const Color(0xFFEAF2EC)),
+                  ])),
+            ])),
+      );
+}
+
+class _SessionException implements Exception {
+  const _SessionException();
 }

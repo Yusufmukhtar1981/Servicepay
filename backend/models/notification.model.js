@@ -39,8 +39,22 @@ const notificationSchema = new mongoose.Schema(
         "PHONE",
         "TRUST",
         "BUSINESS_PARTNER",
+        "SECURITY",
+        "KYC",
+        "ACCOUNT",
+        "MARKETPLACE",
+        "WITHDRAWAL",
+        "PAYMENT",
+        "SYSTEM",
       ],
       default: "GENERAL",
+    },
+
+    category: {
+      type: String,
+      enum: ["TRANSACTION", "SECURITY", "ACCOUNT", "OTHER"],
+      default: "OTHER",
+      index: true,
     },
 
     referenceId: {
@@ -52,6 +66,43 @@ const notificationSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+    },
+
+    reference: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 200,
+    },
+
+    relatedStatus: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 50,
+    },
+
+    action: {
+      type: String,
+      enum: [
+        "",
+        "TRANSACTION",
+        "KYC",
+        "SECURITY",
+        "DELIVERY",
+        "MARKETPLACE",
+        "SOLAR",
+        "PHONE",
+        "SUPPORT",
+      ],
+      default: "",
+    },
+
+    dedupeKey: {
+      type: String,
+      default: undefined,
+      trim: true,
+      maxlength: 300,
     },
 
     isRead: {
@@ -74,6 +125,19 @@ notificationSchema.index({
   userId: 1,
   createdAt: -1,
 });
+notificationSchema.index({
+  userId: 1,
+  category: 1,
+  isRead: 1,
+  createdAt: -1,
+});
+notificationSchema.index(
+  { dedupeKey: 1 },
+  {
+    unique: true,
+    sparse: true,
+  }
+);
 notificationSchema.index(
   { userId: 1, referenceId: 1, referenceType: 1 },
   {

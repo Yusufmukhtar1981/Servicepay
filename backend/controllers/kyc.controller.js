@@ -10,6 +10,9 @@ const {
   normalizeIdentityType,
   verifyIdentity,
 } = require("../services/kycIdentityVerification.service");
+const {
+  createInAppNotification,
+} = require("../services/inAppNotification.service");
 
 const normalizeRequestedKycLevel = (value) => {
   const level = String(value || "TIER_1").trim().toUpperCase();
@@ -145,7 +148,6 @@ exports.verifyMyKycIdentity = async (req, res) => {
     }
     profile.identityMatchStatus = result.matchStatus;
     await profile.save();
-
     return res.status(200).json({
       success: true,
       message: `${result.identityType} verified successfully.`,
@@ -294,6 +296,20 @@ exports.submitMyKyc = async (req, res) => {
       occurredAt: profile.submittedAt,
     });
     await profile.save();
+    await createInAppNotification({
+      userId: profile.user,
+      title: "KYC submitted",
+      message:
+        "Your identity verification was submitted and is awaiting review.",
+      type: "KYC",
+      category: "ACCOUNT",
+      referenceId: profile._id,
+      referenceType: "KYC_APPLICATION",
+      reference: String(profile._id),
+      relatedStatus: "PENDING",
+      action: "KYC",
+      dedupeKey: `kyc:${profile._id}:PENDING:${profile.submittedAt.toISOString()}`,
+    }).catch(() => null);
 
     return res.status(200).json({
       success: true,

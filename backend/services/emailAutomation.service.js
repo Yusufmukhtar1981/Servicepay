@@ -447,8 +447,6 @@ const processTransactionEvent = async (
   const { email, name } =
     await resolveUser(doc);
 
-  if (!email) return;
-
   const type = firstValue(
     doc.type,
     doc.transactionType,
@@ -656,8 +654,7 @@ const processFeaturePaymentEvent = async (
   };
 
   await Promise.all([
-    payer.email
-      ? notify({
+    notify({
           ...common,
           email: payer.email,
           userId: doc.payer,
@@ -667,9 +664,8 @@ const processFeaturePaymentEvent = async (
             : 'DEBIT',
           counterparty:
             beneficiary.name,
-        })
-      : Promise.resolve(),
-    beneficiary.email && !reversed
+        }),
+    !reversed
       ? notify({
           ...common,
           email: beneficiary.email,
@@ -739,26 +735,22 @@ const processPaymentLinkEvent = async (
   };
 
   await Promise.all([
-    payer.email
-      ? notify({
+    notify({
           ...common,
           email: payer.email,
           userId: doc.paidBy,
           name: payer.name,
           direction: 'DEBIT',
           counterparty: owner.name,
-        })
-      : Promise.resolve(),
-    owner.email
-      ? notify({
+        }),
+    notify({
           ...common,
           email: owner.email,
           userId: doc.owner,
           name: owner.name,
           direction: 'CREDIT',
           counterparty: payer.name,
-        })
-      : Promise.resolve(),
+        }),
   ]);
 };
 
@@ -778,8 +770,6 @@ const processLedgerEvent = async (
     await resolve({
       userId: doc.user,
     });
-
-  if (!email) return;
 
   let counterparty = '';
 
@@ -870,8 +860,7 @@ const processTransferEvent = async (
   );
 
   await Promise.all([
-    sender.email
-      ? notify({
+    notify({
           email: sender.email,
           userId: doc.sender,
           name: sender.name,
@@ -886,10 +875,8 @@ const processTransferEvent = async (
           counterparty: receiver.name,
           message:
             'Your ServicePay transfer was sent to the recipient.',
-        })
-      : Promise.resolve(),
-    receiver.email
-      ? notify({
+        }),
+    notify({
           email: receiver.email,
           userId: doc.receiver,
           name: receiver.name,
@@ -904,8 +891,7 @@ const processTransferEvent = async (
           counterparty: sender.name,
           message:
             'You received a ServicePay wallet transfer.',
-        })
-      : Promise.resolve(),
+        }),
   ]);
 };
 
@@ -995,8 +981,6 @@ const processWithdrawalEvent = async (
   const { email, name } =
     await resolveUser(doc);
 
-  if (!email) return;
-
   const userReference = asObjectId(
     getUserReference(doc)
   );
@@ -1080,8 +1064,6 @@ const processEmpowermentEvent = async (
 
   const { email, name } =
     await resolveUser(doc);
-
-  if (!email) return;
 
   const userReference = asObjectId(
     getUserReference(doc)

@@ -6,6 +6,9 @@ const AccountRestriction = require("../models/accountRestriction.model");
 const FintechWatchlist = require("../models/fintechWatchlist.model");
 const LoginSecurityEvent = require("../models/loginSecurityEvent.model");
 const {
+  createInAppNotification,
+} = require("../services/inAppNotification.service");
+const {
   ensureBusinessPartnerViewAccess,
 } = require("../services/businessPartnerAccess.service");
 
@@ -1428,6 +1431,18 @@ exports.changePassword = async (
       { $inc: { authTokenVersion: 1 } },
       { new: true }
     ).select("+authTokenVersion");
+    await createInAppNotification({
+      userId: user._id,
+      title: "Password changed",
+      message:
+        "Your ServicePay password was changed successfully. If this was not you, contact support immediately.",
+      type: "SECURITY",
+      category: "SECURITY",
+      referenceType: "SECURITY_EVENT",
+      reference: "PASSWORD_CHANGED",
+      action: "SECURITY",
+      dedupeKey: `security:${user._id}:password:${user.passwordChangedAt.toISOString()}`,
+    }).catch(() => null);
 
     return res.status(200).json({
       success: true,

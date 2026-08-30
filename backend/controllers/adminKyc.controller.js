@@ -8,6 +8,9 @@ const {
   getAuthorizedDocumentUrl,
   normalizeUploadType,
 } = require("./kycDocument.controller");
+const {
+  createInAppNotification,
+} = require("../services/inAppNotification.service");
 
 const ALLOWED_ACTIONS = new Set([
   "APPROVED",
@@ -251,6 +254,31 @@ exports.updateKycStatus = async (req, res) => {
         { $set: { kycVerified: true } }
       );
     }
+    const customerMessage = {
+      VERIFIED:
+        "Your KYC verification is complete. Your updated account limits are now active.",
+      NEEDS_MORE_INFORMATION:
+        "Your KYC review needs more information. Open KYC to review the request and continue.",
+      REJECTED:
+        "Your KYC verification could not be approved. Open KYC to review the decision and next steps.",
+    }[persistedStatus];
+    await createInAppNotification({
+      userId: profile.user,
+      title: {
+        VERIFIED: "KYC verified",
+        NEEDS_MORE_INFORMATION: "KYC needs more information",
+        REJECTED: "KYC review update",
+      }[persistedStatus],
+      message: customerMessage,
+      type: "KYC",
+      category: "ACCOUNT",
+      referenceId: profile._id,
+      referenceType: "KYC_APPLICATION",
+      reference: String(profile._id),
+      relatedStatus: persistedStatus,
+      action: "KYC",
+      dedupeKey: `kyc:${profile._id}:${persistedStatus}:${profile.reviewedAt.toISOString()}`,
+    }).catch(() => null);
     await profile.populate("user", "fullName phone email accountNumber");
     await profile.populate("verifiedBy", "fullName email");
 

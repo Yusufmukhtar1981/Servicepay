@@ -1528,7 +1528,18 @@ class _DashboardScreenState extends State<DashboardScreen>
             _headerIconButton(
               tooltip: 'Notifications',
               icon: Icons.notifications_none_rounded,
-              onTap: () => openScreen(const NotificationsScreen()),
+              onTap: () async {
+                final int? unread = await Navigator.of(context).push<int>(
+                  MaterialPageRoute<int>(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                );
+                if (mounted && unread != null) {
+                  setState(() {
+                    unreadNotifications = unread < 0 ? 0 : unread;
+                  });
+                }
+              },
               showDot: unreadNotifications > 0,
             ),
             const SizedBox(width: 8),
