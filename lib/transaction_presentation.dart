@@ -94,6 +94,23 @@ class TransactionPresentation {
 
   String get lookupId => _first(raw, const ['id', '_id']).toString().trim();
 
+  String get source =>
+      _first(raw, const ['source']).toString().trim().toUpperCase();
+
+  String get sourceId =>
+      _first(raw, const ['sourceId', '_id']).toString().trim();
+
+  String get provider => _firstDeep(const ['provider']).toString().trim();
+
+  String get recipient => _firstDeep(const [
+        'recipientName',
+        'recipient',
+        'counterparty',
+        'accountName',
+        'recipientPhone',
+        'phone',
+      ]).toString().trim();
+
   String get description => _first(raw, const [
         'description',
         'narration',

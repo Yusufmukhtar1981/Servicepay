@@ -6,10 +6,11 @@ const User = require("../models/user.model");
 const FintechCase = require("../models/fintechCase.model");
 const Notification = require("../models/notification.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
+const Transaction = require("../models/transaction.model");
 const support = require("../controllers/support.controller");
 
 let mongo; let n = 0;
-const models = [User, FintechCase, Notification, AdminAuditLog];
+const models = [User, FintechCase, Notification, AdminAuditLog, Transaction];
 const user = (role = "CUSTOMER", extra = {}) => User.create({
   fullName: `${role} ${++n}`, phone: `080${String(n).padStart(8, "0")}`,
   email: `${role.toLowerCase()}${n}@test.local`, password: "Passw0rd!", role,
@@ -75,6 +76,52 @@ test("different customers may safely reuse the same client idempotency key", asy
   assert.equal(second.status, 201);
   assert.notEqual(first.body.data.id, second.body.data.id);
   assert.equal(await FintechCase.countDocuments(), 2);
+});
+
+test("transaction issue persists trusted context and remains idempotent", async () => {
+  const customer = await user();
+  const admin = await user("HEAD_OFFICE");
+  const transaction = await Transaction.create({
+    customerId: customer._id,
+    reference: "DATA-ISSUE-001",
+    serviceType: "DATA",
+    provider: "CLUBKONNECT",
+    phone: "08031234567",
+    amount: 1500,
+    status: "PENDING",
+  });
+  const payload = {
+    subject: "Issue with Data",
+    description: "Paid but service was not received",
+    idempotencyKey: "data-issue-once",
+    transactionLookupId: `transaction:${transaction._id}`,
+  };
+
+  const created = await call(support.createTicket, {
+    user: customer,
+    body: payload,
+  });
+  const duplicate = await call(support.createTicket, {
+    user: customer,
+    body: payload,
+  });
+
+  assert.equal(created.status, 201);
+  assert.equal(duplicate.status, 200);
+  assert.equal(duplicate.body.idempotent, true);
+  assert.equal(created.body.data.transactionContext.reference, "DATA-ISSUE-001");
+  assert.equal(created.body.data.transactionContext.transactionType, "DATA");
+  assert.equal(created.body.data.transactionContext.status, "PENDING");
+  assert.match(created.body.data.description, /Transaction reference: DATA-ISSUE-001/);
+  assert.equal(await FintechCase.countDocuments(), 1);
+
+  const listed = await call(support.listAdminTickets, {
+    user: admin,
+    method: "GET",
+    query: { search: "Issue with Data" },
+  });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.data.items[0].transactionContext.reference, "DATA-ISSUE-001");
 });
 
 test("admin support validates updates, creates notifications, and filters tickets", async () => {

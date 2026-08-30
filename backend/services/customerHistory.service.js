@@ -96,6 +96,14 @@ const normalizeStatus = (value, fallback = "PENDING") => {
     return "FAILED";
   }
 
+  if (["REFUNDED", "REVERSAL"].includes(status)) {
+    return "REVERSED";
+  }
+
+  if (["IN_PROGRESS", "IN PROGRESS"].includes(status)) {
+    return "PROCESSING";
+  }
+
   return status || fallback;
 };
 
@@ -385,6 +393,117 @@ const toFeaturePaymentItem = (payment, userId) => {
   };
 };
 
+const HISTORY_SOURCES = {
+  transaction: {
+    model: "Transaction",
+    ownership: (userId) => ({
+      $or: [
+        { customerId: userId },
+        { user: userId },
+        { userId },
+        { sender: userId },
+        { receiver: userId },
+      ],
+    }),
+    map: toTransactionItem,
+    allowLegacyFields: true,
+  },
+  ledger: {
+    model: "LedgerEntry",
+    ownership: (userId) => ({ user: userId }),
+    map: toLedgerItem,
+  },
+  transfer: {
+    model: "Transfer",
+    ownership: (userId) => ({
+      $or: [{ sender: userId }, { receiver: userId }],
+    }),
+    map: (record, userId) => toTransferItem(record, userId),
+  },
+  "manual-funding": {
+    model: "ManualFunding",
+    ownership: (userId) => ({ user: userId }),
+    map: toManualFundingItem,
+  },
+  withdrawal: {
+    model: "WithdrawalRequest",
+    ownership: (userId) => ({ user: userId }),
+    map: toWithdrawalItem,
+  },
+  "bank-transfer": {
+    model: "BankTransfer",
+    ownership: (userId) => ({ sender: userId }),
+    map: toBankTransferItem,
+  },
+  "feature-payment": {
+    model: "FeaturePayment",
+    ownership: (userId) => ({
+      $or: [{ payer: userId }, { beneficiary: userId }],
+    }),
+    map: (record, userId) => toFeaturePaymentItem(record, userId),
+  },
+};
+
+const parseHistoryLookupId = (lookupId) => {
+  const value = String(lookupId || "").trim();
+  const separator = value.indexOf(":");
+
+  if (separator < 1) {
+    return value ? { source: "transaction", sourceId: value } : null;
+  }
+
+  const source = value.slice(0, separator).toLowerCase();
+  const sourceId = value.slice(separator + 1).trim();
+  return source && sourceId ? { source, sourceId } : null;
+};
+
+const getCustomerHistoryItem = async ({
+  userId,
+  lookupId,
+  models = {},
+}) => {
+  const parsed = parseHistoryLookupId(lookupId);
+  const config = parsed ? HISTORY_SOURCES[parsed.source] : null;
+
+  if (!userId || !config) {
+    return null;
+  }
+
+  const sourceModels =
+    Object.keys(models).length > 0
+      ? models
+      : getDefaultModels();
+  const Model = sourceModels[config.model];
+
+  if (!Model || typeof Model.findOne !== "function") {
+    return null;
+  }
+
+  try {
+    let query = Model.findOne({
+      _id: parsed.sourceId,
+      ...config.ownership(userId),
+    });
+
+    if (
+      config.allowLegacyFields &&
+      typeof query.setOptions === "function"
+    ) {
+      query = query.setOptions({ strictQuery: false });
+    }
+
+    const record =
+      query && typeof query.lean === "function"
+        ? await query.lean()
+        : await query;
+
+    return record ? config.map(record, userId) : null;
+  } catch (_) {
+    // Malformed or stale identifiers are a normal not-found outcome.
+    return null;
+  }
+};
+
 const findRecent = (Model, filter, cursor, limit, options = {}) => {
   const queryFilter = { ...filter };
 
@@ -597,8 +716,10 @@ module.exports = {
   DEFAULT_LIMIT,
   MAX_LIMIT,
   getCustomerHistory,
+  getCustomerHistoryItem,
   mergeCustomerHistory,
   normalizeStatus,
+  parseHistoryLookupId,
   decodeCursor,
   encodeCursor,
 };

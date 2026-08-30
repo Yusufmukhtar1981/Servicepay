@@ -5,6 +5,7 @@ const {
   decodeCursor,
   encodeCursor,
   getCustomerHistory,
+  getCustomerHistoryItem,
   mergeCustomerHistory,
 } = require("../services/customerHistory.service");
 
@@ -51,6 +52,156 @@ const makeModel = (records, calls) => ({
       },
     };
   },
+});
+
+const makeDetailModel = (records, calls) => ({
+  findOne(filter) {
+    calls.push(filter);
+    return {
+      setOptions() {
+        return this;
+      },
+      async lean() {
+        return records.find((record) => String(record._id) === String(filter._id)) || null;
+      },
+    };
+  },
+});
+
+test("loads Data and Airtime status by canonical customer history identifier", async () => {
+  const calls = [];
+  const records = [
+    {
+      _id: "data-transaction",
+      customerId,
+      reference: "DATA-001",
+      serviceType: "DATA",
+      amount: 1000,
+      status: "PENDING",
+      createdAt: createdAt(5),
+    },
+    {
+      _id: "airtime-transaction",
+      customerId,
+      reference: "AIRTIME-001",
+      serviceType: "AIRTIME",
+      amount: 500,
+      status: "SUCCESSFUL",
+      createdAt: createdAt(6),
+    },
+  ];
+  const models = {
+    Transaction: makeDetailModel(records, calls),
+  };
+
+  const data = await getCustomerHistoryItem({
+    userId: customerId,
+    lookupId: "transaction:data-transaction",
+    models,
+  });
+  const airtime = await getCustomerHistoryItem({
+    userId: customerId,
+    lookupId: "airtime-transaction",
+    models,
+  });
+  const unsupported = await getCustomerHistoryItem({
+    userId: customerId,
+    lookupId: "unknown:anything",
+    models,
+  });
+
+  assert.equal(data.type, "DATA");
+  assert.equal(data.status, "PENDING");
+  assert.equal(airtime.type, "AIRTIME");
+  assert.equal(airtime.status, "SUCCESSFUL");
+  assert.equal(unsupported, null);
+  assert.ok(
+    calls.every((filter) =>
+      filter.$or.some((condition) => condition.customerId === customerId)
+    )
+  );
+});
+
+test("loads every canonical history source and rejects malformed identifiers", async () => {
+  const calls = [];
+  const models = {
+    Transaction: makeDetailModel([{ _id: "t", serviceType: "ELECTRICITY", status: "REFUNDED" }], calls),
+    LedgerEntry: makeDetailModel([{ _id: "l", service: "AIRTIME", status: "POSTED" }], calls),
+    Transfer: makeDetailModel([{ _id: "s", sender: customerId, amount: 10, status: "PENDING" }], calls),
+    ManualFunding: makeDetailModel([{ _id: "m", amount: 20, status: "APPROVED" }], calls),
+    WithdrawalRequest: makeDetailModel([{ _id: "w", amount: 30, status: "PENDING" }], calls),
+    BankTransfer: makeDetailModel([{ _id: "b", amount: 40, status: "REFUNDED" }], calls),
+    FeaturePayment: makeDetailModel([{ _id: "f", payer: customerId, amount: 50, status: "SUCCESSFUL" }], calls),
+  };
+  const identifiers = [
+    "transaction:t",
+    "ledger:l",
+    "transfer:s",
+    "manual-funding:m",
+    "withdrawal:w",
+    "bank-transfer:b",
+    "feature-payment:f",
+  ];
+
+  const items = await Promise.all(
+    identifiers.map((lookupId) =>
+      getCustomerHistoryItem({ userId: customerId, lookupId, models })
+    )
+  );
+
+  assert.deepEqual(items.map((item) => item.source), [
+    "TRANSACTION",
+    "LEDGER",
+    "TRANSFER",
+    "MANUAL_FUNDING",
+    "WITHDRAWAL",
+    "BANK_TRANSFER",
+    "FEATURE_PAYMENT",
+  ]);
+  assert.equal(items[0].status, "REVERSED");
+  assert.equal(items[5].status, "REVERSED");
+  assert.equal(
+    await getCustomerHistoryItem({
+      userId: customerId,
+      lookupId: "transaction:",
+      models,
+    }),
+    null
+  );
+});
+
+test("source lookup keeps ownership inside the database query", async () => {
+  const calls = [];
+  const models = {
+    WithdrawalRequest: {
+      findOne(filter) {
+        calls.push(filter);
+        return {
+          async lean() {
+            return filter.user === customerId
+              ? { _id: "owned", user: customerId, amount: 30, status: "PENDING" }
+              : null;
+          },
+        };
+      },
+    },
+  };
+
+  const owned = await getCustomerHistoryItem({
+    userId: customerId,
+    lookupId: "withdrawal:owned",
+    models,
+  });
+  const foreign = await getCustomerHistoryItem({
+    userId: otherCustomerId,
+    lookupId: "withdrawal:owned",
+    models,
+  });
+
+  assert.equal(owned.source, "WITHDRAWAL");
+  assert.equal(foreign, null);
+  assert.equal(calls[0].user, customerId);
+  assert.equal(calls[1].user, otherCustomerId);
 });
 
 test("merges mixed customer history without duplicating linked ledger rows", () => {

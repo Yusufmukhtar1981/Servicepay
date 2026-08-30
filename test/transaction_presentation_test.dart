@@ -91,4 +91,23 @@ void main() {
     expect(transaction.matchesSearch('bank transfer'), isTrue);
     expect(transaction.matchesSearch('sp-123'), isTrue);
   });
+
+  test('exposes canonical source data for status checks and issue reports', () {
+    final transaction = TransactionPresentation({
+      'id': 'transaction:66ddcafe',
+      'source': 'TRANSACTION',
+      'sourceId': '66ddcafe',
+      'reference': 'DATA-001',
+      'type': 'DATA',
+      'counterparty': '08031234567',
+      'provider': 'CLUBKONNECT',
+    });
+
+    expect(transaction.lookupId, 'transaction:66ddcafe');
+    expect(transaction.source, 'TRANSACTION');
+    expect(transaction.sourceId, '66ddcafe');
+    expect(transaction.recipient, '08031234567');
+    expect(transaction.provider, 'CLUBKONNECT');
+  });
+
 }

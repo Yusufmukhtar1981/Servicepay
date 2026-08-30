@@ -3,6 +3,9 @@ const FintechCase = require("../models/fintechCase.model");
 const User = require("../models/user.model");
 const Notification = require("../models/notification.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
+const {
+  getCustomerHistoryItem,
+} = require("../services/customerHistory.service");
 
 const SUPPORT_STATUSES = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
 const PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"];
@@ -28,10 +31,40 @@ const customerCase = (item, withReplies = false) => {
     id: String(item._id), caseReference: item.caseReference, type: item.type,
     subject: item.subject, description: item.description, status: item.status,
     priority: item.priority, resolution: item.resolution || "", createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
+    updatedAt: item.updatedAt, transactionContext: item.transactionContext || null,
   };
   if (withReplies) data.replies = (item.publicReplies || []).map(customerReply);
   return data;
+};
+const transactionContext = (item) => ({
+  lookupId: clean(item.id, 200),
+  source: clean(item.source, 50),
+  sourceId: clean(item.sourceId, 100),
+  reference: clean(item.reference, 200),
+  transactionType: clean(item.type, 100),
+  amount: Number(item.amount) || 0,
+  occurredAt: item.createdAt || null,
+  recipient: clean(item.counterparty, 300),
+  status: clean(item.status, 50),
+  provider: clean(item.provider, 100),
+});
+const transactionDescription = (description, context) => {
+  if (!context) return description;
+  const rows = [
+    ["Transaction reference", context.reference || context.lookupId],
+    ["Transaction type", context.transactionType],
+    ["Amount", `NGN ${Number(context.amount || 0).toFixed(2)}`],
+    ["Date/time", context.occurredAt ? new Date(context.occurredAt).toISOString() : "Unavailable"],
+    ["Recipient", context.recipient || "Unavailable"],
+    ["Current status", context.status],
+    ["Provider", context.provider || "Unavailable"],
+  ];
+  return clean(
+    `${description}\n\nTransaction details:\n${rows
+      .map(([label, value]) => `${label}: ${value}`)
+      .join("\n")}`,
+    5000
+  );
 };
 const adminCase = (item) => ({
   ...item.toObject(),
@@ -73,20 +106,36 @@ const addAdminCustomerSearch = async (filter, search) => {
 
 exports.createTicket = async (req, res) => {
   try {
-    const subject = clean(req.body.subject, 200), description = clean(req.body.description, 5000);
+    const subject = clean(req.body.subject, 200);
+    const requestedDescription = clean(req.body.description, 3500);
     const clientIdempotencyKey = clean(req.body.idempotencyKey, 120);
     const idempotencyKey = `support:${customerId(req)}:${clientIdempotencyKey}`;
     const priority = value(req.body.priority || "NORMAL");
-    if (!subject || !description || !clientIdempotencyKey) return error(res, 400, "subject, description and idempotencyKey are required.");
+    if (!subject || !requestedDescription || !clientIdempotencyKey) return error(res, 400, "subject, description and idempotencyKey are required.");
     if (!PRIORITIES.includes(priority)) return error(res, 400, "Invalid priority.");
     const existing = await FintechCase.findOne({ idempotencyKey });
     if (existing) {
       if (String(existing.customer) !== String(customerId(req))) return error(res, 409, "Idempotency key already exists.");
       return res.json({ success: true, data: customerCase(existing), idempotent: true });
     }
+    const transactionLookupId = clean(req.body.transactionLookupId, 200);
+    const historyItem = transactionLookupId
+      ? await getCustomerHistoryItem({
+          userId: customerId(req),
+          lookupId: transactionLookupId,
+        })
+      : null;
+    if (transactionLookupId && !historyItem) {
+      return error(res, 404, "The selected transaction was not found.");
+    }
+    const context = historyItem ? transactionContext(historyItem) : null;
+    const description = transactionDescription(requestedDescription, context);
     const ticket = await FintechCase.create({
       caseReference: caseReference(), idempotencyKey, type: "COMPLAINT", subject, description,
       priority, customer: customerId(req), createdBy: customerId(req),
+      transaction:
+        historyItem?.source === "TRANSACTION" ? historyItem.sourceId : null,
+      transactionContext: context,
     });
     return res.status(201).json({ success: true, data: customerCase(ticket) });
   } catch (err) {

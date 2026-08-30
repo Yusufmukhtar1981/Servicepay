@@ -1,6 +1,6 @@
-const Transaction = require("../models/transaction.model");
 const {
   getCustomerHistory,
+  getCustomerHistoryItem,
 } = require("../services/customerHistory.service");
 
 const getMyTransactions = async (req, res) => {
@@ -61,11 +61,10 @@ const getTransactionById = async (
       });
     }
 
-    const transaction =
-      await Transaction.findOne({
-        _id: req.params.id,
-        customerId: userId,
-      }).lean();
+    const transaction = await getCustomerHistoryItem({
+      userId,
+      lookupId: req.params.id,
+    });
 
     if (!transaction) {
       return res.status(404).json({
@@ -79,6 +78,12 @@ const getTransactionById = async (
       success: true,
       transaction,
       data: transaction,
+      statusCheck: {
+        status: transaction.status,
+        liveProviderCheck: false,
+        message:
+          "Latest recorded status loaded. Live provider requery is not available for this transaction type.",
+      },
     });
   } catch (error) {
     console.error(
@@ -86,10 +91,10 @@ const getTransactionById = async (
       error
     );
 
-    return res.status(500).json({
+    return res.status(404).json({
       success: false,
       message:
-        "Unable to fetch transaction details.",
+        "Transaction not found or no longer available.",
     });
   }
 };

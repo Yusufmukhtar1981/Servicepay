@@ -16,6 +16,19 @@ const replySchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 }, { _id: true });
 
+const transactionContextSchema = new mongoose.Schema({
+  lookupId: { type: String, trim: true, maxlength: 200, default: "" },
+  source: { type: String, trim: true, maxlength: 50, default: "" },
+  sourceId: { type: String, trim: true, maxlength: 100, default: "" },
+  reference: { type: String, trim: true, maxlength: 200, default: "" },
+  transactionType: { type: String, trim: true, maxlength: 100, default: "" },
+  amount: { type: Number, default: 0 },
+  occurredAt: { type: Date, default: null },
+  recipient: { type: String, trim: true, maxlength: 300, default: "" },
+  status: { type: String, trim: true, maxlength: 50, default: "" },
+  provider: { type: String, trim: true, maxlength: 100, default: "" },
+}, { _id: false });
+
 const fintechCaseSchema = new mongoose.Schema({
   caseReference: { type: String, required: true, unique: true, index: true },
   idempotencyKey: { type: String, required: true, unique: true, index: true },
@@ -27,6 +40,7 @@ const fintechCaseSchema = new mongoose.Schema({
   subject: { type: String, required: true, trim: true, maxlength: 200 },
   description: { type: String, required: true, trim: true, maxlength: 5000 },
   transaction: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null, index: true },
+  transactionContext: { type: transactionContextSchema, default: null },
   customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
   resolution: { type: String, trim: true, maxlength: 3000, default: "" },

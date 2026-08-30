@@ -42,6 +42,51 @@ class SupportTicketPage {
   final int total;
 }
 
+class TransactionIssueSubmissionKeys {
+  TransactionIssueSubmissionKeys({
+    Future<SharedPreferences> Function()? preferencesLoader,
+  }) : _preferencesLoader =
+            preferencesLoader ?? SharedPreferences.getInstance;
+
+  static const String _prefix = 'pending_transaction_issue';
+  final Future<SharedPreferences> Function() _preferencesLoader;
+
+  String _accountScope(SharedPreferences preferences) {
+    final String token = preferences.getString('auth_token') ?? '';
+    var hash = 2166136261;
+    for (final int byte in utf8.encode(token)) {
+      hash ^= byte;
+      hash = (hash * 16777619) & 0xffffffff;
+    }
+    return hash.toRadixString(16);
+  }
+
+  String _storageKey(SharedPreferences preferences, String lookupId) {
+    return '${_prefix}_${_accountScope(preferences)}_${Uri.encodeComponent(lookupId)}';
+  }
+
+  Future<String> forTransaction(String lookupId) async {
+    final SharedPreferences preferences = await _preferencesLoader();
+    final String storageKey = _storageKey(preferences, lookupId);
+    final String existing = preferences.getString(storageKey) ?? '';
+    if (existing.isNotEmpty) return existing;
+
+    final String normalized =
+        lookupId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '-');
+    final String safeId =
+        normalized.length > 60 ? normalized.substring(0, 60) : normalized;
+    final String created =
+        'transaction-issue-$safeId-${DateTime.now().microsecondsSinceEpoch}';
+    await preferences.setString(storageKey, created);
+    return created;
+  }
+
+  Future<void> complete(String lookupId) async {
+    final SharedPreferences preferences = await _preferencesLoader();
+    await preferences.remove(_storageKey(preferences, lookupId));
+  }
+}
+
 class SupportApiService {
   SupportApiService({http.Client? client})
       : _client = client ?? http.Client(),
@@ -78,12 +123,15 @@ class SupportApiService {
     required String description,
     required String priority,
     required String idempotencyKey,
+    String? transactionLookupId,
   }) async {
     final body = await _request('POST', 'tickets', payload: {
       'subject': subject.trim(),
       'description': description.trim(),
       'priority': priority,
       'idempotencyKey': idempotencyKey,
+      if (transactionLookupId != null && transactionLookupId.trim().isNotEmpty)
+        'transactionLookupId': transactionLookupId.trim(),
     });
     final raw = body['data'] is Map
         ? body['data']

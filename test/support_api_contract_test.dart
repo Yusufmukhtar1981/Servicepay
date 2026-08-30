@@ -103,4 +103,63 @@ void main() {
     await SupportApiService(client: client)
         .reply('ticket-1', 'Still waiting', idempotencyKey: 'reply-key');
   });
+
+  test('transaction issue creation sends the selected history lookup id',
+      () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/support/tickets');
+      expect(
+        jsonDecode(request.body),
+        <String, dynamic>{
+          'subject': 'Issue with Data',
+          'description': 'Paid but service was not received',
+          'priority': 'NORMAL',
+          'idempotencyKey': 'transaction-issue-key',
+          'transactionLookupId': 'transaction:66ddcafe',
+        },
+      );
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{
+            'id': 'ticket-2',
+            'caseReference': 'SUP-200',
+          },
+        }),
+        201,
+      );
+    });
+
+    final ticket = await SupportApiService(client: client).createTicket(
+      subject: 'Issue with Data',
+      description: 'Paid but service was not received',
+      priority: 'NORMAL',
+      idempotencyKey: 'transaction-issue-key',
+      transactionLookupId: 'transaction:66ddcafe',
+    );
+
+    expect(ticket.reference, 'SUP-200');
+  });
+
+  test('transaction issue key survives reconstruction until success',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'customer-session-a',
+    });
+    final firstStore = TransactionIssueSubmissionKeys();
+    final String first =
+        await firstStore.forTransaction('transaction:66ddcafe');
+
+    final reconstructedStore = TransactionIssueSubmissionKeys();
+    final String retry =
+        await reconstructedStore.forTransaction('transaction:66ddcafe');
+    expect(retry, first);
+
+    await reconstructedStore.complete('transaction:66ddcafe');
+    final String afterSuccess =
+        await TransactionIssueSubmissionKeys()
+            .forTransaction('transaction:66ddcafe');
+    expect(afterSuccess, isNot(first));
+  });
 }

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account_statement_screen.dart';
 import 'receipt_screen.dart';
+import 'services/support_api_service.dart';
 import 'transaction_presentation.dart';
 
 class TransactionsScreen extends StatefulWidget {
@@ -23,6 +24,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   final TextEditingController searchController = TextEditingController();
   final ScrollController scrollController = ScrollController();
+  final TransactionIssueSubmissionKeys issueSubmissionKeys =
+      TransactionIssueSubmissionKeys();
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -503,14 +506,37 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         TransactionPresentation(transaction);
     if (presentation.lookupId.isEmpty) return;
 
+    var progressOpen = false;
     try {
+      if (mounted) {
+        progressOpen = true;
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const AlertDialog(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 16),
+                Expanded(child: Text('Checking transaction status...')),
+              ],
+            ),
+          ),
+        );
+      }
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String token = prefs.getString('auth_token') ?? '';
       if (token.trim().isEmpty) {
         throw Exception('Your login session has expired.');
       }
       final http.Response response = await http.get(
-        Uri.parse('$baseUrl/transactions/${presentation.lookupId}'),
+        Uri.parse(
+          '$baseUrl/transactions/${Uri.encodeComponent(presentation.lookupId)}',
+        ),
         headers: <String, String>{
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -539,17 +565,137 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         );
         if (index >= 0) transactions[index] = refreshed;
       });
-      Navigator.of(context).pop();
+      if (progressOpen && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+        progressOpen = false;
+      }
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      _showTransactionDetails(refreshed);
+      final TransactionPresentation updated =
+          TransactionPresentation(refreshed);
+      final dynamic statusCheck =
+          decoded is Map ? decoded['statusCheck'] : null;
+      final String explanation = statusCheck is Map
+          ? (statusCheck['message'] ?? '').toString().trim()
+          : '';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transaction status refreshed.')),
+        SnackBar(
+          content: Text(
+            explanation.isEmpty
+                ? 'Status: ${updated.status}.'
+                : 'Status: ${updated.status}. $explanation',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
+      if (progressOpen && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+        progressOpen = false;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error.toString().replaceFirst('Exception: ', '')),
         ),
       );
+    }
+  }
+
+  Future<void> _reportTransactionIssue(
+    Map<String, dynamic> transaction,
+  ) async {
+    final TransactionPresentation presentation =
+        TransactionPresentation(transaction);
+    if (presentation.lookupId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This transaction cannot be reported right now.'),
+        ),
+      );
+      return;
+    }
+
+    final _TransactionIssueInput? input =
+        await showDialog<_TransactionIssueInput>(
+      context: context,
+      builder: (_) => _TransactionIssueDialog(
+        transactionTitle: presentation.title,
+        reference: presentation.reference,
+      ),
+    );
+    if (input == null || !mounted) return;
+    final String idempotencyKey =
+        await issueSubmissionKeys.forTransaction(presentation.lookupId);
+    if (!mounted) return;
+
+    var progressOpen = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 16),
+            Expanded(child: Text('Submitting issue...')),
+          ],
+        ),
+      ),
+    );
+
+    final SupportApiService support = SupportApiService();
+    try {
+      final SupportTicket ticket = await support.createTicket(
+        subject: 'Issue with ${presentation.title}',
+        description: input.description,
+        priority: input.priority,
+        idempotencyKey: idempotencyKey,
+        transactionLookupId: presentation.lookupId,
+      );
+      await issueSubmissionKeys.complete(presentation.lookupId);
+      if (!mounted) return;
+      if (progressOpen && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+        progressOpen = false;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Issue reported'),
+          content: Text(
+            'Support case ${ticket.reference} was created successfully.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      if (progressOpen && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+        progressOpen = false;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is SupportApiException
+                ? error.message
+                : 'Unable to report this issue. Please try again.',
+          ),
+        ),
+      );
+    } finally {
+      support.close();
     }
   }
 
@@ -796,17 +942,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: TextButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              reference.isEmpty
-                                  ? 'Contact support from the Help section.'
-                                  : 'Report this issue to support with reference $reference.',
-                            ),
-                          ),
-                        );
-                      },
+                      onPressed: () => _reportTransactionIssue(transaction),
                       icon: const Icon(Icons.support_agent_rounded),
                       label: const Text('Report an issue'),
                     ),
@@ -1311,6 +1447,137 @@ class _FilterMenu extends StatelessWidget {
       onChanged: (next) {
         if (next != null) onChanged(next);
       },
+    );
+  }
+}
+
+class _TransactionIssueInput {
+  const _TransactionIssueInput({
+    required this.description,
+    required this.priority,
+  });
+
+  final String description;
+  final String priority;
+}
+
+class _TransactionIssueDialog extends StatefulWidget {
+  const _TransactionIssueDialog({
+    required this.transactionTitle,
+    required this.reference,
+  });
+
+  final String transactionTitle;
+  final String reference;
+
+  @override
+  State<_TransactionIssueDialog> createState() =>
+      _TransactionIssueDialogState();
+}
+
+class _TransactionIssueDialogState extends State<_TransactionIssueDialog> {
+  static const Map<String, String> _reasons = {
+    'SERVICE_NOT_RECEIVED': 'Paid but service was not received',
+    'RECIPIENT_NOT_CREDITED': 'Recipient was not credited',
+    'PENDING_TOO_LONG': 'Transaction has been pending too long',
+    'WRONG_STATUS': 'The displayed status is incorrect',
+    'OTHER': 'Other issue',
+  };
+
+  final TextEditingController _detailsController = TextEditingController();
+  String _reason = 'SERVICE_NOT_RECEIVED';
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final String details = _detailsController.text.trim();
+    if (_reason == 'OTHER' && details.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please describe the issue.')),
+      );
+      return;
+    }
+    final String reason = _reasons[_reason]!;
+    Navigator.of(context).pop(
+      _TransactionIssueInput(
+        description: details.isEmpty ? reason : '$reason\n\n$details',
+        priority: _reason == 'PENDING_TOO_LONG' ? 'HIGH' : 'NORMAL',
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String reference =
+        widget.reference.isEmpty ? 'Reference unavailable' : widget.reference;
+    return AlertDialog(
+      title: const Text('Report an issue'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${widget.transactionTitle}\n$reference',
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _reason,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'What went wrong?',
+                border: OutlineInputBorder(),
+              ),
+              items: _reasons.entries
+                  .map(
+                    (entry) => DropdownMenuItem<String>(
+                      value: entry.key,
+                      child: Text(
+                        entry.value,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) setState(() => _reason = value);
+              },
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _detailsController,
+              minLines: 3,
+              maxLines: 5,
+              maxLength: 1000,
+              decoration: InputDecoration(
+                labelText: _reason == 'OTHER'
+                    ? 'Describe the issue'
+                    : 'Additional details (optional)',
+                alignLabelWithHint: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Submit'),
+        ),
+      ],
     );
   }
 }
