@@ -6,3 +6,9 @@
 - [Financing inventory reservations](financing-inventory-reservations.md) — Reserve a real device atomically before accepting a financing deposit.
 - [Sparse unique inventory links](sparse-unique-inventory-links.md) — Optional unique device associations must be absent, not null, before assignment.
 - [Business Partner identity](business-partner-identity.md) — Distributor logins and API-client Partners are separate security and financial domains.
+- [Business Partner UI capabilities](business-partner-ui-capabilities.md) — Officer controls follow approved service capabilities, not the legacy management catalog key alone.
+- [Flutter Replit preview caching](flutter-replit-preview-caching.md) — Never mix cached release assets with a debug server; show HTML UI before Flutter and clear preview-only caches.
+- [Flutter package cache persistence](flutter-package-cache-persistence.md) — Use a workspace-local PUB_CACHE so workflow builds do not lose packages between processes.
+- [Bank transfer settlement safety](bank-transfer-settlement-safety.md) — Do not expose customer requery until ambiguous outcomes and concurrent settlement are safe.
+- [PIN admission and payment retries](pin-admission-payment-retries.md) — Complete PIN admission before wallet transactions; ambiguous responses must preserve the payment request key.
+- [Notification lifecycle independence](notification-lifecycle-independence.md) — In-app financial activity must not depend on email availability; new filters must continue matching legacy records.
