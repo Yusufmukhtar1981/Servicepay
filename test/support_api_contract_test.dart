@@ -87,6 +87,58 @@ void main() {
         idempotencyKey: 'note-key');
   });
 
+  test('admin ticket search sends support filters', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/admin/support/tickets');
+      expect(request.url.queryParameters['search'], 'SPT-20260830-FF5C07');
+      expect(request.url.queryParameters['status'], 'IN_REVIEW');
+      expect(request.url.queryParameters['category'], 'TRANSACTION');
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{
+            'items': <dynamic>[],
+            'total': 0,
+          },
+        }),
+        200,
+      );
+    });
+
+    await AdminSupportApi(client: client).tickets(
+      search: 'SPT-20260830-FF5C07',
+      status: 'IN_REVIEW',
+      category: 'TRANSACTION',
+    );
+  });
+
+  test('admin reply sends a stable idempotency key', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(
+        jsonDecode(request.body),
+        <String, dynamic>{
+          'message': 'We are reviewing your ticket.',
+          'idempotencyKey': 'admin-reply-key',
+        },
+      );
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{'id': 'ticket-1'},
+        }),
+        201,
+      );
+    });
+
+    await AdminSupportApi(client: client).reply(
+      'ticket-1',
+      'We are reviewing your ticket.',
+      idempotencyKey: 'admin-reply-key',
+    );
+  });
+
   test('reply requests require and send an idempotency key', () async {
     final client = MockClient((request) async {
       expect(jsonDecode(request.body), <String, dynamic>{

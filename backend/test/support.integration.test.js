@@ -7,10 +7,15 @@ const FintechCase = require("../models/fintechCase.model");
 const Notification = require("../models/notification.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 const Transaction = require("../models/transaction.model");
+const Role = require("../models/role.model");
 const support = require("../controllers/support.controller");
+const {
+  loadStaffRole,
+  requirePermission,
+} = require("../middleware/staffPermission.middleware");
 
 let mongo; let n = 0;
-const models = [User, FintechCase, Notification, AdminAuditLog, Transaction];
+const models = [User, FintechCase, Notification, AdminAuditLog, Transaction, Role];
 const user = (role = "CUSTOMER", extra = {}) => User.create({
   fullName: `${role} ${++n}`, phone: `080${String(n).padStart(8, "0")}`,
   email: `${role.toLowerCase()}${n}@test.local`, password: "Passw0rd!", role,
@@ -22,6 +27,14 @@ const req = ({ user: actor, body = {}, query = {}, params = {}, method = "POST" 
 const call = async (handler, options) => {
   const result = { status: 200 };
   await handler(req(options), { status(code) { result.status = code; return this; }, json(body) { result.body = body; return this; } });
+  return result;
+};
+const middlewareCall = async (handler, request) => {
+  const result = { status: 200, next: false };
+  await handler(request, {
+    status(code) { result.status = code; return this; },
+    json(body) { result.body = body; return this; },
+  }, () => { result.next = true; });
   return result;
 };
 
@@ -124,11 +137,12 @@ test("transaction issue persists trusted context and remains idempotent", async 
   assert.equal(created.body.data.category, "OTHER");
   assert.match(created.body.data.description, /Transaction reference: DATA-ISSUE-001/);
   assert.equal(await FintechCase.countDocuments(), 1);
+  assert.equal((await FintechCase.findById(created.body.data.id)).statusEvents[0].status, "OPEN");
 
   const listed = await call(support.listAdminTickets, {
     user: admin,
     method: "GET",
-    query: { search: "Issue with Data" },
+    query: { search: "DATA-ISSUE-001" },
   });
   assert.equal(listed.status, 200);
   assert.equal(listed.body.data.items[0].transactionContext.reference, "DATA-ISSUE-001");
@@ -145,6 +159,7 @@ test("admin support validates updates, creates notifications, and filters ticket
   assert.equal((await call(support.updateTicket, { user: headOffice, params: { id }, body: { assignedTo: inactiveStaff._id } })).status, 400);
   const updated = await call(support.updateTicket, { user: headOffice, params: { id }, body: { status: "IN_PROGRESS", priority: "URGENT", assignedTo: activeStaff._id } });
   assert.equal(updated.status, 200); assert.equal(updated.body.data.status, "IN_PROGRESS");
+  assert.equal(updated.body.data.statusEvents.at(-1).status, "IN_PROGRESS");
   assert.equal(await Notification.countDocuments({ userId: customer._id }), 2);
   const reply = await call(support.adminReply, { user: headOffice, params: { id }, body: { message: "We are reviewing this now.", idempotencyKey: "admin-reply-1" } });
   assert.equal(reply.status, 201); assert.equal(await Notification.countDocuments({ userId: customer._id }), 3);
@@ -174,6 +189,30 @@ test("FintechCase keeps legacy status support while adding support workflow fiel
   assert.equal(FintechCase.schema.path("publicReplies").schema.path("authorRole").options.required, true);
   assert.equal(FintechCase.schema.path("publicReplies").schema.path("idempotencyKey").options.maxlength, 120);
   assert.equal(FintechCase.schema.path("notes").schema.path("idempotencyKey").options.maxlength, 120);
+  assert.equal(FintechCase.schema.path("statusEvents").schema.path("status").options.required, true);
+});
+
+test("support permissions allow authorized staff and deny other accounts", async () => {
+  const role = await Role.create({
+    name: "SUPPORT_AGENT",
+    displayName: "Support Agent",
+    department: "CUSTOMER_SUPPORT",
+    permissions: ["support.view", "support.resolve"],
+  });
+  const staff = await user("STAFF", { staffRoleId: role._id });
+  const customer = await user();
+
+  const staffRequest = req({ user: staff });
+  assert.equal((await middlewareCall(loadStaffRole, staffRequest)).next, true);
+  assert.equal(
+    (await middlewareCall(requirePermission("support.view"), staffRequest)).next,
+    true,
+  );
+
+  const customerRequest = req({ user: customer });
+  const denied = await middlewareCall(loadStaffRole, customerRequest);
+  assert.equal(denied.status, 403);
+  assert.equal(denied.next, false);
 });
 
 test("reply and note actions are idempotent and history is capped", async () => {

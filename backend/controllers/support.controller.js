@@ -164,7 +164,12 @@ const addAdminCustomerSearch = async (filter, search) => {
   }).select("_id");
   const terms = filter.$or || [];
   delete filter.$or;
-  filter.$or = [...terms, { customer: { $in: customers.map((customer) => customer._id) } }];
+  filter.$or = [
+    ...terms,
+    { customer: { $in: customers.map((customer) => customer._id) } },
+    { "transactionContext.reference": { $regex: search, $options: "i" } },
+    { "transactionContext.lookupId": { $regex: search, $options: "i" } },
+  ];
   return filter;
 };
 
@@ -205,6 +210,12 @@ exports.createTicket = async (req, res) => {
     const ticket = await FintechCase.create({
       caseReference: caseReference(), idempotencyKey, type: "COMPLAINT", subject, description,
       category, priority, customer: customerId(req), createdBy: customerId(req),
+      statusEvents: [{
+        status: "OPEN",
+        actorId: customerId(req),
+        actorName: clean(req.user.fullName || req.user.name, 200),
+        actorRole: "CUSTOMER",
+      }],
       transaction:
         historyItem?.source === "TRANSACTION" ? historyItem.sourceId : null,
       transactionContext: context,
@@ -307,6 +318,13 @@ exports.updateTicket = async (req, res) => {
     const status = normalizedStatus(req.body.status);
     if (status && !SUPPORT_STATUSES.includes(status)) return error(res, 400, "Invalid support status.");
     if (priority && !PRIORITIES.includes(priority)) return error(res, 400, "Invalid priority.");
+    if (
+      req.body.assignedTo !== undefined &&
+      req.user.role !== "HEAD_OFFICE" &&
+      !new Set(req.staffAccess?.permissions || []).has("support.assign")
+    ) {
+      return error(res, 403, "You do not have permission to assign support tickets.");
+    }
     let assignee = null;
     if (req.body.assignedTo !== undefined && req.body.assignedTo) {
       assignee = await User.findOne({
@@ -318,7 +336,15 @@ exports.updateTicket = async (req, res) => {
     const ticket = await FintechCase.findOne({ _id: req.params.id, type: "COMPLAINT" });
     if (!ticket) return error(res, 404, "Support ticket not found.");
     const previousData = { status: ticket.status, priority: ticket.priority, assignedTo: ticket.assignedTo, resolution: ticket.resolution };
-    if (status) ticket.status = status;
+    if (status && status !== ticket.status) {
+      ticket.status = status;
+      ticket.statusEvents.push({
+        status,
+        actorId: customerId(req),
+        actorName: clean(req.user.fullName || req.user.name, 200),
+        actorRole: req.user.role,
+      });
+    }
     if (priority) ticket.priority = priority;
     if (req.body.assignedTo !== undefined) ticket.assignedTo = assignee ? assignee._id : null;
     if (req.body.resolution !== undefined) ticket.resolution = clean(req.body.resolution, 3000);

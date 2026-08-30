@@ -16,6 +16,18 @@ const replySchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 }, { _id: true });
 
+const statusEventSchema = new mongoose.Schema({
+  status: {
+    type: String,
+    enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "WAITING_ON_CUSTOMER", "RESOLVED", "REJECTED", "CLOSED"],
+    required: true,
+  },
+  actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  actorName: { type: String, trim: true, maxlength: 200, default: "" },
+  actorRole: { type: String, trim: true, uppercase: true, maxlength: 50, required: true },
+  createdAt: { type: Date, default: Date.now },
+}, { _id: true });
+
 const transactionContextSchema = new mongoose.Schema({
   lookupId: { type: String, trim: true, maxlength: 200, default: "" },
   source: { type: String, trim: true, maxlength: 50, default: "" },
@@ -66,6 +78,7 @@ const fintechCaseSchema = new mongoose.Schema({
   resolution: { type: String, trim: true, maxlength: 3000, default: "" },
   notes: { type: [noteSchema], default: [] },
   publicReplies: { type: [replySchema], default: [] },
+  statusEvents: { type: [statusEventSchema], default: [] },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 }, { timestamps: true });
 

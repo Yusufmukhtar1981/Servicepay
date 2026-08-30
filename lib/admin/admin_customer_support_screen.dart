@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'admin_support_api.dart';
+import 'admin_support_widgets.dart';
 
 class AdminCustomerSupportScreen extends StatefulWidget {
   const AdminCustomerSupportScreen({super.key, this.api});
@@ -68,9 +69,42 @@ class _AdminCustomerSupportScreenState
     }
   }
 
+  String _statusLabel(String value) {
+    switch (value) {
+      case 'IN_PROGRESS':
+      case 'IN_REVIEW':
+        return 'In Review';
+      case 'WAITING_ON_CUSTOMER':
+        return 'Awaiting Customer';
+      case 'REJECTED':
+        return 'Closed';
+      default:
+        return value.replaceAll('_', ' ');
+    }
+  }
+
+  String _dateLabel(dynamic value) {
+    final date = DateTime.tryParse('$value')?.toLocal();
+    if (date == null) return 'Date unavailable';
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$day/$month/${date.year} • $hour:$minute';
+  }
+
+  String _customerContact(Map<String, dynamic> customer) {
+    final phone = '${customer['phone'] ?? ''}'.trim();
+    final email = '${customer['email'] ?? ''}'.trim();
+    return [
+      if (phone.isNotEmpty) phone,
+      if (email.isNotEmpty) email,
+    ].join(' • ');
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Customer Support'), actions: [
+        appBar: AppBar(title: const Text('Support / Tickets'), actions: [
           IconButton(
               onPressed: loading ? null : load, icon: const Icon(Icons.refresh))
         ]),
@@ -92,7 +126,8 @@ class _AdminCustomerSupportScreenState
                     controller: search,
                     onSubmitted: (_) => load(),
                     decoration: InputDecoration(
-                        labelText: 'Search reference, customer, phone or email',
+                        labelText:
+                            'Search ticket, customer, phone, email or transaction',
                         suffixIcon: IconButton(
                             onPressed: load, icon: const Icon(Icons.search)),
                         border: const OutlineInputBorder())),
@@ -158,19 +193,45 @@ class _AdminCustomerSupportScreenState
                           final customer = t['customer'] is Map
                               ? Map<String, dynamic>.from(t['customer'])
                               : <String, dynamic>{};
+                          final tx = t['transactionContext'] is Map
+                              ? Map<String, dynamic>.from(
+                                  t['transactionContext'])
+                              : <String, dynamic>{};
+                          final contact = _customerContact(customer);
                           return Card(
-                              child: ListTile(
-                                  title: Text(
-                                      '${t['subject'] ?? 'Support request'}'),
-                                  subtitle: Text(
-                                      '${t['caseReference'] ?? t['reference'] ?? t['_id']}\n${customer['fullName'] ?? customer['name'] ?? 'Customer'} • ${t['category'] ?? 'OTHER'} • ${t['status'] ?? 'OPEN'}'),
-                                  isThreeLine: true,
-                                  onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (_) => _Detail(
-                                              id: '${t['_id'] ?? t['id']}',
-                                              api: api)))));
+                            child: InkWell(
+                              onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => _Detail(
+                                          id: '${t['_id'] ?? t['id']}',
+                                          api: api))),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                        '${t['caseReference'] ?? t['reference'] ?? t['_id']}',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w800)),
+                                    const SizedBox(height: 4),
+                                    Text('${t['subject'] ?? 'Support request'}',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700)),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                        '${customer['fullName'] ?? customer['name'] ?? 'Customer'}${contact.isEmpty ? '' : ' • $contact'}'),
+                                    Text(
+                                        '${t['category'] ?? 'OTHER'} • ${_statusLabel('${t['status'] ?? 'OPEN'}')}'),
+                                    Text(_dateLabel(t['createdAt'])),
+                                    if ('${tx['reference'] ?? ''}'.isNotEmpty)
+                                      Text('Transaction: ${tx['reference']}'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
                         })),
           ),
         ]),
@@ -179,11 +240,21 @@ class _AdminCustomerSupportScreenState
           ValueChanged<String> changed) =>
       DropdownButtonFormField<String>(
           value: value,
+          isExpanded: true,
           decoration: InputDecoration(
               labelText: label, border: const OutlineInputBorder()),
           items: values
               .map((x) => DropdownMenuItem(
-                  value: x, child: Text(x.isEmpty ? 'All' : x)))
+                  value: x,
+                  child: Text(x.isEmpty
+                      ? 'All'
+                      : x == 'IN_PROGRESS' || x == 'IN_REVIEW'
+                          ? 'In Review'
+                          : x == 'WAITING_ON_CUSTOMER'
+                              ? 'Awaiting Customer'
+                              : x == 'OPEN'
+                                  ? 'Open'
+                                  : x[0] + x.substring(1).toLowerCase())))
               .toList(),
           onChanged: loading
               ? null
@@ -209,6 +280,8 @@ class _DetailState extends State<_Detail> {
   final resolution = TextEditingController();
   String? replyIdempotencyKey;
   String? noteIdempotencyKey;
+  bool get _terminal =>
+      ['RESOLVED', 'CLOSED', 'REJECTED'].contains('${ticket?['status']}');
   @override
   void initState() {
     super.initState();
@@ -286,6 +359,57 @@ class _DetailState extends State<_Detail> {
     await run(() => widget.api.update(widget.id, {'status': value}));
   }
 
+  String statusLabel(String value) {
+    switch (value) {
+      case 'IN_PROGRESS':
+      case 'IN_REVIEW':
+        return 'IN REVIEW';
+      case 'WAITING_ON_CUSTOMER':
+        return 'AWAITING CUSTOMER';
+      case 'REJECTED':
+        return 'CLOSED';
+      default:
+        return value.replaceAll('_', ' ');
+    }
+  }
+
+  String dateLabel(dynamic value) {
+    final date = DateTime.tryParse('$value')?.toLocal();
+    if (date == null) return 'Timestamp unavailable';
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$day/$month/${date.year} • $hour:$minute';
+  }
+
+  Future<void> sendReply() async {
+    final message = replyMessage.text.trim();
+    if (message.isEmpty || busy) return;
+    final key = replyIdempotencyKey ??= newIdempotencyKey();
+    setState(() => busy = true);
+    try {
+      final response =
+          await widget.api.reply(widget.id, message, idempotencyKey: key);
+      final data = response['data'];
+      if (mounted) {
+        setState(() {
+          if (data is Map) ticket = Map<String, dynamic>.from(data);
+          replyMessage.clear();
+          replyIdempotencyKey = null;
+        });
+      }
+      await load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> assign() async {
     final q = TextEditingController();
     final person = await showDialog<Map<String, dynamic>>(
@@ -330,11 +454,42 @@ class _DetailState extends State<_Detail> {
                         style: Theme.of(context).textTheme.titleLarge),
                     Text(
                         'Reference: ${x['caseReference'] ?? x['reference'] ?? widget.id}'),
-                    Text('${x['description'] ?? ''}'),
+                    if (x['customer'] is Map) ...[
+                      Text(
+                          'Customer: ${x['customer']['fullName'] ?? x['customer']['name'] ?? 'Customer'}'),
+                      Text(
+                          'Contact: ${x['customer']['phone'] ?? 'Unavailable'} • ${x['customer']['email'] ?? 'Unavailable'}'),
+                    ],
+                    Text('Created: ${dateLabel(x['createdAt'])}'),
+                    const SizedBox(height: 8),
+                    Card(
+                      color: Colors.blue.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          'Customer complaint\n${x['description'] ?? ''}',
+                        ),
+                      ),
+                    ),
+                    if (x['transactionContext'] is Map)
+                      AdminTransactionCard(
+                        contextData:
+                            Map<String, dynamic>.from(x['transactionContext']),
+                        dateLabel: dateLabel,
+                      ),
                     const SizedBox(height: 12),
                     Wrap(spacing: 8, children: [
                       DropdownButton<String>(
-                          value: '${x['status'] ?? 'OPEN'}',
+                          value: [
+                            'OPEN',
+                            'IN_PROGRESS',
+                            'IN_REVIEW',
+                            'WAITING_ON_CUSTOMER',
+                            'RESOLVED',
+                            'CLOSED'
+                          ].contains('${x['status'] ?? 'OPEN'}')
+                              ? '${x['status'] ?? 'OPEN'}'
+                              : 'OPEN',
                           items: [
                             'OPEN',
                             'IN_PROGRESS',
@@ -343,8 +498,8 @@ class _DetailState extends State<_Detail> {
                             'RESOLVED',
                             'CLOSED'
                           ]
-                              .map((v) =>
-                                  DropdownMenuItem(value: v, child: Text(v)))
+                              .map((v) => DropdownMenuItem(
+                                  value: v, child: Text(statusLabel(v))))
                               .toList(),
                           onChanged: busy
                               ? null
@@ -371,6 +526,16 @@ class _DetailState extends State<_Detail> {
                           onPressed: busy ? null : assign,
                           child: const Text('Assign staff'))
                     ]),
+                     AdminTicketTimeline(
+                       events: x['statusEvents'] is List
+                           ? List<Map<String, dynamic>>.from(
+                               (x['statusEvents'] as List)
+                                   .whereType<Map>()
+                                   .map(Map<String, dynamic>.from))
+                           : const [],
+                       currentStatus: '${x['status'] ?? 'OPEN'}',
+                       updatedAt: x['updatedAt'],
+                     ),
                     const Divider(),
                     const Text('Conversation',
                         style: TextStyle(fontWeight: FontWeight.bold)),
@@ -382,30 +547,20 @@ class _DetailState extends State<_Detail> {
                               dense: true,
                               title:
                                   Text('${entry['authorName'] ?? 'Support'}'),
-                              subtitle: Text('${entry['message'] ?? ''}'),
+                              subtitle: Text(
+                                  '${entry['message'] ?? ''}\n${entry['authorRole'] ?? 'SUPPORT'} • ${dateLabel(entry['createdAt'])}'),
                             )),
                     const Text('Customer-visible reply'),
                     TextField(
                         controller: replyMessage,
+                        enabled: !busy && !_terminal,
                         minLines: 3,
                         maxLines: 5,
                         decoration: const InputDecoration(
                             border: OutlineInputBorder(),
                             hintText: 'Write a reply')),
                     FilledButton(
-                        onPressed: busy
-                            ? null
-                            : () {
-                                final key =
-                                    replyIdempotencyKey ??= newIdempotencyKey();
-                                run(
-                                    () => widget.api.reply(
-                                        widget.id, replyMessage.text,
-                                        idempotencyKey: key), onSuccess: () {
-                                  replyMessage.clear();
-                                  replyIdempotencyKey = null;
-                                });
-                              },
+                        onPressed: busy || _terminal ? null : sendReply,
                         child: const Text('Send reply')),
                     const SizedBox(height: 12),
                     const Text('Internal note (never visible to customer)',

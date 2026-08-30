@@ -102,7 +102,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           BottomNavigationBarItem(
             icon: Icon(Icons.support_agent_outlined),
             activeIcon: Icon(Icons.support_agent_rounded),
-            label: 'Support',
+            label: 'Support / Tickets',
           ),
           BottomNavigationBarItem(
             icon: Icon(
