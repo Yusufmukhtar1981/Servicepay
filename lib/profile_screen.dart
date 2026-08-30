@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_screen.dart';
@@ -53,15 +54,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool isLoading = true;
   bool isRefreshing = false;
   bool isLoggingOut = false;
+  bool isKycLoading = true;
+  bool isPhotoUploading = false;
 
   String errorMessage = '';
 
   Map<String, dynamic> user = {};
+  Map<String, dynamic> kycSummary = {};
+  Map<String, dynamic> kycLimits = {};
+  final ImagePicker imagePicker = ImagePicker();
+  late final http.Client _client;
+  late final bool _ownsClient;
 
   @override
   void initState() {
     super.initState();
+    _ownsClient = widget.client == null;
+    _client = widget.client ?? http.Client();
     loadProfile();
+    loadKycSummary();
+  }
+
+  @override
+  void dispose() {
+    if (_ownsClient) _client.close();
+    super.dispose();
+  }
+
+  Future<void> loadKycSummary() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String token = prefs.getString('auth_token') ?? '';
+      if (token.trim().isEmpty) return;
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/kyc/status'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 30));
+      final dynamic decoded = _decodeResponse(response.body);
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          decoded is Map &&
+          decoded['success'] == true) {
+        final dynamic rawKyc = decoded['kyc'];
+        final dynamic rawLimits = decoded['servicepayLimits'];
+        if (mounted) {
+          setState(() {
+            kycSummary = rawKyc is Map
+                ? Map<String, dynamic>.from(rawKyc)
+                : <String, dynamic>{};
+            kycLimits = rawLimits is Map
+                ? Map<String, dynamic>.from(rawLimits)
+                : <String, dynamic>{};
+          });
+        }
+      }
+    } catch (_) {
+      // Profile remains usable when KYC status is temporarily unavailable.
+    } finally {
+      if (mounted) setState(() => isKycLoading = false);
+    }
   }
 
   Future<void> loadProfile({
@@ -90,7 +144,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
 
-      final http.Response response = await http.get(
+      final http.Response response = await _client.get(
         Uri.parse('$baseUrl/auth/profile'),
         headers: {
           'Accept': 'application/json',
@@ -132,12 +186,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
       });
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        isLoading = false;
-        isRefreshing = false;
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+        });
+      }
     }
   }
 
@@ -327,6 +381,101 @@ class _ProfileScreenState extends State<ProfileScreen> {
         user['status'],
         fallback: 'ACTIVE',
       ).toUpperCase();
+
+  String get servicePayId => _text(
+        user['id'] ?? user['_id'] ?? user['customerId'],
+        fallback: 'Not available',
+      );
+
+  String get profilePhotoUrl => _text(user['profilePhotoUrl']);
+
+  bool get phoneVerified =>
+      user['phoneVerified'] == true || user['isPhoneVerified'] == true;
+
+  bool get emailVerified =>
+      user['emailVerified'] == true || user['isEmailVerified'] == true;
+
+  String get kycLevel =>
+      _text(kycSummary['level'], fallback: 'TIER_1').toUpperCase();
+
+  String get kycStatus =>
+      _text(kycSummary['status'], fallback: 'NOT_STARTED').toUpperCase();
+
+  String get kycRequestedLevel =>
+      _text(kycSummary['requestedLevel'], fallback: kycLevel).toUpperCase();
+
+  String get kycReviewReason => _text(
+        kycSummary['reviewReason'] ?? kycSummary['rejectionReason'],
+      );
+
+  Map<String, dynamic> get kycDocuments => kycSummary['documents'] is Map
+      ? Map<String, dynamic>.from(kycSummary['documents'] as Map)
+      : <String, dynamic>{};
+
+  Map<String, dynamic> get kycIdentity => kycSummary['identity'] is Map
+      ? Map<String, dynamic>.from(kycSummary['identity'] as Map)
+      : <String, dynamic>{};
+
+  Future<void> pickProfilePhoto() async {
+    if (isPhotoUploading) return;
+    final XFile? picked = await imagePicker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1200,
+      imageQuality: 88,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() => isPhotoUploading = true);
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String token = prefs.getString('auth_token') ?? '';
+      final http.MultipartRequest request = http.MultipartRequest(
+        'PATCH',
+        Uri.parse('$baseUrl/auth/profile/photo'),
+      )
+        ..headers['Accept'] = 'application/json'
+        ..headers['Authorization'] = 'Bearer $token'
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'photo',
+            await picked.readAsBytes(),
+            filename: picked.name,
+          ),
+        );
+      final http.StreamedResponse streamed = await _client.send(request);
+      final String body = await streamed.stream.bytesToString();
+      final dynamic decoded = _decodeResponse(body);
+      if (streamed.statusCode < 200 ||
+          streamed.statusCode >= 300 ||
+          decoded is! Map ||
+          decoded['success'] != true) {
+        throw Exception(
+          _extractMessage(decoded, fallback: 'Unable to update profile photo.'),
+        );
+      }
+      final String url = _text(
+        decoded['profilePhotoUrl'] ??
+            (decoded['user'] is Map
+                ? decoded['user']['profilePhotoUrl']
+                : null),
+      );
+      if (mounted) {
+        setState(() {
+          if (url.isNotEmpty) user['profilePhotoUrl'] = url;
+        });
+        _showMessage('Profile photo updated successfully.', isError: false);
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage(
+          error.toString().replaceFirst('Exception: ', ''),
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isPhotoUploading = false);
+    }
+  }
 
   String get state => _text(
         user['state'],
@@ -622,11 +771,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 )
               : RefreshIndicator(
                   color: primaryGreen,
-                  onRefresh: () {
-                    return loadProfile(
-                      showRefreshLoader: true,
-                    );
-                  },
+                  onRefresh: () async => Future.wait<void>([
+                    loadProfile(showRefreshLoader: true),
+                    loadKycSummary(),
+                  ]),
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(
@@ -638,14 +786,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       _ProfileHeader(
                         initials: initials,
+                        photoUrl: profilePhotoUrl,
                         fullName: fullName,
                         phone: phone,
                         role: role,
                         status: status,
+                        isPhotoUploading: isPhotoUploading,
+                        onPhotoTap: pickProfilePhoto,
                       ),
                       const SizedBox(height: 14),
                       _WalletSummaryCard(
                         balance: walletBalance,
+                      ),
+                      const SizedBox(height: 14),
+                      _KycTierCard(
+                        isLoading: isKycLoading,
+                        level: kycLevel,
+                        requestedLevel: kycRequestedLevel,
+                        status: kycStatus,
+                        limits: kycLimits,
+                        identity: kycIdentity,
+                        documents: kycDocuments,
+                        reviewReason: kycReviewReason,
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const KycScreen(),
+                            ),
+                          );
+                          await loadKycSummary();
+                        },
                       ),
                       const SizedBox(height: 18),
                       const _ProfileSectionTitle(
@@ -663,11 +833,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             icon: Icons.phone_outlined,
                             label: 'Phone Number',
                             value: phone,
+                            badge: phoneVerified ? 'Verified' : null,
                           ),
                           _ProfileInfoRow(
                             icon: Icons.email_outlined,
                             label: 'Email',
                             value: email,
+                            badge: emailVerified ? 'Verified' : null,
+                          ),
+                          _ProfileInfoRow(
+                            icon: Icons.fingerprint_rounded,
+                            label: 'ServicePay ID',
+                            value: servicePayId,
                           ),
                           _ProfileInfoRow(
                             icon: Icons.badge_outlined,
@@ -714,7 +891,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 18),
                       const _ProfileSectionTitle(
-                        title: 'Account Settings',
+                        title: 'Account & Security',
                       ),
                       const SizedBox(height: 10),
                       _ProfileActionCard(
@@ -747,25 +924,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               onTap: openCreateTransactionPin,
                             ),
                           _ProfileActionTile(
-                            icon: Icons.verified_user_outlined,
-                            title: 'KYC Verification',
-                            subtitle:
-                                'Verify your identity and account information',
-                            iconColor: const Color(0xFF08783E),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const KycScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                          _ProfileActionTile(
                             icon: Icons.lock_outline_rounded,
                             title: 'Change Password',
-                            subtitle: 'Update your account password',
+                            subtitle:
+                                'Use a strong password unique to ServicePay',
                             onTap: openChangePassword,
                           ),
+                          const _SecurityAvailabilityNote(),
                           _ProfileActionTile(
                             icon: Icons.card_giftcard_rounded,
                             title: 'My Referral',
@@ -823,17 +988,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
 class _ProfileHeader extends StatelessWidget {
   final String initials;
+  final String photoUrl;
   final String fullName;
   final String phone;
   final String role;
   final String status;
+  final bool isPhotoUploading;
+  final VoidCallback onPhotoTap;
 
   const _ProfileHeader({
     required this.initials,
+    required this.photoUrl,
     required this.fullName,
     required this.phone,
     required this.role,
     required this.status,
+    required this.isPhotoUploading,
+    required this.onPhotoTap,
   });
 
   @override
@@ -865,28 +1036,61 @@ class _ProfileHeader extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Container(
-            width: 88,
-            height: 88,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.18,
-              ),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(
-                  alpha: 0.45,
-                ),
-                width: 2,
-              ),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              initials,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
+          Semantics(
+            button: true,
+            label: 'Change profile photo',
+            child: InkWell(
+              key: const Key('profile-photo-button'),
+              onTap: isPhotoUploading ? null : onPhotoTap,
+              customBorder: const CircleBorder(),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.45),
+                        width: 2,
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    alignment: Alignment.center,
+                    child: isPhotoUploading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : photoUrl.isNotEmpty
+                            ? Image.network(
+                                photoUrl,
+                                width: 88,
+                                height: 88,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    _InitialsAvatar(initials: initials),
+                              )
+                            : _InitialsAvatar(initials: initials),
+                  ),
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: Container(
+                      width: 29,
+                      height: 29,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F5F34),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt_rounded,
+                        color: Colors.white,
+                        size: 15,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -975,6 +1179,349 @@ class _HeaderBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+class _InitialsAvatar extends StatelessWidget {
+  const _InitialsAvatar({required this.initials});
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Text(
+          initials,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      );
+}
+
+class _KycTierCard extends StatelessWidget {
+  const _KycTierCard({
+    required this.isLoading,
+    required this.level,
+    required this.requestedLevel,
+    required this.status,
+    required this.limits,
+    required this.identity,
+    required this.documents,
+    required this.reviewReason,
+    required this.onTap,
+  });
+
+  final bool isLoading;
+  final String level;
+  final String requestedLevel;
+  final String status;
+  final Map<String, dynamic> limits;
+  final Map<String, dynamic> identity;
+  final Map<String, dynamic> documents;
+  final String reviewReason;
+  final VoidCallback onTap;
+
+  int get tierNumber => int.tryParse(level.replaceAll(RegExp(r'\D'), '')) ?? 1;
+
+  String _money(dynamic value) {
+    final num amount = value is num ? value : num.tryParse('$value') ?? 0;
+    final String digits = amount.round().toString();
+    final StringBuffer output = StringBuffer();
+    for (int index = 0; index < digits.length; index++) {
+      if (index > 0 && (digits.length - index) % 3 == 0) output.write(',');
+      output.write(digits[index]);
+    }
+    return '₦$output';
+  }
+
+  String get statusLabel => status
+      .toLowerCase()
+      .split('_')
+      .map((word) =>
+          word.isEmpty ? word : '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
+
+  Color get statusColor {
+    if (status == 'VERIFIED') return const Color(0xFF166534);
+    if (status == 'REJECTED' || status == 'NEEDS_MORE_INFORMATION') {
+      return const Color(0xFFB45309);
+    }
+    if (status == 'PENDING' || status == 'UNDER_REVIEW') {
+      return const Color(0xFF1D4ED8);
+    }
+    return const Color(0xFF64748B);
+  }
+
+  List<String> get missingRequirements {
+    final List<String> missing = <String>[];
+    if (identity['ninVerified'] != true && identity['bvnVerified'] != true) {
+      missing.add('Verify your NIN or BVN');
+    }
+    if (tierNumber >= 2) {
+      if (documents['idDocumentUploaded'] != true) {
+        missing.add('Upload a government ID');
+      }
+      if (documents['selfieUploaded'] != true) {
+        missing.add('Upload a verification selfie');
+      }
+    }
+    if (tierNumber >= 3 && documents['proofOfAddressUploaded'] != true) {
+      missing.add('Upload proof of address');
+    }
+    return missing;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('profile-kyc-tier-card'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFDDE7DF)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0F0F3D24),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: isLoading
+          ? const SizedBox(
+              height: 110,
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF2E7D32),
+                  strokeWidth: 2,
+                ),
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.workspace_premium_rounded,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Verification tier',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            'Tier $tierNumber',
+                            style: const TextStyle(
+                              color: Color(0xFF17211A),
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: List<Widget>.generate(3, (int index) {
+                    final int step = index + 1;
+                    final bool active = step <= tierNumber;
+                    return Expanded(
+                      child: Container(
+                        key: Key('kyc-tier-step-$step'),
+                        height: 6,
+                        margin: EdgeInsets.only(right: step == 3 ? 0 : 6),
+                        decoration: BoxDecoration(
+                          color: active
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFE2E8F0),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+                if (requestedLevel != level) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Upgrade request: ${requestedLevel.replaceAll('_', ' ')}',
+                    style: const TextStyle(
+                      color: Color(0xFF1D4ED8),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                if (limits.isNotEmpty) ...[
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _LimitItem(
+                          label: 'Per transaction',
+                          value: _money(limits['perTransaction']),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _LimitItem(
+                          label: 'Daily limit',
+                          value: _money(limits['daily']),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (reviewReason.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    reviewReason,
+                    style: const TextStyle(
+                      color: Color(0xFFB45309),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ] else if (missingRequirements.isNotEmpty &&
+                    status != 'PENDING' &&
+                    status != 'UNDER_REVIEW') ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    missingRequirements.first,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    key: const Key('manage-kyc-button'),
+                    onPressed: onTap,
+                    icon: const Icon(Icons.verified_user_outlined, size: 18),
+                    label: Text(
+                      tierNumber < 3 ? 'Manage or upgrade KYC' : 'View KYC',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF2E7D32),
+                      side: const BorderSide(color: Color(0xFFB7D6BE)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _LimitItem extends StatelessWidget {
+  const _LimitItem({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF6F8F7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF17211A),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _SecurityAvailabilityNote extends StatelessWidget {
+  const _SecurityAvailabilityNote();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const Key('security-availability-note'),
+        padding: const EdgeInsets.fromLTRB(10, 13, 10, 14),
+        decoration: const BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Color(0xFFE8ECE8)),
+          ),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.devices_other_rounded,
+              size: 20,
+              color: Color(0xFF64748B),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Biometric approval and device/session management are not '
+                'available for this account yet. Your password and transaction '
+                'PIN remain the active security controls.',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 11,
+                  height: 1.45,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _WalletSummaryCard extends StatelessWidget {
@@ -1104,6 +1651,7 @@ class _ProfileInfoRow extends StatelessWidget {
   final String value;
   final Color? valueColor;
   final bool showDivider;
+  final String? badge;
 
   const _ProfileInfoRow({
     required this.icon,
@@ -1111,6 +1659,7 @@ class _ProfileInfoRow extends StatelessWidget {
     required this.value,
     this.valueColor,
     this.showDivider = true,
+    this.badge,
   });
 
   @override
@@ -1174,6 +1723,22 @@ class _ProfileInfoRow extends StatelessWidget {
               ],
             ),
           ),
+          if (badge != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                badge!,
+                style: const TextStyle(
+                  color: Color(0xFF2E7D32),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1517,11 +2082,11 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           ),
         );
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        isSaving = false;
-      });
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
     }
   }
 
@@ -1838,11 +2403,11 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
           ),
         );
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        isSaving = false;
-      });
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
     }
   }
 
@@ -1961,6 +2526,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
+                    key: const Key('change-password-submit'),
                     onPressed: isSaving ? null : changePassword,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryGreen,

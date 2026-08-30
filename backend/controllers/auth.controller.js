@@ -308,6 +308,9 @@ const formatUser = (user) => {
     transactionPinSet:
       user.transactionPinSet === true,
 
+    profilePhotoUrl:
+      user.profilePhotoUrl || "",
+
     virtualAccount:
       user.virtualAccount || null,
 
