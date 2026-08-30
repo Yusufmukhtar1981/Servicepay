@@ -149,6 +149,16 @@ transactionSchema.index({
   createdAt: -1,
 });
 
+transactionSchema.index({
+  provider: 1,
+  createdAt: -1,
+});
+
+transactionSchema.index({
+  amount: 1,
+  createdAt: -1,
+});
+
 const Transaction =
   mongoose.model(
     "Transaction",

@@ -221,6 +221,16 @@ bankTransferSchema.index(
   }
 );
 
+bankTransferSchema.index(
+  { transactionId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      transactionId: { $type: "objectId" },
+    },
+  }
+);
+
 module.exports = mongoose.model(
   "BankTransfer",
   bankTransferSchema

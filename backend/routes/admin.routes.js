@@ -3,6 +3,7 @@ const express = require("express");
 const adminTransactionRequeryController = require("../controllers/adminTransactionRequery.controller");
 const bankTransferController = require("../controllers/bankTransfer.controller");
 const adminBankReconciliationController = require("../controllers/adminBankReconciliation.controller");
+const transactionIntelligenceController = require("../controllers/adminTransactionIntelligence.controller");
 const fintechOperationsController = require("../controllers/adminFintechOperations.controller");
 
 const {
@@ -561,6 +562,43 @@ router.get(
   protect,
   adminOnly("HEAD_OFFICE"),
   adminBankReconciliationController.listBankReconciliation
+);
+
+/*
+ * Transaction Intelligence is read-only unless an explicit action route is
+ * called. Requery delegates to the existing provider-safe implementation.
+ */
+const transactionIntelligenceView = [
+  protect,
+  loadStaffRole,
+  requirePermission(P.TRANSACTION_INTELLIGENCE_VIEW),
+];
+router.get("/transaction-intelligence/summary", ...transactionIntelligenceView, transactionIntelligenceController.getSummary);
+router.get("/transaction-intelligence/transactions", ...transactionIntelligenceView, transactionIntelligenceController.searchTransactions);
+router.get("/transaction-intelligence/queue", ...transactionIntelligenceView, transactionIntelligenceController.getReconciliationQueue);
+router.get(
+  "/transaction-intelligence/providers",
+  protect,
+  loadStaffRole,
+  requirePermission(P.TRANSACTION_INTELLIGENCE_PROVIDER_HEALTH),
+  transactionIntelligenceController.getProviderHealth
+);
+router.get("/transaction-intelligence/alerts", ...transactionIntelligenceView, transactionIntelligenceController.getAlerts);
+router.get("/transaction-intelligence/transactions/:transactionId", ...transactionIntelligenceView, transactionIntelligenceController.getTransactionDetail);
+router.get("/transaction-intelligence/transactions/:transactionId/timeline", ...transactionIntelligenceView, transactionIntelligenceController.getTransactionTimeline);
+router.post(
+  "/transaction-intelligence/transactions/:transactionId/requery",
+  protect,
+  loadStaffRole,
+  requirePermission(P.TRANSACTION_INTELLIGENCE_REQUERY),
+  transactionIntelligenceController.requeryTransaction
+);
+router.post(
+  "/transaction-intelligence/export.csv",
+  protect,
+  loadStaffRole,
+  requirePermission(P.TRANSACTION_INTELLIGENCE_EXPORT),
+  transactionIntelligenceController.exportTransactions
 );
 
 /*

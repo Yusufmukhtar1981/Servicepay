@@ -30,6 +30,11 @@ const STAFF_PERMISSIONS = Object.freeze({
   TRANSACTIONS_VIEW: "transactions.view",
   TRANSACTIONS_EXPORT: "transactions.export",
   TRANSACTIONS_REVERSE: "transactions.reverse",
+  TRANSACTION_INTELLIGENCE_VIEW: "transaction_intelligence.view",
+  TRANSACTION_INTELLIGENCE_REQUERY: "transaction_intelligence.requery",
+  TRANSACTION_INTELLIGENCE_RECONCILE: "transaction_intelligence.reconcile",
+  TRANSACTION_INTELLIGENCE_EXPORT: "transaction_intelligence.export",
+  TRANSACTION_INTELLIGENCE_PROVIDER_HEALTH: "transaction_intelligence.provider_health",
 
   WALLETS_VIEW: "wallets.view",
   WALLETS_FUND: "wallets.fund",
