@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 
 import 'services/support_api_service.dart';
+import 'servicepay_theme.dart';
+import 'servicepay_ui.dart';
 
 class SupportTicketsScreen extends StatefulWidget {
   const SupportTicketsScreen({super.key, this.api});
@@ -44,6 +46,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
   }
 
   Future<void> _load({bool more = false}) async {
+    if (!mounted || (more && (_loadingMore || !_hasMore))) return;
     setState(() {
       if (more) {
         _loadingMore = true;
@@ -82,113 +85,175 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
               onPressed: _loading ? null : _load,
               icon: const Icon(Icons.refresh))
         ]),
-        body: Column(children: [
-          if (_error.isNotEmpty)
-            MaterialBanner(content: Text(_error), actions: [
-              TextButton(onPressed: _load, child: const Text('Retry'))
-            ]),
-          if (_loading) const LinearProgressIndicator(),
-          SizedBox(
-            height: 52,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              children: [
-                '',
-                'OPEN',
-                'IN_REVIEW',
-                'WAITING_ON_CUSTOMER',
-                'RESOLVED',
-                'CLOSED'
-              ]
-                  .map((value) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(value.isEmpty
-                              ? 'All'
-                              : value == 'IN_REVIEW'
-                                  ? 'In Review'
-                                  : value == 'WAITING_ON_CUSTOMER'
-                                      ? 'Awaiting Customer'
-                                      : value[0] +
-                                          value.substring(1).toLowerCase()),
-                          selected: _status == value,
-                          onSelected: (_) {
-                            setState(() => _status = value);
-                            _load();
-                          },
-                        ),
-                      ))
-                  .toList(),
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-                onRefresh: _load,
-                child: _tickets.isEmpty && !_loading
-                    ? ListView(children: const [
-                        SizedBox(height: 130),
-                        Center(child: Text('You have no support tickets yet.'))
-                      ])
-                    : ListView.builder(
-                        controller: _scroll,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _tickets.length + (_loadingMore ? 1 : 0),
-                        itemBuilder: (_, i) {
-                          if (i == _tickets.length) {
-                            return const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-                          final t = _tickets[i];
-                          return Card(
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => SupportTicketDetailScreen(
-                                          ticketId: t.id, api: _api))),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(t.subject,
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.bold)),
-                                          const SizedBox(height: 7),
-                                          Text(t.reference),
-                                          Text(
-                                              '${t.categoryLabel} • ${t.statusLabel}'),
-                                          if (t.createdAt != null)
-                                            Text(_formatTicketDate(
-                                                t.createdAt!)),
-                                          if ((t.transactionContext?[
-                                                      'reference'] ??
-                                                  '')
-                                              .toString()
-                                              .isNotEmpty)
-                                            Text(
-                                                'Transaction: ${t.transactionContext!['reference']}'),
-                                        ],
-                                      ),
-                                    ),
-                                    const Icon(Icons.chevron_right),
-                                  ],
-                                ),
-                              ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 850),
+            child: Column(children: [
+              if (_loading) const LinearProgressIndicator(),
+              SizedBox(
+                height: 52,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  children: [
+                    '',
+                    'OPEN',
+                    'IN_REVIEW',
+                    'WAITING_ON_CUSTOMER',
+                    'RESOLVED',
+                    'CLOSED'
+                  ]
+                      .map((value) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(value.isEmpty
+                                  ? 'All'
+                                  : value == 'IN_REVIEW'
+                                      ? 'In Review'
+                                      : value == 'WAITING_ON_CUSTOMER'
+                                          ? 'Awaiting Customer'
+                                          : value[0] +
+                                              value.substring(1).toLowerCase()),
+                              selected: _status == value,
+                              onSelected: (_) {
+                                setState(() => _status = value);
+                                _load();
+                              },
                             ),
-                          );
-                        })),
+                          ))
+                      .toList(),
+                ),
+              ),
+              Expanded(
+                child: RefreshIndicator(
+                    onRefresh: _load,
+                    child: _tickets.isEmpty && !_loading
+                        ? _error.isNotEmpty
+                            ? ServicePayStateView(
+                                icon: Icons.cloud_off_outlined,
+                                title: 'Tickets are unavailable',
+                                message: _error,
+                                actionLabel: 'Try again',
+                                onAction: _load,
+                              )
+                            : const ServicePayStateView(
+                                icon: Icons.confirmation_number_outlined,
+                                title: 'No support tickets yet',
+                                message:
+                                    'When you report a problem, your ticket and replies will appear here.',
+                              )
+                        : ListView.builder(
+                            controller: _scroll,
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _tickets.length + (_loadingMore ? 1 : 0),
+                            itemBuilder: (_, i) {
+                              if (i == _tickets.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Center(
+                                      child: CircularProgressIndicator()),
+                                );
+                              }
+                              final t = _tickets[i];
+                              return Card(
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              SupportTicketDetailScreen(
+                                                  ticketId: t.id, api: _api))),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                t.subject,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleMedium,
+                                              ),
+                                              const SizedBox(height: 7),
+                                              Text(
+                                                t.reference,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall,
+                                              ),
+                                              const SizedBox(height: 7),
+                                              Wrap(
+                                                spacing: 7,
+                                                runSpacing: 7,
+                                                children: [
+                                                  ServicePayStatusPill(
+                                                    status: t.status,
+                                                    label: t.statusLabel,
+                                                  ),
+                                                  Chip(
+                                                    label:
+                                                        Text(t.categoryLabel),
+                                                  ),
+                                                ],
+                                              ),
+                                              if (t.createdAt != null)
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          top: 8),
+                                                  child: Text(
+                                                    _formatTicketDate(
+                                                        t.createdAt!),
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .bodySmall,
+                                                  ),
+                                                ),
+                                              if ((t.transactionContext?[
+                                                          'reference'] ??
+                                                      '')
+                                                  .toString()
+                                                  .isNotEmpty)
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          top: 4),
+                                                  child: Text(
+                                                    'Transaction: ${t.transactionContext!['reference']}',
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .bodySmall,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        const Icon(Icons.chevron_right),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            })),
+              ),
+            ]),
           ),
-        ]),
+        ),
       );
 }
 
@@ -224,6 +289,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = '';
@@ -272,127 +338,186 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
         t != null && ['RESOLVED', 'CLOSED', 'REJECTED'].contains(t.status);
     return Scaffold(
         appBar: AppBar(title: const Text('Support Ticket')),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : t == null
-                ? Center(
-                    child: Text(_error.isEmpty ? 'Ticket not found.' : _error))
-                : Column(children: [
-                    Expanded(
-                        child: ListView(
-                            padding: const EdgeInsets.all(16),
-                            children: [
-                          Text(t.subject,
-                              style: Theme.of(context).textTheme.titleLarge),
-                          const SizedBox(height: 6),
-                          Text('Reference: ${t.reference}'),
-                          Wrap(spacing: 8, children: [
-                            Chip(label: Text(t.statusLabel)),
-                            Chip(label: Text(t.categoryLabel))
-                          ]),
-                          _TicketTimeline(status: t.status),
-                          if (t.transactionContext != null)
-                            Card(
-                              color: Colors.blue.shade50,
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Text(
-                                  'Related transaction\nReference: ${t.transactionContext!['reference'] ?? 'Unavailable'}\nStatus: ${t.transactionContext!['status'] ?? 'Unavailable'}',
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 850),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : t == null
+                    ? ServicePayStateView(
+                        icon: Icons.confirmation_number_outlined,
+                        title: 'Ticket unavailable',
+                        message: _error.isEmpty
+                            ? 'This support ticket could not be found.'
+                            : _error,
+                        actionLabel: 'Try again',
+                        onAction: _load,
+                      )
+                    : Column(children: [
+                        Expanded(
+                            child: ListView(
+                                padding: const EdgeInsets.all(16),
+                                children: [
+                              Text(t.subject,
+                                  style:
+                                      Theme.of(context).textTheme.titleLarge),
+                              const SizedBox(height: 6),
+                              Text('Reference: ${t.reference}'),
+                              Wrap(spacing: 8, children: [
+                                ServicePayStatusPill(
+                                  status: t.status,
+                                  label: t.statusLabel,
+                                ),
+                                Chip(label: Text(t.categoryLabel))
+                              ]),
+                              _TicketTimeline(status: t.status),
+                              if (t.transactionContext != null)
+                                Card(
+                                  color: Colors.blue.shade50,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Text(
+                                      'Related transaction\nReference: ${t.transactionContext!['reference'] ?? 'Unavailable'}\nStatus: ${t.transactionContext!['status'] ?? 'Unavailable'}',
+                                    ),
+                                  ),
+                                ),
+                              Card(
+                                margin:
+                                    const EdgeInsets.only(top: 8, bottom: 12),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Text(
+                                    t.description,
+                                    style:
+                                        Theme.of(context).textTheme.bodyLarge,
+                                  ),
                                 ),
                               ),
-                            ),
-                          Text(t.description),
-                          if (t.resolution.isNotEmpty)
-                            Card(
-                                color: Colors.green.shade50,
-                                child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child:
-                                        Text('Resolution: ${t.resolution}'))),
-                          const Divider(),
-                          const Text('Conversation',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          ...t.replies.map((r) {
-                            final role = (r['authorRole'] ??
-                                    r['senderType'] ??
-                                    r['role'] ??
-                                    '')
-                                .toString()
-                                .toUpperCase();
-                            final mine = role == 'CUSTOMER';
-                            final author = mine
-                                ? 'You'
-                                : (r['authorName'] ?? 'ServicePay Support')
-                                    .toString();
-                            final createdAt =
-                                DateTime.tryParse('${r['createdAt']}')
-                                    ?.toLocal();
-                            return Align(
-                                alignment: mine
-                                    ? Alignment.centerRight
-                                    : Alignment.centerLeft,
-                                child: Card(
-                                    color: mine ? Colors.green.shade50 : null,
+                              if (t.resolution.isNotEmpty)
+                                Card(
+                                    color: Colors.green.shade50,
                                     child: Padding(
-                                      padding: const EdgeInsets.all(10),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            author,
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text((r['message'] ?? r['body'] ?? '')
-                                              .toString()),
-                                          if (createdAt != null) ...[
-                                            const SizedBox(height: 5),
-                                            Text(
-                                              _formatTicketDate(createdAt),
-                                              style: const TextStyle(
-                                                color: Colors.grey,
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    )));
-                          }),
-                          const Padding(
-                            padding: EdgeInsets.only(top: 12),
-                            child: Text(
-                              'ServicePay Support will never ask for your password, OTP or transaction PIN.',
-                              style: TextStyle(
-                                color: Color(0xFF9A3412),
-                                fontSize: 12,
+                                        padding: const EdgeInsets.all(12),
+                                        child: Text(
+                                            'Resolution: ${t.resolution}'))),
+                              const ServicePaySectionHeading(
+                                title: 'Conversation',
+                                subtitle:
+                                    'Messages from you and ServicePay Support',
                               ),
-                            ),
-                          ),
-                        ])),
-                    SafeArea(
-                        child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Row(children: [
-                              Expanded(
-                                  child: TextField(
-                                      controller: _reply,
-                                      enabled: !_sending && !replyClosed,
-                                      decoration: const InputDecoration(
-                                          labelText: 'Reply to support',
-                                          border: OutlineInputBorder()))),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                  onPressed:
-                                      _sending || replyClosed ? null : _send,
-                                  icon: _sending
-                                      ? const CircularProgressIndicator()
-                                      : const Icon(Icons.send))
-                            ]))),
-                  ]));
+                              const SizedBox(height: 12),
+                              ...t.replies.map((r) {
+                                final role = (r['authorRole'] ??
+                                        r['senderType'] ??
+                                        r['role'] ??
+                                        '')
+                                    .toString()
+                                    .toUpperCase();
+                                final mine = role == 'CUSTOMER';
+                                final author = mine
+                                    ? 'You'
+                                    : (r['authorName'] ?? 'ServicePay Support')
+                                        .toString();
+                                final createdAt =
+                                    DateTime.tryParse('${r['createdAt']}')
+                                        ?.toLocal();
+                                return Align(
+                                    alignment: mine
+                                        ? Alignment.centerRight
+                                        : Alignment.centerLeft,
+                                    child: Card(
+                                        color: mine
+                                            ? ServicePayColors.brandSoft
+                                            : Colors.white,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(10),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                author,
+                                                style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text((r['message'] ??
+                                                      r['body'] ??
+                                                      '')
+                                                  .toString()),
+                                              if (createdAt != null) ...[
+                                                const SizedBox(height: 5),
+                                                Text(
+                                                  _formatTicketDate(createdAt),
+                                                  style: const TextStyle(
+                                                    color: Colors.grey,
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        )));
+                              }),
+                              const Padding(
+                                padding: EdgeInsets.only(top: 12),
+                                child: Text(
+                                  'ServicePay Support will never ask for your password, OTP or transaction PIN.',
+                                  style: TextStyle(
+                                    color: Color(0xFF9A3412),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ])),
+                        SafeArea(
+                            child: Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                                child: Row(children: [
+                                  Expanded(
+                                      child: TextField(
+                                          controller: _reply,
+                                          enabled: !_sending && !replyClosed,
+                                          textInputAction: TextInputAction.send,
+                                          onSubmitted: replyClosed || _sending
+                                              ? null
+                                              : (_) => _send(),
+                                          decoration: InputDecoration(
+                                              labelText: replyClosed
+                                                  ? 'This ticket is closed'
+                                                  : 'Reply to support',
+                                              hintText: replyClosed
+                                                  ? 'Replies are unavailable'
+                                                  : 'Write a clear update',
+                                              prefixIcon: const Icon(
+                                                Icons
+                                                    .chat_bubble_outline_rounded,
+                                              )))),
+                                  const SizedBox(width: 8),
+                                  Semantics(
+                                      button: true,
+                                      label: 'Send support reply',
+                                      child: IconButton(
+                                          onPressed: _sending || replyClosed
+                                              ? null
+                                              : _send,
+                                          tooltip: 'Send reply',
+                                          icon: _sending
+                                              ? const SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                )
+                                              : const Icon(Icons.send))),
+                                ]))),
+                      ]),
+          ),
+        ));
   }
 }
 

@@ -4835,11 +4835,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                 style: TextButton.styleFrom(
                   foregroundColor: primaryGreen,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 5,
+                    horizontal: 8,
+                    vertical: 8,
                   ),
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  minimumSize: const Size(48, 44),
                   textStyle: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,

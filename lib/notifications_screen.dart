@@ -13,6 +13,8 @@ import 'support_tickets_screen.dart';
 import 'services/support_api_service.dart';
 import 'track_delivery_screen.dart';
 import 'transactions_screen.dart';
+import 'servicepay_theme.dart';
+import 'servicepay_ui.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key, this.client, this.supportApi});
@@ -26,8 +28,8 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   static const _baseUrl = 'https://api.servicepay.ng/api';
-  static const _green = Color(0xFF08783E);
-  static const _ink = Color(0xFF15352A);
+  static const _green = ServicePayColors.brand;
+  static const _ink = ServicePayColors.ink;
   static const _categories = <String>[
     'ALL',
     'UNREAD',
@@ -386,9 +388,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF2F8F4),
+        backgroundColor: ServicePayColors.canvas,
         appBar: AppBar(
-          backgroundColor: const Color(0xFFF2F8F4),
+          backgroundColor: ServicePayColors.canvas,
+          foregroundColor: _ink,
           elevation: 0,
           title: const Text('Activity center',
               style: TextStyle(color: _ink, fontWeight: FontWeight.w800)),
@@ -485,18 +488,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return _skeleton();
     }
     if (_error != null) {
-      return _state(Icons.cloud_off_outlined,
-          'Activity is temporarily unavailable', _error!, 'Try again', _load);
+      return ServicePayStateView(
+        icon: Icons.cloud_off_outlined,
+        title: 'Activity is temporarily unavailable',
+        message: _error!,
+        actionLabel: 'Try again',
+        onAction: _load,
+      );
     }
     if (_items.isEmpty) {
-      return _state(
-          Icons.inbox_outlined,
-          _query.isEmpty ? 'Nothing here yet' : 'No matching activity',
-          _query.isEmpty
-              ? 'Important updates about your money and account will appear here.'
-              : 'Try a different search or view.',
-          'Refresh',
-          _load);
+      return ServicePayStateView(
+        icon: Icons.inbox_outlined,
+        title: _query.isEmpty ? 'Nothing here yet' : 'No matching activity',
+        message: _query.isEmpty
+            ? 'Important updates about your money and account will appear here.'
+            : 'Try a different search or view.',
+        actionLabel: 'Refresh',
+        onAction: _load,
+      );
     }
     return RefreshIndicator(
       color: _green,
@@ -578,28 +587,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
     );
   }
-
-  Widget _state(IconData icon, String title, String body, String action,
-          VoidCallback onTap) =>
-      ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(32),
-        children: [
-          const SizedBox(height: 70),
-          Icon(icon, size: 52, color: Color(0xFF79A58A)),
-          const SizedBox(height: 18),
-          Text(title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w800, color: _ink)),
-          const SizedBox(height: 8),
-          Text(body,
-              textAlign: TextAlign.center,
-              style: const TextStyle(height: 1.4, color: Color(0xFF61776B))),
-          const SizedBox(height: 22),
-          Center(child: OutlinedButton(onPressed: onTap, child: Text(action)))
-        ],
-      );
 
   Widget _skeleton() => ListView(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),

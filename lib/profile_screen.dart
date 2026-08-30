@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'referral_screen.dart';
 import 'kyc_screen.dart';
+import 'servicepay_theme.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.client});
@@ -49,7 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF2E7D32);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -357,7 +358,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String get fullName => _text(
         user['fullName'],
-        fallback: 'Servicepay Customer',
+        fallback: 'ServicePay Customer',
       );
 
   String get phone => _text(
@@ -608,7 +609,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           content: const Text(
-            'Are you sure you want to log out of your Servicepay account?',
+            'Are you sure you want to log out of your ServicePay account?',
           ),
           actions: [
             TextButton(

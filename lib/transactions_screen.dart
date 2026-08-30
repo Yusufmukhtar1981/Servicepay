@@ -9,6 +9,8 @@ import 'help_support_screen.dart';
 import 'receipt_screen.dart';
 import 'services/support_api_service.dart';
 import 'transaction_presentation.dart';
+import 'servicepay_theme.dart';
+import 'servicepay_ui.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
@@ -20,7 +22,7 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF2E7D32);
+  static const Color primaryGreen = ServicePayColors.brand;
   static const int pageSize = 20;
 
   final TextEditingController searchController = TextEditingController();
@@ -908,9 +910,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final List<Map<String, dynamic>> visible = filteredTransactions;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: primaryGreen,
+        backgroundColor: ServicePayColors.brand,
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -958,261 +960,268 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: primaryGreen,
-              ),
-            )
-          : RefreshIndicator(
-              color: primaryGreen,
-              onRefresh: () {
-                return loadTransactions(
-                  showRefreshLoader: true,
-                );
-              },
-              child: ListView(
-                controller: scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
-                  14,
-                  14,
-                  14,
-                  30,
-                ),
-                children: [
-                  TextField(
-                    controller: searchController,
-                    onChanged: (value) {
-                      setState(() {
-                        searchQuery = value;
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Search transactions...',
-                      prefixIcon: const Icon(
-                        Icons.search_rounded,
-                        color: primaryGreen,
-                      ),
-                      suffixIcon: searchQuery.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                searchController.clear();
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 900),
+          child: isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: primaryGreen,
+                  ),
+                )
+              : RefreshIndicator(
+                  color: primaryGreen,
+                  onRefresh: () {
+                    return loadTransactions(
+                      showRefreshLoader: true,
+                    );
+                  },
+                  child: ListView(
+                    controller: scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(
+                      14,
+                      14,
+                      14,
+                      30,
+                    ),
+                    children: [
+                      TextField(
+                        controller: searchController,
+                        onChanged: (value) {
+                          setState(() {
+                            searchQuery = value;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Search transactions...',
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: primaryGreen,
+                          ),
+                          suffixIcon: searchQuery.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () {
+                                    searchController.clear();
 
+                                    setState(() {
+                                      searchQuery = '';
+                                    });
+                                  },
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                  ),
+                                ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(
+                              color: Colors.grey.shade200,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: primaryGreen,
+                              width: 1.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 40,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: filters.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            final String filter = filters[index];
+
+                            final bool selected = selectedFilter == filter;
+
+                            return ChoiceChip(
+                              label: Text(
+                                _formatTitle(filter),
+                              ),
+                              selected: selected,
+                              selectedColor: const Color(0xFFE8F5E9),
+                              labelStyle: TextStyle(
+                                color: selected
+                                    ? primaryGreen
+                                    : Colors.grey.shade700,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              side: BorderSide(
+                                color: selected
+                                    ? primaryGreen
+                                    : Colors.grey.shade300,
+                              ),
+                              onSelected: (_) {
                                 setState(() {
-                                  searchQuery = '';
+                                  selectedFilter = filter;
                                 });
                               },
-                              icon: const Icon(
-                                Icons.close_rounded,
-                              ),
-                            ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: Colors.grey.shade200,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(
-                          color: primaryGreen,
-                          width: 1.4,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 40,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: filters.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemBuilder: (context, index) {
-                        final String filter = filters[index];
-
-                        final bool selected = selectedFilter == filter;
-
-                        return ChoiceChip(
-                          label: Text(
-                            _formatTitle(filter),
-                          ),
-                          selected: selected,
-                          selectedColor: const Color(0xFFE8F5E9),
-                          labelStyle: TextStyle(
-                            color:
-                                selected ? primaryGreen : Colors.grey.shade700,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          side: BorderSide(
-                            color:
-                                selected ? primaryGreen : Colors.grey.shade300,
-                          ),
-                          onSelected: (_) {
-                            setState(() {
-                              selectedFilter = filter;
-                            });
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _FilterMenu(
-                          label: 'Type',
-                          value: selectedType,
-                          items: _types,
-                          format: _formatTitle,
-                          onChanged: (value) {
-                            setState(() => selectedType = value);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _FilterMenu(
-                          label: 'Date',
-                          value: selectedDateRange,
-                          items: const [
-                            'ALL_TIME',
-                            'TODAY',
-                            'LAST_7_DAYS',
-                            'LAST_30_DAYS',
-                            'CUSTOM',
-                          ],
-                          format: (value) {
-                            switch (value) {
-                              case 'ALL_TIME':
-                                return 'All time';
-                              case 'LAST_7_DAYS':
-                                return 'Last 7 days';
-                              case 'LAST_30_DAYS':
-                                return 'Last 30 days';
-                              case 'CUSTOM':
-                                return customDateRange == null
-                                    ? 'Custom range'
-                                    : '${customDateRange!.start.day}/'
-                                        '${customDateRange!.start.month} – '
-                                        '${customDateRange!.end.day}/'
-                                        '${customDateRange!.end.month}';
-                              default:
-                                return 'Today';
-                            }
-                          },
-                          onChanged: (value) {
-                            _selectHistoryDateRange(value);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  if (errorMessage.isNotEmpty)
-                    _ErrorState(
-                      message: errorMessage,
-                      onRetry: () {
-                        loadTransactions(
-                          reset: true,
-                        );
-                      },
-                    )
-                  else if (visible.isEmpty)
-                    const _EmptyState()
-                  else ...[
-                    Text(
-                      '${visible.length} transaction${visible.length == 1 ? '' : 's'}',
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    for (final transaction in visible)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: 10,
-                        ),
-                        child: _TransactionCard(
-                          title: _transactionTitle(
-                            transaction,
-                          ),
-                          description: _transactionDescription(
-                            transaction,
-                          ),
-                          amount: _transactionAmount(
-                            transaction,
-                          ),
-                          direction: _transactionDirection(
-                            transaction,
-                          ),
-                          status: _transactionStatus(
-                            transaction,
-                          ),
-                          date: _formatDate(
-                            _transactionDate(
-                              transaction,
-                            ),
-                          ),
-                          icon: _transactionIcon(
-                            _transactionTitle(
-                              transaction,
-                            ),
-                          ),
-                          statusColor: _statusColor(
-                            _transactionStatus(
-                              transaction,
-                            ),
-                          ),
-                          directionColor: _directionColor(
-                            _transactionDirection(
-                              transaction,
-                            ),
-                          ),
-                          onTap: () {
-                            _showTransactionDetails(
-                              transaction,
                             );
                           },
                         ),
                       ),
-                    if (hasMore)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          top: 6,
-                          bottom: 8,
-                        ),
-                        child: Center(
-                          child: isLoadingMore
-                              ? const SizedBox(
-                                  width: 26,
-                                  height: 26,
-                                  child: CircularProgressIndicator(
-                                    color: primaryGreen,
-                                    strokeWidth: 2.4,
-                                  ),
-                                )
-                              : TextButton.icon(
-                                  onPressed: loadMoreTransactions,
-                                  icon: const Icon(
-                                    Icons.expand_more_rounded,
-                                  ),
-                                  label: const Text(
-                                    'Load more transactions',
-                                  ),
-                                ),
-                        ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _FilterMenu(
+                              label: 'Type',
+                              value: selectedType,
+                              items: _types,
+                              format: _formatTitle,
+                              onChanged: (value) {
+                                setState(() => selectedType = value);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _FilterMenu(
+                              label: 'Date',
+                              value: selectedDateRange,
+                              items: const [
+                                'ALL_TIME',
+                                'TODAY',
+                                'LAST_7_DAYS',
+                                'LAST_30_DAYS',
+                                'CUSTOM',
+                              ],
+                              format: (value) {
+                                switch (value) {
+                                  case 'ALL_TIME':
+                                    return 'All time';
+                                  case 'LAST_7_DAYS':
+                                    return 'Last 7 days';
+                                  case 'LAST_30_DAYS':
+                                    return 'Last 30 days';
+                                  case 'CUSTOM':
+                                    return customDateRange == null
+                                        ? 'Custom range'
+                                        : '${customDateRange!.start.day}/'
+                                            '${customDateRange!.start.month} – '
+                                            '${customDateRange!.end.day}/'
+                                            '${customDateRange!.end.month}';
+                                  default:
+                                    return 'Today';
+                                }
+                              },
+                              onChanged: (value) {
+                                _selectHistoryDateRange(value);
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                  ],
-                ],
-              ),
-            ),
+                      const SizedBox(height: 18),
+                      if (errorMessage.isNotEmpty)
+                        _ErrorState(
+                          message: errorMessage,
+                          onRetry: () {
+                            loadTransactions(
+                              reset: true,
+                            );
+                          },
+                        )
+                      else if (visible.isEmpty)
+                        const _EmptyState()
+                      else ...[
+                        Text(
+                          '${visible.length} transaction${visible.length == 1 ? '' : 's'}',
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        for (final transaction in visible)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: 10,
+                            ),
+                            child: _TransactionCard(
+                              title: _transactionTitle(
+                                transaction,
+                              ),
+                              description: _transactionDescription(
+                                transaction,
+                              ),
+                              amount: _transactionAmount(
+                                transaction,
+                              ),
+                              direction: _transactionDirection(
+                                transaction,
+                              ),
+                              status: _transactionStatus(
+                                transaction,
+                              ),
+                              date: _formatDate(
+                                _transactionDate(
+                                  transaction,
+                                ),
+                              ),
+                              icon: _transactionIcon(
+                                _transactionTitle(
+                                  transaction,
+                                ),
+                              ),
+                              statusColor: _statusColor(
+                                _transactionStatus(
+                                  transaction,
+                                ),
+                              ),
+                              directionColor: _directionColor(
+                                _transactionDirection(
+                                  transaction,
+                                ),
+                              ),
+                              onTap: () {
+                                _showTransactionDetails(
+                                  transaction,
+                                );
+                              },
+                            ),
+                          ),
+                        if (hasMore)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              top: 6,
+                              bottom: 8,
+                            ),
+                            child: Center(
+                              child: isLoadingMore
+                                  ? const SizedBox(
+                                      width: 26,
+                                      height: 26,
+                                      child: CircularProgressIndicator(
+                                        color: primaryGreen,
+                                        strokeWidth: 2.4,
+                                      ),
+                                    )
+                                  : TextButton.icon(
+                                      onPressed: loadMoreTransactions,
+                                      icon: const Icon(
+                                        Icons.expand_more_rounded,
+                                      ),
+                                      label: const Text(
+                                        'Load more transactions',
+                                      ),
+                                    ),
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+        ),
+      ),
     );
   }
 }
@@ -1244,110 +1253,101 @@ class _TransactionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(17),
-      child: InkWell(
-        onTap: onTap,
+    return Semantics(
+      button: true,
+      label:
+          '$title, ${direction == 'CREDIT' ? 'credit' : 'debit'} ${status.toLowerCase()}',
+      child: Material(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(17),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(17),
-            border: Border.all(
-              color: const Color(0xFFE8ECE8),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(
-                  icon,
-                  color: const Color(0xFF2E7D32),
-                ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(17),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(
+                color: const Color(0xFFE8ECE8),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF171A18),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    if (description.isNotEmpty) ...[
-                      const SizedBox(height: 3),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: const Color(0xFF2E7D32),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        description,
+                        title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF777D78),
-                          fontSize: 12,
+                          color: Color(0xFF171A18),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (description.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF777D78),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 5),
+                      Text(
+                        date,
+                        style: const TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontSize: 11,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 5),
-                    Text(
-                      date,
-                      style: const TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${direction == 'CREDIT' ? '+' : '-'}₦${amount.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      color: directionColor,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 118),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        direction,
-                        style: TextStyle(
-                          color: directionColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${direction == 'CREDIT' ? '+' : '-'}₦${amount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            color: directionColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        status,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                      const SizedBox(height: 6),
+                      ServicePayStatusPill(status: status),
                     ],
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1378,14 +1378,8 @@ class _FilterMenu extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         isDense: true,
-        filled: true,
-        fillColor: Colors.white,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE8ECE8)),
-        ),
       ),
       items: items
           .map((item) =>

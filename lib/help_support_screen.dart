@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'support_tickets_screen.dart';
 import 'services/support_api_service.dart';
+import 'servicepay_theme.dart';
 
 class HelpSupportScreen extends StatelessWidget {
   const HelpSupportScreen({super.key});
 
-  static const Color primaryGreen = Color(0xFF2E7D32);
-  static const Color backgroundColor = Color(0xFFF8FAFC);
+  static const Color primaryGreen = ServicePayColors.brand;
+  static const Color backgroundColor = ServicePayColors.canvas;
 
   static const String supportPhone = '09136151515';
   static const String whatsappPhone = '2349136151515';
@@ -66,7 +67,7 @@ class HelpSupportScreen extends StatelessWidget {
     BuildContext context,
   ) async {
     final message = Uri.encodeComponent(
-      'Hello Servicepay Support, I need assistance.',
+      'Hello ServicePay Support, I need assistance.',
     );
 
     await _openLink(
@@ -95,9 +96,9 @@ class HelpSupportScreen extends StatelessWidget {
         scheme: 'mailto',
         path: supportEmail,
         queryParameters: {
-          'subject': 'Servicepay Support Request',
+          'subject': 'ServicePay Support Request',
           'body':
-              'Hello Servicepay Support,\n\nPlease describe your issue below:\n\n',
+              'Hello ServicePay Support,\n\nPlease describe your issue below:\n\n',
         },
       ),
     );
@@ -123,7 +124,7 @@ class HelpSupportScreen extends StatelessWidget {
           icon: Icons.description_outlined,
           sections: [
             LegalSection(
-              title: 'Using Servicepay',
+              title: 'Using ServicePay',
               content:
                   'You must provide accurate information and keep your login details secure. You are responsible for activities performed through your account.',
             ),
@@ -135,12 +136,12 @@ class HelpSupportScreen extends StatelessWidget {
             LegalSection(
               title: 'Wallet Funding',
               content:
-                  'Manual funding requests are reviewed before a wallet is credited. Only transfer to the official account displayed inside Servicepay.',
+                  'Manual funding requests are reviewed before a wallet is credited. Only transfer to the official account displayed inside ServicePay.',
             ),
             LegalSection(
               title: 'Prohibited Activities',
               content:
-                  'Servicepay must not be used for fraud, money laundering, impersonation or unlawful transactions.',
+                  'ServicePay must not be used for fraud, money laundering, impersonation or unlawful transactions.',
             ),
             LegalSection(
               title: 'Service Availability',
@@ -166,7 +167,7 @@ class HelpSupportScreen extends StatelessWidget {
             LegalSection(
               title: 'Information We Collect',
               content:
-                  'Servicepay may collect your name, phone number, email address, account information and transaction records.',
+                  'ServicePay may collect your name, phone number, email address, account information and transaction records.',
             ),
             LegalSection(
               title: 'How Information Is Used',
@@ -254,7 +255,7 @@ class HelpSupportScreen extends StatelessWidget {
                 SupportActionCard(
                   icon: Icons.chat_bubble_outline_rounded,
                   title: 'WhatsApp Support',
-                  subtitle: 'Chat with Servicepay support on WhatsApp.',
+                  subtitle: 'Chat with ServicePay support on WhatsApp.',
                   iconColor: const Color(0xFF16A34A),
                   iconBackground: const Color(0xFFDCFCE7),
                   onTap: () {
@@ -334,7 +335,7 @@ class HelpSupportScreen extends StatelessWidget {
                 SupportActionCard(
                   icon: Icons.description_outlined,
                   title: 'Terms of Service',
-                  subtitle: 'Read the conditions for using Servicepay.',
+                  subtitle: 'Read the conditions for using ServicePay.',
                   iconColor: const Color(0xFFD97706),
                   iconBackground: const Color(0xFFFEF3C7),
                   onTap: () {
@@ -344,7 +345,7 @@ class HelpSupportScreen extends StatelessWidget {
                 SupportActionCard(
                   icon: Icons.privacy_tip_outlined,
                   title: 'Privacy Policy',
-                  subtitle: 'Learn how Servicepay handles your information.',
+                  subtitle: 'Learn how ServicePay handles your information.',
                   iconColor: const Color(0xFF0F766E),
                   iconBackground: const Color(0xFFCCFBF1),
                   onTap: () {
@@ -412,7 +413,7 @@ class SupportHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Get assistance with your account, wallet, payments and Servicepay services.',
+            'Get assistance with your account, wallet, payments and ServicePay services.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white70,
@@ -540,7 +541,7 @@ class FaqSection extends StatefulWidget {
     {
       'question': 'How do I fund my wallet?',
       'answer':
-          'Open Wallet, tap Fund Wallet, transfer to the official Servicepay account and submit your payment details.',
+          'Open Wallet, tap Fund Wallet, transfer to the official ServicePay account and submit your payment details.',
     },
     {
       'question': 'Why is my wallet balance not updated?',
@@ -548,7 +549,7 @@ class FaqSection extends StatefulWidget {
           'Refresh the Wallet page. Manual funding must first be reviewed and approved by an administrator.',
     },
     {
-      'question': 'Can I transfer to another Servicepay user?',
+      'question': 'Can I transfer to another ServicePay user?',
       'answer':
           'Yes. Open Transfer, enter the registered phone number, confirm the amount and submit.',
     },
@@ -623,10 +624,10 @@ class _FaqSectionState extends State<FaqSection> {
             padding: const EdgeInsets.all(12),
             child: TextField(
               onChanged: (value) => setState(() => query = value.trim()),
+              textInputAction: TextInputAction.search,
               decoration: const InputDecoration(
                 hintText: 'Search FAQs',
                 prefixIcon: Icon(Icons.search_rounded),
-                border: OutlineInputBorder(),
               ),
             ),
           ),
@@ -869,18 +870,55 @@ class _SupportRequestScreenState extends State<SupportRequestScreen> {
                       padding: const EdgeInsets.all(20),
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                         if (_error.isNotEmpty)
-                          Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: Text(_error,
-                                  style: const TextStyle(color: Colors.red))),
+                          Semantics(
+                            liveRegion: true,
+                            child: Container(
+                              width: double.infinity,
+                              margin: const EdgeInsets.only(bottom: 14),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF1F0),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFFECACA),
+                                ),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(
+                                    Icons.error_outline_rounded,
+                                    color: ServicePayColors.danger,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _error,
+                                      style: const TextStyle(
+                                        color: ServicePayColors.danger,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         DropdownButtonFormField<String>(
                             value: _category,
+                            isExpanded: true,
                             decoration: const InputDecoration(
                                 labelText: 'Issue category',
                                 border: OutlineInputBorder()),
                             items: HelpSupportScreen.supportCategories.entries
                                 .map((entry) => DropdownMenuItem(
-                                    value: entry.key, child: Text(entry.value)))
+                                      value: entry.key,
+                                      child: Text(
+                                        entry.value,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ))
                                 .toList(),
                             onChanged: _submitting
                                 ? null
@@ -890,19 +928,23 @@ class _SupportRequestScreenState extends State<SupportRequestScreen> {
                         TextField(
                             controller: _subject,
                             enabled: !_submitting,
+                            textCapitalization: TextCapitalization.sentences,
+                            textInputAction: TextInputAction.next,
                             decoration: const InputDecoration(
-                                labelText: 'Issue title',
-                                border: OutlineInputBorder())),
+                                labelText: 'Issue title')),
                         const SizedBox(height: 14),
                         TextField(
                             controller: _description,
                             enabled: !_submitting,
                             minLines: 4,
                             maxLines: 6,
+                            textCapitalization: TextCapitalization.sentences,
+                            keyboardType: TextInputType.multiline,
                             decoration: const InputDecoration(
                                 labelText: 'Description',
-                                alignLabelWithHint: true,
-                                border: OutlineInputBorder())),
+                                hintText:
+                                    'Include what happened and when it happened.',
+                                alignLabelWithHint: true)),
                         const SizedBox(height: 14),
                         if ((widget.transactionSummary ?? '').isNotEmpty)
                           Container(
@@ -917,6 +959,7 @@ class _SupportRequestScreenState extends State<SupportRequestScreen> {
                           ),
                         DropdownButtonFormField<String>(
                             value: _priority,
+                            isExpanded: true,
                             decoration: const InputDecoration(
                                 labelText: 'Priority',
                                 border: OutlineInputBorder()),

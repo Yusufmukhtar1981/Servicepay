@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'firebase_options.dart';
 import 'reset_password_screen.dart';
 import 'startup_session_gate.dart';
+import 'servicepay_theme.dart';
 
 import 'rider/rider_delivery_alert_service.dart';
 
@@ -141,12 +142,7 @@ class _ServicePayBootstrapState extends State<ServicePayBootstrap> {
     return MaterialApp(
       title: 'ServicePay',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF159447),
-        ),
-        useMaterial3: true,
-      ),
+      theme: ServicePayTheme.light(),
       home: const ServicePayStartupScreen(),
     );
   }
@@ -238,17 +234,7 @@ class ServicePayApp extends StatelessWidget {
       title: 'ServicePay',
       navigatorKey: servicePayNavigatorKey,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(
-            0xFF159447,
-          ),
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(
-          0xFFF7F9F8,
-        ),
-      ),
+      theme: ServicePayTheme.light(),
       home: getInitialScreen(),
     );
   }
