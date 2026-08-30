@@ -42,14 +42,16 @@ Future<void> firebaseMessagingBackgroundHandler(
  */
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Register the background entry point before any UI or async startup work.
+  FirebaseMessaging.onBackgroundMessage(
+    firebaseMessagingBackgroundHandler,
+  );
+
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  FirebaseMessaging.onBackgroundMessage(
-    firebaseMessagingBackgroundHandler,
-  );
   await RiderDeliveryAlertService.initialize();
 
   runApp(

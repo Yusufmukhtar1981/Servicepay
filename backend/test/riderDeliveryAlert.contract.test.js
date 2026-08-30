@@ -26,6 +26,76 @@ test("deliveries persist a distinct assignment event identifier", () => {
   ));
 });
 
+test("assignment payload contains the Android ringing and deep-link contract", () => {
+  const data = alerts.deliveryAlertData({
+    type: "DELIVERY_ASSIGNED",
+    delivery: {
+      _id: "delivery-id",
+      trackingNumber: "SP-42",
+      pickupAddress: "1 Pickup Way",
+      deliveryAddress: "2 Dropoff Way",
+      assignedAt: new Date("2026-08-30T12:00:00.000Z"),
+    },
+    assignmentEventId: "assignment-42",
+  });
+
+  assert.deepEqual(data, {
+    type: "DELIVERY_ASSIGNED",
+    event: "DELIVERY_ASSIGNED",
+    title: "Delivery Assigned",
+    body: "Delivery SP-42 is ready. Tap to view details.",
+    orderId: "delivery-id",
+    deliveryId: "delivery-id",
+    deliveryReference: "SP-42",
+    pickupLocation: "1 Pickup Way",
+    dropoffLocation: "2 Dropoff Way",
+    assignedAt: "2026-08-30T12:00:00.000Z",
+    assignmentEventId: "assignment-42",
+    notificationChannelId: "servicepay_delivery_assignments_v2",
+    notificationSound: "servicepay_delivery_order",
+  });
+});
+
+test("only transient Firebase failures are retried", () => {
+  assert.equal(alerts.retryableFirebaseCode("messaging/internal-error"), true);
+  assert.equal(
+    alerts.retryableFirebaseCode("messaging/server-unavailable"),
+    true
+  );
+  assert.equal(
+    alerts.retryableFirebaseCode("messaging/invalid-registration-token"),
+    false
+  );
+});
+
+test("a transient whole-call Firebase failure is retried once", async () => {
+  let calls = 0;
+  const messaging = {
+    sendEachForMulticast: async () => {
+      calls += 1;
+      if (calls === 1) {
+        const error = new Error("temporarily unavailable");
+        error.code = "messaging/server-unavailable";
+        throw error;
+      }
+      return {
+        successCount: 1,
+        failureCount: 0,
+        responses: [{ success: true }],
+      };
+    },
+  };
+
+  const result = await alerts.sendMulticastWithRetry({
+    messaging,
+    message: { tokens: ["token"], data: {} },
+    delay: async () => {},
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(result.successCount, 1);
+});
+
 test("offline riders are skipped before any dispatch persistence", async () => {
   const result = await alerts.sendAssignmentAlertIfOnline({
     rider: { _id: "rider-id", availabilityStatus: "OFFLINE" },

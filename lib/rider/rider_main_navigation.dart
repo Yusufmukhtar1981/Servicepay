@@ -366,8 +366,15 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
     if (continueRequest == true) {
       final bool? notificationsAllowed =
           await RiderDeliveryAlertService.requestNotificationPermission();
-      if (notificationsAllowed == true) {
-        await RiderDeliveryAlertService.requestFullScreenIntentPermission();
+      if (notificationsAllowed != true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Delivery alerts are disabled. Enable ServicePay notifications in Android settings to receive assigned jobs.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
@@ -395,7 +402,7 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
-                'NEW DELIVERY ORDER',
+                'Delivery Assigned',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
               ),
             ),

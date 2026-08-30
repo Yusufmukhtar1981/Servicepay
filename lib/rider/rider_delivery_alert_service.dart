@@ -11,12 +11,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 class RiderDeliveryAlertPayload {
   const RiderDeliveryAlertPayload({
     required this.orderId,
+    required this.assignmentEventId,
     required this.reference,
     required this.pickup,
     required this.dropoff,
   });
 
   final String orderId;
+  final String assignmentEventId;
   final String reference;
   final String pickup;
   final String dropoff;
@@ -41,8 +43,16 @@ class RiderDeliveryAlertPayload {
       'id',
     ]);
     if (orderId.isEmpty) return null;
+    final String assignmentEventId = value(<String>[
+      'assignmentEventId',
+      'assignment_event_id',
+      'eventId',
+      'event_id',
+    ]);
     return RiderDeliveryAlertPayload(
       orderId: orderId,
+      assignmentEventId:
+          assignmentEventId.isEmpty ? 'legacy:$orderId' : assignmentEventId,
       reference: value(<String>[
         'deliveryReference',
         'reference',
@@ -67,6 +77,7 @@ class RiderDeliveryAlertPayload {
 
   Map<String, String> toJson() => <String, String>{
         'orderId': orderId,
+        'assignmentEventId': assignmentEventId,
         'reference': reference,
         'pickup': pickup,
         'dropoff': dropoff,
@@ -81,6 +92,10 @@ class RiderDeliveryAlertPayload {
       if (orderId.isEmpty) return null;
       return RiderDeliveryAlertPayload(
         orderId: orderId,
+        assignmentEventId:
+            data['assignmentEventId']?.toString().trim().isNotEmpty == true
+                ? data['assignmentEventId'].toString().trim()
+                : 'legacy:$orderId',
         reference: data['reference']?.toString() ?? '',
         pickup: data['pickup']?.toString() ?? '',
         dropoff: data['dropoff']?.toString() ?? '',
@@ -94,9 +109,13 @@ class RiderDeliveryAlertPayload {
 class RiderDeliveryAlertService {
   RiderDeliveryAlertService._();
 
-  static const String channelId = 'servicepay_delivery_orders';
-  static const String channelName = 'Incoming Delivery Orders';
+  static const String channelId = 'servicepay_delivery_assignments_v2';
+  static const String channelName = 'Delivery Assignments';
   static const String _pendingPrefix = 'rider_delivery_alert_';
+  static const String _shownEventPrefix =
+      'rider_delivery_alert_shown_event_v2_';
+  static const String _cancelledEventPrefix =
+      'rider_delivery_alert_cancelled_event_v2_';
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
@@ -114,6 +133,24 @@ class RiderDeliveryAlertService {
       hash = (hash * 31 + unit) & 0x7fffffff;
     }
     return hash == 0 ? 1 : hash;
+  }
+
+  static String deduplicationKeyFor(RiderDeliveryAlertPayload payload) =>
+      _shownEventPrefix + payload.assignmentEventId;
+
+  static bool cancellationMatches({
+    required String pendingAssignmentEventId,
+    required String cancellationAssignmentEventId,
+  }) =>
+      pendingAssignmentEventId.isEmpty ||
+      cancellationAssignmentEventId.isEmpty ||
+      pendingAssignmentEventId == cancellationAssignmentEventId;
+
+  static String notificationBodyFor(RiderDeliveryAlertPayload payload) {
+    if (payload.reference.trim().isNotEmpty) {
+      return 'Delivery ${payload.reference.trim()} is ready. Tap to view details.';
+    }
+    return 'A delivery is ready. Tap to view details.';
   }
 
   static Future<void> initialize() async {
@@ -184,23 +221,41 @@ class RiderDeliveryAlertService {
               message.data['delivery_id'] ??
               '')
           .toString();
-      if (id.trim().isNotEmpty) await cancel(id);
+      final String assignmentEventId =
+          (message.data['assignmentEventId'] ??
+                  message.data['assignment_event_id'] ??
+                  '')
+              .toString()
+              .trim();
+      if (id.trim().isNotEmpty) {
+        await cancelAssignment(
+          id.trim(),
+          assignmentEventId: assignmentEventId,
+        );
+      }
       return;
     }
     final RiderDeliveryAlertPayload? payload =
         RiderDeliveryAlertPayload.fromData(message.data);
     if (payload == null) return;
-    await show(payload);
-    if (openAfterAlert) {
+    final bool newlyShown = await show(payload);
+    if (openAfterAlert && newlyShown) {
       final Future<void> Function(RiderDeliveryAlertPayload payload)? callback =
           onIncomingAlert;
       if (callback != null) await callback(payload);
     }
   }
 
-  static Future<void> show(RiderDeliveryAlertPayload payload) async {
+  static Future<bool> show(RiderDeliveryAlertPayload payload) async {
     await initialize();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String shownEventKey = deduplicationKeyFor(payload);
+    if (prefs.getBool(_cancelledEventPrefix + payload.assignmentEventId) ??
+        false) {
+      return false;
+    }
+    if (prefs.getBool(shownEventKey) ?? false) return false;
+    await prefs.setBool(shownEventKey, true);
     await prefs.setString(
         _pendingPrefix + payload.orderId, jsonEncode(payload.toJson()));
     final AndroidNotificationDetails android = AndroidNotificationDetails(
@@ -209,12 +264,11 @@ class RiderDeliveryAlertService {
       channelDescription: 'Urgent assigned delivery alerts',
       importance: Importance.max,
       priority: Priority.max,
-      category: AndroidNotificationCategory.call,
-      visibility: NotificationVisibility.public,
-      ongoing: true,
-      autoCancel: false,
-      fullScreenIntent: true,
-      timeoutAfter: 55000,
+      category: AndroidNotificationCategory.message,
+      visibility: NotificationVisibility.private,
+      ongoing: false,
+      autoCancel: true,
+      timeoutAfter: 45000,
       playSound: true,
       sound: RawResourceAndroidNotificationSound('servicepay_delivery_order'),
       enableVibration: true,
@@ -222,21 +276,52 @@ class RiderDeliveryAlertService {
       // Android Notification.FLAG_INSISTENT: repeat sound until cancelled.
       additionalFlags: Int32List.fromList(<int>[4]),
     );
-    await _notifications.show(
-      notificationIdFor(payload.orderId),
-      'NEW DELIVERY ORDER',
-      payload.reference.isEmpty
-          ? 'A delivery order is waiting for you.'
-          : payload.reference,
-      NotificationDetails(android: android),
-      payload: jsonEncode(payload.toJson()),
-    );
+    try {
+      await _notifications.show(
+        notificationIdFor(payload.orderId),
+        'Delivery Assigned',
+        notificationBodyFor(payload),
+        NotificationDetails(android: android),
+        payload: jsonEncode(payload.toJson()),
+      );
+      return true;
+    } catch (_) {
+      await prefs.remove(shownEventKey);
+      rethrow;
+    }
   }
 
   static Future<void> cancel(String orderId) async {
     await initialize();
     await _notifications.cancel(notificationIdFor(orderId));
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingPrefix + orderId);
+  }
+
+  static Future<void> cancelAssignment(
+    String orderId, {
+    required String assignmentEventId,
+  }) async {
+    await initialize();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (assignmentEventId.isNotEmpty) {
+      await prefs.setBool(
+        _cancelledEventPrefix + assignmentEventId,
+        true,
+      );
+    }
+    final RiderDeliveryAlertPayload? pending =
+        RiderDeliveryAlertPayload.fromJson(
+      prefs.getString(_pendingPrefix + orderId) ?? '',
+    );
+    if (pending != null &&
+        !cancellationMatches(
+          pendingAssignmentEventId: pending.assignmentEventId,
+          cancellationAssignmentEventId: assignmentEventId,
+        )) {
+      return;
+    }
+    await _notifications.cancel(notificationIdFor(orderId));
     await prefs.remove(_pendingPrefix + orderId);
   }
 
@@ -247,15 +332,6 @@ class RiderDeliveryAlertService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
-  }
-
-  static Future<bool?> requestFullScreenIntentPermission() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return null;
-    await initialize();
-    return _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestFullScreenIntentPermission();
   }
 
   static Future<void> open(RiderDeliveryAlertPayload payload) async {

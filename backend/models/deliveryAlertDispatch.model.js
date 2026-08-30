@@ -18,6 +18,9 @@ const deliveryAlertDispatchSchema = new mongoose.Schema(
       enum: ["CLAIMED", "SENT", "SKIPPED", "FAILED"],
       default: "CLAIMED",
     },
+    successCount: { type: Number, default: 0, min: 0 },
+    failureCount: { type: Number, default: 0, min: 0 },
+    lastError: { type: String, default: "" },
     completedAt: { type: Date, default: null },
   },
   { timestamps: true }

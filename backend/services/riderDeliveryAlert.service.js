@@ -1,6 +1,10 @@
 const RiderDeviceToken = require("../models/riderDeviceToken.model");
 const DeliveryAlertDispatch = require("../models/deliveryAlertDispatch.model");
 
+const DELIVERY_ASSIGNMENT_CHANNEL_ID =
+  "servicepay_delivery_assignments_v2";
+const DELIVERY_ASSIGNMENT_SOUND = "servicepay_delivery_order";
+
 let firebaseInitializationAttempted = false;
 let firebaseUnavailableReason = null;
 let firebaseAdmin = null;
@@ -73,7 +77,43 @@ const firebaseMessaging = () => {
   return firebaseUnavailableReason ? null : firebaseAdmin.messaging();
 };
 
-const safeLocation = (value) => String(value || "").trim().slice(0, 500);
+const safeLocation = (value) => String(value || "").trim().slice(0, 180);
+const deliveryAlertData = ({
+  type,
+  delivery,
+  assignmentEventId,
+}) => {
+  const pickupLocation = safeLocation(delivery.pickupAddress);
+  const dropoffLocation = safeLocation(delivery.deliveryAddress);
+  const deliveryReference = String(delivery.trackingNumber || "")
+    .trim()
+    .slice(0, 80);
+
+  return {
+    type,
+    event: type,
+    title:
+      type === "DELIVERY_ASSIGNED"
+        ? "Delivery Assigned"
+        : "Delivery Assignment Cancelled",
+    body:
+      deliveryReference
+        ? `Delivery ${deliveryReference} is ready. Tap to view details.`
+        : "A delivery is ready. Tap to view details.",
+    orderId: String(delivery._id),
+    deliveryId: String(delivery._id),
+    deliveryReference,
+    pickupLocation,
+    dropoffLocation,
+    assignedAt: delivery.assignedAt
+      ? new Date(delivery.assignedAt).toISOString()
+      : "",
+    assignmentEventId: String(assignmentEventId),
+    notificationChannelId: DELIVERY_ASSIGNMENT_CHANNEL_ID,
+    notificationSound: DELIVERY_ASSIGNMENT_SOUND,
+  };
+};
+
 const invalidTokenIds = (responses, devices) => responses.reduce((ids, result, index) => {
   const code = result.error?.code;
   if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
@@ -82,11 +122,33 @@ const invalidTokenIds = (responses, devices) => responses.reduce((ids, result, i
   return ids;
 }, []);
 
-const updateDispatchSafely = async (dispatchId, status) => {
+const retryableFirebaseCode = (code) =>
+  [
+    "messaging/internal-error",
+    "messaging/server-unavailable",
+    "messaging/unknown-error",
+  ].includes(code);
+
+const sendMulticastWithRetry = async ({
+  messaging,
+  message,
+  delay = (milliseconds) =>
+    new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}) => {
+  try {
+    return await messaging.sendEachForMulticast(message);
+  } catch (error) {
+    if (!retryableFirebaseCode(error?.code)) throw error;
+    await delay(250);
+    return messaging.sendEachForMulticast(message);
+  }
+};
+
+const updateDispatchSafely = async (dispatchId, values) => {
   try {
     await DeliveryAlertDispatch.updateOne(
       { _id: dispatchId },
-      { status, completedAt: new Date() }
+      { ...values, completedAt: new Date() }
     );
   } catch (_) {
     // Dispatch bookkeeping must never affect the persisted delivery operation.
@@ -111,38 +173,85 @@ const sendDeliveryAlert = async ({ type, riderId, delivery, assignmentEventId })
       .select("+token")
       .lean();
     if (!tokens.length) {
-      await updateDispatchSafely(dispatch._id, "SKIPPED");
+      await updateDispatchSafely(dispatch._id, {
+        status: "SKIPPED",
+        lastError: "no-active-devices",
+      });
       return { sent: false, skipped: true, reason: "no-active-devices" };
     }
     const messaging = firebaseMessaging();
     if (!messaging) {
-      await updateDispatchSafely(dispatch._id, "SKIPPED");
+      await updateDispatchSafely(dispatch._id, {
+        status: "SKIPPED",
+        lastError: firebaseUnavailableReason,
+      });
       return { sent: false, skipped: true, reason: firebaseUnavailableReason };
     }
-    const data = {
+    const data = deliveryAlertData({
       type,
-      orderId: String(delivery._id),
-      deliveryReference: String(delivery.trackingNumber || ""),
-      pickupLocation: safeLocation(delivery.pickupAddress),
-      dropoffLocation: safeLocation(delivery.deliveryAddress),
-      assignedAt: delivery.assignedAt ? new Date(delivery.assignedAt).toISOString() : "",
-      assignmentEventId: String(assignmentEventId),
+      delivery,
+      assignmentEventId,
+    });
+    const android = {
+      priority: "high",
+      ttl: 5 * 60 * 1000,
+      collapseKey: `delivery-${String(delivery._id)}`,
     };
-    const response = await messaging.sendEachForMulticast({
+    const response = await sendMulticastWithRetry({
+      messaging,
+      message: {
       tokens: tokens.map((device) => device.token),
       data,
-      android: {
-        priority: "high",
-        ttl: 60 * 1000,
-        collapseKey: `delivery-${String(delivery._id)}`,
+      android,
       },
     });
-    const invalidIds = invalidTokenIds(response.responses, tokens);
+    const finalResponses = [...response.responses];
+    const retryIndexes = finalResponses.reduce((indexes, result, index) => {
+      if (!result.success && retryableFirebaseCode(result.error?.code)) {
+        indexes.push(index);
+      }
+      return indexes;
+    }, []);
+    if (retryIndexes.length) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const retry = await sendMulticastWithRetry({
+        messaging,
+        message: {
+          tokens: retryIndexes.map((index) => tokens[index].token),
+          data,
+          android,
+        },
+      });
+      retryIndexes.forEach((originalIndex, retryIndex) => {
+        finalResponses[originalIndex] = retry.responses[retryIndex];
+      });
+    }
+    const successCount = finalResponses.filter((result) => result.success).length;
+    const failureCount = finalResponses.length - successCount;
+    const invalidIds = invalidTokenIds(finalResponses, tokens);
     if (invalidIds.length) await RiderDeviceToken.updateMany({ _id: { $in: invalidIds } }, { $set: { active: false } });
-    await updateDispatchSafely(dispatch._id, "SENT");
-    return { sent: response.successCount > 0, failures: response.failureCount };
+    const sent = successCount > 0;
+    await updateDispatchSafely(dispatch._id, {
+      status: sent ? "SENT" : "FAILED",
+      successCount,
+      failureCount,
+      lastError: sent ? "" : "firebase-provider-rejected",
+    });
+    console.log(
+      `[PUSH] Rider delivery assignment ${sent ? "accepted" : "failed"} ` +
+        `(success=${successCount}, failure=${failureCount}).`
+    );
+    return {
+      sent,
+      providerAccepted: sent,
+      successes: successCount,
+      failures: failureCount,
+    };
   } catch (_) {
-    await updateDispatchSafely(dispatch._id, "FAILED");
+    await updateDispatchSafely(dispatch._id, {
+      status: "FAILED",
+      lastError: "dispatch-exception",
+    });
     return { sent: false, failed: true };
   }
 };
@@ -165,5 +274,10 @@ module.exports = {
   sendAssignmentAlertIfOnline,
   sendAssignmentCancellation,
   invalidTokenIds,
+  deliveryAlertData,
+  DELIVERY_ASSIGNMENT_CHANNEL_ID,
+  DELIVERY_ASSIGNMENT_SOUND,
+  retryableFirebaseCode,
+  sendMulticastWithRetry,
   logFirebaseConfigurationStatus,
 };
