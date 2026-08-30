@@ -60,6 +60,12 @@ const adminMarketplaceController = require(
 );
 
 const router = express.Router();
+const DELIVERY_ADMIN_ROLES = [
+  "HEAD_OFFICE",
+  "ADMIN",
+  "SUPER_ADMIN",
+  "HEAD_OFFICE_ADMIN",
+];
 
 const MANAGEMENT_ROLES = [
   "HEAD_OFFICE",
@@ -373,42 +379,42 @@ router.get(
 router.get(
   "/deliveries",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...DELIVERY_ADMIN_ROLES),
   getAdminDeliveries
 );
 
 router.get(
   "/deliveries/:id/available-riders",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...DELIVERY_ADMIN_ROLES),
   getAvailableRiders
 );
 
 router.patch(
   "/deliveries/:id/assign-rider",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...DELIVERY_ADMIN_ROLES),
   assignRiderToDelivery
 );
 
 router.patch(
   "/deliveries/:id/unassign-rider",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...DELIVERY_ADMIN_ROLES),
   unassignRiderFromDelivery
 );
 
 router.patch(
   "/deliveries/:id/status",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...DELIVERY_ADMIN_ROLES),
   updateDeliveryStatus
 );
 
 router.patch(
   "/deliveries/:id/price",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...DELIVERY_ADMIN_ROLES),
   updateDeliveryPrice
 );
 

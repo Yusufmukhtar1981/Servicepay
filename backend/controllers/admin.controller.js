@@ -1563,8 +1563,14 @@ exports.getAvailableRiders =
           });
       }
 
+      const assignable =
+        delivery.status ===
+          "PENDING" &&
+        !delivery.assignedRiderId;
+
       const riders =
-        await User.find({
+        assignable
+          ? await User.find({
           role:
             "DELIVERY_RIDER",
 
@@ -1573,6 +1579,9 @@ exports.getAvailableRiders =
 
           riderVerificationStatus:
             "VERIFIED",
+
+          availabilityStatus:
+            "ONLINE",
         })
           .select(
             [
@@ -1594,30 +1603,37 @@ exports.getAvailableRiders =
             ].join(" ")
           )
           .sort({
-            availabilityStatus:
-              -1,
-
             riderRating:
               -1,
 
             createdAt:
               -1,
           })
-          .lean();
+          .lean()
+          : [];
 
       return res
         .status(200)
         .json({
           success: true,
           message:
-            "Verified riders loaded successfully.",
+            riders.length > 0
+              ? "Available riders loaded successfully."
+              : assignable
+                ? "No riders are currently available."
+                : "This delivery is not available for rider assignment.",
 
           data: {
             delivery,
             riders,
+            count:
+              riders.length,
+            assignable,
           },
 
           riders,
+          count:
+            riders.length,
         });
     } catch (error) {
       console.error(
@@ -1693,189 +1709,188 @@ exports.assignRiderToDelivery =
           });
       }
 
-      const delivery =
-        await Delivery.findById(
-          deliveryId
-        );
+      const session =
+        await mongoose.startSession();
+      const assignmentEventId =
+        randomUUID();
+      const assignedAt =
+        new Date();
+      let rider;
+      let delivery;
 
-      if (!delivery) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message:
-              "Delivery was not found.",
-          });
-      }
+      try {
+        await session.withTransaction(
+          async () => {
+            rider =
+              await User.findOne({
+                _id:
+                  riderId,
+                role:
+                  "DELIVERY_RIDER",
+                status:
+                  "ACTIVE",
+                riderVerificationStatus:
+                  "VERIFIED",
+                availabilityStatus:
+                  "ONLINE",
+              }).session(
+                session
+              );
 
-      if (
-        [
-          "DELIVERED",
-          "CANCELLED",
-          "FAILED",
-        ].includes(
-          delivery.status
-        )
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              `A ${delivery.status.toLowerCase()} delivery cannot be assigned.`,
-          });
-      }
+            if (!rider) {
+              const existingRider =
+                await User.findOne({
+                  _id:
+                    riderId,
+                  role:
+                    "DELIVERY_RIDER",
+                })
+                  .select(
+                    "status riderVerificationStatus availabilityStatus"
+                  )
+                  .session(
+                    session
+                  )
+                  .lean();
 
-      const rider =
-        await User.findOne({
-          _id:
-            riderId,
+              const error =
+                new Error(
+                  existingRider
+                    ? "The selected rider is no longer online and available."
+                    : "Delivery Rider was not found."
+                );
+              error.statusCode =
+                existingRider
+                  ? 409
+                  : 404;
+              throw error;
+            }
 
-          role:
-            "DELIVERY_RIDER",
-        });
+            const adminNote =
+              req.body.adminNote ===
+              undefined
+                ? undefined
+                : String(
+                    req.body
+                      .adminNote ??
+                      ""
+                  ).trim();
+            const setValues = {
+              assignedRiderId:
+                rider._id,
+              riderName:
+                rider.fullName ||
+                "",
+              riderPhone:
+                rider.phone ||
+                "",
+              assignedBy:
+                req.user?._id ??
+                null,
+              assignedAt,
+              assignmentEventId,
+              riderAcceptedAt:
+                null,
+              riderRejectedAt:
+                null,
+              riderRejectionReason:
+                "",
+              status:
+                "ASSIGNED",
+            };
+            if (
+              adminNote !==
+              undefined
+            ) {
+              setValues.adminNote =
+                adminNote;
+            }
 
-      if (!rider) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message:
-              "Delivery Rider was not found.",
-          });
-      }
+            delivery =
+              await Delivery.findOneAndUpdate(
+                {
+                  _id:
+                    deliveryId,
+                  status:
+                    "PENDING",
+                  $or: [
+                    {
+                      assignedRiderId:
+                        null,
+                    },
+                    {
+                      assignedRiderId: {
+                        $exists:
+                          false,
+                      },
+                    },
+                  ],
+                },
+                {
+                  $set:
+                    setValues,
+                },
+                {
+                  returnDocument:
+                    "after",
+                  runValidators:
+                    true,
+                  session,
+                }
+              );
 
-      if (
-        rider.status !==
-        "ACTIVE"
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "The selected rider account is not active.",
-          });
-      }
+            if (!delivery) {
+              const existingDelivery =
+                await Delivery.findById(
+                  deliveryId
+                )
+                  .select(
+                    "status assignedRiderId"
+                  )
+                  .session(
+                    session
+                  )
+                  .lean();
 
-      if (
-        rider
-          .riderVerificationStatus !==
-        "VERIFIED"
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Only verified riders can receive delivery jobs.",
-          });
-      }
+              const error =
+                new Error(
+                  !existingDelivery
+                    ? "Delivery was not found."
+                    : existingDelivery
+                        .assignedRiderId
+                      ? "This delivery already has a rider assigned."
+                      : `A ${String(existingDelivery.status || "current").toLowerCase()} delivery cannot be assigned.`
+                );
+              error.statusCode =
+                !existingDelivery
+                  ? 404
+                  : 409;
+              throw error;
+            }
 
-      const previousRiderId =
-        delivery
-          .assignedRiderId
-          ? String(
-              delivery
-                .assignedRiderId
-            )
-          : "";
-
-      const sameRider =
-        previousRiderId ===
-        String(
-          rider._id
-        );
-
-      if (
-        previousRiderId &&
-        !sameRider
-      ) {
-        await User.updateOne(
-          {
-            _id:
-              previousRiderId,
-
-            totalAssignedDeliveries: {
-              $gt: 0,
-            },
-          },
-          {
-            $inc: {
-              totalAssignedDeliveries:
-                -1,
-            },
+            await User.updateOne(
+              {
+                _id:
+                  rider._id,
+              },
+              {
+                $inc: {
+                  totalAssignedDeliveries:
+                    1,
+                },
+              },
+              {
+                session,
+              }
+            );
           }
         );
-      }
-
-      delivery.assignedRiderId =
-        rider._id;
-
-      delivery.riderName =
-        rider.fullName ||
-        "";
-
-      delivery.riderPhone =
-        rider.phone ||
-        "";
-
-      delivery.assignedBy =
-        req.user?._id ??
-        null;
-
-      delivery.assignedAt =
-        new Date();
-
-      const previousAssignmentEventId = delivery.assignmentEventId;
-      delivery.assignmentEventId = randomUUID();
-
-      delivery.riderAcceptedAt =
-        null;
-
-      delivery.riderRejectedAt =
-        null;
-
-      delivery.riderRejectionReason =
-        "";
-
-      delivery.status =
-        "ASSIGNED";
-
-      if (
-        req.body.adminNote !==
-        undefined
-      ) {
-        delivery.adminNote =
-          String(
-            req.body
-              .adminNote ??
-              ""
-          ).trim();
-      }
-
-      await delivery.save();
-
-      if (!sameRider) {
-        rider.totalAssignedDeliveries =
-          Number(
-            rider
-              .totalAssignedDeliveries ||
-              0
-          ) + 1;
-
-        await rider.save();
+      } finally {
+        await session.endSession();
       }
 
       // Alerts are best-effort and run only after all business persistence.
       try {
-        if (previousRiderId && !sameRider && previousAssignmentEventId) {
-          await sendAssignmentCancellation({
-            riderId: previousRiderId,
-            delivery,
-            assignmentEventId: previousAssignmentEventId,
-          });
-        }
         await sendAssignmentAlertIfOnline({ rider, delivery });
       } catch (error) {
         console.error(
@@ -1961,6 +1976,22 @@ exports.assignRiderToDelivery =
             updatedDelivery,
         });
     } catch (error) {
+      if (
+        Number.isInteger(
+          error?.statusCode
+        )
+      ) {
+        return res
+          .status(
+            error.statusCode
+          )
+          .json({
+            success: false,
+            message:
+              error.message,
+          });
+      }
+
       console.error(
         "Assign rider error:",
         error

@@ -9,6 +9,7 @@ import 'admin_product_commission_screen.dart';
 import 'admin_solar_screen.dart';
 import 'admin_trust_profiles_screen.dart';
 import 'admin_phone_financing_screen.dart';
+import 'admin_delivery_management_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -426,11 +427,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                   buildAdminAction(
                     title: 'Delivery Management',
-                    subtitle: 'Set delivery fees and update delivery status.',
+                    subtitle:
+                        'Review deliveries, load available riders and assign jobs.',
                     icon: Icons.local_shipping_outlined,
                     onTap: () {
-                      showComingSoon(
-                        'Delivery Management',
+                      openPage(
+                        const AdminDeliveryManagementScreen(),
+                        routeName: '/admin/deliveries',
                       );
                     },
                   ),
