@@ -35,11 +35,14 @@ test.beforeEach(async () => { await Promise.all(models.map((model) => model.coll
 
 test("customer tickets isolate ownership, are idempotent, and omit internal notes", async () => {
   const alice = await user(); const bob = await user();
-  const payload = { subject: "Missing transfer", description: "My payment is missing.", idempotencyKey: "alice-create-1", priority: "HIGH" };
+  const payload = { subject: "Missing transfer", description: "My payment is missing.", idempotencyKey: "alice-create-1", priority: "HIGH", category: "TRANSFER" };
   const created = await call(support.createTicket, { user: alice, body: payload });
   assert.equal(created.status, 201); assert.equal(created.body.data.priority, "HIGH");
+  assert.equal(created.body.data.category, "TRANSFER");
+  assert.match(created.body.data.caseReference, /^SPT-\d{8}-[A-F0-9]{6}$/);
   const duplicate = await call(support.createTicket, { user: alice, body: payload });
   assert.equal(duplicate.status, 200); assert.equal(duplicate.body.idempotent, true);
+  assert.equal(await Notification.countDocuments({ userId: alice._id }), 1);
   const id = created.body.data.id;
   assert.equal((await call(support.getCustomerTicket, { user: bob, params: { id } })).status, 404);
   const ticket = await FintechCase.findById(id);
@@ -49,6 +52,12 @@ test("customer tickets isolate ownership, are idempotent, and omit internal note
   const reply = await call(support.customerReply, { user: alice, params: { id }, body: { message: "Please investigate.", idempotencyKey: "customer-reply-1" } });
   assert.equal(reply.status, 201); assert.equal(reply.body.data.replies[0].authorRole, "CUSTOMER");
   assert.equal("authorId" in reply.body.data.replies[0], false);
+  const inReview = await call(support.listCustomerTickets, {
+    user: alice,
+    method: "GET",
+    query: { status: "IN_REVIEW" },
+  });
+  assert.equal(inReview.body.data.total, 0);
 });
 
 test("different customers may safely reuse the same client idempotency key", async () => {
@@ -112,6 +121,7 @@ test("transaction issue persists trusted context and remains idempotent", async 
   assert.equal(created.body.data.transactionContext.reference, "DATA-ISSUE-001");
   assert.equal(created.body.data.transactionContext.transactionType, "DATA");
   assert.equal(created.body.data.transactionContext.status, "PENDING");
+  assert.equal(created.body.data.category, "OTHER");
   assert.match(created.body.data.description, /Transaction reference: DATA-ISSUE-001/);
   assert.equal(await FintechCase.countDocuments(), 1);
 
@@ -135,17 +145,31 @@ test("admin support validates updates, creates notifications, and filters ticket
   assert.equal((await call(support.updateTicket, { user: headOffice, params: { id }, body: { assignedTo: inactiveStaff._id } })).status, 400);
   const updated = await call(support.updateTicket, { user: headOffice, params: { id }, body: { status: "IN_PROGRESS", priority: "URGENT", assignedTo: activeStaff._id } });
   assert.equal(updated.status, 200); assert.equal(updated.body.data.status, "IN_PROGRESS");
-  assert.equal(await Notification.countDocuments({ userId: customer._id }), 1);
+  assert.equal(await Notification.countDocuments({ userId: customer._id }), 2);
   const reply = await call(support.adminReply, { user: headOffice, params: { id }, body: { message: "We are reviewing this now.", idempotencyKey: "admin-reply-1" } });
-  assert.equal(reply.status, 201); assert.equal(await Notification.countDocuments({ userId: customer._id }), 2);
+  assert.equal(reply.status, 201); assert.equal(await Notification.countDocuments({ userId: customer._id }), 3);
+  const notification = await Notification.findOne({
+    userId: customer._id,
+    referenceType: "SUPPORT_TICKET",
+    action: "SUPPORT",
+  });
+  assert.equal(String(notification.referenceId), id);
   const listed = await call(support.listAdminTickets, { user: headOffice, method: "GET", query: { search: customer.email, status: "IN_PROGRESS", priority: "URGENT" } });
   assert.equal(listed.status, 200); assert.equal(listed.body.data.total, 1);
   assert.equal(await AdminAuditLog.countDocuments({ action: "FINTECH_CASE_UPDATED" }), 1);
+  const customerInReview = await call(support.listCustomerTickets, {
+    user: customer,
+    method: "GET",
+    query: { status: "IN_REVIEW" },
+  });
+  assert.equal(customerInReview.body.data.total, 1);
 });
 
 test("FintechCase keeps legacy status support while adding support workflow fields", () => {
   assert.ok(FintechCase.schema.path("status").enumValues.includes("IN_REVIEW"));
   assert.ok(FintechCase.schema.path("status").enumValues.includes("IN_PROGRESS"));
+  assert.ok(FintechCase.schema.path("status").enumValues.includes("WAITING_ON_CUSTOMER"));
+  assert.equal(FintechCase.schema.path("category").options.default, "OTHER");
   assert.equal(FintechCase.schema.path("priority").options.default, "NORMAL");
   assert.equal(FintechCase.schema.path("publicReplies").schema.path("authorRole").options.required, true);
   assert.equal(FintechCase.schema.path("publicReplies").schema.path("idempotencyKey").options.maxlength, 120);
@@ -164,6 +188,15 @@ test("reply and note actions are idempotent and history is capped", async () => 
   assert.equal(firstReply.status, 201); assert.equal(duplicateReply.status, 200);
   assert.equal(duplicateReply.body.idempotent, true);
   assert.equal((await FintechCase.findById(id)).publicReplies.length, 1);
+  await FintechCase.findByIdAndUpdate(id, { status: "RESOLVED" });
+  const terminalReply = await call(support.customerReply, {
+    user: customer,
+    params: { id },
+    body: { message: "Late reply", idempotencyKey: "reply-after-close" },
+  });
+  assert.equal(terminalReply.status, 409);
+  assert.equal((await FintechCase.findById(id)).publicReplies.length, 1);
+  await FintechCase.findByIdAndUpdate(id, { status: "OPEN" });
 
   const firstAdminReply = await call(support.adminReply, { user: admin, params: { id }, body: { message: "Support response", idempotencyKey: "admin-reply-once" } });
   const duplicateAdminReply = await call(support.adminReply, { user: admin, params: { id }, body: { message: "Changed support response", idempotencyKey: "admin-reply-once" } });

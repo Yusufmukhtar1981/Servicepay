@@ -84,7 +84,7 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
 
   Future<void> _openWhatsApp() async {
     final Uri uri = Uri.parse(
-      'https://wa.me/2348026114645'
+      'https://wa.me/2349136151515'
       '?text=Hello%20ServicePay%20Support,%20I%20need%20assistance.',
     );
 

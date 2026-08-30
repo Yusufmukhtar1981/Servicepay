@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account_statement_screen.dart';
+import 'help_support_screen.dart';
 import 'receipt_screen.dart';
 import 'services/support_api_service.dart';
 import 'transaction_presentation.dart';
@@ -617,86 +618,32 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       return;
     }
 
-    final _TransactionIssueInput? input =
-        await showDialog<_TransactionIssueInput>(
-      context: context,
-      builder: (_) => _TransactionIssueDialog(
-        transactionTitle: presentation.title,
-        reference: presentation.reference,
-      ),
-    );
-    if (input == null || !mounted) return;
     final String idempotencyKey =
         await issueSubmissionKeys.forTransaction(presentation.lookupId);
     if (!mounted) return;
-
-    var progressOpen = true;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const AlertDialog(
-        content: Row(
-          children: [
-            SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 16),
-            Expanded(child: Text('Submitting issue...')),
-          ],
+    final title = presentation.title.toUpperCase();
+    final category = title.contains('TRANSFER')
+        ? 'TRANSFER'
+        : title.contains('WITHDRAW')
+            ? 'WITHDRAWAL'
+            : title.contains('AIRTIME') || title.contains('DATA')
+                ? 'AIRTIME_DATA'
+                : title.contains('ELECTRIC') || title.contains('BILL')
+                    ? 'BILLS'
+                    : 'TRANSACTION';
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SupportRequestScreen(
+          initialCategory: category,
+          initialSubject: 'Issue with ${presentation.title}',
+          transactionLookupId: presentation.lookupId,
+          transactionSummary:
+              '${presentation.title}\nReference: ${presentation.reference}\nAmount: ₦${presentation.amount.toStringAsFixed(2)}\nStatus: ${presentation.status}\nDate: ${_formatDate(presentation.date)}',
+          idempotencyKey: idempotencyKey,
+          onCreated: (_) => issueSubmissionKeys.complete(presentation.lookupId),
         ),
       ),
     );
-
-    final SupportApiService support = SupportApiService();
-    try {
-      final SupportTicket ticket = await support.createTicket(
-        subject: 'Issue with ${presentation.title}',
-        description: input.description,
-        priority: input.priority,
-        idempotencyKey: idempotencyKey,
-        transactionLookupId: presentation.lookupId,
-      );
-      await issueSubmissionKeys.complete(presentation.lookupId);
-      if (!mounted) return;
-      if (progressOpen && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-        progressOpen = false;
-      }
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Issue reported'),
-          content: Text(
-            'Support case ${ticket.reference} was created successfully.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      if (progressOpen && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-        progressOpen = false;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error is SupportApiException
-                ? error.message
-                : 'Unable to report this issue. Please try again.',
-          ),
-        ),
-      );
-    } finally {
-      support.close();
-    }
   }
 
   Future<void> _openStatement() async {

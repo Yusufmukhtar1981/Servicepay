@@ -9,13 +9,16 @@ import 'kyc_screen.dart';
 import 'marketplace/marketplace_my_orders_screen.dart';
 import 'profile_screen.dart';
 import 'solar_screen.dart';
+import 'support_tickets_screen.dart';
+import 'services/support_api_service.dart';
 import 'track_delivery_screen.dart';
 import 'transactions_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key, this.client});
+  const NotificationsScreen({super.key, this.client, this.supportApi});
 
   final http.Client? client;
+  final SupportApiService? supportApi;
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -279,7 +282,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     style: const TextStyle(
                         fontSize: 12, color: Color(0xFF71857A))),
               ],
-              if (_destination(action) != null) ...[
+              if (_destination(n) != null) ...[
                 const SizedBox(height: 22),
                 SizedBox(
                     width: double.infinity,
@@ -289,7 +292,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         Navigator.push(
                             context,
                             MaterialPageRoute<void>(
-                                builder: (_) => _destination(action)!));
+                                builder: (_) => _destination(n)!));
                       },
                       icon: const Icon(Icons.arrow_forward_rounded),
                       label: Text(_actionLabel(action)),
@@ -300,7 +303,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget? _destination(String action) {
+  Widget? _destination(Map<String, dynamic> notification) {
+    final action = notification['action']?.toString().toUpperCase() ?? '';
     switch (action) {
       case 'TRANSACTION':
         return const TransactionsScreen();
@@ -315,14 +319,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return const MarketplaceMyOrdersScreen();
       case 'SOLAR':
         return const SolarScreen();
+      case 'SUPPORT':
+        final ticketId = notification['referenceId']?.toString() ?? '';
+        return ticketId.isEmpty
+            ? const SupportTicketsScreen()
+            : SupportTicketDetailScreen(
+                ticketId: ticketId,
+                api: widget.supportApi,
+              );
       default:
         return null;
     }
   }
 
-  String _actionLabel(String action) => action == 'TRANSACTION'
-      ? 'Open transactions'
-      : 'Open ${action.toLowerCase()}';
+  String _actionLabel(String action) {
+    if (action == 'TRANSACTION') return 'Open transactions';
+    if (action == 'SUPPORT') return 'Open support ticket';
+    return 'Open ${action.toLowerCase()}';
+  }
 
   void _message(String text, {bool error = false}) {
     if (!mounted) return;
@@ -355,6 +369,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
     if (t.contains('SOLAR')) return Icons.wb_sunny_outlined;
     if (t.contains('PHONE')) return Icons.phone_android_outlined;
+    if (t.contains('SUPPORT')) return Icons.support_agent_outlined;
     if (t.contains('TRANSACTION') || t.contains('TRANSFER')) {
       return Icons.swap_horiz_rounded;
     }

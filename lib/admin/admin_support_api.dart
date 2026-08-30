@@ -16,6 +16,7 @@ class AdminSupportApi {
           {String search = '',
           String status = '',
           String priority = '',
+          String category = '',
           String assignedTo = '',
           int page = 1,
           int limit = 20}) =>
@@ -24,6 +25,7 @@ class AdminSupportApi {
             'search': search,
             'status': status,
             'priority': priority,
+            'category': category,
             'assignedTo': assignedTo,
             'page': '$page',
             'limit': '$limit'

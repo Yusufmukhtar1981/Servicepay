@@ -23,6 +23,29 @@ class SupportTicket {
   String get subject => (data['subject'] ?? 'Support request').toString();
   String get description => (data['description'] ?? '').toString();
   String get status => (data['status'] ?? 'OPEN').toString().toUpperCase();
+  String get statusLabel {
+    final supplied = (data['statusLabel'] ?? '').toString().trim();
+    if (supplied.isNotEmpty) return supplied;
+    if (status == 'IN_PROGRESS' || status == 'IN_REVIEW') return 'IN REVIEW';
+    if (status == 'WAITING_ON_CUSTOMER') return 'AWAITING CUSTOMER';
+    if (status == 'REJECTED') return 'CLOSED';
+    return status.replaceAll('_', ' ');
+  }
+
+  String get category => (data['category'] ?? 'OTHER').toString().toUpperCase();
+  String get categoryLabel => category
+      .replaceAll('_', ' ')
+      .toLowerCase()
+      .split(' ')
+      .where((word) => word.isNotEmpty)
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
+  DateTime? get createdAt =>
+      DateTime.tryParse((data['createdAt'] ?? '').toString())?.toLocal();
+  Map<String, dynamic>? get transactionContext =>
+      data['transactionContext'] is Map
+          ? Map<String, dynamic>.from(data['transactionContext'] as Map)
+          : null;
   String get priority =>
       (data['priority'] ?? 'NORMAL').toString().toUpperCase();
   String get resolution =>
@@ -37,16 +60,23 @@ class SupportTicket {
 }
 
 class SupportTicketPage {
-  const SupportTicketPage({required this.tickets, this.total = 0});
+  const SupportTicketPage({
+    required this.tickets,
+    this.total = 0,
+    this.page = 1,
+    this.limit = 20,
+  });
   final List<SupportTicket> tickets;
   final int total;
+  final int page;
+  final int limit;
+  bool get hasMore => page * limit < total;
 }
 
 class TransactionIssueSubmissionKeys {
   TransactionIssueSubmissionKeys({
     Future<SharedPreferences> Function()? preferencesLoader,
-  }) : _preferencesLoader =
-            preferencesLoader ?? SharedPreferences.getInstance;
+  }) : _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
 
   static const String _prefix = 'pending_transaction_issue';
   final Future<SharedPreferences> Function() _preferencesLoader;
@@ -95,9 +125,20 @@ class SupportApiService {
   final http.Client _client;
   final bool _ownsClient;
 
-  Future<SupportTicketPage> tickets({int page = 1, int limit = 20}) async {
-    final body = await _request('GET', 'tickets',
-        query: {'page': '$page', 'limit': '$limit'});
+  Future<SupportTicketPage> tickets({
+    int page = 1,
+    int limit = 20,
+    String status = '',
+    String category = '',
+    String search = '',
+  }) async {
+    final body = await _request('GET', 'tickets', query: <String, String>{
+      'page': '$page',
+      'limit': '$limit',
+      if (status.isNotEmpty) 'status': status,
+      if (category.isNotEmpty) 'category': category,
+      if (search.isNotEmpty) 'search': search,
+    });
     final pageData =
         body['data'] is Map ? Map<String, dynamic>.from(body['data']) : body;
     final raw = pageData['tickets'] ?? pageData['items'];
@@ -109,7 +150,9 @@ class SupportApiService {
         : <SupportTicket>[];
     return SupportTicketPage(
         tickets: tickets,
-        total: (pageData['total'] as num?)?.toInt() ?? tickets.length);
+        total: (pageData['total'] as num?)?.toInt() ?? tickets.length,
+        page: (pageData['page'] as num?)?.toInt() ?? page,
+        limit: (pageData['limit'] as num?)?.toInt() ?? limit);
   }
 
   Future<SupportTicket> ticket(String id) async {
@@ -122,6 +165,7 @@ class SupportApiService {
     required String subject,
     required String description,
     required String priority,
+    required String category,
     required String idempotencyKey,
     String? transactionLookupId,
   }) async {
@@ -129,6 +173,7 @@ class SupportApiService {
       'subject': subject.trim(),
       'description': description.trim(),
       'priority': priority,
+      'category': category,
       'idempotencyKey': idempotencyKey,
       if (transactionLookupId != null && transactionLookupId.trim().isNotEmpty)
         'transactionLookupId': transactionLookupId.trim(),

@@ -16,7 +16,7 @@ class _AdminCustomerSupportScreenState
   final search = TextEditingController();
   List<Map<String, dynamic>> tickets = [];
   Map<String, dynamic> metrics = {};
-  String status = '', priority = '', error = '';
+  String status = '', priority = '', category = '', error = '';
   bool loading = true;
   @override
   void initState() {
@@ -36,7 +36,11 @@ class _AdminCustomerSupportScreenState
     try {
       final values = await Future.wait([
         api.metrics(),
-        api.tickets(search: search.text, status: status, priority: priority)
+        api.tickets(
+            search: search.text,
+            status: status,
+            priority: priority,
+            category: category)
       ]);
       final metricsData = values[0]['data'] is Map
           ? Map<String, dynamic>.from(values[0]['data'])
@@ -93,25 +97,49 @@ class _AdminCustomerSupportScreenState
                             onPressed: load, icon: const Icon(Icons.search)),
                         border: const OutlineInputBorder())),
                 const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  SizedBox(
+                      width: 220,
                       child: filter('Status', status, [
-                    '',
-                    'OPEN',
-                    'IN_PROGRESS',
-                    'RESOLVED',
-                    'CLOSED'
-                  ], (v) {
-                    status = v;
-                    load();
-                  })),
-                  const SizedBox(width: 8),
-                  Expanded(
+                        '',
+                        'OPEN',
+                        'IN_PROGRESS',
+                        'IN_REVIEW',
+                        'WAITING_ON_CUSTOMER',
+                        'RESOLVED',
+                        'CLOSED'
+                      ], (v) {
+                        status = v;
+                        load();
+                      })),
+                  SizedBox(
+                      width: 180,
                       child: filter('Priority', priority,
                           ['', 'LOW', 'NORMAL', 'HIGH', 'URGENT'], (v) {
-                    priority = v;
-                    load();
-                  })),
+                        priority = v;
+                        load();
+                      })),
+                  SizedBox(
+                      width: 220,
+                      child: filter('Category', category, [
+                        '',
+                        'TRANSACTION',
+                        'TRANSFER',
+                        'WITHDRAWAL',
+                        'AIRTIME_DATA',
+                        'BILLS',
+                        'ACCOUNT_KYC',
+                        'TRANSACTION_PIN',
+                        'LOGIN_SECURITY',
+                        'DELIVERY',
+                        'MARKETPLACE',
+                        'SOLAR',
+                        'EMPOWERMENT',
+                        'OTHER'
+                      ], (v) {
+                        category = v;
+                        load();
+                      })),
                 ]),
               ])),
           Expanded(
@@ -135,7 +163,7 @@ class _AdminCustomerSupportScreenState
                                   title: Text(
                                       '${t['subject'] ?? 'Support request'}'),
                                   subtitle: Text(
-                                      '${t['caseReference'] ?? t['reference'] ?? t['_id']}\n${customer['fullName'] ?? customer['name'] ?? 'Customer'} • ${t['status'] ?? 'OPEN'} • ${t['priority'] ?? 'NORMAL'}'),
+                                      '${t['caseReference'] ?? t['reference'] ?? t['_id']}\n${customer['fullName'] ?? customer['name'] ?? 'Customer'} • ${t['category'] ?? 'OTHER'} • ${t['status'] ?? 'OPEN'}'),
                                   isThreeLine: true,
                                   onTap: () => Navigator.push(
                                       context,
@@ -307,7 +335,14 @@ class _DetailState extends State<_Detail> {
                     Wrap(spacing: 8, children: [
                       DropdownButton<String>(
                           value: '${x['status'] ?? 'OPEN'}',
-                          items: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']
+                          items: [
+                            'OPEN',
+                            'IN_PROGRESS',
+                            'IN_REVIEW',
+                            'WAITING_ON_CUSTOMER',
+                            'RESOLVED',
+                            'CLOSED'
+                          ]
                               .map((v) =>
                                   DropdownMenuItem(value: v, child: Text(v)))
                               .toList(),

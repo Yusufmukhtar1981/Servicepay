@@ -25,7 +25,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> openServicePayWhatsApp() async {
-    const phone = '2348026114645';
+    const phone = '2349136151515';
     const message =
         'Hello ServicePay Support, I need assistance with my account.';
 
@@ -948,7 +948,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             icon: Icons.chat_rounded,
                             title: 'WhatsApp Support',
                             subtitle:
-                                '08026114645 • Chat with ServicePay Support',
+                                '09136151515 • Chat with ServicePay Support',
                             iconColor: const Color(0xFF25D366),
                             onTap: openServicePayWhatsApp,
                           ),

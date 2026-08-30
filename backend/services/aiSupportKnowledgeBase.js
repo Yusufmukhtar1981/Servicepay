@@ -1,7 +1,7 @@
 const UNAVAILABLE_MESSAGE =
   "I can’t verify that from the information currently available. Please contact ServicePay Support for assistance.";
 
-const SUPPORT_WHATSAPP = "+2348026114645";
+const SUPPORT_WHATSAPP = "+2349136151515";
 const SERVICEPAY_WEBSITE = "servicepay.ng";
 
 const knowledgeEntries = [
@@ -14,7 +14,7 @@ const knowledgeEntries = [
       "pending",
     ],
     reply:
-      "I can’t verify a transaction status from this chat. Please open your transaction history and check the reference and current status. If it remains pending, contact ServicePay Support on WhatsApp at +2348026114645 with the reference. Never share your password, OTP or transaction PIN.",
+      "I can’t verify a transaction status from this chat. Please open your transaction history and check the reference and current status. If it remains pending, contact ServicePay Support on WhatsApp at 09136151515 with the reference. Never share your password, OTP or transaction PIN.",
   },
   {
     keywords: [
@@ -26,7 +26,7 @@ const knowledgeEntries = [
       "not received",
     ],
     reply:
-      "If a service shows successful but has not been received, first confirm the phone number or account details and allow a short time for the provider to update. Do not retry if you may be charged twice. If it is still missing, contact ServicePay Support on WhatsApp at +2348026114645 with the transaction reference so the team can investigate.",
+      "If a service shows successful but has not been received, first confirm the phone number or account details and allow a short time for the provider to update. Do not retry if you may be charged twice. If it is still missing, contact ServicePay Support on WhatsApp at 09136151515 with the transaction reference so the team can investigate.",
   },
   {
     keywords: [

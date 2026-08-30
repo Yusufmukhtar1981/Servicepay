@@ -115,6 +115,7 @@ void main() {
           'subject': 'Issue with Data',
           'description': 'Paid but service was not received',
           'priority': 'NORMAL',
+          'category': 'TRANSACTION',
           'idempotencyKey': 'transaction-issue-key',
           'transactionLookupId': 'transaction:66ddcafe',
         },
@@ -135,6 +136,7 @@ void main() {
       subject: 'Issue with Data',
       description: 'Paid but service was not received',
       priority: 'NORMAL',
+      category: 'TRANSACTION',
       idempotencyKey: 'transaction-issue-key',
       transactionLookupId: 'transaction:66ddcafe',
     );
@@ -142,8 +144,7 @@ void main() {
     expect(ticket.reference, 'SUP-200');
   });
 
-  test('transaction issue key survives reconstruction until success',
-      () async {
+  test('transaction issue key survives reconstruction until success', () async {
     SharedPreferences.setMockInitialValues(<String, Object>{
       'auth_token': 'customer-session-a',
     });
@@ -157,9 +158,8 @@ void main() {
     expect(retry, first);
 
     await reconstructedStore.complete('transaction:66ddcafe');
-    final String afterSuccess =
-        await TransactionIssueSubmissionKeys()
-            .forTransaction('transaction:66ddcafe');
+    final String afterSuccess = await TransactionIssueSubmissionKeys()
+        .forTransaction('transaction:66ddcafe');
     expect(afterSuccess, isNot(first));
   });
 }

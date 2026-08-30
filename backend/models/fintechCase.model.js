@@ -37,6 +37,26 @@ const fintechCaseSchema = new mongoose.Schema({
   // operational cases. IN_PROGRESS is the customer-support workflow value.
   status: { type: String, enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "WAITING_ON_CUSTOMER", "RESOLVED", "REJECTED", "CLOSED"], default: "OPEN", index: true },
   priority: { type: String, enum: ["LOW", "NORMAL", "HIGH", "URGENT"], default: "NORMAL", index: true },
+  category: {
+    type: String,
+    enum: [
+      "TRANSACTION",
+      "TRANSFER",
+      "WITHDRAWAL",
+      "AIRTIME_DATA",
+      "BILLS",
+      "ACCOUNT_KYC",
+      "TRANSACTION_PIN",
+      "LOGIN_SECURITY",
+      "DELIVERY",
+      "MARKETPLACE",
+      "SOLAR",
+      "EMPOWERMENT",
+      "OTHER",
+    ],
+    default: "OTHER",
+    index: true,
+  },
   subject: { type: String, required: true, trim: true, maxlength: 200 },
   description: { type: String, required: true, trim: true, maxlength: 5000 },
   transaction: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null, index: true },
@@ -51,4 +71,5 @@ const fintechCaseSchema = new mongoose.Schema({
 
 fintechCaseSchema.index({ type: 1, status: 1, createdAt: -1 });
 fintechCaseSchema.index({ customer: 1, status: 1, createdAt: -1 });
+fintechCaseSchema.index({ customer: 1, category: 1, createdAt: -1 });
 module.exports = mongoose.model("FintechCase", fintechCaseSchema);

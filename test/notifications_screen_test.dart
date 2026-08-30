@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servicepay_app/notifications_screen.dart';
+import 'package:servicepay_app/services/support_api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Map<String, dynamic> _notification({
@@ -13,6 +14,7 @@ Map<String, dynamic> _notification({
   String category = 'TRANSACTION',
   bool isRead = false,
   String action = '',
+  String? referenceId,
 }) =>
     <String, dynamic>{
       '_id': id,
@@ -21,6 +23,7 @@ Map<String, dynamic> _notification({
       'type': category == 'SECURITY' ? 'SECURITY' : 'TRANSFER',
       'category': category,
       'reference': 'SPT-100',
+      if (referenceId != null) 'referenceId': referenceId,
       'action': action,
       'isRead': isRead,
       'createdAt': '2026-08-30T08:00:00.000Z',
@@ -45,6 +48,7 @@ Future<void> _pump(
   WidgetTester tester,
   http.Client client, {
   Size size = const Size(430, 900),
+  SupportApiService? supportApi,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -54,7 +58,9 @@ Future<void> _pump(
     'auth_token': 'test-token',
   });
   await tester.pumpWidget(
-    MaterialApp(home: NotificationsScreen(client: client)),
+    MaterialApp(
+      home: NotificationsScreen(client: client, supportApi: supportApi),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -137,5 +143,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Activity is temporarily unavailable'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('support activity exposes the owned ticket deep-link action',
+      (WidgetTester tester) async {
+    final client = MockClient((http.Request request) async {
+      if (request.method == 'PUT') {
+        return http.Response(
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'unreadCount': 0,
+            }),
+            200);
+      }
+      return _listResponse(<Map<String, dynamic>>[
+        _notification(
+          title: 'New support reply',
+          category: 'OTHER',
+          action: 'SUPPORT',
+          referenceId: '64b000000000000000000099',
+        ),
+      ], unread: 1);
+    });
+    final supportClient =
+        MockClient((http.Request request) async => http.Response(
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'data': <String, dynamic>{
+                'id': '64b000000000000000000099',
+                'caseReference': 'SPT-20260830-ABC123',
+                'subject': 'Transfer issue',
+                'description': 'Please investigate.',
+                'status': 'IN_REVIEW',
+                'category': 'TRANSFER',
+                'replies': <dynamic>[],
+              },
+            }),
+            200));
+    final supportApi = SupportApiService(client: supportClient);
+
+    await _pump(tester, client, supportApi: supportApi);
+    await tester.tap(find.text('New support reply'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open support ticket'), findsOneWidget);
+    await tester.tap(find.text('Open support ticket'));
+    await tester.pumpAndSettle();
+    expect(find.text('Transfer issue'), findsOneWidget);
+    expect(find.text('Reference: SPT-20260830-ABC123'), findsOneWidget);
   });
 }

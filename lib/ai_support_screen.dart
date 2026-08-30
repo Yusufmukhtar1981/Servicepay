@@ -14,7 +14,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
   static const Color primaryGreen = Color(0xFF08783E);
   static const Color darkGreen = Color(0xFF075B30);
   static const Color background = Color(0xFFF5FAF7);
-  static const String supportPhone = '2348026114645';
+  static const String supportPhone = '2349136151515';
   static const String supportMessage =
       'Hello ServicePay Support, I need assistance with my ServicePay account.';
   static const String welcomeMessage =
@@ -62,8 +62,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
     });
 
     try {
-      final AiSupportHistory history =
-          await AiSupportApiService.getHistory();
+      final AiSupportHistory history = await AiSupportApiService.getHistory();
 
       if (!mounted) {
         return;
@@ -122,8 +121,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
       return;
     }
 
-    final String message =
-        (suggestedMessage ?? _messageController.text).trim();
+    final String message = (suggestedMessage ?? _messageController.text).trim();
 
     if (message.isEmpty) {
       return;
@@ -175,9 +173,8 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
 
       setState(() {
         _errorMessage = _friendlyError(error);
-        final bool isDisabled =
-            error is AiSupportApiException &&
-                error.code == 'AI_SUPPORT_DISABLED';
+        final bool isDisabled = error is AiSupportApiException &&
+            error.code == 'AI_SUPPORT_DISABLED';
         if (isDisabled) {
           _aiSupportEnabled = false;
         }
@@ -493,9 +490,8 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
           const SizedBox(width: 8),
           IconButton(
             key: const Key('ai-support-send'),
-            onPressed: _aiSupportEnabled && !_isSending
-                ? () => _sendMessage()
-                : null,
+            onPressed:
+                _aiSupportEnabled && !_isSending ? () => _sendMessage() : null,
             style: IconButton.styleFrom(
               backgroundColor: primaryGreen,
               foregroundColor: Colors.white,
@@ -534,9 +530,7 @@ class _ChatBubble extends StatelessWidget {
             bottomLeft: Radius.circular(isUser ? 18 : 4),
             bottomRight: Radius.circular(isUser ? 4 : 18),
           ),
-          border: isUser
-              ? null
-              : Border.all(color: const Color(0xFFDDEBE1)),
+          border: isUser ? null : Border.all(color: const Color(0xFFDDEBE1)),
           boxShadow: const <BoxShadow>[
             BoxShadow(
               color: Color(0x0A163322),

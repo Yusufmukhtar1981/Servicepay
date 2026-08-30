@@ -1,22 +1,55 @@
 const crypto = require("crypto");
 const FintechCase = require("../models/fintechCase.model");
 const User = require("../models/user.model");
-const Notification = require("../models/notification.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 const {
   getCustomerHistoryItem,
 } = require("../services/customerHistory.service");
+const {
+  createInAppNotification,
+} = require("../services/inAppNotification.service");
 
-const SUPPORT_STATUSES = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
+const SUPPORT_STATUSES = [
+  "OPEN",
+  "IN_PROGRESS",
+  "IN_REVIEW",
+  "WAITING_ON_CUSTOMER",
+  "RESOLVED",
+  "CLOSED",
+];
 const PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"];
+const SUPPORT_CATEGORIES = [
+  "TRANSACTION",
+  "TRANSFER",
+  "WITHDRAWAL",
+  "AIRTIME_DATA",
+  "BILLS",
+  "ACCOUNT_KYC",
+  "TRANSACTION_PIN",
+  "LOGIN_SECURITY",
+  "DELIVERY",
+  "MARKETPLACE",
+  "SOLAR",
+  "EMPOWERMENT",
+  "OTHER",
+];
 const clean = (value, max = 500) => String(value || "").trim().slice(0, max);
 const pageValues = (query) => ({ page: Math.max(1, Number(query.page) || 1), limit: Math.min(100, Math.max(1, Number(query.limit) || 25)) });
 const value = (input) => clean(input).toUpperCase();
 const error = (res, status, message) => res.status(status).json({ success: false, message });
-const caseReference = () => `SUP-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+const caseReference = () => {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  return `SPT-${date}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+};
+const normalizedStatus = (input) => {
+  const status = value(input).replace(/\s+/g, "_");
+  if (status === "AWAITING_CUSTOMER") return "WAITING_ON_CUSTOMER";
+  return status;
+};
 const customerId = (req) => req.user._id || req.user.id;
 const MAX_PUBLIC_REPLIES = 200;
 const MAX_INTERNAL_NOTES = 200;
+const TERMINAL_SUPPORT_STATUSES = ["RESOLVED", "CLOSED", "REJECTED"];
 
 const customerReply = (reply) => ({
   id: String(reply._id), message: reply.message,
@@ -30,7 +63,15 @@ const customerCase = (item, withReplies = false) => {
   const data = {
     id: String(item._id), caseReference: item.caseReference, type: item.type,
     subject: item.subject, description: item.description, status: item.status,
-    priority: item.priority, resolution: item.resolution || "", createdAt: item.createdAt,
+    statusLabel: ["IN_PROGRESS", "IN_REVIEW"].includes(item.status)
+      ? "IN REVIEW"
+      : item.status === "WAITING_ON_CUSTOMER"
+        ? "AWAITING CUSTOMER"
+        : item.status === "REJECTED"
+          ? "CLOSED"
+        : item.status.replace(/_/g, " "),
+    category: item.category || "OTHER", priority: item.priority,
+    resolution: item.resolution || "", createdAt: item.createdAt,
     updatedAt: item.updatedAt, transactionContext: item.transactionContext || null,
   };
   if (withReplies) data.replies = (item.publicReplies || []).map(customerReply);
@@ -79,15 +120,38 @@ const audit = async (req, action, previousData, newData, metadata) => {
     requestMethod: req.method, requestPath: req.originalUrl,
   });
 };
-const notify = (ticket, title, message) => Notification.create({
-  userId: ticket.customer, title, message, type: "GENERAL",
-  referenceId: ticket._id, referenceType: "SUPPORT_TICKET",
-});
+const notify = (ticket, title, message, dedupeKey) =>
+  createInAppNotification({
+    userId: ticket.customer,
+    title,
+    message,
+    type: "GENERAL",
+    category: "OTHER",
+    action: "SUPPORT",
+    referenceId: ticket._id,
+    reference: ticket.caseReference,
+    referenceType: "SUPPORT_TICKET",
+    relatedStatus: ticket.status,
+    dedupeKey,
+  }).catch((notificationError) => {
+    console.error(
+      `[SUPPORT NOTIFICATION] ${ticket.caseReference}: ${notificationError.message}`,
+    );
+    return null;
+  });
 const ticketFilter = (query, ownCustomer) => {
   const filter = ownCustomer ? { customer: ownCustomer, type: "COMPLAINT" } : { type: "COMPLAINT" };
-  const status = value(query.status); const priority = value(query.priority);
-  if (status && SUPPORT_STATUSES.includes(status)) filter.status = status;
+  const status = normalizedStatus(query.status); const priority = value(query.priority);
+  if (["IN_PROGRESS", "IN_REVIEW"].includes(status)) {
+    filter.status = { $in: ["IN_PROGRESS", "IN_REVIEW"] };
+  } else if (status === "CLOSED") {
+    filter.status = { $in: ["CLOSED", "REJECTED"] };
+  } else if (status && SUPPORT_STATUSES.includes(status)) {
+    filter.status = status;
+  }
   if (priority && PRIORITIES.includes(priority)) filter.priority = priority;
+  const category = value(query.category);
+  if (category && SUPPORT_CATEGORIES.includes(category)) filter.category = category;
   if (query.assignedTo && !ownCustomer) filter.assignedTo = query.assignedTo;
   const search = clean(query.search, 200);
   if (search) filter.$or = [{ caseReference: { $regex: search, $options: "i" } }, { subject: { $regex: search, $options: "i" } }];
@@ -111,11 +175,19 @@ exports.createTicket = async (req, res) => {
     const clientIdempotencyKey = clean(req.body.idempotencyKey, 120);
     const idempotencyKey = `support:${customerId(req)}:${clientIdempotencyKey}`;
     const priority = value(req.body.priority || "NORMAL");
+    const category = value(req.body.category || "OTHER");
     if (!subject || !requestedDescription || !clientIdempotencyKey) return error(res, 400, "subject, description and idempotencyKey are required.");
     if (!PRIORITIES.includes(priority)) return error(res, 400, "Invalid priority.");
+    if (!SUPPORT_CATEGORIES.includes(category)) return error(res, 400, "Invalid support category.");
     const existing = await FintechCase.findOne({ idempotencyKey });
     if (existing) {
       if (String(existing.customer) !== String(customerId(req))) return error(res, 409, "Idempotency key already exists.");
+      await notify(
+        existing,
+        "Support ticket submitted",
+        `Your support ticket ${existing.caseReference} was submitted successfully.`,
+        `support:${existing._id}:created`,
+      );
       return res.json({ success: true, data: customerCase(existing), idempotent: true });
     }
     const transactionLookupId = clean(req.body.transactionLookupId, 200);
@@ -132,11 +204,17 @@ exports.createTicket = async (req, res) => {
     const description = transactionDescription(requestedDescription, context);
     const ticket = await FintechCase.create({
       caseReference: caseReference(), idempotencyKey, type: "COMPLAINT", subject, description,
-      priority, customer: customerId(req), createdBy: customerId(req),
+      category, priority, customer: customerId(req), createdBy: customerId(req),
       transaction:
         historyItem?.source === "TRANSACTION" ? historyItem.sourceId : null,
       transactionContext: context,
     });
+    await notify(
+      ticket,
+      "Support ticket submitted",
+      `Your support ticket ${ticket.caseReference} was submitted successfully.`,
+      `support:${ticket._id}:created`,
+    );
     return res.status(201).json({ success: true, data: customerCase(ticket) });
   } catch (err) {
     if (err?.code === 11000) {
@@ -173,14 +251,20 @@ exports.customerReply = async (req, res) => {
     const filter = { _id: req.params.id, customer: customerId(req), type: "COMPLAINT" };
     let ticket = await FintechCase.findOne(filter);
     if (!ticket) return error(res, 404, "Support ticket not found.");
+    if (TERMINAL_SUPPORT_STATUSES.includes(ticket.status)) {
+      return error(res, 409, "This support ticket is closed for replies.");
+    }
     if (ticket.publicReplies.some((reply) => reply.idempotencyKey === idempotencyKey)) return res.json({ success: true, data: customerCase(ticket, true), idempotent: true });
     ticket = await FintechCase.findOneAndUpdate(
-      { ...filter, publicReplies: { $not: { $elemMatch: { idempotencyKey } } }, $expr: { $lt: [{ $size: "$publicReplies" }, MAX_PUBLIC_REPLIES] } },
+      { ...filter, status: { $nin: TERMINAL_SUPPORT_STATUSES }, publicReplies: { $not: { $elemMatch: { idempotencyKey } } }, $expr: { $lt: [{ $size: "$publicReplies" }, MAX_PUBLIC_REPLIES] } },
       { $push: { publicReplies: { message, authorId: customerId(req), authorName: clean(req.user.fullName, 200), authorRole: "CUSTOMER", idempotencyKey } } },
       { returnDocument: "after" },
     );
     if (!ticket) {
       ticket = await FintechCase.findOne(filter);
+      if (ticket && TERMINAL_SUPPORT_STATUSES.includes(ticket.status)) {
+        return error(res, 409, "This support ticket is closed for replies.");
+      }
       if (ticket?.publicReplies.some((reply) => reply.idempotencyKey === idempotencyKey)) return res.json({ success: true, data: customerCase(ticket, true), idempotent: true });
       return error(res, 409, `A ticket can contain at most ${MAX_PUBLIC_REPLIES} public replies.`);
     }
@@ -219,9 +303,9 @@ exports.getAdminTicket = async (req, res) => {
 };
 exports.updateTicket = async (req, res) => {
   try {
-    const requestedStatus = req.body.status === undefined ? null : value(req.body.status);
     const priority = req.body.priority === undefined ? null : value(req.body.priority);
-    if (requestedStatus && !SUPPORT_STATUSES.includes(requestedStatus)) return error(res, 400, "Invalid support status.");
+    const status = normalizedStatus(req.body.status);
+    if (status && !SUPPORT_STATUSES.includes(status)) return error(res, 400, "Invalid support status.");
     if (priority && !PRIORITIES.includes(priority)) return error(res, 400, "Invalid priority.");
     let assignee = null;
     if (req.body.assignedTo !== undefined && req.body.assignedTo) {
@@ -234,13 +318,20 @@ exports.updateTicket = async (req, res) => {
     const ticket = await FintechCase.findOne({ _id: req.params.id, type: "COMPLAINT" });
     if (!ticket) return error(res, 404, "Support ticket not found.");
     const previousData = { status: ticket.status, priority: ticket.priority, assignedTo: ticket.assignedTo, resolution: ticket.resolution };
-    if (requestedStatus) ticket.status = requestedStatus;
+    if (status) ticket.status = status;
     if (priority) ticket.priority = priority;
     if (req.body.assignedTo !== undefined) ticket.assignedTo = assignee ? assignee._id : null;
     if (req.body.resolution !== undefined) ticket.resolution = clean(req.body.resolution, 3000);
     await ticket.save();
     await audit(req, "FINTECH_CASE_UPDATED", previousData, { status: ticket.status, priority: ticket.priority, assignedTo: ticket.assignedTo, resolution: ticket.resolution }, { caseId: String(ticket._id) });
-    if (requestedStatus && requestedStatus !== previousData.status) await notify(ticket, "Support ticket updated", `Your ticket ${ticket.caseReference} is now ${requestedStatus.replace("_", " ")}.`);
+    if (status && status !== previousData.status) {
+      await notify(
+        ticket,
+        "Support ticket updated",
+        `Your ticket ${ticket.caseReference} is now ${ticket.status.replace(/_/g, " ").toLowerCase()}.`,
+        `support:${ticket._id}:status:${ticket.status}`,
+      );
+    }
     return res.json({ success: true, data: adminCase(ticket) });
   } catch (_) { return error(res, 500, "Unable to update support ticket."); }
 };
@@ -261,7 +352,12 @@ exports.adminReply = async (req, res) => {
       if (ticket?.publicReplies.some((reply) => reply.idempotencyKey === idempotencyKey)) return res.json({ success: true, data: adminCase(ticket), idempotent: true });
       return error(res, 409, `A ticket can contain at most ${MAX_PUBLIC_REPLIES} public replies.`);
     }
-    await notify(ticket, "New support reply", `Support replied to ticket ${ticket.caseReference}.`);
+    await notify(
+      ticket,
+      "New support reply",
+      `Support replied to ticket ${ticket.caseReference}.`,
+      `support:${ticket._id}:reply:${idempotencyKey}`,
+    );
     return res.status(201).json({ success: true, data: adminCase(ticket) });
   } catch (_) { return error(res, 500, "Unable to add support reply."); }
 };

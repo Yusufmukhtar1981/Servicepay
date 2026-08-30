@@ -9,9 +9,24 @@ class HelpSupportScreen extends StatelessWidget {
   static const Color primaryGreen = Color(0xFF2E7D32);
   static const Color backgroundColor = Color(0xFFF8FAFC);
 
-  static const String supportPhone = '08033671266';
-  static const String whatsappPhone = '2348033671266';
+  static const String supportPhone = '09136151515';
+  static const String whatsappPhone = '2349136151515';
   static const String supportEmail = 'admin@servicepay.ng';
+  static const Map<String, String> supportCategories = {
+    'TRANSACTION': 'Transaction Issues',
+    'TRANSFER': 'Transfer Issues',
+    'WITHDRAWAL': 'Withdrawal Issues',
+    'AIRTIME_DATA': 'Airtime & Data',
+    'BILLS': 'Electricity / Bills',
+    'ACCOUNT_KYC': 'Account & KYC',
+    'TRANSACTION_PIN': 'Transaction PIN',
+    'LOGIN_SECURITY': 'Login & Security',
+    'DELIVERY': 'Delivery',
+    'MARKETPLACE': 'Marketplace',
+    'SOLAR': 'ServicePay Solar',
+    'EMPOWERMENT': 'Empowerment',
+    'OTHER': 'Other Issues',
+  };
 
   Future<void> _openLink(
     BuildContext context,
@@ -88,13 +103,12 @@ class HelpSupportScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _reportProblem(
-    BuildContext context,
-  ) async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const _ReportProblemDialog(),
+  Future<void> _reportProblem(BuildContext context,
+      {String category = 'OTHER'}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SupportRequestScreen(initialCategory: category),
+      ),
     );
   }
 
@@ -215,6 +229,24 @@ class HelpSupportScreen extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 24),
+                const SectionTitle(title: 'Choose an issue'),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: supportCategories.entries
+                      .map(
+                        (entry) => ActionChip(
+                          avatar: const Icon(Icons.support_agent_outlined,
+                              size: 17),
+                          label: Text(entry.value),
+                          onPressed: () =>
+                              _reportProblem(context, category: entry.key),
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 24),
                 const SectionTitle(
                   title: 'Contact Support',
                 ),
@@ -277,6 +309,23 @@ class HelpSupportScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 const FaqSection(),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFFED7AA)),
+                  ),
+                  child: const Text(
+                    'ServicePay Support will never ask for your password, OTP or transaction PIN.',
+                    style: TextStyle(
+                      color: Color(0xFF9A3412),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
                 const SectionTitle(
                   title: 'Legal & Privacy',
@@ -484,7 +533,7 @@ class SupportActionCard extends StatelessWidget {
   }
 }
 
-class FaqSection extends StatelessWidget {
+class FaqSection extends StatefulWidget {
   const FaqSection({super.key});
 
   static const List<Map<String, String>> faqs = [
@@ -518,10 +567,48 @@ class FaqSection extends StatelessWidget {
       'answer':
           'Never share your password, login code or verification details with another person.',
     },
+    {
+      'question': 'How do I reset my transaction PIN?',
+      'answer':
+          'Open Profile and use Change Transaction PIN or Forgot/Reset PIN. ServicePay Support will never ask you to disclose your PIN.',
+    },
+    {
+      'question': 'What should I do about a pending transaction?',
+      'answer':
+          'Open the transaction details and use Check transaction status when it is available. If the status remains unclear, report the issue with the transaction reference.',
+    },
+    {
+      'question': 'How do I track a delivery?',
+      'answer':
+          'Open Delivery and use the tracking details shown for your active request or order.',
+    },
+    {
+      'question': 'Where can I see Marketplace orders?',
+      'answer':
+          'Open Marketplace and select My Orders to review your order and delivery status.',
+    },
+    {
+      'question': 'Where can I review solar financing?',
+      'answer':
+          'Open ServicePay Solar to review available plans and the status of your application.',
+    },
   ];
 
   @override
+  State<FaqSection> createState() => _FaqSectionState();
+}
+
+class _FaqSectionState extends State<FaqSection> {
+  String query = '';
+
+  @override
   Widget build(BuildContext context) {
+    final faqs = FaqSection.faqs
+        .where((faq) =>
+            query.isEmpty ||
+            faq.values.any(
+                (value) => value.toLowerCase().contains(query.toLowerCase())))
+        .toList();
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -532,6 +619,22 @@ class FaqSection extends StatelessWidget {
       ),
       child: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              onChanged: (value) => setState(() => query = value.trim()),
+              decoration: const InputDecoration(
+                hintText: 'Search FAQs',
+                prefixIcon: Icon(Icons.search_rounded),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          if (faqs.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('No FAQ matches your search.'),
+            ),
           for (int index = 0; index < faqs.length; index++) ...[
             ExpansionTile(
               title: Text(
@@ -660,18 +763,37 @@ class LegalInformationScreen extends StatelessWidget {
   }
 }
 
-class _ReportProblemDialog extends StatefulWidget {
-  const _ReportProblemDialog();
+class SupportRequestScreen extends StatefulWidget {
+  const SupportRequestScreen({
+    super.key,
+    this.initialCategory = 'OTHER',
+    this.initialSubject = '',
+    this.transactionLookupId,
+    this.transactionSummary,
+    this.idempotencyKey,
+    this.onCreated,
+  });
+  final String initialCategory;
+  final String initialSubject;
+  final String? transactionLookupId;
+  final String? transactionSummary;
+  final String? idempotencyKey;
+  final Future<void> Function(SupportTicket ticket)? onCreated;
+
   @override
-  State<_ReportProblemDialog> createState() => _ReportProblemDialogState();
+  State<SupportRequestScreen> createState() => _SupportRequestScreenState();
 }
 
-class _ReportProblemDialogState extends State<_ReportProblemDialog> {
-  final _subject = TextEditingController();
+class _SupportRequestScreenState extends State<SupportRequestScreen> {
+  late final _subject = TextEditingController(text: widget.initialSubject);
   final _description = TextEditingController();
   final _api = SupportApiService();
-  final String _idempotencyKey =
+  late final String _idempotencyKey = widget.idempotencyKey ??
       'support-${DateTime.now().microsecondsSinceEpoch}';
+  late String _category =
+      HelpSupportScreen.supportCategories.containsKey(widget.initialCategory)
+          ? widget.initialCategory
+          : 'OTHER';
   String _priority = 'NORMAL';
   bool _submitting = false;
   String _error = '';
@@ -697,7 +819,10 @@ class _ReportProblemDialogState extends State<_ReportProblemDialog> {
           subject: _subject.text,
           description: _description.text,
           priority: _priority,
-          idempotencyKey: _idempotencyKey);
+          category: _category,
+          idempotencyKey: _idempotencyKey,
+          transactionLookupId: widget.transactionLookupId);
+      await widget.onCreated?.call(ticket);
       if (!mounted) return;
       await showDialog<void>(
           context: context,
@@ -711,7 +836,13 @@ class _ReportProblemDialogState extends State<_ReportProblemDialog> {
                       child: const Text('Done'))
                 ],
               ));
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => SupportTicketDetailScreen(ticketId: ticket.id),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -720,60 +851,112 @@ class _ReportProblemDialogState extends State<_ReportProblemDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Report a Problem'),
-        content: SizedBox(
-            width: 450,
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: HelpSupportScreen.backgroundColor,
+        appBar: AppBar(
+          backgroundColor: HelpSupportScreen.primaryGreen,
+          foregroundColor: Colors.white,
+          title: const Text('Report a Problem'),
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 650),
             child: SingleChildScrollView(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (_error.isNotEmpty)
-                Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(_error,
-                        style: const TextStyle(color: Colors.red))),
-              TextField(
-                  controller: _subject,
-                  enabled: !_submitting,
-                  decoration: const InputDecoration(
-                      labelText: 'Issue title', border: OutlineInputBorder())),
-              const SizedBox(height: 14),
-              TextField(
-                  controller: _description,
-                  enabled: !_submitting,
-                  minLines: 4,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                      labelText: 'Description',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder())),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                  value: _priority,
-                  decoration: const InputDecoration(
-                      labelText: 'Priority', border: OutlineInputBorder()),
-                  items: const [
-                    DropdownMenuItem(value: 'LOW', child: Text('Low')),
-                    DropdownMenuItem(value: 'NORMAL', child: Text('Normal')),
-                    DropdownMenuItem(value: 'HIGH', child: Text('High')),
-                    DropdownMenuItem(value: 'URGENT', child: Text('Urgent')),
-                  ],
-                  onChanged: _submitting
-                      ? null
-                      : (value) => setState(() => _priority = value!)),
-            ]))),
-        actions: [
-          TextButton(
-              onPressed: _submitting ? null : () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          FilledButton.icon(
-              onPressed: _submitting ? null : _submit,
-              icon: _submitting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.send_rounded),
-              label: const Text('Submit'))
-        ],
+              padding: const EdgeInsets.all(20),
+              child: Card(
+                  elevation: 0,
+                  child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        if (_error.isNotEmpty)
+                          Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Text(_error,
+                                  style: const TextStyle(color: Colors.red))),
+                        DropdownButtonFormField<String>(
+                            value: _category,
+                            decoration: const InputDecoration(
+                                labelText: 'Issue category',
+                                border: OutlineInputBorder()),
+                            items: HelpSupportScreen.supportCategories.entries
+                                .map((entry) => DropdownMenuItem(
+                                    value: entry.key, child: Text(entry.value)))
+                                .toList(),
+                            onChanged: _submitting
+                                ? null
+                                : (value) =>
+                                    setState(() => _category = value!)),
+                        const SizedBox(height: 14),
+                        TextField(
+                            controller: _subject,
+                            enabled: !_submitting,
+                            decoration: const InputDecoration(
+                                labelText: 'Issue title',
+                                border: OutlineInputBorder())),
+                        const SizedBox(height: 14),
+                        TextField(
+                            controller: _description,
+                            enabled: !_submitting,
+                            minLines: 4,
+                            maxLines: 6,
+                            decoration: const InputDecoration(
+                                labelText: 'Description',
+                                alignLabelWithHint: true,
+                                border: OutlineInputBorder())),
+                        const SizedBox(height: 14),
+                        if ((widget.transactionSummary ?? '').isNotEmpty)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.only(bottom: 14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(widget.transactionSummary!),
+                          ),
+                        DropdownButtonFormField<String>(
+                            value: _priority,
+                            decoration: const InputDecoration(
+                                labelText: 'Priority',
+                                border: OutlineInputBorder()),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'LOW', child: Text('Low')),
+                              DropdownMenuItem(
+                                  value: 'NORMAL', child: Text('Normal')),
+                              DropdownMenuItem(
+                                  value: 'HIGH', child: Text('High')),
+                              DropdownMenuItem(
+                                  value: 'URGENT', child: Text('Urgent')),
+                            ],
+                            onChanged: _submitting
+                                ? null
+                                : (value) =>
+                                    setState(() => _priority = value!)),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'ServicePay Support will never ask for your password, OTP or transaction PIN.',
+                          style:
+                              TextStyle(color: Color(0xFF9A3412), fontSize: 12),
+                        ),
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                              onPressed: _submitting ? null : _submit,
+                              icon: _submitting
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : const Icon(Icons.send_rounded),
+                              label: const Text('Submit ticket')),
+                        ),
+                      ]))),
+            ),
+          ),
+        ),
       );
 }
