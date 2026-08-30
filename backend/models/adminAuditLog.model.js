@@ -58,6 +58,7 @@ const adminAuditLogSchema =
           "KYC_STATUS_UPDATED",
           "SERVICE_SETTING_UPDATED",
           "SYSTEM_SETTING_UPDATED",
+          "EMAIL_CAMPAIGN_TESTED",
            "AMANA_REQUEST_REVIEWED",
            "AMANA_INFORMATION_REQUESTED",
            "AMANA_PROVIDER_UPDATED",

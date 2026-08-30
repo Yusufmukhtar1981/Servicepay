@@ -2,7 +2,8 @@ const User = require("../models/user.model");
 const Notification = require("../models/notification.model");
 const Campaign = require("../models/communicationCampaign.model");
 const Recipient = require("../models/communicationRecipient.model");
-const { emailEnabled, sendEmail } = require("../services/email.service");
+const AdminAuditLog = require("../models/adminAuditLog.model");
+const emailService = require("../services/email.service");
 const { baseTemplate } = require("../templates/emailTemplates");
 const { resolveAudience } = require("../services/communicationAudience.service");
 const { scheduleCampaign } = require("../services/communicationCampaign.service");
@@ -70,7 +71,7 @@ const createBroadcastWithRecipients = async ({ campaignData, users }) => {
 exports.capabilities = (req, res) => res.json({
   success: true,
   capabilities: {
-    email: { provider: "RESEND", configured: emailEnabled() },
+    email: { provider: "RESEND", configured: emailService.emailEnabled() },
     inAppNotification: { configured: true },
     devicePush: { configured: false },
   },
@@ -106,17 +107,65 @@ exports.previewAudience = async (req, res) => {
 exports.testEmail = async (req, res) => {
   try {
     const { subject, message } = req.body;
-    const email = String(req.body.email || req.user.email || "").trim().toLowerCase();
+    const email = String(req.body.email || "").trim().toLowerCase();
     if (!bounded(subject, 160) || !bounded(message, 10000) || !validEmail(email)) {
-      return res.status(400).json({ success: false, message: "A valid email, subject, and message are required." });
+      return res.status(400).json({ success: false, message: "A valid test recipient email, subject, and message are required." });
     }
     const campaign = await Campaign.create({ channel: "EMAIL", kind: "TEST", subject: subject.trim(), message: message.trim(), audience: { kind: "TEST" }, createdBy: req.user._id, recipientCount: 1 });
-    const result = await sendEmail({ to: email, subject: subject.trim(), text: message.trim(), html: baseTemplate({ title: subject.trim(), greeting: `Hello ${req.user.fullName || "Administrator"}`, message: message.trim() }), idempotencyKey: `communications-test-${campaign._id}` });
+    const result = await emailService.sendEmail({ to: email, subject: subject.trim(), text: message.trim(), html: baseTemplate({ title: subject.trim(), greeting: `Hello ${req.user.fullName || "Administrator"}`, message: message.trim() }), idempotencyKey: `communications-test-${campaign._id}` });
     const outcome = result.success ? "SENT" : result.skipped ? "SKIPPED" : "FAILED";
     await Recipient.create({ campaignId: campaign._id, userId: email === req.user.email ? req.user._id : null, recipientKey: email, email, outcome, providerMessageId: result.messageId || null, error: result.error || result.reason || null });
     const completed = await completeCampaign(campaign, { sentCount: outcome === "SENT" ? 1 : 0, failedCount: outcome === "FAILED" ? 1 : 0, skippedCount: outcome === "SKIPPED" ? 1 : 0 });
-    return res.status(201).json({ success: true, campaign: campaignView(completed) });
-  } catch (error) { return res.status(500).json({ success: false, message: "Unable to send test email." }); }
+    const reference = String(campaign._id);
+    await AdminAuditLog.create({
+      actorId: req.user._id,
+      actorRole: String(req.user.role || "HEAD_OFFICE").toUpperCase(),
+      actorName: req.user.fullName || req.user.name || "",
+      targetUserName: `TEST EMAIL ${reference}`,
+      action: "EMAIL_CAMPAIGN_TESTED",
+      reason: result.success ? "Test email accepted by provider" : "Test email rejected by provider",
+      metadata: {
+        channel: "EMAIL",
+        testRecipient: email,
+        outcome,
+        provider: "RESEND",
+        providerMessageId: result.messageId || null,
+        testedAt: new Date().toISOString(),
+      },
+      ipAddress: String(req.ip || ""),
+      userAgent: String(req.headers?.["user-agent"] || ""),
+      requestMethod: req.method || "",
+      requestPath: req.originalUrl || "",
+      status: "SUCCESSFUL",
+    });
+    if (!result.success) {
+      return res.status(result.skipped ? 503 : 502).json({
+        success: false,
+        message: "Unable to send test email. Please try again.",
+        reference,
+        provider: {
+          name: "RESEND",
+          status: result.skipped ? "UNAVAILABLE" : "REJECTED",
+        },
+      });
+    }
+    return res.status(201).json({
+      success: true,
+      message: "Test email sent successfully",
+      reference,
+      provider: {
+        name: "RESEND",
+        status: "ACCEPTED",
+        messageId: result.messageId || null,
+      },
+      campaign: campaignView(completed),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Unable to send test email. Please try again.",
+    });
+  }
 };
 
 exports.broadcastEmail = async (req, res) => {
