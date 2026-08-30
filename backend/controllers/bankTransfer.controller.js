@@ -6,6 +6,7 @@ const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const BankTransfer = require("../models/bankTransfer.model");
 const { verifyTransactionPin } = require("../services/transactionPin.service");
+const { postDebit, postCredit } = require("../services/ledger.service");
 
 const SQUAD_BANKS = [
   { code: "000014", name: "Access Bank" },
@@ -253,20 +254,6 @@ const classifySquadResponse = (
   }
 
   if (
-    httpStatus >= 200 &&
-    httpStatus < 300 &&
-    (
-      success ||
-      statusText.includes("SUCCESS") ||
-      statusText.includes(
-        "COMPLETED"
-      )
-    )
-  ) {
-    return "SUCCESSFUL";
-  }
-
-  if (
     [
       400,
       401,
@@ -282,6 +269,20 @@ const classifySquadResponse = (
     statusText.includes("ERROR")
   ) {
     return "FAILED";
+  }
+
+  if (
+    httpStatus >= 200 &&
+    httpStatus < 300 &&
+    (
+      success ||
+      statusText.includes("SUCCESS") ||
+      statusText.includes(
+        "COMPLETED"
+      )
+    )
+  ) {
+    return "SUCCESSFUL";
   }
 
   if (
@@ -430,6 +431,7 @@ const createTransferRecords =
     transferFee,
     totalDebit,
     reference,
+    clientRequestId,
   }) => {
     const session =
       await mongoose.startSession();
@@ -454,7 +456,7 @@ const createTransferRecords =
             },
           },
           {
-            new: true,
+            returnDocument: "after",
             session,
             runValidators: true,
           }
@@ -514,6 +516,19 @@ const createTransferRecords =
       const transaction =
         createdTransactions[0];
 
+      await postDebit({
+        userId: customer._id,
+        amount: totalDebit,
+        openingBalance: customer.walletBalance + totalDebit,
+        closingBalance: customer.walletBalance,
+        service: "BANK_TRANSFER",
+        reference,
+        idempotencyKey: `bank-transfer:${customer._id}:${clientRequestId}:debit`,
+        transactionId: transaction._id,
+        narration: "Bank transfer wallet debit",
+        session,
+      });
+
       const createdRecords =
         await BankTransfer.create(
           [
@@ -523,6 +538,7 @@ const createTransferRecords =
               transactionId:
                 transaction._id,
               reference,
+              clientRequestId,
               provider: "SQUAD",
               bankCode:
                 bank.code,
@@ -563,7 +579,17 @@ const createTransferRecords =
       await session.endSession();
     }
   };
-  const refundBankTransfer =
+const transferProviderResponse = (record, providerPayload, extra = {}) => ({
+  bankTransferId: record._id,
+  transferType: "BANK_TRANSFER",
+  bankCode: record.bankCode, bankName: record.bankName,
+  accountNumber: record.accountNumber, accountName: record.accountName,
+  narration: record.narration, amount: record.amount,
+  transferFee: record.transferFee, totalDebit: record.totalDebit,
+  squad: providerPayload || null, ...extra,
+});
+
+const refundBankTransfer =
   async ({
     bankTransferId,
     reason,
@@ -573,21 +599,23 @@ const createTransferRecords =
       await mongoose.startSession();
 
     try {
-      session.startTransaction();
+      let outcome = null;
 
-      const record =
-        await BankTransfer.findOne({
+      await session.withTransaction(async () => {
+        const record =
+          await BankTransfer.findOneAndUpdate({
           _id: bankTransferId,
           refundProcessed: false,
-          status: {
-            $ne: "SUCCESSFUL",
+          status: { $in: ["PENDING", "PROCESSING", "FAILED"] },
+        }, {
+          $set: {
+            status: "REFUNDED", refundProcessed: true,
+            refundedAmount: 0, refundedAt: new Date(), failedAt: new Date(),
+            failureReason: normalizeText(reason), providerResponse: providerPayload || null,
           },
-        }).session(session);
+        }, { returnDocument: "after", session });
 
-      if (!record) {
-        await session.abortTransaction();
-        return null;
-      }
+        if (!record) return;
 
       const user =
         await User.findByIdAndUpdate(
@@ -599,7 +627,7 @@ const createTransferRecords =
             },
           },
           {
-            new: true,
+            returnDocument: "after",
             session,
             runValidators: true,
           }
@@ -611,74 +639,37 @@ const createTransferRecords =
         );
       }
 
-      record.status = "REFUNDED";
-      record.refundProcessed = true;
-      record.refundedAmount =
-        record.totalDebit;
-      record.walletBalanceAfterRefund =
-        user.walletBalance;
-      record.refundedAt = new Date();
-      record.failedAt =
-        record.failedAt || new Date();
-      record.failureReason =
-        normalizeText(reason);
-      record.providerResponse =
-        providerPayload ||
-        record.providerResponse;
+      record.refundedAmount = record.totalDebit;
+      record.walletBalanceAfterRefund = user.walletBalance;
+      await BankTransfer.updateOne(
+        { _id: record._id, status: "REFUNDED", refundProcessed: true },
+        { $set: { refundedAmount: record.totalDebit, walletBalanceAfterRefund: user.walletBalance } },
+        { session }
+      );
 
-      await record.save({ session });
+      await postCredit({
+        userId: record.sender, amount: record.totalDebit,
+        openingBalance: user.walletBalance - record.totalDebit,
+        closingBalance: user.walletBalance, service: "BANK_TRANSFER_REFUND",
+        reference: record.reference,
+        idempotencyKey: `bank-transfer:${record.sender}:${record.clientRequestId || record.reference}:refund`,
+        transactionId: record.transactionId, narration: "Bank transfer refund", session,
+      });
 
       if (record.transactionId) {
-        await Transaction.findByIdAndUpdate(
-          record.transactionId,
-          {
-            status: "REFUNDED",
-            providerResponse: {
-              bankTransferId:
-                record._id,
-              transferType:
-                "BANK_TRANSFER",
-              bankCode:
-                record.bankCode,
-              bankName:
-                record.bankName,
-              accountNumber:
-                record.accountNumber,
-              accountName:
-                record.accountName,
-              amount:
-                record.amount,
-              transferFee:
-                record.transferFee,
-              totalDebit:
-                record.totalDebit,
-              refundReason:
-                record.failureReason,
-              refundedAmount:
-                record.totalDebit,
-              refundedAt:
-                record.refundedAt,
-              squad:
-                providerPayload ||
-                null,
-            },
-          },
-          { session }
+        const transaction = await Transaction.findOneAndUpdate(
+          { _id: record.transactionId, status: { $in: ["PENDING", "FAILED"] } },
+           { $set: { status: "REFUNDED", providerResponse: transferProviderResponse(record, providerPayload, { refundReason: record.failureReason, refundedAmount: record.totalDebit, refundedAt: record.refundedAt }) } },
+           { returnDocument: "after", session }
         );
+        if (!transaction) {
+          throw new Error("Bank transfer transaction state is inconsistent.");
+        }
       }
 
-      await session.commitTransaction();
-
-      return {
-        record,
-        user,
-      };
-    } catch (error) {
-      if (session.inTransaction()) {
-        await session.abortTransaction();
-      }
-
-      throw error;
+        outcome = { record, user };
+      });
+      return outcome;
     } finally {
       await session.endSession();
     }
@@ -689,67 +680,42 @@ const markSuccessful =
     record,
     providerPayload,
   }) => {
-    if (
-      record.status === "REFUNDED" ||
-      record.refundProcessed
-    ) {
-      return record;
-    }
-
-    record.status = "SUCCESSFUL";
-    record.completedAt = new Date();
-
-    record.providerReference =
-      extractProviderReference(
-        providerPayload
-      ) ||
-      record.providerReference;
-
-    record.providerTransactionId =
-      extractProviderTransactionId(
-        providerPayload
-      ) ||
-      record.providerTransactionId;
-
-    record.providerResponse =
-      providerPayload;
-
-    await record.save();
-
-    if (record.transactionId) {
-      await Transaction.findByIdAndUpdate(
-        record.transactionId,
-        {
-          status: "SUCCESSFUL",
-          providerResponse: {
-            bankTransferId:
-              record._id,
-            transferType:
-              "BANK_TRANSFER",
-            bankCode:
-              record.bankCode,
-            bankName:
-              record.bankName,
-            accountNumber:
-              record.accountNumber,
-            accountName:
-              record.accountName,
-            narration:
-              record.narration,
-            amount:
-              record.amount,
-            transferFee:
-              record.transferFee,
-            totalDebit:
-              record.totalDebit,
-            squad:
-              providerPayload,
-          },
-        }
-      );
-    }
-
-    return record;
+     const session = await mongoose.startSession();
+     try {
+       let updated;
+       await session.withTransaction(async () => {
+         updated = await BankTransfer.findOneAndUpdate(
+            {
+              _id: record._id,
+              status: {
+                $in: [
+                  "PENDING",
+                  "PROCESSING",
+                  "FAILED",
+                ],
+              },
+              refundProcessed: false,
+            },
+           { $set: { status: "SUCCESSFUL", completedAt: new Date(), providerReference: extractProviderReference(providerPayload) || record.providerReference, providerTransactionId: extractProviderTransactionId(providerPayload) || record.providerTransactionId, providerResponse: providerPayload } },
+           { returnDocument: "after", session }
+         );
+         if (!updated) return;
+         if (updated.transactionId) {
+           const tx = await Transaction.findOneAndUpdate(
+              {
+                _id: updated.transactionId,
+                status: {
+                  $in: ["PENDING", "FAILED"],
+                },
+              },
+             { $set: { status: "SUCCESSFUL", providerResponse: transferProviderResponse(updated, providerPayload) } },
+             { returnDocument: "after", session }
+           );
+           if (!tx) throw new Error("Bank transfer transaction state is inconsistent.");
+         }
+       });
+       return updated || await BankTransfer.findById(record._id);
+     } finally { await session.endSession(); }
   };
 
 const markProcessing =
@@ -757,66 +723,92 @@ const markProcessing =
     record,
     providerPayload,
   }) => {
-    if (
-      [
-        "SUCCESSFUL",
-        "REFUNDED",
-      ].includes(record.status)
-    ) {
-      return record;
-    }
+     const session = await mongoose.startSession();
+     try {
+       let updated;
+       await session.withTransaction(async () => {
+         updated = await BankTransfer.findOneAndUpdate(
+           { _id: record._id, status: { $in: ["PENDING", "PROCESSING"] }, refundProcessed: false },
+           { $set: { status: "PROCESSING", providerReference: extractProviderReference(providerPayload) || record.providerReference, providerTransactionId: extractProviderTransactionId(providerPayload) || record.providerTransactionId, providerResponse: providerPayload } },
+           { returnDocument: "after", session }
+         );
+         if (updated?.transactionId) await Transaction.updateOne(
+           { _id: updated.transactionId, status: "PENDING" },
+           { $set: { providerResponse: transferProviderResponse(updated, providerPayload) } }, { session });
+       });
+       return updated || await BankTransfer.findById(record._id);
+     } finally { await session.endSession(); }
+  };
 
-    record.status = "PROCESSING";
-
-    record.providerReference =
-      extractProviderReference(
-        providerPayload
-      ) ||
-      record.providerReference;
-
-    record.providerTransactionId =
-      extractProviderTransactionId(
-        providerPayload
-      ) ||
-      record.providerTransactionId;
-
-    record.providerResponse =
-      providerPayload;
-
-    await record.save();
-
-    if (record.transactionId) {
-      await Transaction.findByIdAndUpdate(
-        record.transactionId,
-        {
-          status: "PENDING",
-          providerResponse: {
-            bankTransferId:
-              record._id,
-            transferType:
-              "BANK_TRANSFER",
-            bankCode:
-              record.bankCode,
-            bankName:
-              record.bankName,
-            accountNumber:
-              record.accountNumber,
-            accountName:
-              record.accountName,
-            amount:
-              record.amount,
-            transferFee:
-              record.transferFee,
-            totalDebit:
-              record.totalDebit,
-            squad:
-              providerPayload,
+const markFailed =
+  async ({
+    record,
+    providerPayload,
+    reason,
+  }) => {
+    const session = await mongoose.startSession();
+    try {
+      let updated;
+      await session.withTransaction(async () => {
+        updated = await BankTransfer.findOneAndUpdate(
+          {
+            _id: record._id,
+            status: {
+              $in: ["PENDING", "PROCESSING"],
+            },
+            refundProcessed: false,
           },
-        }
-      );
-    }
+          {
+            $set: {
+              status: "FAILED",
+              failedAt: new Date(),
+              failureReason: normalizeText(reason),
+              providerResponse: providerPayload,
+            },
+          },
+          { new: true, session }
+        );
 
-    return record;
+        if (updated?.transactionId) {
+          const transaction =
+            await Transaction.findOneAndUpdate(
+              {
+                _id: updated.transactionId,
+                status: "PENDING",
+              },
+              {
+                $set: {
+                  status: "FAILED",
+                  providerResponse:
+                    transferProviderResponse(
+                      updated,
+                      providerPayload,
+                      {
+                        failureReason:
+                          updated.failureReason,
+                        refundPending: true,
+                      }
+                    ),
+                },
+              },
+              { new: true, session }
+            );
+
+          if (!transaction) {
+            throw new Error(
+              "Bank transfer transaction state is inconsistent."
+            );
+          }
+        }
+      });
+
+      return (
+        updated ||
+        (await BankTransfer.findById(record._id))
+      );
+    } finally {
+      await session.endSession();
+    }
   };
 
 exports.getBanks = async (
@@ -924,6 +916,7 @@ exports.initiateBankTransfer =
   async (req, res) => {
     let record = null;
     let customer = null;
+    let clientRequestId = "";
 
     try {
       const config = getConfig();
@@ -953,6 +946,41 @@ exports.initiateBankTransfer =
         return res.status(401).json({
           success: false,
           message: "Unauthorized.",
+        });
+      }
+
+      clientRequestId = normalizeText(
+        req.body?.clientRequestId ||
+        req.body?.idempotencyKey ||
+        req.get?.("idempotency-key")
+      );
+
+      if (!clientRequestId || clientRequestId.length > 180) {
+        return res.status(400).json({
+          success: false,
+          message: "A valid client request ID is required for bank transfers.",
+        });
+      }
+
+      // A replay must never repeat account lookup, debit, or provider payout.
+      const prior = await BankTransfer.findOne({ sender: userId, clientRequestId });
+      if (prior) {
+        const user = await User.findById(userId).select("walletBalance");
+        const walletBalance = user?.walletBalance ?? 0;
+        return res.status(prior.status === "PROCESSING" || prior.status === "PENDING" ? 202 : 200).json({
+          success: true,
+          idempotent: true,
+          message: prior.status === "PROCESSING" || prior.status === "PENDING"
+            ? "Your bank transfer is still processing. Do not retry it."
+            : "Bank transfer request replayed.",
+          reference: prior.reference,
+          status: prior.status,
+          walletBalance,
+          data: {
+            reference: prior.reference, status: prior.status, amount: prior.amount,
+            transferFee: prior.transferFee, totalDebit: prior.totalDebit,
+            walletBalance,
+          },
         });
       }
 
@@ -1087,6 +1115,7 @@ exports.initiateBankTransfer =
             config.transferFee,
           totalDebit,
           reference,
+          clientRequestId,
         });
 
       customer =
@@ -1215,24 +1244,42 @@ exports.initiateBankTransfer =
           });
       }
 
+      if (outcome === "FAILED") {
+        await markFailed({
+          record,
+          reason: getMessage(
+            payload,
+            "The transfer failed."
+          ),
+          providerPayload: payload,
+        });
+
+        return res.status(202).json({
+          success: true,
+          message:
+            "The provider reported this transfer as failed. Your funds remain protected while reversal is confirmed.",
+          reference,
+          status: "FAILED",
+          refundPending: true,
+          walletBalance:
+            customer.walletBalance,
+        });
+      }
+
       const refund =
         await refundBankTransfer({
           bankTransferId:
             record._id,
-          reason: getMessage(
-            payload,
-            outcome === "REVERSED"
-              ? "The transfer was reversed."
-              : "The transfer failed."
-          ),
+          reason:
+            "The transfer was reversed.",
           providerPayload:
             payload,
         });
 
-      return res.status(400).json({
-        success: false,
+      return res.status(200).json({
+        success: true,
         message:
-          "Bank transfer failed. Your wallet has been refunded.",
+          "The transfer was reversed and your wallet has been refunded.",
         reference,
         status: "REFUNDED",
         walletBalance:
@@ -1255,47 +1302,52 @@ exports.initiateBankTransfer =
 
       if (record?._id) {
         try {
-          const refund =
-            await refundBankTransfer({
-              bankTransferId:
-                record._id,
-              reason:
-                error.message ||
-                "Bank transfer failed.",
-              providerPayload:
-                error.response?.data ||
-                {
-                  message:
-                    error.message,
-                },
-            });
+          // Once a transfer record exists, a transport error is ambiguous:
+          // Squad may have accepted it. Never refund based on uncertainty.
+          const pending = await markProcessing({
+            record,
+            providerPayload: error.response?.data || {
+              message: error.message,
+              code: error.code || "TRANSPORT_OR_INTERNAL_ERROR",
+            },
+          });
 
           return res
-            .status(500)
+            .status(202)
             .json({
-              success: false,
+              success: true,
               message:
-                "Bank transfer failed. Your wallet has been refunded.",
+                "Your bank transfer is processing. Do not retry it. Check the status shortly.",
               reference:
                 record.reference,
               status:
-                "REFUNDED",
+                pending?.status || "PROCESSING",
               walletBalance:
-                refund?.user
-                  ?.walletBalance ??
                 customer
                   ?.walletBalance ??
                 0,
-              refundedAmount:
-                record.totalDebit,
             });
-        } catch (
-          refundError
-        ) {
+        } catch (processingError) {
           console.error(
-            "BANK TRANSFER REFUND ERROR:",
-            refundError
+            "BANK TRANSFER PROCESSING MARK ERROR:",
+            processingError
           );
+        }
+      }
+
+      if (error?.code === 11000 && clientRequestId) {
+        const prior = await BankTransfer.findOne({
+          sender: getLoggedInUserId(req),
+          clientRequestId,
+        });
+        if (prior) {
+          return res.status(202).json({
+            success: true, idempotent: true,
+            message: "Your bank transfer request already exists. Do not retry it.",
+            reference: prior.reference,
+            status: prior.status,
+            data: { reference: prior.reference, status: prior.status, amount: prior.amount, totalDebit: prior.totalDebit },
+          });
         }
       }
 
@@ -1467,10 +1519,7 @@ exports.initiateBankTransfer =
           providerPayload:
             payload,
         });
-      } else if (
-        outcome === "FAILED" ||
-        outcome === "REVERSED"
-      ) {
+      } else if (outcome === "REVERSED") {
         await refundBankTransfer({
           bankTransferId:
             record._id,
@@ -1480,6 +1529,15 @@ exports.initiateBankTransfer =
           ),
           providerPayload:
             payload,
+        });
+      } else if (outcome === "FAILED") {
+        await markFailed({
+          record,
+          reason: getMessage(
+            payload,
+            "The bank transfer failed. Reversal confirmation is pending."
+          ),
+          providerPayload: payload,
         });
       } else {
         await markProcessing({
@@ -1792,10 +1850,7 @@ exports.squadWebhook =
               payload,
           });
         }
-      } else if (
-        outcome === "FAILED" ||
-        outcome === "REVERSED"
-      ) {
+      } else if (outcome === "REVERSED") {
         if (
           record.status !==
             "SUCCESSFUL" &&
@@ -1812,6 +1867,15 @@ exports.squadWebhook =
               payload,
           });
         }
+      } else if (outcome === "FAILED") {
+        await markFailed({
+          record,
+          reason: getMessage(
+            payload,
+            "The bank transfer failed. Reversal confirmation is pending."
+          ),
+          providerPayload: payload,
+        });
       } else if (
         ![
           "SUCCESSFUL",
@@ -1955,4 +2019,14 @@ exports.adminRequeryBankTransfer = async (req, res) => {
       message: "Unable to requery this transaction right now.",
     });
   }
+};
+
+// Kept intentionally small and undocumented: transaction-backed settlement
+// primitives are exercised with a Mongo replica set in the backend test suite.
+exports.__testOnly = {
+  createTransferRecords,
+  refundBankTransfer,
+  markSuccessful,
+  markProcessing,
+  markFailed,
 };

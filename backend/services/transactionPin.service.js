@@ -100,17 +100,28 @@ const clearReservedPinAttempt = async (user, reservationVersion, session) => {
   if (session) query = query.session(session);
   const result = await query;
   if (result.modifiedCount !== 1) {
-    // A later attempt raced with this correct PIN. Do not erase its evidence.
-    await User.updateOne(
-      { _id: user._id },
-      { $set: { transactionPinLockedUntil: new Date(Date.now() + LOCK_DURATION_MS) } }
-    );
+    // A later verification already owns the current reservation version.
+    // Wait briefly for that verifier to either clear a correct attempt or
+    // persist/lock a failed one. This permits concurrent correct requests
+    // without weakening fail-closed behavior for parallel PIN guesses.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const current = await User.findById(user._id).select(
+        "+transactionPinFailedAttempts +transactionPinLockedUntil"
+      );
+      assertPinNotLocked(current);
+      if (Number(current.transactionPinFailedAttempts || 0) === 0) {
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
     throw pinError(
-      "Transaction PIN verification is temporarily locked. Please try again later.",
-      "TRANSACTION_PIN_LOCKED",
+      "Another transaction PIN verification is still being completed. Please try again.",
+      "TRANSACTION_PIN_RETRY_REQUIRED",
       429
     );
   }
+  return true;
 };
 
 const hasUsablePin = (user) =>

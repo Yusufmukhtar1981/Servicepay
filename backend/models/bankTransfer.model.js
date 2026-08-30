@@ -28,6 +28,15 @@ const bankTransferSchema =
         index: true,
       },
 
+      // Supplied by the client once per user submit. It is deliberately
+      // scoped to the sender so two customers may use the same UUID.
+      clientRequestId: {
+        type: String,
+        trim: true,
+        maxlength: 180,
+        default: undefined,
+      },
+
       provider: {
         type: String,
         default: "SQUAD",
@@ -191,6 +200,16 @@ bankTransferSchema.index({
   sender: 1,
   createdAt: -1,
 });
+
+bankTransferSchema.index(
+  { sender: 1, clientRequestId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      clientRequestId: { $type: "string", $gt: "" },
+    },
+  }
+);
 
 bankTransferSchema.index(
   {

@@ -1,9 +1,20 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+bool retainServicePayTransferRequestKey({
+  required int statusCode,
+  required String responseCode,
+}) {
+  return statusCode >= 500 ||
+      responseCode == 'TRANSACTION_PIN_RETRY_REQUIRED' ||
+      responseCode == 'TRANSFER_RESULT_UNCONFIRMED' ||
+      responseCode == 'TRANSFER_TEMPORARILY_UNAVAILABLE';
+}
 
 class TransferScreen extends StatefulWidget {
   const TransferScreen({super.key});
@@ -24,6 +35,27 @@ class _TransferScreenState extends State<TransferScreen> {
   final TextEditingController amountController = TextEditingController();
 
   bool isLoading = false;
+  String? pendingTransferRequestKey;
+  String? pendingTransferSignature;
+
+  String requestKeyForTransfer(String receiverPhone, double amount) {
+    final String signature = '$receiverPhone:${amount.toStringAsFixed(2)}';
+    if (pendingTransferRequestKey != null &&
+        pendingTransferSignature == signature) {
+      return pendingTransferRequestKey!;
+    }
+
+    final String key =
+        'servicepay-${DateTime.now().microsecondsSinceEpoch}-${math.Random.secure().nextInt(1 << 32)}';
+    pendingTransferRequestKey = key;
+    pendingTransferSignature = signature;
+    return key;
+  }
+
+  void clearPendingTransferRequest() {
+    pendingTransferRequestKey = null;
+    pendingTransferSignature = null;
+  }
 
   @override
   void dispose() {
@@ -521,6 +553,10 @@ class _TransferScreenState extends State<TransferScreen> {
   }
 
   Future<void> transferMoney() async {
+    if (isLoading) {
+      return;
+    }
+
     FocusScope.of(context).unfocus();
 
     if (!(formKey.currentState?.validate() ?? false)) {
@@ -604,6 +640,11 @@ class _TransferScreenState extends State<TransferScreen> {
         isLoading = true;
       });
 
+      final String requestKey = requestKeyForTransfer(
+        receiverPhone,
+        amount,
+      );
+
       final http.Response response = await http
           .post(
             Uri.parse(
@@ -613,6 +654,7 @@ class _TransferScreenState extends State<TransferScreen> {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
+              'Idempotency-Key': requestKey,
             },
             body: jsonEncode({
               'receiverPhone': receiverPhone,
@@ -637,6 +679,14 @@ class _TransferScreenState extends State<TransferScreen> {
           responseData['success'] == true;
 
       if (!requestSuccessful) {
+        final String responseCode =
+            responseData['code']?.toString().trim() ?? '';
+        if (!retainServicePayTransferRequestKey(
+          statusCode: response.statusCode,
+          responseCode: responseCode,
+        )) {
+          clearPendingTransferRequest();
+        }
         showMessage(
           responseData['message']?.toString() ??
               'Transfer failed. Please try again.',
@@ -678,6 +728,7 @@ class _TransferScreenState extends State<TransferScreen> {
 
       phoneController.clear();
       amountController.clear();
+      clearPendingTransferRequest();
 
       if (!mounted) {
         return;
@@ -776,7 +827,8 @@ class _TransferScreenState extends State<TransferScreen> {
       }
 
       showMessage(
-        'Unable to connect to the server. Please try again.',
+        'The transfer result could not be confirmed. Check Transactions and '
+        'your wallet balance before attempting another transfer.',
       );
     } finally {
       if (mounted) {

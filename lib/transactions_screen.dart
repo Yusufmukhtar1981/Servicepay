@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'account_statement_screen.dart';
+import 'receipt_screen.dart';
+import 'transaction_presentation.dart';
+
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
 
@@ -23,10 +27,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   bool isLoading = true;
   bool isRefreshing = false;
   bool isLoadingMore = false;
+  bool isPreparingStatement = false;
   bool hasMore = false;
 
   String searchQuery = '';
   String selectedFilter = 'ALL';
+  String selectedType = 'ALL';
+  String selectedDateRange = 'ALL_TIME';
+  DateTimeRange? customDateRange;
   String errorMessage = '';
   String? nextCursor;
 
@@ -34,9 +42,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   final List<String> filters = const [
     'ALL',
+    'PROCESSING',
     'SUCCESSFUL',
     'PENDING',
     'FAILED',
+    'REVERSED',
   ];
 
   @override
@@ -127,7 +137,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
         setState(() {
           final Map<String, Map<String, dynamic>> combined = {
-            for (final transaction in reset ? <Map<String, dynamic>>[] : transactions)
+            for (final transaction
+                in reset ? <Map<String, dynamic>>[] : transactions)
               _transactionId(transaction): transaction,
           };
 
@@ -160,9 +171,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       if (!mounted) return;
 
       setState(() {
-          if (reset || transactions.isEmpty) {
-            errorMessage = error.toString().replaceFirst('Exception: ', '');
-          }
+        if (transactions.isEmpty) {
+          errorMessage = error.toString().replaceFirst('Exception: ', '');
+        }
       });
     } finally {
       if (mounted) {
@@ -268,124 +279,96 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   List<Map<String, dynamic>> get filteredTransactions {
-    final String query = searchQuery.trim().toLowerCase();
-
     return transactions.where((transaction) {
-      final String status = _transactionStatus(transaction);
-
+      final presentation = TransactionPresentation(transaction);
       final bool matchesFilter =
-          selectedFilter == 'ALL' || status == selectedFilter;
-
-      final String searchableText = [
-        _transactionTitle(transaction),
-        _transactionReference(transaction),
-        _transactionDescription(transaction),
-        _transactionStatus(transaction),
-        _transactionAmount(transaction).toString(),
-      ].join(' ').toLowerCase();
-
-      final bool matchesSearch =
-          query.isEmpty || searchableText.contains(query);
-
-      return matchesFilter && matchesSearch;
+          selectedFilter == 'ALL' || presentation.status == selectedFilter;
+      final bool matchesType = selectedType == 'ALL' ||
+          presentation.title.toUpperCase() == selectedType;
+      return matchesFilter &&
+          matchesType &&
+          _matchesDateRange(presentation.date) &&
+          presentation.matchesSearch(searchQuery);
     }).toList();
   }
+
+  bool _matchesDateRange(DateTime? date) {
+    return transactionDateMatchesRange(
+      date: date,
+      range: selectedDateRange,
+      now: DateTime.now(),
+      customRange: customDateRange,
+    );
+  }
+
+  Future<void> _selectHistoryDateRange(String value) async {
+    if (value != 'CUSTOM') {
+      setState(() => selectedDateRange = value);
+      return;
+    }
+    final DateTime now = DateTime.now();
+    final DateTimeRange? selected = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: now,
+      initialDateRange: customDateRange ??
+          DateTimeRange(
+            start: now.subtract(const Duration(days: 29)),
+            end: now,
+          ),
+      helpText: 'Filter transaction dates',
+    );
+    if (selected != null && mounted) {
+      setState(() {
+        customDateRange = selected;
+        selectedDateRange = 'CUSTOM';
+      });
+    }
+  }
+
+  List<String> get _types => [
+        'ALL',
+        ...transactions
+            .map((item) => TransactionPresentation(item).title.toUpperCase())
+            .toSet()
+            .toList()
+          ..sort(),
+      ];
 
   String _transactionTitle(
     Map<String, dynamic> transaction,
   ) {
-    final dynamic value = transaction['serviceType'] ??
-        transaction['type'] ??
-        transaction['transactionType'] ??
-        transaction['category'] ??
-        'Transaction';
-
-    return _formatTitle(value.toString());
+    return TransactionPresentation(transaction).title;
   }
 
   String _transactionDescription(
     Map<String, dynamic> transaction,
   ) {
-    final dynamic value = transaction['description'] ??
-        transaction['narration'] ??
-        transaction['message'] ??
-        transaction['counterparty'] ??
-        transaction['recipientPhone'] ??
-        transaction['phone'] ??
-        '';
-
-    return value.toString().trim();
+    return TransactionPresentation(transaction).description;
   }
 
   String _transactionReference(
     Map<String, dynamic> transaction,
   ) {
-    final dynamic value = transaction['reference'] ??
-        transaction['transactionReference'] ??
-        transaction['transactionId'] ??
-        transaction['_id'] ??
-        '';
-
-    return value.toString();
+    return TransactionPresentation(transaction).reference;
   }
 
   String _transactionStatus(
     Map<String, dynamic> transaction,
   ) {
-    final dynamic value =
-        transaction['status'] ?? transaction['paymentStatus'] ?? 'PENDING';
-
-    final String status = value.toString().trim().toUpperCase();
-
-    if (status == 'SUCCESS' || status == 'COMPLETED' || status == 'PAID') {
-      return 'SUCCESSFUL';
-    }
-
-    if (status == 'FAIL' ||
-        status == 'FAILED' ||
-        status == 'DECLINED' ||
-        status == 'CANCELLED') {
-      return 'FAILED';
-    }
-
-    return status.isEmpty ? 'PENDING' : status;
+    return TransactionPresentation(transaction).status;
   }
 
   double _transactionAmount(
     Map<String, dynamic> transaction,
   ) {
-    final dynamic value = transaction['amount'] ??
-        transaction['totalAmount'] ??
-        transaction['value'] ??
-        0;
-
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    return double.tryParse(
-          value.toString().replaceAll(',', '').trim(),
-        ) ??
-        0;
+    return TransactionPresentation(transaction).amount;
   }
 
   String _transactionDirection(
     Map<String, dynamic> transaction,
   ) {
-    final String value =
-        (transaction['direction'] ?? '').toString().trim().toUpperCase();
-
-    if (value == 'CREDIT' || value == 'DEBIT') {
-      return value;
-    }
-
-    final String title = _transactionTitle(transaction).toUpperCase();
-
-    return title.contains('FUNDING') ||
-            title.contains('REFUND') ||
-            title.contains('REVERSAL')
-        ? 'CREDIT'
-        : 'DEBIT';
+    return TransactionPresentation(transaction).direction;
   }
 
   Color _directionColor(String direction) {
@@ -489,15 +472,184 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   Color _statusColor(String status) {
-    if (status == 'SUCCESSFUL') {
-      return primaryGreen;
-    }
+    return TransactionPresentation.statusColor(status);
+  }
 
-    if (status == 'FAILED') {
-      return const Color(0xFFDC2626);
-    }
+  void _openReceipt(Map<String, dynamic> transaction) {
+    final presentation = TransactionPresentation(transaction);
+    final Map<String, String> details = <String, String>{
+      for (final MapEntry<String, String> detail in presentation.details)
+        detail.key: detail.value,
+    };
 
-    return const Color(0xFFF59E0B);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReceiptScreen(
+          serviceName: presentation.title,
+          amount: presentation.amount.toStringAsFixed(2),
+          status: presentation.status,
+          reference: presentation.reference,
+          date: _formatDate(presentation.date),
+          details: details,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _refreshTransactionStatus(
+    Map<String, dynamic> transaction,
+  ) async {
+    final TransactionPresentation presentation =
+        TransactionPresentation(transaction);
+    if (presentation.lookupId.isEmpty) return;
+
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String token = prefs.getString('auth_token') ?? '';
+      if (token.trim().isEmpty) {
+        throw Exception('Your login session has expired.');
+      }
+      final http.Response response = await http.get(
+        Uri.parse('$baseUrl/transactions/${presentation.lookupId}'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 30));
+      final dynamic decoded = _decodeResponse(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          _extractMessage(
+            decoded,
+            fallback: 'Unable to refresh this transaction.',
+          ),
+        );
+      }
+      final dynamic raw =
+          decoded is Map ? decoded['transaction'] ?? decoded['data'] : null;
+      if (raw is! Map) {
+        throw Exception('Transaction status returned an invalid response.');
+      }
+      final Map<String, dynamic> refreshed = Map<String, dynamic>.from(raw);
+      if (!mounted) return;
+      setState(() {
+        final int index = transactions.indexWhere(
+          (Map<String, dynamic> item) =>
+              TransactionPresentation(item).lookupId == presentation.lookupId,
+        );
+        if (index >= 0) transactions[index] = refreshed;
+      });
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transaction status refreshed.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openStatement() async {
+    if (isPreparingStatement) return;
+    setState(() => isPreparingStatement = true);
+
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String token = prefs.getString('auth_token') ?? '';
+      if (token.trim().isEmpty) {
+        throw Exception('Your login session has expired.');
+      }
+
+      final Map<String, Map<String, dynamic>> complete = {};
+      String? cursor;
+      bool more = true;
+      int pages = 0;
+
+      while (more && pages < 100) {
+        final Map<String, String> query = <String, String>{'limit': '100'};
+        if (cursor != null && cursor.isNotEmpty) {
+          query['before'] = cursor;
+        }
+        final http.Response response = await http.get(
+          Uri.parse('$baseUrl/transactions').replace(
+            queryParameters: query,
+          ),
+          headers: <String, String>{
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ).timeout(const Duration(seconds: 30));
+        final dynamic decoded = _decodeResponse(response.body);
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw Exception(
+            _extractMessage(
+              decoded,
+              fallback: 'Unable to prepare your complete statement.',
+            ),
+          );
+        }
+        for (final Map<String, dynamic> item in _extractTransactions(decoded)) {
+          complete[_transactionId(item)] = item;
+        }
+        final Map<String, dynamic> pagination = _extractPagination(decoded);
+        more = pagination['hasMore'] == true;
+        cursor = pagination['nextCursor']?.toString();
+        pages += 1;
+        if (more && (cursor == null || cursor.isEmpty)) {
+          throw Exception('Transaction pagination could not be completed.');
+        }
+      }
+      if (more) {
+        throw Exception(
+          'Your history is too large to export safely right now.',
+        );
+      }
+
+      final List<AccountStatementTransaction> statementTransactions =
+          complete.values.map((Map<String, dynamic> transaction) {
+        final TransactionPresentation presentation =
+            TransactionPresentation(transaction);
+        return AccountStatementTransaction(
+          reference: presentation.reference,
+          description: presentation.description.isEmpty
+              ? presentation.title
+              : presentation.description,
+          amount: presentation.amount.toStringAsFixed(2),
+          occurredAt:
+              presentation.date ?? DateTime.fromMillisecondsSinceEpoch(0),
+          status: presentation.status,
+          direction: presentation.direction == 'CREDIT'
+              ? StatementDirection.credit
+              : StatementDirection.debit,
+        );
+      }).where((AccountStatementTransaction item) {
+        return item.occurredAt.millisecondsSinceEpoch > 0;
+      }).toList();
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AccountStatementScreen(
+            transactions: statementTransactions,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isPreparingStatement = false);
+      }
+    }
   }
 
   void _showTransactionDetails(
@@ -515,6 +667,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     final DateTime? date = _transactionDate(transaction);
     final String direction = _transactionDirection(transaction);
+    final presentation = TransactionPresentation(transaction);
 
     showModalBottomSheet(
       context: context,
@@ -536,84 +689,130 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
           child: SafeArea(
             top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 46,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                CircleAvatar(
-                  radius: 31,
-                  backgroundColor: const Color(0xFFE8F5E9),
-                  child: Icon(
-                    _transactionIcon(title),
-                    color: primaryGreen,
-                    size: 31,
-                  ),
-                ),
-                const SizedBox(height: 13),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _formattedAmount(amount, direction),
-                  style: TextStyle(
-                    color: _directionColor(direction),
-                    fontSize: 27,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _statusColor(status).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: _statusColor(status),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(20),
                     ),
                   ),
-                ),
-                const SizedBox(height: 22),
-                _DetailRow(
-                  label: 'Date',
-                  value: _formatDate(date),
-                ),
-                _DetailRow(
-                  label: 'Direction',
-                  value: direction,
-                ),
-                if (description.isNotEmpty)
-                  _DetailRow(
-                    label: 'Description',
-                    value: description,
+                  const SizedBox(height: 20),
+                  CircleAvatar(
+                    radius: 31,
+                    backgroundColor: const Color(0xFFE8F5E9),
+                    child: Icon(
+                      _transactionIcon(title),
+                      color: primaryGreen,
+                      size: 31,
+                    ),
                   ),
-                if (reference.isNotEmpty)
-                  _DetailRow(
-                    label: 'Reference',
-                    value: reference,
+                  const SizedBox(height: 13),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    _formattedAmount(amount, direction),
+                    style: TextStyle(
+                      color: _directionColor(direction),
+                      fontSize: 27,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _statusColor(status).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      status,
+                      style: TextStyle(
+                        color: _statusColor(status),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  _DetailRow(
+                    label: 'Date',
+                    value: _formatDate(date),
+                  ),
+                  _DetailRow(
+                    label: 'Direction',
+                    value: direction,
+                  ),
+                  if (description.isNotEmpty)
+                    _DetailRow(
+                      label: 'Description',
+                      value: description,
+                    ),
+                  if (reference.isNotEmpty)
+                    _DetailRow(
+                      label: 'Reference',
+                      value: reference,
+                    ),
+                  for (final detail in presentation.details)
+                    _DetailRow(label: detail.key, value: detail.value),
+                  const SizedBox(height: 16),
+                  _TransactionTimeline(
+                    transaction: transaction,
+                    status: status,
+                  ),
+                  const SizedBox(height: 16),
+                  if (presentation.lookupId.isNotEmpty)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _refreshTransactionStatus(transaction),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Check transaction status'),
+                      ),
+                    ),
+                  if (status == 'SUCCESSFUL')
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => _openReceipt(transaction),
+                        icon: const Icon(Icons.receipt_long_rounded),
+                        label: const Text('View receipt'),
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              reference.isEmpty
+                                  ? 'Contact support from the Help section.'
+                                  : 'Report this issue to support with reference $reference.',
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.support_agent_rounded),
+                      label: const Text('Report an issue'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -638,6 +837,20 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Account statement',
+            onPressed: isPreparingStatement ? null : _openStatement,
+            icon: isPreparingStatement
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(Icons.description_outlined),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: isRefreshing
@@ -765,6 +978,58 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       },
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _FilterMenu(
+                          label: 'Type',
+                          value: selectedType,
+                          items: _types,
+                          format: _formatTitle,
+                          onChanged: (value) {
+                            setState(() => selectedType = value);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _FilterMenu(
+                          label: 'Date',
+                          value: selectedDateRange,
+                          items: const [
+                            'ALL_TIME',
+                            'TODAY',
+                            'LAST_7_DAYS',
+                            'LAST_30_DAYS',
+                            'CUSTOM',
+                          ],
+                          format: (value) {
+                            switch (value) {
+                              case 'ALL_TIME':
+                                return 'All time';
+                              case 'LAST_7_DAYS':
+                                return 'Last 7 days';
+                              case 'LAST_30_DAYS':
+                                return 'Last 30 days';
+                              case 'CUSTOM':
+                                return customDateRange == null
+                                    ? 'Custom range'
+                                    : '${customDateRange!.start.day}/'
+                                        '${customDateRange!.start.month} – '
+                                        '${customDateRange!.end.day}/'
+                                        '${customDateRange!.end.month}';
+                              default:
+                                return 'Today';
+                            }
+                          },
+                          onChanged: (value) {
+                            _selectHistoryDateRange(value);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 18),
                   if (errorMessage.isNotEmpty)
                     _ErrorState(
@@ -801,9 +1066,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           amount: _transactionAmount(
                             transaction,
                           ),
-                           direction: _transactionDirection(
-                             transaction,
-                           ),
+                          direction: _transactionDirection(
+                            transaction,
+                          ),
                           status: _transactionStatus(
                             transaction,
                           ),
@@ -822,11 +1087,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               transaction,
                             ),
                           ),
-                           directionColor: _directionColor(
-                             _transactionDirection(
-                               transaction,
-                             ),
-                           ),
+                          directionColor: _directionColor(
+                            _transactionDirection(
+                              transaction,
+                            ),
+                          ),
                           onTap: () {
                             _showTransactionDetails(
                               transaction,
@@ -1007,6 +1272,125 @@ class _TransactionCard extends StatelessWidget {
   }
 }
 
+class _FilterMenu extends StatelessWidget {
+  final String label;
+  final String value;
+  final List<String> items;
+  final String Function(String) format;
+  final ValueChanged<String> onChanged;
+
+  const _FilterMenu({
+    required this.label,
+    required this.value,
+    required this.items,
+    required this.format,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFE8ECE8)),
+        ),
+      ),
+      items: items
+          .map((item) =>
+              DropdownMenuItem(value: item, child: Text(format(item))))
+          .toList(),
+      onChanged: (next) {
+        if (next != null) onChanged(next);
+      },
+    );
+  }
+}
+
+class _TransactionTimeline extends StatelessWidget {
+  final Map<String, dynamic> transaction;
+  final String status;
+
+  const _TransactionTimeline({
+    required this.transaction,
+    required this.status,
+  });
+
+  DateTime? _readDate(String key) {
+    final value = transaction[key];
+    return value == null
+        ? null
+        : DateTime.tryParse(value.toString())?.toLocal();
+  }
+
+  String _format(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$day/$month/${date.year} • $hour:$minute';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final created = _readDate('createdAt');
+    final updated = _readDate('updatedAt');
+    final completed = _readDate('completedAt');
+    final failed = _readDate('failedAt');
+    final reversed = _readDate('refundedAt');
+    final events = <MapEntry<String, DateTime>>[
+      if (created != null) MapEntry('Initiated', created),
+      if (completed != null) MapEntry('Completed', completed),
+      if (failed != null) MapEntry('Failed', failed),
+      if (reversed != null) MapEntry('Reversed', reversed),
+      if (updated != null &&
+          updated != created &&
+          completed == null &&
+          failed == null &&
+          reversed == null)
+        MapEntry('Last updated', updated),
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Status timeline',
+              style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          if (events.isEmpty)
+            Text(
+              'Current status: $status. No event timestamps were provided.',
+              style: const TextStyle(color: Color(0xFF6B7280)),
+            )
+          else
+            for (final event in events)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Text(
+                  '${event.key} • ${_format(event.value)}',
+                  style: const TextStyle(color: Color(0xFF4B5563)),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ErrorState extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
@@ -1091,7 +1475,7 @@ class _EmptyState extends StatelessWidget {
           ),
           SizedBox(height: 6),
           Text(
-            'Your completed transactions will appear here.',
+            'Transactions matching your filters will appear here.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Color(0xFF777D78),

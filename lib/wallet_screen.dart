@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,7 +7,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'manual_funding_screen.dart';
+import 'qr_pay_screen.dart';
 import 'transfer_screen.dart';
+import 'transactions_screen.dart';
+import 'withdrawal_screen.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -16,12 +20,14 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   bool isLoading = true;
   bool isRefreshing = false;
   bool hideBalance = false;
+  bool isUsingSavedBalance = false;
+
+  String walletNotice = '';
 
   bool isVirtualAccountLoading = false;
   bool isCreatingVirtualAccount = false;
@@ -65,31 +71,26 @@ class _WalletScreenState extends State<WalletScreen> {
     });
 
     try {
-      final SharedPreferences prefs =
-          await SharedPreferences.getInstance();
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String? token =
-          prefs.getString('auth_token');
+      final String? token = prefs.getString('auth_token');
 
-      final String savedName =
-          prefs.getString('user_name') ??
+      final String savedName = prefs.getString('user_name') ??
           prefs.getString('full_name') ??
           prefs.getString('name') ??
           'Servicepay Customer';
 
       final String savedPhone =
-          prefs.getString('user_phone') ??
-          prefs.getString('phone') ??
-          '';
+          prefs.getString('user_phone') ?? prefs.getString('phone') ?? '';
 
-      final double savedBalance =
-          prefs.getDouble('wallet_balance') ?? 0.0;
+      final double savedBalance = prefs.getDouble('wallet_balance') ?? 0.0;
 
       if (mounted) {
         setState(() {
           userName = savedName;
           userPhone = savedPhone;
           walletBalance = savedBalance;
+          isUsingSavedBalance = true;
         });
       }
 
@@ -98,6 +99,12 @@ class _WalletScreenState extends State<WalletScreen> {
           'Your login session is unavailable. Please sign in again.',
           isError: true,
         );
+        if (mounted) {
+          setState(() {
+            walletNotice =
+                'Wallet balance could not be refreshed because your session is unavailable.';
+          });
+        }
         return;
       }
 
@@ -112,18 +119,35 @@ class _WalletScreenState extends State<WalletScreen> {
           showMessageOnFailure: false,
         ),
       ]);
+    } on TimeoutException {
+      if (mounted) {
+        setState(() {
+          walletNotice =
+              'Wallet refresh timed out. Showing the last balance saved on this device.';
+        });
+      }
+      _showMessage(
+        'Wallet refresh timed out. Please try again.',
+        isError: true,
+      );
     } catch (_) {
+      if (mounted) {
+        setState(() {
+          walletNotice =
+              'Unable to connect. Showing the last balance saved on this device.';
+        });
+      }
       _showMessage(
         'Unable to connect to Servicepay. Your saved wallet information is still available.',
         isError: true,
       );
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        isLoading = false;
-        isRefreshing = false;
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+        });
+      }
     }
   }
 
@@ -133,28 +157,22 @@ class _WalletScreenState extends State<WalletScreen> {
     required double savedBalance,
   }) async {
     try {
-      final http.Response response = await http
-          .get(
-            Uri.parse('$baseUrl/wallet'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-          )
-          .timeout(
-            const Duration(seconds: 30),
-          );
+      final http.Response response = await http.get(
+        Uri.parse('$baseUrl/wallet'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+      );
 
-      final dynamic decoded =
-          _decodeResponse(response.body);
+      final dynamic decoded = _decodeResponse(response.body);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300) {
-        final double newBalance =
-            _extractBalance(decoded) ?? savedBalance;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final double newBalance = _extractBalance(decoded) ?? savedBalance;
 
-        final List<dynamic> newTransactions =
-            _extractTransactions(decoded);
+        final List<dynamic> newTransactions = _extractTransactions(decoded);
 
         await prefs.setDouble(
           'wallet_balance',
@@ -166,21 +184,41 @@ class _WalletScreenState extends State<WalletScreen> {
         setState(() {
           walletBalance = newBalance;
           transactions = newTransactions;
+          isUsingSavedBalance = false;
+          walletNotice = '';
         });
       } else {
         final String message = _extractMessage(
           decoded,
-          fallback:
-              'Unable to refresh wallet right now.',
+          fallback: 'Unable to refresh wallet right now.',
         );
 
         _showMessage(
           message,
           isError: true,
         );
+        if (mounted) {
+          setState(() {
+            isUsingSavedBalance = true;
+            walletNotice =
+                '$message Showing the last balance saved on this device.';
+          });
+        }
       }
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        isUsingSavedBalance = true;
+        walletNotice =
+            'Wallet refresh timed out. Showing the last balance saved on this device.';
+      });
     } catch (_) {
-      // Keep the locally saved wallet balance.
+      if (!mounted) return;
+      setState(() {
+        isUsingSavedBalance = true;
+        walletNotice =
+            'Unable to connect. Showing the last balance saved on this device.';
+      });
     }
   }
 
@@ -195,31 +233,26 @@ class _WalletScreenState extends State<WalletScreen> {
     });
 
     try {
-      final http.Response response = await http
-          .get(
-            Uri.parse(
-              '$baseUrl/securewave/virtual-account',
-            ),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-          )
-          .timeout(
-            const Duration(seconds: 30),
-          );
+      final http.Response response = await http.get(
+        Uri.parse(
+          '$baseUrl/securewave/virtual-account',
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+      );
 
-      final dynamic decoded =
-          _decodeResponse(response.body);
+      final dynamic decoded = _decodeResponse(response.body);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         _applyVirtualAccountResponse(decoded);
       } else {
         final String message = _extractMessage(
           decoded,
-          fallback:
-              'Unable to retrieve your virtual account.',
+          fallback: 'Unable to retrieve your virtual account.',
         );
 
         if (showMessageOnFailure) {
@@ -237,11 +270,11 @@ class _WalletScreenState extends State<WalletScreen> {
         );
       }
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        isVirtualAccountLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          isVirtualAccountLoading = false;
+        });
+      }
     }
   }
 
@@ -258,8 +291,7 @@ class _WalletScreenState extends State<WalletScreen> {
       return;
     }
 
-    final dynamic accountData =
-        responseData['virtualAccount'] ??
+    final dynamic accountData = responseData['virtualAccount'] ??
         responseData['virtual_account'] ??
         responseData;
 
@@ -275,13 +307,11 @@ class _WalletScreenState extends State<WalletScreen> {
       );
 
       virtualAccountNumber = _stringValue(
-        accountData['accountNumber'] ??
-            accountData['account_number'],
+        accountData['accountNumber'] ?? accountData['account_number'],
       );
 
       virtualAccountName = _stringValue(
-        accountData['accountName'] ??
-            accountData['account_name'],
+        accountData['accountName'] ?? accountData['account_name'],
       );
 
       virtualAccountBank = _stringValue(
@@ -296,8 +326,7 @@ class _WalletScreenState extends State<WalletScreen> {
       ).toUpperCase();
 
       virtualAccountFailureReason = _stringValue(
-        accountData['failureReason'] ??
-            accountData['failure_reason'],
+        accountData['failureReason'] ?? accountData['failure_reason'],
       );
     });
   }
@@ -310,11 +339,9 @@ class _WalletScreenState extends State<WalletScreen> {
     });
 
     try {
-      final SharedPreferences prefs =
-          await SharedPreferences.getInstance();
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String token =
-          prefs.getString('auth_token') ?? '';
+      final String token = prefs.getString('auth_token') ?? '';
 
       if (token.trim().isEmpty) {
         _showMessage(
@@ -324,28 +351,23 @@ class _WalletScreenState extends State<WalletScreen> {
         return;
       }
 
-      final http.Response response = await http
-          .post(
-            Uri.parse(
-              '$baseUrl/securewave/virtual-account',
-            ),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-          )
-          .timeout(
-            const Duration(seconds: 45),
-          );
+      final http.Response response = await http.post(
+        Uri.parse(
+          '$baseUrl/securewave/virtual-account',
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 45),
+      );
 
-      final dynamic decoded =
-          _decodeResponse(response.body);
+      final dynamic decoded = _decodeResponse(response.body);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300) {
-        final dynamic responseData =
-            decoded is Map ? decoded['data'] : null;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final dynamic responseData = decoded is Map ? decoded['data'] : null;
 
         if (responseData is Map) {
           _applyDirectVirtualAccount(
@@ -361,16 +383,14 @@ class _WalletScreenState extends State<WalletScreen> {
         _showMessage(
           _extractMessage(
             decoded,
-            fallback:
-                'Virtual account created successfully.',
+            fallback: 'Virtual account created successfully.',
           ),
           isError: false,
         );
       } else {
         final String message = _extractMessage(
           decoded,
-          fallback:
-              'Unable to create your virtual account.',
+          fallback: 'Unable to create your virtual account.',
         );
 
         await _fetchVirtualAccount(
@@ -389,11 +409,11 @@ class _WalletScreenState extends State<WalletScreen> {
         isError: true,
       );
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        isCreatingVirtualAccount = false;
-      });
+      if (mounted) {
+        setState(() {
+          isCreatingVirtualAccount = false;
+        });
+      }
     }
   }
 
@@ -408,18 +428,15 @@ class _WalletScreenState extends State<WalletScreen> {
       );
 
       virtualAccountNumber = _stringValue(
-        accountData['accountNumber'] ??
-            accountData['account_number'],
+        accountData['accountNumber'] ?? accountData['account_number'],
       );
 
       virtualAccountName = _stringValue(
-        accountData['accountName'] ??
-            accountData['account_name'],
+        accountData['accountName'] ?? accountData['account_name'],
       );
 
       virtualAccountBank = _stringValue(
-        accountData['bankName'] ??
-            accountData['bank_name'],
+        accountData['bankName'] ?? accountData['bank_name'],
       );
 
       virtualAccountStatus = _stringValue(
@@ -428,8 +445,7 @@ class _WalletScreenState extends State<WalletScreen> {
       ).toUpperCase();
 
       virtualAccountFailureReason = _stringValue(
-        accountData['failureReason'] ??
-            accountData['failure_reason'],
+        accountData['failureReason'] ?? accountData['failure_reason'],
       );
     });
   }
@@ -453,8 +469,7 @@ class _WalletScreenState extends State<WalletScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const ManualFundingScreen(),
+        builder: (_) => const ManualFundingScreen(),
       ),
     );
 
@@ -480,6 +495,28 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  Future<void> _openWithdrawalScreen() async {
+    await _openWalletDestination(const WithdrawalScreen());
+  }
+
+  Future<void> _openQrPayScreen() async {
+    await _openWalletDestination(const QrPayScreen());
+  }
+
+  Future<void> _openTransactionsScreen() async {
+    await _openWalletDestination(const TransactionsScreen());
+  }
+
+  Future<void> _openWalletDestination(Widget screen) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => screen),
+    );
+
+    if (!mounted) return;
+    await _loadWallet(showRefreshLoader: true);
+  }
+
   dynamic _decodeResponse(String body) {
     if (body.trim().isEmpty) {
       return null;
@@ -500,12 +537,9 @@ class _WalletScreenState extends State<WalletScreen> {
       return fallback;
     }
 
-    final String result =
-        value.toString().trim();
+    final String result = value.toString().trim();
 
-    return result.isEmpty
-        ? fallback
-        : result;
+    return result.isEmpty ? fallback : result;
   }
 
   double? _extractBalance(dynamic data) {
@@ -519,30 +553,16 @@ class _WalletScreenState extends State<WalletScreen> {
       data['balance'],
       data['availableBalance'],
       data['available_balance'],
-      data['data'] is Map
-          ? data['data']['walletBalance']
-          : null,
-      data['data'] is Map
-          ? data['data']['wallet_balance']
-          : null,
-      data['data'] is Map
-          ? data['data']['balance']
-          : null,
-      data['wallet'] is Map
-          ? data['wallet']['balance']
-          : null,
-      data['user'] is Map
-          ? data['user']['walletBalance']
-          : null,
-      data['user'] is Map
-          ? data['user']['balance']
-          : null,
+      data['data'] is Map ? data['data']['walletBalance'] : null,
+      data['data'] is Map ? data['data']['wallet_balance'] : null,
+      data['data'] is Map ? data['data']['balance'] : null,
+      data['wallet'] is Map ? data['wallet']['balance'] : null,
+      data['user'] is Map ? data['user']['walletBalance'] : null,
+      data['user'] is Map ? data['user']['balance'] : null,
     ];
 
-    for (final dynamic value
-        in possibleValues) {
-      final double? parsed =
-          _toDouble(value);
+    for (final dynamic value in possibleValues) {
+      final double? parsed = _toDouble(value);
 
       if (parsed != null) {
         return parsed;
@@ -559,19 +579,16 @@ class _WalletScreenState extends State<WalletScreen> {
       return [];
     }
 
-    final dynamic directTransactions =
-        data['transactions'];
+    final dynamic directTransactions = data['transactions'];
 
     if (directTransactions is List) {
       return directTransactions;
     }
 
-    final dynamic responseData =
-        data['data'];
+    final dynamic responseData = data['data'];
 
     if (responseData is Map) {
-      final dynamic nestedTransactions =
-          responseData['transactions'];
+      final dynamic nestedTransactions = responseData['transactions'];
 
       if (nestedTransactions is List) {
         return nestedTransactions;
@@ -595,10 +612,7 @@ class _WalletScreenState extends State<WalletScreen> {
     }
 
     return double.tryParse(
-      value
-          .toString()
-          .replaceAll(',', '')
-          .trim(),
+      value.toString().replaceAll(',', '').trim(),
     );
   }
 
@@ -608,12 +622,9 @@ class _WalletScreenState extends State<WalletScreen> {
   }) {
     if (data is Map) {
       final dynamic message =
-          data['message'] ??
-          data['error'] ??
-          data['detail'];
+          data['message'] ?? data['error'] ?? data['detail'];
 
-      if (message != null &&
-          message.toString().trim().isNotEmpty) {
+      if (message != null && message.toString().trim().isNotEmpty) {
         return message.toString();
       }
     }
@@ -632,39 +643,29 @@ class _WalletScreenState extends State<WalletScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: isError
-              ? const Color(0xFFDC2626)
-              : const Color(0xFF059669),
+          backgroundColor:
+              isError ? const Color(0xFFDC2626) : const Color(0xFF059669),
           behavior: SnackBarBehavior.floating,
         ),
       );
   }
 
   String _formatMoney(double amount) {
-    final String fixed =
-        amount.toStringAsFixed(2);
+    final String fixed = amount.toStringAsFixed(2);
 
-    final List<String> parts =
-        fixed.split('.');
+    final List<String> parts = fixed.split('.');
 
     final String whole = parts.first;
     final String decimal = parts.last;
 
-    final StringBuffer formatted =
-        StringBuffer();
+    final StringBuffer formatted = StringBuffer();
 
-    for (
-      int index = 0;
-      index < whole.length;
-      index++
-    ) {
+    for (int index = 0; index < whole.length; index++) {
       formatted.write(whole[index]);
 
-      final int remaining =
-          whole.length - index - 1;
+      final int remaining = whole.length - index - 1;
 
-      if (remaining > 0 &&
-          remaining % 3 == 0) {
+      if (remaining > 0 && remaining % 3 == 0) {
         formatted.write(',');
       }
     }
@@ -682,17 +683,13 @@ class _WalletScreenState extends State<WalletScreen> {
         value.toString(),
       ).toLocal();
 
-      final String day =
-          date.day.toString().padLeft(2, '0');
+      final String day = date.day.toString().padLeft(2, '0');
 
-      final String month =
-          date.month.toString().padLeft(2, '0');
+      final String month = date.month.toString().padLeft(2, '0');
 
-      final String hour =
-          date.hour.toString().padLeft(2, '0');
+      final String hour = date.hour.toString().padLeft(2, '0');
 
-      final String minute =
-          date.minute.toString().padLeft(2, '0');
+      final String minute = date.minute.toString().padLeft(2, '0');
 
       return '$day/$month/${date.year}, $hour:$minute';
     } catch (_) {
@@ -707,14 +704,12 @@ class _WalletScreenState extends State<WalletScreen> {
       return 'Wallet Transaction';
     }
 
-    final dynamic title =
-        transaction['title'] ??
+    final dynamic title = transaction['title'] ??
         transaction['description'] ??
         transaction['serviceType'] ??
         transaction['type'];
 
-    if (title == null ||
-        title.toString().trim().isEmpty) {
+    if (title == null || title.toString().trim().isEmpty) {
       return 'Wallet Transaction';
     }
 
@@ -739,8 +734,7 @@ class _WalletScreenState extends State<WalletScreen> {
     }
 
     return _toDouble(
-          transaction['amount'] ??
-              transaction['value'],
+          transaction['amount'] ?? transaction['value'],
         ) ??
         0.0;
   }
@@ -752,17 +746,15 @@ class _WalletScreenState extends State<WalletScreen> {
       return false;
     }
 
-    final String type = (
-      transaction['transactionType'] ??
-      transaction['type'] ??
-      transaction['direction'] ??
-      ''
-    ).toString().toUpperCase();
+    final String type = (transaction['transactionType'] ??
+            transaction['type'] ??
+            transaction['direction'] ??
+            '')
+        .toString()
+        .toUpperCase();
 
-    final String serviceType = (
-      transaction['serviceType'] ??
-      ''
-    ).toString().toUpperCase();
+    final String serviceType =
+        (transaction['serviceType'] ?? '').toString().toUpperCase();
 
     return type.contains('CREDIT') ||
         type.contains('INCOMING') ||
@@ -778,10 +770,7 @@ class _WalletScreenState extends State<WalletScreen> {
       return '';
     }
 
-    return (
-      transaction['status'] ??
-      ''
-    ).toString().toUpperCase();
+    return (transaction['status'] ?? '').toString().toUpperCase();
   }
 
   Color _statusColor(String status) {
@@ -829,13 +818,10 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor:
-            const Color(0xFFF5F7FA),
-        surfaceTintColor:
-            Colors.transparent,
+        backgroundColor: const Color(0xFFF5F7FA),
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         titleSpacing: 20,
         title: const Text(
@@ -860,8 +846,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ? const SizedBox(
                     width: 22,
                     height: 22,
-                    child:
-                        CircularProgressIndicator(
+                    child: CircularProgressIndicator(
                       strokeWidth: 2.4,
                       color: Color(0xFF0F766E),
                     ),
@@ -876,16 +861,13 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       body: isLoading
           ? const Center(
-              child:
-                  CircularProgressIndicator(
+              child: CircularProgressIndicator(
                 color: Color(0xFF0F766E),
               ),
             )
           : RefreshIndicator(
-              color:
-                  const Color(0xFF0F766E),
-              onRefresh: () =>
-                  _loadWallet(
+              color: const Color(0xFF0F766E),
+              onRefresh: () => _loadWallet(
                 showRefreshLoader: true,
               ),
               child: LayoutBuilder(
@@ -894,18 +876,13 @@ class _WalletScreenState extends State<WalletScreen> {
                   BoxConstraints constraints,
                 ) {
                   final double horizontalPadding =
-                      constraints.maxWidth >= 700
-                          ? 32
-                          : 16;
+                      constraints.maxWidth >= 700 ? 32 : 16;
 
                   final double contentWidth =
-                      constraints.maxWidth >= 900
-                          ? 850
-                          : constraints.maxWidth;
+                      constraints.maxWidth >= 900 ? 850 : constraints.maxWidth;
 
                   return SingleChildScrollView(
-                    physics:
-                        const AlwaysScrollableScrollPhysics(),
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(
                       horizontalPadding,
                       8,
@@ -918,14 +895,19 @@ class _WalletScreenState extends State<WalletScreen> {
                           maxWidth: contentWidth,
                         ),
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _buildWalletCard(),
+                            if (walletNotice.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              _buildWalletNotice(),
+                            ],
                             const SizedBox(height: 18),
                             _buildVirtualAccountCard(),
                             const SizedBox(height: 18),
                             _buildQuickActions(),
+                            const SizedBox(height: 18),
+                            _buildAccountStatementEntry(),
                             const SizedBox(height: 26),
                             _buildTransactionsSection(),
                           ],
@@ -953,20 +935,17 @@ class _WalletScreenState extends State<WalletScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius:
-            BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F766E)
-                .withValues(alpha: 0.25),
+            color: const Color(0xFF0F766E).withValues(alpha: 0.25),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -974,41 +953,34 @@ class _WalletScreenState extends State<WalletScreen> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: Colors.white
-                      .withValues(alpha: 0.15),
-                  borderRadius:
-                      BorderRadius.circular(15),
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Icon(
-                  Icons
-                      .account_balance_wallet_rounded,
+                  Icons.account_balance_wallet_rounded,
                   color: Colors.white,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       userName,
                       maxLines: 1,
-                      overflow:
-                          TextOverflow.ellipsis,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
-                        fontWeight:
-                            FontWeight.w700,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     if (userPhone.isNotEmpty)
                       Text(
                         userPhone,
                         style: TextStyle(
-                          color: Colors.white
-                              .withValues(
+                          color: Colors.white.withValues(
                             alpha: 0.72,
                           ),
                           fontSize: 12,
@@ -1018,19 +990,15 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
               ),
               IconButton(
-                tooltip: hideBalance
-                    ? 'Show balance'
-                    : 'Hide balance',
+                tooltip: hideBalance ? 'Show balance' : 'Hide balance',
                 onPressed: () {
                   setState(() {
-                    hideBalance =
-                        !hideBalance;
+                    hideBalance = !hideBalance;
                   });
                 },
                 icon: Icon(
                   hideBalance
-                      ? Icons
-                          .visibility_off_rounded
+                      ? Icons.visibility_off_rounded
                       : Icons.visibility_rounded,
                   color: Colors.white,
                 ),
@@ -1039,7 +1007,7 @@ class _WalletScreenState extends State<WalletScreen> {
           ),
           const SizedBox(height: 28),
           Text(
-            'Available Balance',
+            isUsingSavedBalance ? 'Last Saved Balance' : 'Available Balance',
             style: TextStyle(
               color: Colors.white.withValues(
                 alpha: 0.75,
@@ -1053,9 +1021,7 @@ class _WalletScreenState extends State<WalletScreen> {
               milliseconds: 250,
             ),
             child: Text(
-              hideBalance
-                  ? '₦ ••••••••'
-                  : '₦${_formatMoney(walletBalance)}',
+              hideBalance ? '₦ ••••••••' : '₦${_formatMoney(walletBalance)}',
               key: ValueKey(hideBalance),
               style: const TextStyle(
                 color: Colors.white,
@@ -1078,14 +1044,46 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _walletButton(
-                  icon:
-                      Icons.swap_horiz_rounded,
+                  icon: Icons.swap_horiz_rounded,
                   label: 'Transfer',
-                  onTap:
-                      _openTransferScreen,
+                  onTap: _openTransferScreen,
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalletNotice() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFED7AA)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            color: Color(0xFFC2410C),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              walletNotice,
+              style: const TextStyle(
+                color: Color(0xFF9A3412),
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
@@ -1125,8 +1123,7 @@ class _WalletScreenState extends State<WalletScreen> {
         padding: const EdgeInsets.all(20),
         decoration: _whiteCardDecoration(),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
@@ -1134,39 +1131,32 @@ class _WalletScreenState extends State<WalletScreen> {
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    color:
-                        const Color(0xFFE6FFFB),
-                    borderRadius:
-                        BorderRadius.circular(15),
+                    color: const Color(0xFFE6FFFB),
+                    borderRadius: BorderRadius.circular(15),
                   ),
                   child: const Icon(
-                    Icons
-                        .account_balance_rounded,
+                    Icons.account_balance_rounded,
                     color: Color(0xFF0F766E),
                   ),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Virtual Account',
                         style: TextStyle(
-                          color:
-                              Color(0xFF0F172A),
+                          color: Color(0xFF0F172A),
                           fontSize: 17,
-                          fontWeight:
-                              FontWeight.w800,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       SizedBox(height: 2),
                       Text(
                         'Transfer money here to fund your wallet.',
                         style: TextStyle(
-                          color:
-                              Color(0xFF64748B),
+                          color: Color(0xFF64748B),
                           fontSize: 12,
                         ),
                       ),
@@ -1196,20 +1186,16 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: Text(
                     virtualAccountNumber,
                     style: const TextStyle(
-                      color:
-                          Color(0xFF0F172A),
+                      color: Color(0xFF0F172A),
                       fontSize: 27,
                       letterSpacing: 1.2,
-                      fontWeight:
-                          FontWeight.w900,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
                 IconButton(
-                  tooltip:
-                      'Copy account number',
-                  onPressed:
-                      _copyAccountNumber,
+                  tooltip: 'Copy account number',
+                  onPressed: _copyAccountNumber,
                   icon: const Icon(
                     Icons.copy_rounded,
                     color: Color(0xFF0F766E),
@@ -1228,9 +1214,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              virtualAccountName.isEmpty
-                  ? userName
-                  : virtualAccountName,
+              virtualAccountName.isEmpty ? userName : virtualAccountName,
               style: const TextStyle(
                 color: Color(0xFF334155),
                 fontSize: 14,
@@ -1241,14 +1225,11 @@ class _WalletScreenState extends State<WalletScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color:
-                    const Color(0xFFF0FDFA),
-                borderRadius:
-                    BorderRadius.circular(13),
+                color: const Color(0xFFF0FDFA),
+                borderRadius: BorderRadius.circular(13),
               ),
               child: const Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
                     Icons.info_outline_rounded,
@@ -1260,8 +1241,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     child: Text(
                       'Money sent to this account will be credited to your ServicePay wallet automatically after confirmation.',
                       style: TextStyle(
-                        color:
-                            Color(0xFF115E59),
+                        color: Color(0xFF115E59),
                         fontSize: 12,
                         height: 1.4,
                       ),
@@ -1286,8 +1266,7 @@ class _WalletScreenState extends State<WalletScreen> {
             height: 62,
             decoration: BoxDecoration(
               color: const Color(0xFFE6FFFB),
-              borderRadius:
-                  BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(20),
             ),
             child: const Icon(
               Icons.account_balance_rounded,
@@ -1316,33 +1295,25 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          if (virtualAccountStatus !=
-              'PENDING')
+          if (virtualAccountStatus != 'PENDING')
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed:
-                    isCreatingVirtualAccount
-                        ? null
-                        : _createVirtualAccount,
+                    isCreatingVirtualAccount ? null : _createVirtualAccount,
                 style: FilledButton.styleFrom(
-                  backgroundColor:
-                      const Color(0xFF0F766E),
-                  foregroundColor:
-                      Colors.white,
-                  minimumSize:
-                      const Size.fromHeight(50),
+                  backgroundColor: const Color(0xFF0F766E),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(50),
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 icon: isCreatingVirtualAccount
                     ? const SizedBox(
                         width: 19,
                         height: 19,
-                        child:
-                            CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                           strokeWidth: 2.2,
                           color: Colors.white,
                         ),
@@ -1353,13 +1324,11 @@ class _WalletScreenState extends State<WalletScreen> {
                 label: Text(
                   isCreatingVirtualAccount
                       ? 'Creating Account...'
-                      : virtualAccountStatus ==
-                              'FAILED'
+                      : virtualAccountStatus == 'FAILED'
                           ? 'Retry Virtual Account'
                           : 'Create Virtual Account',
                   style: const TextStyle(
-                    fontWeight:
-                        FontWeight.w700,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -1389,8 +1358,7 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Widget _statusBadge(String status) {
-    final Color color =
-        _statusColor(status);
+    final Color color = _statusColor(status);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -1399,8 +1367,7 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         status,
@@ -1422,18 +1389,15 @@ class _WalletScreenState extends State<WalletScreen> {
       color: Colors.white.withValues(
         alpha: 0.14,
       ),
-      borderRadius:
-          BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
-        borderRadius:
-            BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
           height: 48,
           alignment: Alignment.center,
           child: Row(
-            mainAxisAlignment:
-                MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 icon,
@@ -1444,13 +1408,11 @@ class _WalletScreenState extends State<WalletScreen> {
               Flexible(
                 child: Text(
                   label,
-                  overflow:
-                      TextOverflow.ellipsis,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13,
-                    fontWeight:
-                        FontWeight.w700,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -1464,52 +1426,115 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget _buildQuickActions() {
     return Container(
       padding: const EdgeInsets.symmetric(
-        vertical: 18,
+        vertical: 16,
         horizontal: 14,
       ),
       decoration: _whiteCardDecoration(),
-      child: Row(
-        children: [
-          Expanded(
-            child: _quickActionItem(
-              icon: Icons
-                  .account_balance_wallet_outlined,
-              label: 'Add Money',
-              background:
-                  const Color(0xFFDCFCE7),
-              iconColor:
-                  const Color(0xFF15803D),
-              onTap: _fundWallet,
-            ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double itemWidth = (constraints.maxWidth - 12) / 2;
+
+          return Wrap(
+            spacing: 12,
+            runSpacing: 14,
+            children: [
+              SizedBox(
+                width: itemWidth,
+                child: _quickActionItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  label: 'Fund Wallet',
+                  background: const Color(0xFFDCFCE7),
+                  iconColor: const Color(0xFF15803D),
+                  onTap: _fundWallet,
+                ),
+              ),
+              SizedBox(
+                width: itemWidth,
+                child: _quickActionItem(
+                  icon: Icons.send_rounded,
+                  label: 'Transfer',
+                  background: const Color(0xFFDBEAFE),
+                  iconColor: const Color(0xFF1D4ED8),
+                  onTap: _openTransferScreen,
+                ),
+              ),
+              SizedBox(
+                width: itemWidth,
+                child: _quickActionItem(
+                  icon: Icons.account_balance_outlined,
+                  label: 'Withdraw',
+                  background: const Color(0xFFFFF1E8),
+                  iconColor: const Color(0xFFC2410C),
+                  onTap: _openWithdrawalScreen,
+                ),
+              ),
+              SizedBox(
+                width: itemWidth,
+                child: _quickActionItem(
+                  icon: Icons.qr_code_scanner_rounded,
+                  label: 'QR Pay',
+                  background: const Color(0xFFF3E8FF),
+                  iconColor: const Color(0xFF7E22CE),
+                  onTap: _openQrPayScreen,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildAccountStatementEntry() {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: _openTransactionsScreen,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: _whiteCardDecoration(),
+          child: const Row(
+            children: [
+              CircleAvatar(
+                radius: 23,
+                backgroundColor: Color(0xFFE6FFFB),
+                child: Icon(
+                  Icons.description_outlined,
+                  color: Color(0xFF0F766E),
+                ),
+              ),
+              SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Account statement',
+                      style: TextStyle(
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Review your complete wallet activity',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF64748B),
+              ),
+            ],
           ),
-          Expanded(
-            child: _quickActionItem(
-              icon: Icons.send_rounded,
-              label: 'Send Money',
-              background:
-                  const Color(0xFFDBEAFE),
-              iconColor:
-                  const Color(0xFF1D4ED8),
-              onTap:
-                  _openTransferScreen,
-            ),
-          ),
-          Expanded(
-            child: _quickActionItem(
-              icon: Icons.refresh_rounded,
-              label: 'Refresh',
-              background:
-                  const Color(0xFFFEF3C7),
-              iconColor:
-                  const Color(0xFFB45309),
-              onTap: () {
-                _loadWallet(
-                  showRefreshLoader: true,
-                );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1523,11 +1548,9 @@ class _WalletScreenState extends State<WalletScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
+        padding: const EdgeInsets.symmetric(
           vertical: 5,
         ),
         child: Column(
@@ -1537,8 +1560,7 @@ class _WalletScreenState extends State<WalletScreen> {
               height: 47,
               decoration: BoxDecoration(
                 color: background,
-                borderRadius:
-                    BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(15),
               ),
               child: Icon(
                 icon,
@@ -1550,14 +1572,12 @@ class _WalletScreenState extends State<WalletScreen> {
             Text(
               label,
               maxLines: 1,
-              overflow:
-                  TextOverflow.ellipsis,
+              overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Color(0xFF334155),
                 fontSize: 12,
-                fontWeight:
-                    FontWeight.w700,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -1568,62 +1588,47 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Widget _buildTransactionsSection() {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Recent Transactions',
-                style: TextStyle(
-                  color: Color(0xFF0F172A),
-                  fontSize: 19,
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                _loadWallet(
-                  showRefreshLoader: true,
-                );
-              },
-              child: const Text(
-                'Refresh',
-                style: TextStyle(
-                  color:
-                      Color(0xFF0F766E),
-                  fontWeight:
-                      FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
+        const Text(
+          'Recent Transactions',
+          style: TextStyle(
+            color: Color(0xFF0F172A),
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _openTransactionsScreen,
+            icon: const Icon(
+              Icons.arrow_forward_rounded,
+              size: 17,
+            ),
+            label: const Text(
+              'See All Transactions',
+              style: TextStyle(
+                color: Color(0xFF0F766E),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
         if (transactions.isEmpty)
           _buildEmptyTransactions()
         else
           Container(
-            decoration:
-                _whiteCardDecoration(),
+            decoration: _whiteCardDecoration(),
             child: ListView.separated(
-              itemCount:
-                  transactions.length > 10
-                      ? 10
-                      : transactions.length,
+              itemCount: transactions.length > 10 ? 10 : transactions.length,
               shrinkWrap: true,
-              physics:
-                  const NeverScrollableScrollPhysics(),
-              separatorBuilder:
-                  (_, __) =>
-                      const Divider(
+              physics: const NeverScrollableScrollPhysics(),
+              separatorBuilder: (_, __) => const Divider(
                 height: 1,
                 indent: 76,
-                color:
-                    Color(0xFFEEF2F6),
+                color: Color(0xFFEEF2F6),
               ),
               itemBuilder: (
                 BuildContext context,
@@ -1642,8 +1647,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget _buildEmptyTransactions() {
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: 24,
         vertical: 40,
       ),
@@ -1661,8 +1665,7 @@ class _WalletScreenState extends State<WalletScreen> {
             style: TextStyle(
               color: Color(0xFF0F172A),
               fontSize: 16,
-              fontWeight:
-                  FontWeight.w800,
+              fontWeight: FontWeight.w800,
             ),
           ),
           SizedBox(height: 6),
@@ -1682,30 +1685,23 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget _buildTransactionTile(
     dynamic transaction,
   ) {
-    final bool isCredit =
-        _isCreditTransaction(transaction);
+    final bool isCredit = _isCreditTransaction(transaction);
 
-    final double amount =
-        _transactionAmount(transaction);
+    final double amount = _transactionAmount(transaction);
 
-    final String status =
-        _transactionStatus(transaction);
+    final String status = _transactionStatus(transaction);
 
-    final dynamic dateValue =
-        transaction is Map
-            ? transaction['createdAt'] ??
-                transaction['date'] ??
-                transaction['updatedAt']
-            : null;
+    final dynamic dateValue = transaction is Map
+        ? transaction['createdAt'] ??
+            transaction['date'] ??
+            transaction['updatedAt']
+        : null;
 
     final Color transactionColor =
-        isCredit
-            ? const Color(0xFF059669)
-            : const Color(0xFFDC2626);
+        isCredit ? const Color(0xFF059669) : const Color(0xFFDC2626);
 
     return ListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(
+      contentPadding: const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 9,
       ),
@@ -1713,15 +1709,11 @@ class _WalletScreenState extends State<WalletScreen> {
         width: 46,
         height: 46,
         decoration: BoxDecoration(
-          color: transactionColor
-              .withValues(alpha: 0.10),
-          borderRadius:
-              BorderRadius.circular(15),
+          color: transactionColor.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(15),
         ),
         child: Icon(
-          isCredit
-              ? Icons.south_west_rounded
-              : Icons.north_east_rounded,
+          isCredit ? Icons.south_west_rounded : Icons.north_east_rounded,
           color: transactionColor,
           size: 22,
         ),
@@ -1737,18 +1729,15 @@ class _WalletScreenState extends State<WalletScreen> {
         ),
       ),
       subtitle: Padding(
-        padding:
-            const EdgeInsets.only(top: 5),
+        padding: const EdgeInsets.only(top: 5),
         child: Row(
           children: [
             Flexible(
               child: Text(
                 _formatDate(dateValue),
-                overflow:
-                    TextOverflow.ellipsis,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color:
-                      Color(0xFF94A3B8),
+                  color: Color(0xFF94A3B8),
                   fontSize: 11,
                 ),
               ),

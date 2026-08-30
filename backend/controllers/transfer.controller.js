@@ -21,6 +21,61 @@ const generateReference = () => {
     .toUpperCase()}`;
 };
 
+const MAX_TRANSFER_TRANSACTION_ATTEMPTS = 3;
+const TRANSFER_RETRY_ATTEMPT = Symbol("servicePayTransferRetryAttempt");
+const TRANSFER_PIN_RETRY_ATTEMPT = Symbol("servicePayTransferPinRetryAttempt");
+const TRANSFER_PIN_VERIFIED = Symbol("servicePayTransferPinVerified");
+
+const errorLabels = (error) => {
+  const labels = new Set();
+  for (const candidate of [error, error?.cause, error?.errorResponse]) {
+    if (!candidate) continue;
+    if (Array.isArray(candidate.errorLabels)) {
+      candidate.errorLabels.forEach((label) => labels.add(String(label)));
+    }
+    for (const label of ["TransientTransactionError", "UnknownTransactionCommitResult"]) {
+      if (typeof candidate.hasErrorLabel === "function" && candidate.hasErrorLabel(label)) {
+        labels.add(label);
+      }
+    }
+  }
+  return [...labels];
+};
+
+const mongoErrorCode = (error) =>
+  error?.code ?? error?.cause?.code ?? error?.errorResponse?.code;
+
+const mongoErrorCodeName = (error) =>
+  error?.codeName ?? error?.cause?.codeName ?? error?.errorResponse?.codeName;
+
+const isUnknownCommitResult = (error) =>
+  errorLabels(error).includes("UnknownTransactionCommitResult");
+
+const isRetryableTransferTransactionError = (error) => {
+  const labels = errorLabels(error);
+  return labels.includes("TransientTransactionError") ||
+    isUnknownCommitResult(error) ||
+    Number(mongoErrorCode(error)) === 112 ||
+    String(mongoErrorCodeName(error) || "").toUpperCase() === "WRITECONFLICT";
+};
+
+const retryDelay = async (attempt) => {
+  const base = 35 * (2 ** Math.max(0, attempt - 1));
+  const jitter = crypto.randomInt(0, 26);
+  await new Promise((resolve) => setTimeout(resolve, base + jitter));
+};
+
+const logRetryableTransferError = ({ error, reference, attempt, exhausted }) => {
+  console.error("ServicePay transfer transaction retry:", {
+    reference,
+    attempt,
+    exhausted,
+    mongoCode: mongoErrorCode(error) ?? null,
+    mongoCodeName: mongoErrorCodeName(error) ?? null,
+    labels: errorLabels(error),
+  });
+};
+
 const sendCompletedTransfer = ({
   res,
   transfer,
@@ -198,10 +253,12 @@ exports.transfer = async (
   req,
   res
 ) => {
-  const session =
-    await mongoose.startSession();
+  let session = null;
   let senderId = null;
   let idempotencyKey = "";
+  let reference = req.servicePayTransferReference || "";
+  const transactionAttempt = Number(req[TRANSFER_RETRY_ATTEMPT] || 1);
+  const pinRetryAttempt = Number(req[TRANSFER_PIN_RETRY_ATTEMPT] || 1);
 
   try {
     console.log(
@@ -268,11 +325,11 @@ exports.transfer = async (
       });
     }
 
-    if (idempotencyKey.length > 128) {
+    if (idempotencyKey.length < 12 || idempotencyKey.length > 128) {
       return res.status(400).json({
         success: false,
         message:
-          "The payment request identifier is invalid.",
+          "A valid payment request identifier is required.",
       });
     }
 
@@ -293,6 +350,22 @@ exports.transfer = async (
       });
     }
 
+    /*
+     * PIN admission updates lockout counters outside the business transaction.
+     * Running it after a transactional read of the sender makes MongoDB see a
+     * stale snapshot when the wallet is later debited, causing a WriteConflict.
+     */
+    if (!req[TRANSFER_PIN_VERIFIED]) {
+      await verifyTransactionPin(senderId, transactionPin);
+      req[TRANSFER_PIN_VERIFIED] = true;
+    }
+
+    if (!reference) {
+      reference = generateReference();
+      req.servicePayTransferReference = reference;
+    }
+
+    session = await mongoose.startSession();
     session.startTransaction();
 
     const sender = await User.findById(
@@ -324,8 +397,6 @@ exports.transfer = async (
           "Your account is not active.",
       });
     }
-
-    await verifyTransactionPin(senderId, transactionPin, { session });
 
     const receiver = await User.findOne({
       phone: receiverPhone,
@@ -379,6 +450,18 @@ exports.transfer = async (
 
       if (existingTransfer) {
         await session.abortTransaction();
+
+        if (
+          String(existingTransfer.receiver) !== String(receiver._id) ||
+          Number(existingTransfer.amount) !== amount
+        ) {
+          return res.status(409).json({
+            success: false,
+            code: "IDEMPOTENCY_KEY_REUSED",
+            message:
+              "This payment request identifier was already used for a different transfer.",
+          });
+        }
 
         return sendCompletedTransfer({
           res,
@@ -472,9 +555,6 @@ exports.transfer = async (
         "Unable to credit the beneficiary wallet."
       );
     }
-
-    const reference =
-      generateReference();
 
     /*
      * Save transfer record.
@@ -725,7 +805,7 @@ exports.transfer = async (
         savedTransaction._id,
     });
   } catch (error) {
-    if (session.inTransaction()) {
+    if (session?.inTransaction()) {
       await session.abortTransaction();
     }
 
@@ -768,6 +848,20 @@ exports.transfer = async (
         existingTransfer.sender &&
         existingTransfer.receiver
       ) {
+        const sameReceiver =
+          String(existingTransfer.receiver.phone || "") ===
+          String(req.body.receiverPhone || "").trim();
+        const sameAmount =
+          Number(existingTransfer.amount) ===
+          Math.round((Number(req.body.amount) + Number.EPSILON) * 100) / 100;
+        if (!sameReceiver || !sameAmount) {
+          return res.status(409).json({
+            success: false,
+            code: "IDEMPOTENCY_KEY_REUSED",
+            message:
+              "This payment request identifier was already used for a different transfer.",
+          });
+        }
         return sendCompletedTransfer({
           res,
           transfer:
@@ -781,6 +875,49 @@ exports.transfer = async (
       }
     }
 
+    if (isRetryableTransferTransactionError(error)) {
+      const exhausted =
+        transactionAttempt >= MAX_TRANSFER_TRANSACTION_ATTEMPTS;
+      logRetryableTransferError({
+        error,
+        reference,
+        attempt: transactionAttempt,
+        exhausted,
+      });
+
+      if (!exhausted) {
+        if (session) {
+          await session.endSession();
+          session = null;
+        }
+        await retryDelay(transactionAttempt);
+        req[TRANSFER_RETRY_ATTEMPT] = transactionAttempt + 1;
+        return exports.transfer(req, res);
+      }
+
+      return res.status(503).json({
+        success: false,
+        code: isUnknownCommitResult(error)
+          ? "TRANSFER_RESULT_UNCONFIRMED"
+          : "TRANSFER_TEMPORARILY_UNAVAILABLE",
+        message:
+          "Transfer could not be completed at the moment. No duplicate charge was made. Please try again.",
+      });
+    }
+
+    if (
+      error?.code === "TRANSACTION_PIN_RETRY_REQUIRED" &&
+      pinRetryAttempt < MAX_TRANSFER_TRANSACTION_ATTEMPTS
+    ) {
+      console.warn("ServicePay transfer PIN admission retry:", {
+        reference: reference || null,
+        attempt: pinRetryAttempt,
+      });
+      await retryDelay(pinRetryAttempt);
+      req[TRANSFER_PIN_RETRY_ATTEMPT] = pinRetryAttempt + 1;
+      return exports.transfer(req, res);
+    }
+
     console.error(
       "ServicePay transfer error:",
       error
@@ -790,6 +927,8 @@ exports.transfer = async (
       "INVALID_TRANSACTION_PIN",
       "TRANSACTION_PIN_NOT_SET",
       "INCORRECT_TRANSACTION_PIN",
+      "TRANSACTION_PIN_LOCKED",
+      "TRANSACTION_PIN_RETRY_REQUIRED",
       "USER_NOT_FOUND",
     ].includes(error.code)) {
       return res.status(error.statusCode).json({
@@ -810,10 +949,17 @@ exports.transfer = async (
     return res.status(500).json({
       success: false,
       message:
-        error.message ||
-        "An error occurred while processing the transfer.",
+        "Transfer could not be completed at the moment. No duplicate charge was made. Please try again.",
     });
   } finally {
-    await session.endSession();
+    if (session) {
+      await session.endSession();
+    }
   }
+};
+
+exports.__testOnly = {
+  errorLabels,
+  isRetryableTransferTransactionError,
+  isUnknownCommitResult,
 };

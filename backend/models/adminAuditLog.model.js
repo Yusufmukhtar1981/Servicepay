@@ -73,6 +73,7 @@ const adminAuditLogSchema =
            "FINTECH_CASE_UPDATED",
            "RISK_ALERT_CREATED",
            "RISK_ALERT_UPDATED",
+           "FINTECH_OPERATION",
            "SCHEDULED_PAYMENT_CREATED",
            "SCHEDULED_PAYMENT_EXECUTION_REFUSED",
            "SCHEDULED_PAYMENT_UPDATED",

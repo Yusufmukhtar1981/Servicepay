@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +42,17 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
   String verifiedBankCode = '';
 
   List<Map<String, dynamic>> banks = [];
+  String? _clientRequestId;
+  String? _submitFingerprint;
+  static const String _pendingRequestIdKey = 'pending_bank_transfer_request_id';
+  static const String _pendingFingerprintKey =
+      'pending_bank_transfer_fingerprint';
+
+  String _newClientRequestId() {
+    final Random random = Random.secure();
+    return 'bank-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-'
+        '${random.nextInt(1 << 32).toRadixString(36)}';
+  }
 
   @override
   void initState() {
@@ -670,6 +682,40 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
       isTransferring = true;
     });
 
+    // Retain this key through timeouts and connection failures: retrying the
+    // same submit is a replay, not a second payout instruction.
+    final String fingerprint = [
+      selectedBankCode,
+      verifiedAccountNumber,
+      amountController.text.trim(),
+      narrationController.text.trim(),
+    ].join('|');
+    final SharedPreferences requestPreferences =
+        await SharedPreferences.getInstance();
+    final String? savedFingerprint =
+        requestPreferences.getString(_pendingFingerprintKey);
+    final String? savedRequestId =
+        requestPreferences.getString(_pendingRequestIdKey);
+    if (_clientRequestId == null &&
+        savedFingerprint == fingerprint &&
+        savedRequestId != null &&
+        savedRequestId.isNotEmpty) {
+      _clientRequestId = savedRequestId;
+      _submitFingerprint = savedFingerprint;
+    }
+    if (_clientRequestId == null || _submitFingerprint != fingerprint) {
+      _clientRequestId = _newClientRequestId();
+      _submitFingerprint = fingerprint;
+      await requestPreferences.setString(
+        _pendingRequestIdKey,
+        _clientRequestId!,
+      );
+      await requestPreferences.setString(
+        _pendingFingerprintKey,
+        fingerprint,
+      );
+    }
+
     try {
       final String? token = await getSavedAuthToken();
 
@@ -687,6 +733,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
+              'Idempotency-Key': _clientRequestId!,
             },
             body: jsonEncode({
               'bankCode': selectedBankCode,
@@ -696,6 +743,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
               'amount': amount,
               'narration': narrationController.text.trim(),
               'pin': pin,
+              'clientRequestId': _clientRequestId,
             }),
           )
           .timeout(
@@ -747,13 +795,29 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
         isError: false,
       );
 
+      final dynamic responsePayload = responseData['data'] ?? responseData;
+      final String responseStatus = responsePayload is Map
+          ? (responsePayload['status'] ?? responseData['status'] ?? '')
+              .toString()
+              .toUpperCase()
+          : (responseData['status'] ?? '').toString().toUpperCase();
+      final bool terminal =
+          responseStatus == 'SUCCESSFUL' || responseStatus == 'REFUNDED';
+      if (!terminal) {
+        return;
+      }
+
       accountNumberController.clear();
       amountController.clear();
       narrationController.text = 'ServicePay bank transfer';
 
       setState(() {
         clearVerifiedAccount();
+        _clientRequestId = null;
+        _submitFingerprint = null;
       });
+      await requestPreferences.remove(_pendingRequestIdKey);
+      await requestPreferences.remove(_pendingFingerprintKey);
     } on TimeoutException {
       showMessage(
         'The transfer is taking longer than expected. '

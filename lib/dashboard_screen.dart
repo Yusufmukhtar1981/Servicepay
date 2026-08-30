@@ -16,6 +16,7 @@ import 'exam_pin_screen.dart';
 import 'flight_booking_screen.dart';
 import 'id_verification_screen.dart';
 import 'logistics_screen.dart';
+import 'delivery_history_screen.dart';
 import 'notifications_screen.dart';
 import 'transactions_screen.dart';
 import 'transfer_screen.dart';
@@ -49,11 +50,17 @@ import 'solar_screen.dart';
 import 'phone_financing/phone_financing_screen.dart';
 
 import 'marketplace/marketplace_screen.dart';
+import 'marketplace/marketplace_my_orders_screen.dart';
 import 'trust/trust_dashboard_entry.dart';
 import 'trust/trust_search_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({
+    super.key,
+    this.client,
+  });
+
+  final http.Client? client;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -64,6 +71,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   final ImagePicker _profileImagePicker = ImagePicker();
   late final AnimationController _motionController;
   late final AnimationController _refreshController;
+  late final http.Client _client;
+  late final bool _ownsClient;
 
   String profilePhotoUrl = '';
   bool isUploadingProfilePhoto = false;
@@ -79,13 +88,19 @@ class _DashboardScreenState extends State<DashboardScreen>
   String userName = 'Customer';
   double walletBalance = 0;
 
-  int unreadNotifications = 1;
+  int unreadNotifications = 0;
 
   bool isLoading = true;
   bool isRefreshing = false;
   bool hideBalance = false;
+  bool isLoadingRecentActivity = true;
+  bool isLoadingServiceStatuses = false;
 
   String searchQuery = '';
+  String recentActivityError = '';
+  List<Map<String, dynamic>> recentTransactions = <Map<String, dynamic>>[];
+  List<_DashboardServiceStatus> activeServiceStatuses =
+      <_DashboardServiceStatus>[];
 
   Map<String, bool> serviceAvailability = <String, bool>{
     'kekeNapep': true,
@@ -106,6 +121,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void initState() {
     super.initState();
+    _ownsClient = widget.client == null;
+    _client = widget.client ?? http.Client();
     _motionController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3600),
@@ -123,6 +140,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     _motionController.dispose();
     _refreshController.dispose();
     searchController.dispose();
+    if (_ownsClient) {
+      _client.close();
+    }
     super.dispose();
   }
 
@@ -202,62 +222,24 @@ class _DashboardScreenState extends State<DashboardScreen>
       final String? token = await getSavedAuthToken(preferences);
 
       if (token == null || token.isEmpty) {
+        if (mounted) {
+          setState(() {
+            isLoadingRecentActivity = false;
+            recentActivityError =
+                'Your login session has expired. Please log in again.';
+          });
+        }
         return false;
       }
 
-      final http.Response response = await http.get(
-        Uri.parse('$baseUrl/wallet'),
-        headers: <String, String>{
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(
-        const Duration(seconds: 30),
-      );
-
-      if (response.statusCode != 200) {
-        return false;
-      }
-
-      final dynamic decoded = jsonDecode(response.body);
-
-      if (decoded is! Map) {
-        return false;
-      }
-
-      final Map<String, dynamic> data = Map<String, dynamic>.from(decoded);
-
-      dynamic rawBalance = data['walletBalance'] ?? data['balance'];
-
-      if (data['data'] is Map) {
-        final Map<String, dynamic> nested = Map<String, dynamic>.from(
-          data['data'] as Map,
-        );
-
-        rawBalance ??= nested['walletBalance'] ?? nested['balance'];
-      }
-
-      final double? freshBalance = rawBalance is num
-          ? rawBalance.toDouble()
-          : double.tryParse(
-              rawBalance?.toString() ?? '',
-            );
-
-      if (freshBalance == null) {
-        return false;
-      }
-
-      await preferences.setDouble(
-        'wallet_balance',
-        freshBalance,
-      );
-
-      if (mounted) {
-        setState(() {
-          walletBalance = freshBalance;
-        });
-      }
-      receivedFreshWalletBalance = true;
+      final List<dynamic> results =
+          await Future.wait<dynamic>(<Future<dynamic>>[
+        _loadWalletBalance(token, preferences),
+        _loadRecentTransactions(token),
+        _loadNotificationSummary(token),
+        _loadActiveServiceStatuses(token),
+      ]);
+      receivedFreshWalletBalance = results.first == true;
     } catch (_) {
       // Keep locally saved dashboard values.
     } finally {
@@ -272,8 +254,622 @@ class _DashboardScreenState extends State<DashboardScreen>
     return receivedFreshWalletBalance;
   }
 
+  Future<bool> _loadWalletBalance(
+    String token,
+    SharedPreferences preferences,
+  ) async {
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/wallet'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+      );
+
+      if (response.statusCode != 200) {
+        return false;
+      }
+
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+
+      if (decoded is! Map) {
+        return false;
+      }
+
+      final Map<String, dynamic> data = Map<String, dynamic>.from(decoded);
+      dynamic rawBalance = data['walletBalance'] ?? data['balance'];
+
+      if (data['data'] is Map) {
+        final Map<String, dynamic> nested = Map<String, dynamic>.from(
+          data['data'] as Map,
+        );
+        rawBalance ??= nested['walletBalance'] ?? nested['balance'];
+      }
+
+      final double? freshBalance = rawBalance is num
+          ? rawBalance.toDouble()
+          : double.tryParse(rawBalance?.toString() ?? '');
+
+      if (freshBalance == null) {
+        return false;
+      }
+
+      await preferences.setDouble('wallet_balance', freshBalance);
+
+      if (mounted) {
+        setState(() {
+          walletBalance = freshBalance;
+        });
+      }
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _loadRecentTransactions(String token) async {
+    if (mounted) {
+      setState(() {
+        isLoadingRecentActivity = true;
+        recentActivityError = '';
+      });
+    }
+
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/transactions').replace(
+          queryParameters: const <String, String>{
+            'limit': '5',
+          },
+        ),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+      );
+
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError(
+          _dashboardResponseMessage(
+            decoded,
+            fallback: 'Unable to load recent activity.',
+          ),
+        );
+      }
+
+      final List<Map<String, dynamic>>? loaded =
+          _extractRecentTransactions(decoded);
+
+      if (loaded == null) {
+        throw StateError('Recent activity returned an invalid response.');
+      }
+
+      loaded.sort((Map<String, dynamic> left, Map<String, dynamic> right) {
+        final DateTime? leftDate = _recentTransactionDate(left);
+        final DateTime? rightDate = _recentTransactionDate(right);
+
+        return (rightDate?.millisecondsSinceEpoch ?? 0).compareTo(
+          leftDate?.millisecondsSinceEpoch ?? 0,
+        );
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        recentTransactions = loaded.take(5).toList();
+        recentActivityError = '';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        recentTransactions = <Map<String, dynamic>>[];
+        recentActivityError = error
+            .toString()
+            .replaceFirst('Bad state: ', '')
+            .replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingRecentActivity = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadNotificationSummary(String token) async {
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/notifications'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 20),
+      );
+
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded is! Map ||
+          decoded['success'] != true) {
+        return;
+      }
+
+      final dynamic rawCount = decoded['unreadCount'];
+      final int? count = rawCount is num
+          ? rawCount.toInt()
+          : int.tryParse(rawCount?.toString() ?? '');
+
+      if (!mounted || count == null) {
+        return;
+      }
+
+      setState(() {
+        unreadNotifications = count < 0 ? 0 : count;
+      });
+    } catch (_) {
+      // Keep the last known notification count without showing fake unread data.
+    }
+  }
+
+  Future<void> _loadActiveServiceStatuses(String token) async {
+    if (mounted) {
+      setState(() {
+        isLoadingServiceStatuses = true;
+      });
+    }
+
+    try {
+      final List<List<Map<String, dynamic>>> results =
+          await Future.wait<List<Map<String, dynamic>>>(
+        <Future<List<Map<String, dynamic>>>>[
+          _loadDashboardList(token, '/delivery/my', <String>['deliveries']),
+          _loadDashboardList(
+            token,
+            '/marketplace/orders/mine',
+            <String>['orders'],
+          ),
+          _loadDashboardList(
+            token,
+            '/solar/my-finance',
+            <String>['finances', 'finance'],
+          ),
+          _loadDashboardList(
+            token,
+            '/phone-financing/my-finance',
+            <String>['finances', 'finance'],
+          ),
+          _loadDashboardList(
+            token,
+            '/empowerment/my-applications',
+            <String>['applications'],
+          ),
+        ],
+      );
+
+      final List<_DashboardServiceStatus> statuses =
+          <_DashboardServiceStatus>[];
+
+      void addLatest({
+        required List<Map<String, dynamic>> records,
+        required String service,
+        required String statusKey,
+        required Set<String> terminalStatuses,
+        required IconData icon,
+        required String Function(Map<String, dynamic>) detail,
+      }) {
+        final List<Map<String, dynamic>> active = records.where(
+          (Map<String, dynamic> record) {
+            final String status =
+                record[statusKey]?.toString().trim().toUpperCase() ?? '';
+            return status.isNotEmpty && !terminalStatuses.contains(status);
+          },
+        ).toList()
+          ..sort(
+            (Map<String, dynamic> left, Map<String, dynamic> right) =>
+                (_recentTransactionDate(right)?.millisecondsSinceEpoch ?? 0)
+                    .compareTo(
+              _recentTransactionDate(left)?.millisecondsSinceEpoch ?? 0,
+            ),
+          );
+
+        if (active.isEmpty) {
+          return;
+        }
+
+        final Map<String, dynamic> record = active.first;
+        final String status =
+            record[statusKey]!.toString().trim().replaceAll('_', ' ');
+        statuses.add(
+          _DashboardServiceStatus(
+            service: service,
+            status: status,
+            detail: detail(record),
+            icon: icon,
+          ),
+        );
+      }
+
+      addLatest(
+        records: results[0],
+        service: 'Delivery',
+        statusKey: 'status',
+        terminalStatuses: const <String>{
+          'DELIVERED',
+          'CANCELLED',
+          'FAILED',
+        },
+        icon: Icons.local_shipping_rounded,
+        detail: (Map<String, dynamic> item) {
+          return (item['packageName'] ??
+                  item['trackingNumber'] ??
+                  'Delivery in progress')
+              .toString();
+        },
+      );
+      addLatest(
+        records: results[1],
+        service: 'Marketplace',
+        statusKey: 'orderStatus',
+        terminalStatuses: const <String>{
+          'DELIVERED',
+          'CANCELLED',
+          'REFUNDED',
+          'FAILED',
+        },
+        icon: Icons.storefront_rounded,
+        detail: (Map<String, dynamic> item) {
+          final String id = (item['_id'] ?? item['id'] ?? '').toString();
+          return id.isEmpty ? 'Marketplace order' : 'Order ${_shortId(id)}';
+        },
+      );
+      addLatest(
+        records: results[2],
+        service: 'Solar',
+        statusKey: 'status',
+        terminalStatuses: const <String>{
+          'COMPLETED',
+          'CANCELLED',
+          'REJECTED',
+          'FAILED',
+        },
+        icon: Icons.solar_power_rounded,
+        detail: _financeStatusDetail,
+      );
+      addLatest(
+        records: results[3],
+        service: 'Phone Financing',
+        statusKey: 'status',
+        terminalStatuses: const <String>{
+          'COMPLETED',
+          'CANCELLED',
+          'REJECTED',
+          'FAILED',
+        },
+        icon: Icons.phone_android_rounded,
+        detail: _financeStatusDetail,
+      );
+      addLatest(
+        records: results[4],
+        service: 'Empowerment',
+        statusKey: 'applicationStatus',
+        terminalStatuses: const <String>{
+          'COMPLETED',
+          'CANCELLED',
+          'REJECTED',
+          'FAILED',
+        },
+        icon: Icons.volunteer_activism_rounded,
+        detail: (Map<String, dynamic> item) {
+          final dynamic program = item['program'];
+          if (program is Map) {
+            final String name =
+                (program['name'] ?? program['title'] ?? '').toString().trim();
+            if (name.isNotEmpty) return name;
+          }
+          return (item['verificationStatus'] ?? 'Application update')
+              .toString();
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          activeServiceStatuses = statuses;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingServiceStatuses = false;
+        });
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadDashboardList(
+    String token,
+    String path,
+    List<String> keys,
+  ) async {
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl$path'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 20));
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return <Map<String, dynamic>>[];
+      }
+
+      dynamic value = decoded;
+      if (decoded is Map) {
+        for (final String key in keys) {
+          if (decoded[key] is List) {
+            value = decoded[key];
+            break;
+          }
+          if (decoded['data'] is Map && decoded['data'][key] is List) {
+            value = decoded['data'][key];
+            break;
+          }
+        }
+      }
+
+      if (value is Map) {
+        value = <dynamic>[value];
+      }
+      if (value is! List) {
+        return <Map<String, dynamic>>[];
+      }
+      return value
+          .whereType<Map>()
+          .map((Map item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  String _shortId(String value) =>
+      value.length <= 8 ? value : value.substring(value.length - 8);
+
+  String _financeStatusDetail(Map<String, dynamic> finance) {
+    final dynamic schedule = finance['paymentSchedule'] ?? finance['schedule'];
+    if (schedule is List) {
+      for (final dynamic entry in schedule) {
+        if (entry is! Map) continue;
+        final String status =
+            entry['status']?.toString().trim().toUpperCase() ?? '';
+        final String due = entry['dueDate']?.toString().trim() ?? '';
+        if (status == 'PENDING' && due.isNotEmpty) {
+          final DateTime? date = DateTime.tryParse(due)?.toLocal();
+          if (date != null) {
+            return 'Next payment ${date.day}/${date.month}/${date.year}';
+          }
+        }
+      }
+    }
+    final String reference = (finance['reference'] ?? '').toString().trim();
+    return reference.isEmpty ? 'Finance plan active' : reference;
+  }
+
+  dynamic _decodeDashboardResponse(String body) {
+    if (body.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _dashboardResponseMessage(
+    dynamic decoded, {
+    required String fallback,
+  }) {
+    if (decoded is Map) {
+      final dynamic message =
+          decoded['message'] ?? decoded['error'] ?? decoded['detail'];
+
+      if (message != null && message.toString().trim().isNotEmpty) {
+        return message.toString();
+      }
+    }
+
+    return fallback;
+  }
+
+  List<Map<String, dynamic>>? _extractRecentTransactions(dynamic decoded) {
+    dynamic list;
+
+    if (decoded is List) {
+      list = decoded;
+    } else if (decoded is Map) {
+      list = decoded['transactions'];
+
+      if (list == null && decoded['data'] is Map) {
+        list = decoded['data']['transactions'];
+      }
+
+      if (list == null && decoded['data'] is List) {
+        list = decoded['data'];
+      }
+
+      if (list == null && decoded['wallet'] is Map) {
+        list = decoded['wallet']['transactions'];
+      }
+    }
+
+    if (list is! List) {
+      return null;
+    }
+
+    final List<Map<String, dynamic>> transactions = list
+        .whereType<Map>()
+        .map(
+          (Map item) => Map<String, dynamic>.from(item),
+        )
+        .toList();
+
+    if (list.isNotEmpty && transactions.isEmpty) {
+      return null;
+    }
+
+    return transactions;
+  }
+
+  String _recentTransactionTitle(Map<String, dynamic> transaction) {
+    final dynamic value = transaction['serviceType'] ??
+        transaction['type'] ??
+        transaction['transactionType'] ??
+        transaction['category'] ??
+        'Transaction';
+    final String cleaned =
+        value.toString().replaceAll('_', ' ').replaceAll('-', ' ').trim();
+
+    if (cleaned.isEmpty) {
+      return 'Transaction';
+    }
+
+    return cleaned
+        .split(RegExp(r'\s+'))
+        .where((String word) => word.isNotEmpty)
+        .map(
+          (String word) =>
+              '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}',
+        )
+        .join(' ');
+  }
+
+  String _recentTransactionDescription(Map<String, dynamic> transaction) {
+    final dynamic value = transaction['description'] ??
+        transaction['narration'] ??
+        transaction['message'] ??
+        transaction['counterparty'] ??
+        transaction['recipientPhone'] ??
+        transaction['phone'];
+    final String text = value?.toString().trim() ?? '';
+
+    return text.isEmpty ? 'Details unavailable' : text;
+  }
+
+  String _recentTransactionStatus(Map<String, dynamic> transaction) {
+    final dynamic rawStatus =
+        transaction['status'] ?? transaction['paymentStatus'];
+    final String status = rawStatus?.toString().trim().toUpperCase() ?? '';
+
+    if (status.isEmpty) {
+      return 'STATUS UNAVAILABLE';
+    }
+
+    if (status == 'SUCCESS' || status == 'COMPLETED' || status == 'PAID') {
+      return 'SUCCESSFUL';
+    }
+
+    if (status == 'FAIL' ||
+        status == 'FAILED' ||
+        status == 'DECLINED' ||
+        status == 'CANCELLED') {
+      return 'FAILED';
+    }
+
+    return status;
+  }
+
+  double? _recentTransactionAmount(Map<String, dynamic> transaction) {
+    final dynamic value = transaction['amount'] ??
+        transaction['totalAmount'] ??
+        transaction['value'];
+
+    if (value == null) {
+      return null;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value.toString().replaceAll(',', '').trim());
+  }
+
+  String? _recentTransactionDirection(Map<String, dynamic> transaction) {
+    final String direction =
+        (transaction['direction'] ?? '').toString().trim().toUpperCase();
+
+    if (direction == 'CREDIT' || direction == 'DEBIT') {
+      return direction;
+    }
+
+    return null;
+  }
+
+  DateTime? _recentTransactionDate(Map<String, dynamic> transaction) {
+    final dynamic value = transaction['createdAt'] ??
+        transaction['date'] ??
+        transaction['transactionDate'] ??
+        transaction['updatedAt'];
+
+    return value == null
+        ? null
+        : DateTime.tryParse(value.toString())?.toLocal();
+  }
+
+  String _recentTransactionDateLabel(Map<String, dynamic> transaction) {
+    final DateTime? date = _recentTransactionDate(transaction);
+
+    if (date == null) {
+      return 'Date unavailable';
+    }
+
+    final String day = date.day.toString().padLeft(2, '0');
+    final String month = date.month.toString().padLeft(2, '0');
+    final String hour = date.hour.toString().padLeft(2, '0');
+    final String minute = date.minute.toString().padLeft(2, '0');
+
+    return '$day/$month/${date.year} • $hour:$minute';
+  }
+
+  IconData _recentTransactionIcon(String title) {
+    final String value = title.toLowerCase();
+
+    if (value.contains('airtime')) return Icons.phone_android_rounded;
+    if (value.contains('data')) return Icons.wifi_rounded;
+    if (value.contains('transfer')) return Icons.send_rounded;
+    if (value.contains('fund') || value.contains('wallet')) {
+      return Icons.account_balance_wallet_rounded;
+    }
+    if (value.contains('delivery') || value.contains('logistic')) {
+      return Icons.local_shipping_rounded;
+    }
+    if (value.contains('electric')) return Icons.lightbulb_rounded;
+    if (value.contains('cable')) return Icons.live_tv_rounded;
+
+    return Icons.receipt_long_rounded;
+  }
+
   Future<void> _refreshDashboard() async {
-    if (isRefreshing) {
+    if (isRefreshing || isLoading) {
       return;
     }
 
@@ -304,7 +900,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _loadServiceAvailability() async {
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _client.get(
         Uri.parse(
           '$baseUrl/settings/public',
         ),
@@ -924,6 +1520,12 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ),
             _headerIconButton(
+              tooltip: 'Refresh dashboard',
+              icon: Icons.refresh_rounded,
+              onTap: _refreshDashboard,
+            ),
+            const SizedBox(width: 8),
+            _headerIconButton(
               tooltip: 'Notifications',
               icon: Icons.notifications_none_rounded,
               onTap: () => openScreen(const NotificationsScreen()),
@@ -1040,14 +1642,29 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             if (showDot)
               Positioned(
-                right: 9,
-                top: 8,
+                right: 4,
+                top: 3,
                 child: Container(
-                  width: 7,
-                  height: 7,
+                  key: const Key('dashboard-unread-badge'),
+                  constraints: const BoxConstraints(
+                    minWidth: 15,
+                    minHeight: 15,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  alignment: Alignment.center,
                   decoration: const BoxDecoration(
                     color: Color(0xFFE8503D),
                     shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    unreadNotifications > 9
+                        ? '9+'
+                        : unreadNotifications.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),
@@ -1216,52 +1833,58 @@ class _DashboardScreenState extends State<DashboardScreen>
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  const Text(
-                    'Available Balance',
-                    style: TextStyle(
-                      color: Color(0xFF51645A),
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  Semantics(
-                    button: true,
-                    label: hideBalance ? 'Show balance' : 'Hide balance',
-                    child: Tooltip(
-                      message: hideBalance ? 'Show balance' : 'Hide balance',
-                      child: InkWell(
-                        onTap: () => setState(() => hideBalance = !hideBalance),
-                        borderRadius: BorderRadius.circular(18),
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            hideBalance
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                            color: primaryGreen,
-                            size: 18,
+                  Expanded(
+                    child: Row(
+                      children: <Widget>[
+                        const Flexible(
+                          child: Text(
+                            'Available Balance',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Color(0xFF51645A),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 3),
+                        Semantics(
+                          button: true,
+                          label: hideBalance ? 'Show balance' : 'Hide balance',
+                          child: Tooltip(
+                            message:
+                                hideBalance ? 'Show balance' : 'Hide balance',
+                            child: InkWell(
+                              onTap: () =>
+                                  setState(() => hideBalance = !hideBalance),
+                              borderRadius: BorderRadius.circular(18),
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: Icon(
+                                  hideBalance
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: primaryGreen,
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: () => openScreen(const WalletScreen()),
-                    icon: const Icon(Icons.account_balance_wallet_outlined,
-                        size: 17),
-                    label: const Text('Wallet'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: primaryGreen,
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
+                  Tooltip(
+                    message: 'Open wallet',
+                    child: IconButton(
+                      onPressed: () => openScreen(const WalletScreen()),
+                      icon: const Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 20,
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 7,
-                      ),
+                      color: primaryGreen,
+                      visualDensity: VisualDensity.compact,
                     ),
                   ),
                 ],
@@ -1312,8 +1935,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ],
                     ),
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
                     children: <Widget>[
                       _balanceActionButton(
                         label: 'Add Money',
@@ -1321,7 +1945,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                         filled: true,
                         onTap: () => openScreen(const WalletScreen()),
                       ),
-                      const SizedBox(width: 7),
                       _balanceActionButton(
                         label: 'Send Money',
                         icon: Icons.send_rounded,
@@ -1388,35 +2011,75 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ],
       ),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: _premiumWalletAction(
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final List<Widget> actions = <Widget>[
+            _premiumWalletAction(
               icon: Icons.swap_horiz_rounded,
               label: 'Transfer',
               detail: 'Send funds',
+              key: const Key('dashboard-transfer-action'),
               onTap: () => openScreen(const TransferScreen()),
             ),
-          ),
-          _premiumActionDivider(),
-          Expanded(
-            child: _premiumWalletAction(
+            _premiumWalletAction(
               icon: Icons.south_west_rounded,
-              label: 'Withdrawal',
+              label: 'Withdraw',
               detail: 'Cash out',
+              key: const Key('dashboard-withdraw-action'),
               onTap: () => openScreen(const WithdrawalScreen()),
             ),
-          ),
-          _premiumActionDivider(),
-          Expanded(
-            child: _premiumWalletAction(
-              icon: Icons.account_balance_wallet_outlined,
-              label: 'Wallet',
-              detail: 'Manage funds',
+            _premiumWalletAction(
+              icon: Icons.add_card_rounded,
+              label: 'Fund Wallet',
+              detail: 'Add money',
+              key: const Key('dashboard-fund-wallet-action'),
               onTap: () => openScreen(const WalletScreen()),
             ),
-          ),
-        ],
+            _premiumWalletAction(
+              icon: Icons.qr_code_scanner_rounded,
+              label: 'QR Pay',
+              detail: 'Scan & pay',
+              key: const Key('dashboard-qr-pay-action'),
+              onTap: () => openScreen(const QrPayScreen()),
+            ),
+          ];
+
+          Widget actionPair(int first, int second) {
+            return Row(
+              children: <Widget>[
+                Expanded(child: actions[first]),
+                _premiumActionDivider(),
+                Expanded(child: actions[second]),
+              ],
+            );
+          }
+
+          if (constraints.maxWidth < 380) {
+            return Column(
+              children: <Widget>[
+                actionPair(0, 1),
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFE5EEE8),
+                ),
+                actionPair(2, 3),
+              ],
+            );
+          }
+
+          return Row(
+            children: <Widget>[
+              Expanded(child: actions[0]),
+              _premiumActionDivider(),
+              Expanded(child: actions[1]),
+              _premiumActionDivider(),
+              Expanded(child: actions[2]),
+              _premiumActionDivider(),
+              Expanded(child: actions[3]),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1433,11 +2096,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     required IconData icon,
     required String label,
     required String detail,
+    Key? key,
     required VoidCallback onTap,
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        key: key,
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
@@ -1458,8 +2123,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               const SizedBox(height: 5),
               Text(
                 label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.visible,
                 style: const TextStyle(
                   color: Color(0xFF263D30),
                   fontSize: 10.8,
@@ -1490,6 +2156,169 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Widget buildActiveServiceStatuses() {
+    if (!isLoadingServiceStatuses && activeServiceStatuses.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Text(
+          'Active Services',
+          style: TextStyle(
+            color: Color(0xFF15281B),
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (isLoadingServiceStatuses && activeServiceStatuses.isEmpty)
+          Container(
+            key: const Key('dashboard-service-status-loading'),
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE3ECE6)),
+            ),
+            child: const Row(
+              children: <Widget>[
+                _DashboardLoadingBar(width: 42, height: 42),
+                SizedBox(width: 12),
+                Expanded(child: _DashboardLoadingBar(width: 170)),
+              ],
+            ),
+          )
+        else
+          for (int index = 0; index < activeServiceStatuses.length; index++)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: index == activeServiceStatuses.length - 1 ? 0 : 9,
+              ),
+              child: _buildActiveServiceStatusCard(
+                activeServiceStatuses[index],
+              ),
+            ),
+      ],
+    );
+  }
+
+  Widget _buildActiveServiceStatusCard(_DashboardServiceStatus item) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        key: Key(
+          'dashboard-service-status-${item.service.toLowerCase().replaceAll(' ', '-')}',
+        ),
+        onTap: () => _openServiceStatus(item.service),
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE3ECE6)),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: softGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(item.icon, color: primaryGreen, size: 21),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      item.service,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF263D30),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      item.detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF78877E),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 92),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primaryGreen.withValues(alpha: 0.09),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    item.status,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: primaryGreen,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF91A096),
+                size: 19,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openServiceStatus(String service) {
+    switch (service) {
+      case 'Delivery':
+        openScreen(const DeliveryHistoryScreen());
+        return;
+      case 'Marketplace':
+        openScreen(const MarketplaceMyOrdersScreen());
+        return;
+      case 'Solar':
+        openScreen(const SolarScreen());
+        return;
+      case 'Phone Financing':
+        openScreen(const PhoneFinancingScreen());
+        return;
+      case 'Empowerment':
+        openScreen(const EmpowermentScreen());
+        return;
+    }
+  }
+
   Widget buildPremiumServices() {
     final List<_DashboardService> all = <_DashboardService>[
       ...filtered(popularServices()),
@@ -1512,7 +2341,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     final List<_DashboardService> selected = <_DashboardService>[
       for (final String title in <String>[
         'Delivery',
-        'Phone Financing',
         'ServicePay Solar',
         'Empowerment',
         'Marketplace',
@@ -3881,6 +4709,283 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Widget buildRecentActivity() {
+    final Widget content;
+
+    if (isLoadingRecentActivity) {
+      content = Column(
+        children: List<Widget>.generate(
+          3,
+          (int index) => Padding(
+            padding: EdgeInsets.only(bottom: index == 2 ? 0 : 12),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEAF2ED),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      _DashboardLoadingBar(width: 118),
+                      SizedBox(height: 7),
+                      _DashboardLoadingBar(width: 82, height: 9),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const _DashboardLoadingBar(width: 58),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else if (recentActivityError.isNotEmpty && recentTransactions.isEmpty) {
+      content = _DashboardEmptyState(
+        icon: Icons.cloud_off_rounded,
+        title: 'Activity unavailable',
+        message: recentActivityError,
+        actionLabel: 'Retry',
+        actionKey: const Key('dashboard-recent-activity-retry'),
+        onAction: () async {
+          final SharedPreferences preferences =
+              await SharedPreferences.getInstance();
+          final String? token = await getSavedAuthToken(preferences);
+
+          if (token == null || token.isEmpty) {
+            if (mounted) {
+              setState(() {
+                recentActivityError =
+                    'Your login session has expired. Please log in again.';
+              });
+            }
+            return;
+          }
+
+          await _loadRecentTransactions(token);
+        },
+      );
+    } else if (recentTransactions.isEmpty) {
+      content = const _DashboardEmptyState(
+        icon: Icons.receipt_long_rounded,
+        title: 'No recent transactions',
+        message: 'Your latest activity will appear here.',
+      );
+    } else {
+      content = Column(
+        children: <Widget>[
+          for (int index = 0; index < recentTransactions.length; index++)
+            _buildRecentTransactionRow(
+              recentTransactions[index],
+              isLast: index == recentTransactions.length - 1,
+            ),
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE2ECE5)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0B102A1B),
+            blurRadius: 16,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Recent Activity',
+                  style: TextStyle(
+                    color: Color(0xFF15281B),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              TextButton(
+                key: const Key('dashboard-see-all-transactions'),
+                onPressed: () => openScreen(const TransactionsScreen()),
+                style: TextButton.styleFrom(
+                  foregroundColor: primaryGreen,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 5,
+                  ),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text('See All Transactions'),
+                    SizedBox(width: 2),
+                    Icon(Icons.chevron_right_rounded, size: 17),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          content,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentTransactionRow(
+    Map<String, dynamic> transaction, {
+    required bool isLast,
+  }) {
+    final String title = _recentTransactionTitle(transaction);
+    final String description = _recentTransactionDescription(transaction);
+    final String status = _recentTransactionStatus(transaction);
+    final String? direction = _recentTransactionDirection(transaction);
+    final double? amount = _recentTransactionAmount(transaction);
+    final Color statusColor = status == 'SUCCESSFUL'
+        ? primaryGreen
+        : status == 'FAILED'
+            ? const Color(0xFFB42318)
+            : status == 'STATUS UNAVAILABLE'
+                ? const Color(0xFF667085)
+                : const Color(0xFFB54708);
+    final Color directionColor = direction == 'CREDIT'
+        ? primaryGreen
+        : direction == 'DEBIT'
+            ? const Color(0xFF344054)
+            : const Color(0xFF667085);
+    final String amountLabel = amount == null
+        ? 'Amount unavailable'
+        : '${direction == 'CREDIT' ? '+' : direction == 'DEBIT' ? '-' : ''}₦${amount.toStringAsFixed(2)}';
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 11),
+      child: Column(
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: softGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _recentTransactionIcon(title),
+                  color: primaryGreen,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF263D30),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF78877E),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 5,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
+                        Text(
+                          _recentTransactionDateLabel(transaction),
+                          style: const TextStyle(
+                            color: Color(0xFF98A69D),
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            status,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          amountLabel,
+                          style: TextStyle(
+                            color: directionColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (!isLast)
+            const Padding(
+              padding: EdgeInsets.only(left: 52, top: 11),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: Color(0xFFF0F3F1),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -3913,7 +5018,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 12),
                   buildPremiumActionRow(),
                   const SizedBox(height: 20),
+                  buildActiveServiceStatuses(),
+                  if (isLoadingServiceStatuses ||
+                      activeServiceStatuses.isNotEmpty)
+                    const SizedBox(height: 18),
                   buildPremiumServices(),
+                  const SizedBox(height: 18),
+                  buildRecentActivity(),
                   const SizedBox(height: 18),
                   buildPremiumInviteBanner(),
                   const SizedBox(height: 14),
@@ -3955,6 +5066,127 @@ class _DashboardTool {
     required this.onTap,
     required this.key,
   });
+}
+
+class _DashboardServiceStatus {
+  final String service;
+  final String status;
+  final String detail;
+  final IconData icon;
+
+  const _DashboardServiceStatus({
+    required this.service,
+    required this.status,
+    required this.detail,
+    required this.icon,
+  });
+}
+
+class _DashboardLoadingBar extends StatelessWidget {
+  final double width;
+  final double height;
+
+  const _DashboardLoadingBar({
+    required this.width,
+    this.height = 12,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF2ED),
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+}
+
+class _DashboardEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final Key? actionKey;
+  final VoidCallback? onAction;
+
+  const _DashboardEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.actionKey,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFCFB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEAF0EC)),
+      ),
+      child: Column(
+        children: <Widget>[
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEAF7F0),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: _DashboardScreenState.primaryGreen,
+              size: 21,
+            ),
+          ),
+          const SizedBox(height: 9),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF263D30),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF78877E),
+              fontSize: 10.5,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (actionLabel != null && onAction != null) ...<Widget>[
+            const SizedBox(height: 10),
+            TextButton(
+              key: actionKey,
+              onPressed: onAction,
+              style: TextButton.styleFrom(
+                foregroundColor: _DashboardScreenState.primaryGreen,
+                textStyle: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              child: Text(actionLabel!),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _DashboardService {
