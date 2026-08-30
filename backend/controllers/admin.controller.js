@@ -19,6 +19,12 @@ const {
   "../services/riderCommission.service"
 );
 
+const {
+  getExecutiveDashboard,
+} = require("../services/adminDashboard.service");
+
+exports.getAdminExecutiveDashboard = getExecutiveDashboard;
+
 const DELIVERY_STATUSES = [
   "PENDING",
   "ASSIGNED",

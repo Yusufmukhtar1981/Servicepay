@@ -18,6 +18,7 @@ const {
   unassignRiderFromDelivery,
   updateDeliveryStatus,
   updateDeliveryPrice,
+  getAdminExecutiveDashboard,
 } = require("../controllers/admin.controller");
 
 const {
@@ -72,6 +73,16 @@ const MANAGEMENT_ROLES = [
   "ZONAL_MANAGER",
   "STATE_MANAGER",
 ];
+
+const dashboardPermission = (req, res, next) => {
+  const role = String(req.user?.role || "").toUpperCase();
+  if (role !== "STAFF") return next();
+  return res.status(403).json({
+    success: false,
+    message:
+      "Executive dashboard access requires a server-defined management scope.",
+  });
+};
 
 const canCreateManagedUser = (
   req,
@@ -206,6 +217,22 @@ router.get(
   loadStaffRole,
   requirePermission("dashboard.view"),
   getAdminDashboard
+);
+
+router.get(
+  "/dashboard/executive",
+  protect,
+  adminOnly(
+    "HEAD_OFFICE",
+    "ADMIN",
+    "SUPER_ADMIN",
+    "HEAD_OFFICE_ADMIN",
+    "ZONAL_MANAGER",
+    "STATE_MANAGER",
+    "STAFF",
+  ),
+  dashboardPermission,
+  getAdminExecutiveDashboard,
 );
 
 /*
