@@ -21,6 +21,7 @@ const phoneProductSchema = new mongoose.Schema({
   graceDays: { type: Number, default: 3, min: 0, max: 90 },
   active: { type: Boolean, default: true, index: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
 }, { timestamps: true });
 phoneProductSchema.index({ active: 1, stock: 1, name: 1 });
 phoneProductSchema.pre("validate", function () { this.sku = String(this.sku || "").trim().toUpperCase().replace(/\s+/g, "-"); });

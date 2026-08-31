@@ -24,6 +24,8 @@ const problem = (message, statusCode = 409) =>
   Object.assign(new Error(message), { statusCode });
 const reference = () =>
   `SSW-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+const staffBranchFilter = (req) => req.staffAccess?.scope?.type === "BRANCH"
+  ? { branchId: req.staffAccess.scope.branchId } : {};
 
 const audit = (req, action, reason, previousData = null, newData = null, session) =>
   AdminAuditLog.create(
@@ -59,6 +61,9 @@ const profileForRequest = async (req, session) => {
     status: "ACTIVE",
   }).session(session || null);
   if (!profile) throw problem("Your Solar Officer account is not active.", 403);
+  if (req.user?.branchId && (!profile.branchId || String(profile.branchId) !== String(req.user.branchId))) {
+    throw problem("Your Solar Officer branch assignment is invalid.", 403);
+  }
   return profile;
 };
 
@@ -128,8 +133,8 @@ const serializeAssignedApplication = (application, assignment, verification, fin
   };
 };
 
-const getOfficerApplications = async (officerId, applicationId = null) => {
-  const assignmentFilter = { officer: officerId, status: "ACTIVE" };
+const getOfficerApplications = async (officerId, applicationId = null, branchId = null) => {
+  const assignmentFilter = { officer: officerId, status: "ACTIVE", ...(branchId ? { branchId } : {}) };
   if (applicationId) assignmentFilter.application = applicationId;
   const assignments = await SolarAssignment.find(assignmentFilter)
     .sort({ assignedAt: -1 })
@@ -137,6 +142,7 @@ const getOfficerApplications = async (officerId, applicationId = null) => {
     .populate("officer");
   const applications = await SolarApplication.find({
     _id: { $in: assignments.map((item) => item.application) },
+    ...(branchId ? { branchId } : {}),
   })
     .sort({ createdAt: -1 })
     .populate("customer", "fullName phone email state lga address");
@@ -177,11 +183,11 @@ const generateOfficerId = async () => {
 };
 
 exports.adminListOfficers = async (req, res) => {
-  const profiles = await SolarOfficer.find()
+  const profiles = await SolarOfficer.find(staffBranchFilter(req))
     .sort({ createdAt: -1 })
     .populate("user", "fullName phone email status state lga address");
   const assignments = await SolarAssignment.aggregate([
-    { $match: { status: "ACTIVE" } },
+    { $match: { status: "ACTIVE", ...staffBranchFilter(req) } },
     { $group: { _id: "$officer", assignedCustomers: { $sum: 1 } } },
   ]);
   const countMap = new Map(assignments.map((item) => [String(item._id), item.assignedCustomers]));
@@ -231,6 +237,7 @@ exports.adminCreateOfficer = async (req, res) => {
             lga,
             address,
             status: "ACTIVE",
+            branchId: req.user.branchId || null,
           },
         ],
         { session }
@@ -249,6 +256,7 @@ exports.adminCreateOfficer = async (req, res) => {
                 ? new Date(req.body.dateJoined)
                 : new Date(),
               createdBy: actorId(req),
+              branchId: req.user.branchId || null,
             },
           ],
           { session }
@@ -294,7 +302,9 @@ exports.adminUpdateOfficerStatus = async (req, res) => {
   try {
     let profile;
     await session.withTransaction(async () => {
-      profile = await SolarOfficer.findById(req.params.officerId).session(session);
+      profile = await SolarOfficer.findOne({
+        _id: req.params.officerId, ...staffBranchFilter(req),
+      }).session(session);
       if (!profile) throw problem("Solar Officer not found.", 404);
       const previous = profile.status;
       profile.status = status;
@@ -322,9 +332,10 @@ exports.adminUpdateOfficerStatus = async (req, res) => {
 };
 
 exports.adminListAssignments = async (req, res) => {
-  const filter = req.query.status
-    ? { status: text(req.query.status, 20).toUpperCase() }
-    : {};
+  const filter = {
+    ...staffBranchFilter(req),
+    ...(req.query.status ? { status: text(req.query.status, 20).toUpperCase() } : {}),
+  };
   const assignments = await SolarAssignment.find(filter)
     .sort({ assignedAt: -1 })
     .populate("officer")
@@ -342,10 +353,18 @@ exports.adminAssignApplication = async (req, res) => {
   try {
     let assignment;
     await session.withTransaction(async () => {
-      const application = await SolarApplication.findById(req.params.applicationId).session(session);
+      const application = await SolarApplication.findOne({
+        _id: req.params.applicationId,
+        ...staffBranchFilter(req),
+      }).session(session);
       if (!application) throw problem("Solar application not found.", 404);
-      const officer = await SolarOfficer.findOne({ _id: officerId, status: "ACTIVE" }).session(session);
+      const officer = await SolarOfficer.findOne({
+        _id: officerId, status: "ACTIVE", ...staffBranchFilter(req),
+      }).session(session);
       if (!officer) throw problem("Active Solar Officer not found.", 404);
+      if (String(officer.branchId || "") !== String(application.branchId || "")) {
+        throw problem("Solar Officer and application must belong to the same branch.", 409);
+      }
       const current = await SolarAssignment.findOne({
         application: application._id,
         status: "ACTIVE",
@@ -366,6 +385,7 @@ exports.adminAssignApplication = async (req, res) => {
               application: application._id,
               customer: application.customer,
               officer: officer._id,
+              branchId: application.branchId || null,
               assignedBy: actorId(req),
               note: text(req.body?.note, 500),
             },
@@ -395,8 +415,8 @@ exports.adminAssignApplication = async (req, res) => {
 
 exports.adminOfficerDashboard = async (req, res) => {
   const [profiles, activeAssignments, commissions, withdrawals] = await Promise.all([
-    SolarOfficer.countDocuments(),
-    SolarAssignment.countDocuments({ status: "ACTIVE" }),
+    SolarOfficer.countDocuments(staffBranchFilter(req)),
+    SolarAssignment.countDocuments({ status: "ACTIVE", ...staffBranchFilter(req) }),
     SolarOfficerCommission.aggregate([
       { $group: { _id: "$status", total: { $sum: "$commissionAmount" }, count: { $sum: 1 } } },
     ]),
@@ -421,13 +441,31 @@ exports.adminOfficerDashboard = async (req, res) => {
 };
 
 exports.adminListWithdrawals = async (req, res) => {
-  const filter = req.query.status
-    ? { status: text(req.query.status, 20).toUpperCase() }
-    : {};
+  const filter = {
+    ...staffBranchFilter(req),
+    ...(req.query.status ? { status: text(req.query.status, 20).toUpperCase() } : {}),
+  };
   const withdrawals = await SolarOfficerWithdrawal.find(filter)
     .sort({ requestedAt: -1 })
     .populate({ path: "officer", populate: { path: "user", select: "fullName phone email" } });
   res.json({ success: true, withdrawals });
+};
+
+// Withdrawals predate branch stamping, so do not trust a stored branch alone.
+// The officer profile is the authoritative branch relationship. A null legacy
+// withdrawal therefore cannot be reached by a branch-scoped staff member.
+const scopedWithdrawal = async (req, withdrawalId, session) => {
+  const withdrawal = await SolarOfficerWithdrawal.findOne({
+    _id: withdrawalId,
+    ...staffBranchFilter(req),
+  }).session(session);
+  if (!withdrawal) throw problem("Withdrawal request not found.", 404);
+  const officer = await SolarOfficer.findOne({
+    _id: withdrawal.officer,
+    ...staffBranchFilter(req),
+  }).select("_id branchId").session(session);
+  if (!officer) throw problem("Withdrawal request not found.", 404);
+  return withdrawal;
 };
 
 const mutateWithdrawal = async (req, res, action) => {
@@ -435,8 +473,7 @@ const mutateWithdrawal = async (req, res, action) => {
   try {
     let withdrawal;
     await session.withTransaction(async () => {
-      withdrawal = await SolarOfficerWithdrawal.findById(req.params.withdrawalId).session(session);
-      if (!withdrawal) throw problem("Withdrawal request not found.", 404);
+      withdrawal = await scopedWithdrawal(req, req.params.withdrawalId, session);
       if (action === "APPROVE") {
         if (withdrawal.status !== "PENDING") throw problem("Only pending withdrawals can be approved.");
         withdrawal.status = "APPROVED";
@@ -455,7 +492,7 @@ const mutateWithdrawal = async (req, res, action) => {
         if (!wallet) throw problem("Commission wallet could not release the locked funds.");
         for (const allocation of withdrawal.allocations || []) {
           await SolarOfficerCommission.updateOne(
-            { _id: allocation.commission, lockedAmount: { $gte: allocation.amount } },
+            { _id: allocation.commission, ...staffBranchFilter(req), lockedAmount: { $gte: allocation.amount } },
             { $inc: { lockedAmount: -allocation.amount } },
             { session }
           );
@@ -478,7 +515,7 @@ const mutateWithdrawal = async (req, res, action) => {
         if (!wallet) throw problem("Commission wallet could not settle the locked funds.");
         for (const allocation of withdrawal.allocations || []) {
           const commission = await SolarOfficerCommission.findOneAndUpdate(
-            { _id: allocation.commission, lockedAmount: { $gte: allocation.amount } },
+            { _id: allocation.commission, ...staffBranchFilter(req), lockedAmount: { $gte: allocation.amount } },
             {
               $inc: { lockedAmount: -allocation.amount, paidAmount: allocation.amount },
             },
@@ -487,7 +524,7 @@ const mutateWithdrawal = async (req, res, action) => {
           if (!commission) throw problem("A commission allocation is no longer available.");
           if (roundMoney(commission.paidAmount) >= roundMoney(commission.commissionAmount)) {
             await SolarOfficerCommission.updateOne(
-              { _id: commission._id },
+              { _id: commission._id, ...staffBranchFilter(req) },
               { $set: { status: "PAID" } },
               { session }
             );
@@ -521,7 +558,7 @@ exports.officerMe = async (req, res) => {
 
 exports.officerDashboard = async (req, res) => {
   const profile = await profileForRequest(req);
-  const applications = await getOfficerApplications(profile._id);
+  const applications = await getOfficerApplications(profile._id, null, profile.branchId);
   const commissions = await SolarOfficerWallet.findOne({ officer: profile._id }).lean();
   const count = (predicate) => applications.filter(predicate).length;
   const sales = applications
@@ -552,7 +589,7 @@ exports.officerDashboard = async (req, res) => {
 
 exports.officerApplications = async (req, res) => {
   const profile = await profileForRequest(req);
-  const applications = await getOfficerApplications(profile._id, req.params.applicationId);
+  const applications = await getOfficerApplications(profile._id, req.params.applicationId, profile.branchId);
   if (req.params.applicationId && !applications.length) {
     return res.status(404).json({ success: false, message: "Assigned Solar application not found." });
   }
@@ -591,14 +628,15 @@ exports.officerVerifyApplication = async (req, res) => {
       if (!assignment) {
         throw problem("Solar application is not assigned to you.", 404);
       }
-      const application = await SolarApplication.findById(
-        req.params.applicationId
-      ).session(session);
+      const application = await SolarApplication.findOne({
+        _id: req.params.applicationId, branchId: profile.branchId || null,
+      }).session(session);
       if (!application) throw problem("Solar application not found.", 404);
       verification = await SolarVerification.findOneAndUpdate(
         { application: application._id },
         {
           $set: {
+            branchId: application.branchId || null,
             customer: application.customer,
             officer: profile._id,
             checklist: cleanChecklist,
@@ -670,9 +708,9 @@ exports.officerHandover = async (req, res) => {
       if (!assignment) {
         throw problem("Solar application is not assigned to you.", 404);
       }
-      application = await SolarApplication.findById(
-        req.params.applicationId
-      ).session(session);
+      application = await SolarApplication.findOne({
+        _id: req.params.applicationId, branchId: profile.branchId || null,
+      }).session(session);
       if (!application) throw problem("Solar application not found.", 404);
       if (!["DEPOSIT_PAID", "READY_FOR_INSTALLATION"].includes(application.status)) {
         throw problem(
@@ -714,7 +752,7 @@ exports.officerHandover = async (req, res) => {
 
 exports.officerRepayments = async (req, res) => {
   const profile = await profileForRequest(req);
-  const applications = await getOfficerApplications(profile._id);
+  const applications = await getOfficerApplications(profile._id, null, profile.branchId);
   res.json({
     success: true,
     repayments: applications.filter((item) => item.finance).map((item) => ({
@@ -736,7 +774,7 @@ exports.officerRepayments = async (req, res) => {
 
 exports.officerOverdue = async (req, res) => {
   const profile = await profileForRequest(req);
-  const applications = await getOfficerApplications(profile._id);
+  const applications = await getOfficerApplications(profile._id, null, profile.branchId);
   const overdue = applications.filter((item) => item.paymentStatus === "OVERDUE").map((item) => {
     const dueRows = (item.finance?.paymentSchedule || []).filter((row) => Number(row.paidAmount || 0) < Number(row.amount || 0) && new Date(row.dueDate).getTime() < Date.now());
     const oldestDue = dueRows.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0];
@@ -772,9 +810,9 @@ exports.officerFollowUp = async (req, res) => {
       if (!assignment) {
         throw problem("Solar application is not assigned to you.", 404);
       }
-      const application = await SolarApplication.findById(
-        req.params.applicationId
-      ).session(session);
+      const application = await SolarApplication.findOne({
+        _id: req.params.applicationId, branchId: profile.branchId || null,
+      }).session(session);
       if (!application) throw problem("Solar application not found.", 404);
       const finance = await SolarFinance.findOne({
         application: application._id,
@@ -785,9 +823,11 @@ exports.officerFollowUp = async (req, res) => {
         await SolarFollowUp.create(
           [
             {
+              branchId: application.branchId || null,
               application: application._id,
               finance: finance?._id || null,
               customer: application.customer,
+              branchId: profile.branchId || null,
               officer: profile._id,
               followUpDate: req.body?.followUpDate
                 ? new Date(req.body.followUpDate)
@@ -935,7 +975,8 @@ exports.officerCreateWithdrawal = async (req, res) => {
 };
 
 const performanceForOfficer = async (profileId) => {
-  const applications = await getOfficerApplications(profileId);
+  const profile = await SolarOfficer.findById(profileId).select("branchId").lean();
+  const applications = await getOfficerApplications(profileId, null, profile?.branchId);
   const followUps = await SolarFollowUp.countDocuments({ officer: profileId });
   const customersVerified = applications.filter((item) => item.verification).length;
   const approved = applications.filter((item) => ["AWAITING_DEPOSIT", "DEPOSIT_PAID", "READY_FOR_INSTALLATION", "INSTALLED", "FINANCE_ACTIVE", "COMPLETED", "OVERDUE", "RECOVERY_REQUIRED", "RECOVERED"].includes(item.status)).length;
@@ -961,7 +1002,9 @@ exports.officerPerformance = async (req, res) => {
 };
 
 exports.adminOfficerPerformance = async (req, res) => {
-  const profile = await SolarOfficer.findById(req.params.officerId).populate(
+  const profile = await SolarOfficer.findOne({
+    _id: req.params.officerId, ...staffBranchFilter(req),
+  }).populate(
     "user",
     "fullName phone email"
   );

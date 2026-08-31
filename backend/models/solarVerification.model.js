@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const solarVerificationSchema = new mongoose.Schema(
   {
+    branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
     application: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SolarApplication",

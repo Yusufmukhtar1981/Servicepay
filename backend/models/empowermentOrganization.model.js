@@ -2,6 +2,14 @@ const mongoose = require("mongoose");
 
 const empowermentOrganizationSchema = new mongoose.Schema(
   {
+    // Null is reserved for legacy Head Office records. New records are stamped
+    // from the authenticated actor, never from a request payload.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      default: null,
+      index: true,
+    },
     name: {
       type: String,
       required: true,

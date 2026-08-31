@@ -7,6 +7,18 @@ const AdminAuditLog = require("../models/adminAuditLog.model");
 const BranchAuditLog = require("../models/branchAuditLog.model");
 const Transaction = require("../models/transaction.model");
 const Delivery = require("../models/delivery.model");
+const SolarApplication = require("../models/solarApplication.model");
+const SolarFinance = require("../models/solarFinance.model");
+const SolarPayment = require("../models/solarPayment.model");
+const MarketplaceOrder = require("../models/marketplaceOrder.model");
+const PhoneApplication = require("../models/phoneApplication.model");
+const PhoneFinance = require("../models/phoneFinance.model");
+const PhonePayment = require("../models/phonePayment.model");
+const EmpowermentOrganization = require("../models/empowermentOrganization.model");
+const EmpowermentProgram = require("../models/empowermentProgram.model");
+const EmpowermentBeneficiary = require("../models/empowermentBeneficiary.model");
+const EmpowermentDisbursement = require("../models/empowermentDisbursement.model");
+const mongoose = require("mongoose");
 
 const id = (req) => req.user._id || req.user.id;
 const same = (a, b) => String(a) === String(b);
@@ -27,6 +39,43 @@ const audit = async (req, action, reason, metadata = {}, before = null, after = 
 };
 const page = (req) => Math.max(1, Number(req.query.page) || 1);
 const headOffice = (req, res) => req.staffAccess.isHeadOffice || (res.status(403).json({ success: false, message: "Head Office access only." }), false);
+const dateFilter = (req) => {
+  const range = {};
+  if (req.query.startDate) { const date = new Date(req.query.startDate); if (!Number.isNaN(+date)) range.$gte = date; }
+  if (req.query.endDate) { const date = new Date(req.query.endDate); if (!Number.isNaN(+date)) { date.setHours(23, 59, 59, 999); range.$lte = date; } }
+  return Object.keys(range).length ? { createdAt: range } : {};
+};
+const scoped = (branchId, req, extra = {}) => ({ branchId, ...dateFilter(req), ...extra });
+const groupedStatuses = async (Model, filter) => Object.fromEntries((await Model.aggregate([
+  { $match: filter }, { $group: { _id: "$status", count: { $sum: 1 } } },
+])).map((row) => [row._id || "UNKNOWN", row.count]));
+const countAndSum = async (Model, filter, amount) => {
+  const [row] = await Model.aggregate([{ $match: filter }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: `$${amount}` } } }]);
+  return { count: row?.count || 0, value: row?.value || 0 };
+};
+const safeStatus = (req) => req.query.status ? String(req.query.status).trim().toUpperCase() : null;
+const metricsForBranch = async (branchId, req) => {
+  // Every query explicitly requires branchId. Legacy null-stamped data is Head
+  // Office global history and is intentionally excluded from every branch row.
+  const status = safeStatus(req);
+  const module = String(req.query.module || "").trim().toUpperCase();
+  const include = (name) => !module || module === name;
+  const usersFilter = scoped(branchId, req, { ...(status ? { status } : {}), ...(req.query.staffId ? { createdByStaffId: req.query.staffId } : {}) });
+  const txFilter = scoped(branchId, req, { ...(status ? { status } : {}), ...(module && !["TRANSACTION", "TRANSACTIONS"].includes(module) ? { serviceType: module } : {}), ...(req.query.staffId ? { agentId: req.query.staffId } : {}) });
+  const plain = (extra = {}) => scoped(branchId, req, { ...(status ? { status } : {}), ...extra });
+  const result = {
+    users: include("USERS") || include("CUSTOMERS") ? await User.countDocuments(usersFilter) : 0,
+    staff: await User.countDocuments({ branchId, isStaff: true, ...(status ? { status } : {}) }),
+    transactions: include("TRANSACTION") || include("TRANSACTIONS") || (!module) ? await countAndSum(Transaction, txFilter, "amount") : { count: 0, value: 0 },
+    deliveries: include("DELIVERY") || include("DELIVERIES") || (!module) ? { ...(await countAndSum(Delivery, plain(req.query.staffId ? { assignedRiderId: req.query.staffId } : {}), "deliveryFee")), statuses: await groupedStatuses(Delivery, plain(req.query.staffId ? { assignedRiderId: req.query.staffId } : {})) } : { count: 0, value: 0, statuses: {} },
+    solar: include("SOLAR") || !module ? { applications: await SolarApplication.countDocuments(plain(req.query.staffId ? { assignedOfficer: req.query.staffId } : {})), statuses: await groupedStatuses(SolarApplication, plain(req.query.staffId ? { assignedOfficer: req.query.staffId } : {})), finance: await countAndSum(SolarFinance, plain(), "amountPaid"), payments: await countAndSum(SolarPayment, scoped(branchId, req), "amount") } : { applications: 0, statuses: {}, finance: { count: 0, value: 0 }, payments: { count: 0, value: 0 } },
+    marketplace: include("MARKETPLACE") || !module ? { ...(await countAndSum(MarketplaceOrder, plain(), "totalAmount")), statuses: await groupedStatuses(MarketplaceOrder, plain()) } : { count: 0, value: 0, statuses: {} },
+    phoneFinancing: include("PHONE") || include("PHONE_FINANCING") || !module ? { applications: await PhoneApplication.countDocuments(plain(req.query.staffId ? { assignedOfficer: req.query.staffId } : {})), statuses: await groupedStatuses(PhoneApplication, plain(req.query.staffId ? { assignedOfficer: req.query.staffId } : {})), finance: await countAndSum(PhoneFinance, plain(), "amountPaid"), payments: await countAndSum(PhonePayment, scoped(branchId, req), "amount") } : { applications: 0, statuses: {}, finance: { count: 0, value: 0 }, payments: { count: 0, value: 0 } },
+    empowerment: include("EMPOWERMENT") || !module ? { organizations: await EmpowermentOrganization.countDocuments(plain()), programs: await EmpowermentProgram.countDocuments(plain()), beneficiaries: await EmpowermentBeneficiary.countDocuments(plain()), disbursements: await countAndSum(EmpowermentDisbursement, plain(), "totalAmount"), statuses: await groupedStatuses(EmpowermentDisbursement, plain()) } : { organizations: 0, programs: 0, beneficiaries: 0, disbursements: { count: 0, value: 0 }, statuses: {} },
+  };
+  result.revenue = result.transactions.value + result.deliveries.value + result.marketplace.value + result.solar.payments.value + result.phoneFinancing.payments.value;
+  return result;
+};
 
 exports.create = async (req, res) => {
   if (!headOffice(req, res)) return;
@@ -137,45 +186,64 @@ exports.createCustomer = async (req, res) => {
 };
 exports.dashboard = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
-  const filter = scope ? { branchId: scope } : {};
-  const [members, pendingApprovals, openRequests, targets, transactions, deliveries] = await Promise.all([
-    User.countDocuments(filter), BranchApprovalRequest.countDocuments({ ...filter, status: { $in: ["SUBMITTED", "PENDING_HEAD_OFFICE"] } }),
-    BranchOperationalRequest.countDocuments({ ...filter, status: { $in: ["OPEN", "IN_PROGRESS"] } }), BranchTarget.find(filter).lean(),
-    Transaction.countDocuments(filter), Delivery.countDocuments(filter),
+  if (!scope) return exports.overview(req, res);
+  const base = scoped(scope, req);
+  const [metrics, targets, pendingApprovals, approvalStatuses, openRequests] = await Promise.all([
+    metricsForBranch(scope, req), BranchTarget.find({ branchId: scope, ...(req.query.module ? { module: String(req.query.module).toUpperCase() } : {}) }).lean(),
+    BranchApprovalRequest.countDocuments({ ...base, status: { $in: ["SUBMITTED", "PENDING_HEAD_OFFICE"] } }),
+    groupedStatuses(BranchApprovalRequest, base),
+    BranchOperationalRequest.countDocuments({ ...base, status: { $in: ["OPEN", "IN_PROGRESS"] } }),
   ]);
-  res.json({ success: true, dashboard: { branchId: scope, members, pendingApprovals, openRequests, targets, metrics: {
-    transactions, users: members, deliveries, solar: null, marketplace: null, phoneFinancing: null, empowerment: null,
-  }, unavailableMetrics: ["solar", "marketplace", "phoneFinancing", "empowerment"] } });
+  const approvals = { approved: approvalStatuses.APPROVED || 0, rejected: approvalStatuses.REJECTED || 0, correctionRequested: approvalStatuses.CORRECTION_REQUESTED || 0 };
+  res.json({ success: true, dashboard: { branchId: scope, members: metrics.staff, pendingApprovals, openRequests, targets, approvalStatuses, approvals, metrics } });
 };
 exports.overview = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
   if (scope) return exports.dashboard(req, res);
   const branches = await Branch.find({}).select("_id name code status").lean();
-  const rows = await Promise.all(branches.map(async (branch) => ({
-    ...branch,
-    weight: 1,
-    transactions: await Transaction.countDocuments({ branchId: branch._id }),
-    members: await User.countDocuments({ branchId: branch._id }),
-  })));
-  rows.sort((a, b) => (b.transactions * b.weight) - (a.transactions * a.weight));
-  res.json({ success: true, overview: { rankings: rows, unavailableMetrics: ["solar", "marketplace", "phoneFinancing", "empowerment"] } });
+  const rows = await Promise.all(branches.map(async (branch) => {
+    const [metrics, targets, operations] = await Promise.all([
+      metricsForBranch(branch._id, req), BranchTarget.find({ branchId: branch._id, ...dateFilter(req) }).lean(),
+      BranchOperationalRequest.countDocuments(scoped(branch._id, req, { status: "COMPLETED" })),
+    ]);
+    const targetAchievement = targets.length ? targets.reduce((total, target) => total + (target.target ? target.actual / target.target : 0), 0) / targets.length : 0;
+    // Ranking is transparent: 60% normalized target achievement (not capped,
+    // so 120% is credited), 25% completed operations, 15% transaction volume.
+    const operationsScore = operations / Math.max(1, metrics.staff);
+    const transactionScore = metrics.transactions.count / Math.max(1, metrics.staff);
+    return { ...branch, metrics, targets: targets.length, targetAchievement, operations, ranking: { weights: { targetAchievement: .60, operations: .25, transactions: .15 }, score: (.60 * targetAchievement) + (.25 * operationsScore) + (.15 * transactionScore) } };
+  }));
+  rows.sort((a, b) => b.ranking.score - a.ranking.score);
+  res.json({ success: true, overview: { rankings: rows } });
 };
 exports.reports = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
-  // Reporting is read-only and only returns records actually stamped with branchId.
-  const filter = scope ? { branchId: scope } : {};
-  if (req.query.status) filter.status = String(req.query.status).toUpperCase();
-  if (req.query.module) filter.serviceType = String(req.query.module).toUpperCase();
-  if (req.query.startDate || req.query.endDate) filter.createdAt = { ...(req.query.startDate ? { $gte: new Date(req.query.startDate) } : {}), ...(req.query.endDate ? { $lte: new Date(req.query.endDate) } : {}) };
-  const transactions = await Transaction.find(filter).sort({ createdAt: -1 }).limit(100).lean();
-  res.json({ success: true, branchId: scope, count: transactions.length, transactions });
+  if (!scope) return res.status(400).json({ success: false, message: "branchId is required for reports." });
+  const filter = scoped(scope, req, { ...(safeStatus(req) ? { status: safeStatus(req) } : {}), ...(req.query.module ? { serviceType: String(req.query.module).toUpperCase() } : {}), ...(req.query.staffId ? { agentId: req.query.staffId } : {}) });
+  const [transactions, metrics, targets, approvals] = await Promise.all([
+    Transaction.find(filter).select("reference serviceType amount status agentId createdAt").sort({ createdAt: -1 }).limit(100).lean(),
+    metricsForBranch(scope, req), BranchTarget.find({ branchId: scope, ...dateFilter(req), ...(req.query.module ? { module: String(req.query.module).toUpperCase() } : {}) }).lean(),
+    groupedStatuses(BranchApprovalRequest, scoped(scope, req)),
+  ]);
+  const report = { branchId: scope, count: transactions.length, transactions, metrics, targets, approvals };
+  if (["csv", "json"].includes(String(req.query.export || "").toLowerCase())) {
+    // Only aggregate/statistical fields and masked transaction references leave
+    // the report endpoint; customer, phone, address and provider payloads do not.
+    const rows = transactions.map((t) => ({ reference: `${String(t.reference).slice(0, 4)}***`, serviceType: t.serviceType, amount: t.amount, status: t.status, createdAt: t.createdAt }));
+    if (String(req.query.export).toLowerCase() === "csv") {
+      const csv = ["reference,serviceType,amount,status,createdAt", ...rows.map((r) => [r.reference, r.serviceType, r.amount, r.status, r.createdAt.toISOString()].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
+      res.type("text/csv").attachment("branch-report.csv"); return res.send(csv);
+    }
+    return res.json({ success: true, export: true, report: { ...report, transactions: rows } });
+  }
+  res.json({ success: true, ...report });
 };
 exports.targets = async (req, res) => {
   const scope = branchScope(req, req.query.branchId || req.params.branchId); if (scope === false) return deny(res);
   if (req.method === "GET") return res.json({ success: true, targets: await BranchTarget.find({ branchId: scope }).sort({ period: -1 }).lean() });
   if (!moduleAllowed(req, req.body.module)) return res.status(403).json({ success: false, message: "This module is not assigned to your branch." });
   if (!req.staffAccess.isHeadOffice) {
-    req.body = { ...req.body, branchId: scope, type: "TARGET_CHANGE", title: `Target change: ${req.body.metric || ""}`, details: req.body };
+    req.body = { ...req.body, branchId: scope, type: "TARGET_CREATE", title: `Target change: ${req.body.metric || ""}`, details: req.body };
     return exports.submitApproval(req, res);
   }
   const target = await BranchTarget.create({ branchId: scope, module: req.body.module, metric: req.body.metric, period: req.body.period, periodType: req.body.periodType, startDate: req.body.startDate, endDate: req.body.endDate, category: req.body.category, target: req.body.target, actual: req.body.actual || 0, createdBy: id(req) });
@@ -215,11 +283,70 @@ exports.reviewApproval = async (req, res) => {
   if (same(request.requestedBy, id(req))) return res.status(403).json({ success: false, message: "You cannot approve or reject your own request." });
   const status = String(req.body.status || "").toUpperCase(); if (!["APPROVED", "REJECTED", "CORRECTION_REQUESTED"].includes(status)) return res.status(400).json({ success: false, message: "Invalid review status." });
   if (["REJECTED", "CORRECTION_REQUESTED"].includes(status) && !String(req.body.reviewNote || "").trim()) return res.status(400).json({ success: false, message: "A review note is required." });
-  // Conditional write makes terminal processing idempotent and concurrency-safe.
-  const changed = await BranchApprovalRequest.findOneAndUpdate({ _id: request._id, status: { $in: ["SUBMITTED", "PENDING_HEAD_OFFICE"] } }, { status, reviewedBy: id(req), reviewedAt: new Date(), reviewNote: req.body.reviewNote || "" }, { new: true });
-  if (!changed) return res.json({ success: true, idempotent: true, request: await BranchApprovalRequest.findById(request._id).lean() });
-  await audit(req, "BRANCH_APPROVAL_REVIEWED", `Branch approval ${status.toLowerCase()}.`, { branchId: String(request.branchId), requestId: String(request._id) });
-  res.json({ success: true, request: changed });
+  const executable = new Set(["TARGET_CREATE", "TARGET_PROGRESS_CHANGE", "BRANCH_CONFIGURATION", "OPERATIONAL_REQUEST"]);
+  const execute = async (session, approval) => {
+    const details = approval.details || {};
+    if (!executable.has(approval.type)) return { executionStatus: "AWAITING_DOMAIN_EXECUTION", executionMetadata: { reason: "Financial or domain action; no funds were moved." } };
+    if (details.branchId && !same(details.branchId, approval.branchId)) throw new Error("Approval branch does not match its requested change.");
+    if (approval.type === "TARGET_CREATE") {
+      const keys = ["module", "metric", "period", "periodType", "startDate", "endDate", "category", "target"];
+      if (keys.some((key) => details[key] === undefined || details[key] === "") || !Number.isFinite(Number(details.target)) || Number(details.target) < 0) throw new Error("Invalid target creation details.");
+      const branch = await Branch.findById(approval.branchId).select("assignedModules").session(session);
+      const module = String(details.module).trim().toUpperCase();
+      if (!branch || !(branch.assignedModules || []).includes(module)) throw new Error("Target module is not assigned to this branch.");
+      const target = await BranchTarget.create([{ branchId: approval.branchId, module, metric: details.metric, period: details.period, periodType: details.periodType, startDate: details.startDate, endDate: details.endDate, category: details.category, target: Number(details.target), actual: Number(details.actual || 0), createdBy: approval.requestedBy, updatedBy: id(req) }], { session });
+      return { executionStatus: "EXECUTED", executionMetadata: { action: approval.type, targetId: String(target[0]._id), before: null, after: target[0].toObject() } };
+    }
+    if (approval.type === "TARGET_PROGRESS_CHANGE") {
+      if (!mongoose.isValidObjectId(details.targetId) || !Number.isFinite(Number(details.actual)) || Number(details.actual) < 0) throw new Error("Invalid target progress details.");
+      const target = await BranchTarget.findOne({ _id: details.targetId, branchId: approval.branchId }).session(session);
+      if (!target) throw new Error("Target does not belong to this branch.");
+      const branch = await Branch.findById(approval.branchId).select("assignedModules").session(session);
+      if (!branch || !(branch.assignedModules || []).includes(target.module)) throw new Error("Target module is not assigned to this branch.");
+      const before = { actual: target.actual, status: target.status };
+      target.actual = Number(details.actual); target.updatedBy = id(req); await target.save({ session });
+      return { executionStatus: "EXECUTED", executionMetadata: { action: approval.type, targetId: String(target._id), before, after: { actual: target.actual, status: target.status } } };
+    }
+    if (approval.type === "BRANCH_CONFIGURATION") {
+      const changes = details.changes || details;
+      const allowed = ["name", "address", "state", "lga", "phone", "email", "notes", "assignedModules", "latitude", "longitude"];
+      const update = Object.fromEntries(allowed.filter((key) => changes[key] !== undefined).map((key) => [key, changes[key]]));
+      if (!Object.keys(update).length) throw new Error("No allowed branch configuration changes were supplied.");
+      const branch = await Branch.findById(approval.branchId).session(session);
+      if (!branch) throw new Error("Branch not found.");
+      const before = Object.fromEntries(Object.keys(update).map((key) => [key, branch[key]]));
+      Object.assign(branch, update, { updatedBy: id(req) }); await branch.save({ session });
+      return { executionStatus: "EXECUTED", executionMetadata: { action: approval.type, before, after: Object.fromEntries(Object.keys(update).map((key) => [key, branch[key]])) } };
+    }
+    if (/MONEY|PAYMENT|TRANSFER|WITHDRAW|FUND|WALLET/.test(String(details.type || "").toUpperCase())) throw new Error("Financial operational actions must be executed by their owning domain.");
+    const created = await BranchOperationalRequest.create([{ branchId: approval.branchId, type: details.type || "APPROVED_OPERATION", title: details.title || approval.title, description: details.description || "", metadata: details.metadata || {}, requestedBy: approval.requestedBy }], { session });
+    return { executionStatus: "EXECUTED", executionMetadata: { action: approval.type, operationalRequestId: String(created[0]._id) } };
+  };
+  try {
+    let changed;
+    await mongoose.connection.transaction(async (session) => {
+      const next = status === "APPROVED" ? (executable.has(request.type) ? "EXECUTING" : "AWAITING_DOMAIN_EXECUTION") : "NOT_APPLICABLE";
+      changed = await BranchApprovalRequest.findOneAndUpdate(
+        { _id: request._id, status: { $in: ["SUBMITTED", "PENDING_HEAD_OFFICE"] }, executionStatus: "PENDING" },
+        { status, reviewedBy: id(req), reviewedAt: new Date(), reviewNote: req.body.reviewNote || "", executionStatus: next },
+        { new: true, session }
+      );
+      if (!changed) return;
+      if (status === "APPROVED") {
+        const executed = await execute(session, changed);
+        changed.executionStatus = executed.executionStatus; changed.executionMetadata = executed.executionMetadata;
+        changed.executedAt = executed.executionStatus === "EXECUTED" ? new Date() : null;
+        changed.executedBy = executed.executionStatus === "EXECUTED" ? id(req) : null;
+        // A successfully applied non-financial action is complete. Financial
+        // and other domain-owned approvals deliberately remain APPROVED.
+        if (executed.executionStatus === "EXECUTED") changed.status = "COMPLETED";
+        await changed.save({ session });
+      }
+    });
+    if (!changed) return res.json({ success: true, idempotent: true, request: await BranchApprovalRequest.findById(request._id).lean() });
+    await audit(req, "BRANCH_APPROVAL_REVIEWED", `Branch approval ${status.toLowerCase()}.`, { branchId: String(request.branchId), requestId: String(request._id), executionStatus: changed.executionStatus });
+    res.json({ success: true, request: changed });
+  } catch (error) { res.status(400).json({ success: false, message: error.message }); }
 };
 exports.operational = async (req, res) => {
   const scope = branchScope(req, req.body.branchId || req.query.branchId); if (scope === false) return deny(res);

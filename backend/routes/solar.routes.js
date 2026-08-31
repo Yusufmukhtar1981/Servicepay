@@ -1,8 +1,14 @@
 const express = require("express");
-const { protect, customerOnly, adminOnly } = require("../middleware/auth.middleware");
+const { protect, customerOnly } = require("../middleware/auth.middleware");
+const { loadStaffRole, requireAnyPermission, enforceActiveBranchScope, requireAssignedBranchModule } = require("../middleware/staffPermission.middleware");
 const controller = require("../controllers/solar.controller");
 const router = express.Router();
-const admins = adminOnly("HEAD_OFFICE", "ADMIN", "SUPER_ADMIN");
+const admins = [
+  loadStaffRole,
+  requireAnyPermission("SOLAR_VIEW", "SOLAR_MANAGE", "BRANCH_SOLAR_VIEW", "BRANCH_SOLAR_MANAGE"),
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("SOLAR"),
+];
 router.get("/packages", protect, controller.listPackages);
 router.get("/packages/:packageId", protect, controller.getPackage);
 router.post("/applications", protect, customerOnly, controller.submitApplication);

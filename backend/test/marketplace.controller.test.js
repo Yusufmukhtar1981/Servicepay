@@ -345,7 +345,13 @@ test("checkout idempotency prevents duplicate wallet debits and orders", async (
   });
   const second = await call(marketplace.createOrder, {
     user: buyer,
-    body: checkoutBody(product),
+    // A completed idempotent request is answered from the preflight lookup;
+    // it must not require another transaction PIN admission.
+    body: (() => {
+      const body = checkoutBody(product);
+      delete body.transactionPin;
+      return body;
+    })(),
     headers,
   });
 
@@ -359,6 +365,31 @@ test("checkout idempotency prevents duplicate wallet debits and orders", async (
   const storedProduct = await MarketplaceProduct.findById(product._id);
   assert.equal(storedBuyer.walletBalance, 2300);
   assert.equal(storedProduct.stock, 4);
+});
+
+test("a failed checkout after valid PIN admission leaves PIN state clear for an immediate valid retry", async () => {
+  const { product } = await createStoreWithProduct({ price: 700, stock: 1 });
+  const buyer = await createUser({ walletBalance: 3000 });
+  const headers = { "idempotency-key": "marketplace-valid-pin-retry" };
+
+  const failed = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product, 2),
+    headers,
+  });
+  assert.equal(failed.status, 409);
+  const afterFailed = await User.findById(buyer._id);
+  assert.equal(afterFailed.transactionPinFailedAttempts || 0, 0);
+  assert.equal(afterFailed.transactionPinLockedUntil || null, null);
+
+  await MarketplaceProduct.updateOne({ _id: product._id }, { $set: { stock: 2 } });
+  const retried = await call(marketplace.createOrder, {
+    user: buyer,
+    body: checkoutBody(product, 1),
+    headers,
+  });
+  assert.equal(retried.status, 201);
+  assert.equal((await User.findById(buyer._id)).walletBalance, 2300);
 });
 
 test("checkout verifies canonical PIN errors before debiting and upgrades a legacy PIN", async () => {
@@ -378,6 +409,17 @@ test("checkout verifies canonical PIN errors before debiting and upgrades a lega
   assert.equal(wrongPin.body.code, "INCORRECT_TRANSACTION_PIN");
   assert.equal((await User.findById(buyer._id)).walletBalance, 3000);
   assert.equal((await MarketplaceProduct.findById(product._id)).stock, 4);
+
+  const missingPinBody = checkoutBody(product);
+  delete missingPinBody.transactionPin;
+  const missingPin = await call(marketplace.createOrder, {
+    user: buyer,
+    body: missingPinBody,
+    headers: { "idempotency-key": "marketplace-pin-required" },
+  });
+  assert.equal(missingPin.status, 400);
+  assert.equal(missingPin.body.code, "INVALID_TRANSACTION_PIN");
+  assert.equal((await User.findById(buyer._id)).walletBalance, 3000);
 
   await User.collection.updateOne(
     { _id: buyer._id },

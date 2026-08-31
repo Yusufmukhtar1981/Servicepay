@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const empowermentAuditLogSchema = new mongoose.Schema(
   {
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      default: null,
+      index: true,
+    },
     actor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

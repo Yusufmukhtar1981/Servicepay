@@ -65,6 +65,12 @@ const marketplaceOrderSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Branch',
+      default: null,
+      index: true,
+    },
 
     items: {
       type: [marketplaceOrderItemSchema],
@@ -290,6 +296,7 @@ marketplaceOrderSchema.index({
   buyer: 1,
   createdAt: -1,
 });
+marketplaceOrderSchema.index({ branchId: 1, createdAt: -1 });
 
 marketplaceOrderSchema.index({
   'items.merchant': 1,

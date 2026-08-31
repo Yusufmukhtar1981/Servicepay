@@ -55,6 +55,8 @@ const {
   requirePermission,
   requireAnyPermission,
   requireTargetUserScope,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule,
 } = require("../middleware/staffPermission.middleware");
 const {
   STAFF_PERMISSIONS: P,
@@ -436,6 +438,7 @@ router.get(
   "/deliveries",
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
   requirePermission(P.DELIVERY_VIEW),
   getAdminDeliveries
 );
@@ -444,6 +447,7 @@ router.get(
   "/deliveries/:id/available-riders",
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   getAvailableRiders
 );
@@ -452,6 +456,7 @@ router.patch(
   "/deliveries/:id/assign-rider",
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   assignRiderToDelivery
 );
@@ -460,6 +465,7 @@ router.patch(
   "/deliveries/:id/unassign-rider",
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   unassignRiderFromDelivery
 );
@@ -468,6 +474,7 @@ router.patch(
   "/deliveries/:id/status",
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
   requirePermission(P.DELIVERY_UPDATE),
   updateDeliveryStatus
 );
@@ -476,6 +483,7 @@ router.patch(
   "/deliveries/:id/price",
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
   requirePermission(P.DELIVERY_UPDATE),
   updateDeliveryPrice
 );
@@ -506,6 +514,8 @@ router.get(
   '/marketplace/products',
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("MARKETPLACE"),
   requirePermission(P.MARKETPLACE_VIEW),
   adminMarketplaceController.listMarketplaceProducts
 );
@@ -514,6 +524,8 @@ router.patch(
   '/marketplace/products/:id/status',
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("MARKETPLACE"),
   requirePermission(P.MARKETPLACE_MODERATE),
   adminMarketplaceController.updateMarketplaceProductStatus
 );
@@ -522,6 +534,8 @@ router.patch(
   '/marketplace/products/:id/approve',
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("MARKETPLACE"),
   requirePermission(P.MARKETPLACE_MODERATE),
   adminMarketplaceController.approveMarketplaceProduct
 );
@@ -530,6 +544,8 @@ router.patch(
   '/marketplace/products/:id/reject',
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("MARKETPLACE"),
   requirePermission(P.MARKETPLACE_MODERATE),
   adminMarketplaceController.rejectMarketplaceProduct
 );
@@ -538,6 +554,8 @@ router.patch(
   '/marketplace/products/:id/suspend',
   protect,
   loadStaffRole,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("MARKETPLACE"),
   requirePermission(P.MARKETPLACE_MODERATE),
   adminMarketplaceController.suspendMarketplaceProduct
 );

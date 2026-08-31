@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const solarOfficerWithdrawalSchema = new mongoose.Schema(
   {
+    branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
     officer: { type: mongoose.Schema.Types.ObjectId, ref: "SolarOfficer", required: true, index: true },
     reference: { type: String, required: true, unique: true, uppercase: true, trim: true, index: true },
     amount: { type: Number, required: true, min: 0.01 },
@@ -35,6 +36,7 @@ const solarOfficerWithdrawalSchema = new mongoose.Schema(
 );
 
 solarOfficerWithdrawalSchema.index({ officer: 1, createdAt: -1 });
+solarOfficerWithdrawalSchema.index({ branchId: 1, status: 1, requestedAt: -1 });
 solarOfficerWithdrawalSchema.index({ status: 1, requestedAt: 1 });
 
 module.exports = mongoose.model("SolarOfficerWithdrawal", solarOfficerWithdrawalSchema);

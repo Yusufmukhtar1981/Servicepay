@@ -18,6 +18,9 @@ const allowedFundsStatuses = new Set([
   'SETTLED',
   'REFUNDED',
 ]);
+// Legacy null branch records intentionally remain Head Office-only.
+const branchFilter = (req) =>
+  req.staffAccess?.isHeadOffice ? {} : { branchId: req.user.branchId };
 
 exports.listMarketplaceProducts = async (req, res) => {
   try {
@@ -28,7 +31,7 @@ exports.listMarketplaceProducts = async (req, res) => {
       q = '',
     } = req.query;
 
-    const filter = {};
+    const filter = branchFilter(req);
 
     if (status) {
       const normalizedStatus = String(status).trim().toUpperCase();
@@ -105,7 +108,7 @@ exports.listMarketplaceOrders = async (req, res) => {
       page = 1,
       limit = 50,
     } = req.query;
-    const filter = {};
+    const filter = branchFilter(req);
     const normalizedStatus = String(status).trim().toUpperCase();
     const normalizedPaymentStatus = String(paymentStatus)
       .trim()
@@ -194,8 +197,8 @@ exports.updateMarketplaceProductStatus =
       }
 
       const product =
-        await MarketplaceProduct.findByIdAndUpdate(
-          productId,
+        await MarketplaceProduct.findOneAndUpdate(
+          { _id: productId, ...branchFilter(req) },
           {
             $set: {
               status,

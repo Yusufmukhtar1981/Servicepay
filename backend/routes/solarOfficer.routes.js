@@ -1,10 +1,17 @@
 const express = require("express");
-const { protect, solarOfficerOnly, adminOnly } = require("../middleware/auth.middleware");
+const { protect, solarOfficerOnly } = require("../middleware/auth.middleware");
+const { loadStaffRole, requireAnyPermission, enforceActiveBranchScope, requireAssignedBranchModule } = require("../middleware/staffPermission.middleware");
+const { requireSolarBranchModule } = require("../middleware/solarBranch.middleware");
 const controller = require("../controllers/solarOfficer.controller");
 
 const router = express.Router();
-const admins = adminOnly("HEAD_OFFICE", "ADMIN", "SUPER_ADMIN");
-const officer = [protect, solarOfficerOnly];
+const admins = [
+  loadStaffRole,
+  requireAnyPermission("SOLAR_VIEW", "SOLAR_MANAGE", "BRANCH_SOLAR_VIEW", "BRANCH_SOLAR_MANAGE"),
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("SOLAR"),
+];
+const officer = [protect, solarOfficerOnly, requireSolarBranchModule];
 
 router.get("/me", ...officer, controller.officerMe);
 router.get("/dashboard", ...officer, controller.officerDashboard);

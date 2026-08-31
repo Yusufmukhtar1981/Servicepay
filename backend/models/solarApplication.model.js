@@ -46,6 +46,9 @@ const applicationPreferencesSchema = new mongoose.Schema({
   },
 }, { _id: false });
 const solarApplicationSchema = new mongoose.Schema({
+  // The customer branch is authoritative at submission time. Null is reserved
+  // for legacy records and is visible only to Head Office staff.
+  branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
   customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
   package: { type: mongoose.Schema.Types.ObjectId, ref: "SolarPackage", required: true },
   packageSnapshot: { type: mongoose.Schema.Types.Mixed, required: true, immutable: true },
@@ -78,6 +81,7 @@ const solarApplicationSchema = new mongoose.Schema({
   partnerVerificationReview: { type: mongoose.Schema.Types.Mixed, default: null },
 }, { timestamps: true });
 solarApplicationSchema.index({ customer: 1, createdAt: -1 });
+solarApplicationSchema.index({ branchId: 1, createdAt: -1 });
 solarApplicationSchema.index({ status: 1, createdAt: -1 });
 solarApplicationSchema.pre("save", async function () {
   if (!this.isNew && this.isModified("approvalSnapshot")) {

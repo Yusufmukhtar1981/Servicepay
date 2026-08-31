@@ -87,6 +87,7 @@ const createSolarOfficerCommission = async ({
       [
         {
           officer: officerId,
+          branchId: application.branchId || null,
           customer: customerId,
           application: applicationId,
           payment: paymentId,

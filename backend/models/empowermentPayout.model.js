@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const empowermentPayoutSchema = new mongoose.Schema(
   {
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      default: null,
+      index: true,
+    },
     program: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "EmpowermentProgram",

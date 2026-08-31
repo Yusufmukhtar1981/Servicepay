@@ -117,6 +117,39 @@ const organizationStatusForVerification = (verificationStatus) =>
 
 const actorId = (req) => String(req.user?._id || "");
 
+// Head Office is the only global audience. Branch staff must never fall
+// through to a legacy record whose branchId is null.
+const staffBranchId = (req) => {
+  if (!req.staffAccess || req.staffAccess.isHeadOffice) return null;
+  const scope = req.staffAccess.scope;
+  return scope?.type === "BRANCH" && scope.branchId ? scope.branchId : null;
+};
+
+const hasBranchAccess = (req, record) => {
+  if (!req.staffAccess || req.staffAccess.isHeadOffice) return true;
+  const branchId = staffBranchId(req);
+  return Boolean(branchId && record?.branchId &&
+    String(record.branchId) === String(branchId));
+};
+
+const branchFilterFor = (req) => {
+  if (req.staffAccess && !req.staffAccess.isHeadOffice) {
+    const branchId = staffBranchId(req);
+    return branchId ? { branchId } : { _id: null };
+  }
+  if (isHeadOffice(req.user)) return {};
+  return { branchId: req.user?.branchId || null };
+};
+
+const creationBranchId = (req) =>
+  isHeadOffice(req.user) ? null : req.user?.branchId || null;
+
+// Branch operational access is intentionally not PII access. Head Office has
+// the explicit full-access role; branch responses keep only record identifiers
+// and operational status/amount fields.
+const mayViewEmpowermentPii = (req) =>
+  isHeadOffice(req.user) || req.staffAccess?.isHeadOffice === true;
+
 const normalizePhone = (value) => {
   let phone = String(value || "")
     .replace(/\s+/g, "")
@@ -287,6 +320,7 @@ const audit = async ({
   after = null,
   reference = "",
   metadata = {},
+  branchId,
   session = null,
 }) => {
   const payload = {
@@ -300,6 +334,7 @@ const audit = async ({
     after,
     reference,
     metadata,
+    branchId: branchId === undefined ? creationBranchId(req) : branchId,
   };
 
   if (session) {
@@ -311,10 +346,12 @@ const audit = async ({
 
 const canManageOrganization = (req, organization) =>
   isAdmin(req.user) ||
+  Boolean(req.staffAccess) ||
   documentId(organization.createdBy) === actorId(req);
 
 const canManageProgram = (req, program) =>
   isAdmin(req.user) ||
+  Boolean(req.staffAccess) ||
   documentId(program.createdBy) === actorId(req);
 
 const getManagedOrganization = async (req, id, session = null) => {
@@ -325,7 +362,8 @@ const getManagedOrganization = async (req, id, session = null) => {
     session
   );
 
-  if (!organization || !canManageOrganization(req, organization)) {
+  if (!organization || !canManageOrganization(req, organization) ||
+    !hasBranchAccess(req, organization)) {
     return null;
   }
 
@@ -340,7 +378,7 @@ const getManagedProgram = async (req, id, session = null) => {
     session
   );
 
-  if (!program || !canManageProgram(req, program)) {
+  if (!program || !canManageProgram(req, program) || !hasBranchAccess(req, program)) {
     return null;
   }
 
@@ -474,6 +512,7 @@ const createOrganization = async (req, res) => {
     const organization = await EmpowermentOrganization.create({
       ...values,
       createdBy: req.user._id,
+      branchId: creationBranchId(req),
       status: "PENDING",
       verificationStatus: "PENDING_VERIFICATION",
     });
@@ -483,6 +522,7 @@ const createOrganization = async (req, res) => {
       action: "ORGANIZATION_CREATED",
       entityType: "ORGANIZATION",
       entityId: organization._id,
+      branchId: organization.branchId,
       after: { status: organization.status, name: organization.name },
     });
 
@@ -502,8 +542,8 @@ const listOrganizations = async (req, res) => {
     const { page, limit, skip } = pagination(req);
     const search = cleanString(req.query?.search, 100);
     const filter = isAdmin(req.user)
-      ? {}
-      : { createdBy: req.user._id };
+      ? branchFilterFor(req)
+      : { createdBy: req.user._id, ...branchFilterFor(req) };
 
     const eligibleOnly =
       String(req.query?.eligible || "").toLowerCase() === "true" ||
@@ -608,6 +648,7 @@ const updateOrganization = async (req, res) => {
       action: "ORGANIZATION_UPDATED",
       entityType: "ORGANIZATION",
       entityId: organization._id,
+      branchId: organization.branchId,
       before,
       after: { name: organization.name, status: organization.status },
     });
@@ -641,7 +682,10 @@ const updateOrganizationStatus = async (req, res) => {
       return respondError(res, 400, "Invalid organization status.");
     }
 
-    const organization = await EmpowermentOrganization.findById(req.params.id);
+    const organization = await EmpowermentOrganization.findOne({
+      _id: req.params.id,
+      ...branchFilterFor(req),
+    });
     if (!organization) {
       return respondError(res, 404, "Organization was not found.");
     }
@@ -665,6 +709,7 @@ const updateOrganizationStatus = async (req, res) => {
       await EmpowermentProgram.updateMany(
         {
           organization: organization._id,
+          branchId: organization.branchId,
           status: { $nin: ["COMPLETED", "CANCELLED"] },
         },
         { $set: { status: "SUSPENDED" } }
@@ -675,6 +720,7 @@ const updateOrganizationStatus = async (req, res) => {
       action: "ORGANIZATION_STATUS_UPDATED",
       entityType: "ORGANIZATION",
       entityId: organization._id,
+      branchId: organization.branchId,
       before,
       after: { status, verificationStatus },
     });
@@ -774,6 +820,7 @@ const createProgram = async (req, res) => {
       ...values,
       organization: organization._id,
       createdBy: req.user._id,
+      branchId: organization.branchId,
       totalBudget:
         values.amountPerBeneficiary * values.targetBeneficiaries,
       beneficiaryCount: 0,
@@ -786,6 +833,7 @@ const createProgram = async (req, res) => {
       entityType: "PROGRAM",
       entityId: program._id,
       program: program._id,
+      branchId: program.branchId,
       after: { status: program.status, totalBudget: program.totalBudget },
     });
 
@@ -804,8 +852,8 @@ const listPrograms = async (req, res) => {
   try {
     const { page, limit, skip } = pagination(req);
     const filter = isAdmin(req.user)
-      ? {}
-      : { createdBy: req.user._id };
+      ? branchFilterFor(req)
+      : { createdBy: req.user._id, ...branchFilterFor(req) };
     const search = cleanString(req.query?.search, 100);
 
     if (req.query?.status) {
@@ -882,6 +930,7 @@ const getSponsorDashboard = async (req, res) => {
   try {
     const organizations = await EmpowermentOrganization.find({
       createdBy: req.user._id,
+      ...branchFilterFor(req),
     })
       .sort({ createdAt: -1 })
       .lean();
@@ -890,6 +939,7 @@ const getSponsorDashboard = async (req, res) => {
       ? await EmpowermentProgram.find({
           organization: { $in: organizationIds },
           createdBy: req.user._id,
+          ...branchFilterFor(req),
         })
           .populate("organization", "name status verificationStatus state")
           .sort({ createdAt: -1 })
@@ -970,7 +1020,10 @@ const getSponsorDashboard = async (req, res) => {
 
 const getProgram = async (req, res) => {
   try {
-    const program = await EmpowermentProgram.findById(req.params.programId)
+    const program = await EmpowermentProgram.findOne({
+      _id: req.params.programId,
+      ...branchFilterFor(req),
+    })
       .populate("organization", "name status state")
       .populate("createdBy", "fullName phone");
 
@@ -1051,6 +1104,7 @@ const updateProgram = async (req, res) => {
       entityType: "PROGRAM",
       entityId: program._id,
       program: program._id,
+      branchId: program.branchId,
       before,
       after: { totalBudget: program.totalBudget, status: program.status },
     });
@@ -1099,6 +1153,7 @@ const updateProgramStatus = async (req, res) => {
       entityType: "PROGRAM",
       entityId: program._id,
       program: program._id,
+      branchId: program.branchId,
       before,
       after: { status },
     });
@@ -1128,6 +1183,7 @@ const buildBeneficiaryPayload = async (program, values, session = null) => {
 
   return {
     program: program._id,
+    branchId: program.branchId,
     user: user?._id || null,
     fullName: cleanString(values?.fullName || user?.fullName, 200),
     phone,
@@ -1182,6 +1238,7 @@ const addBeneficiary = async (req, res) => {
           [
             {
               ...payload,
+              branchId: program.branchId,
               metadata: { source: "OWNER_ADDED" },
             },
           ],
@@ -1194,6 +1251,7 @@ const addBeneficiary = async (req, res) => {
         entityType: "BENEFICIARY",
         entityId: beneficiary._id,
         program: program._id,
+        branchId: program.branchId,
         after: { applicationStatus: beneficiary.applicationStatus },
         session,
       });
@@ -1442,6 +1500,7 @@ const verifyBeneficiary = async (req, res) => {
       entityType: "BENEFICIARY",
       entityId: beneficiary._id,
       program: program._id,
+      branchId: program.branchId,
       before,
       after: {
         applicationStatus: beneficiary.applicationStatus,
@@ -1582,6 +1641,7 @@ const updateBeneficiaryStatus = async (req, res) => {
       entityType: "BENEFICIARY",
       entityId: beneficiary._id,
       program: program._id,
+      branchId: program.branchId,
       before,
       after: {
         applicationStatus: beneficiary.applicationStatus,
@@ -1601,9 +1661,10 @@ const applyForProgram = async (req, res) => {
   try {
     let beneficiary = null;
     await session.withTransaction(async () => {
-      const program = await EmpowermentProgram.findById(req.params.programId).session(
-        session
-      );
+      const program = await EmpowermentProgram.findOne({
+        _id: req.params.programId,
+        ...branchFilterFor(req),
+      }).session(session);
       if (!program) {
         throw Object.assign(new Error("Empowerment program was not found."), {
           status: 404,
@@ -1650,6 +1711,7 @@ const applyForProgram = async (req, res) => {
             {
               ...payload,
               user: req.user._id,
+              branchId: program.branchId,
               metadata: {
                 source: "SELF_APPLICATION",
                 eligibilityDeclaration: cleanString(
@@ -1668,6 +1730,7 @@ const applyForProgram = async (req, res) => {
         entityType: "BENEFICIARY",
         entityId: beneficiary._id,
         program: program._id,
+        branchId: program.branchId,
         after: { applicationStatus: beneficiary.applicationStatus },
         session,
       });
@@ -1695,7 +1758,10 @@ const applyForProgram = async (req, res) => {
 
 const getMyApplications = async (req, res) => {
   try {
-    const applications = await EmpowermentBeneficiary.find({ user: req.user._id })
+    const applications = await EmpowermentBeneficiary.find({
+      user: req.user._id,
+      ...branchFilterFor(req),
+    })
       .populate({
         path: "program",
         populate: { path: "organization", select: "name status" },
@@ -1712,6 +1778,7 @@ const listAvailablePrograms = async (req, res) => {
   try {
     const now = new Date();
     const allPrograms = await EmpowermentProgram.find({
+      ...branchFilterFor(req),
       publicApplicationEnabled: true,
       status: { $in: ["OPEN", "APPROVED"] },
       $and: [
@@ -1782,6 +1849,7 @@ const bulkAddBeneficiaries = async (req, res) => {
       beneficiaries = await EmpowermentBeneficiary.insertMany(
         records.map((record, index) => ({
           ...record,
+          branchId: program.branchId,
           metadata: { source: "BULK_UPLOAD", rowNumber: index + 1 },
         })),
         { ordered: true, session }
@@ -1792,6 +1860,7 @@ const bulkAddBeneficiaries = async (req, res) => {
         entityType: "PROGRAM",
         entityId: program._id,
         program: program._id,
+        branchId: program.branchId,
         after: { count: beneficiaries.length },
         session,
       });
@@ -1901,7 +1970,8 @@ const fundProgram = async (req, res) => {
         session
       );
       if (existing) {
-        if (documentId(existing.fundedBy) !== actorId(req)) {
+        if (documentId(existing.fundedBy) !== actorId(req) ||
+          !hasBranchAccess(req, existing)) {
           throw Object.assign(new Error("Idempotency key is already in use."), {
             status: 409,
           });
@@ -1972,6 +2042,7 @@ const fundProgram = async (req, res) => {
             {
               organization: program.organization,
               program: program._id,
+          branchId: program.branchId,
               fundedBy: req.user._id,
               amount,
               reference,
@@ -1991,6 +2062,7 @@ const fundProgram = async (req, res) => {
         entityType: "FUNDING",
         entityId: funding._id,
         program: program._id,
+        branchId: program.branchId,
         reference,
         after: programFinancials(updatedProgram),
         metadata: {
@@ -2042,14 +2114,20 @@ const fundProgram = async (req, res) => {
 
 const listProgramFunding = async (req, res) => {
   try {
-    if (!isHeadOffice(req.user)) {
-      return respondError(res, 403, "Only Head Office can view program funding history.");
+    if (!isHeadOffice(req.user) && !req.staffAccess) {
+      return respondError(res, 403, "Only authorized staff can view program funding history.");
     }
     const program = await getManagedProgram(req, req.params.programId);
     if (!program) return respondError(res, 403, "You cannot view this program.");
 
-    const funding = await EmpowermentFunding.find({ program: program._id })
-      .populate("fundedBy", "fullName phone role")
+    const funding = await EmpowermentFunding.find({
+      program: program._id,
+      ...branchFilterFor(req),
+    })
+      .populate(
+        "fundedBy",
+        mayViewEmpowermentPii(req) ? "fullName phone role" : "_id"
+      )
       .sort({ createdAt: -1 })
       .limit(Math.min(200, Math.max(1, Number(req.query?.limit || 50))));
 
@@ -2138,7 +2216,8 @@ const disburseProgram = async (req, res) => {
         idempotencyKey,
       }).session(session);
       if (existing) {
-        if (documentId(existing.createdBy) !== actorId(req)) {
+        if (documentId(existing.createdBy) !== actorId(req) ||
+          !hasBranchAccess(req, existing)) {
           throw Object.assign(new Error("Idempotency key is already in use."), {
             status: 409,
           });
@@ -2252,6 +2331,7 @@ const disburseProgram = async (req, res) => {
             {
               organization: program.organization,
               program: program._id,
+              branchId: program.branchId,
               batchReference,
               idempotencyKey,
               beneficiaryCount: beneficiaries.length,
@@ -2374,6 +2454,7 @@ const disburseProgram = async (req, res) => {
             {
               program: program._id,
               disbursement: batch._id,
+              branchId: program.branchId,
               beneficiary: beneficiary._id,
               recipient: credited._id,
               amount,
@@ -2424,6 +2505,7 @@ const disburseProgram = async (req, res) => {
         entityType: "DISBURSEMENT",
         entityId: batch._id,
         program: program._id,
+        branchId: program.branchId,
         reference: batchReference,
         after: {
           beneficiaryCount: beneficiaries.length,
@@ -2583,27 +2665,38 @@ const prepareDisbursementBatch = async (req, res) =>
 
 const listDisbursementBatches = async (req, res) => {
   try {
-    if (!isHeadOffice(req.user)) {
+    if (!isHeadOffice(req.user) && !req.staffAccess) {
       return respondError(
         res,
         403,
-        "Only Head Office can view Empowerment disbursement history."
+        "Only authorized staff can view Empowerment disbursement history."
       );
     }
     const program = await getManagedProgram(req, req.params.programId);
     if (!program) return respondError(res, 403, "You cannot view this program.");
     const [batches, statusTotals] = await Promise.all([
-      EmpowermentDisbursement.find({ program: program._id })
+      EmpowermentDisbursement.find({
+        program: program._id,
+        ...branchFilterFor(req),
+      })
         .populate("organization", "name status")
-        .populate("createdBy", "fullName phone")
+        .populate(
+          "createdBy",
+          mayViewEmpowermentPii(req) ? "fullName phone" : "_id"
+        )
         .populate(
           "results.beneficiary",
-          "fullName phone applicationStatus verificationStatus"
+          mayViewEmpowermentPii(req)
+            ? "fullName phone applicationStatus verificationStatus"
+            : "_id applicationStatus verificationStatus"
         )
-        .populate("results.recipient", "fullName phone email")
+        .populate(
+          "results.recipient",
+          mayViewEmpowermentPii(req) ? "fullName phone email" : "_id"
+        )
         .sort({ createdAt: -1 }),
       EmpowermentDisbursement.aggregate([
-        { $match: { program: program._id } },
+        { $match: { program: program._id, ...branchFilterFor(req) } },
         { $unwind: "$results" },
         {
           $group: {
@@ -2649,14 +2742,20 @@ const getProgramReport = async (req, res) => {
 
     const [statistics, fundings, disbursements] = await Promise.all([
       EmpowermentBeneficiary.aggregate([
-        { $match: { program: program._id } },
+        { $match: { program: program._id, ...branchFilterFor(req) } },
         { $group: { _id: "$applicationStatus", count: { $sum: 1 } } },
       ]),
-      EmpowermentFunding.find({ program: program._id })
-        .populate("fundedBy", "fullName phone")
+      EmpowermentFunding.find({ program: program._id, ...branchFilterFor(req) })
+        .populate(
+          "fundedBy",
+          mayViewEmpowermentPii(req) ? "fullName phone" : "_id"
+        )
         .sort({ createdAt: -1 }),
-      EmpowermentDisbursement.find({ program: program._id })
-        .populate("createdBy", "fullName phone")
+      EmpowermentDisbursement.find({ program: program._id, ...branchFilterFor(req) })
+        .populate(
+          "createdBy",
+          mayViewEmpowermentPii(req) ? "fullName phone" : "_id"
+        )
         .sort({ createdAt: -1 }),
     ]);
 
@@ -2683,7 +2782,7 @@ const getProgramReport = async (req, res) => {
 
 const getEmpowermentDashboardSummary = async (req, res) => {
   try {
-    if (!isHeadOffice(req.user)) {
+    if (!isHeadOffice(req.user) && !req.staffAccess) {
       return respondError(res, 403, "Only Head Office can view Empowerment audit records.");
     }
     const [
@@ -2694,12 +2793,14 @@ const getEmpowermentDashboardSummary = async (req, res) => {
       payouts,
     ] =
       await Promise.all([
-        EmpowermentOrganization.countDocuments(),
-        EmpowermentProgram.countDocuments(),
+        EmpowermentOrganization.countDocuments(branchFilterFor(req)),
+        EmpowermentProgram.countDocuments(branchFilterFor(req)),
         EmpowermentBeneficiary.aggregate([
+          { $match: branchFilterFor(req) },
           { $group: { _id: "$applicationStatus", count: { $sum: 1 } } },
         ]),
         EmpowermentProgram.aggregate([
+          { $match: branchFilterFor(req) },
           {
             $group: {
               _id: null,
@@ -2711,6 +2812,7 @@ const getEmpowermentDashboardSummary = async (req, res) => {
           },
         ]),
         EmpowermentPayout.aggregate([
+          { $match: branchFilterFor(req) },
           { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
         ]),
       ]);
@@ -2747,7 +2849,7 @@ const getEmpowermentAuditTrail = async (req, res) => {
       return respondError(res, 403, "Administrator access is required.");
     }
     const limit = Math.min(200, Math.max(1, Number(req.query?.limit || 50)));
-    const activity = await EmpowermentAuditLog.find()
+    const activity = await EmpowermentAuditLog.find(branchFilterFor(req))
       .populate("actor", "fullName phone role")
       .populate("program", "name")
       .sort({ createdAt: -1 })

@@ -132,6 +132,57 @@ const normalizePaymentStatus = (
     );
 };
 
+/*
+ * Branch-scoped delivery staff may only access their own stamped records.
+ * Head Office remains global, including deliberately retained legacy null
+ * branch records.
+ */
+const deliveryBranchFilter = (req) => {
+  if (req.staffAccess?.isHeadOffice ||
+      req.staffAccess?.scope?.type === "GLOBAL") {
+    return {};
+  }
+
+  const scope = req.staffAccess?.scope;
+  if (scope?.type !== "BRANCH") {
+    return {};
+  }
+
+  const branchId = req.branchScope?._id || scope.branchId;
+  return branchId ? { branchId } : { _id: null };
+};
+
+const findAdminDeliveryForResponse = (
+  req,
+  deliveryId
+) => {
+  return Delivery.findOne({
+    _id: deliveryId,
+    ...deliveryBranchFilter(req),
+  })
+    .select([
+      "customerId", "trackingNumber", "pickupState", "deliveryState",
+      "pickupAddress", "deliveryAddress", "senderName", "senderPhone",
+      "receiverName", "receiverPhone", "packageName",
+      "packageDescription", "packageWeight", "deliveryFee",
+      "paymentStatus", "paidAt", "refundedAt", "status",
+      "assignedRiderId", "riderName", "riderPhone", "assignedBy",
+      "assignedAt", "riderAcceptedAt", "riderRejectedAt",
+      "riderRejectionReason", "adminNote", "acceptedAt", "pickedUpAt",
+      "inTransitAt", "deliveredAt", "cancelledAt", "failedAt",
+      "riderCommissionType", "riderCommissionValue",
+      "riderCommissionAmount", "servicepayProfit",
+      "riderCommissionStatus", "createdAt", "updatedAt",
+    ].join(" "))
+    .populate("customerId", "fullName role status")
+    .populate(
+      "assignedRiderId",
+      "riderId fullName role status vehicleType plateNumber riderState riderLga availabilityStatus riderVerificationStatus"
+    )
+    .populate("assignedBy", "fullName role")
+    .lean();
+};
+
 const normalizeCommissionType = (
   value = ""
 ) => {
@@ -983,7 +1034,11 @@ exports.getAdminDeliveries =
             ""
         );
 
-      const filter = {};
+      const scopedDeliveryFilter =
+        deliveryBranchFilter(req);
+      const filter = {
+        ...scopedDeliveryFilter,
+      };
 
       if (
         status &&
@@ -1240,79 +1295,96 @@ exports.getAdminDeliveries =
             filter
           ),
 
-          Delivery.countDocuments(),
+          Delivery.countDocuments(
+            scopedDeliveryFilter
+          ),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             status:
               "PENDING",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             status:
               "ASSIGNED",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             status:
               "ACCEPTED",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             status:
               "PICKED_UP",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             status:
               "IN_TRANSIT",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             status:
               "DELIVERED",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             status:
               "CANCELLED",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             status:
               "FAILED",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             paymentStatus:
               "UNPAID",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             paymentStatus:
               "PAID",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             paymentStatus:
               "REFUNDED",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             riderCommissionStatus:
               "PENDING",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             riderCommissionStatus:
               "CREDITED",
           }),
 
           Delivery.countDocuments({
+            ...scopedDeliveryFilter,
             riderCommissionStatus:
               "SETTLED",
           }),
 
           Delivery.aggregate([
+            { $match: scopedDeliveryFilter },
             {
               $group: {
                 _id: null,
@@ -1555,9 +1627,10 @@ exports.getAvailableRiders =
       }
 
       const delivery =
-        await Delivery.findById(
-          deliveryId
-        ).lean();
+        await Delivery.findOne({
+          _id: deliveryId,
+          ...deliveryBranchFilter(req),
+        }).lean();
 
       if (!delivery) {
         return res
@@ -1579,6 +1652,9 @@ exports.getAvailableRiders =
           ? await User.find({
           role:
             "DELIVERY_RIDER",
+          // Riders are selected from the delivery tenant, not the actor's
+          // request payload or a global rider pool.
+          branchId: delivery.branchId || null,
 
           status:
             "ACTIVE",
@@ -1715,6 +1791,18 @@ exports.assignRiderToDelivery =
           });
       }
 
+      const scopedDelivery = await Delivery.findOne({
+        _id: deliveryId,
+        ...deliveryBranchFilter(req),
+      }).select("branchId").lean();
+
+      if (!scopedDelivery) {
+        return res.status(404).json({
+          success: false,
+          message: "Delivery was not found.",
+        });
+      }
+
       const session =
         await mongoose.startSession();
       const assignmentEventId =
@@ -1739,6 +1827,8 @@ exports.assignRiderToDelivery =
                   "VERIFIED",
                 availabilityStatus:
                   "ONLINE",
+                branchId:
+                  scopedDelivery.branchId || null,
               }).session(
                 session
               );
@@ -1817,6 +1907,7 @@ exports.assignRiderToDelivery =
                 {
                   _id:
                     deliveryId,
+                  ...deliveryBranchFilter(req),
                   status:
                     "PENDING",
                   $or: [
@@ -1847,9 +1938,10 @@ exports.assignRiderToDelivery =
 
             if (!delivery) {
               const existingDelivery =
-                await Delivery.findById(
-                  deliveryId
-                )
+                await Delivery.findOne({
+                  _id: deliveryId,
+                  ...deliveryBranchFilter(req),
+                })
                   .select(
                     "status assignedRiderId"
                   )
@@ -1906,46 +1998,10 @@ exports.assignRiderToDelivery =
       }
 
       const updatedDelivery =
-        await Delivery.findById(
+        await findAdminDeliveryForResponse(
+          req,
           delivery._id
-        )
-          .populate(
-            "customerId",
-            [
-              "fullName",
-              "email",
-              "phone",
-              "role",
-              "status",
-            ].join(" ")
-          )
-          .populate(
-            "assignedRiderId",
-            [
-              "riderId",
-              "fullName",
-              "email",
-              "phone",
-              "role",
-              "status",
-              "vehicleType",
-              "plateNumber",
-              "riderState",
-              "riderLga",
-              "availabilityStatus",
-              "riderVerificationStatus",
-            ].join(" ")
-          )
-          .populate(
-            "assignedBy",
-            [
-              "fullName",
-              "email",
-              "phone",
-              "role",
-            ].join(" ")
-          )
-          .lean();
+        );
 
       return res
         .status(200)
@@ -2063,9 +2119,10 @@ exports.unassignRiderFromDelivery =
       }
 
       const delivery =
-        await Delivery.findById(
-          deliveryId
-        );
+        await Delivery.findOne({
+          _id: deliveryId,
+          ...deliveryBranchFilter(req),
+        });
 
       if (!delivery) {
         return res
@@ -2183,20 +2240,10 @@ exports.unassignRiderFromDelivery =
       }
 
       const updatedDelivery =
-        await Delivery.findById(
+        await findAdminDeliveryForResponse(
+          req,
           delivery._id
-        )
-          .populate(
-            "customerId",
-            [
-              "fullName",
-              "email",
-              "phone",
-              "role",
-              "status",
-            ].join(" ")
-          )
-          .lean();
+        );
 
       return res
         .status(200)
@@ -2297,9 +2344,10 @@ exports.updateDeliveryStatus =
       }
 
       const delivery =
-        await Delivery.findById(
-          deliveryId
-        );
+        await Delivery.findOne({
+          _id: deliveryId,
+          ...deliveryBranchFilter(req),
+        });
 
       if (!delivery) {
         return res
@@ -2457,51 +2505,10 @@ exports.updateDeliveryStatus =
       }
 
       const updatedDelivery =
-        await Delivery.findById(
+        await findAdminDeliveryForResponse(
+          req,
           delivery._id
-        )
-          .populate(
-            "customerId",
-            [
-              "fullName",
-              "name",
-              "email",
-              "phone",
-              "role",
-              "status",
-            ].join(" ")
-          )
-          .populate(
-            "assignedRiderId",
-            [
-              "riderId",
-              "fullName",
-              "name",
-              "email",
-              "phone",
-              "role",
-              "status",
-              "vehicleType",
-              "plateNumber",
-              "riderState",
-              "riderLga",
-              "availabilityStatus",
-              "riderVerificationStatus",
-              "totalRiderEarnings",
-              "pendingRiderSettlement",
-              "settledRiderEarnings",
-            ].join(" ")
-          )
-          .populate(
-            "assignedBy",
-            [
-              "fullName",
-              "email",
-              "phone",
-              "role",
-            ].join(" ")
-          )
-          .lean();
+        );
 
       let message =
         "Delivery status updated successfully.";
@@ -2748,9 +2755,10 @@ exports.updateDeliveryPrice =
       }
 
       const delivery =
-        await Delivery.findById(
-          deliveryId
-        );
+        await Delivery.findOne({
+          _id: deliveryId,
+          ...deliveryBranchFilter(req),
+        });
 
       if (!delivery) {
         return res
@@ -2902,51 +2910,10 @@ exports.updateDeliveryPrice =
         );
 
       const updatedDelivery =
-        await Delivery.findById(
+        await findAdminDeliveryForResponse(
+          req,
           delivery._id
-        )
-          .populate(
-            "customerId",
-            [
-              "fullName",
-              "name",
-              "email",
-              "phone",
-              "role",
-              "status",
-            ].join(" ")
-          )
-          .populate(
-            "assignedRiderId",
-            [
-              "riderId",
-              "fullName",
-              "name",
-              "email",
-              "phone",
-              "role",
-              "status",
-              "vehicleType",
-              "plateNumber",
-              "riderState",
-              "riderLga",
-              "availabilityStatus",
-              "riderVerificationStatus",
-              "totalRiderEarnings",
-              "pendingRiderSettlement",
-              "settledRiderEarnings",
-            ].join(" ")
-          )
-          .populate(
-            "assignedBy",
-            [
-              "fullName",
-              "email",
-              "phone",
-              "role",
-            ].join(" ")
-          )
-          .lean();
+        );
 
       let message =
         "Delivery price and Rider commission updated successfully.";

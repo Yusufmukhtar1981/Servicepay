@@ -8,6 +8,7 @@ const {
   asMoney,
   isAdmin,
   isProgramEligibleOrganization,
+  createOrganization,
   listOrganizations,
   updateOrganizationStatus,
   createProgram: createProgramHandler,
@@ -89,11 +90,13 @@ const request = ({
   params = {},
   query = {},
   headers = {},
+  staffAccess,
 }) => ({
   user,
   body,
   params,
   query,
+  staffAccess,
   get(name) {
     const key = Object.keys(headers).find(
       (header) => header.toLowerCase() === name.toLowerCase()
@@ -255,6 +258,124 @@ test("Empowerment funding rejects zero, negative and malformed amounts", () => {
   assert.equal(asMoney(-500), null);
   assert.equal(asMoney("not-money"), null);
   assert.equal(asMoney("1200.456"), 1200.46);
+});
+
+test("Empowerment stamps the authenticated branch and isolates branch staff", async () => {
+  const ownerBranch = new mongoose.Types.ObjectId();
+  const otherBranch = new mongoose.Types.ObjectId();
+  const owner = await createUser();
+  owner.branchId = ownerBranch;
+  await owner.save();
+
+  const created = await call(createOrganization, {
+    user: owner,
+    body: {
+      name: "Branch-stamped Organization",
+      organizationType: "NGO",
+      registrationNumber: "BRANCH-NGO-001",
+      contactName: owner.fullName,
+      phone: owner.phone,
+      email: owner.email,
+      address: "1 Branch Street",
+      state: owner.state,
+      branchId: otherBranch,
+    },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(String(created.body.organization.branchId), String(ownerBranch));
+  assert.equal(
+    String((await EmpowermentAuditLog.findOne({
+      entityId: created.body.organization._id,
+    })).branchId),
+    String(ownerBranch)
+  );
+
+  const staffResponse = await call(listOrganizations, {
+    user: { ...owner.toObject(), role: "STAFF", isStaff: true },
+    staffAccess: {
+      isHeadOffice: false,
+      scope: { type: "BRANCH", branchId: otherBranch },
+    },
+  });
+  assert.equal(staffResponse.status, 200);
+  assert.equal(staffResponse.body.organizations.length, 0);
+});
+
+test("branch Empowerment history omits funding and recipient contact PII", async () => {
+  const branchId = new mongoose.Types.ObjectId();
+  const owner = await createUser();
+  const recipient = await createUser();
+  const program = await createProgram({ owner, status: "APPROVED" });
+  await Promise.all([
+    EmpowermentOrganization.updateOne(
+      { _id: program.organization },
+      { $set: { branchId } }
+    ),
+    EmpowermentProgram.updateOne({ _id: program._id }, { $set: { branchId } }),
+  ]);
+  const beneficiary = await createBeneficiary({ program, user: recipient });
+  await EmpowermentBeneficiary.updateOne(
+    { _id: beneficiary._id },
+    { $set: { branchId } }
+  );
+  const [funding] = await EmpowermentFunding.create([{
+    branchId,
+    organization: program.organization,
+    program: program._id,
+    fundedBy: owner._id,
+    amount: 100,
+    reference: "PII-FUNDING-REFERENCE",
+    idempotencyKey: "pii-history-funding-key",
+  }]);
+  const [batch] = await EmpowermentDisbursement.create([{
+    branchId,
+    organization: program.organization,
+    program: program._id,
+    batchReference: "PII-BATCH-REFERENCE",
+    idempotencyKey: "pii-history-batch-key",
+    beneficiaryCount: 1,
+    amountPerBeneficiary: 100,
+    totalAmount: 100,
+    status: "COMPLETED",
+    beneficiaryIds: [beneficiary._id],
+    createdBy: owner._id,
+    results: [{
+      beneficiary: beneficiary._id,
+      recipient: recipient._id,
+      amount: 100,
+      walletBalanceBefore: 0,
+      walletBalanceAfter: 100,
+      transactionReference: "PII-PAYOUT-REFERENCE",
+      status: "SUCCESSFUL",
+    }],
+  }]);
+  assert.ok(funding._id && batch._id);
+
+  const staff = { ...owner.toObject(), role: "STAFF", isStaff: true };
+  const staffAccess = {
+    isHeadOffice: false,
+    scope: { type: "BRANCH", branchId },
+  };
+  const [history, report] = await Promise.all([
+    call(listDisbursementBatches, {
+      user: staff,
+      staffAccess,
+      params: { programId: String(program._id) },
+    }),
+    call(getProgramReport, {
+      user: staff,
+      staffAccess,
+      params: { programId: String(program._id) },
+    }),
+  ]);
+  assert.equal(history.status, 200);
+  assert.equal(report.status, 200);
+  const result = history.body.batches[0].results[0];
+  assert.equal(history.body.batches[0].createdBy.phone, undefined);
+  assert.equal(result.beneficiary.phone, undefined);
+  assert.equal(result.recipient.email, undefined);
+  assert.equal(report.body.report.fundings[0].fundedBy.phone, undefined);
+  assert.equal(report.body.report.disbursements[0].createdBy.phone, undefined);
 });
 
 test("Empowerment transaction and payout schemas enforce auditable records", () => {

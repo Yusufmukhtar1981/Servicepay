@@ -24,6 +24,7 @@ const models = [
 
 const createCustomer = async ({
   walletBalance = 5000,
+  branchId = null,
 } = {}) => {
   sequence += 1;
 
@@ -35,6 +36,7 @@ const createCustomer = async ({
     role: "CUSTOMER",
     status: "ACTIVE",
     walletBalance,
+    branchId,
   });
 };
 
@@ -43,12 +45,14 @@ const call = async (
   {
     user = null,
     body = {},
+    params = {},
   } = {}
 ) => {
   const result = {};
   const req = {
     user,
     body,
+    params,
   };
   const res = {
     status(code) {
@@ -159,6 +163,73 @@ test(
       }),
       1
     );
+  }
+);
+
+test(
+  "delivery and wallet transaction inherit the authenticated customer branch",
+  async () => {
+    const customerBranchId = new mongoose.Types.ObjectId();
+    const forgedBranchId = new mongoose.Types.ObjectId();
+    const customer = await createCustomer({
+      branchId: customerBranchId,
+    });
+
+    const result = await call(deliveryController.createDelivery, {
+      user: customer,
+      body: {
+        // This must be ignored: customers cannot choose delivery tenancy.
+        branchId: forgedBranchId,
+        pickupAddress: "12 Pickup Road, Kano",
+        deliveryAddress: "7 Receiver Close, Kano",
+        senderName: "Pickup Customer",
+        senderPhone: "08030000001",
+        receiverName: "Receiver Customer",
+        receiverPhone: "08030000002",
+      },
+    });
+
+    assert.equal(result.status, 201, JSON.stringify(result.body));
+    const delivery = await Delivery.findById(result.body.delivery._id).lean();
+    const transaction = await Transaction.findById(result.body.transaction._id).lean();
+    assert.equal(String(delivery.branchId), String(customerBranchId));
+    assert.equal(String(transaction.branchId), String(customerBranchId));
+    assert.notEqual(String(delivery.branchId), String(forgedBranchId));
+  }
+);
+
+test(
+  "customer delivery cancellation remains limited to the delivery owner",
+  async () => {
+    const owner = await createCustomer();
+    const otherCustomer = await createCustomer();
+    const delivery = await Delivery.create({
+      customerId: owner._id,
+      trackingNumber: "SP-OWNER-ONLY-DELIVERY",
+      pickupAddress: "12 Pickup Road, Kano",
+      deliveryAddress: "7 Receiver Close, Kano",
+      senderName: owner.fullName,
+      senderPhone: owner.phone,
+      receiverName: "Receiver Customer",
+      receiverPhone: "08030000002",
+      packageName: "Documents",
+      paymentStatus: "UNPAID",
+      status: "PENDING",
+    });
+
+    const foreignAttempt = await call(deliveryController.cancelDelivery, {
+      user: otherCustomer,
+      params: { id: String(delivery._id) },
+    });
+    assert.equal(foreignAttempt.status, 404);
+    assert.equal((await Delivery.findById(delivery._id)).status, "PENDING");
+
+    const ownerAttempt = await call(deliveryController.cancelDelivery, {
+      user: owner,
+      params: { id: String(delivery._id) },
+    });
+    assert.equal(ownerAttempt.status, 200, JSON.stringify(ownerAttempt.body));
+    assert.equal((await Delivery.findById(delivery._id)).status, "CANCELLED");
   }
 );
 

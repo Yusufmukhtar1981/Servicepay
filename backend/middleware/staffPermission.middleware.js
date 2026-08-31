@@ -372,6 +372,24 @@ const enforceActiveBranchScope = async (req, res, next) => {
   }
 };
 
+// A branch assignment alone is not authorization to operate every product.
+// Route modules use this after enforceActiveBranchScope so the branch is both
+// active and explicitly provisioned for the requested module.
+const requireAssignedBranchModule = (moduleName) => (req, res, next) => {
+  if (req.staffAccess?.isHeadOffice) return next();
+  const assigned = (req.branchScope?.assignedModules || []).map((value) =>
+    String(value || "").trim().toUpperCase()
+  );
+  if (!assigned.includes(String(moduleName || "").trim().toUpperCase())) {
+    return res.status(403).json({
+      success: false,
+      code: "BRANCH_MODULE_DENIED",
+      message: "Your assigned branch is not enabled for this module.",
+    });
+  }
+  return next();
+};
+
 module.exports = {
   STAFF_PERMISSIONS,
   loadStaffRole,
@@ -382,4 +400,5 @@ module.exports = {
   isUserWithinScope,
   requireTargetUserScope,
   enforceActiveBranchScope,
+  requireAssignedBranchModule,
 };
