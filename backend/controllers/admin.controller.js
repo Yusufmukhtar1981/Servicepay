@@ -2145,6 +2145,7 @@ exports.runRiderPushDiagnostic = async (req, res) => {
         reason: result.reason || null,
         firebaseAvailable: firebase.available,
         firebaseProjectId: firebase.projectId,
+        firebaseReason: firebase.reason,
       },
     });
   } catch (error) {
