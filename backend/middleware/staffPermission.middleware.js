@@ -76,14 +76,19 @@ const loadStaffRole = async (req, res, next) => {
     }
 
     if (directRolePermissions[role]) {
+      const rolePermissions = role === "BRANCH_MANAGER" &&
+        Array.isArray(req.user.branchManagerPermissions)
+        ? normalizePermissionList(req.user.branchManagerPermissions)
+            .filter((permission) => directRolePermissions.BRANCH_MANAGER.includes(permission))
+        : [...directRolePermissions[role]];
       req.staffAccess = {
         isHeadOffice: false,
         roleName: role,
         sourceRole: rawRole,
         department: req.user.department || "OPERATIONS",
-        permissions: [...directRolePermissions[role]],
+        permissions: rolePermissions,
         scope: scopeForRole(role, req.user),
-        hierarchyLevel: role === "ZONAL_MANAGER" ? 50 : 40,
+        hierarchyLevel: role === "ZONAL_MANAGER" ? 50 : role === "BRANCH_MANAGER" ? 20 : 40,
       };
       return next();
     }

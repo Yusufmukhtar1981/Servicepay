@@ -168,7 +168,8 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
       await preferences.setString('user_status', status);
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
-        _authenticatedHome = authenticatedHomeForRole(role);
+        _authenticatedHome = authenticatedHomeForLogin(role,
+            mustChangePassword: profile['mustChangePassword'] == true);
         _state = StartupSessionState.authenticated;
       });
     } on TimeoutException {

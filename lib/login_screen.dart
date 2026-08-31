@@ -469,7 +469,8 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (
             BuildContext context,
           ) {
-            return authenticatedHomeForRole(role);
+            return authenticatedHomeForLogin(role,
+                mustChangePassword: user['mustChangePassword'] == true);
           },
         ),
         (

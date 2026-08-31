@@ -19,6 +19,9 @@ const EmpowermentProgram = require("../models/empowermentProgram.model");
 const EmpowermentBeneficiary = require("../models/empowermentBeneficiary.model");
 const EmpowermentDisbursement = require("../models/empowermentDisbursement.model");
 const mongoose = require("mongoose");
+const crypto = require("crypto");
+const { validateStaffPermissions, directRolePermissions } = require("../config/staffPermissions");
+const { hasPermission } = require("../middleware/staffPermission.middleware");
 
 const id = (req) => req.user._id || req.user.id;
 const same = (a, b) => String(a) === String(b);
@@ -54,6 +57,61 @@ const countAndSum = async (Model, filter, amount) => {
   return { count: row?.count || 0, value: row?.value || 0 };
 };
 const safeStatus = (req) => req.query.status ? String(req.query.status).trim().toUpperCase() : null;
+const managerPermissions = () => [...(directRolePermissions.BRANCH_MANAGER || [])];
+const managerInput = (body = {}) => {
+  if (body.manager || body.newManager) return body.manager || body.newManager;
+  const supplied = ["managerFullName", "managerPhone", "managerEmail", "managerPassword", "fullName"]
+    .some((key) => body[key] !== undefined);
+  return supplied ? {
+    fullName: body.managerFullName || body.fullName,
+    phone: body.managerPhone,
+    email: body.managerEmail,
+    password: body.managerPassword,
+    permissions: body.managerPermissions,
+  } : {};
+};
+const managerView = (user) => user && ({
+  _id: user._id, fullName: user.fullName, phone: user.phone, email: user.email,
+  status: user.status, branchId: user.branchId,
+  permissions: user.branchManagerPermissions?.length
+    ? user.branchManagerPermissions : managerPermissions(),
+});
+const managerError = (res, status, code, message) =>
+  res.status(status).json({ success: false, code, message });
+const validateNewManager = (input) => {
+  const fullName = String(input.fullName || "").trim();
+  const phone = String(input.phone || "").trim();
+  const password = String(input.password || generateTemporaryPassword());
+  const email = String(input.email || "").trim().toLowerCase();
+  if (!fullName || !phone) return { error: "Manager fullName and phone are required." };
+  if (phone.length < 10) return { error: "Manager phone must be valid." };
+  if (password.length < 6) return { error: "Manager password must contain at least 6 characters." };
+  return { fullName, phone, password, email };
+};
+function generateTemporaryPassword() {
+  return `Sp!${crypto.randomBytes(12).toString("base64url")}9a`;
+}
+const assertManager = (user) =>
+  user && user.isStaff === true && ["STAFF", "BRANCH_MANAGER"].includes(String(user.role).toUpperCase());
+const can = (req, permission) => req.staffAccess?.isHeadOffice || hasPermission(req.staffAccess, permission);
+const dashboardAccess = (req, section) => {
+  const permissions = {
+    users: "branch.customers.view", staff: "branch.staff.view",
+    transactions: "branch.finance.view", deliveries: "branch.delivery.view",
+    solar: "branch.solar.view", marketplace: "branch.marketplace.view",
+    phoneFinancing: "branch.phone.view", empowerment: "branch.empowerment.view",
+    targets: "branch.targets.view", approvals: "branch.approvals.view",
+    reports: "branch.reports.view",
+  };
+  const modules = {
+    deliveries: "DELIVERY", solar: "SOLAR", marketplace: "MARKETPLACE",
+    phoneFinancing: "PHONE_FINANCING", empowerment: "EMPOWERMENT",
+  };
+  if (!can(req, permissions[section])) return false;
+  if (req.staffAccess?.isHeadOffice || !modules[section]) return true;
+  return (req.branchScope?.assignedModules || []).map((v) => String(v).toUpperCase())
+    .includes(modules[section]);
+};
 const metricsForBranch = async (branchId, req) => {
   // Every query explicitly requires branchId. Legacy null-stamped data is Head
   // Office global history and is intentionally excluded from every branch row.
@@ -85,10 +143,56 @@ exports.create = async (req, res) => {
       return res.status(400).json({ success: false, message: "Code, name, address, state, LGA, phone, email, opening date, and assignedModules are required." });
     }
     const assignedModules = [...new Set(req.body.assignedModules.map((value) => String(value).trim().toUpperCase()).filter(Boolean))];
-    const branch = await Branch.create({ code: req.body.code, name: req.body.name, address: req.body.address, state: req.body.state, lga: req.body.lga, phone: req.body.phone, email: req.body.email, openingDate: req.body.openingDate, notes: req.body.notes, assignedModules, latitude: req.body.latitude, longitude: req.body.longitude, createdBy: id(req), updatedBy: id(req) });
+    const existingManagerId = req.body.managerId;
+    const newManager = managerInput(req.body);
+    if (existingManagerId && Object.keys(newManager).length) return managerError(res, 400, "MANAGER_INPUT_CONFLICT", "Provide either managerId or a new manager, not both.");
+    if (!existingManagerId && !Object.keys(newManager).length) return managerError(res, 400, "MANAGER_REQUIRED", "Provide managerId or a new manager when creating a branch.");
+    if (Object.keys(newManager).length && newManager.permissions !== undefined) {
+      const result = validateStaffPermissions(newManager.permissions);
+      if (!result.valid || result.permissions.some((permission) => !managerPermissions().includes(permission))) {
+        return managerError(res, 400, "INVALID_MANAGER_PERMISSIONS", result.message || "Manager permissions must be branch-scoped permissions.");
+      }
+    }
+    let branch; let manager = null;
+    let temporaryCredentials = null;
+    await mongoose.connection.transaction(async (session) => {
+      if (existingManagerId) {
+        manager = await User.findById(existingManagerId).session(session);
+        if (!assertManager(manager)) throw Object.assign(new Error("Manager must be an internal STAFF or BRANCH_MANAGER account."), { branchCode: "INVALID_MANAGER" });
+        if (manager.branchId) throw Object.assign(new Error("Manager is already assigned to another branch; use reassignment."), { branchCode: "MANAGER_ALREADY_ASSIGNED" });
+      } else if (Object.keys(newManager).length) {
+        const clean = validateNewManager(newManager);
+        if (clean.error) throw Object.assign(new Error(clean.error), { branchCode: "INVALID_MANAGER" });
+        const duplicate = await User.findOne({ $or: [{ phone: clean.phone }, ...(clean.email ? [{ email: clean.email }] : [])] }).session(session);
+        if (duplicate) throw Object.assign(new Error("An account already exists with this manager phone or email."), { branchCode: "MANAGER_CONFLICT" });
+        manager = new User({ ...clean, email: clean.email || undefined, role: "BRANCH_MANAGER", isStaff: true, department: "OPERATIONS", status: "ACTIVE", mustChangePassword: true, jobTitle: "BRANCH_MANAGER", staffCreatedBy: id(req), createdByStaffId: id(req), branchManagerPermissions: newManager.permissions !== undefined ? newManager.permissions : managerPermissions() });
+        temporaryCredentials = {
+          identifier: clean.email || clean.phone,
+          email: clean.email || null,
+          phone: clean.phone,
+          temporaryPassword: clean.password,
+        };
+      }
+      branch = (await Branch.create([{ code: req.body.code, name: req.body.name, address: req.body.address, state: req.body.state, lga: req.body.lga, phone: req.body.phone, email: req.body.email, openingDate: req.body.openingDate, notes: req.body.notes, assignedModules, latitude: req.body.latitude, longitude: req.body.longitude, managerId: manager?._id || null, staffIds: manager ? [manager._id] : [], createdBy: id(req), updatedBy: id(req) }], { session }))[0];
+      if (manager) {
+        if (String(manager.role).toUpperCase() === "STAFF") {
+          manager.branchManagerPreviousRole = manager.role;
+          manager.branchManagerPreviousStaffRoleId = manager.staffRoleId || null;
+        }
+        manager.branchId = branch._id; manager.role = "BRANCH_MANAGER"; manager.isStaff = true;
+        manager.jobTitle = "BRANCH_MANAGER";
+        manager.authTokenVersion = Number(manager.authTokenVersion || 0) + 1;
+        await manager.save({ session, validateBeforeSave: false });
+      }
+    });
     await audit(req, "BRANCH_CREATED", "Branch created.", { branchId: String(branch._id) });
-    res.status(201).json({ success: true, branch });
-  } catch (error) { res.status(error.code === 11000 ? 409 : 400).json({ success: false, message: error.code === 11000 ? "Branch code already exists." : error.message }); }
+    res.status(201).json({
+      success: true,
+      branch,
+      manager: managerView(manager),
+      ...(temporaryCredentials ? { temporaryCredentials } : {}),
+    });
+  } catch (error) { res.status(error.code === 11000 || error.branchCode === "MANAGER_CONFLICT" ? 409 : 400).json({ success: false, code: error.code === 11000 ? "BRANCH_CODE_CONFLICT" : error.branchCode, message: error.code === 11000 ? "Branch code already exists." : error.message }); }
 };
 exports.list = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
@@ -128,24 +232,103 @@ exports.activate = async (req, res) => {
 };
 exports.assignManager = async (req, res) => {
   if (!headOffice(req, res)) return;
-  const branchBefore = await Branch.findById(req.params.branchId); if (!branchBefore) return res.status(404).json({ success: false, message: "Branch not found." });
-  if (!req.body.managerId) {
-    const previous = branchBefore.managerId;
-    branchBefore.managerId = null; await branchBefore.save();
-    if (previous) await User.findByIdAndUpdate(previous, { $inc: { authTokenVersion: 1 } });
-    await audit(req, "BRANCH_MANAGER_ASSIGNED", "Branch manager removed.", { branchId: String(branchBefore._id) }, { managerId: previous }, { managerId: null });
-    return res.json({ success: true, branch: branchBefore });
-  }
-  const user = await User.findById(req.body.managerId);
-  if (!user || user.status !== "ACTIVE" || user.isStaff !== true || String(user.role).toUpperCase() !== "STAFF") return res.status(400).json({ success: false, message: "Manager must be an active STAFF account." });
-  const oldBranchId = user.branchId;
-  if (oldBranchId && !same(oldBranchId, branchBefore._id)) await Branch.findByIdAndUpdate(oldBranchId, { $pull: { staffIds: user._id }, $set: { managerId: null } });
-  if (branchBefore.managerId && !same(branchBefore.managerId, user._id)) await User.findByIdAndUpdate(branchBefore.managerId, { $inc: { authTokenVersion: 1 } });
-  const branch = await Branch.findByIdAndUpdate(req.params.branchId, { managerId: user._id, $addToSet: { staffIds: user._id } }, { new: true });
-  if (!branch) return res.status(404).json({ success: false, message: "Branch not found." });
-  user.branchId = branch._id; user.jobTitle = String(req.body.jobTitle || "BRANCH_MANAGER").trim(); user.authTokenVersion = Number(user.authTokenVersion || 0) + 1; await user.save({ validateBeforeSave: false });
-  await audit(req, "BRANCH_MANAGER_ASSIGNED", "Branch manager assigned.", { branchId: String(branch._id), managerId: String(user._id) }, { managerId: branchBefore.managerId, oldBranchId }, { managerId: user._id, jobTitle: user.jobTitle });
-  res.json({ success: true, branch });
+  const managerId = req.body.managerId;
+  if (!managerId) return managerError(res, 400, "MANAGER_ID_REQUIRED", "managerId is required; use DELETE to remove a manager.");
+  try {
+    let branch; let user; let previous;
+    await mongoose.connection.transaction(async (session) => {
+      branch = await Branch.findById(req.params.branchId).session(session);
+      if (!branch) throw Object.assign(new Error("Branch not found."), { branchStatus: 404 });
+      user = await User.findById(managerId).select("+authTokenVersion").session(session);
+      if (!assertManager(user) || user.status !== "ACTIVE") throw Object.assign(new Error("Manager must be an active internal STAFF or BRANCH_MANAGER account."), { branchCode: "INVALID_MANAGER" });
+      previous = branch.managerId;
+      const oldBranchId = user.branchId;
+      if (oldBranchId && !same(oldBranchId, branch._id)) {
+        const oldBranch = await Branch.findById(oldBranchId).session(session);
+        if (oldBranch) {
+          oldBranch.staffIds.pull(user._id);
+          if (same(oldBranch.managerId, user._id)) oldBranch.managerId = null;
+          await oldBranch.save({ session });
+        }
+      }
+      if (previous && !same(previous, user._id)) {
+        const priorManager = await User.findById(previous).select("+authTokenVersion").session(session);
+        if (priorManager) {
+          priorManager.role = priorManager.branchManagerPreviousRole || "STAFF";
+          priorManager.staffRoleId = priorManager.branchManagerPreviousStaffRoleId || null;
+          priorManager.branchManagerPreviousRole = null; priorManager.branchManagerPreviousStaffRoleId = null;
+          priorManager.branchId = null; priorManager.jobTitle = "";
+          priorManager.authTokenVersion = Number(priorManager.authTokenVersion || 0) + 1;
+          await priorManager.save({ session, validateBeforeSave: false });
+        }
+      }
+      branch.managerId = user._id; branch.staffIds.addToSet(user._id); branch.updatedBy = id(req); await branch.save({ session });
+      if (String(user.role).toUpperCase() === "STAFF") {
+        user.branchManagerPreviousRole = user.role;
+        user.branchManagerPreviousStaffRoleId = user.staffRoleId || null;
+      }
+      user.branchId = branch._id; user.role = "BRANCH_MANAGER"; user.isStaff = true;
+      user.jobTitle = String(req.body.jobTitle || "BRANCH_MANAGER").trim(); user.branchManagerPermissions = user.branchManagerPermissions?.length ? user.branchManagerPermissions : managerPermissions();
+      user.authTokenVersion = Number(user.authTokenVersion || 0) + 1; await user.save({ session, validateBeforeSave: false });
+    });
+    await audit(req, "BRANCH_MANAGER_REASSIGNED", "Branch manager assigned or reassigned.", { branchId: String(branch._id), managerId: String(user._id) }, { managerId: previous }, { managerId: user._id });
+    res.json({ success: true, branch, manager: managerView(user) });
+  } catch (error) { managerError(res, error.branchStatus || (error.code === 11000 ? 409 : 400), error.branchCode || (error.code === 11000 ? "MANAGER_CONFLICT" : "MANAGER_ASSIGNMENT_FAILED"), error.message); }
+};
+exports.managerStatus = async (req, res) => {
+  if (!headOffice(req, res)) return;
+  const status = String(req.body.status || "").trim().toUpperCase();
+  if (!["ACTIVE", "SUSPENDED", "BLOCKED"].includes(status)) return managerError(res, 400, "INVALID_MANAGER_STATUS", "Status must be ACTIVE, SUSPENDED, or BLOCKED.");
+  const branch = await Branch.findById(req.params.branchId); if (!branch) return managerError(res, 404, "BRANCH_NOT_FOUND", "Branch not found.");
+  const manager = branch.managerId && await User.findById(branch.managerId).select("+authTokenVersion");
+  if (!manager) return managerError(res, 409, "MANAGER_NOT_ASSIGNED", "This branch has no manager.");
+  manager.status = status; manager.authTokenVersion = Number(manager.authTokenVersion || 0) + 1; await manager.save({ validateBeforeSave: false });
+  await audit(req, "BRANCH_MANAGER_STATUS_CHANGED", `Manager status changed to ${status}.`, { branchId: String(branch._id), managerId: String(manager._id) });
+  res.json({ success: true, manager: managerView(manager) });
+};
+exports.managerPassword = async (req, res) => {
+  if (!headOffice(req, res)) return;
+  const password = String(req.body.temporaryPassword ?? req.body.password ?? "");
+  if (password.length < 6) return managerError(res, 400, "INVALID_MANAGER_PASSWORD", "Temporary password must contain at least 6 characters.");
+  const branch = await Branch.findById(req.params.branchId); const manager = branch?.managerId && await User.findById(branch.managerId).select("+authTokenVersion");
+  if (!branch) return managerError(res, 404, "BRANCH_NOT_FOUND", "Branch not found.");
+  if (!manager) return managerError(res, 409, "MANAGER_NOT_ASSIGNED", "This branch has no manager.");
+  manager.password = password; manager.mustChangePassword = true; manager.passwordChangedAt = new Date(); manager.authTokenVersion = Number(manager.authTokenVersion || 0) + 1; await manager.save();
+  await audit(req, "BRANCH_MANAGER_PASSWORD_RESET", "Manager temporary password reset and sessions revoked.", { branchId: String(branch._id), managerId: String(manager._id) });
+  res.json({ success: true, message: "Temporary password reset successfully.", manager: managerView(manager) });
+};
+exports.managerPermissions = async (req, res) => {
+  if (!headOffice(req, res)) return;
+  const result = validateStaffPermissions(req.body.permissions);
+  if (!result.valid || result.permissions.some((permission) => !managerPermissions().includes(permission))) return managerError(res, 400, "INVALID_MANAGER_PERMISSIONS", result.message || "Managers may only receive branch-scoped permissions.");
+  const branch = await Branch.findById(req.params.branchId); const manager = branch?.managerId && await User.findById(branch.managerId).select("+authTokenVersion");
+  if (!branch) return managerError(res, 404, "BRANCH_NOT_FOUND", "Branch not found.");
+  if (!manager) return managerError(res, 409, "MANAGER_NOT_ASSIGNED", "This branch has no manager.");
+  manager.branchManagerPermissions = result.permissions; manager.authTokenVersion = Number(manager.authTokenVersion || 0) + 1; await manager.save({ validateBeforeSave: false });
+  await audit(req, "BRANCH_MANAGER_PERMISSIONS_UPDATED", "Manager permissions updated and sessions revoked.", { branchId: String(branch._id), managerId: String(manager._id) });
+  res.json({ success: true, manager: managerView(manager) });
+};
+exports.removeManager = async (req, res) => {
+  if (!headOffice(req, res)) return;
+  try {
+    let branch; let manager;
+    await mongoose.connection.transaction(async (session) => {
+      branch = await Branch.findById(req.params.branchId).session(session);
+      if (!branch) throw Object.assign(new Error("Branch not found."), { branchStatus: 404 });
+      if (!branch.managerId) throw Object.assign(new Error("This branch has no manager."), { branchCode: "MANAGER_NOT_ASSIGNED", branchStatus: 409 });
+      manager = await User.findById(branch.managerId).select("+authTokenVersion").session(session);
+      branch.staffIds.pull(branch.managerId); branch.managerId = null; branch.updatedBy = id(req); await branch.save({ session });
+      if (manager) {
+        manager.branchId = null; manager.role = manager.branchManagerPreviousRole || "STAFF";
+        manager.staffRoleId = manager.branchManagerPreviousStaffRoleId || null;
+        manager.branchManagerPreviousRole = null; manager.branchManagerPreviousStaffRoleId = null;
+        manager.jobTitle = ""; manager.authTokenVersion = Number(manager.authTokenVersion || 0) + 1;
+        await manager.save({ session, validateBeforeSave: false });
+      }
+    });
+    await audit(req, "BRANCH_MANAGER_REMOVED", "Branch manager removed and sessions revoked.", { branchId: String(branch._id), managerId: String(manager?._id || "") });
+    res.json({ success: true, branch });
+  } catch (error) { managerError(res, error.branchStatus || 400, error.branchCode || "MANAGER_REMOVAL_FAILED", error.message); }
 };
 exports.members = async (req, res) => {
   const scope = branchScope(req, req.params.branchId); if (scope === false) return deny(res);
@@ -166,6 +349,9 @@ exports.removeMember = async (req, res) => {
   if (!req.staffAccess.isHeadOffice && !same(managedBranch?.managerId, id(req))) return deny(res);
   const user = await User.findById(req.params.userId); if (!user) return res.status(404).json({ success: false, message: "User not found." });
   if (!same(user.branchId, scope) || (!req.staffAccess.isHeadOffice && String(user.role).toUpperCase() === "HEAD_OFFICE")) return deny(res);
+  if (same(user._id, managedBranch?.managerId)) {
+    return managerError(res, 409, "MANAGER_REMOVAL_REQUIRES_LIFECYCLE", "Use the branch manager removal endpoint to remove the assigned manager.");
+  }
   user.branchId = null; await user.save({ validateBeforeSave: false });
   await Branch.findByIdAndUpdate(scope, { $pull: { staffIds: user._id }, ...(same(user._id, (await Branch.findById(scope).lean())?.managerId) ? { managerId: null } : {}) });
   await audit(req, "BRANCH_MEMBER_ASSIGNED", "Branch member removed.", { branchId: String(scope), userId: String(user._id) });
@@ -188,14 +374,35 @@ exports.dashboard = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
   if (!scope) return exports.overview(req, res);
   const base = scoped(scope, req);
-  const [metrics, targets, pendingApprovals, approvalStatuses, openRequests] = await Promise.all([
+  const [metrics, targets, pendingApprovals, approvalStatuses, openRequests, staff, branch] = await Promise.all([
     metricsForBranch(scope, req), BranchTarget.find({ branchId: scope, ...(req.query.module ? { module: String(req.query.module).toUpperCase() } : {}) }).lean(),
     BranchApprovalRequest.countDocuments({ ...base, status: { $in: ["SUBMITTED", "PENDING_HEAD_OFFICE"] } }),
     groupedStatuses(BranchApprovalRequest, base),
     BranchOperationalRequest.countDocuments({ ...base, status: { $in: ["OPEN", "IN_PROGRESS"] } }),
+    User.find({ branchId: scope, isStaff: true }).select("_id fullName staffId jobTitle department status role lastStaffLoginAt").sort({ fullName: 1 }).lean(),
+    Branch.findById(scope).select("_id code name status state lga assignedModules managerId openingDate").lean(),
   ]);
+  for (const section of ["users", "staff", "transactions", "deliveries", "solar", "marketplace", "phoneFinancing", "empowerment"]) {
+    if (!dashboardAccess(req, section)) delete metrics[section];
+  }
+  if (!dashboardAccess(req, "transactions") && !dashboardAccess(req, "deliveries") &&
+      !dashboardAccess(req, "marketplace") && !dashboardAccess(req, "solar") &&
+      !dashboardAccess(req, "phoneFinancing")) delete metrics.revenue;
   const approvals = { approved: approvalStatuses.APPROVED || 0, rejected: approvalStatuses.REJECTED || 0, correctionRequested: approvalStatuses.CORRECTION_REQUESTED || 0 };
-  res.json({ success: true, dashboard: { branchId: scope, members: metrics.staff, pendingApprovals, openRequests, targets, approvalStatuses, approvals, metrics } });
+  const dashboard = {
+    branchId: scope,
+    branch: branch && { id: branch._id, code: branch.code, name: branch.name, status: branch.status, state: branch.state, lga: branch.lga, assignedModules: branch.assignedModules || [], managerId: branch.managerId, openingDate: branch.openingDate },
+    period: { startDate: req.query.startDate || null, endDate: req.query.endDate || null, module: req.query.module || null, status: safeStatus(req) },
+    metrics,
+  };
+  if (dashboardAccess(req, "staff")) { dashboard.members = metrics.staff || 0; dashboard.staff = staff; }
+  if (dashboardAccess(req, "targets")) dashboard.targets = targets;
+  if (dashboardAccess(req, "approvals")) {
+    dashboard.pendingApprovals = pendingApprovals; dashboard.openRequests = openRequests;
+    dashboard.approvalStatuses = approvalStatuses; dashboard.approvals = approvals;
+  }
+  if (dashboardAccess(req, "reports")) dashboard.report = { metrics, period: dashboard.period };
+  res.json({ success: true, dashboard });
 };
 exports.overview = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
@@ -263,6 +470,10 @@ exports.progress = async (req, res) => {
 };
 exports.submitApproval = async (req, res) => {
   const scope = branchScope(req, req.body.branchId); if (scope === false) return deny(res);
+  if (!scope) return res.status(400).json({ success: false, code: "BRANCH_ID_REQUIRED", message: "branchId is required for an approval request." });
+  const branch = await Branch.findById(scope).select("_id status").lean();
+  if (!branch) return res.status(404).json({ success: false, code: "BRANCH_NOT_FOUND", message: "Branch not found." });
+  if (!req.staffAccess.isHeadOffice && branch.status !== "ACTIVE") return res.status(403).json({ success: false, code: "BRANCH_INACTIVE", message: "Approval requests require an active branch." });
   const requestKey = String(req.get("Idempotency-Key") || req.body.requestKey || "").trim();
   if (!requestKey) return res.status(400).json({ success: false, message: "Idempotency-Key is required." });
   const existing = await BranchApprovalRequest.findOne({ branchId: scope, requestKey });
@@ -273,7 +484,7 @@ exports.submitApproval = async (req, res) => {
 };
 exports.approvals = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
-  const requests = await BranchApprovalRequest.find({ branchId: scope }).sort({ createdAt: -1 }).skip((page(req) - 1) * 50).limit(50).lean();
+  const requests = await BranchApprovalRequest.find(scope ? { branchId: scope } : {}).sort({ createdAt: -1 }).skip((page(req) - 1) * 50).limit(50).lean();
   res.json({ success: true, requests });
 };
 exports.reviewApproval = async (req, res) => {

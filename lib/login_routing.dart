@@ -7,6 +7,8 @@ import 'solar_officer/solar_officer_dashboard_screen.dart';
 import 'phone_financing_officer/phone_financing_officer_dashboard_screen.dart';
 import 'business_partner/business_partner_dashboard_screen.dart';
 import 'admin/main_navigation.dart';
+import 'branch_manager/branch_manager_dashboard_screen.dart';
+import 'forced_password_change_screen.dart';
 
 String normalizeLoginRole(dynamic value) {
   return value
@@ -57,12 +59,20 @@ Widget authenticatedHomeForRole(String role) {
       return const BusinessPartnerDashboardScreen();
     case 'STAFF':
       return const AdminMainNavigation();
+    case 'BRANCH_MANAGER':
+      return const BranchManagerDashboardScreen();
     default:
       return RoleDashboardScreen(
         role: normalizeLoginRole(role),
       );
   }
 }
+
+Widget authenticatedHomeForLogin(String role,
+        {required bool mustChangePassword}) =>
+    mustChangePassword
+        ? ForcedPasswordChangeScreen(role: normalizeLoginRole(role))
+        : authenticatedHomeForRole(role);
 
 Map<String, dynamic> _mapFromDynamic(dynamic value) {
   return value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
