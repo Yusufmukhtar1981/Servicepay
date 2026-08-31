@@ -13,3 +13,4 @@
 - [PIN admission and payment retries](pin-admission-payment-retries.md) — Complete PIN admission before wallet transactions; ambiguous responses must preserve the payment request key.
 - [Notification lifecycle independence](notification-lifecycle-independence.md) — In-app financial activity must not depend on email availability; new filters must continue matching legacy records.
 - [Render Node runtime precedence](render-node-runtime-precedence.md) — Service-level NODE_VERSION overrides repository runtime pins; verify effective build logs before changing lockfiles.
+- [Android build resource pressure](android-build-resource-pressure.md) — Run release APK builds without concurrent Flutter workflows; container restarts can interrupt Gradle.

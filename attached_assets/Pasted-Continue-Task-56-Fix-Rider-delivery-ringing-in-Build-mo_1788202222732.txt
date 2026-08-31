@@ -1,0 +1,83 @@
+Continue Task #56 (Fix Rider delivery ringing) in Build mode.
+
+Do not modify Branch Management, payment, wallet, MongoDB, JWT, or the working Render deployment.
+
+Fix only the Rider push-notification/ringing flow.
+
+Current root causes found:
+- FIREBASE_SERVICE_ACCOUNT_JSON is invalid
+- backend token registration/assignment/FCM diagnostics are incomplete
+- protected Admin push diagnostic endpoint is missing
+- Rider notification permission and token registration happen in the wrong order
+- Firebase Android project/package/resources otherwise appear aligned
+
+IMPLEMENT:
+
+1. Validate FIREBASE_SERVICE_ACCOUNT_JSON safely.
+   - Do not print the secret.
+   - Do not hardcode credentials.
+   - If the secret is malformed, report exactly that it must be replaced with a valid Firebase service-account JSON.
+
+2. Fix Rider FCM token registration.
+   - Request notification permission first.
+   - Obtain FCM token after permission.
+   - Register token to authenticated Rider profile/backend.
+   - Refresh token when Firebase rotates it.
+   - Persist token safely.
+   - Remove stale/invalid tokens when detected.
+
+3. Fix delivery assignment push flow.
+   - When Admin assigns a delivery to a Rider, backend must send push to that Rider’s current token.
+   - Include delivery/order identifier and assignment event type.
+   - Do not send to unrelated riders.
+
+4. Add safe FCM delivery diagnostics.
+   - Record success/failure response.
+   - Detect invalid/unregistered token errors.
+   - Never expose Firebase credentials.
+
+5. Add a protected Admin diagnostic endpoint for testing Rider push delivery.
+   - Admin/Super Admin only.
+   - Must not be public.
+   - Allow a safe test push to a selected Rider.
+
+6. Android Rider notification behavior:
+   - High-priority notification
+   - Sound enabled
+   - Vibration enabled
+   - Correct notification channel
+   - Works when app is foreground/background
+   - Configure supported behavior for locked-screen delivery alerts
+   - Respect Android notification permission requirements
+
+7. Do not claim guaranteed ringing when the phone is powered off, has no network, notifications are disabled, or Android/OEM restrictions prevent delivery.
+
+8. Test:
+   - Rider login
+   - permission granted
+   - FCM token registered
+   - Admin assigns delivery
+   - backend sends FCM successfully
+   - Rider receives alert
+   - background alert
+   - locked-screen alert where Android permits
+   - token refresh
+   - invalid token handling
+   - unauthorized diagnostic endpoint returns 401/403
+
+9. If FIREBASE_SERVICE_ACCOUNT_JSON is the only remaining blocker:
+   stop and report:
+   Missing/Invalid Secret: FIREBASE_SERVICE_ACCOUNT_JSON
+   Do not invent or fabricate Firebase credentials.
+
+10. Return:
+- root cause
+- files changed
+- FCM token registration result
+- assignment push result
+- Android notification result
+- backend diagnostic result
+- tests passed/failed
+- exact remaining blocker, if any
+
+Continue implementation now.
