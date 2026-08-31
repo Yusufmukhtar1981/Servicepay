@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const solarAssignmentSchema = new mongoose.Schema(
   {
+    branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
     application: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SolarApplication",
@@ -40,5 +41,6 @@ solarAssignmentSchema.index(
   { unique: true, partialFilterExpression: { status: "ACTIVE" } }
 );
 solarAssignmentSchema.index({ officer: 1, status: 1, assignedAt: -1 });
+solarAssignmentSchema.index({ branchId: 1, status: 1, assignedAt: -1 });
 
 module.exports = mongoose.model("SolarAssignment", solarAssignmentSchema);

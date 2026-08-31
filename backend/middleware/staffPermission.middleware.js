@@ -30,6 +30,9 @@ const configuredRoleScope = (staffRole, user) => {
   if (type === "STATE") {
     return { type, zone: user.zone || null, state: user.state || null };
   }
+  if (type === "BRANCH") {
+    return { type, branchId: user.branchId || null };
+  }
   if (type === "BUSINESS_PARTNER") {
     return {
       type,
@@ -266,6 +269,7 @@ const scopeFilterFor = (
     zoneField = "zone",
     stateField = "state",
     businessPartnerField = "businessPartnerId",
+    branchField = "branchId",
     userField = "_id",
   } = {}
 ) => {
@@ -281,6 +285,7 @@ const scopeFilterFor = (
   if (scope.type === "BUSINESS_PARTNER") {
     return scope.businessPartnerId ? { [businessPartnerField]: scope.businessPartnerId } : { _id: null };
   }
+  if (scope.type === "BRANCH") return scope.branchId ? { [branchField]: scope.branchId } : { _id: null };
   return scope.userId ? { [userField]: scope.userId } : { _id: null };
 };
 
@@ -303,6 +308,10 @@ const isUserWithinScope = (staffAccess, targetUser) => {
         partnerId &&
         String(partnerId) === String(scope.businessPartnerId)
     );
+  }
+  if (scope.type === "BRANCH") {
+    return Boolean(scope.branchId && targetUser.branchId &&
+      String(targetUser.branchId) === String(scope.branchId));
   }
   return Boolean(
     scope.userId && String(targetUser._id || targetUser.id) === String(scope.userId)
@@ -340,6 +349,47 @@ const requireTargetUserScope = (
   }
 };
 
+// Branch routes use the role scope as the authority, never a body/query value.
+// This also detects stale assignments when a role or user was changed mid-session.
+const enforceActiveBranchScope = async (req, res, next) => {
+  try {
+    if (req.staffAccess?.isHeadOffice) return next();
+    const scope = req.staffAccess?.scope;
+    const scopeBranchId = scope?.type === "BRANCH" ? scope.branchId : null;
+    if (!scopeBranchId || !req.user?.branchId ||
+      String(scopeBranchId) !== String(req.user.branchId)) {
+      return res.status(403).json({ success: false, code: "BRANCH_SCOPE_DENIED", message: "A valid assigned branch scope is required." });
+    }
+    const Branch = require("../models/branch.model");
+    const branch = await Branch.findById(scopeBranchId).select("status assignedModules managerId").lean();
+    if (!branch || branch.status !== "ACTIVE") {
+      return res.status(403).json({ success: false, code: "BRANCH_INACTIVE", message: "Your assigned branch is not active." });
+    }
+    req.branchScope = branch;
+    return next();
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Unable to verify branch access." });
+  }
+};
+
+// A branch assignment alone is not authorization to operate every product.
+// Route modules use this after enforceActiveBranchScope so the branch is both
+// active and explicitly provisioned for the requested module.
+const requireAssignedBranchModule = (moduleName) => (req, res, next) => {
+  if (req.staffAccess?.isHeadOffice) return next();
+  const assigned = (req.branchScope?.assignedModules || []).map((value) =>
+    String(value || "").trim().toUpperCase()
+  );
+  if (!assigned.includes(String(moduleName || "").trim().toUpperCase())) {
+    return res.status(403).json({
+      success: false,
+      code: "BRANCH_MODULE_DENIED",
+      message: "Your assigned branch is not enabled for this module.",
+    });
+  }
+  return next();
+};
+
 module.exports = {
   STAFF_PERMISSIONS,
   loadStaffRole,
@@ -349,4 +399,6 @@ module.exports = {
   scopeFilterFor,
   isUserWithinScope,
   requireTargetUserScope,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule,
 };

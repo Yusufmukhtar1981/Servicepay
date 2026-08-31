@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const solarPaymentSchema = new mongoose.Schema({
+  branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
   application: { type: mongoose.Schema.Types.ObjectId, ref: "SolarApplication", required: true, index: true },
   customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
   type: { type: String, enum: ["DEPOSIT", "INSTALLMENT"], required: true },

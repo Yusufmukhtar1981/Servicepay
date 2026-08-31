@@ -407,6 +407,7 @@ exports.createProduct = async (req, res) => {
     const product = await MarketplaceProduct.create({
       ...payload,
       merchant: userId,
+      branchId: merchant.branchId || req.user?.branchId || null,
       merchantName:
         merchant.storeName ||
         req.user?.fullName ||
@@ -643,6 +644,9 @@ exports.registerMerchant = async (req, res) => {
             2000
           ),
           logoUrl,
+            // Branch ownership is an authenticated-user attribute, never a
+            // merchant-registration payload field.
+            branchId: req.user?.branchId || null,
         },
         $setOnInsert: {
           user: userId,
@@ -946,6 +950,14 @@ exports.createOrder = async (req, res) => {
       });
     }
 
+    // PIN admission persists its own attempt reservation independently of the
+    // business transaction. Complete it before opening the checkout snapshot
+    // so the subsequent wallet debit does not conflict with that reservation.
+    await verifyTransactionPin(
+      userId,
+      req.body?.transactionPin ?? req.body?.pin
+    );
+
     const session = await mongoose.startSession();
     let createdOrder = null;
     let duplicateOrder = null;
@@ -970,14 +982,6 @@ exports.createOrder = async (req, res) => {
             { statusCode: 403 }
           );
         }
-
-        // Legacy clients may still use `pin`; keep the normalized value at
-        // this controller boundary and verify before stock or wallet movement.
-        await verifyTransactionPin(
-          buyer._id,
-          req.body?.transactionPin ?? req.body?.pin,
-          { session }
-        );
 
         const orderItems = [];
         let subtotal = 0;
@@ -1117,25 +1121,6 @@ exports.createOrder = async (req, res) => {
         }
 
         const orderReference = generateOrderReference();
-        const transactionDocs = await Transaction.create(
-          [
-            {
-              reference: orderReference,
-              customerId: buyer._id,
-              serviceType: "MARKETPLACE",
-              provider: "SERVICEPAY_WALLET",
-              amount: totalAmount,
-              status: "SUCCESSFUL",
-              providerResponse: {
-                marketplace: true,
-                idempotencyKey,
-              },
-            },
-          ],
-          { session }
-        );
-        const transaction = transactionDocs[0];
-
         const debitedBuyer = await User.findOneAndUpdate(
           {
             _id: buyer._id,
@@ -1162,6 +1147,29 @@ exports.createOrder = async (req, res) => {
           );
         }
 
+        // Claim the wallet document before creating dependent records. Keeping
+        // this conditional debit first avoids a stale buyer snapshot turning
+        // concurrent checkout work into a prolonged transaction WriteConflict.
+        const transactionDocs = await Transaction.create(
+          [
+            {
+              reference: orderReference,
+              customerId: buyer._id,
+              serviceType: "MARKETPLACE",
+              provider: "SERVICEPAY_WALLET",
+              amount: totalAmount,
+              status: "SUCCESSFUL",
+              providerResponse: {
+                marketplace: true,
+                idempotencyKey,
+              },
+              branchId: buyer.branchId || null,
+            },
+          ],
+          { session }
+        );
+        const transaction = transactionDocs[0];
+
         const ledger = await postDebit({
           userId: buyer._id,
           amount: totalAmount,
@@ -1184,6 +1192,7 @@ exports.createOrder = async (req, res) => {
             {
               orderReference,
               buyer: buyer._id,
+              branchId: buyer.branchId || null,
               items: orderItems,
               customerName,
               customerPhone,

@@ -8,6 +8,7 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const authRoutes = require("../routes/auth.routes");
 const solarRoutes = require("../routes/solar.routes");
 const solarOfficerRoutes = require("../routes/solarOfficer.routes");
+const solarOfficerController = require("../controllers/solarOfficer.controller");
 const User = require("../models/user.model");
 const SolarPackage = require("../models/solarPackage.model");
 const SolarApplication = require("../models/solarApplication.model");
@@ -665,4 +666,45 @@ test("Solar Officer flow enforces assignment, commissions, withdrawal locks, and
     actor: officerUser,
   });
   assert.equal(adminSurfaceForbidden.status, 403);
+});
+
+test("Branch staff cannot list or transition another branch's Solar withdrawal", async () => {
+  const branchA = new mongoose.Types.ObjectId();
+  const branchB = new mongoose.Types.ObjectId();
+  const creator = await createUser({ role: "HEAD_OFFICE" });
+  const officerUser = await createUser({ role: "SOLAR_OFFICER" });
+  const officer = await SolarOfficer.create({
+    user: officerUser._id, officerId: "SSO-BRANCH-TEST", state: "Lagos",
+    lga: "Ikeja", address: "1 Branch Road", createdBy: creator._id, branchId: branchB,
+  });
+  const makeWithdrawal = () => SolarOfficerWithdrawal.create({
+    officer: officer._id, branchId: branchB, reference: `SSW-${new mongoose.Types.ObjectId()}`,
+    amount: 10, bankCode: "000", bankName: "Bank", accountNumber: "0123456789", accountName: "Officer",
+  });
+  const call = async (handler, withdrawalId = null) => {
+    const result = {};
+    const req = {
+      user: { _id: creator._id, role: "STAFF", branchId: branchA },
+      staffAccess: { isHeadOffice: false, scope: { type: "BRANCH", branchId: branchA } },
+      params: withdrawalId ? { withdrawalId: String(withdrawalId) } : {},
+      query: {}, body: {},
+    };
+    const res = { status(code) { result.status = code; return this; }, json(body) { result.body = body; return this; } };
+    await handler(req, res);
+    return { status: result.status || 200, body: result.body };
+  };
+
+  const listed = await call(solarOfficerController.adminListWithdrawals);
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.withdrawals.length, 0);
+  for (const handler of [
+    solarOfficerController.adminApproveWithdrawal,
+    solarOfficerController.adminRejectWithdrawal,
+    solarOfficerController.adminPayWithdrawal,
+  ]) {
+    const withdrawal = await makeWithdrawal();
+    const response = await call(handler, withdrawal._id);
+    assert.equal(response.status, 404);
+    assert.equal((await SolarOfficerWithdrawal.findById(withdrawal._id)).status, "PENDING");
+  }
 });

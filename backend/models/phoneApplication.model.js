@@ -19,6 +19,7 @@ const followUp = new mongoose.Schema({
 const phoneApplicationSchema = new mongoose.Schema({
   reference: { type: String, required: true, unique: true, index: true },
   customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+  branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
   product: { type: mongoose.Schema.Types.ObjectId, ref: "PhoneProduct", required: true },
   productSnapshot: { type: mongoose.Schema.Types.Mixed, required: true, immutable: true },
   kycSnapshot: { type: mongoose.Schema.Types.Mixed, default: null, immutable: true },
@@ -44,6 +45,7 @@ const phoneApplicationSchema = new mongoose.Schema({
   followUps: { type: [followUp], default: [] },
 }, { timestamps: true });
 phoneApplicationSchema.index({ customer: 1, createdAt: -1 }); phoneApplicationSchema.index({ status: 1, createdAt: -1 });
+phoneApplicationSchema.index({ branchId: 1, status: 1, createdAt: -1 });
 phoneApplicationSchema.index({device:1},{unique:true,partialFilterExpression:{device:{$type:"objectId"}}});
 phoneApplicationSchema.index({ assignedOfficer: 1, assignmentState: 1, createdAt: -1 });
 phoneApplicationSchema.pre("save", function () {

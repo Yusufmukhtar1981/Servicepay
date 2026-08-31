@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const solarOfficerCommissionSchema = new mongoose.Schema(
   {
+    branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
     officer: { type: mongoose.Schema.Types.ObjectId, ref: "SolarOfficer", required: true, index: true },
     customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     application: { type: mongoose.Schema.Types.ObjectId, ref: "SolarApplication", required: true, index: true },

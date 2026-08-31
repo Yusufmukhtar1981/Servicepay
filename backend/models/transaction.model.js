@@ -19,6 +19,7 @@ const transactionSchema =
         required: true,
         index: true,
       },
+      branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
 
       agentId: {
         type:
@@ -142,6 +143,7 @@ transactionSchema.index({
   customerId: 1,
   createdAt: -1,
 });
+transactionSchema.index({ branchId: 1, createdAt: -1 });
 
 transactionSchema.index({
   serviceType: 1,

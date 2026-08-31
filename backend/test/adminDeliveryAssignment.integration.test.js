@@ -10,13 +10,15 @@ const riderRoutes = require("../routes/rider.routes");
 const User = require("../models/user.model");
 const Delivery = require("../models/delivery.model");
 const DeliveryAlertDispatch = require("../models/deliveryAlertDispatch.model");
+const Branch = require("../models/branch.model");
+const Role = require("../models/role.model");
 
 let mongo;
 let server;
 let baseUrl;
 let sequence = 0;
 
-const models = [User, Delivery, DeliveryAlertDispatch];
+const models = [User, Delivery, DeliveryAlertDispatch, Branch, Role];
 
 const createUser = async (role, extra = {}) => {
   sequence += 1;
@@ -31,7 +33,7 @@ const createUser = async (role, extra = {}) => {
   });
 };
 
-const createDelivery = async (customer) => {
+const createDelivery = async (customer, extra = {}) => {
   sequence += 1;
   return Delivery.create({
     customerId: customer._id,
@@ -45,6 +47,7 @@ const createDelivery = async (customer) => {
     packageName: "Documents",
     status: "PENDING",
     paymentStatus: "PAID",
+    ...extra,
   });
 };
 
@@ -201,6 +204,13 @@ test("assignment persists once, appears on the rider dashboard, and dispatches a
     String(assigned.body.delivery.assignedRiderId._id),
     String(rider._id)
   );
+  // Mutation responses intentionally expose operational identities only.
+  assert.equal(assigned.body.delivery.customerId.email, undefined);
+  assert.equal(assigned.body.delivery.customerId.phone, undefined);
+  assert.equal(assigned.body.delivery.assignedRiderId.email, undefined);
+  assert.equal(assigned.body.delivery.assignedRiderId.phone, undefined);
+  assert.equal(assigned.body.delivery.assignedBy.email, undefined);
+  assert.equal(assigned.body.delivery.assignedBy.phone, undefined);
 
   const saved = await Delivery.findById(delivery._id).lean();
   assert.equal(saved.status, "ASSIGNED");
@@ -250,4 +260,56 @@ test("assignment persists once, appears on the rider dashboard, and dispatches a
     }),
     1
   );
+});
+
+test("branch staff cannot access or mutate another branch delivery", async () => {
+  const headOffice = await createUser("HEAD_OFFICE");
+  const [branchA, branchB] = await Promise.all([
+    Branch.create({ code: "BA", name: "Branch A", status: "ACTIVE", createdBy: headOffice._id }),
+    Branch.create({ code: "BB", name: "Branch B", status: "ACTIVE", createdBy: headOffice._id }),
+  ]);
+  const role = await Role.create({
+    name: "BRANCH_DELIVERY_TEST",
+    displayName: "Branch Delivery Test",
+    department: "DELIVERY",
+    permissions: ["delivery.view", "delivery.assign", "delivery.update"],
+    scopeType: "BRANCH",
+  });
+  const staffA = await createUser("STAFF", {
+    isStaff: true,
+    staffRoleId: role._id,
+    branchId: branchA._id,
+  });
+  const customerA = await createUser("CUSTOMER", { branchId: branchA._id });
+  const customerB = await createUser("CUSTOMER", { branchId: branchB._id });
+  const deliveryA = await createDelivery(customerA, { branchId: branchA._id });
+  const deliveryB = await createDelivery(customerB, { branchId: branchB._id });
+  const riderB = await createUser("DELIVERY_RIDER", {
+    branchId: branchB._id,
+    riderId: "SP-RIDER-BRANCH-B",
+    riderVerificationStatus: "VERIFIED",
+    availabilityStatus: "ONLINE",
+  });
+
+  const listed = await api({ actor: staffA, path: "/api/admin/deliveries" });
+  assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  assert.equal(listed.body.data.deliveries.length, 1);
+  assert.equal(String(listed.body.data.deliveries[0]._id), String(deliveryA._id));
+
+  for (const request of [
+    { path: `/api/admin/deliveries/${deliveryB._id}/available-riders` },
+    { method: "PATCH", path: `/api/admin/deliveries/${deliveryB._id}/assign-rider`, body: { riderId: String(riderB._id) } },
+    { method: "PATCH", path: `/api/admin/deliveries/${deliveryB._id}/unassign-rider` },
+    { method: "PATCH", path: `/api/admin/deliveries/${deliveryB._id}/status`, body: { status: "CANCELLED" } },
+    { method: "PATCH", path: `/api/admin/deliveries/${deliveryB._id}/price`, body: { deliveryFee: 1500 } },
+  ]) {
+    const result = await api({ actor: staffA, ...request });
+    assert.equal(result.status, 404, JSON.stringify(result.body));
+    assert.equal(result.body.delivery, undefined);
+    assert.equal(result.body.data, undefined);
+  }
+
+  const unchanged = await Delivery.findById(deliveryB._id).lean();
+  assert.equal(unchanged.status, "PENDING");
+  assert.equal(unchanged.assignedRiderId, null);
 });

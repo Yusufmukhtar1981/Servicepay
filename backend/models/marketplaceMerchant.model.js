@@ -9,6 +9,12 @@ const marketplaceMerchantSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Branch',
+      default: null,
+      index: true,
+    },
 
     storeName: {
       type: String,

@@ -169,6 +169,9 @@ exports.createDelivery = async (req, res) => {
           {
             customerId:
               req.user._id,
+            // Never trust a client-supplied branch. The authenticated
+            // customer is the authority for delivery tenancy.
+            branchId: updatedUser.branchId || null,
 
             trackingNumber,
 
@@ -271,6 +274,7 @@ exports.createDelivery = async (req, res) => {
 
             customerId:
               updatedUser._id,
+            branchId: updatedUser.branchId || null,
 
             agentId:
               updatedUser.agentId ||
@@ -725,6 +729,9 @@ exports.payDeliveryFee = async (req, res) => {
           {
             reference,
             customerId: updatedUser._id,
+            // A later payment belongs to the delivery's original branch,
+            // even if the customer is moved after creating the delivery.
+            branchId: delivery.branchId || null,
             agentId:
               updatedUser.agentId || null,
             stateManagerId:

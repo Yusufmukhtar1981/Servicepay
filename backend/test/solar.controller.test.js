@@ -465,8 +465,10 @@ test("Solar approval snapshots price and allocates rounded installment balances 
 test("Solar wallet payment is idempotent, debits once, and completes only at zero balance", async () => {
   const admin = await user({ role: "HEAD_OFFICE" });
   const customer = await user({ balance: 1000 });
+  const branchId = new mongoose.Types.ObjectId();
+  await User.updateOne({ _id: customer._id }, { $set: { branchId } });
   const pack = await SolarPackage.create({ name: "Exact", capacityKw: 1, cashPrice: 1000, depositPercent: 10, installmentMonths: 3, createdBy: admin._id });
-  const app = await SolarApplication.create({ customer: customer._id, package: pack._id, packageSnapshot: pack.toObject(), profileSnapshot: { fullName: customer.fullName }, status: "APPROVED", statusHistory: [{ status: "APPROVED", changedBy: admin._id }], approvalSnapshot: { approvedPrice: 1000 }, depositRequired: 100, totalPayable: 1000, outstandingBalance: 1000, paymentSchedule: [{ installmentNumber: 1, dueDate: new Date(), amount: 300 }, { installmentNumber: 2, dueDate: new Date(), amount: 300 }, { installmentNumber: 3, dueDate: new Date(), amount: 300 }] });
+  const app = await SolarApplication.create({ branchId, customer: customer._id, package: pack._id, packageSnapshot: pack.toObject(), profileSnapshot: { fullName: customer.fullName }, status: "APPROVED", statusHistory: [{ status: "APPROVED", changedBy: admin._id }], approvalSnapshot: { approvedPrice: 1000 }, depositRequired: 100, totalPayable: 1000, outstandingBalance: 1000, paymentSchedule: [{ installmentNumber: 1, dueDate: new Date(), amount: 300 }, { installmentNumber: 2, dueDate: new Date(), amount: 300 }, { installmentNumber: 3, dueDate: new Date(), amount: 300 }] });
   const opts = { user: customer, params: { applicationId: String(app._id) }, body: { type: "DEPOSIT", amount: 100, transactionPin: "1234" }, headers: { "Idempotency-Key": "solar-deposit-once" } };
   const firstPayment = await call(solar.pay, opts);
   assert.equal(firstPayment.status, 201, firstPayment.body?.message);
@@ -481,6 +483,7 @@ test("Solar wallet payment is idempotent, debits once, and completes only at zer
   assert.equal(saved.outstandingBalance, 0);
   assert.equal(saved.status, "COMPLETED");
   assert.equal(await LedgerEntry.countDocuments({ service: { $in: ["SOLAR_DEPOSIT", "SOLAR_INSTALLMENT"] } }), 2);
+  assert.equal(await Transaction.countDocuments({ branchId }), 2);
 });
 
 test("Solar deposit payment uses the authoritative wallet balance and settles a concurrent double tap once", async () => {
@@ -548,6 +551,8 @@ test("Solar deposit payment uses the authoritative wallet balance and settles a 
 test("Solar installment payment uses the authoritative wallet balance and settles a concurrent double tap once", async () => {
   const admin = await user({ role: "HEAD_OFFICE" });
   const customer = await user({ balance: 250000 });
+  const branchId = new mongoose.Types.ObjectId();
+  await User.updateOne({ _id: customer._id }, { $set: { branchId } });
   const pack = await SolarPackage.create({
     name: "ServicePay HomeLite Finance",
     capacityKw: 1,
@@ -558,6 +563,7 @@ test("Solar installment payment uses the authoritative wallet balance and settle
     createdBy: admin._id,
   });
   const app = await SolarApplication.create({
+    branchId,
     customer: customer._id,
     package: pack._id,
     packageSnapshot: pack.toObject(),
@@ -567,6 +573,7 @@ test("Solar installment payment uses the authoritative wallet balance and settle
     outstandingBalance: 200000,
   });
   const finance = await SolarFinance.create({
+    branchId,
     reference: "SPF-SOLAR-INSTALLMENT-DOUBLE-TAP",
     application: app._id,
     customer: customer._id,
@@ -619,6 +626,7 @@ test("Solar installment payment uses the authoritative wallet balance and settle
   assert.equal(saved.paymentSchedule[1].paidAmount, 0);
   assert.equal(await SolarPayment.countDocuments({ application: app._id, type: "INSTALLMENT" }), 1);
   assert.equal(await Transaction.countDocuments({ customerId: customer._id, serviceType: "SOLAR_INSTALLMENT" }), 1);
+  assert.equal(await Transaction.countDocuments({ customerId: customer._id, serviceType: "SOLAR_INSTALLMENT", branchId }), 1);
   const ledger = await LedgerEntry.findOne({ user: customer._id, service: "SOLAR_INSTALLMENT" });
   assert.ok(ledger);
   assert.equal(ledger.openingBalance, 250000);

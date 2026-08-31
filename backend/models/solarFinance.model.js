@@ -17,6 +17,7 @@ const historySchema = new mongoose.Schema({
 }, { _id: false });
 
 const solarFinanceSchema = new mongoose.Schema({
+  branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
   reference: { type: String, required: true, unique: true, index: true },
   application: { type: mongoose.Schema.Types.ObjectId, ref: "SolarApplication", required: true, unique: true },
   customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -30,4 +31,5 @@ const solarFinanceSchema = new mongoose.Schema({
   paymentSchedule: { type: [paymentScheduleSchema], default: [] },
 }, { timestamps: true });
 solarFinanceSchema.index({ customer: 1, createdAt: -1 });
+solarFinanceSchema.index({ branchId: 1, createdAt: -1 });
 module.exports = mongoose.model("SolarFinance", solarFinanceSchema);

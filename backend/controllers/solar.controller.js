@@ -30,6 +30,11 @@ const id = (req) => req.user?._id || req.user?.id;
 const problem = (message, statusCode = 409) => Object.assign(new Error(message), { statusCode });
 const reference = () => `SPS-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 const keyFor = (req) => text(req.get?.("idempotency-key") || req.body?.idempotencyKey, 160);
+// Routes populate staffAccess.  Keeping the scope predicate here ensures every
+// read and mutation remains safe if a controller is reused elsewhere.
+const staffBranchFilter = (req) => req.staffAccess?.scope?.type === "BRANCH"
+  ? { branchId: req.staffAccess.scope.branchId } : {};
+const scopedIdFilter = (req, field, value) => ({ [field]: value, ...staffBranchFilter(req) });
 const audit = (req, action, reason, previousData, newData, session) => AdminAuditLog.create([{
   actorId: id(req), actorRole: String(req.user.role || "").toUpperCase(), actorName: req.user.fullName || "",
   action, reason: text(reason, 500) || action, previousData, newData,
@@ -346,7 +351,7 @@ exports.submitApplication = async (req,res) => {
     if(!profileSnapshot.fullName || !profileSnapshot.phone || !profileSnapshot.state || !profileSnapshot.lga || !profileSnapshot.address)return res.status(400).json({success:false,message:"Full name, phone number, installation address, state, and local government area are required."});
     if(profileSnapshot.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileSnapshot.email))return res.status(400).json({success:false,message:"Enter a valid email address."});
     const packageSnapshot={name:pack.name,capacityKw:pack.capacityKw,cashPrice:pack.cashPrice,financedPrice:pack.financedPrice,depositPercent:pack.depositPercent,installmentMonths:pack.installmentMonths,interestPercent:pack.interestPercent,repaymentFrequency:pack.repaymentFrequency,terms:pack.terms};
-    const app=await SolarApplication.create({customer:id(req),package:pack._id,packageSnapshot,profileSnapshot,kycSnapshot:kyc||null,business:object(body.business),guarantor:object(body.guarantor),applicationPreferences,declarations:{...declarations,informationAccurate:accurate,termsAccepted,recoveryAgreementAccepted:recoveryAccepted},statusHistory:[{status:"SUBMITTED",changedBy:id(req),note:"Application submitted"}]});
+    const app=await SolarApplication.create({branchId:customer.branchId || null,customer:id(req),package:pack._id,packageSnapshot,profileSnapshot,kycSnapshot:kyc||null,business:object(body.business),guarantor:object(body.guarantor),applicationPreferences,declarations:{...declarations,informationAccurate:accurate,termsAccepted,recoveryAgreementAccepted:recoveryAccepted},statusHistory:[{status:"SUBMITTED",changedBy:id(req),note:"Application submitted"}]});
     res.status(201).json({success:true,application:app});
   } catch(e){res.status(500).json({success:false,message:e.message});}
 };
@@ -376,7 +381,7 @@ exports.transitionApplication = async (req,res) => {
       await session.withTransaction(async () => {
         const now = new Date();
         cancelled = await SolarApplication.findOneAndUpdate(
-          { _id:req.params.applicationId, status:{$in:["SUBMITTED","MORE_INFORMATION_REQUIRED","AWAITING_DEPOSIT","DEPOSIT_PAID","READY_FOR_INSTALLATION"]} },
+          { _id:req.params.applicationId, ...staffBranchFilter(req), status:{$in:["SUBMITTED","MORE_INFORMATION_REQUIRED","AWAITING_DEPOSIT","DEPOSIT_PAID","READY_FOR_INSTALLATION"]} },
           { $set:{status:"CANCELLED","stockReservation.reserved":false,"stockReservation.releasedAt":now}, $push:{statusHistory:{status:"CANCELLED",changedBy:id(req),note:text(req.body?.note),changedAt:now}} },
           { new:true, session }
         );
@@ -390,7 +395,7 @@ exports.transitionApplication = async (req,res) => {
     } catch(e) { return res.status(e.statusCode||500).json({success:false,message:e.message}); }
     finally { await session.endSession(); }
   }
-  try { const app=await SolarApplication.findById(req.params.applicationId);
+  try { const app=await SolarApplication.findOne(scopedIdFilter(req, "_id", req.params.applicationId));
     if(!app)return res.status(404).json({success:false,message:"Solar application not found."});
     if(!allowedTransitions[app.status]?.includes(status))return res.status(409).json({success:false,message:`Cannot transition Solar application from ${app.status} to ${status}.`});
     if(status==="APPROVED")return res.status(409).json({success:false,message:"Use the approval endpoint to approve a Solar application."});
@@ -404,7 +409,7 @@ exports.approveApplication = async (req,res) => {
   try { let result;
     await session.withTransaction(async () => {
     if(!mongoose.isValidObjectId(req.params.applicationId))throw problem("Invalid solar application ID.",400);
-    const app=await SolarApplication.findById(req.params.applicationId).session(session);
+    const app=await SolarApplication.findOne(scopedIdFilter(req, "_id", req.params.applicationId)).session(session);
     if(!app)throw problem("Solar application not found.",404);
     if(app.status!=="UNDER_REVIEW")throw problem("Only applications under review may be approved.",409);
     const quotedPrice = req.body?.approvedPrice ?? app.packageSnapshot.financedPrice ?? app.packageSnapshot.cashPrice;
@@ -431,6 +436,7 @@ exports.pay = async (req,res) => {
   try {
     const paymentType=text(req.body?.type,20).toUpperCase(); const requested=money(req.body?.amount); const idem=keyFor(req);
     if(!["DEPOSIT","INSTALLMENT"].includes(paymentType)||requested===null||requested<=0||!idem) throw problem("Payment type, positive amount and Idempotency-Key are required.",400);
+    await verifyTransactionPin(id(req), req.body?.transactionPin ?? req.body?.pin);
     let output;
     await session.withTransaction(async()=>{
       const existing=await SolarPayment.findOne({idempotencyKey:idem}).session(session);
@@ -441,8 +447,7 @@ exports.pay = async (req,res) => {
       if(paymentType==="DEPOSIT" && !["APPROVED","AWAITING_DEPOSIT"].includes(app.status))throw problem("A deposit can only be paid on an approved application.");
       if(paymentType==="INSTALLMENT" && !["ACTIVE","RECOVERY"].includes(app.status))throw problem("Installments can only be paid on an active Solar application.");
        const due=paymentType==="DEPOSIT"?money(app.depositRequired-app.depositPaid):money(app.outstandingBalance); if(requested>due)throw problem("Payment exceeds the amount due.");
-      const payer=await User.findById(id(req)).select("walletBalance").session(session); if(!payer)throw problem("Customer account not found.",401);
-      await verifyTransactionPin(payer._id, req.body?.transactionPin ?? req.body?.pin, { session });
+       const payer=await User.findById(id(req)).select("walletBalance").session(session); if(!payer)throw problem("Customer account not found.",401);
        const updatedPayer=await User.findOneAndUpdate({_id:payer._id,walletBalance:{$gte:requested}},{$inc:{walletBalance:-requested}},{new:true,session});
        if(!updatedPayer){
          const currentPayer=await User.findById(payer._id).select("walletBalance").session(session).lean();
@@ -451,13 +456,13 @@ exports.pay = async (req,res) => {
        }
        const closing=money(updatedPayer.walletBalance); const opening=closing===null?null:money(closing+requested);
        if(opening===null||closing===null)throw problem("Wallet balance is invalid.");
-      const transaction=await Transaction.create([{reference:reference(),customerId:payer._id,serviceType:paymentType==="DEPOSIT"?"SOLAR_DEPOSIT":"SOLAR_INSTALLMENT",provider:"SERVICEPAY_SOLAR",amount:requested,status:"SUCCESSFUL",providerResponse:{applicationId:String(app._id),idempotencyKey:idem}}],{session});
+       const transaction=await Transaction.create([{reference:reference(),customerId:payer._id,branchId:app.branchId || null,serviceType:paymentType==="DEPOSIT"?"SOLAR_DEPOSIT":"SOLAR_INSTALLMENT",provider:"SERVICEPAY_SOLAR",amount:requested,status:"SUCCESSFUL",providerResponse:{applicationId:String(app._id),idempotencyKey:idem}}],{session});
        const ledger=await postDebit({userId:payer._id,amount:requested,openingBalance:opening,closingBalance:closing,service:paymentType==="DEPOSIT"?"SOLAR_DEPOSIT":"SOLAR_INSTALLMENT",reference:transaction[0].reference,idempotencyKey:`solar:${idem}`,transactionId:transaction[0]._id,narration:`Solar ${paymentType.toLowerCase()} payment`,metadata:{applicationId:String(app._id)},session});
       if(ledger.duplicate)throw problem("Solar payment ledger state requires support review.");
       const allocations=[]; if(paymentType==="DEPOSIT"){app.depositPaid=money(app.depositPaid+requested);if(app.depositPaid>=app.depositRequired)pushHistory(app,"DEPOSIT_PAID",payer._id,"Required deposit paid");}
       else {let left=requested;for(const row of app.paymentSchedule){const owing=money(row.amount-row.paidAmount);if(left<=0)break;if(owing<=0)continue;const part=money(Math.min(left,owing));row.paidAmount=money(row.paidAmount+part);row.status=row.paidAmount>=row.amount?"PAID":"PARTIAL";if(row.status==="PAID")row.paidAt=new Date();left=money(left-part);allocations.push({installmentNumber:row.installmentNumber,amount:part});}}
       app.amountPaid=money(app.amountPaid+requested);app.outstandingBalance=money(app.totalPayable-app.amountPaid);if(app.outstandingBalance===0&&["ACTIVE","RECOVERY"].includes(app.status))pushHistory(app,"COMPLETED",payer._id,"All Solar payments completed");await app.save({session});
-      const payment=(await SolarPayment.create([{application:app._id,customer:payer._id,type:paymentType,amount:requested,idempotencyKey:idem,transaction:transaction[0]._id,ledgerEntry:ledger.entry._id,allocations}],{session}))[0];
+      const payment=(await SolarPayment.create([{branchId:app.branchId || null,application:app._id,customer:payer._id,type:paymentType,amount:requested,idempotencyKey:idem,transaction:transaction[0]._id,ledgerEntry:ledger.entry._id,allocations}],{session}))[0];
       if(paymentType==="DEPOSIT"&&app.depositPaid>=app.depositRequired){
         const commission=await createSolarOfficerCommission({application:app,payment,type:"SOLAR_DEPOSIT_5_PERCENT",session});
         if(commission.created){
@@ -471,16 +476,16 @@ exports.pay = async (req,res) => {
 };
 exports.recovery = async (req,res) => {
   const reason=text(req.body?.reason,500),notes=text(req.body?.notes,2000);if(!reason)return res.status(400).json({success:false,message:"Recovery reason is required."});
-  const app=await SolarApplication.findById(req.params.applicationId);if(!app)return res.status(404).json({success:false,message:"Solar application not found."});if(!["ACTIVE","RECOVERY"].includes(app.status))return res.status(409).json({success:false,message:"Only active applications may enter recovery."});
+  const app=await SolarApplication.findOne(scopedIdFilter(req, "_id", req.params.applicationId));if(!app)return res.status(404).json({success:false,message:"Solar application not found."});if(!["ACTIVE","RECOVERY"].includes(app.status))return res.status(409).json({success:false,message:"Only active applications may enter recovery."});
   app.recovery={reason,notes,recordedBy:id(req),recordedAt:new Date()};if(app.status!=="RECOVERY")pushHistory(app,"RECOVERY",id(req),reason);await app.save();await audit(req,"SOLAR_RECOVERY_RECORDED",reason,null,{applicationId:String(app._id),notes});res.json({success:true,application:app});
 };
-exports.adminApplications = async(req,res)=>{const filter={};if(req.query.status)filter.status=text(req.query.status,30).toUpperCase();const apps=await SolarApplication.find(filter).sort({createdAt:-1}).populate("customer","fullName phone email");const appIds=apps.map(a=>a._id);const [finances,assignments,verifications]=await Promise.all([SolarFinance.find({application:{$in:appIds}}).select("_id application reference").lean(),SolarAssignment.find({application:{$in:appIds},status:"ACTIVE"}).populate({path:"officer",populate:{path:"user",select:"fullName phone email"}}).lean(),SolarVerification.find({application:{$in:appIds}}).lean()]);const byApplication=new Map(finances.map(item=>[String(item.application),item]));const assignmentByApplication=new Map(assignments.map(item=>[String(item.application),item]));const verificationByApplication=new Map(verifications.map(item=>[String(item.application),item]));const s=await SolarSettings.findOne({key:"default"}).lean();res.json({success:true,applications:apps.map(a=>{const value=applicationView(a,s?.overdueGraceDays||0);const finance=byApplication.get(String(a._id));return {...value,financeId:finance?._id||null,financeReference:finance?.reference||null,solarOfficerAssignment:assignmentByApplication.get(String(a._id))||null,solarOfficerVerification:verificationByApplication.get(String(a._id))||null};})});};
+exports.adminApplications = async(req,res)=>{const filter=staffBranchFilter(req);if(req.query.status)filter.status=text(req.query.status,30).toUpperCase();const apps=await SolarApplication.find(filter).sort({createdAt:-1}).populate("customer","fullName phone email");const appIds=apps.map(a=>a._id);const [finances,assignments,verifications]=await Promise.all([SolarFinance.find({application:{$in:appIds},...staffBranchFilter(req)}).select("_id application reference").lean(),SolarAssignment.find({application:{$in:appIds},status:"ACTIVE",...staffBranchFilter(req)}).populate({path:"officer",populate:{path:"user",select:"fullName phone email"}}).lean(),SolarVerification.find({application:{$in:appIds},...staffBranchFilter(req)}).lean()]);const byApplication=new Map(finances.map(item=>[String(item.application),item]));const assignmentByApplication=new Map(assignments.map(item=>[String(item.application),item]));const verificationByApplication=new Map(verifications.map(item=>[String(item.application),item]));const s=await SolarSettings.findOne({key:"default"}).lean();res.json({success:true,applications:apps.map(a=>{const value=applicationView(a,s?.overdueGraceDays||0);const finance=byApplication.get(String(a._id));return {...value,financeId:finance?._id||null,financeReference:finance?.reference||null,solarOfficerAssignment:assignmentByApplication.get(String(a._id))||null,solarOfficerVerification:verificationByApplication.get(String(a._id))||null};})});};
 exports.dashboard = async(req,res)=>{
   const now = new Date(), week = new Date(now.getTime() + 7 * 86400000);
   const [applications, financeRows, availableStock, deposits] = await Promise.all([
-    SolarApplication.countDocuments(), SolarFinance.find().lean(),
+    SolarApplication.countDocuments(staffBranchFilter(req)), SolarFinance.find(staffBranchFilter(req)).lean(),
     SolarPackage.aggregate([{ $match:{active:true} },{$group:{_id:null,total:{$sum:"$stock"}}}]),
-    SolarApplication.aggregate([{$group:{_id:null,total:{$sum:"$depositPaid"}}}]),
+    SolarApplication.aggregate([{$match:staffBranchFilter(req)},{$group:{_id:null,total:{$sum:"$depositPaid"}}}]),
   ]);
   const overdue = financeRows.filter((item)=>item.paymentSchedule.some((row)=>new Date(row.dueDate)<now&&row.paidAmount<row.amount));
   const sum = (field) => money(financeRows.reduce((total,item)=>total+Number(item[field]||0),0));
@@ -488,7 +493,7 @@ exports.dashboard = async(req,res)=>{
   const dashboard={total:applications,availableStock:availableStock[0]?.total||0,depositsCollected:deposits[0]?.total||0,totalFinancedValue:sum("totalPayable"),outstanding:sum("outstandingBalance"),amountCollected:sum("amountPaid"),dueToday:due(new Date(now.getFullYear(),now.getMonth(),now.getDate()+1),new Date(now.getFullYear(),now.getMonth(),now.getDate())),dueThisWeek:due(week),overdue:overdue.length,recoveryRequired:financeRows.filter((item)=>item.status==="RECOVERY_REQUIRED").length,active:financeRows.filter((item)=>item.status==="FINANCE_ACTIVE").length,completed:financeRows.filter((item)=>item.status==="COMPLETED").length};
   res.json({success:true,dashboard});
 };
-exports.reports = async(req,res)=>{const rows=await SolarFinance.aggregate([{$group:{_id:"$status",count:{$sum:1},totalFinancedValue:{$sum:"$totalPayable"},outstanding:{$sum:"$outstandingBalance"},amountCollected:{$sum:"$amountPaid"}}}]);res.json({success:true,report:rows});};
+exports.reports = async(req,res)=>{const rows=await SolarFinance.aggregate([{$match:staffBranchFilter(req)},{$group:{_id:"$status",count:{$sum:1},totalFinancedValue:{$sum:"$totalPayable"},outstanding:{$sum:"$outstandingBalance"},amountCollected:{$sum:"$amountPaid"}}}]);res.json({success:true,report:rows});};
 
 exports.getPackage = async (req, res) => {
   const pack = await SolarPackage.findOne({ _id: req.params.packageId, active: true }).lean();
@@ -506,7 +511,7 @@ exports.installApplication = async (req, res) => {
   try {
     let result;
     await session.withTransaction(async () => {
-      const app = await SolarApplication.findById(req.params.applicationId).session(session);
+      const app = await SolarApplication.findOne(scopedIdFilter(req, "_id", req.params.applicationId)).session(session);
       if (!app) throw problem("Solar application not found.", 404);
       if (app.status !== "DEPOSIT_PAID") throw problem("Installation requires a fully paid deposit.");
       const handover = req.body?.handover || (req.body?.customerConfirmed === true ? {
@@ -530,7 +535,7 @@ exports.installApplication = async (req, res) => {
       app.installation = installation;
       const finance = await SolarFinance.create([{
         reference: `SPF-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`,
-        application: app._id, customer: app.customer, termsSnapshot: app.approvalSnapshot,
+        branchId: app.branchId || null, application: app._id, customer: app.customer, termsSnapshot: app.approvalSnapshot,
         installationSnapshot: installation, totalPayable: app.totalPayable, amountPaid: app.amountPaid,
         outstandingBalance: app.outstandingBalance, paymentSchedule: app.paymentSchedule,
         statusHistory: [{ status: "FINANCE_ACTIVE", changedBy: id(req), note: "Finance activated after installation" }],
@@ -612,6 +617,7 @@ exports.payFinance = async (req, res) => {
   try {
     const requestedAmount = money(req.body?.amount), idem = keyFor(req);
     if (requestedAmount === null || requestedAmount <= 0 || !idem) throw problem("A positive amount and Idempotency-Key are required.", 400);
+    await verifyTransactionPin(id(req), req.body?.transactionPin ?? req.body?.pin);
     let result;
     await session.withTransaction(async () => {
       const duplicate = await SolarPayment.findOne({ idempotencyKey: idem }).session(session);
@@ -632,7 +638,6 @@ exports.payFinance = async (req, res) => {
       if (outstanding === null || amount > outstanding) throw problem("Payment exceeds outstanding balance.");
       const payer = await User.findById(id(req)).select("walletBalance").session(session);
       if (!payer) throw problem("Customer account not found.", 401);
-      await verifyTransactionPin(payer._id, req.body?.transactionPin ?? req.body?.pin, { session });
       const updatedPayer = await User.findOneAndUpdate(
         { _id: payer._id, walletBalance: { $gte: amount } },
         { $inc: { walletBalance: -amount } },
@@ -646,7 +651,7 @@ exports.payFinance = async (req, res) => {
       const closing = money(updatedPayer.walletBalance);
       const opening = closing === null ? null : money(closing + amount);
       if (opening === null || closing === null) throw problem("Wallet balance is invalid.");
-      const tx = (await Transaction.create([{ reference: reference(), customerId: payer._id, serviceType: "SOLAR_INSTALLMENT", provider: "SERVICEPAY_SOLAR", amount, status: "SUCCESSFUL", providerResponse: { financeId: String(finance._id), idempotencyKey: idem } }], { session }))[0];
+      const tx = (await Transaction.create([{ reference: reference(), customerId: payer._id, branchId: finance.branchId || null, serviceType: "SOLAR_INSTALLMENT", provider: "SERVICEPAY_SOLAR", amount, status: "SUCCESSFUL", providerResponse: { financeId: String(finance._id), idempotencyKey: idem } }], { session }))[0];
       const ledger = await postDebit({ userId: payer._id, amount, openingBalance: opening, closingBalance: closing, service: "SOLAR_INSTALLMENT", reference: tx.reference, idempotencyKey: `solar-finance:${idem}`, transactionId: tx._id, narration: "Solar finance installment", metadata: { financeId: String(finance._id) }, session });
       if (ledger.duplicate) throw problem("Solar payment ledger state requires support review.");
       nextInstallment.paidAmount = money(nextInstallment.paidAmount + amount);
@@ -656,7 +661,7 @@ exports.payFinance = async (req, res) => {
       finance.amountPaid = money(finance.amountPaid + amount); finance.outstandingBalance = money(finance.totalPayable - finance.amountPaid);
       if (finance.outstandingBalance === 0) { finance.status = "COMPLETED"; finance.statusHistory.push({ status: "COMPLETED", changedBy: payer._id, note: "Paid in full" }); await SolarApplication.updateOne({ _id: finance.application }, { $set: { status: "COMPLETED", outstandingBalance: 0 }, $push: { statusHistory: { status: "COMPLETED", changedBy: payer._id, note: "Finance paid in full", changedAt: new Date() } } }, { session }); }
       await finance.save({ session });
-      const payment = (await SolarPayment.create([{ application: finance.application, customer: payer._id, type: "INSTALLMENT", amount, idempotencyKey: idem, transaction: tx._id, ledgerEntry: ledger.entry._id, allocations }], { session }))[0];
+      const payment = (await SolarPayment.create([{ branchId: finance.branchId || null, application: finance.application, customer: payer._id, type: "INSTALLMENT", amount, idempotencyKey: idem, transaction: tx._id, ledgerEntry: ledger.entry._id, allocations }], { session }))[0];
       await Notification.create([{ userId: payer._id, title: "Solar payment received", message: `Your Solar finance payment of ₦${amount.toFixed(2)} was received.`, type: "SOLAR", referenceId: finance._id, referenceType: "SolarFinance" }], { session });
       const app = await SolarApplication.findById(finance.application).populate("package", "name").session(session);
       const nextDueInstallment = finance.paymentSchedule.find((row) => row.paidAmount < row.amount) || null;
@@ -669,11 +674,11 @@ exports.payFinance = async (req, res) => {
 exports.openRecoveryCase = async (req, res) => {
   const reason = text(req.body?.reason, 500);
   if (!reason) return res.status(400).json({ success: false, message: "Recovery reason is required." });
-  const finance = await SolarFinance.findById(req.params.financeId);
+  const finance = await SolarFinance.findOne(scopedIdFilter(req, "_id", req.params.financeId));
   if (!finance) return res.status(404).json({ success: false, message: "Solar finance contract not found." });
   if (finance.status === "COMPLETED") return res.status(409).json({ success: false, message: "Completed finance cannot enter recovery." });
   const recovery = await SolarRecoveryCase.create({
-    finance: finance._id, application: finance.application, customer: finance.customer, reason,
+    branchId: finance.branchId || null, finance: finance._id, application: finance.application, customer: finance.customer, reason,
     notes: text(req.body?.notes, 3000), contactAttempts: Array.isArray(req.body?.contactAttempts) ? req.body.contactAttempts.slice(0, 50) : [],
     openedBy: id(req),
   });
@@ -685,21 +690,21 @@ exports.openRecoveryCase = async (req, res) => {
   res.status(201).json({ success: true, recovery, finance });
 };
 exports.adminFinance = async (req,res) => {
-  const filter = req.query.status ? { status:text(req.query.status,30).toUpperCase() } : {};
+  const filter = { ...staffBranchFilter(req), ...(req.query.status ? { status:text(req.query.status,30).toUpperCase() } : {}) };
   const finance = await SolarFinance.find(filter).sort({createdAt:-1}).populate("customer","fullName phone email");
   res.json({success:true,finance});
 };
 exports.adminFinanceDetail = async (req,res) => {
-  const finance = await SolarFinance.findById(req.params.financeId).populate("customer","fullName phone email");
+  const finance = await SolarFinance.findOne(scopedIdFilter(req, "_id", req.params.financeId)).populate("customer","fullName phone email");
   if(!finance)return res.status(404).json({success:false,message:"Solar finance contract not found."});
   res.json({success:true,finance});
 };
 exports.adminRepayments = async (req,res) => {
-  const payments = await SolarPayment.find({type:"INSTALLMENT"}).sort({createdAt:-1}).populate("customer","fullName phone").populate("application","packageSnapshot");
+  const payments = await SolarPayment.find({type:"INSTALLMENT",...staffBranchFilter(req)}).sort({createdAt:-1}).populate("customer","fullName phone").populate("application","packageSnapshot");
   res.json({success:true,payments});
 };
 exports.adminOverdue = async (req,res) => {
   const now=new Date();
-  const finance=(await SolarFinance.find({status:{$ne:"COMPLETED"}})).filter(item=>item.paymentSchedule.some(row=>new Date(row.dueDate)<now&&row.paidAmount<row.amount));
+  const finance=(await SolarFinance.find({status:{$ne:"COMPLETED"},...staffBranchFilter(req)})).filter(item=>item.paymentSchedule.some(row=>new Date(row.dueDate)<now&&row.paidAmount<row.amount));
   res.json({success:true,finance});
 };

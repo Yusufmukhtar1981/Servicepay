@@ -8,6 +8,14 @@ const marketplaceProductSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // Null is deliberately reserved for legacy/global inventory. New stock is
+    // stamped from the authenticated merchant, never from a request payload.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Branch',
+      default: null,
+      index: true,
+    },
 
     merchantName: {
       type: String,
@@ -123,6 +131,7 @@ marketplaceProductSchema.index({
   status: 1,
   createdAt: -1,
 });
+marketplaceProductSchema.index({ branchId: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model(
   'MarketplaceProduct',
