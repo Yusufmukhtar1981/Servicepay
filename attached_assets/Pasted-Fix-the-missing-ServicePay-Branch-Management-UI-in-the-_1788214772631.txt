@@ -1,0 +1,184 @@
+Fix the missing ServicePay Branch Management UI in the Admin Dashboard.
+
+CURRENT PROBLEM:
+The Branch backend/production API is working, but from admin.servicepay.ng there is still no visible place to create/manage branches.
+
+DO NOT rebuild Branch Management from scratch.
+DO NOT modify working Branch backend business logic unless needed for the Admin UI contract.
+DO NOT touch wallet, payments, Twilio, Rider ringing, MongoDB, JWT, or unrelated modules.
+
+GOAL:
+HEAD OFFICE / ADMIN / SUPER_ADMIN must have a clearly visible Branch Management section in the Admin Dashboard where branches can be created and managed.
+
+IMPLEMENT AND VERIFY:
+
+1. ADMIN NAVIGATION
+Add/show a visible menu item:
+Branch Management
+
+Recommended location:
+Admin Dashboard sidebar / bottom navigation / operations menu
+
+It must be visible to:
+- SUPER_ADMIN
+- ADMIN
+- HEAD_OFFICE users with `branches.view` or `branches.manage`
+
+Do not hide it because of a mismatched permission name.
+
+2. PERMISSION AUDIT
+Inspect current frontend RBAC mappings and backend permission names.
+
+Ensure Admin/Head Office full-access roles include:
+- branches.view
+- branches.manage
+- branches.targets.manage
+- branches.approvals.view
+- branches.approvals.manage
+- branches.reports.view
+- branches.staff.manage
+
+If existing project uses equivalent names, map them consistently without breaking existing roles.
+
+SUPER_ADMIN must always retain full Branch access.
+
+3. BRANCH MANAGEMENT PAGE
+Create/fix the Admin Branch Management page.
+
+Page must include:
+- Branch list
+- Search
+- Status filter
+- State filter
+- Create Branch button
+- View branch
+- Edit branch
+- Activate/deactivate
+- Assign/change Branch Manager
+- View targets
+- View reports
+- View approvals
+
+4. CREATE BRANCH BUTTON
+A clear primary button must exist:
+“Create Branch”
+
+It must open a working form.
+
+Form fields:
+- Branch Name
+- Branch Code
+- State
+- LGA
+- Address
+- Phone
+- Email
+- Branch Manager
+- Status
+- Opening Date
+- Assigned Modules
+- Notes
+
+Validate required fields.
+
+5. CREATE BRANCH API
+Audit the actual production endpoint used by the frontend.
+
+Use the existing Branch backend route/controller if already implemented.
+
+Do not duplicate routes unnecessarily.
+
+Expected:
+Authorized Admin create request → 201/200
+Unauthorized request → 401/403
+Validation error → 400 with clear message
+
+6. BRANCH CODE
+Support unique branch code.
+
+Example:
+SP-KANO-001
+
+Prevent duplicate branch codes.
+
+7. AFTER CREATION
+After successful create:
+- show success message
+- refresh branch list
+- newly created branch appears immediately
+- open/view branch details if appropriate
+
+8. EMPTY STATE
+If there are currently zero branches, do NOT show a blank or confusing screen.
+
+Show:
+“No branches created yet”
+and a visible:
+“Create First Branch” button
+
+9. ADMIN ROUTE
+Make sure the page route is actually registered and reachable from the Admin Dashboard.
+
+Example:
+`/branches`
+or the project’s existing admin route convention.
+
+Do not leave the page implemented but unreachable.
+
+10. PRODUCTION API CONTRACT
+Verify against live API:
+- GET branch list
+- POST create branch
+- GET branch details
+- PATCH/PUT edit branch
+- activate/deactivate
+- manager assignment
+
+Fix frontend/backend path mismatches only where found.
+
+11. HEAD OFFICE
+The Admin/Head Office dashboard should also show a Branch summary card:
+- Total branches
+- Active branches
+- Branches behind target
+- Pending branch approvals
+
+The card should link to Branch Management.
+
+12. RESPONSIVE UI
+Ensure Branch Management works on:
+- Desktop
+- Tablet
+- Mobile browser
+
+13. PRODUCTION VERIFICATION
+Deploy/publish through the existing working production workflow.
+
+Then verify on:
+admin.servicepay.ng
+
+Required result:
+- Branch Management menu is visible
+- Create Branch button is visible
+- Create Branch form opens
+- Branch can be created successfully
+- New branch appears in list
+- No 404
+- No 403 for authorized admin
+- No console/API contract errors
+
+14. DO NOT STOP AT “BACKEND EXISTS”
+This task is not complete until I can physically log into the Admin Dashboard and see/use the Create Branch feature.
+
+15. FINAL REPORT
+Return:
+- root cause of missing Branch UI
+- permission mismatch found, if any
+- frontend files changed
+- backend files changed, if any
+- exact admin route
+- exact API route used
+- production verification result
+- screenshot-ready confirmation that Create Branch is visible
+
+Proceed now.
