@@ -74,6 +74,7 @@ const {
 const adminMarketplaceController = require(
   '../controllers/adminMarketplace.controller'
 );
+const callController = require("../controllers/call.controller");
 
 const router = express.Router();
 const canCreateManagedUser = (
@@ -407,6 +408,14 @@ router.patch(
 | GLOBAL AUDIT LOGS
 |--------------------------------------------------------------------------
 */
+
+router.get(
+  "/calls",
+  protect,
+  loadStaffRole,
+  requirePermission(P.CALLS_VIEW),
+  callController.adminList
+);
 
 router.get(
   "/audit-logs",

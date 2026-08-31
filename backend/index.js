@@ -2,6 +2,8 @@ const marketplaceRoutes = require('./routes/marketplace.routes');
 const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
 const http = require("http");
+const { attachCallSignaling } = require("./services/callSignaling.service");
+const callRoutes = require("./routes/call.routes");
 
 const partnerRoutes = require("./routes/partner.routes");
 const partnerApplicationRoutes = require("./routes/partnerApplication.routes");
@@ -211,6 +213,7 @@ app.use(
   "/api/notifications",
   notificationRoutes
 );
+app.use("/api/calls", callRoutes);
 
 app.use(
   "/api/admin",
@@ -345,6 +348,7 @@ app.use(
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
+app.set("io", attachCallSignaling(server));
 
 console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 

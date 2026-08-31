@@ -1,0 +1,17 @@
+const router = require("express").Router();
+const c = require("../controllers/call.controller");
+const { protect, customerOnly } = require("../middleware/auth.middleware");
+router.use(protect, customerOnly);
+router.get("/config", c.config);
+router.get("/search", c.search);
+router.get("/history", c.history);
+router.get("/privacy", c.getPrivacy);
+router.patch("/privacy", c.updatePrivacy);
+router.post("/privacy/blocked/:userId", c.block);
+router.delete("/privacy/blocked/:userId", c.unblock);
+router.post("/", c.create);
+router.post("/:callId/accept", c.action("ACCEPTED"));
+router.post("/:callId/decline", c.action("DECLINED"));
+router.post("/:callId/cancel", c.action("CANCELLED"));
+router.post("/:callId/end", c.action("ENDED"));
+module.exports = router;
