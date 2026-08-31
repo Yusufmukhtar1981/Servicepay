@@ -69,9 +69,10 @@ class _ForcedPasswordChangeScreenState
         (_) => false,
       );
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(
             () => _error = error.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
