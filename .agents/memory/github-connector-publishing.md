@@ -8,3 +8,5 @@ Use the authenticated GitHub connector rather than retrying local HTTPS pushes. 
 **Why:** The workspace Git remote may reject password/token authentication, while the GitHub connector is authorized. A remote branch can advance independently, and a non-force API update must never overwrite those changes.
 
 **How to apply:** Commit and validate locally first; exclude unrelated untracked attachments. Use the connector's Git database endpoints to create blobs/tree/commit and PATCH the branch with `force: false` only after the relevant file-level conflict check passes.
+
+When transporting local file contents into connector blob requests, read the files directly and encode them in memory. Avoid parsing shell marker streams: line-ending normalization can leave carriage returns in marker-derived path keys, producing an opaque GitHub `422` with missing blob content.
