@@ -103,6 +103,19 @@ const protect = async (req, res, next) => {
     );
 
     req.user = user;
+    // Temporary credentials may authenticate solely to establish the password.
+    // This is intentionally enforced here, rather than only on branch routes,
+    // so a manager cannot use another protected product endpoint to bypass it.
+    const changingPassword = /\/change-password\/?(?:\?.*)?$/.test(
+      String(req.originalUrl || req.url || "")
+    );
+    if (user.mustChangePassword === true && !changingPassword) {
+      return res.status(403).json({
+        success: false,
+        code: "PASSWORD_CHANGE_REQUIRED",
+        message: "You must change your temporary password before continuing.",
+      });
+    }
 
     return next();
   } catch (error) {

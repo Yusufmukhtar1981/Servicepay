@@ -132,6 +132,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("BRANCHES_APPROVALS_VIEW", "branches.approvals.view", "BRANCHES", "View all branch approvals", "View all branch approval requests."),
   permission("BRANCHES_APPROVALS_MANAGE", "branches.approvals.manage", "BRANCHES", "Review branch approvals", "Review all branch approval requests.", "PRIVILEGED"),
   permission("BRANCHES_REPORTS_VIEW", "branches.reports.view", "BRANCHES", "View all branch reports", "View all branch reports."),
+  permission("BRANCHES_STAFF_MANAGE", "branches.staff.manage", "BRANCHES", "Manage branch managers", "Create, reassign, secure, and remove branch manager accounts.", "CRITICAL"),
 ]);
 
 const STAFF_PERMISSIONS = Object.freeze(Object.fromEntries(
@@ -242,6 +243,7 @@ const ROLE_HIERARCHY = Object.freeze({
   DELIVERY_RIDER: 10,
   AGENT: 10,
   BUSINESS_PARTNER: 10,
+  BRANCH_MANAGER: 20,
   CUSTOMER: 0,
 });
 const scopeForRole = (role, user = {}) => {
@@ -257,9 +259,34 @@ const scopeForRole = (role, user = {}) => {
       businessPartnerId: user.businessPartnerProfile || user.businessPartnerId || null,
     });
   }
+  if (canonical === "BRANCH_MANAGER") {
+    return Object.freeze({ type: "BRANCH", branchId: user.branchId || null });
+  }
   return Object.freeze({ type: "SELF", userId: user._id || user.id || null });
 };
 const directRolePermissions = Object.freeze({
+  BRANCH_MANAGER: Object.freeze([
+    STAFF_PERMISSIONS.BRANCH_DASHBOARD_VIEW,
+    STAFF_PERMISSIONS.BRANCH_TARGETS_VIEW,
+    STAFF_PERMISSIONS.BRANCH_REPORTS_VIEW,
+    STAFF_PERMISSIONS.BRANCH_STAFF_VIEW,
+    STAFF_PERMISSIONS.BRANCH_STAFF_MANAGE,
+    STAFF_PERMISSIONS.BRANCH_CUSTOMERS_VIEW,
+    STAFF_PERMISSIONS.BRANCH_CUSTOMERS_CREATE,
+    STAFF_PERMISSIONS.BRANCH_DELIVERY_VIEW,
+    STAFF_PERMISSIONS.BRANCH_DELIVERY_MANAGE,
+    STAFF_PERMISSIONS.BRANCH_SOLAR_VIEW,
+    STAFF_PERMISSIONS.BRANCH_SOLAR_MANAGE,
+    STAFF_PERMISSIONS.BRANCH_MARKETPLACE_VIEW,
+    STAFF_PERMISSIONS.BRANCH_MARKETPLACE_MANAGE,
+    STAFF_PERMISSIONS.BRANCH_PHONE_VIEW,
+    STAFF_PERMISSIONS.BRANCH_PHONE_MANAGE,
+    STAFF_PERMISSIONS.BRANCH_EMPOWERMENT_VIEW,
+    STAFF_PERMISSIONS.BRANCH_EMPOWERMENT_MANAGE,
+    STAFF_PERMISSIONS.BRANCH_APPROVALS_VIEW,
+    STAFF_PERMISSIONS.BRANCH_APPROVALS_SUBMIT,
+    STAFF_PERMISSIONS.BRANCH_FINANCE_VIEW,
+  ]),
   ZONAL_MANAGER: Object.freeze([
     STAFF_PERMISSIONS.DASHBOARD_VIEW, STAFF_PERMISSIONS.USERS_CREATE,
     STAFF_PERMISSIONS.USERS_VIEW, STAFF_PERMISSIONS.USERS_UPDATE,
@@ -282,6 +309,12 @@ const effectivePermissionsForUser = (user = {}) => {
     const role = user.staffRoleId;
     if (!role || typeof role !== "object" || role.status !== "ACTIVE") return [];
     return validateStaffPermissions(role.permissions || []).permissions;
+  }
+  if (canonical === "BRANCH_MANAGER") {
+    const requested = Array.isArray(user.branchManagerPermissions)
+      ? validateStaffPermissions(user.branchManagerPermissions).permissions
+      : directRolePermissions.BRANCH_MANAGER;
+    return requested.filter((permission) => directRolePermissions.BRANCH_MANAGER.includes(permission));
   }
   return [...(directRolePermissions[canonical] || [])];
 };

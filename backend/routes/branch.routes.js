@@ -20,5 +20,10 @@ router.delete("/:branchId/members/:userId", requireAnyPermission(P.BRANCH_STAFF_
 router.post("/:branchId/customers", requireAnyPermission(P.BRANCH_CUSTOMERS_CREATE), c.createCustomer);
 router.put("/:branchId/activate", requireAnyPermission(P.BRANCHES_MANAGE), c.activate);
 router.put("/:branchId/manager", requireAnyPermission(P.BRANCHES_STAFF_MANAGE), c.assignManager);
+router.put("/:branchId/manager/status", requireAnyPermission(P.BRANCHES_STAFF_MANAGE), c.managerStatus);
+router.put("/:branchId/manager/password", requireAnyPermission(P.BRANCHES_STAFF_MANAGE), c.managerPassword);
+router.put("/:branchId/manager/permissions", requireAnyPermission(P.BRANCHES_STAFF_MANAGE), c.managerPermissions);
+router.put("/:branchId/manager/reassign", requireAnyPermission(P.BRANCHES_STAFF_MANAGE), c.assignManager);
+router.delete("/:branchId/manager", requireAnyPermission(P.BRANCHES_STAFF_MANAGE), c.removeManager);
 router.route("/:branchId").get(requireAnyPermission(P.BRANCHES_VIEW, P.BRANCH_DASHBOARD_VIEW), c.get).put(requireAnyPermission(P.BRANCHES_MANAGE), c.update);
 module.exports = router;

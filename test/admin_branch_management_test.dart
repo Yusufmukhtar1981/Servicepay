@@ -199,4 +199,34 @@ void main() {
     expect(client.requests[1].url.path, '/api/branches/approvals/a1/review');
     expect(client.requests[1].method, 'PUT');
   });
+
+  test('branch creation preserves backend manager DTO contracts', () async {
+    SharedPreferences.setMockInitialValues(
+        <String, Object>{'auth_token': 'abc'});
+    final _CaptureClient client = _CaptureClient();
+    final AdminBranchManagementHttpApi api = AdminBranchManagementHttpApi(
+        client: client, baseUrl: 'https://unit.test/api');
+    await api.createBranch(<String, dynamic>{
+      'code': 'IKJ',
+      'name': 'Ikeja',
+      'address': '1 Main St',
+      'state': 'Lagos',
+      'lga': 'Ikeja',
+      'phone': '08000000000',
+      'email': 'branch@example.com',
+      'openingDate': '2025-01-01',
+      'assignedModules': <String>['DELIVERY'],
+      'manager': <String, dynamic>{
+        'fullName': 'Ada Manager',
+        'phone': '08000000001',
+        'email': 'ada@example.com',
+      },
+    });
+    final Map<String, dynamic> body = jsonDecode(
+        utf8.decode((client.requests.single as http.Request).bodyBytes));
+    expect(body['manager']['fullName'], 'Ada Manager');
+    expect(body['manager']['phone'], '08000000001');
+    expect(body['manager'].containsKey('password'), isFalse);
+    expect(body.containsKey('managerId'), isFalse);
+  });
 }

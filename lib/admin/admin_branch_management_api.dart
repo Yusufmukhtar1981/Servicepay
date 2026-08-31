@@ -15,6 +15,12 @@ abstract class AdminBranchManagementApi {
       {String? reason});
   Future<void> assignManager(String branchId, String managerId,
       {String? jobTitle});
+
+  /// Removes the current manager without removing their staff account.
+  ///
+  /// Implementations that predate manager lifecycle support can override this.
+  Future<void> removeManager(String branchId) =>
+      Future<void>.error(UnimplementedError('Manager removal is unavailable.'));
   Future<void> assignMember(String branchId, String userId, {String? jobTitle});
   Future<void> removeMember(String branchId, String userId);
   Future<List<Map<String, dynamic>>> members(String branchId);
@@ -82,8 +88,17 @@ class AdminBranchManagementHttpApi implements AdminBranchManagementApi {
           .then((value) => _map(value['branch']));
   @override
   Future<Map<String, dynamic>> createBranch(Map<String, dynamic> values) =>
-      _request('POST', 'branches', body: values)
-          .then((value) => _map(value['branch']));
+      _request('POST', 'branches', body: values).then((value) {
+        final Map<String, dynamic> branch = _map(value['branch']);
+        // Credentials are intentionally retained only in this immediate
+        // creation result so callers can show them once, not fetch them later.
+        final Map<String, dynamic> credentials =
+            _map(value['temporaryCredentials'] ?? value['credentials']);
+        if (credentials.isNotEmpty) {
+          branch['_temporaryCredentials'] = credentials;
+        }
+        return branch;
+      });
   @override
   Future<Map<String, dynamic>> updateBranch(
           String branchId, Map<String, dynamic> values) =>
@@ -103,6 +118,9 @@ class AdminBranchManagementHttpApi implements AdminBranchManagementApi {
         'managerId': managerId,
         if (jobTitle != null) 'jobTitle': jobTitle
       }).then<void>((_) {});
+  @override
+  Future<void> removeManager(String branchId) =>
+      _request('DELETE', 'branches/$branchId/manager').then<void>((_) {});
   @override
   Future<void> assignMember(String branchId, String userId,
           {String? jobTitle}) =>

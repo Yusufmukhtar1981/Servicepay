@@ -432,6 +432,9 @@ const formatUser = (user) => {
     jobTitle: user.jobTitle || "",
     onboardingSource: user.onboardingSource || "",
     createdByStaffId: user.createdByStaffId || null,
+    branchManagerPermissions: user.role === "BRANCH_MANAGER"
+      ? (user.branchManagerPermissions || [])
+      : [],
 
     mustChangePassword:
       user.mustChangePassword === true,
@@ -1432,6 +1435,10 @@ exports.changePassword = async (
 
     user.password = String(newPassword);
     user.passwordChangedAt = new Date();
+    // This flag is used for administrator-issued temporary credentials. Clear
+    // it only after the current password has been verified and the new hash is
+    // successfully saved.
+    user.mustChangePassword = false;
     await user.save();
     const versionedUser = await User.findByIdAndUpdate(
       user._id,

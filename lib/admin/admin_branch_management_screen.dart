@@ -389,6 +389,12 @@ class _AdminBranchManagementScreenState
                                       _can(
                                           AdminPermissions.branchesStaffManage))
                                     const PopupMenuItem(
+                                        value: 'remove-manager',
+                                        child: Text('Remove manager')),
+                                  if (_full ||
+                                      _can(
+                                          AdminPermissions.branchesStaffManage))
+                                    const PopupMenuItem(
                                         value: 'member',
                                         child: Text('Assign staff member')),
                                 ],
@@ -581,26 +587,38 @@ class _AdminBranchManagementScreenState
   Future<void> _branchAction(Map<String, dynamic> branch, String action) async {
     final String id = _text(branch, <String>['_id', 'id']);
     if (id == '—') return;
-    if (action == 'activate' || action == 'suspend') {
-      await _api.setBranchStatus(
-          id, action == 'activate' ? 'ACTIVE' : 'SUSPENDED');
-      await _load();
-      return;
-    }
-    if (action == 'edit') {
+    try {
+      if (action == 'activate' || action == 'suspend') {
+        await _api.setBranchStatus(
+            id, action == 'activate' ? 'ACTIVE' : 'SUSPENDED');
+        await _load();
+        return;
+      }
+      if (action == 'remove-manager') {
+        await _api.removeManager(id);
+        await _load();
+        return;
+      }
+      if (action == 'edit') {
+        await _simpleAction(
+            'Edit branch name',
+            (String value) =>
+                _api.updateBranch(id, <String, dynamic>{'name': value}));
+        return;
+      }
       await _simpleAction(
-          'Edit branch name',
-          (String value) =>
-              _api.updateBranch(id, <String, dynamic>{'name': value}));
-      return;
+          action == 'manager'
+              ? 'Assign or replace manager (staff user ID)'
+              : 'Assign staff member (user ID)',
+          (String userId) => action == 'manager'
+              ? _api.assignManager(id, userId)
+              : _api.assignMember(id, userId));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', ''))));
+      }
     }
-    await _simpleAction(
-        action == 'manager'
-            ? 'Assign manager (user ID)'
-            : 'Assign staff member (user ID)',
-        (String userId) => action == 'manager'
-            ? _api.assignManager(id, userId)
-            : _api.assignMember(id, userId));
   }
 
   Future<void> _decision(Map<String, dynamic> item, String decision) async {
@@ -627,76 +645,211 @@ class _AdminBranchManagementScreenState
       'address',
       'phone',
       'email',
-      'openingDate',
-      'assignedModules'
+      'openingDate'
     ];
     final Map<String, TextEditingController> fields =
         <String, TextEditingController>{
-      for (final String field in <String>[...required, 'notes'])
+      for (final String field in <String>[
+        ...required,
+        'notes',
+        'existingManagerId',
+        'managerFullName',
+        'managerEmail',
+        'managerPhone',
+      ])
         field: TextEditingController()
     };
     final GlobalKey<FormState> key = GlobalKey<FormState>();
+    bool newManager = true;
+    final Set<String> modules = <String>{};
     final Map<String, dynamic>? values = await showDialog<Map<String, dynamic>>(
         context: context,
-        builder: (BuildContext dialogContext) => AlertDialog(
-              title: const Text('Create branch'),
-              content: SizedBox(
-                  width: 520,
-                  child: Form(
-                      key: key,
-                      child: SingleChildScrollView(
-                          child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: fields.entries
-                                  .map((entry) => Padding(
-                                      padding:
-                                          const EdgeInsets.only(bottom: 10),
-                                      child: TextFormField(
-                                          controller: entry.value,
-                                          decoration: InputDecoration(
-                                              labelText: entry.key,
-                                              border:
-                                                  const OutlineInputBorder()),
-                                          validator: required
-                                                  .contains(entry.key)
-                                              ? (String? value) => value ==
-                                                          null ||
-                                                      value.trim().isEmpty
-                                                  ? '${entry.key} is required'
-                                                  : null
-                                              : null)))
-                                  .toList())))),
-              actions: <Widget>[
-                TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Cancel')),
-                FilledButton(
-                    onPressed: () {
-                      if (!(key.currentState?.validate() ?? false)) return;
-                      Navigator.pop(dialogContext, <String, dynamic>{
-                        for (final MapEntry<String, TextEditingController> entry
-                            in fields.entries)
-                          if (entry.key == 'assignedModules')
-                            entry.key: entry.value.text
-                                .split(',')
-                                .map((String item) => item.trim())
-                                .where((String item) => item.isNotEmpty)
-                                .toList()
-                          else
-                            entry.key: entry.value.text.trim(),
-                      });
-                    },
-                    child: const Text('Create'))
-              ],
-            ));
+        builder: (BuildContext dialogContext) => StatefulBuilder(
+            builder: (BuildContext context,
+                    void Function(void Function()) setDialogState) =>
+                AlertDialog(
+                  title: const Text('Create branch'),
+                  content: SizedBox(
+                      width: 520,
+                      child: Form(
+                          key: key,
+                          child: SingleChildScrollView(
+                              child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                ...fields.entries
+                                    .where((entry) => !<String>[
+                                          'managerMode',
+                                          'existingManagerId',
+                                          'managerFullName',
+                                          'managerEmail',
+                                          'managerPhone',
+                                        ].contains(entry.key))
+                                    .map((entry) => Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 10),
+                                        child: TextFormField(
+                                            controller: entry.value,
+                                            decoration: InputDecoration(
+                                                labelText: entry.key,
+                                                border:
+                                                    const OutlineInputBorder()),
+                                            validator: required
+                                                    .contains(entry.key)
+                                                ? (String? value) => value ==
+                                                            null ||
+                                                        value.trim().isEmpty
+                                                    ? '${entry.key} is required'
+                                                    : null
+                                                : null))),
+                                const Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text('Assigned modules',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700))),
+                                Wrap(
+                                    children: <String>[
+                                  'DELIVERY',
+                                  'SOLAR',
+                                  'MARKETPLACE',
+                                  'EMPOWERMENT',
+                                  'PHONE_FINANCE'
+                                ]
+                                        .map((String module) => FilterChip(
+                                            label: Text(
+                                                module.replaceAll('_', ' ')),
+                                            selected: modules.contains(module),
+                                            onSelected: (bool selected) =>
+                                                setDialogState(() {
+                                                  selected
+                                                      ? modules.add(module)
+                                                      : modules.remove(module);
+                                                })))
+                                        .toList()),
+                                const SizedBox(height: 12),
+                                RadioListTile<bool>(
+                                    value: true,
+                                    groupValue: newManager,
+                                    contentPadding: EdgeInsets.zero,
+                                    title: const Text('Create a new manager'),
+                                    onChanged: (bool? value) => setDialogState(
+                                        () => newManager = value!)),
+                                RadioListTile<bool>(
+                                    value: false,
+                                    groupValue: newManager,
+                                    contentPadding: EdgeInsets.zero,
+                                    title: const Text('Assign existing staff'),
+                                    onChanged: (bool? value) => setDialogState(
+                                        () => newManager = value!)),
+                                ...fields.entries
+                                    .where((entry) => newManager
+                                        ? <String>[
+                                            'managerFullName',
+                                            'managerEmail',
+                                            'managerPhone'
+                                          ].contains(entry.key)
+                                        : entry.key == 'existingManagerId')
+                                    .map((entry) => Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 10),
+                                        child: TextFormField(
+                                            controller: entry.value,
+                                            decoration: InputDecoration(
+                                                labelText: entry.key,
+                                                border:
+                                                    const OutlineInputBorder()),
+                                            validator: (String? value) =>
+                                                value == null ||
+                                                        value.trim().isEmpty
+                                                    ? '${entry.key} is required'
+                                                    : null))),
+                              ])))),
+                  actions: <Widget>[
+                    TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('Cancel')),
+                    FilledButton(
+                        onPressed: () {
+                          if (!(key.currentState?.validate() ?? false) ||
+                              modules.isEmpty) {
+                            return;
+                          }
+                          Navigator.pop(dialogContext, <String, dynamic>{
+                            for (final MapEntry<String,
+                                    TextEditingController> entry
+                                in fields.entries.where((entry) => !<String>[
+                                      'existingManagerId',
+                                      'managerFullName',
+                                      'managerEmail',
+                                      'managerPhone',
+                                    ].contains(entry.key)))
+                              entry.key: entry.value.text.trim(),
+                            'assignedModules': modules.toList(),
+                            if (newManager)
+                              'manager': <String, dynamic>{
+                                'fullName':
+                                    fields['managerFullName']!.text.trim(),
+                                'email': fields['managerEmail']!.text.trim(),
+                                'phone': fields['managerPhone']!.text.trim(),
+                              }
+                            else
+                              'managerId':
+                                  fields['existingManagerId']!.text.trim(),
+                          });
+                        },
+                        child: const Text('Create'))
+                  ],
+                )));
     for (final TextEditingController controller in fields.values) {
       controller.dispose();
     }
     if (values != null) {
-      await _api.createBranch(values);
-      await _load();
+      try {
+        final Map<String, dynamic> created = await _api.createBranch(values);
+        await _load();
+        final dynamic value = created['_temporaryCredentials'];
+        if (mounted && value is Map && value.isNotEmpty) {
+          await _showTemporaryCredentials(Map<String, dynamic>.from(value));
+        }
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(error.toString().replaceFirst('Exception: ', ''))));
+        }
+      }
     }
   }
+
+  Future<void> _showTemporaryCredentials(Map<String, dynamic> credentials) =>
+      showDialog<void>(
+          context: context,
+          builder: (BuildContext dialogContext) => AlertDialog(
+                  title: const Text('Temporary manager credentials'),
+                  content: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Text(
+                        'Copy these now. They are shown only after this creation.'),
+                    const SizedBox(height: 10),
+                    SelectableText(
+                        'Login identifier: ${_text(credentials, <String>[
+                          'identifier',
+                          'email',
+                          'phone',
+                          'username'
+                        ])}\n'
+                        'Phone: ${_text(credentials, <String>[
+                          'phone',
+                          'identifier'
+                        ])}\n'
+                        'Temporary password: ${_text(credentials, <String>[
+                          'temporaryPassword',
+                          'password'
+                        ])}'),
+                  ]),
+                  actions: [
+                    FilledButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('I have saved them'))
+                  ]));
 
   Future<void> _createTarget() =>
       _simpleAction('Create target', (String value) {

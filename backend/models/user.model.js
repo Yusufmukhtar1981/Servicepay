@@ -156,6 +156,18 @@ const userSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    branchManagerPermissions: {
+      type: [{ type: String }],
+      default: [],
+    },
+    // Saved only while a STAFF account is temporarily promoted to manage a
+    // branch, so demotion/replacement restores its previous access exactly.
+    branchManagerPreviousRole: { type: String, default: null },
+    branchManagerPreviousStaffRoleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Role",
+      default: null,
+    },
 
     lastStaffLoginAt: {
       type: Date,
@@ -175,6 +187,7 @@ const userSchema = new mongoose.Schema(
       enum: [
         "HEAD_OFFICE",
         "STAFF",
+        "BRANCH_MANAGER",
         "ZONAL_MANAGER",
         "STATE_MANAGER",
         "AGENT",
