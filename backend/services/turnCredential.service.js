@@ -1,79 +1,77 @@
-// TURN credentials are fetched on demand and retained in memory only until
-// shortly before Twilio expires them. No account/auth credentials are read,
-// logged, or stored by this service.
-let cached = null;
-let connectorFactory = null;
+// Twilio Network Traversal Service credentials are ephemeral. This module only
+// retains normalized ICE servers in memory until shortly before their token TTL
+// expires; it never logs or stores the Twilio account/auth secrets.
 const MAX_SERVERS = 5;
 const MAX_URLS = 5;
-const clean = (value, max = 512) => typeof value === "string" ? value.trim().slice(0, max) : "";
+const TOKEN_TTL_SECONDS = 3600;
+const SAFETY_MARGIN_SECONDS = 30;
+let cached = null;
+let fetchImplementation = (...args) => fetch(...args);
+let now = () => Date.now();
 
+const clean = (value, max = 512) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const normalizeIceServers = (servers) => (Array.isArray(servers) ? servers : [])
   .slice(0, MAX_SERVERS)
   .map((server) => {
-    const rawUrls = Array.isArray(server?.urls) ? server.urls : [server?.urls ?? server?.url];
-    const urls = rawUrls.map((url) => clean(url)).filter((url) => /^(stun|turns?):/i.test(url)).slice(0, MAX_URLS);
+    const source = Array.isArray(server?.urls) ? server.urls : [server?.urls ?? server?.url];
+    const urls = source.map((url) => clean(url)).filter((url) => /^(stun|turns?):/i.test(url)).slice(0, MAX_URLS);
     if (!urls.length) return null;
-    const value = { urls: urls.length === 1 ? urls[0] : urls };
+    const normalized = { urls: urls.length === 1 ? urls[0] : urls };
     const username = clean(server?.username);
     const credential = clean(server?.credential);
-    if (username) value.username = username;
-    if (credential) value.credential = credential;
-    return value;
-  }).filter(Boolean);
+    if (username) normalized.username = username;
+    if (credential) normalized.credential = credential;
+    return normalized;
+  })
+  .filter(Boolean);
+const hasCredentialedTurn = (servers) => servers.some((server) => {
+  const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+  return urls.some((url) => /^turns?:/i.test(url)) &&
+    Boolean(clean(server.username)) && Boolean(clean(server.credential));
+});
 
-const staticConfig = () => {
-  const stun = String(process.env.CALL_STUN_URLS || "stun:stun.l.google.com:19302").split(",").map((v) => clean(v)).filter(Boolean);
-  const turns = String(process.env.CALL_TURN_URLS || "").split(",").map((v) => clean(v)).filter(Boolean);
-  const username = clean(process.env.CALL_TURN_USERNAME);
-  const credential = clean(process.env.CALL_TURN_CREDENTIAL);
-  if (process.env.NODE_ENV === "production" && (!turns.length || !username || !credential)) return null;
-  const servers = normalizeIceServers([...stun.map((urls) => ({ urls })), ...(turns.length ? [{ urls: turns, username, credential }] : [])]);
-  return servers.length ? servers : null;
-};
-
-async function connectorIceServers() {
-  if (cached && cached.expiresAt > Date.now()) return cached.iceServers;
-  const timeout = Number(process.env.CALL_TWILIO_TIMEOUT_MS) || 5000;
-  let timer;
+async function getCallConfig() {
+  if (cached && cached.expiresAt > now()) return { callingAvailable: true, reason: "", iceServers: cached.iceServers };
+  const accountSid = clean(process.env.TWILIO_ACCOUNT_SID, 128);
+  const authToken = clean(process.env.TWILIO_AUTH_TOKEN, 256);
+  if (!accountSid || !authToken) {
+    return { callingAvailable: false, reason: "Calling is unavailable because TURN credentials are not configured.", iceServers: [] };
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.min(15_000, Math.max(1_000, Number(process.env.CALL_TWILIO_TIMEOUT_MS) || 5_000)));
   try {
-    const create = connectorFactory || (() => {
-      // CommonJS require is supported by the installed connectors SDK.
-      const { ReplitConnectors } = require("@replit/connectors-sdk");
-      return new ReplitConnectors();
-    });
-    const connectors = create();
-    const accountResponse = await Promise.race([
-      connectors.proxy("twilio", "/2010-04-01/Accounts.json?PageSize=1", { method: "GET" }),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Twilio connector timed out")), timeout); }),
-    ]);
-    clearTimeout(timer);
-    const accounts = await accountResponse.json();
-    const sid = clean(accounts?.accounts?.[0]?.sid, 64);
-    if (!/^AC[a-f0-9]{32}$/i.test(sid)) throw new Error("Twilio account is unavailable");
-    const tokenResponse = await Promise.race([
-      connectors.proxy("twilio", `/2010-04-01/Accounts/${sid}/Tokens.json`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "Ttl=3600" }),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Twilio connector timed out")), timeout); }),
-    ]);
-    clearTimeout(timer);
-    const token = await tokenResponse.json();
+    const authorization = `Basic ${Buffer.from(`${accountSid}:${authToken}`, "utf8").toString("base64")}`;
+    const response = await fetchImplementation(
+      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Tokens.json`,
+      {
+        method: "POST",
+        headers: { authorization, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ Ttl: String(TOKEN_TTL_SECONDS) }).toString(),
+        signal: controller.signal,
+      }
+    );
+    if (!response?.ok) throw new Error("Twilio token request failed");
+    const token = await response.json();
     const iceServers = normalizeIceServers(token?.ice_servers);
-    if (!iceServers.length) throw new Error("Twilio returned no ICE servers");
-    const ttlSeconds = Math.min(3600, Math.max(60, Number(token?.ttl) || 3600));
-    cached = { iceServers, expiresAt: Date.now() + Math.max(1, ttlSeconds - 30) * 1000 };
-    return iceServers;
+    // STUN alone cannot relay production media. A Twilio token is usable only
+    // when it includes a credentialed TURN/TURNS server.
+    if (!iceServers.length || !hasCredentialedTurn(iceServers)) throw new Error("Twilio token response has no credentialed TURN server");
+    const suppliedTtl = Number(token?.ttl);
+    const ttl = Number.isFinite(suppliedTtl) ? Math.min(TOKEN_TTL_SECONDS, Math.max(0, suppliedTtl)) : TOKEN_TTL_SECONDS;
+    // Do not cache at/below the margin: caching it even briefly could outlive
+    // the provider-issued credential.
+    if (ttl > SAFETY_MARGIN_SECONDS) {
+      cached = { iceServers, expiresAt: now() + (ttl - SAFETY_MARGIN_SECONDS) * 1000 };
+    }
+    return { callingAvailable: true, reason: "", iceServers };
   } catch (_) {
-    if (timer) clearTimeout(timer);
-    return null;
+    return { callingAvailable: false, reason: "Calling is temporarily unavailable because TURN credentials could not be generated.", iceServers: [] };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
-async function getCallConfig() {
-  const iceServers = await connectorIceServers() || staticConfig();
-  return iceServers
-    ? { callingAvailable: true, reason: "", iceServers }
-    : { callingAvailable: false, reason: "Calling is unavailable because TURN connectivity is not configured.", iceServers: [] };
-}
-// Test-only injection avoids network access; production code does not use it.
-function __setConnectorFactory(factory) { connectorFactory = factory; cached = null; }
-function __resetForTests() { cached = null; connectorFactory = null; }
-module.exports = { getCallConfig, normalizeIceServers, __setConnectorFactory, __resetForTests };
+function __setFetchForTests(value) { fetchImplementation = value; cached = null; }
+function __setNowForTests(value) { now = value; cached = null; }
+function __resetForTests() { cached = null; fetchImplementation = (...args) => fetch(...args); now = () => Date.now(); }
+module.exports = { getCallConfig, normalizeIceServers, hasCredentialedTurn, __setFetchForTests, __setNowForTests, __resetForTests, TOKEN_TTL_SECONDS, SAFETY_MARGIN_SECONDS };
