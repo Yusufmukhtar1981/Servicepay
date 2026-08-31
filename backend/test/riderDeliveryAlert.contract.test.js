@@ -214,3 +214,40 @@ test("missing Firebase credentials produce a safe non-fatal warning", () => {
     }
   }
 });
+
+test("Rider push diagnostic route is protected by authentication, Admin role, and assignment permission", () => {
+  const routesPath = path.resolve(__dirname, "../routes/admin.routes.js");
+  const source = require("node:fs").readFileSync(routesPath, "utf8");
+  const route = source.match(
+    /router\.post\(\s*"\/riders\/:id\/push-diagnostic"[\s\S]*?runRiderPushDiagnostic\s*\);/
+  );
+
+  assert.ok(route, "Expected the Rider push diagnostic route");
+  assert.match(route[0], /\bprotect\b/);
+  assert.match(
+    route[0],
+    /adminOnly\("HEAD_OFFICE", "ADMIN", "SUPER_ADMIN"\)/
+  );
+  assert.match(route[0], /\benforceActiveBranchScope\b/);
+  assert.match(route[0], /requirePermission\(P\.DELIVERY_ASSIGN\)/);
+});
+
+test("malformed Firebase credentials never appear in safe diagnostics", () => {
+  const servicePath = path.resolve(
+    __dirname,
+    "../services/riderDeliveryAlert.service.js"
+  );
+  const secret = "definitely-not-valid-firebase-json";
+  const script = `
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = ${JSON.stringify(secret)};
+    const service = require(${JSON.stringify(servicePath)});
+    service.logFirebaseConfigurationStatus();
+  `;
+  const result = spawnSync(process.execPath, ["-e", script], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /FIREBASE_SERVICE_ACCOUNT_JSON is invalid/);
+  assert.doesNotMatch(result.stderr, new RegExp(secret));
+});

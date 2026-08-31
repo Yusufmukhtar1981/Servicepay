@@ -17,6 +17,7 @@ const {
   getAdminDeliveries,
   getAvailableRiders,
   assignRiderToDelivery,
+  runRiderPushDiagnostic,
   unassignRiderFromDelivery,
   updateDeliveryStatus,
   updateDeliveryPrice,
@@ -48,6 +49,7 @@ const {
 
 const {
   protect,
+  adminOnly,
 } = require("../middleware/auth.middleware");
 
 const {
@@ -459,6 +461,16 @@ router.patch(
   enforceActiveBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   assignRiderToDelivery
+);
+
+router.post(
+  "/riders/:id/push-diagnostic",
+  protect,
+  adminOnly("HEAD_OFFICE", "ADMIN", "SUPER_ADMIN"),
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_ASSIGN),
+  runRiderPushDiagnostic
 );
 
 router.patch(
