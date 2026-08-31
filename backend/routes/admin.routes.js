@@ -5,6 +5,7 @@ const bankTransferController = require("../controllers/bankTransfer.controller")
 const adminBankReconciliationController = require("../controllers/adminBankReconciliation.controller");
 const transactionIntelligenceController = require("../controllers/adminTransactionIntelligence.controller");
 const fintechOperationsController = require("../controllers/adminFintechOperations.controller");
+const fraudRiskController = require("../controllers/adminFraudRisk.controller");
 
 const {
   getAdminDashboard,
@@ -19,7 +20,6 @@ const {
   unassignRiderFromDelivery,
   updateDeliveryStatus,
   updateDeliveryPrice,
-  getAdminExecutiveDashboard,
 } = require("../controllers/admin.controller");
 
 const {
@@ -48,12 +48,13 @@ const {
 
 const {
   protect,
-  adminOnly,
 } = require("../middleware/auth.middleware");
 
 const {
   loadStaffRole,
   requirePermission,
+  requireAnyPermission,
+  requireTargetUserScope,
 } = require("../middleware/staffPermission.middleware");
 const {
   STAFF_PERMISSIONS: P,
@@ -71,29 +72,6 @@ const adminMarketplaceController = require(
 );
 
 const router = express.Router();
-const DELIVERY_ADMIN_ROLES = [
-  "HEAD_OFFICE",
-  "ADMIN",
-  "SUPER_ADMIN",
-  "HEAD_OFFICE_ADMIN",
-];
-
-const MANAGEMENT_ROLES = [
-  "HEAD_OFFICE",
-  "ZONAL_MANAGER",
-  "STATE_MANAGER",
-];
-
-const dashboardPermission = (req, res, next) => {
-  const role = String(req.user?.role || "").toUpperCase();
-  if (role !== "STAFF") return next();
-  return res.status(403).json({
-    success: false,
-    message:
-      "Executive dashboard access requires a server-defined management scope.",
-  });
-};
-
 const canCreateManagedUser = (
   req,
   res,
@@ -225,24 +203,8 @@ router.get(
   "/dashboard",
   protect,
   loadStaffRole,
-  requirePermission("dashboard.view"),
+  requirePermission(P.DASHBOARD_VIEW),
   getAdminDashboard
-);
-
-router.get(
-  "/dashboard/executive",
-  protect,
-  adminOnly(
-    "HEAD_OFFICE",
-    "ADMIN",
-    "SUPER_ADMIN",
-    "HEAD_OFFICE_ADMIN",
-    "ZONAL_MANAGER",
-    "STATE_MANAGER",
-    "STAFF",
-  ),
-  dashboardPermission,
-  getAdminExecutiveDashboard,
 );
 
 /*
@@ -254,17 +216,16 @@ router.get(
 router.get(
   "/users",
   protect,
-  adminOnly(
-    "HEAD_OFFICE",
-    "ZONAL_MANAGER",
-    "STATE_MANAGER"
-  ),
+  loadStaffRole,
+  requirePermission(P.USERS_VIEW),
   getAdminUsers
 );
 
 router.post(
   "/users",
   protect,
+  loadStaffRole,
+  requirePermission(P.USERS_CREATE),
   canCreateManagedUser,
   createAdminUser
 );
@@ -272,66 +233,80 @@ router.post(
 router.get(
   "/users/:id",
   protect,
-  adminOnly(
-    "HEAD_OFFICE",
-    "ZONAL_MANAGER",
-    "STATE_MANAGER"
-  ),
+  loadStaffRole,
+  requirePermission(P.USERS_VIEW),
+  requireTargetUserScope("id"),
   getAdminUserDetails
 );
 
 router.patch(
   "/users/:id/profile",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.USERS_UPDATE),
+  requireTargetUserScope("id"),
   updateAdminUserProfile
 );
 
 router.patch(
   "/users/:id/status",
   protect,
-  adminOnly(...MANAGEMENT_ROLES),
+  loadStaffRole,
+  requireAnyPermission(P.USERS_SUSPEND, P.USERS_BLOCK),
+  requireTargetUserScope("id"),
   updateAdminUserStatus
 );
 
 router.patch(
   "/users/:id/role",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.USERS_UPDATE),
+  requireTargetUserScope("id"),
   updateAdminUserRole
 );
 
 router.post(
   "/users/:id/reset-transaction-pin",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.USERS_UPDATE),
+  requireTargetUserScope("id"),
   resetAdminUserTransactionPin
 );
 
 router.post(
   "/users/:id/password-reset",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.USERS_UPDATE),
+  requireTargetUserScope("id"),
   requestAdminUserPasswordReset
 );
 
 router.get(
   "/users/:id/transactions",
   protect,
-  adminOnly(
-    "HEAD_OFFICE",
-    "ZONAL_MANAGER",
-    "STATE_MANAGER"
-  ),
+  loadStaffRole,
+  requirePermission(P.TRANSACTIONS_VIEW),
+  requireTargetUserScope("id"),
   getAdminUserTransactions
 );
 
 router.get(
   "/users/:id/audit-logs",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.AUDIT_VIEW),
+  requireTargetUserScope("id"),
   getAdminAuditLogs
 );
+
+/*
+|--------------------------------------------------------------------------
+| CUSTOMER 360 — READ ONLY
+|--------------------------------------------------------------------------
+*/
 
 router.get(
   "/customer360/search",
@@ -346,6 +321,7 @@ router.get(
   protect,
   loadStaffRole,
   requirePermission(P.CUSTOMER360_VIEW),
+  requireTargetUserScope("customerId"),
   getCustomer360Overview
 );
 
@@ -354,6 +330,7 @@ router.get(
   protect,
   loadStaffRole,
   requirePermission(P.CUSTOMER360_VIEW),
+  requireTargetUserScope("customerId"),
   getCustomer360Timeline
 );
 
@@ -361,7 +338,9 @@ router.get(
   "/customer360/:customerId/transactions",
   protect,
   loadStaffRole,
-  requirePermission(P.CUSTOMER360_FINANCIAL),
+  requirePermission(P.CUSTOMER360_VIEW),
+  requireAnyPermission(P.CUSTOMER360_FINANCIAL, P.TRANSACTIONS_VIEW),
+  requireTargetUserScope("customerId"),
   getCustomer360Transactions
 );
 
@@ -374,42 +353,48 @@ router.get(
 router.get(
   "/riders",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.RIDERS_VIEW),
   getAdminRiders
 );
 
 router.post(
   "/riders",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.RIDERS_MANAGE),
   createAdminRider
 );
 
 router.get(
   "/riders/:id",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.RIDERS_VIEW),
   getAdminRiderDetails
 );
 
 router.patch(
   "/riders/:id",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.RIDERS_MANAGE),
   updateAdminRider
 );
 
 router.patch(
   "/riders/:id/status",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.RIDERS_MANAGE),
   updateAdminRiderStatus
 );
 
 router.patch(
   "/riders/:id/verification",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.RIDERS_MANAGE),
   updateAdminRiderVerification
 );
 
@@ -422,7 +407,8 @@ router.patch(
 router.get(
   "/audit-logs",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.AUDIT_VIEW),
   getAdminAuditLogs
 );
 
@@ -435,7 +421,8 @@ router.get(
 router.get(
   "/transactions",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.TRANSACTIONS_VIEW),
   getAdminTransactions
 );
 
@@ -448,42 +435,48 @@ router.get(
 router.get(
   "/deliveries",
   protect,
-  adminOnly(...DELIVERY_ADMIN_ROLES),
+  loadStaffRole,
+  requirePermission(P.DELIVERY_VIEW),
   getAdminDeliveries
 );
 
 router.get(
   "/deliveries/:id/available-riders",
   protect,
-  adminOnly(...DELIVERY_ADMIN_ROLES),
+  loadStaffRole,
+  requirePermission(P.DELIVERY_ASSIGN),
   getAvailableRiders
 );
 
 router.patch(
   "/deliveries/:id/assign-rider",
   protect,
-  adminOnly(...DELIVERY_ADMIN_ROLES),
+  loadStaffRole,
+  requirePermission(P.DELIVERY_ASSIGN),
   assignRiderToDelivery
 );
 
 router.patch(
   "/deliveries/:id/unassign-rider",
   protect,
-  adminOnly(...DELIVERY_ADMIN_ROLES),
+  loadStaffRole,
+  requirePermission(P.DELIVERY_ASSIGN),
   unassignRiderFromDelivery
 );
 
 router.patch(
   "/deliveries/:id/status",
   protect,
-  adminOnly(...DELIVERY_ADMIN_ROLES),
+  loadStaffRole,
+  requirePermission(P.DELIVERY_UPDATE),
   updateDeliveryStatus
 );
 
 router.patch(
   "/deliveries/:id/price",
   protect,
-  adminOnly(...DELIVERY_ADMIN_ROLES),
+  loadStaffRole,
+  requirePermission(P.DELIVERY_UPDATE),
   updateDeliveryPrice
 );
 
@@ -497,7 +490,8 @@ router.patch(
 router.post(
   "/wallet-adjustment",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.WALLETS_ADJUST),
   adjustCustomerWallet
 );
 
@@ -511,35 +505,40 @@ router.post(
 router.get(
   '/marketplace/products',
   protect,
-  adminOnly('HEAD_OFFICE'),
+  loadStaffRole,
+  requirePermission(P.MARKETPLACE_VIEW),
   adminMarketplaceController.listMarketplaceProducts
 );
 
 router.patch(
   '/marketplace/products/:id/status',
   protect,
-  adminOnly('HEAD_OFFICE'),
+  loadStaffRole,
+  requirePermission(P.MARKETPLACE_MODERATE),
   adminMarketplaceController.updateMarketplaceProductStatus
 );
 
 router.patch(
   '/marketplace/products/:id/approve',
   protect,
-  adminOnly('HEAD_OFFICE'),
+  loadStaffRole,
+  requirePermission(P.MARKETPLACE_MODERATE),
   adminMarketplaceController.approveMarketplaceProduct
 );
 
 router.patch(
   '/marketplace/products/:id/reject',
   protect,
-  adminOnly('HEAD_OFFICE'),
+  loadStaffRole,
+  requirePermission(P.MARKETPLACE_MODERATE),
   adminMarketplaceController.rejectMarketplaceProduct
 );
 
 router.patch(
   '/marketplace/products/:id/suspend',
   protect,
-  adminOnly('HEAD_OFFICE'),
+  loadStaffRole,
+  requirePermission(P.MARKETPLACE_MODERATE),
   adminMarketplaceController.suspendMarketplaceProduct
 );
 
@@ -553,14 +552,16 @@ router.patch(
 router.post(
   "/transaction-requery",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.TRANSACTIONS_REQUERY),
   adminTransactionRequeryController.adminRequeryTransaction
 );
 
 router.get(
   "/bank-reconciliation",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  requirePermission(P.FINANCE_RECONCILE),
   adminBankReconciliationController.listBankReconciliation
 );
 
@@ -602,32 +603,52 @@ router.post(
 );
 
 /*
+ * Fraud & Risk Command Center is monitoring-first. It has no route that
+ * changes customer, wallet, transaction, or provider state.
+ */
+const fraudRiskView = [protect, loadStaffRole, requirePermission(P.FRAUD_RISK_VIEW)];
+router.get("/fraud-risk/overview", ...fraudRiskView, fraudRiskController.overview);
+router.get("/fraud-risk/alerts", ...fraudRiskView, fraudRiskController.list);
+router.get("/fraud-risk/alerts/:alertId", ...fraudRiskView, fraudRiskController.detail);
+router.get("/fraud-risk/alerts/:alertId/audit", ...fraudRiskView, fraudRiskController.auditHistory);
+router.get("/fraud-risk/customers/:customerId", ...fraudRiskView, fraudRiskController.customerProfile);
+router.get("/fraud-risk/analytics", ...fraudRiskView, fraudRiskController.analytics);
+router.post("/fraud-risk/evaluate", protect, loadStaffRole, requirePermission(P.FRAUD_RISK_INVESTIGATE), fraudRiskController.evaluate);
+router.post("/fraud-risk/alerts/:alertId/case", protect, loadStaffRole, requireAnyPermission(P.FRAUD_RISK_INVESTIGATE, P.FRAUD_RISK_ASSIGN, P.FRAUD_RISK_RESOLVE), fraudRiskController.mutate);
+router.get("/fraud-risk/rules", ...fraudRiskView, fraudRiskController.rules);
+router.patch("/fraud-risk/rules/:ruleId", protect, loadStaffRole, requirePermission(P.FRAUD_RISK_RULES_MANAGE), fraudRiskController.updateRule);
+router.post("/fraud-risk/export.csv", protect, loadStaffRole, requirePermission(P.FRAUD_RISK_EXPORT), fraudRiskController.exportCsv);
+router.post("/fraud-risk/restrict", protect, loadStaffRole, requirePermission(P.FRAUD_RISK_RESTRICT), fraudRiskController.restrictUnsupported);
+
+/*
  * Fintech operational workspaces. All mutations carry immutable AdminAuditLog
  * entries and each financial action requires an idempotency key.
  */
-router.get("/fintech-operations/customers", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.searchCustomers);
-router.get("/fintech-operations/customers/:userId", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.getCustomerOperations);
-router.post("/fintech-operations/restrictions", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.createRestriction);
-router.post("/fintech-operations/restrictions/:restrictionId/remove", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.removeRestriction);
-router.get("/fintech-operations/wallet-holds", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listWalletHolds);
-router.post("/fintech-operations/wallet-holds", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.createWalletHold);
-router.post("/fintech-operations/wallet-holds/:holdId/release", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.releaseWalletHold);
-router.get("/fintech-operations/failed-transactions", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFailedTransactions);
-router.post("/fintech-operations/failed-transactions/:transactionId/investigate", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.markTransactionInvestigation);
-router.get("/fintech-operations/virtual-accounts", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listVirtualAccounts);
-router.get("/fintech-operations/dedicated-accounts", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listDedicatedAccounts);
-router.get("/fintech-operations/bank-partners", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listBankPartners);
-router.get("/fintech-operations/routing-status", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listRoutingStatus);
-router.get("/fintech-operations/fraud-alerts", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFraudAlerts);
-router.post("/fintech-operations/fraud-alerts/:alertId", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.updateFraudAlert);
-router.get("/fintech-operations/watchlist", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listWatchlist);
-router.post("/fintech-operations/watchlist", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.createWatchlistEntry);
-router.post("/fintech-operations/watchlist/:entryId/clear", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.clearWatchlistEntry);
-router.get("/fintech-operations/login-risk", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listLoginRisk);
-router.get("/fintech-operations/financial-actions", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listFinancialActions);
-router.post("/fintech-operations/financial-actions/:type", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.executeFinancialAction);
-router.get("/fintech-operations/disputes", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.listDisputes);
-router.post("/fintech-operations/disputes", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.createDispute);
-router.post("/fintech-operations/disputes/:disputeId", protect, adminOnly("HEAD_OFFICE"), fintechOperationsController.updateDispute);
+const financeViewAccess = [protect, loadStaffRole, requirePermission(P.FINANCE_VIEW)];
+const financeApproveAccess = [protect, loadStaffRole, requirePermission(P.FINANCE_APPROVE)];
+router.get("/fintech-operations/customers", ...financeViewAccess, fintechOperationsController.searchCustomers);
+router.get("/fintech-operations/customers/:userId", ...financeViewAccess, fintechOperationsController.getCustomerOperations);
+router.post("/fintech-operations/restrictions", ...financeApproveAccess, fintechOperationsController.createRestriction);
+router.post("/fintech-operations/restrictions/:restrictionId/remove", ...financeApproveAccess, fintechOperationsController.removeRestriction);
+router.get("/fintech-operations/wallet-holds", ...financeViewAccess, fintechOperationsController.listWalletHolds);
+router.post("/fintech-operations/wallet-holds", ...financeApproveAccess, fintechOperationsController.createWalletHold);
+router.post("/fintech-operations/wallet-holds/:holdId/release", ...financeApproveAccess, fintechOperationsController.releaseWalletHold);
+router.get("/fintech-operations/failed-transactions", ...financeViewAccess, fintechOperationsController.listFailedTransactions);
+router.post("/fintech-operations/failed-transactions/:transactionId/investigate", ...financeApproveAccess, fintechOperationsController.markTransactionInvestigation);
+router.get("/fintech-operations/virtual-accounts", ...financeViewAccess, fintechOperationsController.listVirtualAccounts);
+router.get("/fintech-operations/dedicated-accounts", ...financeViewAccess, fintechOperationsController.listDedicatedAccounts);
+router.get("/fintech-operations/bank-partners", ...financeViewAccess, fintechOperationsController.listBankPartners);
+router.get("/fintech-operations/routing-status", ...financeViewAccess, fintechOperationsController.listRoutingStatus);
+router.get("/fintech-operations/fraud-alerts", ...financeViewAccess, fintechOperationsController.listFraudAlerts);
+router.post("/fintech-operations/fraud-alerts/:alertId", ...financeApproveAccess, fintechOperationsController.updateFraudAlert);
+router.get("/fintech-operations/watchlist", ...financeViewAccess, fintechOperationsController.listWatchlist);
+router.post("/fintech-operations/watchlist", ...financeApproveAccess, fintechOperationsController.createWatchlistEntry);
+router.post("/fintech-operations/watchlist/:entryId/clear", ...financeApproveAccess, fintechOperationsController.clearWatchlistEntry);
+router.get("/fintech-operations/login-risk", ...financeViewAccess, fintechOperationsController.listLoginRisk);
+router.get("/fintech-operations/financial-actions", ...financeViewAccess, fintechOperationsController.listFinancialActions);
+router.post("/fintech-operations/financial-actions/:type", ...financeApproveAccess, fintechOperationsController.executeFinancialAction);
+router.get("/fintech-operations/disputes", ...financeViewAccess, fintechOperationsController.listDisputes);
+router.post("/fintech-operations/disputes", ...financeApproveAccess, fintechOperationsController.createDispute);
+router.post("/fintech-operations/disputes/:disputeId", ...financeApproveAccess, fintechOperationsController.updateDispute);
 
 module.exports = router;
