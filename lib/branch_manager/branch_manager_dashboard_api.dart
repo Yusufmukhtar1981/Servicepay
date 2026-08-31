@@ -1,4 +1,7 @@
-import '../admin/admin_branch_management_api.dart';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Read-only, server-scoped data source for a Branch Manager.
 ///
@@ -29,19 +32,21 @@ class BranchManagerDashboard {
 }
 
 class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
-  BranchManagerDashboardHttpApi({AdminBranchManagementApi? api})
-      : _api = api ?? AdminBranchManagementHttpApi();
+  BranchManagerDashboardHttpApi({
+    http.Client? client,
+    this.baseUrl = 'https://api.servicepay.ng/api',
+    this.preferencesLoader = SharedPreferences.getInstance,
+  }) : _client = client ?? http.Client();
 
-  final AdminBranchManagementApi _api;
+  final http.Client _client;
+  final String baseUrl;
+  final Future<SharedPreferences> Function() preferencesLoader;
 
   @override
   Future<BranchManagerDashboard> loadDashboard() async {
-    final Map<String, dynamic> data = await _api.dashboard();
-    final String branchId = (data['branchId'] ?? '').toString();
-    final Map<String, dynamic> detail =
-        branchId.isEmpty ? <String, dynamic>{} : await _api.branch(branchId);
-    final Map<String, dynamic> branch =
-        _map(data['branch']).isNotEmpty ? _map(data['branch']) : detail;
+    final Map<String, dynamic> response = await _requestDashboard();
+    final Map<String, dynamic> data = _map(response['dashboard']);
+    final Map<String, dynamic> branch = _map(data['branch']);
     final Map<String, dynamic> metrics = _map(data['metrics']);
     return BranchManagerDashboard(
       branch: branch,
@@ -52,6 +57,41 @@ class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
       reports: _reportRows(metrics),
       modules: _modules(data['assignedModules'] ?? branch['assignedModules']),
     );
+  }
+
+  Future<Map<String, dynamic>> _requestDashboard() async {
+    final SharedPreferences prefs = await preferencesLoader();
+    final String token = (prefs.getString('auth_token') ??
+            prefs.getString('access_token') ??
+            prefs.getString('token') ??
+            '')
+        .trim();
+    if (token.isEmpty) {
+      throw Exception('Your session has expired. Please sign in again.');
+    }
+    final String root =
+        baseUrl.replaceFirst(RegExp(r'/+$'), '').endsWith('/api')
+            ? baseUrl.replaceFirst(RegExp(r'/+$'), '')
+            : '${baseUrl.replaceFirst(RegExp(r'/+$'), '')}/api';
+    final http.Response response = await _client.get(
+      Uri.parse('$root/branches/dashboard'),
+      headers: <String, String>{
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      decoded = null;
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(decoded is Map && decoded['message'] != null
+          ? decoded['message'].toString()
+          : 'Unable to load your branch dashboard.');
+    }
+    return _map(decoded);
   }
 
   static Map<String, dynamic> _map(dynamic value) =>
