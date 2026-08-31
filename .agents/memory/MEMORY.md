@@ -15,3 +15,4 @@
 - [Render Node runtime precedence](render-node-runtime-precedence.md) — Service-level NODE_VERSION overrides repository runtime pins; verify effective build logs before changing lockfiles.
 - [Android build resource pressure](android-build-resource-pressure.md) — Run release APK builds without concurrent Flutter workflows; container restarts can interrupt Gradle.
 - [Voice call lifecycle atomicity](voice-call-lifecycle-atomicity.md) — Accepted state, busy leases, and client terminal cleanup must move together.
+- [Split frontend dependencies](split-frontend-dependencies.md) — Customer code must not import Admin-only files because production builds come from separate repositories.
