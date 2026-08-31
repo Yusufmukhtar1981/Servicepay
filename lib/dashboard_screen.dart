@@ -53,6 +53,7 @@ import 'marketplace/marketplace_screen.dart';
 import 'marketplace/marketplace_my_orders_screen.dart';
 import 'trust/trust_dashboard_entry.dart';
 import 'trust/trust_search_screen.dart';
+import 'voice_call_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -1129,6 +1130,20 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   List<_DashboardService> moreServices() {
     return <_DashboardService>[
+      _DashboardService(
+        title: 'ServicePay Call',
+        subtitle: 'Private customer calling',
+        icon: Icons.call_rounded,
+        iconColor: const Color(0xFF14733E),
+        backgroundColor: const Color(0xFFE4F3E9),
+        keywords: 'voice call private customer phone audio',
+        onTap: () {
+          openScreen(
+            const VoiceCallScreen(),
+            routeName: '/calls',
+          );
+        },
+      ),
       _DashboardService(
         title: 'ServicePay Solar',
         subtitle: 'Solar power & finance',

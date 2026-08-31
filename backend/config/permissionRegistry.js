@@ -92,6 +92,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("COMMISSIONS_VIEW", "commissions.view", "COMMISSIONS", "View commissions", "View product and partner commission settings."),
   permission("COMMISSIONS_MANAGE", "commissions.manage", "COMMISSIONS", "Manage commissions", "Change product commission settings.", "CRITICAL"),
   permission("NOTIFICATIONS_VIEW", "notifications.view", "COMMUNICATIONS", "View communication history", "View notification and email delivery history."),
+  permission("CALLS_VIEW", "calls.view", "COMMUNICATIONS", "View call metadata", "View read-only customer call metadata."),
   permission("NOTIFICATIONS_CREATE", "notifications.create", "COMMUNICATIONS", "Create notifications", "Create targeted customer notifications.", "PRIVILEGED"),
   permission("NOTIFICATIONS_SEND", "notifications.send", "COMMUNICATIONS", "Send broadcasts", "Send notification or email broadcasts.", "CRITICAL"),
   permission("COMMUNICATIONS_VIEW", "communications.view", "COMMUNICATIONS", "View communications", "Open the Admin communications workspace."),

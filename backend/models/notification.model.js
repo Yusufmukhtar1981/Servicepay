@@ -46,6 +46,7 @@ const notificationSchema = new mongoose.Schema(
         "WITHDRAWAL",
         "PAYMENT",
         "SYSTEM",
+        "CALL",
       ],
       default: "GENERAL",
     },

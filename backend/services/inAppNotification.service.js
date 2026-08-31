@@ -24,6 +24,7 @@ const ALLOWED_TYPES = new Set([
   "WITHDRAWAL",
   "PAYMENT",
   "SYSTEM",
+  "CALL",
 ]);
 
 const TRANSACTION_TYPES = new Set([
