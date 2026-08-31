@@ -46,16 +46,29 @@ Map<String, dynamic> serializeCandidate(
 bool callingAvailableFromConfig(Map<String, dynamic> config) =>
     config['callingAvailable'] == true;
 
+bool shouldNotifyTerminal({
+  required bool remoteTerminal,
+  required bool intentionalTeardown,
+  required bool terminalSent,
+  required bool callCreated,
+}) =>
+    callCreated && !remoteTerminal && !intentionalTeardown && !terminalSent;
+
+bool shouldTerminateServerOnNegotiationFailure(bool accepted, String callId) =>
+    accepted && callId.trim().isNotEmpty;
+
 class CallRecord {
   const CallRecord({
-    required this.id,
+    required this.callId,
+    required this.peerId,
     required this.name,
     required this.phone,
     required this.status,
     required this.createdAt,
   });
 
-  final String id;
+  final String callId;
+  final String peerId;
   final String name;
   final String phone;
   final String status;
@@ -70,7 +83,9 @@ class CallRecord {
     final Map<String, dynamic> nested =
         person is Map ? Map<String, dynamic>.from(person) : <String, dynamic>{};
     return CallRecord(
-      id: (json['_id'] ?? json['id'] ?? json['callId'] ?? '').toString(),
+      callId: (json['callId'] ?? json['_id'] ?? json['id'] ?? '').toString(),
+      peerId:
+          (json['peerId'] ?? nested['id'] ?? nested['_id'] ?? '').toString(),
       name: (json['name'] ??
               json['fullName'] ??
               nested['fullName'] ??
@@ -90,5 +105,57 @@ class CallRecord {
         name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
     if (words.isEmpty) return '?';
     return words.take(2).map((e) => e[0].toUpperCase()).join();
+  }
+}
+
+enum CallRole { caller, callee }
+
+class CallLifecycleCoordinator {
+  CallLifecycleCoordinator(this.role);
+  final CallRole role;
+  VoiceCallState state = VoiceCallState.idle;
+  bool accepted = false;
+  bool peerConnected = false;
+
+  bool get canOffer => role == CallRole.caller && accepted;
+  String hangupAction() => state == VoiceCallState.ringing
+      ? (role == CallRole.callee ? 'DECLINED' : 'CANCELLED')
+      : 'ENDED';
+
+  VoiceCallState receive(String raw) {
+    final value = raw.toUpperCase();
+    if (value == 'RINGING' || value == 'INCOMING') {
+      state = VoiceCallState.ringing;
+    } else if (value == 'ACCEPTED') {
+      accepted = true;
+      state = VoiceCallState.ringing;
+    } else if (value == 'CONNECTED' && accepted) {
+      peerConnected = true;
+      state = VoiceCallState.active;
+    } else if ({'DECLINED', 'CANCELLED', 'ENDED', 'MISSED', 'BUSY', 'FAILED'}
+        .contains(value)) {
+      state = VoiceCallState.ended;
+    }
+    return state;
+  }
+
+  bool acknowledgeAccepted(Map<dynamic, dynamic>? ack) {
+    if (ack?['ok'] != true || ack?['state']?.toString() != 'ACCEPTED') {
+      return false;
+    }
+    accepted = true;
+    state = VoiceCallState.ringing;
+    return true;
+  }
+
+  VoiceCallState connection(String value) {
+    final normalized = value.toUpperCase();
+    if (normalized == 'CONNECTED' || normalized == 'COMPLETED') {
+      peerConnected = true;
+      state = VoiceCallState.active;
+    } else if (normalized == 'FAILED' || normalized == 'CLOSED') {
+      state = VoiceCallState.ended;
+    }
+    return state;
   }
 }

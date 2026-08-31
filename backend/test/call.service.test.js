@@ -16,8 +16,10 @@ for (const model of [CallSession, CallPrivacy, CallLock, Notification]) {
   originals[model.modelName] = {};
   for (const key of ["find", "findOne", "findById", "findOneAndUpdate", "create", "deleteOne", "deleteMany", "updateOne"]) originals[model.modelName][key] = model[key];
 }
+CallLock.find = () => lean([]);
 test.after(() => {
   for (const model of [CallSession, CallPrivacy, CallLock, Notification]) Object.assign(model, originals[model.modelName]);
+  calls.__resetTransactionRunnerForTests();
 });
 
 test("create rejects self calls before persistence", async () => {
@@ -41,6 +43,70 @@ test("busy lock failure removes partial lock and orphan session", async () => {
   CallSession.deleteOne = async () => { deletedSessions++; };
   await assert.rejects(() => calls.createCall(A, B), { status: 409 });
   assert.equal(deletedLocks, 1); assert.equal(deletedSessions, 1);
+});
+
+test("acceptance extends both participant locks past the ringing deadline", async () => {
+  // Keep this safely in the future: a 1ms deadline can legitimately expire
+  // between fixture construction and transition(), which correctly invokes the
+  // missed-call notification path and previously reached real Mongoose I/O.
+  const call = { _id: oid(), callerId: A, calleeId: B, state: "RINGING", expiresAt: new Date(Date.now() + 60_000) };
+  CallSession.findById = async () => call;
+  CallSession.findOneAndUpdate = async (_filter, update) => ({ ...call, ...update.$set });
+  Notification.updateOne = async () => {};
+  const transactionSession = { marker: "transaction-session" };
+  let committed = false;
+  calls.__setTransactionRunnerForTests(async (work) => {
+    const result = await work(transactionSession);
+    committed = true;
+    return result;
+  });
+  let lockUpdate;
+  CallLock.updateMany = async (filter, update, options) => { lockUpdate = { filter, update, options }; return { matchedCount: 2, modifiedCount: 2 }; };
+  const accepted = await calls.transition(call._id, B, "ACCEPTED");
+  assert.equal(accepted.state, "ACCEPTED");
+  assert.equal(committed, true);
+  assert.equal(lockUpdate.options.session, transactionSession);
+  assert.ok(lockUpdate.update.$set.expiresAt > call.expiresAt);
+  assert.equal(lockUpdate.filter.userId.$in.length, 2);
+});
+
+test("acceptance transaction rejects and rolls back when both locks are not updated", async () => {
+  const call = { _id: oid(), callerId: A, calleeId: B, state: "RINGING", expiresAt: new Date(Date.now() + 60_000) };
+  CallSession.findById = async () => call;
+  CallSession.findOneAndUpdate = async (_filter, update) => ({ ...call, ...update.$set });
+  CallLock.updateMany = async () => ({ matchedCount: 1, modifiedCount: 1 });
+  let rolledBack = false;
+  calls.__setTransactionRunnerForTests(async (work) => {
+    try { return await work({}); } catch (error) { rolledBack = true; throw error; }
+  });
+  await assert.rejects(() => calls.transition(call._id, B, "ACCEPTED"), { status: 409 });
+  assert.equal(rolledBack, true);
+});
+
+test("expired ringing lock cleanup resolves its call before a new lease", async () => {
+  const stale = { callId: oid() };
+  const expired = { _id: stale.callId, callerId: A, calleeId: B, state: "RINGING", expiresAt: new Date(Date.now() - 1) };
+  CallLock.find = () => lean([stale]);
+  CallSession.findById = async () => expired;
+  CallSession.findOneAndUpdate = async () => ({ ...expired, state: "MISSED" });
+  let removed = 0; CallLock.deleteMany = async () => { removed++; };
+  Notification.updateOne = async () => {};
+  await calls.clearExpiredLocks([A, B]);
+  assert.equal(removed, 1);
+  CallLock.find = () => lean([]);
+});
+
+test("expired accepted lease is conditionally ended and released", async () => {
+  const stale = { callId: oid() };
+  const accepted = { _id: stale.callId, callerId: A, calleeId: B, state: "ACCEPTED", expiresAt: new Date(Date.now() - 9999), activeExpiresAt: new Date(Date.now() - 1) };
+  CallLock.find = () => lean([stale]);
+  CallSession.findById = async () => accepted;
+  CallSession.findOneAndUpdate = async (_filter, update) => ({ ...accepted, ...update.$set });
+  let removed = 0; CallLock.deleteMany = async () => { removed++; };
+  const changed = await calls.clearExpiredLocks([A, B]);
+  assert.equal(changed, undefined);
+  assert.equal(removed, 1);
+  CallLock.find = () => lean([]);
 });
 
 test("idempotency returns existing call without acquiring locks", async () => {

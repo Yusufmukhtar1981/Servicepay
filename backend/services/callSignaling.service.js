@@ -11,7 +11,28 @@ const validId = (v) => /^[a-f\d]{24}$/i.test(String(v || ""));
 const size = (v) => { try { return Buffer.byteLength(JSON.stringify(v)); } catch (_) { return Infinity; } };
 const failure = (ack, message) => typeof ack === "function" && ack({ ok: false, message });
 
+function assertSignalingTopology(env = process.env, { log = console.info } = {}) {
+  if (String(env.CALL_SIGNALING_MULTI_INSTANCE || "").toLowerCase() === "true") {
+    throw new Error("Legacy CALL_SIGNALING_MULTI_INSTANCE=true is unsupported without a real shared Socket.IO adapter.");
+  }
+  const production = env.NODE_ENV === "production";
+  const configured = String(env.CALL_SIGNALING_MODE || "").trim().toLowerCase();
+  if (production && !configured) {
+    throw new Error("Production calling requires explicit CALL_SIGNALING_MODE=single-instance.");
+  }
+  const mode = configured || "single-instance";
+  // Only this topology is implemented. Do not accept aspirational shared modes.
+  if (mode !== "single-instance") {
+    throw new Error(`Unsupported CALL_SIGNALING_MODE=${mode}; no shared Socket.IO adapter is configured.`);
+  }
+  if (!production && !configured) {
+    log("[CALLING] Development signaling mode: single-instance.");
+  }
+  return mode;
+}
+
 function attachCallSignaling(server) {
+  assertSignalingTopology();
   const io = new Server(server, { cors: { origin: process.env.SOCKET_CORS_ORIGIN ? process.env.SOCKET_CORS_ORIGIN.split(",") : true, credentials: true }, maxHttpBufferSize: 32 * 1024 });
   io.use(async (socket, next) => {
     try {
@@ -67,8 +88,14 @@ function attachCallSignaling(server) {
       }));
     });
   });
-  const timer = setInterval(() => calls.cleanupExpired().catch(() => {}), Math.min(calls.RING_MS, 30_000));
+  const timer = setInterval(() => calls.cleanupExpired().then((changed) => {
+    changed.forEach((call) => {
+      const event = { callId: String(call._id), state: call.state, endReason: call.endReason || "" };
+      io.to(`call-user:${call.callerId}`).emit("call:state", event);
+      io.to(`call-user:${call.calleeId}`).emit("call:state", event);
+    });
+  }).catch(() => {}), Math.min(calls.RING_MS, 30_000));
   timer.unref();
   return io;
 }
-module.exports = { attachCallSignaling };
+module.exports = { attachCallSignaling, assertSignalingTopology };

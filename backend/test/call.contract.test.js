@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const presence = require("../services/callPresence.service");
+const { assertSignalingTopology } = require("../services/callSignaling.service");
 
 const read = (file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8");
 
@@ -46,6 +47,33 @@ test("socket contract has JWT/version guards and bounded SDP ICE member relay", 
   assert.match(source, /includes\(socket\.userId\)/);
   assert.match(source, /call:sdp/);
   assert.match(source, /call:ice/);
+});
+
+test("timeout propagation and multi-instance protection are explicit", () => {
+  const source = read("services/callSignaling.service.js");
+  assert.match(source, /cleanupExpired\(\)\.then/);
+  assert.match(source, /call-user:\$\{call\.callerId\}/);
+  assert.match(source, /call-user:\$\{call\.calleeId\}/);
+  assert.match(source, /CALL_SIGNALING_MULTI_INSTANCE/);
+  assert.match(source, /shared Socket\.IO adapter/);
+});
+
+test("production signaling requires explicit single-instance topology", () => {
+  assert.throws(
+    () => assertSignalingTopology({ NODE_ENV: "production" }, { log: () => {} }),
+    /requires explicit CALL_SIGNALING_MODE=single-instance/
+  );
+  assert.equal(
+    assertSignalingTopology({ NODE_ENV: "production", CALL_SIGNALING_MODE: "single-instance" }, { log: () => {} }),
+    "single-instance"
+  );
+});
+
+test("legacy multi-instance signaling remains fail-closed", () => {
+  assert.throws(
+    () => assertSignalingTopology({ NODE_ENV: "development", CALL_SIGNALING_MULTI_INSTANCE: "true" }, { log: () => {} }),
+    /unsupported without a real shared Socket.IO adapter/
+  );
 });
 
 test("safe search does not project phone or email and guards privacy", () => {

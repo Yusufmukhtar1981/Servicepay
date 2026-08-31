@@ -15,6 +15,7 @@ const callSessionSchema = new mongoose.Schema({
   endedAt: { type: Date, default: null },
   endReason: { type: String, trim: true, maxlength: 80, default: "" },
   expiresAt: { type: Date, required: true, index: true },
+  activeExpiresAt: { type: Date, default: null, index: true },
   requestKey: { type: String, trim: true, maxlength: 120, default: undefined },
 }, { timestamps: true, strict: "throw" });
 

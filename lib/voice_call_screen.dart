@@ -29,6 +29,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   VoiceCallState _state = VoiceCallState.idle;
   CallRecord? _selected;
   String _callId = '';
+  String _peerId = '';
+  CallLifecycleCoordinator? _coordinator;
+  Timer? _ringTimer;
+  Timer? _disconnectTimer;
   String _error = '';
   int _seconds = 0;
   bool _muted = false;
@@ -40,6 +44,9 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   final List<RTCIceCandidate> _pendingIce = <RTCIceCandidate>[];
   bool _remoteDescriptionSet = false;
   bool _remoteEnd = false;
+  bool _intentionalTeardown = false;
+  bool _terminalSent = false;
+  Map<String, dynamic>? _queuedDescription;
 
   @override
   void initState() {
@@ -53,7 +60,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   void dispose() {
     _search.dispose();
     _durationTimer?.cancel();
-    _cleanup();
+    _ringTimer?.cancel();
+    _disconnectTimer?.cancel();
+    _cleanCall();
+    _socket?.dispose();
+    _socket = null;
     if (widget.client == null) _client.close();
     super.dispose();
   }
@@ -71,10 +82,22 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       'autoConnect': false,
       'auth': {'token': token},
     });
-    _socket!.on('call:incoming', _incoming);
+    _socket!.on('call:incoming', (payload) {
+      _incoming(payload)
+          .catchError((_) => _setError('Unable to receive call.'));
+    });
     _socket!.on('call:state', _remoteState);
-    _socket!.on('call:sdp', _remoteSdp);
-    _socket!.on('call:ice', _remoteIce);
+    _socket!.on('call:sdp', (payload) {
+      _remoteSdp(payload).catchError((_) => _setError(
+          'Call negotiation failed.',
+          terminateServer: shouldTerminateServerOnNegotiationFailure(
+              _coordinator?.accepted == true, _callId)));
+    });
+    _socket!.on('call:ice', (payload) {
+      _remoteIce(payload).catchError((_) => _setError('Call connection failed.',
+          terminateServer: shouldTerminateServerOnNegotiationFailure(
+              _coordinator?.accepted == true, _callId)));
+    });
     _socket!.connect();
   }
 
@@ -103,25 +126,35 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     }
   }
 
-  void _incoming(dynamic payload) {
+  Future<void> _incoming(dynamic payload) async {
     if (payload is! Map || !mounted) {
       return;
     }
+    await _resetPerCallState();
     _callId = (payload['id'] ?? payload['callId'] ?? '').toString();
     final peer = payload['peerId']?.toString() ?? '';
     _selected = CallRecord(
-        id: peer,
+        callId: _callId,
+        peerId: peer,
         name: 'ServicePay customer',
         phone: '',
         status: 'incoming',
         createdAt: null);
+    _peerId = peer;
+    _coordinator = CallLifecycleCoordinator(CallRole.callee);
     setState(() => _state = VoiceCallState.incoming);
   }
 
   void _remoteState(dynamic payload) {
     if (payload is! Map || payload['callId']?.toString() != _callId) return;
-    final state = voiceCallStateFromPayload(payload['state']);
+    final state = _coordinator?.receive(payload['state']?.toString() ?? '') ??
+        voiceCallStateFromPayload(payload['state']);
     if (state == VoiceCallState.active) _activate();
+    if (state == VoiceCallState.ringing &&
+        _coordinator?.role == CallRole.caller &&
+        _coordinator?.canOffer == true) {
+      _prepareCallerOffer();
+    }
     if (state == VoiceCallState.ended) {
       _remoteEnd = true;
       _end();
@@ -129,30 +162,35 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   }
 
   Future<void> _remoteSdp(dynamic payload) async {
-    if (payload is! Map ||
-        payload['callId']?.toString() != _callId ||
-        _peer == null) {
-      return;
-    }
-    final raw = payload['description'];
-    if (raw is! Map) {
-      return;
-    }
-    final description =
-        RTCSessionDescription(raw['sdp']?.toString(), raw['type']?.toString());
-    await _peer!.setRemoteDescription(description);
-    _remoteDescriptionSet = true;
-    for (final candidate in _pendingIce) {
-      await _peer!.addCandidate(candidate);
-    }
-    _pendingIce.clear();
-    if (description.type == 'offer') {
-      final answer = await _peer!.createAnswer();
-      await _peer!.setLocalDescription(answer);
-      _socket?.emit('call:sdp', {
-        'callId': _callId,
-        'description': {'sdp': answer.sdp, 'type': answer.type}
-      });
+    try {
+      if (payload is! Map || payload['callId']?.toString() != _callId) {
+        return;
+      }
+      final raw = payload['description'];
+      if (raw is! Map || _peer == null) {
+        _queuedDescription = raw is Map ? Map<String, dynamic>.from(raw) : null;
+        return;
+      }
+      final description = RTCSessionDescription(
+          raw['sdp']?.toString(), raw['type']?.toString());
+      await _peer!.setRemoteDescription(description);
+      _remoteDescriptionSet = true;
+      for (final candidate in _pendingIce) {
+        await _peer!.addCandidate(candidate);
+      }
+      _pendingIce.clear();
+      if (description.type == 'offer') {
+        final answer = await _peer!.createAnswer();
+        await _peer!.setLocalDescription(answer);
+        _socket?.emit('call:sdp', {
+          'callId': _callId,
+          'description': {'sdp': answer.sdp, 'type': answer.type}
+        });
+      }
+    } catch (_) {
+      _setError('Call negotiation failed.',
+          terminateServer: shouldTerminateServerOnNegotiationFailure(
+              _coordinator?.accepted == true, _callId));
     }
   }
 
@@ -215,21 +253,15 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           : _availabilityReason);
       return;
     }
+    await _resetPerCallState();
     setState(() {
       _selected = record;
+      _peerId = record.peerId;
+      _coordinator = CallLifecycleCoordinator(CallRole.caller);
       _state = VoiceCallState.ringing;
       _error = '';
     });
     try {
-      _localStream = await navigator.mediaDevices
-          .getUserMedia({'audio': true, 'video': false});
-      _peer = await createPeerConnection(_iceServers);
-      _peer!.onIceCandidate = (candidate) => _socket?.emit(
-          'call:ice', {'callId': _callId, 'candidate': candidate.toMap()});
-      _peer!.onTrack = (_) {};
-      for (final track in _localStream!.getAudioTracks()) {
-        await _peer!.addTrack(track, _localStream!);
-      }
       final token = await _token();
       if (token == null) throw StateError('Please sign in again.');
       final created = await _client.post(
@@ -238,7 +270,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token'
         },
-        body: jsonEncode({'calleeId': record.id}),
+        body: jsonEncode({'calleeId': record.peerId}),
       );
       if (created.statusCode < 200 || created.statusCode >= 300) {
         throw StateError('This customer is not available for a call.');
@@ -247,12 +279,9 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       if (body is Map && body['call'] is Map) {
         _callId = (body['call']['id'] ?? body['call']['_id'] ?? '').toString();
       }
-      final offer = await _peer!.createOffer();
-      await _peer!.setLocalDescription(offer);
-      _socket?.emit('call:sdp', {
-        'callId': _callId,
-        'description': {'sdp': offer.sdp, 'type': offer.type}
-      });
+      _ringUntil(body is Map && body['call'] is Map
+          ? body['call']['expiresAt']
+          : null);
     } on UnsupportedError {
       _setError('Voice calling is not supported on this platform.');
     } catch (_) {
@@ -266,14 +295,23 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       _localStream = await navigator.mediaDevices
           .getUserMedia({'audio': true, 'video': false});
       _peer = await createPeerConnection(_iceServers);
+      _attachConnectionCallbacks();
       _peer!.onIceCandidate = (candidate) => _socket?.emit(
           'call:ice', {'callId': _callId, 'candidate': candidate.toMap()});
       _peer!.onTrack = (_) {};
       for (final track in _localStream!.getAudioTracks()) {
         await _peer!.addTrack(track, _localStream!);
       }
-      _socket?.emit('call:state', {'callId': _callId, 'state': 'ACCEPTED'});
-      _activate();
+      _socket
+          ?.emitWithAck('call:state', {'callId': _callId, 'state': 'ACCEPTED'},
+              ack: (dynamic response) {
+        final ack = response is Map ? response : <dynamic, dynamic>{};
+        if (_coordinator?.acknowledgeAccepted(ack) != true) {
+          _setError('Unable to accept this call. Please try again.');
+          return;
+        }
+        if (mounted) setState(() => _state = VoiceCallState.ringing);
+      });
     } on UnsupportedError {
       _setError('Voice calling is not supported on this platform.');
     } catch (_) {
@@ -291,8 +329,9 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     });
   }
 
-  void _setError(String message) {
-    _cleanup();
+  void _setError(String message, {bool terminateServer = false}) {
+    if (terminateServer) _end();
+    _cleanCall();
     if (mounted) {
       setState(() {
         _state = VoiceCallState.error;
@@ -302,17 +341,22 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   }
 
   void _end() {
-    if (_callId.isNotEmpty && !_remoteEnd) {
-      _socket?.emit('call:state', {'callId': _callId, 'state': 'ENDED'});
+    if (shouldNotifyTerminal(
+        remoteTerminal: _remoteEnd,
+        intentionalTeardown: _intentionalTeardown,
+        terminalSent: _terminalSent,
+        callCreated: _callId.isNotEmpty)) {
+      final action = _coordinator?.hangupAction() ?? 'ENDED';
+      _terminalSent = true;
+      _notifyTerminal(action);
     }
     _durationTimer?.cancel();
-    _cleanup();
+    _cleanCall();
     if (mounted) setState(() => _state = VoiceCallState.ended);
   }
 
-  Future<void> _cleanup() async {
-    _socket?.dispose();
-    _socket = null;
+  Future<void> _cleanCall() async {
+    _intentionalTeardown = true;
     for (final track in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
       await track.stop();
     }
@@ -323,6 +367,118 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     _pendingIce.clear();
     _remoteDescriptionSet = false;
     _remoteEnd = false;
+    _disconnectTimer?.cancel();
+  }
+
+  Future<void> _resetPerCallState() async {
+    await _cleanCall();
+    _durationTimer?.cancel();
+    _ringTimer?.cancel();
+    _disconnectTimer?.cancel();
+    _durationTimer = null;
+    _ringTimer = null;
+    _disconnectTimer = null;
+    _queuedDescription = null;
+    _pendingIce.clear();
+    _remoteDescriptionSet = false;
+    _seconds = 0;
+    _muted = false;
+    _speaker = false;
+    _remoteEnd = false;
+    _intentionalTeardown = false;
+    _terminalSent = false;
+    _callId = '';
+    _peerId = '';
+    _coordinator = null;
+  }
+
+  Future<void> _notifyTerminal(String action) async {
+    bool acknowledged = false;
+    _socket?.emitWithAck('call:state', {'callId': _callId, 'state': action},
+        ack: (dynamic reply) {
+      acknowledged = reply is Map && reply['ok'] == true;
+    });
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (acknowledged || _callId.isEmpty) return;
+    try {
+      final token = await _token();
+      if (token == null) return;
+      await _client.post(Uri.parse('$apiBase/calls/$_callId/end'), headers: {
+        'Authorization': 'Bearer $token'
+      }).timeout(const Duration(seconds: 8));
+    } catch (_) {}
+  }
+
+  Future<void> _prepareCallerOffer() async {
+    if (_peer != null) return;
+    try {
+      _peer = await createPeerConnection(_iceServers);
+      _attachConnectionCallbacks();
+      _peer!.onIceCandidate = (candidate) => _socket?.emit(
+          'call:ice', {'callId': _callId, 'candidate': candidate.toMap()});
+      _peer!.onTrack = (_) {};
+      _localStream = await navigator.mediaDevices
+          .getUserMedia({'audio': true, 'video': false});
+      for (final track in _localStream!.getAudioTracks()) {
+        await _peer!.addTrack(track, _localStream!);
+      }
+      final offer = await _peer!.createOffer();
+      await _peer!.setLocalDescription(offer);
+      _socket?.emit('call:sdp',
+          serializeDescription(_callId, offer.type ?? 'offer', offer.sdp));
+      if (_queuedDescription != null) {
+        final queued = _queuedDescription;
+        _queuedDescription = null;
+        await _remoteSdp({'callId': _callId, 'description': queued});
+      }
+    } catch (_) {
+      _setError('Microphone access is required to place a call.',
+          terminateServer: shouldTerminateServerOnNegotiationFailure(
+              _coordinator?.accepted == true, _callId));
+    }
+  }
+
+  void _attachConnectionCallbacks() {
+    _peer!.onConnectionState = (state) => _handleConnectionState(state.name);
+    _peer!.onIceConnectionState = (state) => _handleConnectionState(state.name);
+  }
+
+  void _handleConnectionState(String raw) {
+    final state = raw.toUpperCase();
+    if (state == 'CONNECTED' || state == 'COMPLETED') {
+      _disconnectTimer?.cancel();
+      _coordinator?.connection('CONNECTED');
+      _activate();
+      return;
+    }
+    if (state == 'DISCONNECTED') {
+      _disconnectTimer?.cancel();
+      _disconnectTimer = Timer(const Duration(seconds: 8), () {
+        if (mounted) {
+          _setError('Call connection was lost.', terminateServer: true);
+        }
+      });
+      return;
+    }
+    if (state == 'FAILED' || state == 'CLOSED') {
+      _coordinator?.connection('FAILED');
+      _setError('Call connection failed.', terminateServer: true);
+    }
+  }
+
+  void _ringUntil(dynamic expiresAt) {
+    _ringTimer?.cancel();
+    final expiry = DateTime.tryParse(expiresAt?.toString() ?? '');
+    if (expiry == null) return;
+    final delay = expiry.difference(DateTime.now());
+    _ringTimer = Timer(delay.isNegative ? Duration.zero : delay, () {
+      if (mounted &&
+          (_state == VoiceCallState.ringing ||
+              _state == VoiceCallState.incoming)) {
+        _remoteEnd = true;
+        _end();
+      }
+    });
   }
 
   String _time() =>
@@ -378,7 +534,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     try {
       await _client.post(
           Uri.parse(
-              '$apiBase/calls/privacy/blocked/${Uri.encodeComponent(record.id)}'),
+              '$apiBase/calls/privacy/blocked/${Uri.encodeComponent(_peerId.isEmpty ? record.peerId : _peerId)}'),
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token'

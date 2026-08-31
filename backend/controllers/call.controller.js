@@ -5,6 +5,7 @@ const CallPrivacy = require("../models/callPrivacy.model");
 const calls = require("../services/call.service");
 const { scopeFilterFor } = require("../middleware/staffPermission.middleware");
 const { isOnline } = require("../services/callPresence.service");
+const { getCallConfig } = require("../services/turnCredential.service");
 
 const starts = new Map();
 const startAllowed = (userId) => {
@@ -13,24 +14,7 @@ const startAllowed = (userId) => {
 };
 const peerSummary = (user) => ({ id: String(user._id), fullName: user.fullName, profilePhotoUrl: user.profilePhotoUrl || "", online: isOnline(user._id) });
 
-const iceConfig = () => {
-  const stunUrls = String(process.env.CALL_STUN_URLS || "stun:stun.l.google.com:19302").split(",").map((v) => v.trim()).filter(Boolean);
-  const turnUrls = String(process.env.CALL_TURN_URLS || "").split(",").map((v) => v.trim()).filter(Boolean);
-  const turnUsername = String(process.env.CALL_TURN_USERNAME || "").trim();
-  const turnCredential = String(process.env.CALL_TURN_CREDENTIAL || "").trim();
-  const production = process.env.NODE_ENV === "production";
-  if (production && (!turnUrls.length || !turnUsername || !turnCredential)) {
-    return { callingAvailable: false, reason: "Calling is unavailable until TURN is configured.", iceServers: [] };
-  }
-  const iceServers = stunUrls.map((urls) => ({ urls }));
-  if (turnUrls.length) {
-    const server = { urls: turnUrls };
-    if (turnUsername && turnCredential) Object.assign(server, { username: turnUsername, credential: turnCredential });
-    iceServers.push(server);
-  }
-  return { callingAvailable: true, reason: "", iceServers };
-};
-exports.config = async (_req, res) => res.json({ success: true, ...iceConfig(), ringTimeoutMs: calls.RING_MS });
+exports.config = async (_req, res) => res.json({ success: true, ...(await getCallConfig()), ringTimeoutMs: calls.RING_MS });
 exports.search = async (req, res) => {
   const q = String(req.query.q || "").trim().slice(0, 80);
   if (q.length < 2) return res.status(400).json({ success: false, message: "Search needs at least two characters." });
@@ -88,6 +72,13 @@ exports.updatePrivacy = async (req, res) => {
   const enabled = req.body?.callsEnabled;
   if (typeof enabled !== "boolean") return res.status(400).json({ success: false, message: "callsEnabled must be boolean." });
   const privacy = await CallPrivacy.findOneAndUpdate({ userId: req.user._id }, { $set: { callsEnabled: enabled } }, { upsert: true, new: true });
+  if (!enabled) {
+    const terminated = (await calls.terminateForUser(req.user._id, "CALLS_DISABLED")).filter(Boolean);
+    for (const call of terminated) {
+      const peerId = String(call.callerId) === String(req.user._id) ? call.calleeId : call.callerId;
+      req.app.get("io")?.to(`call-user:${peerId}`).emit("call:state", { callId: String(call._id), state: call.state, endReason: "CALLS_DISABLED" });
+    }
+  }
   res.json({ success: true, privacy: { callsEnabled: privacy.callsEnabled, blockedUserIds: privacy.blockedUserIds.map(String) } });
 };
 exports.block = async (req, res) => {
@@ -95,6 +86,12 @@ exports.block = async (req, res) => {
   const target = await User.exists({ _id: req.params.userId, role: "CUSTOMER" });
   if (!target) return res.status(404).json({ success: false, message: "Customer not found." });
   await CallPrivacy.updateOne({ userId: req.user._id }, { $addToSet: { blockedUserIds: req.params.userId } }, { upsert: true });
+  const active = await CallSession.find({ state: { $in: calls.ACTIVE }, $or: [{ callerId: req.user._id, calleeId: req.params.userId }, { callerId: req.params.userId, calleeId: req.user._id }] });
+  for (const session of active) {
+    const call = await calls.transition(session._id, req.user._id, session.state === "RINGING" && String(session.calleeId) === String(req.user._id) ? "DECLINED" : (session.state === "RINGING" ? "CANCELLED" : "ENDED"), "BLOCKED");
+    const peerId = String(call.callerId) === String(req.user._id) ? call.calleeId : call.callerId;
+    req.app.get("io")?.to(`call-user:${peerId}`).emit("call:state", { callId: String(call._id), state: call.state, endReason: "BLOCKED" });
+  }
   res.json({ success: true });
 };
 exports.unblock = async (req, res) => { await CallPrivacy.updateOne({ userId: req.user._id }, { $pull: { blockedUserIds: req.params.userId } }); res.json({ success: true }); };

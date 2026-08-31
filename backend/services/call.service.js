@@ -5,9 +5,20 @@ const CallLock = require("../models/callLock.model");
 const Notification = require("../models/notification.model");
 
 const RING_MS = Math.max(10_000, Number(process.env.CALL_RING_TIMEOUT_MS) || 45_000);
+const MAX_DURATION_MS = Math.min(4 * 60 * 60 * 1000, Math.max(60_000, Number(process.env.CALL_MAX_DURATION_MS) || 60 * 60 * 1000));
 const ACTIVE = ["RINGING", "ACCEPTED"];
 const id = (value) => String(value);
 const participantQuery = (userId) => ({ $or: [{ callerId: userId }, { calleeId: userId }] });
+let transactionRunner = async (work) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => { result = await work(session); });
+    return result;
+  } finally {
+    await session.endSession();
+  }
+};
 
 const publicCall = (call, viewer) => ({
   id: id(call._id), state: call.state, startedAt: call.startedAt, answeredAt: call.answeredAt,
@@ -18,6 +29,21 @@ const publicCall = (call, viewer) => ({
 
 async function releaseLocks(call) {
   await CallLock.deleteMany({ callId: call._id });
+}
+async function clearExpiredLocks(userIds) {
+  const locks = await CallLock.find({ userId: { $in: userIds }, expiresAt: { $lte: new Date() } }).lean();
+  for (const lock of locks) {
+    const call = await CallSession.findById(lock.callId);
+    if (!call || ["DECLINED", "CANCELLED", "ENDED", "MISSED", "FAILED"].includes(call.state)) {
+      await CallLock.deleteMany({ callId: lock.callId });
+    } else if (call.state === "RINGING" && call.expiresAt <= new Date()) {
+      await missed(call);
+    } else if (call.state === "ACCEPTED" && call.activeExpiresAt && call.activeExpiresAt <= new Date()) {
+      // An accepted call may only be displaced when its bounded active lease is
+      // itself expired. transition() conditionally ends it and releases both locks.
+      await transition(call._id, call.callerId, "ENDED", "MAX_DURATION").catch(() => {});
+    }
+  }
 }
 async function missed(call) {
   if (call.state !== "RINGING") return call;
@@ -56,6 +82,9 @@ async function createCall(callerId, calleeId, requestKey = "") {
     const prior = await CallSession.findOne({ callerId, requestKey: cleanKey });
     if (prior) return { call: prior, idempotent: true };
   }
+  // TTL deletion is asynchronous. Resolve only demonstrably expired ringing
+  // calls/terminal remnants before the unique participant locks are acquired.
+  await clearExpiredLocks([callerId, calleeId]);
   const now = new Date(); const expiresAt = new Date(now.getTime() + RING_MS);
   let call;
   try { call = await CallSession.create({ callerId, calleeId, expiresAt, requestKey: cleanKey || undefined }); }
@@ -86,7 +115,33 @@ async function transition(callId, userId, next, reason = "") {
     (next === "ENDED" && ACTIVE.includes(call.state));
   if (!permitted) { const e = new Error("Invalid call state transition."); e.status = 409; throw e; }
   const terminal = !["ACCEPTED"].includes(next);
-  const update = { state: next, ...(next === "ACCEPTED" ? { answeredAt: new Date() } : {}), ...(terminal ? { endedAt: new Date(), endReason: String(reason).slice(0, 80) } : {}) };
+  const acceptedUntil = new Date(Date.now() + MAX_DURATION_MS);
+  const update = { state: next, ...(next === "ACCEPTED" ? { answeredAt: new Date(), activeExpiresAt: acceptedUntil } : {}), ...(terminal ? { endedAt: new Date(), endReason: String(reason).slice(0, 80) } : {}) };
+  if (next === "ACCEPTED") {
+    return transactionRunner(async (session) => {
+      const accepted = await CallSession.findOneAndUpdate(
+        { _id: call._id, state: "RINGING" },
+        { $set: update },
+        { new: true, session }
+      );
+      if (!accepted) {
+        const error = new Error("Call changed; retry.");
+        error.status = 409;
+        throw error;
+      }
+      const refreshed = await CallLock.updateMany(
+        { callId: call._id, userId: { $in: [call.callerId, call.calleeId] } },
+        { $set: { expiresAt: acceptedUntil } },
+        { session }
+      );
+      if (refreshed.matchedCount !== 2 || refreshed.modifiedCount !== 2) {
+        const error = new Error("Unable to secure both participant leases.");
+        error.status = 409;
+        throw error;
+      }
+      return accepted;
+    });
+  }
   call = await CallSession.findOneAndUpdate({ _id: call._id, state: call.state }, { $set: update }, { new: true });
   if (!call) { const e = new Error("Call changed; retry."); e.status = 409; throw e; }
   if (terminal) await releaseLocks(call);
@@ -94,6 +149,24 @@ async function transition(callId, userId, next, reason = "") {
 }
 async function cleanupExpired() {
   const calls = await CallSession.find({ state: "RINGING", expiresAt: { $lte: new Date() } });
-  await Promise.all(calls.map(missed));
+  const missedCalls = await Promise.all(calls.map(missed));
+  const active = await CallSession.find({ state: "ACCEPTED", activeExpiresAt: { $lte: new Date() } });
+  const ended = await Promise.all(active.map((call) => transition(call._id, call.callerId, "ENDED", "MAX_DURATION").catch(() => null)));
+  return [...missedCalls, ...ended].filter(Boolean);
 }
-module.exports = { RING_MS, ACTIVE, publicCall, createCall, transition, cleanupExpired, expire, participantQuery, missed };
+async function terminateForUser(userId, reason = "PRIVACY_CHANGED") {
+  const active = await CallSession.find({ ...participantQuery(userId), state: { $in: ACTIVE } });
+  return Promise.all(active.map((call) => transition(call._id, userId, call.state === "RINGING" && String(call.calleeId) === String(userId) ? "DECLINED" : (call.state === "RINGING" ? "CANCELLED" : "ENDED"), reason).catch(() => null)));
+}
+function __setTransactionRunnerForTests(runner) { transactionRunner = runner; }
+function __resetTransactionRunnerForTests() {
+  transactionRunner = async (work) => {
+    const session = await mongoose.startSession();
+    try {
+      let result;
+      await session.withTransaction(async () => { result = await work(session); });
+      return result;
+    } finally { await session.endSession(); }
+  };
+}
+module.exports = { RING_MS, MAX_DURATION_MS, ACTIVE, publicCall, createCall, transition, cleanupExpired, expire, participantQuery, missed, clearExpiredLocks, terminateForUser, __setTransactionRunnerForTests, __resetTransactionRunnerForTests };
