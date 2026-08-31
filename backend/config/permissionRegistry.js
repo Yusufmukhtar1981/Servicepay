@@ -8,6 +8,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("STAFF_UPDATE", "staff.update", "STAFF", "Update staff", "Update internal staff details.", "PRIVILEGED"),
   permission("STAFF_SUSPEND", "staff.suspend", "STAFF", "Suspend staff", "Suspend or reactivate staff accounts.", "PRIVILEGED"),
   permission("STAFF_ASSIGN_ROLE", "staff.assign_role", "STAFF", "Assign staff roles", "Assign an active role to internal staff.", "PRIVILEGED"),
+  permission("STAFF_RESET_PASSWORD", "staff.reset_password", "STAFF", "Reset staff passwords", "Issue a temporary password and revoke existing staff sessions.", "CRITICAL"),
   permission("ROLES_CREATE", "roles.create", "ROLES", "Create roles", "Create non-system staff roles.", "PRIVILEGED"),
   permission("ROLES_VIEW", "roles.view", "ROLES", "View roles", "View roles and the permission catalog."),
   permission("ROLES_UPDATE", "roles.update", "ROLES", "Update roles", "Edit role details.", "PRIVILEGED"),

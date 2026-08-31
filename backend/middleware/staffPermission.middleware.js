@@ -1,15 +1,42 @@
 const Role = require("../models/role.model");
+const User = require("../models/user.model");
+const {
+  STAFF_PERMISSIONS,
+  FULL_ACCESS_ROLE_NAMES,
+  canonicalRoleName,
+  directRolePermissions,
+  normalizeStaffPermission,
+  scopeForRole,
+} = require("../config/staffPermissions");
 
 const normalizePermissionList = (permissions) => {
   if (!Array.isArray(permissions)) {
     return [];
   }
 
-  return permissions
-    .map((permission) =>
-      String(permission || "").trim()
-    )
-    .filter(Boolean);
+  return [
+    ...new Set(
+      permissions
+        .map((permission) => normalizeStaffPermission(permission))
+        .filter(Boolean)
+    ),
+  ];
+};
+
+const configuredRoleScope = (staffRole, user) => {
+  const type = String(staffRole?.scopeType || "GLOBAL").trim().toUpperCase();
+  if (type === "GLOBAL") return { type: "GLOBAL" };
+  if (type === "ZONE") return { type, zone: user.zone || null };
+  if (type === "STATE") {
+    return { type, zone: user.zone || null, state: user.state || null };
+  }
+  if (type === "BUSINESS_PARTNER") {
+    return {
+      type,
+      businessPartnerId: user.businessPartnerProfile || user.businessPartnerId || null,
+    };
+  }
+  return { type: "SELF", userId: user._id || user.id || null };
 };
 
 const loadStaffRole = async (req, res, next) => {
@@ -21,30 +48,44 @@ const loadStaffRole = async (req, res, next) => {
       });
     }
 
-    const role = String(
+    const rawRole = String(
       req.user.role || ""
     )
       .trim()
       .toUpperCase();
+    const role = canonicalRoleName(rawRole);
 
     /*
      * HEAD_OFFICE always has full access.
      */
-    if (role === "HEAD_OFFICE") {
+    if (FULL_ACCESS_ROLE_NAMES.includes(rawRole) || role === "HEAD_OFFICE") {
       req.staffAccess = {
         isHeadOffice: true,
         roleName: "HEAD_OFFICE",
+        sourceRole: rawRole,
         department: "ADMINISTRATION",
         permissions: ["*"],
+        scope: { type: "GLOBAL" },
+        hierarchyLevel: 100,
       };
 
       return next();
     }
 
-    if (
-      role !== "STAFF" ||
-      req.user.isStaff !== true
-    ) {
+    if (directRolePermissions[role]) {
+      req.staffAccess = {
+        isHeadOffice: false,
+        roleName: role,
+        sourceRole: rawRole,
+        department: req.user.department || "OPERATIONS",
+        permissions: [...directRolePermissions[role]],
+        scope: scopeForRole(role, req.user),
+        hierarchyLevel: role === "ZONAL_MANAGER" ? 50 : 40,
+      };
+      return next();
+    }
+
+    if (role !== "STAFF" || req.user.isStaff !== true) {
       return res.status(403).json({
         success: false,
         message:
@@ -84,6 +125,8 @@ const loadStaffRole = async (req, res, next) => {
       permissions: normalizePermissionList(
         staffRole.permissions
       ),
+      scope: configuredRoleScope(staffRole, req.user),
+      hierarchyLevel: Number(staffRole.hierarchyLevel || 20),
     };
 
     return next();
@@ -115,7 +158,7 @@ const requirePermission = (permission) => {
         return next();
       }
 
-      const needed = String(permission || "").trim();
+      const needed = normalizeStaffPermission(permission);
 
       if (!needed) {
         return res.status(500).json({
@@ -154,7 +197,7 @@ const requirePermission = (permission) => {
 const requireAnyPermission = (...permissions) => {
   const needed = permissions
     .flat()
-    .map((value) => String(value || "").trim())
+    .map((value) => normalizeStaffPermission(value))
     .filter(Boolean);
 
   return (req, res, next) => {
@@ -208,8 +251,102 @@ const requireAnyPermission = (...permissions) => {
   };
 };
 
+const hasPermission = (staffAccess, permission) => {
+  if (!staffAccess) return false;
+  if (staffAccess.isHeadOffice || staffAccess.permissions?.includes("*")) return true;
+  const normalized = normalizeStaffPermission(permission);
+  return Boolean(
+    normalized && normalizePermissionList(staffAccess.permissions).includes(normalized)
+  );
+};
+
+const scopeFilterFor = (
+  staffAccess,
+  {
+    zoneField = "zone",
+    stateField = "state",
+    businessPartnerField = "businessPartnerId",
+    userField = "_id",
+  } = {}
+) => {
+  const scope = staffAccess?.scope || { type: "SELF" };
+  if (scope.type === "GLOBAL") return {};
+  if (scope.type === "ZONE") return scope.zone ? { [zoneField]: scope.zone } : { _id: null };
+  if (scope.type === "STATE") {
+    if (!scope.state) return { _id: null };
+    const filter = { [stateField]: scope.state };
+    if (scope.zone) filter[zoneField] = scope.zone;
+    return filter;
+  }
+  if (scope.type === "BUSINESS_PARTNER") {
+    return scope.businessPartnerId ? { [businessPartnerField]: scope.businessPartnerId } : { _id: null };
+  }
+  return scope.userId ? { [userField]: scope.userId } : { _id: null };
+};
+
+const isUserWithinScope = (staffAccess, targetUser) => {
+  const scope = staffAccess?.scope || { type: "SELF" };
+  if (scope.type === "GLOBAL") return true;
+  if (!targetUser) return false;
+  if (scope.type === "ZONE") return Boolean(scope.zone && targetUser.zone === scope.zone);
+  if (scope.type === "STATE") {
+    return Boolean(
+      scope.state &&
+        targetUser.state === scope.state &&
+        (!scope.zone || targetUser.zone === scope.zone)
+    );
+  }
+  if (scope.type === "BUSINESS_PARTNER") {
+    const partnerId = targetUser.businessPartnerProfile || targetUser.businessPartnerId;
+    return Boolean(
+      scope.businessPartnerId &&
+        partnerId &&
+        String(partnerId) === String(scope.businessPartnerId)
+    );
+  }
+  return Boolean(
+    scope.userId && String(targetUser._id || targetUser.id) === String(scope.userId)
+  );
+};
+
+const requireTargetUserScope = (
+  parameter = "id",
+  select = "_id zone state businessPartnerProfile businessPartnerId"
+) => async (req, res, next) => {
+  try {
+    const targetId = req.params?.[parameter];
+    if (!targetId) {
+      return res.status(400).json({ success: false, message: "Target user ID is required." });
+    }
+    const targetUser = await User.findById(targetId).select(select).lean();
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: "User account not found." });
+    }
+    if (!isUserWithinScope(req.staffAccess, targetUser)) {
+      return res.status(403).json({
+        success: false,
+        code: "DATA_SCOPE_DENIED",
+        message: "This record is outside your authorized data scope.",
+      });
+    }
+    req.scopedTargetUser = targetUser;
+    return next();
+  } catch (error) {
+    console.error("Target user scope error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Unable to verify data scope.",
+    });
+  }
+};
+
 module.exports = {
+  STAFF_PERMISSIONS,
   loadStaffRole,
   requirePermission,
   requireAnyPermission,
+  hasPermission,
+  scopeFilterFor,
+  isUserWithinScope,
+  requireTargetUserScope,
 };

@@ -53,6 +53,19 @@ const roleSchema = new mongoose.Schema(
       default: [],
     },
 
+    scopeType: {
+      type: String,
+      enum: ["GLOBAL", "ZONE", "STATE", "BUSINESS_PARTNER", "SELF"],
+      default: "GLOBAL",
+    },
+
+    hierarchyLevel: {
+      type: Number,
+      min: 0,
+      max: 99,
+      default: 20,
+    },
+
     isSystemRole: {
       type: Boolean,
       default: false,

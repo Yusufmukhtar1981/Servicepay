@@ -7,6 +7,7 @@ import 'package:servicepay_app/role_dashboard_screen.dart';
 import 'package:servicepay_app/solar_officer/solar_officer_dashboard_screen.dart';
 import 'package:servicepay_app/phone_financing_officer/phone_financing_officer_dashboard_screen.dart';
 import 'package:servicepay_app/business_partner/business_partner_dashboard_screen.dart';
+import 'package:servicepay_app/admin/main_navigation.dart';
 
 void main() {
   test('reads and normalizes the authenticated role', () {
@@ -74,6 +75,17 @@ void main() {
     expect(
       authenticatedHomeForRole('business partner'),
       isA<BusinessPartnerDashboardScreen>(),
+    );
+  });
+
+  test('routes Staff to the permission-aware Admin dashboard', () {
+    expect(
+      authenticatedHomeForRole('STAFF'),
+      isA<AdminMainNavigation>(),
+    );
+    expect(
+      authenticatedHomeForRole('STAFF'),
+      isNot(isA<RoleDashboardScreen>()),
     );
   });
 }

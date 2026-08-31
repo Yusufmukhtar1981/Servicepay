@@ -18,6 +18,25 @@ const BUSINESS_PARTNER_PERMISSION_VALUES = Object.freeze([
   ...BUSINESS_PARTNER_VIEW_PERMISSIONS,
   ...BUSINESS_PARTNER_ACTION_PERMISSIONS,
 ]);
+const BUSINESS_PARTNER_PERMISSION_DOMAIN = "BUSINESS_PARTNER_DISTRIBUTOR";
+const BUSINESS_PARTNER_PERMISSION_ALIASES = Object.freeze({
+  DASHBOARD_VIEW: "DASHBOARD",
+  OFFICERS_VIEW: "OFFICERS",
+  CUSTOMERS_VIEW: "CUSTOMERS",
+  APPLICATIONS_VIEW: "APPLICATIONS",
+  REPAYMENTS_VIEW: "REPAYMENTS",
+  REPORTS_VIEW: "REPORTS",
+  OFFICERS_MANAGE: "OFFICER_MANAGEMENT",
+  "business_partner.dashboard": "DASHBOARD",
+  "business_partner.officers": "OFFICERS",
+  "business_partner.customers": "CUSTOMERS",
+  "business_partner.applications": "APPLICATIONS",
+  "business_partner.repayments": "REPAYMENTS",
+  "business_partner.reports": "REPORTS",
+  "business_partner.officer_management": "OFFICER_MANAGEMENT",
+  "solar.assignment": "SOLAR_ASSIGNMENT",
+  "phone_financing.assignment": "PHONE_ASSIGNMENT",
+});
 
 const BUSINESS_PARTNER_SERVICES = Object.freeze(["SOLAR", "PHONE"]);
 
@@ -26,13 +45,22 @@ const BUSINESS_PARTNER_SERVICE_PERMISSIONS = Object.freeze({
   PHONE: "PHONE_ASSIGNMENT",
 });
 
+const normalizeBusinessPartnerPermission = (permission) => {
+  const raw = String(permission || "").trim();
+  const upper = raw.toUpperCase();
+  if (BUSINESS_PARTNER_PERMISSION_VALUES.includes(upper)) return upper;
+  return BUSINESS_PARTNER_PERMISSION_ALIASES[raw] ||
+    BUSINESS_PARTNER_PERMISSION_ALIASES[upper] ||
+    null;
+};
+
 const normalizeBusinessPartnerPermissions = (permissions = []) => {
   if (!Array.isArray(permissions)) return [];
   return [
     ...new Set(
       permissions
-        .map((value) => String(value || "").trim().toUpperCase())
-        .filter((value) => BUSINESS_PARTNER_PERMISSION_VALUES.includes(value))
+        .map(normalizeBusinessPartnerPermission)
+        .filter(Boolean)
     ),
   ];
 };
@@ -58,11 +86,7 @@ const normalizeBusinessPartnerServices = (services = []) => {
 
 const hasOnlyBusinessPartnerPermissions = (permissions) =>
   Array.isArray(permissions) &&
-  permissions.every((value) =>
-    BUSINESS_PARTNER_PERMISSION_VALUES.includes(
-      String(value || "").trim().toUpperCase()
-    )
-  );
+  permissions.every((value) => normalizeBusinessPartnerPermission(value));
 
 const hasOnlyBusinessPartnerServices = (services) =>
   Array.isArray(services) &&
@@ -101,8 +125,11 @@ module.exports = {
   BUSINESS_PARTNER_VIEW_PERMISSIONS,
   BUSINESS_PARTNER_ACTION_PERMISSIONS,
   BUSINESS_PARTNER_PERMISSION_VALUES,
+  BUSINESS_PARTNER_PERMISSION_DOMAIN,
+  BUSINESS_PARTNER_PERMISSION_ALIASES,
   BUSINESS_PARTNER_SERVICES,
   BUSINESS_PARTNER_SERVICE_PERMISSIONS,
+  normalizeBusinessPartnerPermission,
   normalizeBusinessPartnerPermissions,
   mergeBusinessPartnerViewPermissions,
   normalizeBusinessPartnerServices,

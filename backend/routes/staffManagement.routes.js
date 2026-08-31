@@ -7,7 +7,14 @@ const {
   updateRole,
   createStaff,
   getStaff,
+  getStaffDetail,
+  updateStaff,
   updateStaffStatus,
+  resetStaffPassword,
+  duplicateRole,
+  getRoleStaff,
+  assignStaffRole,
+  deleteRole,
   seedDefaultRoles,
 } = require("../controllers/staffManagement.controller");
 
@@ -74,6 +81,24 @@ router.put(
   updateRole
 );
 
+router.post(
+  "/roles/:roleId/duplicate",
+  requirePermission(P.ROLES_CREATE),
+  duplicateRole
+);
+
+router.get(
+  "/roles/:roleId/staff",
+  requirePermission(P.STAFF_VIEW),
+  getRoleStaff
+);
+
+router.delete(
+  "/roles/:roleId",
+  requirePermission(P.ROLES_DELETE),
+  deleteRole
+);
+
 router
   .route("/staff")
   .get(
@@ -90,11 +115,35 @@ router
   );
 
 router.put(
+  "/staff/:staffId",
+  requirePermission(P.STAFF_UPDATE),
+  updateStaff
+);
+
+router.get(
+  "/staff/:staffId",
+  requirePermission(P.STAFF_VIEW),
+  getStaffDetail
+);
+
+router.put(
   "/staff/:staffId/status",
   requirePermission(
     P.STAFF_SUSPEND
   ),
   updateStaffStatus
+);
+
+router.put(
+  "/staff/:staffId/password",
+  requirePermission(P.STAFF_RESET_PASSWORD),
+  resetStaffPassword
+);
+
+router.put(
+  "/staff/:staffId/role",
+  requirePermission(P.STAFF_ASSIGN_ROLE),
+  assignStaffRole
 );
 
 module.exports = router;
