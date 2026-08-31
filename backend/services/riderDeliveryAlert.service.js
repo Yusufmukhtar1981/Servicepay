@@ -4,10 +4,40 @@ const DeliveryAlertDispatch = require("../models/deliveryAlertDispatch.model");
 const DELIVERY_ASSIGNMENT_CHANNEL_ID =
   "servicepay_delivery_assignments_v2";
 const DELIVERY_ASSIGNMENT_SOUND = "servicepay_delivery_order";
+const FIREBASE_PROJECT_ID = "servicepay-68b17";
 
 let firebaseInitializationAttempted = false;
 let firebaseUnavailableReason = null;
 let firebaseAdmin = null;
+
+const parseServiceAccount = (source) => {
+  const raw = String(source || "").trim();
+  if (!raw) return null;
+
+  const candidates = [raw];
+  try {
+    candidates.push(Buffer.from(raw, "base64").toString("utf8").trim());
+  } catch (_) {
+    // The direct JSON representation is still attempted below.
+  }
+
+  for (const candidate of candidates) {
+    try {
+      let parsed = JSON.parse(candidate);
+      if (typeof parsed === "string") parsed = JSON.parse(parsed);
+      if (parsed && typeof parsed === "object") {
+        return {
+          ...parsed,
+          private_key: String(parsed.private_key || "").replace(/\\n/g, "\n"),
+        };
+      }
+    } catch (_) {
+      // Try the next supported representation.
+    }
+  }
+
+  return null;
+};
 
 const firebaseConfiguration = () => {
   const source = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -18,38 +48,39 @@ const firebaseConfiguration = () => {
     };
   }
 
-  try {
-    const serviceAccount = JSON.parse(source);
-    if (
-      !serviceAccount.project_id ||
-      !serviceAccount.client_email ||
-      !serviceAccount.private_key
-    ) {
-      return {
-        source: null,
-        reason: "FIREBASE_SERVICE_ACCOUNT_JSON is invalid",
-      };
-    }
-
-    return { source: serviceAccount, reason: null };
-  } catch (_) {
+  const serviceAccount = parseServiceAccount(source);
+  if (
+    !serviceAccount?.project_id ||
+    !serviceAccount?.client_email ||
+    !serviceAccount?.private_key
+  ) {
     return {
       source: null,
       reason: "FIREBASE_SERVICE_ACCOUNT_JSON is invalid",
     };
   }
+  if (serviceAccount.project_id !== FIREBASE_PROJECT_ID) {
+    return {
+      source: null,
+      reason: "Firebase project does not match the ServicePay Android app",
+    };
+  }
+
+  return { source: serviceAccount, reason: null };
 };
 
 const logFirebaseConfigurationStatus = () => {
-  const configuration = firebaseConfiguration();
-  if (configuration.reason) {
+  const messaging = firebaseMessaging();
+  if (!messaging) {
     console.warn(
-      `[PUSH] Rider delivery alerts unavailable: ${configuration.reason}.`
+      `[PUSH] Rider delivery alerts unavailable: ${firebaseUnavailableReason}.`
     );
     return false;
   }
 
-  console.log("[PUSH] Rider delivery alerts configured.");
+  console.log(
+    `[PUSH] Firebase Admin initialized (project=${FIREBASE_PROJECT_ID}).`
+  );
   return true;
 };
 
@@ -77,6 +108,14 @@ const firebaseMessaging = () => {
   return firebaseUnavailableReason ? null : firebaseAdmin.messaging();
 };
 
+const firebaseDiagnosticStatus = () => ({
+  available: Boolean(firebaseMessaging()),
+  projectId: FIREBASE_PROJECT_ID,
+  reason: firebaseUnavailableReason,
+});
+
+const tokenSuffix = (token) => String(token || "").slice(-8);
+const safeRiderId = (riderId) => String(riderId || "").slice(-24);
 const safeLocation = (value) => String(value || "").trim().slice(0, 180);
 const deliveryAlertData = ({
   type,
@@ -173,19 +212,38 @@ const sendDeliveryAlert = async ({ type, riderId, delivery, assignmentEventId })
       .select("+token")
       .lean();
     if (!tokens.length) {
+      console.warn(
+        `[PUSH] Rider assignment skipped rider=${safeRiderId(riderId)} ` +
+          "online=true activeTokens=0 outcome=no-active-devices."
+      );
       await updateDispatchSafely(dispatch._id, {
         status: "SKIPPED",
         lastError: "no-active-devices",
       });
-      return { sent: false, skipped: true, reason: "no-active-devices" };
+      return {
+        sent: false,
+        skipped: true,
+        reason: "no-active-devices",
+        activeTokenCount: 0,
+      };
     }
     const messaging = firebaseMessaging();
     if (!messaging) {
+      console.warn(
+        `[PUSH] Rider assignment skipped rider=${safeRiderId(riderId)} ` +
+          `online=true activeTokens=${tokens.length} outcome=firebase-unavailable ` +
+          `reason=${firebaseUnavailableReason}.`
+      );
       await updateDispatchSafely(dispatch._id, {
         status: "SKIPPED",
         lastError: firebaseUnavailableReason,
       });
-      return { sent: false, skipped: true, reason: firebaseUnavailableReason };
+      return {
+        sent: false,
+        skipped: true,
+        reason: firebaseUnavailableReason,
+        activeTokenCount: tokens.length,
+      };
     }
     const data = deliveryAlertData({
       type,
@@ -238,16 +296,22 @@ const sendDeliveryAlert = async ({ type, riderId, delivery, assignmentEventId })
       lastError: sent ? "" : "firebase-provider-rejected",
     });
     console.log(
-      `[PUSH] Rider delivery assignment ${sent ? "accepted" : "failed"} ` +
-        `(success=${successCount}, failure=${failureCount}).`
+      `[PUSH] Rider assignment rider=${safeRiderId(riderId)} online=true ` +
+        `activeTokens=${tokens.length} outcome=${sent ? "accepted" : "rejected"} ` +
+        `success=${successCount} failure=${failureCount}.`
     );
     return {
       sent,
       providerAccepted: sent,
       successes: successCount,
       failures: failureCount,
+      activeTokenCount: tokens.length,
     };
-  } catch (_) {
+  } catch (error) {
+    console.error(
+      `[PUSH] Rider assignment failed rider=${safeRiderId(riderId)} ` +
+        `outcome=dispatch-exception reason=${error?.code || error?.name || "unknown"}.`
+    );
     await updateDispatchSafely(dispatch._id, {
       status: "FAILED",
       lastError: "dispatch-exception",
@@ -257,7 +321,13 @@ const sendDeliveryAlert = async ({ type, riderId, delivery, assignmentEventId })
 };
 
 const sendAssignmentAlertIfOnline = async ({ rider, delivery }) => {
-  if (rider?.availabilityStatus !== "ONLINE") return { sent: false, skipped: true, reason: "rider-offline" };
+  if (rider?.availabilityStatus !== "ONLINE") {
+    console.warn(
+      `[PUSH] Rider assignment skipped rider=${safeRiderId(rider?._id)} ` +
+        "online=false activeTokens=unknown outcome=rider-offline."
+    );
+    return { sent: false, skipped: true, reason: "rider-offline" };
+  }
   return sendDeliveryAlert({
     type: "DELIVERY_ASSIGNED",
     riderId: rider._id,
@@ -266,12 +336,142 @@ const sendAssignmentAlertIfOnline = async ({ rider, delivery }) => {
   });
 };
 
+const sendRiderDiagnosticAlert = async ({ rider }) => {
+  const riderId = rider?._id;
+  if (rider?.availabilityStatus !== "ONLINE") {
+    return {
+      sent: false,
+      skipped: true,
+      reason: "rider-offline",
+      activeTokenCount: 0,
+    };
+  }
+
+  const devices = await RiderDeviceToken.find({ riderId, active: true })
+    .select("+token")
+    .lean();
+  if (!devices.length) {
+    return {
+      sent: false,
+      skipped: true,
+      reason: "no-active-devices",
+      activeTokenCount: 0,
+    };
+  }
+
+  const messaging = firebaseMessaging();
+  if (!messaging) {
+    return {
+      sent: false,
+      skipped: true,
+      reason: firebaseUnavailableReason,
+      activeTokenCount: devices.length,
+    };
+  }
+
+  const diagnosticId = `diagnostic-${Date.now()}`;
+  const response = await sendMulticastWithRetry({
+    messaging,
+    message: {
+      tokens: devices.map((device) => device.token),
+      data: {
+        type: "DELIVERY_ASSIGNED",
+        event: "DELIVERY_ASSIGNED",
+        title: "Delivery Alert Test",
+        body: "ServicePay delivery ringing diagnostic.",
+        orderId: diagnosticId,
+        deliveryId: diagnosticId,
+        deliveryReference: "DIAGNOSTIC",
+        pickupLocation: "ServicePay test pickup",
+        dropoffLocation: "ServicePay test destination",
+        assignedAt: new Date().toISOString(),
+        assignmentEventId: diagnosticId,
+        notificationChannelId: DELIVERY_ASSIGNMENT_CHANNEL_ID,
+        notificationSound: DELIVERY_ASSIGNMENT_SOUND,
+        diagnostic: "true",
+      },
+      android: {
+        priority: "high",
+        ttl: 5 * 60 * 1000,
+        collapseKey: diagnosticId,
+      },
+    },
+  });
+
+  const finalResponses = [...response.responses];
+  const retryIndexes = finalResponses.reduce((indexes, result, index) => {
+    if (!result.success && retryableFirebaseCode(result.error?.code)) {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
+  if (retryIndexes.length) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const retry = await sendMulticastWithRetry({
+      messaging,
+      message: {
+        tokens: retryIndexes.map((index) => devices[index].token),
+        data: {
+          type: "DELIVERY_ASSIGNED",
+          event: "DELIVERY_ASSIGNED",
+          title: "Delivery Alert Test",
+          body: "ServicePay delivery ringing diagnostic.",
+          orderId: diagnosticId,
+          deliveryId: diagnosticId,
+          deliveryReference: "DIAGNOSTIC",
+          pickupLocation: "ServicePay test pickup",
+          dropoffLocation: "ServicePay test destination",
+          assignedAt: new Date().toISOString(),
+          assignmentEventId: diagnosticId,
+          notificationChannelId: DELIVERY_ASSIGNMENT_CHANNEL_ID,
+          notificationSound: DELIVERY_ASSIGNMENT_SOUND,
+          diagnostic: "true",
+        },
+        android: {
+          priority: "high",
+          ttl: 5 * 60 * 1000,
+          collapseKey: diagnosticId,
+        },
+      },
+    });
+    retryIndexes.forEach((originalIndex, retryIndex) => {
+      finalResponses[originalIndex] = retry.responses[retryIndex];
+    });
+  }
+
+  const successCount = finalResponses.filter((result) => result.success).length;
+  const failureCount = finalResponses.length - successCount;
+  const invalidIds = invalidTokenIds(finalResponses, devices);
+  if (invalidIds.length) {
+    await RiderDeviceToken.updateMany(
+      { _id: { $in: invalidIds } },
+      { $set: { active: false } }
+    );
+  }
+
+  const result = {
+    sent: successCount > 0,
+    providerAccepted: successCount > 0,
+    successes: successCount,
+    failures: failureCount,
+    activeTokenCount: devices.length,
+    reason: successCount > 0 ? null : "firebase-provider-rejected",
+  };
+  console.log(
+    `[PUSH] Rider diagnostic rider=${safeRiderId(riderId)} online=true ` +
+      `activeTokens=${devices.length} outcome=${result.sent ? "accepted" : "rejected"} ` +
+      `success=${result.successes} failure=${result.failures}.`
+  );
+  return result;
+};
+
 const sendAssignmentCancellation = async ({ riderId, delivery, assignmentEventId }) =>
   sendDeliveryAlert({ type: "DELIVERY_ASSIGNMENT_CANCELLED", riderId, delivery, assignmentEventId });
 
 module.exports = {
   sendDeliveryAlert,
   sendAssignmentAlertIfOnline,
+  sendRiderDiagnosticAlert,
   sendAssignmentCancellation,
   invalidTokenIds,
   deliveryAlertData,
@@ -280,4 +480,7 @@ module.exports = {
   retryableFirebaseCode,
   sendMulticastWithRetry,
   logFirebaseConfigurationStatus,
+  firebaseDiagnosticStatus,
+  tokenSuffix,
+  FIREBASE_PROJECT_ID,
 };

@@ -1,5 +1,8 @@
 const User = require("../models/user.model");
 const RiderDeviceToken = require("../models/riderDeviceToken.model");
+const {
+  tokenSuffix,
+} = require("../services/riderDeliveryAlert.service");
 
 /*
  * =====================================================
@@ -24,7 +27,9 @@ const normalizeAvailabilityStatus = (value) => {
 };
 
 const requireDeliveryRider = async (req, res) => {
-  const rider = await User.findById(req.user._id).select("role status");
+  const rider = await User.findById(req.user._id).select(
+    "role status riderId"
+  );
   if (!rider || rider.role !== "DELIVERY_RIDER" || rider.status !== "ACTIVE") {
     res.status(403).json({ success: false, message: "Only active delivery riders can manage device registrations." });
     return null;
@@ -46,8 +51,17 @@ exports.registerDeviceToken = async (req, res) => {
       { $set: { riderId: rider._id, platform, active: true, lastSeenAt: new Date() } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+    console.log(
+      `[PUSH] Rider device registered rider=${rider.riderId || rider._id} ` +
+        `platform=${platform} tokenSuffix=${tokenSuffix(token)} active=true.`
+    );
     return res.status(200).json({ success: true, message: "Device registered for delivery alerts." });
-  } catch (_) {
+  } catch (error) {
+    console.error(
+      `[PUSH] Rider device registration failed rider=${req.user?._id || "unknown"} ` +
+        `tokenSuffix=${tokenSuffix(req.body?.token)} ` +
+        `reason=${error?.code || error?.name || "unknown"}.`
+    );
     return res.status(500).json({ success: false, message: "Unable to register this device." });
   }
 };
@@ -59,6 +73,10 @@ exports.removeDeviceToken = async (req, res) => {
     const token = String(req.body?.token || "").trim();
     if (!token) return res.status(400).json({ success: false, message: "A device token is required." });
     await RiderDeviceToken.updateOne({ riderId: rider._id, token }, { $set: { active: false, lastSeenAt: new Date() } });
+    console.log(
+      `[PUSH] Rider device removed rider=${rider.riderId || rider._id} ` +
+        `tokenSuffix=${tokenSuffix(token)} active=false.`
+    );
     return res.status(200).json({ success: true, message: "Device removed from delivery alerts." });
   } catch (_) {
     return res.status(500).json({ success: false, message: "Unable to remove this device." });

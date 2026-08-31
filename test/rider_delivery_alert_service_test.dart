@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/rider/rider_delivery_alert_service.dart';
 
@@ -103,6 +105,25 @@ void main() {
         'deliveryId': 'delivery-42',
       }),
       isNull,
+    );
+  });
+
+  test('diagnostic payload rings but is marked as non-navigating test data', () {
+    final RiderDeliveryAlertPayload? payload =
+        RiderDeliveryAlertPayload.fromData(<String, dynamic>{
+      'event': 'DELIVERY_ASSIGNED',
+      'deliveryId': 'diagnostic-42',
+      'assignmentEventId': 'diagnostic-42',
+      'diagnostic': 'true',
+    });
+
+    expect(payload, isNotNull);
+    expect(payload!.isDiagnostic, isTrue);
+    expect(
+      RiderDeliveryAlertPayload.fromJson(
+        jsonEncode(payload.toJson()),
+      )?.isDiagnostic,
+      isTrue,
     );
   });
 }

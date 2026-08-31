@@ -9,7 +9,9 @@ const Delivery = require(
 );
 const {
   sendAssignmentAlertIfOnline,
+  sendRiderDiagnosticAlert,
   sendAssignmentCancellation,
+  firebaseDiagnosticStatus,
 } = require("../services/riderDeliveryAlert.service");
 const { randomUUID } = require("crypto");
 
@@ -1989,7 +1991,16 @@ exports.assignRiderToDelivery =
 
       // Alerts are best-effort and run only after all business persistence.
       try {
-        await sendAssignmentAlertIfOnline({ rider, delivery });
+        const alertResult = await sendAssignmentAlertIfOnline({
+          rider,
+          delivery,
+        });
+        console.log(
+          `[PUSH] Assignment persisted rider=${rider.riderId || rider._id} ` +
+            `online=${rider.availabilityStatus === "ONLINE"} ` +
+            `activeTokens=${alertResult.activeTokenCount ?? "unknown"} ` +
+            `outcome=${alertResult.sent ? "accepted" : alertResult.reason || "failed"}.`
+        );
       } catch (error) {
         console.error(
           "DELIVERY ASSIGNMENT ALERT ERROR:",
@@ -2085,6 +2096,68 @@ exports.assignRiderToDelivery =
         });
     }
   };
+
+exports.runRiderPushDiagnostic = async (req, res) => {
+  try {
+    const riderId = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(riderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Rider ID.",
+      });
+    }
+
+    const rider = await User.findOne({
+      _id: riderId,
+      role: "DELIVERY_RIDER",
+      status: "ACTIVE",
+      ...deliveryBranchFilter(req),
+    })
+      .select("_id riderId availabilityStatus riderVerificationStatus")
+      .lean();
+    if (!rider) {
+      return res.status(404).json({
+        success: false,
+        message: "Active Delivery Rider was not found.",
+      });
+    }
+
+    const result = await sendRiderDiagnosticAlert({ rider });
+    const firebase = firebaseDiagnosticStatus();
+    const status = result.sent
+      ? 200
+      : result.reason === "rider-offline"
+        ? 409
+        : 503;
+
+    return res.status(status).json({
+      success: result.sent,
+      message: result.sent
+        ? "Rider push diagnostic was accepted by Firebase."
+        : "Rider push diagnostic could not be sent.",
+      diagnostic: {
+        riderId: rider.riderId || String(rider._id),
+        online: rider.availabilityStatus === "ONLINE",
+        activeTokenCount: result.activeTokenCount || 0,
+        providerAccepted: Boolean(result.providerAccepted),
+        successes: result.successes || 0,
+        failures: result.failures || 0,
+        reason: result.reason || null,
+        firebaseAvailable: firebase.available,
+        firebaseProjectId: firebase.projectId,
+      },
+    });
+  } catch (error) {
+    console.error(
+      `[PUSH] Rider diagnostic failed reason=${error?.code || error?.name || "unknown"}.`
+    );
+    return res.status(500).json({
+      success: false,
+      message: "Unable to run the Rider push diagnostic.",
+    });
+  }
+};
+
   /*
 |--------------------------------------------------------------------------
 | UNASSIGN RIDER FROM DELIVERY

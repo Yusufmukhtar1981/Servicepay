@@ -15,6 +15,7 @@ class RiderDeliveryAlertPayload {
     required this.reference,
     required this.pickup,
     required this.dropoff,
+    this.isDiagnostic = false,
   });
 
   final String orderId;
@@ -22,6 +23,7 @@ class RiderDeliveryAlertPayload {
   final String reference;
   final String pickup;
   final String dropoff;
+  final bool isDiagnostic;
 
   static RiderDeliveryAlertPayload? fromData(Map<String, dynamic> data) {
     String value(List<String> keys) {
@@ -72,6 +74,7 @@ class RiderDeliveryAlertPayload {
         'delivery_address',
         'destination',
       ]),
+      isDiagnostic: value(<String>['diagnostic']).toLowerCase() == 'true',
     );
   }
 
@@ -81,6 +84,7 @@ class RiderDeliveryAlertPayload {
         'reference': reference,
         'pickup': pickup,
         'dropoff': dropoff,
+        'diagnostic': isDiagnostic.toString(),
       };
 
   static RiderDeliveryAlertPayload? fromJson(String encoded) {
@@ -99,6 +103,8 @@ class RiderDeliveryAlertPayload {
         reference: data['reference']?.toString() ?? '',
         pickup: data['pickup']?.toString() ?? '',
         dropoff: data['dropoff']?.toString() ?? '',
+        isDiagnostic:
+            data['diagnostic']?.toString().toLowerCase() == 'true',
       );
     } catch (_) {
       return null;
@@ -147,6 +153,9 @@ class RiderDeliveryAlertService {
       pendingAssignmentEventId == cancellationAssignmentEventId;
 
   static String notificationBodyFor(RiderDeliveryAlertPayload payload) {
+    if (payload.isDiagnostic) {
+      return 'ServicePay delivery ringing diagnostic. Tap to dismiss.';
+    }
     if (payload.reference.trim().isNotEmpty) {
       return 'Delivery ${payload.reference.trim()} is ready. Tap to view details.';
     }
@@ -279,7 +288,7 @@ class RiderDeliveryAlertService {
     try {
       await _notifications.show(
         notificationIdFor(payload.orderId),
-        'Delivery Assigned',
+        payload.isDiagnostic ? 'Delivery Alert Test' : 'Delivery Assigned',
         notificationBodyFor(payload),
         NotificationDetails(android: android),
         payload: jsonEncode(payload.toJson()),
@@ -336,6 +345,7 @@ class RiderDeliveryAlertService {
 
   static Future<void> open(RiderDeliveryAlertPayload payload) async {
     await cancel(payload.orderId);
+    if (payload.isDiagnostic) return;
     await _dispatchWhenReady(payload);
   }
 
@@ -350,7 +360,7 @@ class RiderDeliveryAlertService {
     }
   }
 
-  static Future<void> registerCurrentToken() async {
+  static Future<void> registerCurrentToken({String? tokenOverride}) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if ((prefs.getString('user_role') ?? '').toUpperCase() !=
@@ -358,7 +368,8 @@ class RiderDeliveryAlertService {
       return;
     }
     final String auth = prefs.getString('auth_token')?.trim() ?? '';
-    final String? fcmToken = await FirebaseMessaging.instance.getToken();
+    final String? fcmToken =
+        tokenOverride ?? await FirebaseMessaging.instance.getToken();
     if (auth.isEmpty || fcmToken == null || fcmToken.isEmpty) return;
     final http.Response response = await http
         .post(
@@ -377,14 +388,21 @@ class RiderDeliveryAlertService {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Unable to register this device for delivery alerts.');
     }
+    final String riderId = prefs.getString('rider_id')?.trim() ?? 'unknown';
+    final String suffix = fcmToken.length <= 8
+        ? fcmToken
+        : fcmToken.substring(fcmToken.length - 8);
+    debugPrint(
+      'Rider push token registered: rider=$riderId tokenSuffix=$suffix',
+    );
   }
 
   static void listenForTokenRefresh() {
     if (_refreshListenerInstalled) return;
     _refreshListenerInstalled = true;
-    FirebaseMessaging.instance.onTokenRefresh.listen((String _) async {
+    FirebaseMessaging.instance.onTokenRefresh.listen((String token) async {
       try {
-        await registerCurrentToken();
+        await registerCurrentToken(tokenOverride: token);
       } catch (error) {
         debugPrint('Rider push-token refresh failed: $error');
       }

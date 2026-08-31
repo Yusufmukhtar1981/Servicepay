@@ -327,46 +327,43 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
       onIncoming: _presentIncomingOrder,
       onOpen: _openDeliveryDetails,
     );
-    RiderDeliveryAlertService.listenForTokenRefresh();
     _activateDeliveryAlerts();
   }
 
   Future<void> _activateDeliveryAlerts() async {
-    try {
-      await RiderDeliveryAlertService.registerCurrentToken();
-    } catch (error) {
-      debugPrint('Rider delivery alerts unavailable: $error');
-    }
     if (!mounted) return;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final bool explained =
         prefs.getBool('rider_delivery_alert_permission_explained') ?? false;
-    if (explained) return;
-    await prefs.setBool('rider_delivery_alert_permission_explained', true);
-    if (!mounted) return;
-    final bool? continueRequest = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Delivery order alerts'),
-        content: const Text(
-          'Allow notifications so ServicePay can alert you immediately when a new delivery is assigned.',
+    if (!explained) {
+      if (!mounted) return;
+      final bool? continueRequest = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: const Text('Delivery order alerts'),
+          content: const Text(
+            'Allow notifications so ServicePay can alert you immediately when a new delivery is assigned.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Allow alerts'),
+            ),
+          ],
         ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Not now'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Allow alerts'),
-          ),
-        ],
-      ),
-    );
-    if (continueRequest == true) {
-      final bool? notificationsAllowed =
-          await RiderDeliveryAlertService.requestNotificationPermission();
-      if (notificationsAllowed != true && mounted) {
+      );
+      if (continueRequest != true) return;
+      await prefs.setBool('rider_delivery_alert_permission_explained', true);
+    }
+
+    final bool? notificationsAllowed =
+        await RiderDeliveryAlertService.requestNotificationPermission();
+    if (notificationsAllowed != true) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -376,6 +373,14 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
           ),
         );
       }
+      return;
+    }
+
+    try {
+      await RiderDeliveryAlertService.registerCurrentToken();
+      RiderDeliveryAlertService.listenForTokenRefresh();
+    } catch (error) {
+      debugPrint('Rider delivery alerts unavailable: $error');
     }
   }
 
@@ -400,10 +405,15 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Delivery Assigned',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                payload.isDiagnostic
+                    ? 'Delivery Alert Test'
+                    : 'Delivery Assigned',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -427,10 +437,16 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
               await RiderDeliveryAlertService.cancel(payload.orderId);
               if (!dialogContext.mounted) return;
               Navigator.of(dialogContext).pop();
-              await _openDeliveryDetails(payload);
+              if (!payload.isDiagnostic) {
+                await _openDeliveryDetails(payload);
+              }
             },
-            icon: const Icon(Icons.visibility_outlined),
-            label: const Text('View Order'),
+            icon: Icon(
+              payload.isDiagnostic
+                  ? Icons.check_circle_outline
+                  : Icons.visibility_outlined,
+            ),
+            label: Text(payload.isDiagnostic ? 'Close Test' : 'View Order'),
           ),
         ],
       ),
