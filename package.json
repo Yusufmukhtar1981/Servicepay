@@ -1,8 +1,9 @@
 {
   "private": true,
+  "packageManager": "npm@10.8.2",
   "engines": {
-    "node": "20.18.x",
-    "npm": "10.x"
+    "node": "22.x",
+    "npm": ">=10.8.2 <11"
   },
   "scripts": {
     "start": "node backend/index.js"
