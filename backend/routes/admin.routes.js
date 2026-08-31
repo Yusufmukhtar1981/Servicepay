@@ -21,6 +21,7 @@ const {
   unassignRiderFromDelivery,
   updateDeliveryStatus,
   updateDeliveryPrice,
+  getAdminExecutiveDashboard,
 } = require("../controllers/admin.controller");
 
 const {
@@ -210,6 +211,20 @@ router.get(
   loadStaffRole,
   requirePermission(P.DASHBOARD_VIEW),
   getAdminDashboard
+);
+
+/*
+ * Executive Dashboard is a read-only projection of the existing bounded
+ * dashboard aggregation. Keep this route under the same authentication and
+ * dashboard permission guard as the legacy dashboard route.
+ * GET /api/admin/dashboard/executive?range=today
+ */
+router.get(
+  "/dashboard/executive",
+  protect,
+  loadStaffRole,
+  requirePermission(P.DASHBOARD_VIEW),
+  getAdminExecutiveDashboard
 );
 
 /*

@@ -17,6 +17,9 @@ const INVALID_STATUSES = ["REVERSED", "REFUNDED"];
 
 const RANGE_DAYS = Object.freeze({
   today: 1,
+  yesterday: 1,
+  week: 7,
+  month: 30,
   "7d": 7,
   "30d": 30,
 });
@@ -33,22 +36,36 @@ const normalizeRange = (value) => {
 };
 
 const getDateWindow = (range, now = new Date()) => {
-  const end = new Date(now);
   const normalizedRange = normalizeRange(range);
+  const end = new Date(now);
   const days = RANGE_DAYS[normalizedRange];
-  if (normalizedRange === "today") {
+  if (normalizedRange === "today" || normalizedRange === "yesterday") {
     const lagosNow = new Date(end.getTime() + LAGOS_OFFSET_MS);
-    const start = new Date(
+    const todayStart = new Date(
       Date.UTC(
         lagosNow.getUTCFullYear(),
         lagosNow.getUTCMonth(),
         lagosNow.getUTCDate(),
       ) - LAGOS_OFFSET_MS,
     );
-    const elapsed = end.getTime() - start.getTime();
+    const start =
+      normalizedRange === "yesterday"
+        ? new Date(todayStart.getTime() - 24 * 60 * 60 * 1000)
+        : todayStart;
+    const windowEnd =
+      normalizedRange === "yesterday"
+        ? todayStart
+        : end;
+    const elapsed = windowEnd.getTime() - start.getTime();
     const previousStart = new Date(start.getTime() - 24 * 60 * 60 * 1000);
     const previousEnd = new Date(previousStart.getTime() + elapsed);
-    return { start, end, previousStart, previousEnd, days };
+    return {
+      start,
+      end: windowEnd,
+      previousStart,
+      previousEnd,
+      days,
+    };
   }
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - days);
