@@ -61,11 +61,14 @@ const tokenFor = (actor) =>
   );
 
 const api = async ({ actor, path, method = "GET", body }) => {
+  const authorization = actor
+    ? { Authorization: `Bearer ${tokenFor(actor)}` }
+    : {};
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
       Accept: "application/json",
-      Authorization: `Bearer ${tokenFor(actor)}`,
+      ...authorization,
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -141,6 +144,8 @@ test("available-riders returns only verified online riders and a stable empty li
   assert.equal(result.body.data.count, 1);
   assert.equal(result.body.riders.length, 1);
   assert.equal(String(result.body.riders[0]._id), String(available._id));
+  assert.equal(result.body.riders[0].phone, undefined);
+  assert.equal(result.body.riders[0].email, undefined);
 
   await User.updateOne(
     { _id: available._id },
@@ -153,6 +158,63 @@ test("available-riders returns only verified online riders and a stable empty li
   assert.equal(empty.status, 200, JSON.stringify(empty.body));
   assert.deepEqual(empty.body.riders, []);
   assert.equal(empty.body.data.count, 0);
+});
+
+test("delivery assignment routes reject unauthenticated and unauthorized staff", async () => {
+  const customer = await createUser("CUSTOMER");
+  const delivery = await createDelivery(customer);
+  const noToken = await api({
+    path: `/api/admin/deliveries/${delivery._id}/available-riders`,
+  });
+  assert.equal(noToken.status, 401, JSON.stringify(noToken.body));
+
+  const role = await Role.create({
+    name: "DELIVERY_VIEW_ONLY",
+    displayName: "Delivery View Only",
+    department: "DELIVERY",
+    permissions: ["delivery.view"],
+    scopeType: "GLOBAL",
+  });
+  const staff = await createUser("STAFF", {
+    isStaff: true,
+    staffRoleId: role._id,
+  });
+  const forbidden = await api({
+    actor: staff,
+    path: `/api/admin/deliveries/${delivery._id}/available-riders`,
+  });
+  assert.equal(forbidden.status, 403, JSON.stringify(forbidden.body));
+});
+
+test("available-riders only returns eligible riders from the delivery branch", async () => {
+  const headOffice = await createUser("HEAD_OFFICE");
+  const [branchA, branchB] = await Promise.all([
+    Branch.create({ code: "RA", name: "Rider Branch A", status: "ACTIVE", createdBy: headOffice._id }),
+    Branch.create({ code: "RB", name: "Rider Branch B", status: "ACTIVE", createdBy: headOffice._id }),
+  ]);
+  const customer = await createUser("CUSTOMER", { branchId: branchA._id });
+  const delivery = await createDelivery(customer, { branchId: branchA._id });
+  const eligible = await createUser("DELIVERY_RIDER", {
+    branchId: branchA._id,
+    riderId: "SP-RIDER-ELIGIBLE",
+    riderVerificationStatus: "VERIFIED",
+    availabilityStatus: "ONLINE",
+  });
+  await createUser("DELIVERY_RIDER", {
+    branchId: branchB._id,
+    riderId: "SP-RIDER-WRONG-BRANCH",
+    riderVerificationStatus: "VERIFIED",
+    availabilityStatus: "ONLINE",
+  });
+
+  const result = await api({
+    actor: headOffice,
+    path: `/api/admin/deliveries/${delivery._id}/available-riders`,
+  });
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.data.assignable, true);
+  assert.equal(result.body.data.count, 1);
+  assert.equal(String(result.body.riders[0]._id), String(eligible._id));
 });
 
 test("legacy admin authorization can load available riders", async () => {
@@ -217,6 +279,7 @@ test("assignment persists once, appears on the rider dashboard, and dispatches a
   assert.equal(String(saved.assignedRiderId), String(rider._id));
   assert.ok(saved.assignedAt);
   assert.ok(saved.assignmentEventId);
+  assert.equal(assigned.body.delivery.assignmentEventId, saved.assignmentEventId);
   assert.equal(String(saved.assignedBy), String(headOffice._id));
 
   const updatedRider = await User.findById(rider._id).lean();
@@ -258,6 +321,56 @@ test("assignment persists once, appears on the rider dashboard, and dispatches a
       assignmentEventId: saved.assignmentEventId,
       type: "DELIVERY_ASSIGNED",
     }),
+    1
+  );
+});
+
+test("concurrent assignment attempts produce one winner and one alert", async () => {
+  const headOffice = await createUser("HEAD_OFFICE");
+  const customer = await createUser("CUSTOMER");
+  const delivery = await createDelivery(customer);
+  const riders = await Promise.all([
+    createUser("DELIVERY_RIDER", {
+      riderId: "SP-RIDER-RACE-A",
+      riderVerificationStatus: "VERIFIED",
+      availabilityStatus: "ONLINE",
+    }),
+    createUser("DELIVERY_RIDER", {
+      riderId: "SP-RIDER-RACE-B",
+      riderVerificationStatus: "VERIFIED",
+      availabilityStatus: "ONLINE",
+    }),
+  ]);
+
+  const results = await Promise.all(
+    riders.map((rider) =>
+      api({
+        actor: headOffice,
+        method: "PATCH",
+        path: `/api/admin/deliveries/${delivery._id}/assign-rider`,
+        body: { riderId: String(rider._id) },
+      })
+    )
+  );
+  assert.deepEqual(
+    results.map((result) => result.status).sort(),
+    [200, 409]
+  );
+  const saved = await Delivery.findById(delivery._id).lean();
+  assert.equal(saved.status, "ASSIGNED");
+  assert.ok(saved.assignmentEventId);
+  assert.equal(
+    await DeliveryAlertDispatch.countDocuments({
+      assignmentEventId: saved.assignmentEventId,
+      type: "DELIVERY_ASSIGNED",
+    }),
+    1
+  );
+  const counters = await User.find({ _id: { $in: riders.map((rider) => rider._id) } })
+    .select("totalAssignedDeliveries")
+    .lean();
+  assert.equal(
+    counters.reduce((sum, rider) => sum + rider.totalAssignedDeliveries, 0),
     1
   );
 });
