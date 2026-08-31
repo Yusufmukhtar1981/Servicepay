@@ -9,6 +9,7 @@ const deliverySchema =
         ref: "User",
         required: true,
       },
+      branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
 
       trackingNumber: {
         type: String,

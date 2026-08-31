@@ -140,6 +140,22 @@ const userSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    // Branch fields are optional so all existing customer and staff records
+    // remain valid during the branch-management rollout.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      default: null,
+      index: true,
+    },
+    jobTitle: { type: String, trim: true, default: "" },
+    onboardingSource: { type: String, trim: true, default: "" },
+    createdByStaffId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
 
     lastStaffLoginAt: {
       type: Date,

@@ -425,6 +425,13 @@ const formatUser = (user) => {
 
     department:
       user.department || null,
+    branchId: user.branchId || null,
+    branch: user.branchId && typeof user.branchId === "object" && user.branchId.status
+      ? { id: user.branchId._id || user.branchId.id, code: user.branchId.code, name: user.branchId.name, status: user.branchId.status, assignedModules: user.branchId.assignedModules || [] }
+      : null,
+    jobTitle: user.jobTitle || "",
+    onboardingSource: user.onboardingSource || "",
+    createdByStaffId: user.createdByStaffId || null,
 
     mustChangePassword:
       user.mustChangePassword === true,

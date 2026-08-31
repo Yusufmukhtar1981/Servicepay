@@ -55,7 +55,7 @@ const roleSchema = new mongoose.Schema(
 
     scopeType: {
       type: String,
-      enum: ["GLOBAL", "ZONE", "STATE", "BUSINESS_PARTNER", "SELF"],
+      enum: ["GLOBAL", "ZONE", "STATE", "BRANCH", "BUSINESS_PARTNER", "SELF"],
       default: "GLOBAL",
     },
 
