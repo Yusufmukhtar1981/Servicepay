@@ -10,3 +10,5 @@ Use the authenticated GitHub connector rather than retrying local HTTPS pushes. 
 **How to apply:** Commit and validate locally first; exclude unrelated untracked attachments. Use the connector's Git database endpoints to create blobs/tree/commit and PATCH the branch with `force: false` only after the relevant file-level conflict check passes.
 
 When transporting local file contents into connector blob requests, read the files directly and encode them in memory. Avoid parsing shell marker streams: line-ending normalization can leave carriage returns in marker-derived path keys, producing an opaque GitHub `422` with missing blob content.
+
+GitHub connector reads may succeed while mutation payloads are rejected by Replit's Cloudflare layer. After any transport or HTML-block-page error, re-read the branch head before retrying; if unchanged, stop rather than repeatedly creating orphan blobs or duplicate commits.
