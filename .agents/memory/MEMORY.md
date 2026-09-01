@@ -17,3 +17,4 @@
 - [Voice call lifecycle atomicity](voice-call-lifecycle-atomicity.md) — Accepted state, busy leases, and client terminal cleanup must move together.
 - [Split frontend dependencies](split-frontend-dependencies.md) — Customer code must not import Admin-only files because production builds come from separate repositories.
 - [Linked worktree recovery](linked-worktree-recovery.md) — Replit checkpoint cleanup can leave a worktree directory intact while its Git metadata disappears.
+- [Twilio TURN account entitlement](twilio-turn-account-entitlement.md) — Twilio Network Traversal token generation is unavailable on Trial accounts even when SID and auth token secrets exist.
