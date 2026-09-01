@@ -42,11 +42,32 @@ const audit = async (req, action, reason, metadata = {}, before = null, after = 
 };
 const page = (req) => Math.max(1, Number(req.query.page) || 1);
 const headOffice = (req, res) => req.staffAccess.isHeadOffice || (res.status(403).json({ success: false, message: "Head Office access only." }), false);
-const dateFilter = (req) => {
+const lagosDate = (value, nextDay = false) => {
+  const raw = String(value || "").trim();
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+  const date = dateOnly ? new Date(`${raw}T00:00:00.000+01:00`) : new Date(raw);
+  if (Number.isNaN(+date)) return null;
+  if (nextDay && dateOnly) date.setUTCDate(date.getUTCDate() + 1);
+  return date;
+};
+const requestedDateRange = (req) => {
   const range = {};
-  if (req.query.startDate) { const date = new Date(req.query.startDate); if (!Number.isNaN(+date)) range.$gte = date; }
-  if (req.query.endDate) { const date = new Date(req.query.endDate); if (!Number.isNaN(+date)) { date.setHours(23, 59, 59, 999); range.$lte = date; } }
+  const start = lagosDate(req.query.startDate);
+  const endExclusive = lagosDate(req.query.endDate, true);
+  if (start) range.$gte = start;
+  if (endExclusive) range.$lt = endExclusive;
+  return range;
+};
+const dateFilter = (req) => {
+  const range = requestedDateRange(req);
   return Object.keys(range).length ? { createdAt: range } : {};
+};
+const targetDateFilter = (req) => {
+  const range = requestedDateRange(req);
+  return {
+    ...(range.$lt ? { startDate: { $lt: range.$lt } } : {}),
+    ...(range.$gte ? { endDate: { $gte: range.$gte } } : {}),
+  };
 };
 const scoped = (branchId, req, extra = {}) => ({ branchId, ...dateFilter(req), ...extra });
 const groupedStatuses = async (Model, filter) => Object.fromEntries((await Model.aggregate([
@@ -55,6 +76,29 @@ const groupedStatuses = async (Model, filter) => Object.fromEntries((await Model
 const countAndSum = async (Model, filter, amount) => {
   const [row] = await Model.aggregate([{ $match: filter }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: `$${amount}` } } }]);
   return { count: row?.count || 0, value: row?.value || 0 };
+};
+const transactionTrend = async (filter) => Transaction.aggregate([
+  { $match: filter },
+  { $group: {
+    _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "Africa/Lagos" } },
+    count: { $sum: 1 },
+    value: { $sum: "$amount" },
+    successful: { $sum: { $cond: [{ $eq: ["$status", "SUCCESSFUL"] }, 1, 0] } },
+    pending: { $sum: { $cond: [{ $eq: ["$status", "PENDING"] }, 1, 0] } },
+    failed: { $sum: { $cond: [{ $eq: ["$status", "FAILED"] }, 1, 0] } },
+  } },
+  { $sort: { _id: 1 } },
+]);
+const permittedRevenue = (req, metrics) => {
+  const values = [];
+  if (dashboardAccess(req, "transactions")) values.push(metrics.transactions?.value);
+  if (dashboardAccess(req, "deliveries")) values.push(metrics.deliveries?.value);
+  if (dashboardAccess(req, "marketplace")) values.push(metrics.marketplace?.value);
+  if (dashboardAccess(req, "solar")) values.push(metrics.solar?.payments?.value);
+  if (dashboardAccess(req, "phoneFinancing")) values.push(metrics.phoneFinancing?.payments?.value);
+  return values.length
+    ? values.reduce((sum, value) => sum + Number(value || 0), 0)
+    : null;
 };
 const safeStatus = (req) => req.query.status ? String(req.query.status).trim().toUpperCase() : null;
 const managerPermissions = () => [...(directRolePermissions.BRANCH_MANAGER || [])];
@@ -131,6 +175,33 @@ const metricsForBranch = async (branchId, req) => {
     phoneFinancing: include("PHONE") || include("PHONE_FINANCING") || !module ? { applications: await PhoneApplication.countDocuments(plain(req.query.staffId ? { assignedOfficer: req.query.staffId } : {})), statuses: await groupedStatuses(PhoneApplication, plain(req.query.staffId ? { assignedOfficer: req.query.staffId } : {})), finance: await countAndSum(PhoneFinance, plain(), "amountPaid"), payments: await countAndSum(PhonePayment, scoped(branchId, req), "amount") } : { applications: 0, statuses: {}, finance: { count: 0, value: 0 }, payments: { count: 0, value: 0 } },
     empowerment: include("EMPOWERMENT") || !module ? { organizations: await EmpowermentOrganization.countDocuments(plain()), programs: await EmpowermentProgram.countDocuments(plain()), beneficiaries: await EmpowermentBeneficiary.countDocuments(plain()), disbursements: await countAndSum(EmpowermentDisbursement, plain(), "totalAmount"), statuses: await groupedStatuses(EmpowermentDisbursement, plain()) } : { organizations: 0, programs: 0, beneficiaries: 0, disbursements: { count: 0, value: 0 }, statuses: {} },
   };
+  const baseUsers = { branchId, isStaff: { $ne: true } };
+  const baseStaff = { branchId, isStaff: true };
+  const [userStatuses, staffStatuses, agents, activeRiders, transactionStatuses, trend, recentTransactions] = await Promise.all([
+    groupedStatuses(User, baseUsers),
+    groupedStatuses(User, baseStaff),
+    User.countDocuments({ ...baseStaff, role: "AGENT" }),
+    User.countDocuments({ ...baseStaff, role: "DELIVERY_RIDER", status: "ACTIVE" }),
+    groupedStatuses(Transaction, txFilter),
+    transactionTrend(txFilter),
+    Transaction.find(txFilter).select("reference serviceType amount status createdAt").sort({ createdAt: -1 }).limit(8).lean(),
+  ]);
+  result.customerSummary = {
+    total: Object.values(userStatuses).reduce((sum, count) => sum + Number(count || 0), 0),
+    active: Number(userStatuses.ACTIVE || 0),
+  };
+  result.staffSummary = {
+    total: Object.values(staffStatuses).reduce((sum, count) => sum + Number(count || 0), 0),
+    active: Number(staffStatuses.ACTIVE || 0),
+    inactive: Object.entries(staffStatuses)
+      .filter(([statusName]) => statusName !== "ACTIVE")
+      .reduce((sum, [, count]) => sum + Number(count || 0), 0),
+  };
+  result.agents = agents;
+  result.activeRiders = activeRiders;
+  result.transactionStatuses = transactionStatuses;
+  result.transactionTrend = trend;
+  result.recentTransactions = recentTransactions;
   result.revenue = result.transactions.value + result.deliveries.value + result.marketplace.value + result.solar.payments.value + result.phoneFinancing.payments.value;
   return result;
 };
@@ -375,25 +446,27 @@ exports.dashboard = async (req, res) => {
   if (!scope) return exports.overview(req, res);
   const base = scoped(scope, req);
   const [metrics, targets, pendingApprovals, approvalStatuses, openRequests, staff, branch] = await Promise.all([
-    metricsForBranch(scope, req), BranchTarget.find({ branchId: scope, ...(req.query.module ? { module: String(req.query.module).toUpperCase() } : {}) }).lean(),
+    metricsForBranch(scope, req), BranchTarget.find({ branchId: scope, ...targetDateFilter(req), ...(req.query.module ? { module: String(req.query.module).toUpperCase() } : {}) }).sort({ endDate: -1, startDate: -1 }).lean(),
     BranchApprovalRequest.countDocuments({ ...base, status: { $in: ["SUBMITTED", "PENDING_HEAD_OFFICE"] } }),
     groupedStatuses(BranchApprovalRequest, base),
     BranchOperationalRequest.countDocuments({ ...base, status: { $in: ["OPEN", "IN_PROGRESS"] } }),
     User.find({ branchId: scope, isStaff: true }).select("_id fullName staffId jobTitle department status role lastStaffLoginAt").sort({ fullName: 1 }).lean(),
-    Branch.findById(scope).select("_id code name status state lga assignedModules managerId openingDate").lean(),
+    Branch.findById(scope).select("_id code name status state lga address assignedModules managerId openingDate").lean(),
   ]);
   for (const section of ["users", "staff", "transactions", "deliveries", "solar", "marketplace", "phoneFinancing", "empowerment"]) {
     if (!dashboardAccess(req, section)) delete metrics[section];
   }
-  if (!dashboardAccess(req, "transactions") && !dashboardAccess(req, "deliveries") &&
-      !dashboardAccess(req, "marketplace") && !dashboardAccess(req, "solar") &&
-      !dashboardAccess(req, "phoneFinancing")) delete metrics.revenue;
+  const visibleRevenue = permittedRevenue(req, metrics);
+  if (visibleRevenue === null) delete metrics.revenue;
+  else metrics.revenue = visibleRevenue;
   const approvals = { approved: approvalStatuses.APPROVED || 0, rejected: approvalStatuses.REJECTED || 0, correctionRequested: approvalStatuses.CORRECTION_REQUESTED || 0 };
   const dashboard = {
     branchId: scope,
-    branch: branch && { id: branch._id, code: branch.code, name: branch.name, status: branch.status, state: branch.state, lga: branch.lga, assignedModules: branch.assignedModules || [], managerId: branch.managerId, openingDate: branch.openingDate },
+    branch: branch && { id: branch._id, code: branch.code, name: branch.name, status: branch.status, state: branch.state, lga: branch.lga, address: branch.address, assignedModules: branch.assignedModules || [], managerId: branch.managerId, openingDate: branch.openingDate },
     period: { startDate: req.query.startDate || null, endDate: req.query.endDate || null, module: req.query.module || null, status: safeStatus(req) },
     metrics,
+    manager: req.user && { name: req.user.fullName, staffId: req.user.staffId || null, role: req.user.role },
+    permissions: req.staffAccess?.permissions || [],
   };
   if (dashboardAccess(req, "staff")) { dashboard.members = metrics.staff || 0; dashboard.staff = staff; }
   if (dashboardAccess(req, "targets")) dashboard.targets = targets;
@@ -402,6 +475,17 @@ exports.dashboard = async (req, res) => {
     dashboard.approvalStatuses = approvalStatuses; dashboard.approvals = approvals;
   }
   if (dashboardAccess(req, "reports")) dashboard.report = { metrics, period: dashboard.period };
+  if (!dashboardAccess(req, "users")) {
+    delete metrics.customerSummary;
+    delete metrics.agents;
+  }
+  if (!dashboardAccess(req, "staff")) delete metrics.staffSummary;
+  if (!dashboardAccess(req, "deliveries")) delete metrics.activeRiders;
+  if (!dashboardAccess(req, "transactions")) {
+    delete metrics.transactionStatuses;
+    delete metrics.transactionTrend;
+    delete metrics.recentTransactions;
+  }
   res.json({ success: true, dashboard });
 };
 exports.overview = async (req, res) => {
@@ -572,4 +656,11 @@ exports.audit = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
   const logs = await BranchAuditLog.find(scope ? { branchId: scope } : {}).sort({ createdAt: -1 }).limit(100).lean();
   res.json({ success: true, logs });
+};
+
+exports.__dashboardTest = {
+  lagosDate,
+  requestedDateRange,
+  targetDateFilter,
+  permittedRevenue,
 };

@@ -8,7 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// The API deliberately does not accept a branch id: the authenticated
 /// manager's assignment is the authority for the branch being displayed.
 abstract class BranchManagerDashboardApi {
-  Future<BranchManagerDashboard> loadDashboard();
+  Future<BranchManagerDashboard> loadDashboard({
+    String? startDate,
+    String? endDate,
+  });
 }
 
 class BranchManagerDashboard {
@@ -20,6 +23,11 @@ class BranchManagerDashboard {
     required this.staff,
     required this.reports,
     required this.modules,
+    this.metrics = const <String, dynamic>{},
+    this.period = const <String, dynamic>{},
+    this.manager = const <String, dynamic>{},
+    this.permissions = const <String>[],
+    this.openRequests = 0,
   });
 
   final Map<String, dynamic> branch;
@@ -29,6 +37,11 @@ class BranchManagerDashboard {
   final List<Map<String, dynamic>> staff;
   final List<Map<String, dynamic>> reports;
   final List<Map<String, dynamic>> modules;
+  final Map<String, dynamic> metrics;
+  final Map<String, dynamic> period;
+  final Map<String, dynamic> manager;
+  final List<String> permissions;
+  final int openRequests;
 }
 
 class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
@@ -43,8 +56,14 @@ class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
   final Future<SharedPreferences> Function() preferencesLoader;
 
   @override
-  Future<BranchManagerDashboard> loadDashboard() async {
-    final Map<String, dynamic> response = await _requestDashboard();
+  Future<BranchManagerDashboard> loadDashboard({
+    String? startDate,
+    String? endDate,
+  }) async {
+    final Map<String, dynamic> response = await _requestDashboard(
+      startDate: startDate,
+      endDate: endDate,
+    );
     final Map<String, dynamic> data = _map(response['dashboard']);
     final Map<String, dynamic> branch = _map(data['branch']);
     final Map<String, dynamic> metrics = _map(data['metrics']);
@@ -56,10 +75,22 @@ class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
       staff: _list(data['staff'] ?? branch['members']),
       reports: _reportRows(metrics),
       modules: _modules(data['assignedModules'] ?? branch['assignedModules']),
+      metrics: metrics,
+      period: _map(data['period']),
+      manager: _map(data['manager']),
+      permissions: data['permissions'] is List
+          ? List<String>.from(
+              (data['permissions'] as List).map((dynamic value) => '$value'),
+            )
+          : const <String>[],
+      openRequests: _integer(data['openRequests']),
     );
   }
 
-  Future<Map<String, dynamic>> _requestDashboard() async {
+  Future<Map<String, dynamic>> _requestDashboard({
+    String? startDate,
+    String? endDate,
+  }) async {
     final SharedPreferences prefs = await preferencesLoader();
     final String token = (prefs.getString('auth_token') ??
             prefs.getString('access_token') ??
@@ -73,8 +104,14 @@ class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
         baseUrl.replaceFirst(RegExp(r'/+$'), '').endsWith('/api')
             ? baseUrl.replaceFirst(RegExp(r'/+$'), '')
             : '${baseUrl.replaceFirst(RegExp(r'/+$'), '')}/api';
+    final Map<String, String> query = <String, String>{
+      if (startDate != null && startDate.isNotEmpty) 'startDate': startDate,
+      if (endDate != null && endDate.isNotEmpty) 'endDate': endDate,
+    };
     final http.Response response = await _client.get(
-      Uri.parse('$root/branches/dashboard'),
+      Uri.parse('$root/branches/dashboard').replace(
+        queryParameters: query.isEmpty ? null : query,
+      ),
       headers: <String, String>{
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
@@ -96,6 +133,8 @@ class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
 
   static Map<String, dynamic> _map(dynamic value) =>
       value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+  static int _integer(dynamic value) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? 0;
   static List<Map<String, dynamic>> _list(dynamic value) => value is List
       ? value.whereType<Map>().map((Map row) => _map(row)).toList()
       : <Map<String, dynamic>>[];
