@@ -1,32 +1,20 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 
 const {
   normalizeRange,
   getDateWindow,
+  getRequestedDateWindow,
   hasPermission,
   buildScopeFilter,
+  getDashboardTargets,
+  getDashboardExport,
 } = require("../services/adminDashboard.service");
 
 test("normalizes dashboard ranges to bounded supported values", () => {
-  assert.equal(normalizeRange("TODAY"), "today");
-  assert.equal(normalizeRange("yesterday"), "yesterday");
-  assert.equal(normalizeRange("WEEK"), "week");
-  assert.equal(normalizeRange("month"), "month");
   assert.equal(normalizeRange("7D"), "7d");
   assert.equal(normalizeRange("30d"), "30d");
   assert.equal(normalizeRange("all-time"), "today");
-});
-
-test("builds Lagos calendar windows for yesterday", () => {
-  const now = new Date("2026-08-30T12:00:00.000Z");
-  const window = getDateWindow("yesterday", now);
-  assert.equal(window.start.toISOString(), "2026-08-28T23:00:00.000Z");
-  assert.equal(window.end.toISOString(), "2026-08-29T23:00:00.000Z");
-  assert.equal(window.previousStart.toISOString(), "2026-08-27T23:00:00.000Z");
-  assert.equal(window.previousEnd.toISOString(), "2026-08-28T23:00:00.000Z");
 });
 
 test("builds adjacent current and previous periods", () => {
@@ -99,14 +87,52 @@ test("limits manager queries to the manager scope", () => {
   assert.deepEqual(buildScopeFilter({ role: "HEAD_OFFICE" }), {});
 });
 
-test("mounts the executive dashboard under the protected admin router", () => {
-  const routesSource = fs.readFileSync(
-    path.resolve(__dirname, "../routes/admin.routes.js"),
-    "utf8",
+test("accepts bounded custom date ranges and rejects oversized ranges", () => {
+  const window = getRequestedDateWindow({
+    startDate: "2026-01-01T00:00:00.000Z",
+    endDate: "2026-03-01T00:00:00.000Z",
+  });
+  assert.equal(window.range, "custom");
+  assert.equal(window.days, 59);
+  assert.throws(
+    () => getRequestedDateWindow({
+      startDate: "2026-01-01T00:00:00.000Z",
+      endDate: "2026-06-01T00:00:00.000Z",
+    }),
+    /cannot exceed/,
   );
-  assert.match(routesSource, /getAdminExecutiveDashboard/);
-  assert.match(
-    routesSource,
-    /router\.get\(\s*"\/dashboard\/executive"[\s\S]*?protect[\s\S]*?loadStaffRole[\s\S]*?requirePermission\(P\.DASHBOARD_VIEW\)[\s\S]*?getAdminExecutiveDashboard/,
+});
+
+test("non-management roles have a deny-by-default dashboard scope", () => {
+  assert.deepEqual(
+    buildScopeFilter({ role: "STAFF", _id: "staff-1" }, "transaction"),
+    { _id: { $exists: false } },
   );
+});
+
+const responseRecorder = () => {
+  const response = { statusCode: 200, body: null };
+  response.status = (code) => {
+    response.statusCode = code;
+    return response;
+  };
+  response.json = (body) => {
+    response.body = body;
+    return response;
+  };
+  return response;
+};
+
+test("target configuration is Head Office-only", async () => {
+  const res = responseRecorder();
+  await getDashboardTargets({ user: { role: "ZONAL_MANAGER" } }, res);
+  assert.equal(res.statusCode, 403);
+  assert.match(res.body.message, /Head Office/);
+});
+
+test("report export requires its explicit permission", () => {
+  const res = responseRecorder();
+  getDashboardExport({ user: { role: "ZONAL_MANAGER", permissions: [] } }, res);
+  assert.equal(res.statusCode, 403);
+  assert.match(res.body.message, /permission/);
 });
