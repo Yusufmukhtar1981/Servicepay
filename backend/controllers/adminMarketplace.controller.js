@@ -1,5 +1,6 @@
 const MarketplaceProduct = require('../models/marketplace.model');
 const MarketplaceOrder = require('../models/marketplaceOrder.model');
+const mongoose = require('mongoose');
 
 /*
  * ============================================================
@@ -13,6 +14,12 @@ const allowedStatuses = new Set([
   'REJECTED',
   'SUSPENDED',
 ]);
+const normalizeProductStatus = (value) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized === 'APPROVED' ? 'ACTIVE' : normalized;
+};
+const escapeRegex = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const allowedFundsStatuses = new Set([
   'HELD',
   'SETTLED',
@@ -34,7 +41,7 @@ exports.listMarketplaceProducts = async (req, res) => {
     const filter = branchFilter(req);
 
     if (status) {
-      const normalizedStatus = String(status).trim().toUpperCase();
+      const normalizedStatus = normalizeProductStatus(status);
 
       if (!allowedStatuses.has(normalizedStatus)) {
         return res.status(400).json({
@@ -47,7 +54,7 @@ exports.listMarketplaceProducts = async (req, res) => {
     }
 
     if (String(q || '').trim()) {
-      const search = String(q).trim();
+      const search = escapeRegex(String(q).trim());
 
       filter.$or = [
         { title: { $regex: search, $options: 'i' } },
@@ -95,6 +102,38 @@ exports.listMarketplaceProducts = async (req, res) => {
       success: false,
       message:
         'Unable to load Marketplace products.',
+    });
+  }
+};
+
+exports.getMarketplaceProduct = async (req, res) => {
+  try {
+    const productId = String(req.params.id || '').trim();
+    if (!mongoose.isValidObjectId(productId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Marketplace product ID.',
+      });
+    }
+
+    const product = await MarketplaceProduct.findOne({
+      _id: productId,
+      ...branchFilter(req),
+    }).lean();
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Marketplace product not found.',
+      });
+    }
+
+    return res.json({ success: true, product });
+  } catch (error) {
+    console.error('ADMIN_MARKETPLACE_DETAIL_ERROR', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load Marketplace product.',
     });
   }
 };
@@ -188,7 +227,15 @@ exports.updateMarketplaceProductStatus =
         });
       }
 
-      if (!allowedStatuses.has(status)) {
+      if (!mongoose.isValidObjectId(productId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid Marketplace product ID.',
+        });
+      }
+
+      const normalizedStatus = normalizeProductStatus(status);
+      if (!allowedStatuses.has(normalizedStatus)) {
         return res.status(400).json({
           success: false,
           message:
@@ -201,7 +248,7 @@ exports.updateMarketplaceProductStatus =
           { _id: productId, ...branchFilter(req) },
           {
             $set: {
-              status,
+              status: normalizedStatus,
             },
           },
           {
@@ -221,11 +268,11 @@ exports.updateMarketplaceProductStatus =
       return res.json({
         success: true,
         message:
-          status === 'ACTIVE'
+          normalizedStatus === 'ACTIVE'
             ? 'Marketplace product approved successfully.'
-            : status === 'REJECTED'
+            : normalizedStatus === 'REJECTED'
             ? 'Marketplace product rejected.'
-            : status === 'SUSPENDED'
+            : normalizedStatus === 'SUSPENDED'
             ? 'Marketplace product suspended.'
             : 'Marketplace product returned to pending review.',
         product,

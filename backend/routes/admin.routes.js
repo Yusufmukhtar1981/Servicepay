@@ -556,6 +556,16 @@ router.get(
   adminMarketplaceController.listMarketplaceProducts
 );
 
+router.get(
+  '/marketplace/products/:id',
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("MARKETPLACE"),
+  requirePermission(P.MARKETPLACE_VIEW),
+  adminMarketplaceController.getMarketplaceProduct
+);
+
 router.patch(
   '/marketplace/products/:id/status',
   protect,

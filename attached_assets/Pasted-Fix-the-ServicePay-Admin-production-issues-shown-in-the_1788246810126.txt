@@ -1,0 +1,120 @@
+Fix the ServicePay Admin production issues shown in the attached screenshots completely. Do not redesign or remove any existing admin features.
+
+ISSUE 1 — ADMIN UI IS WASHED OUT / FADED / NOT CLEAR
+On admin.servicepay.ng, especially the login page and after authentication, the whole screen sometimes appears pale, washed out, low-opacity, or covered by a transparent white layer.
+
+Investigate the actual frontend cause and fix it at source.
+
+Requirements:
+- Inspect the admin root layout, login/auth page, loading states, modal/backdrop components, Suspense/loading overlays, route-transition overlays and global CSS.
+- Remove any accidental global opacity/filter/brightness/blur/backdrop styles affecting the entire app.
+- Ensure no loading overlay, disabled overlay, modal backdrop or pseudo-element remains mounted after loading/login completes.
+- Check classes/styles such as:
+  opacity-*
+  filter
+  brightness
+  blur
+  backdrop-filter
+  bg-white/*
+  fixed inset-0
+  pointer-events
+  aria-disabled
+  disabled states
+- The main app/root/body must always render at opacity:1, filter:none and brightness:100% when no intentional modal is open.
+- Loading state must disappear in both success and error cases using proper finally cleanup.
+- Do not solve this by hiding legitimate dialogs.
+- Fix z-index stacking so invisible overlays cannot cover the page.
+- Login inputs, text, icons and buttons must have strong readable contrast.
+- Make the fix work on Android Chrome, iPhone/Safari and desktop.
+- Preserve the current ServicePay green branding and existing design.
+
+ISSUE 2 — ADMIN MARKETPLACE API ROUTE IS BROKEN
+The Executive Overview currently displays this production error:
+"Route not found: GET /api/admin/marketplace/products?limit=100&status=PENDING"
+
+Fix the frontend/backend contract properly.
+
+Requirements:
+1. Search the admin frontend for every marketplace API request.
+2. Search the backend for the actual marketplace/product models, controllers and routes.
+3. Do not guess the endpoint.
+4. Make the Admin Marketplace support at minimum:
+   - GET product list
+   - filter by status
+   - PENDING
+   - APPROVED
+   - REJECTED
+   - ACTIVE where supported
+   - pagination/limit
+   - search
+   - product detail
+   - approve
+   - reject
+   - disable/remove where current permissions support it
+5. Ensure Executive Overview can fetch pending marketplace products without any Route not found error.
+6. If the existing canonical endpoint is different, update the frontend to use it AND add a backwards-compatible alias for:
+   GET /api/admin/marketplace/products
+   so existing deployed admin builds do not break.
+7. The response must use a stable format expected by the dashboard. Normalize it if necessary, for example:
+   {
+     success: true,
+     products: [],
+     pagination: {...}
+   }
+8. An empty marketplace must return HTTP 200 with an empty array, never 404.
+9. Invalid status values should return a controlled 400 response.
+10. Authentication/ADMIN authorization must remain enforced.
+11. Never expose stack traces or raw backend errors in the Executive Overview UI.
+12. If an API call fails, show a compact error card with Retry instead of dumping "Route not found..." text into the dashboard.
+13. Other Executive Overview cards must continue loading even if Marketplace fails. Use isolated error handling / Promise.allSettled where appropriate.
+
+ISSUE 3 — EXECUTIVE DASHBOARD RESILIENCE
+Audit the Executive Command Center data loader because one failing endpoint must not break/fade the whole dashboard.
+- Keep successful metrics visible.
+- Give each data source its own loading/error state.
+- Do not apply opacity to the whole dashboard while refreshing.
+- Refresh button should refresh data without blocking the entire page.
+- Prevent duplicate requests and infinite loading.
+- Ensure loading state clears after errors.
+- No raw API/debug messages should appear in production UI.
+
+BACKEND ROUTE CHECK
+Confirm admin marketplace router is actually mounted in the main Express application.
+Check for mistakes such as:
+app.use('/api/admin', ...)
+vs router paths already containing /admin,
+wrong marketplace pluralization,
+missing router import,
+route registered after the 404 handler,
+or frontend calling a retired path.
+
+Route registration must occur BEFORE the global 404 handler.
+
+TEST BEFORE FINISHING:
+- Open /admin login on mobile viewport.
+- Confirm page is crisp and full-opacity.
+- Login.
+- Confirm no white/faded overlay remains.
+- Open Executive Command Center.
+- Confirm Marketplace pending count loads.
+- Confirm no "Route not found" is visible.
+- Test GET /api/admin/marketplace/products?limit=100&status=PENDING with an authenticated admin.
+- Confirm HTTP 200.
+- Test marketplace approve/reject flow.
+- Refresh dashboard.
+- Confirm page stays clear during refresh.
+- Test at 360px, 390px, 412px and desktop widths.
+- Run frontend build.
+- Run backend tests/startup.
+- Fix all TypeScript/JavaScript/runtime errors found.
+- Do not use mock data.
+- Do not remove existing ServicePay modules.
+- Do not stop after editing code: verify the actual production build path and deployment configuration.
+
+After completing everything, give me a concise report containing:
+1. exact root cause of the faded UI,
+2. exact root cause of the Marketplace route failure,
+3. files changed,
+4. final canonical marketplace endpoint,
+5. test results,
+6. deployment status.
