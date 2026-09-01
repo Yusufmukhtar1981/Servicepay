@@ -70,6 +70,7 @@ const adminRoutes = require(
 );
 const kekeFareSettingRoutes = require("./routes/kekeFareSetting.routes");
 const adminKekeFareSettingRoutes = require("./routes/adminKekeFareSetting.routes");
+const kekeRideRoutes = require("./routes/kekeRide.routes");
 const fintechOperationsRoutes = require(
   "./routes/fintechOperations.routes"
 );
@@ -223,6 +224,7 @@ app.use(
 );
 app.use("/api/keke-fare", kekeFareSettingRoutes);
 app.use("/api/admin/keke-fare", adminKekeFareSettingRoutes);
+app.use("/api/keke-rides", kekeRideRoutes);
 app.use(
   "/api/admin/fintech-operations",
   fintechOperationsRoutes
