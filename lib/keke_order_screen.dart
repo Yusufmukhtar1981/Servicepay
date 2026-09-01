@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +42,7 @@ class _KekeOrderScreenState
   bool _isLoadingLocation = true;
   bool _isRequestingRide = false;
   bool _isLoadingOtp = false;
+  bool _isEstimatingFare = false;
 
   String _statusMessage =
       'Getting your current location...';
@@ -52,6 +54,7 @@ class _KekeOrderScreenState
   LatLng? _driverLocation;
 
   Map<String, dynamic>? _activeRide;
+  Map<String, dynamic>? _fareEstimate;
 
   Timer? _ridePollingTimer;
 
@@ -717,7 +720,144 @@ class _KekeOrderScreenState
 
       _statusMessage =
           'Destination selected.';
+      _fareEstimate = null;
     });
+
+    await _estimateFare();
+  }
+
+  double _distanceKm(
+    LatLng start,
+    LatLng end,
+  ) {
+    const double earthRadiusKm = 6371;
+    final double lat1 = start.latitude * math.pi / 180;
+    final double lat2 = end.latitude * math.pi / 180;
+    final double deltaLat =
+        (end.latitude - start.latitude) * math.pi / 180;
+    final double deltaLng =
+        (end.longitude - start.longitude) * math.pi / 180;
+    final double a = math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
+        math.cos(lat1) *
+            math.cos(lat2) *
+            math.sin(deltaLng / 2) *
+            math.sin(deltaLng / 2);
+    return earthRadiusKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  Future<bool> _estimateFare() async {
+    final LatLng? pickup = _pickupLocation;
+    final LatLng? destination = _destinationLocation;
+    if (pickup == null || destination == null || _isEstimatingFare) {
+      return false;
+    }
+
+    try {
+      setState(() {
+        _isEstimatingFare = true;
+        _fareEstimate = null;
+      });
+
+      final String? token = await _getAuthToken();
+      if (token == null) {
+        _showMessage('Please login again.');
+        return false;
+      }
+
+      final http.Response response = await http
+          .post(
+            Uri.parse('$baseUrl/keke-fare/estimate'),
+            headers: <String, String>{
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(<String, dynamic>{
+              'distanceKm': _distanceKm(pickup, destination),
+              'waitingMinutes': 0,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      final dynamic decoded = jsonDecode(response.body);
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          decoded is Map &&
+          decoded['fare'] is Map) {
+        if (mounted) {
+          setState(() {
+            _fareEstimate =
+                Map<String, dynamic>.from(decoded['fare'] as Map);
+          });
+        }
+        return true;
+      }
+
+      _showMessage(
+        decoded is Map
+            ? decoded['message']?.toString() ?? 'Unable to estimate fare.'
+            : 'Unable to estimate fare.',
+      );
+      return false;
+    } catch (_) {
+      _showMessage('Unable to estimate fare. Please try again.');
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isEstimatingFare = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _confirmRideRequest(
+    String pickupAddress,
+    String destinationAddress,
+  ) async {
+    final Map<String, dynamic>? estimate = _fareEstimate;
+    if (estimate == null) {
+      return false;
+    }
+    final double totalFare = _toDouble(estimate['totalFare']) ?? 0;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm Keke request'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$pickupAddress → $destinationAddress'),
+              const SizedBox(height: 16),
+              const Text('Vehicle: Keke Napep'),
+              const Text('Payment: ServicePay Wallet'),
+              const SizedBox(height: 8),
+              Text(
+                'Estimated fare: ₦${totalFare.toStringAsFixed(0)}',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your wallet is charged only when the ride is completed.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm request'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed == true;
   }
 
   Future<void> _useCurrentLocation()
@@ -790,6 +930,21 @@ class _KekeOrderScreenState
         'Please enter destination name or address.',
       );
 
+      return;
+    }
+
+    if (_fareEstimate == null) {
+      final bool estimated = await _estimateFare();
+      if (!estimated) {
+        return;
+      }
+    }
+
+    final bool confirmed = await _confirmRideRequest(
+      pickupAddress,
+      destinationAddress,
+    );
+    if (!confirmed) {
       return;
     }
 
@@ -1380,6 +1535,57 @@ class _KekeOrderScreenState
                       : primaryGreen,
             ),
           ),
+          if (_destinationLocation != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              key: const Key('transport-fare-estimate'),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF7F0),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFCFE7D8)),
+              ),
+              child: _isEstimatingFare
+                  ? const Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text('Calculating fare…'),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        const Icon(
+                          Icons.electric_rickshaw_rounded,
+                          color: primaryGreen,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Keke Napep',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              Text('ServicePay Wallet'),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          _fareEstimate == null
+                              ? 'Fare unavailable'
+                              : '₦${(_toDouble(_fareEstimate!['totalFare']) ?? 0).toStringAsFixed(0)}',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
           const SizedBox(
             height:
                 18,
