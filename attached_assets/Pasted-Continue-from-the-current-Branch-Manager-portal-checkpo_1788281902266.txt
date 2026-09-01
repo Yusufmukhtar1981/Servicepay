@@ -1,0 +1,226 @@
+Continue from the current Branch Manager portal checkpoint.
+
+DO NOT publish the current partial staff-only slice yet.
+
+The Staff Management slice is already validated locally:
+- Flutter dashboard/staff tests: 12 passed
+- Backend branch/RBAC/isolation tests: 23 passed
+- Flutter analysis: clean
+- Release web build: passed
+
+Keep all completed Staff Management work exactly as-is.
+
+Now finish ALL remaining Branch Manager portal work in ONE coordinated implementation before production publication.
+
+REMAINING REQUIRED WORK:
+
+1. RIDERS
+- Branch-scoped rider list
+- Online/offline status
+- Active/suspended status
+- Search/filter
+- Rider details
+- Branch assignment where authorized
+- Assign rider to delivery
+- Reassign safely
+- Rider activity/history
+- Rider withdrawal visibility where permitted
+
+2. DELIVERIES
+- Branch delivery list
+- Pending / Assigned / Accepted / Picked Up / In Transit / Delivered / Cancelled statuses
+- Delivery detail
+- Eligible rider selection
+- Assign Delivery
+- Reassign Delivery
+- Search/filter/pagination
+- Reuse existing working Delivery assignment backend logic
+- Do not create duplicate assignment logic
+
+3. OFFICERS
+Create a real Officers workspace using existing supported roles:
+- KYC Officer
+- Delivery Officer
+- Solar Officer
+- Phone Financing Officer
+- Marketplace/Support Officer
+- any other existing operational officer roles
+
+Branch Manager must be able to:
+- create permitted officers
+- assign officer type
+- view workload/status
+- activate/deactivate where permitted
+- assign eligible work
+
+Never allow Branch Manager to create HEAD_OFFICE or higher-privilege roles.
+
+4. CUSTOMERS
+- Branch-scoped customer list
+- Search
+- Customer profile
+- KYC status
+- Account status
+- Wallet/transaction summary where authorized
+- Branch activity
+- No cross-branch leakage
+
+5. TRANSACTIONS / FINANCE
+- Branch transaction list
+- Search/reference filters
+- Date/status/product filters
+- Transaction details
+- Branch wallet visibility where permitted
+- Withdrawal requests
+- Pending/completed/failed status
+- No unauthorized approval actions
+
+6. KYC
+- Pending KYC
+- Customer details
+- Assigned officer
+- Verification status
+- Assign to KYC Officer where supported
+- Preserve Head Office final approval rules
+
+7. SOLAR
+- Branch solar applications
+- Customer/package
+- Payment/upfront status
+- Assigned Solar Officer
+- Verification/application status
+- Repayment summary where permitted
+
+8. MARKETPLACE
+- Branch marketplace orders
+- Store/customer
+- Order status
+- Amount/date
+- Support/escalation visibility where allowed
+- Do not alter global Marketplace business logic
+
+9. PREMIUM DASHBOARD INTEGRATION
+The approved premium dashboard must now connect to these REAL modules.
+
+Make the sidebar and Quick Actions fully working:
+- Create Staff
+- Officers
+- Assign Rider
+- Assign Delivery
+- Customers
+- Transactions
+- Withdrawals
+- KYC Review
+- Marketplace Orders
+- Solar Applications
+- Reports
+- Notifications
+- Branch Wallet
+- Targets & Goals
+
+No toast-only placeholders.
+
+10. VISUAL QUALITY
+Preserve the approved premium ServicePay Branch Dashboard design.
+
+Fix any remaining faint/blurry/dim text:
+- remove accidental opacity
+- remove unwanted blur/backdrop filters
+- ensure strong contrast
+- crisp headings/metrics on Android Chrome and desktop
+
+11. LOGOUT
+Ensure complete logout:
+- visible header + sidebar
+- confirmation dialog
+- clear access/refresh/session tokens
+- clear sensitive branch cache
+- redirect to Branch Manager login
+- browser Back cannot reopen protected dashboard
+- protected routes require valid session
+
+12. SECURITY / BRANCH ISOLATION
+Backend must remain source of truth.
+
+Verify:
+- cannot view another branch's customers
+- cannot view another branch's staff
+- cannot view another branch's riders
+- cannot assign another branch's rider
+- cannot view another branch's transactions
+- cannot create staff/officers in another branch
+- cannot escalate role
+- Head Office access remains unchanged
+
+13. TEST EVERYTHING TOGETHER
+Run the combined portal tests:
+- Staff Management
+- Officers
+- Riders
+- Deliveries
+- Customers
+- Transactions
+- Withdrawals
+- KYC
+- Solar
+- Marketplace
+- RBAC
+- Branch isolation
+- Logout/session protection
+- Mobile responsiveness
+- Dashboard navigation
+- Admin regression
+- Customer frontend regression
+- release web build
+
+14. PRODUCTION PUBLICATION
+Only after the COMPLETE portal passes:
+
+- commit minimal safe changes
+- normal fast-forward push only
+- no force-push
+- deploy backend/customer frontend as required
+- verify REAL production
+
+FINAL PRODUCTION SUCCESS means:
+
+- Premium Branch Dashboard deployed
+- Staff Management works
+- Create Staff works
+- Officers works
+- Riders works
+- Assign Rider works
+- Deliveries works
+- Assign Delivery works
+- Customers works
+- Transactions works
+- Withdrawals works
+- KYC works
+- Solar works
+- Marketplace works
+- Quick Actions open real screens
+- Logout works
+- Branch isolation verified
+- no blurry/dim dashboard text
+- no new 404
+- no new 500
+- Head Office Admin remains healthy
+- Customer frontend remains healthy
+
+Do not stop after creating more suggested tasks.
+Do not report completion from local tests alone.
+
+Finish the entire remaining Branch Manager portal scope, publish it, and provide:
+
+Feature | Route/API | Production result | Status
+
+Also explicitly confirm:
+1. Full Branch Manager portal deployed
+2. Staff creation working
+3. Officer management working
+4. Rider management/assignment working
+5. Delivery management/assignment working
+6. Customer/Finance/KYC/Solar/Marketplace workspaces working
+7. Branch isolation preserved
+8. Logout fully working
+9. No regression to Head Office or Customer production
