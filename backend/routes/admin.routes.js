@@ -4,6 +4,8 @@ const {
   getAdminDashboard,
   getAdminTransactions,
   getAdminDeliveries,
+  getAvailableRiders,
+  assignRiderToDelivery,
   updateDeliveryStatus,
   getAdminUsers,
   createAdminUser,
@@ -18,6 +20,14 @@ const {
   protect,
   adminOnly,
 } = require("../middleware/auth.middleware");
+const {
+  loadStaffRole,
+  requirePermission,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule,
+} = require("../middleware/staffPermission.middleware");
+const { STAFF_PERMISSIONS: P } = require("../config/staffPermissions");
+const adminMarketplaceController = require("../controllers/adminMarketplace.controller");
 
 const router = express.Router();
 
@@ -139,8 +149,28 @@ router.get(
 router.get(
   "/deliveries",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_VIEW),
   getAdminDeliveries
+);
+
+router.get(
+  "/deliveries/:id/available-riders",
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_ASSIGN),
+  getAvailableRiders
+);
+
+router.patch(
+  "/deliveries/:id/assign-rider",
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_ASSIGN),
+  assignRiderToDelivery
 );
 
 router.patch(
@@ -149,5 +179,27 @@ router.patch(
   adminOnly("HEAD_OFFICE"),
   updateDeliveryStatus
 );
+
+const marketplaceView = [
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("MARKETPLACE"),
+  requirePermission(P.MARKETPLACE_VIEW),
+];
+const marketplaceModerate = [
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requireAssignedBranchModule("MARKETPLACE"),
+  requirePermission(P.MARKETPLACE_MODERATE),
+];
+
+router.get("/marketplace/products", ...marketplaceView, adminMarketplaceController.listMarketplaceProducts);
+router.get("/marketplace/products/:id", ...marketplaceView, adminMarketplaceController.getMarketplaceProduct);
+router.patch("/marketplace/products/:id/status", ...marketplaceModerate, adminMarketplaceController.updateMarketplaceProductStatus);
+router.patch("/marketplace/products/:id/approve", ...marketplaceModerate, adminMarketplaceController.approveMarketplaceProduct);
+router.patch("/marketplace/products/:id/reject", ...marketplaceModerate, adminMarketplaceController.rejectMarketplaceProduct);
+router.patch("/marketplace/products/:id/suspend", ...marketplaceModerate, adminMarketplaceController.suspendMarketplaceProduct);
 
 module.exports = router;

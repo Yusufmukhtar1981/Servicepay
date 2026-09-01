@@ -112,6 +112,27 @@ const aggregateBranchPerformance = (match) => Branch ? Transaction.aggregate([
   { $project: { _id: 0, branchId: "$_id", branch: { $ifNull: ["$branch.name", "Unknown branch"] }, count: 1, value: 1, successful: 1, pending: 1, failed: 1 } },
 ]) : Promise.resolve([]);
 
+const DASHBOARD_QUERY_TIMEOUT_MS = 8000;
+const boundedQuery = async (label, query, fallback) => {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve(query),
+      new Promise((resolve) => {
+        timer = setTimeout(() => {
+          console.warn(`Executive dashboard query timed out: ${label}`);
+          resolve(fallback);
+        }, DASHBOARD_QUERY_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    console.error(`Executive dashboard query failed: ${label}`, error);
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 const getExecutiveDashboard = async (req, res) => {
   let window;
   try { window = getRequestedDateWindow(req.query); } catch (error) { return res.status(400).json({ success: false, message: error.message }); }
@@ -125,7 +146,7 @@ const getExecutiveDashboard = async (req, res) => {
   const customerFilter = { role: "CUSTOMER", ...userScope };
   const currentMatch = transactionMatch(window.start, window.end, transactionScope);
   try {
-    const [customers, activeCustomers, agents, aggregators, stateManagers, zonalManagers, branchManagers, walletRows, currentRows, previousRows, series, products, activity, pendingKyc, pendingDeliveries, activeRiders, geography, target, totalBranches, pendingWithdrawals, pendingSolar, branchRows, marketplaceRows] = await Promise.all([
+    const dashboardQueries = [
       usersAllowed ? User.countDocuments(customerFilter) : null,
       usersAllowed ? User.countDocuments({ ...customerFilter, status: "ACTIVE" }) : null,
       usersAllowed ? User.countDocuments({ role: "AGENT", ...userScope }) : null,
@@ -149,7 +170,17 @@ const getExecutiveDashboard = async (req, res) => {
       hasPermission(req.user, "solar.view") && !scoped && SolarApplication ? SolarApplication.countDocuments({ status: { $in: ["SUBMITTED", "UNDER_REVIEW", "MORE_INFORMATION_REQUIRED", "AWAITING_DEPOSIT"] } }) : null,
       txAllowed && !scoped ? aggregateBranchPerformance(currentMatch) : [],
       txAllowed && !scoped && MarketplaceOrder ? MarketplaceOrder.aggregate([{ $match: { createdAt: { $gte: window.start, $lt: window.end } } }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: amount("$totalAmount") }, successful: { $sum: { $cond: [{ $in: ["$paymentStatus", ["PAID", "SUCCESS", "SUCCESSFUL"]] }, 1, 0] } }, pending: { $sum: { $cond: [{ $in: ["$paymentStatus", ["PENDING", "UNPAID", "HELD"]] }, 1, 0] } }, failed: { $sum: { $cond: [{ $in: ["$paymentStatus", ["FAILED", "REFUNDED", "CANCELLED"]] }, 1, 0] } } } }]) : [],
-    ]);
+    ];
+    const dashboardFallbacks = [
+      null, null, null, null, null, null, null,
+      [], [], [], [], [], [], null, null, null,
+      [], null, null, null, null, [], [],
+    ];
+    const [customers, activeCustomers, agents, aggregators, stateManagers, zonalManagers, branchManagers, walletRows, currentRows, previousRows, series, products, activity, pendingKyc, pendingDeliveries, activeRiders, geography, target, totalBranches, pendingWithdrawals, pendingSolar, branchRows, marketplaceRows] = await Promise.all(
+      dashboardQueries.map((query, index) =>
+        boundedQuery(`query-${index + 1}`, query, dashboardFallbacks[index])
+      )
+    );
     const current = summaryFrom(currentRows), previous = summaryFrom(previousRows);
     const productMap = Object.fromEntries(products.map((row) => [String(row._id || ""), row]));
     const noSafeScope = "This data cannot be safely scoped for this management role.";

@@ -1,8 +1,12 @@
 const mongoose = require("mongoose");
+const { randomUUID } = require("crypto");
 
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const Delivery = require("../models/delivery.model");
+const {
+  sendAssignmentAlertIfOnline,
+} = require("../services/riderDeliveryAlert.service");
 const {
   getExecutiveDashboard,
    getDashboardTargets,
@@ -51,6 +55,178 @@ const normalizeDeliveryStatus = (value = "") => {
     .trim()
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
+};
+
+const deliveryBranchFilter = (req) => {
+  if (
+    req.staffAccess?.isHeadOffice ||
+    req.staffAccess?.scope?.type === "GLOBAL"
+  ) {
+    return {};
+  }
+  const scope = req.staffAccess?.scope;
+  if (scope?.type !== "BRANCH") return {};
+  const branchId = req.branchScope?._id || scope.branchId;
+  return branchId ? { branchId } : { _id: null };
+};
+
+exports.getAvailableRiders = async (req, res) => {
+  try {
+    const deliveryId = String(req.params.id || "").trim();
+    if (!mongoose.isValidObjectId(deliveryId)) {
+      return res.status(400).json({ success: false, message: "Invalid delivery ID." });
+    }
+    const delivery = await Delivery.findOne({
+      _id: deliveryId,
+      ...deliveryBranchFilter(req),
+    }).lean();
+    if (!delivery) {
+      return res.status(404).json({ success: false, message: "Delivery was not found." });
+    }
+    const assignable = delivery.status === "PENDING" && !delivery.assignedRiderId;
+    const riders = assignable
+      ? await User.find({
+          role: "DELIVERY_RIDER",
+          branchId: delivery.branchId || null,
+          status: "ACTIVE",
+          riderVerificationStatus: "VERIFIED",
+          availabilityStatus: "ONLINE",
+        })
+          .select("_id riderId fullName vehicleType plateNumber availabilityStatus riderRating totalAssignedDeliveries totalCompletedDeliveries")
+          .sort({ riderRating: -1, createdAt: -1 })
+          .limit(100)
+          .lean()
+      : [];
+    return res.json({
+      success: true,
+      data: { delivery, riders, count: riders.length, assignable },
+      riders,
+      count: riders.length,
+    });
+  } catch (error) {
+    console.error("Get available riders error:", error);
+    return res.status(500).json({ success: false, message: "Failed to load available riders." });
+  }
+};
+
+exports.assignRiderToDelivery = async (req, res) => {
+  const deliveryId = String(req.params.id || "").trim();
+  const riderId = String(req.body?.riderId || req.body?.assignedRiderId || "").trim();
+  if (!mongoose.isValidObjectId(deliveryId) || !mongoose.isValidObjectId(riderId)) {
+    return res.status(400).json({ success: false, message: "Select a valid delivery and rider." });
+  }
+  const scopedDelivery = await Delivery.findOne({
+    _id: deliveryId,
+    ...deliveryBranchFilter(req),
+  }).select("branchId").lean();
+  if (!scopedDelivery) {
+    return res.status(404).json({ success: false, message: "Delivery was not found." });
+  }
+  const session = await mongoose.startSession();
+  let rider;
+  let delivery;
+  try {
+    await session.withTransaction(async () => {
+      rider = await User.findOne({
+        _id: riderId,
+        role: "DELIVERY_RIDER",
+        branchId: scopedDelivery.branchId || null,
+        status: "ACTIVE",
+        riderVerificationStatus: "VERIFIED",
+        availabilityStatus: "ONLINE",
+      }).session(session);
+      if (!rider) {
+        const error = new Error("The selected rider is not available.");
+        error.statusCode = 409;
+        throw error;
+      }
+      delivery = await Delivery.findOneAndUpdate(
+        {
+          _id: deliveryId,
+          ...deliveryBranchFilter(req),
+          status: "PENDING",
+          $or: [{ assignedRiderId: null }, { assignedRiderId: { $exists: false } }],
+        },
+        {
+          $set: {
+            assignedRiderId: rider._id,
+            riderName: rider.fullName || "",
+            riderPhone: rider.phone || "",
+            assignedBy: req.user?._id || null,
+            assignedAt: new Date(),
+            assignmentEventId: randomUUID(),
+            riderAcceptedAt: null,
+            riderRejectedAt: null,
+            riderRejectionReason: "",
+            status: "ASSIGNED",
+            ...(req.body?.adminNote !== undefined
+              ? { adminNote: String(req.body.adminNote).trim() }
+              : {}),
+          },
+        },
+        { new: true, runValidators: true, session }
+      );
+      if (!delivery) {
+        const existingDelivery = await Delivery.findOne({
+          _id: deliveryId,
+          ...deliveryBranchFilter(req),
+        })
+          .select("status assignedRiderId")
+          .session(session)
+          .lean();
+        const error = new Error(
+          existingDelivery?.assignedRiderId
+            ? "This delivery already has a rider assigned."
+            : "This delivery is no longer available for assignment."
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+      await User.updateOne(
+        { _id: rider._id },
+        { $inc: { totalAssignedDeliveries: 1 } },
+        { session }
+      );
+    });
+  } catch (error) {
+    if (Number.isInteger(error.statusCode)) {
+      return res.status(error.statusCode).json({ success: false, message: error.message });
+    }
+    console.error("Assign rider error:", error);
+    return res.status(500).json({ success: false, message: "Failed to assign rider." });
+  } finally {
+    await session.endSession();
+  }
+  try {
+    await sendAssignmentAlertIfOnline({ rider, delivery });
+  } catch (error) {
+    console.error("DELIVERY ASSIGNMENT ALERT ERROR:", error?.message || error);
+  }
+  const updatedDelivery = await Delivery.findOne({
+    _id: delivery._id,
+    ...deliveryBranchFilter(req),
+  })
+    .populate("customerId", "_id fullName name")
+    .populate(
+      "assignedRiderId",
+      "_id riderId fullName vehicleType plateNumber availabilityStatus"
+    )
+    .lean();
+  return res.json({
+    success: true,
+    message: `${rider.fullName} has been assigned successfully.`,
+    data: {
+      delivery: updatedDelivery,
+      rider: {
+        id: rider._id,
+        riderId: rider.riderId || null,
+        fullName: rider.fullName,
+        phone: rider.phone,
+        availabilityStatus: rider.availabilityStatus,
+      },
+    },
+    delivery: updatedDelivery,
+  });
 };
 
 exports.getAdminDashboard = async (req, res) => {
@@ -564,7 +740,7 @@ exports.getAdminDeliveries = async (
         req.query.status ?? ""
       );
 
-    const filter = {};
+    const filter = { ...deliveryBranchFilter(req) };
 
     if (status && status !== "ALL") {
       if (

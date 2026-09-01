@@ -99,6 +99,29 @@ exports.listMarketplaceProducts = async (req, res) => {
   }
 };
 
+exports.getMarketplaceProduct = async (req, res) => {
+  try {
+    const productId = String(req.params.id || "").trim();
+    if (!productId) {
+      return res.status(400).json({ success: false, message: "Marketplace product ID is required." });
+    }
+    const product = await MarketplaceProduct.findOne({
+      _id: productId,
+      ...branchFilter(req),
+    }).lean();
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Marketplace product not found." });
+    }
+    return res.json({ success: true, product, data: { product } });
+  } catch (error) {
+    if (error?.name === "CastError") {
+      return res.status(400).json({ success: false, message: "Invalid Marketplace product ID." });
+    }
+    console.error("ADMIN_MARKETPLACE_DETAIL_ERROR", error);
+    return res.status(500).json({ success: false, message: "Unable to load Marketplace product." });
+  }
+};
+
 exports.listMarketplaceOrders = async (req, res) => {
   try {
     const {
