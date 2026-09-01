@@ -1,0 +1,70 @@
+SERVICEPAY ADMIN DEPLOYMENT RECOVERY — FIX THE ACTUAL GITHUB ACTIONS FAILURE AND DEPLOY ALL CURRENT ADMIN CHANGES
+
+The GitHub Actions workflow "Deploy ServicePay Admin Web" is currently failing with:
+"Process completed with exit code 1"
+
+There is also a Node.js deprecation warning, but DO NOT assume that warning is the root cause.
+
+Do this end-to-end:
+
+1. Open and inspect the latest failed GitHub Actions run for the servicepay-admin repository, especially workflow:
+   .github/workflows/deploy_admin_web.yml
+   job: Build and Deploy Admin Web
+
+2. Read the FULL failed job logs and identify the FIRST real error that causes exit code 1.
+   Do not guess.
+   Do not stop at warnings.
+
+3. Inspect all recent commits since the last successful deployment and determine whether the failure is caused by:
+   - Flutter/Dart compile error
+   - missing import/package
+   - incompatible Flutter version
+   - web build issue
+   - workflow YAML issue
+   - Node/action version incompatibility
+   - Firebase Hosting deploy issue
+   - credentials/secrets issue
+   - incorrect build output path
+   - shell command incompatibility
+   - permission issue
+   - any other real CI error
+
+4. Fix the ROOT CAUSE only.
+   Preserve all current Admin features and all work completed today.
+   Do NOT revert or delete valid recent functionality just to make CI green.
+
+5. Update GitHub Actions dependencies if needed so the workflow is compatible with the current GitHub-hosted runner and Node.js runtime.
+   If any action still targets deprecated Node.js 20, upgrade it to a current supported version where safe.
+   Do not blindly change Node versions unless required.
+
+6. Run locally/in the agent environment before pushing:
+   flutter pub get
+   flutter analyze
+   flutter build web --release
+
+   Fix every blocking error introduced by recent changes.
+
+7. Verify the generated web build directory matches the deployment workflow configuration.
+
+8. Then commit the fix with a clear message such as:
+   "Fix ServicePay Admin production deployment pipeline"
+
+9. Push to the existing main branch.
+
+10. Monitor the new GitHub Actions run until:
+    - Build passes
+    - Deploy passes
+    - workflow is green
+
+11. After deployment, open the production Admin site and verify the latest UI/features are actually live.
+
+12. Do not report success until the workflow is GREEN and the production site is verified.
+
+FINAL REPORT:
+- exact root cause
+- exact failing log line
+- files changed
+- whether Flutter build passed
+- whether GitHub Actions passed
+- deployed commit SHA
+- production verification result

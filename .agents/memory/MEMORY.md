@@ -1,6 +1,7 @@
 - [Mongoose 9 middleware](mongoose-9-middleware.md) — Callback-style model middleware must be converted before transaction safeguards can run.
 - [Attachment commits](attachment-commits.md) — Verify HEAD before amending; attachment handling may create a commit between turns.
 - [GitHub connector publishing](github-connector-publishing.md) — Local GitHub HTTPS may lack auth; publish via the connector only after file-level remote safety checks.
+- [GitHub workflow write scope](github-workflow-write-scope.md) — Repository content access may still reject commits that modify Actions workflows.
 - [Marketplace funds](marketplace-funds.md) — Marketplace checkout holds customer funds; never credit sellers without an approved settlement path.
 - [Partner reconciliation states](partner-reconciliation-states.md) — Only explicit provider uncertainty may be manually reconciled; in-flight purchases must stay immutable.
 - [Financing inventory reservations](financing-inventory-reservations.md) — Reserve a real device atomically before accepting a financing deposit.
