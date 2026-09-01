@@ -1,0 +1,235 @@
+Redesign the entire ServicePay Branch Manager Dashboard into a premium modern fintech operations dashboard.
+
+IMPORTANT:
+Do not keep the current oversized empty-card layout.
+The current page looks too basic and wastes too much vertical space.
+Rebuild it professionally for mobile and desktop while preserving all existing backend data and permissions.
+
+DESIGN GOAL:
+Create a premium dashboard similar in quality to modern banking/fintech operations dashboards.
+
+BRANCH HEADER:
+At the top show:
+- Branch name
+- Branch code
+- Branch location
+- Branch status
+- Branch Manager name
+- Current reporting period
+- Refresh button
+- Notification icon
+
+Use a clean premium ServicePay green theme with white cards, soft shadows, subtle borders, rounded corners and proper spacing.
+
+TOP KPI SECTION:
+Use compact responsive KPI cards, 2 per row on mobile and 4 per row on desktop.
+
+Show:
+- Total Customers
+- Active Customers
+- Total Staff
+- Active Staff
+- Total Agents
+- Total Transactions
+- Transaction Volume
+- Transaction Value
+- Branch Wallet/Managed Balance where permitted
+- Pending Transactions
+- Failed Transactions
+- Pending Approvals
+- Pending KYC
+- Pending Withdrawals
+- Pending Delivery Orders
+- Pending Solar Applications
+- Active Riders
+
+Each KPI card should have:
+- proper icon
+- value
+- short title
+- optional trend indicator
+- no unnecessary empty space
+
+TRANSACTION PERFORMANCE:
+Add a premium chart section showing:
+- daily transaction volume
+- daily transaction value
+- successful transactions
+- failed transactions
+- pending transactions
+
+Support:
+- Today
+- 7 Days
+- 30 Days
+- This Month
+
+BRANCH PERFORMANCE:
+Add a performance card with:
+- monthly target
+- achieved amount
+- percentage achieved
+- progress bar
+- remaining target
+
+Example:
+Monthly Target: ₦5,000,000
+Achieved: ₦3,750,000
+75% completed
+
+REPORTING PERIODS:
+Do not use a large empty card.
+Create a compact reporting-period selector/filter:
+- Today
+- This Week
+- This Month
+- Custom
+
+BRANCH STAFF:
+Replace the current weak Branch Staff card.
+
+Show:
+- Total staff
+- Active
+- Inactive
+- On duty where supported
+
+Then provide a compact staff list with:
+- Name
+- Role
+- Status
+- Phone
+- View button
+
+Add:
+“View All Staff”
+
+APPROVALS:
+Create a compact approvals panel with counts for:
+- Pending Head Office Approval
+- Pending KYC
+- Pending Withdrawal
+- Pending Solar
+- Other branch approvals
+
+Every approval type should be clickable where routes already exist.
+
+QUICK ACTIONS:
+Add premium Quick Actions:
+- Add Branch Staff
+- View Customers
+- View Transactions
+- Review Approvals
+- View Reports
+- Manage Targets
+- Delivery Operations
+- Solar Operations
+
+Only show actions permitted to the Branch Manager.
+
+LIVE OPERATIONS:
+Add a section showing branch activity across ServicePay products:
+- Transfers
+- Withdrawals
+- Airtime
+- Data
+- Electricity
+- Marketplace
+- Delivery
+- Solar
+- Empowerment
+- Amana
+- NIN Verification
+- other active ServicePay products
+
+For each show:
+- transaction count
+- total value where applicable
+- status/activity indicator
+
+RECENT ACTIVITY:
+Add a recent activity timeline/table containing:
+- recent transactions
+- customer activity
+- staff actions
+- approvals
+- delivery updates
+- solar updates
+
+Include timestamp and status.
+
+REPORTS:
+Do not display raw text like:
+transactions
+0
+deliveries
+0
+
+Replace with a professional analytics/report section.
+
+Show:
+- Transactions
+- Revenue/fees where permitted
+- Deliveries
+- Withdrawals
+- Solar
+- Marketplace
+- Customers
+- Staff performance
+
+Add “View Full Reports”.
+
+SYSTEM/BRANCH HEALTH:
+Add a compact Branch Operations Health panel:
+- API/Service status where relevant
+- Last sync
+- Active services
+- Issues requiring attention
+
+RESPONSIVE DESIGN:
+Mobile:
+- no horizontal overflow
+- KPI cards 2 columns
+- charts full width
+- compact spacing
+- readable typography
+- sticky/clean header if appropriate
+
+Desktop/tablet:
+- use professional multi-column grid layout
+
+IMPORTANT DATA RULES:
+- Use real backend data only.
+- Do not hardcode fake counts.
+- If a metric is unavailable, show 0 or “No data” gracefully.
+- Preserve Branch Manager access restrictions.
+- Branch Manager must see only their assigned branch.
+- Do not expose other branches’ sensitive data.
+- Do not break Admin, Customer, Rider, Staff or Business Partner dashboards.
+
+UI QUALITY:
+- Premium ServicePay green
+- Modern fintech icons
+- Smooth micro animations
+- Skeleton loaders while fetching
+- Pull/refresh or refresh-button support
+- Error state with Retry button
+- Empty states should be compact and attractive
+- No giant empty cards
+- No overlapping text
+- Consistent fonts and spacing
+- Currency values formatted as Nigerian Naira
+- Large numbers formatted cleanly
+
+Before finishing:
+1. Inspect existing Branch Manager APIs and routes.
+2. Reuse working endpoints.
+3. Add missing branch-scoped aggregate endpoints only where necessary.
+4. Verify permissions and branch isolation.
+5. Run frontend and backend tests.
+6. Test on mobile width similar to 360–430px.
+7. Test tablet and desktop.
+8. Verify every displayed number is branch-scoped.
+
+Do not merely restyle the existing screen.
+Rebuild the Branch Manager Dashboard layout professionally while preserving existing functionality.
