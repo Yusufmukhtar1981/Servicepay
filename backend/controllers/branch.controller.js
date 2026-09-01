@@ -357,6 +357,104 @@ exports.removeMember = async (req, res) => {
   await audit(req, "BRANCH_MEMBER_ASSIGNED", "Branch member removed.", { branchId: String(scope), userId: String(user._id) });
   res.json({ success: true });
 };
+const staffView = (user) => ({
+  _id: user._id, fullName: user.fullName, phone: user.phone, email: user.email || null,
+  department: user.department || null, jobTitle: user.jobTitle || "", status: user.status,
+  branchId: user.branchId, staffId: user.staffId || null, createdAt: user.createdAt,
+});
+const branchStaffAccess = async (req, res) => {
+  const scope = branchScope(req, req.params.branchId);
+  if (scope === false) { deny(res); return null; }
+  const branch = await Branch.findById(scope).select("_id managerId status").lean();
+  if (!branch) { managerError(res, 404, "BRANCH_NOT_FOUND", "Branch not found."); return null; }
+  // A branch manager must still be the manager recorded for this specific branch.
+  if (!req.staffAccess.isHeadOffice && (!same(branch.managerId, id(req)) || !same(req.user.branchId, scope))) {
+    deny(res); return null;
+  }
+  return { scope, branch };
+};
+const managedStaff = async (req, res, scope) => {
+  const user = await User.findById(req.params.staffId).select("+authTokenVersion");
+  if (!user) { managerError(res, 404, "STAFF_NOT_FOUND", "Staff member not found."); return null; }
+  const branch = await Branch.findById(scope).select("managerId").lean();
+  if (
+    !same(user.branchId, scope) ||
+    user.isStaff !== true ||
+    same(user._id, branch?.managerId) ||
+    ["HEAD_OFFICE", "BRANCH_MANAGER"].includes(String(user.role).toUpperCase())
+  ) {
+    deny(res); return null;
+  }
+  return user;
+};
+exports.staff = async (req, res) => {
+  const access = await branchStaffAccess(req, res); if (!access) return;
+  if (req.method === "GET") {
+    const status = String(req.query.status || "").trim().toUpperCase();
+    const search = String(req.query.search || "").trim();
+    if (status && !["ACTIVE", "SUSPENDED", "BLOCKED"].includes(status)) return managerError(res, 400, "INVALID_STAFF_STATUS", "Status must be ACTIVE, SUSPENDED, or BLOCKED.");
+    const filter = {
+      branchId: access.scope,
+      isStaff: true,
+      _id: { $ne: access.branch.managerId },
+      role: { $nin: ["HEAD_OFFICE", "BRANCH_MANAGER"] },
+      ...(status ? { status } : {}),
+    };
+    if (search) filter.$or = ["fullName", "phone", "email", "department", "jobTitle", "staffId"].map((field) => ({ [field]: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" } }));
+    const staff = await User.find(filter).select("_id fullName phone email department jobTitle status branchId staffId createdAt").sort({ fullName: 1 }).lean();
+    return res.json({ success: true, staff });
+  }
+  const fullName = String(req.body.fullName || "").trim();
+  const phone = String(req.body.phone || "").trim();
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const department = String(req.body.department || "").trim().toUpperCase() || null;
+  const jobTitle = String(req.body.jobTitle || "").trim();
+  const password = String(req.body.temporaryPassword ?? req.body.password ?? generateTemporaryPassword());
+  if (!fullName || !phone) return managerError(res, 400, "INVALID_STAFF_INPUT", "Staff fullName and phone are required.");
+  if (phone.length < 10 || password.length < 6) return managerError(res, 400, "INVALID_STAFF_INPUT", "Provide a valid phone and a temporary password of at least 6 characters.");
+  try {
+    const staff = await User.create({ fullName, phone, email: email || undefined, password, department, jobTitle, role: "STAFF", isStaff: true, branchId: access.scope, staffCreatedBy: id(req), createdByStaffId: id(req), mustChangePassword: true, status: "ACTIVE" });
+    await Branch.findByIdAndUpdate(access.scope, { $addToSet: { staffIds: staff._id } });
+    await audit(req, "BRANCH_STAFF_CREATED", "Branch staff account created.", { branchId: String(access.scope), staffId: String(staff._id) });
+    return res.status(201).json({ success: true, staff: staffView(staff), temporaryCredentials: { identifier: email || phone, email: email || null, phone, temporaryPassword: password } });
+  } catch (error) {
+    return managerError(res, error.code === 11000 ? 409 : 400, error.code === 11000 ? "STAFF_CONFLICT" : "INVALID_STAFF_INPUT", error.code === 11000 ? "An account already exists with this staff phone or email." : error.message);
+  }
+};
+exports.updateStaff = async (req, res) => {
+  const access = await branchStaffAccess(req, res); if (!access) return;
+  const staff = await managedStaff(req, res, access.scope); if (!staff) return;
+  const allowed = ["fullName", "phone", "email", "department", "jobTitle"];
+  for (const key of allowed) if (req.body[key] !== undefined) {
+    staff[key] = key === "email" ? String(req.body[key] || "").trim().toLowerCase() || undefined
+      : key === "department" ? String(req.body[key] || "").trim().toUpperCase() || null
+        : String(req.body[key] || "").trim();
+  }
+  if (!String(staff.fullName || "").trim() || !String(staff.phone || "").trim() || String(staff.phone).length < 10) return managerError(res, 400, "INVALID_STAFF_INPUT", "Staff fullName and a valid phone are required.");
+  try {
+    await staff.save();
+    await audit(req, "BRANCH_STAFF_UPDATED", "Branch staff details updated.", { branchId: String(access.scope), staffId: String(staff._id) });
+    return res.json({ success: true, staff: staffView(staff) });
+  } catch (error) { return managerError(res, error.code === 11000 ? 409 : 400, error.code === 11000 ? "STAFF_CONFLICT" : "INVALID_STAFF_INPUT", error.code === 11000 ? "An account already exists with this staff phone or email." : error.message); }
+};
+exports.staffStatus = async (req, res) => {
+  const access = await branchStaffAccess(req, res); if (!access) return;
+  const staff = await managedStaff(req, res, access.scope); if (!staff) return;
+  const status = String(req.body.status || "").trim().toUpperCase();
+  if (!["ACTIVE", "SUSPENDED", "BLOCKED"].includes(status)) return managerError(res, 400, "INVALID_STAFF_STATUS", "Status must be ACTIVE, SUSPENDED, or BLOCKED.");
+  staff.status = status; staff.authTokenVersion = Number(staff.authTokenVersion || 0) + 1; await staff.save({ validateBeforeSave: false });
+  await audit(req, "BRANCH_STAFF_STATUS_CHANGED", `Staff status changed to ${status}.`, { branchId: String(access.scope), staffId: String(staff._id) });
+  return res.json({ success: true, staff: staffView(staff) });
+};
+exports.staffPasswordReset = async (req, res) => {
+  const access = await branchStaffAccess(req, res); if (!access) return;
+  const staff = await managedStaff(req, res, access.scope); if (!staff) return;
+  const password = String(req.body.temporaryPassword ?? req.body.password ?? generateTemporaryPassword());
+  if (password.length < 6) return managerError(res, 400, "INVALID_STAFF_PASSWORD", "Temporary password must contain at least 6 characters.");
+  staff.password = password; staff.mustChangePassword = true; staff.passwordChangedAt = new Date(); staff.authTokenVersion = Number(staff.authTokenVersion || 0) + 1; await staff.save();
+  await audit(req, "BRANCH_STAFF_PASSWORD_RESET", "Staff temporary password reset and sessions revoked.", { branchId: String(access.scope), staffId: String(staff._id) });
+  return res.json({ success: true, staff: staffView(staff), temporaryCredentials: { identifier: staff.email || staff.phone, email: staff.email || null, phone: staff.phone, temporaryPassword: password } });
+};
 exports.createCustomer = async (req, res) => {
   const scope = branchScope(req, req.params.branchId); if (scope === false) return deny(res);
   const fullName = String(req.body.fullName || "").trim();

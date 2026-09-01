@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'branch_manager_dashboard_api.dart';
+import 'branch_manager_staff_screen.dart';
 import '../login_screen.dart';
 
 class BranchManagerDashboardScreen extends StatefulWidget {
@@ -1543,6 +1544,19 @@ class _BranchManagerDashboardScreenState
   void _openAction(String action) {
     if (widget.onAction != null) {
       widget.onAction!(action);
+      return;
+    }
+    if (action == 'staff') {
+      final String branchId =
+          '${_dashboard?.branch['_id'] ?? _dashboard?.branch['id'] ?? ''}';
+      if (branchId.isEmpty) {
+        _showMessage(
+            'Your branch identity is unavailable. Refresh and try again.');
+        return;
+      }
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => BranchManagerStaffScreen(branchId: branchId),
+      ));
       return;
     }
     _showMessage('Open this workspace from your ServicePay navigation.');
