@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'branch_manager_dashboard_api.dart';
+import '../login_screen.dart';
 
 class BranchManagerDashboardScreen extends StatefulWidget {
   const BranchManagerDashboardScreen({
@@ -34,6 +36,7 @@ class _BranchManagerDashboardScreenState
   bool _loading = true;
   _PeriodOption _period = _PeriodOption.today;
   DateTimeRange? _customRange;
+  DateTime? _lastUpdated;
 
   @override
   void initState() {
@@ -83,7 +86,12 @@ class _BranchManagerDashboardScreenState
         startDate: _date(range.start),
         endDate: _date(range.end),
       );
-      if (mounted) setState(() => _dashboard = value);
+      if (mounted) {
+        setState(() {
+          _dashboard = value;
+          _lastUpdated = DateTime.now();
+        });
+      }
     } catch (error) {
       if (mounted) {
         setState(
@@ -166,6 +174,199 @@ class _BranchManagerDashboardScreenState
     return permissions.contains('*') || permissions.contains(permission);
   }
 
+  String get _lastUpdatedLabel {
+    final DateTime? updated = _lastUpdated;
+    if (updated == null) return 'Updating live data';
+    final Duration age = DateTime.now().difference(updated);
+    if (age.inSeconds < 60) return 'Updated just now';
+    if (age.inMinutes < 60) return 'Updated ${age.inMinutes}m ago';
+    return 'Updated ${age.inHours}h ago';
+  }
+
+  Future<void> _logout() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('branch-manager-confirm-logout'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    for (final String key in <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'refresh_token',
+      'refreshToken',
+      'jwt_token',
+      'jwt',
+      'user_id',
+      'user_name',
+      'user_phone',
+      'user_email',
+      'user_role',
+      'user_status',
+      'wallet_balance',
+      'branch_id',
+      'branch_code',
+      'branch_name',
+      'branch_profile',
+      'branch_manager_profile',
+      'branch_dashboard_cache',
+      'branch_dashboard_data',
+    ]) {
+      await preferences.remove(key);
+    }
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+      (Route<dynamic> route) => false,
+    );
+  }
+
+  void _openNavigation() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (BuildContext sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 18),
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 8, 12, 14),
+              child: Text(
+                'Branch workspace',
+                style: TextStyle(
+                  color: _ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            _navTile(
+              sheetContext,
+              'Dashboard',
+              'Branch performance overview',
+              Icons.dashboard_outlined,
+              null,
+            ),
+            ..._navigationActions(sheetContext),
+            const Divider(height: 24),
+            ListTile(
+              key: const Key('branch-manager-nav-logout'),
+              leading:
+                  const Icon(Icons.logout_rounded, color: Color(0xffb42318)),
+              title: const Text(
+                'Logout',
+                style: TextStyle(
+                  color: Color(0xffb42318),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _logout();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _navigationActions(BuildContext sheetContext) {
+    final List<_ActionData> actions = <_ActionData>[
+      if (_has('branch.customers.view') || _has('branch.customers.create'))
+        const _ActionData(
+          'Customers',
+          'customer',
+          Icons.people_alt_outlined,
+        ),
+      if (_has('branch.finance.view'))
+        const _ActionData(
+          'Transactions',
+          'transactions',
+          Icons.receipt_long_outlined,
+        ),
+      if (_has('branch.staff.view'))
+        const _ActionData(
+          'Branch staff',
+          'staff',
+          Icons.groups_2_outlined,
+        ),
+      if (_has('branch.delivery.view'))
+        const _ActionData(
+          'Deliveries & riders',
+          'delivery',
+          Icons.local_shipping_outlined,
+        ),
+      if (_has('branch.reports.view'))
+        const _ActionData(
+          'Reports',
+          'reports',
+          Icons.assessment_outlined,
+        ),
+    ];
+    return actions
+        .map(
+          (_ActionData action) => _navTile(
+            sheetContext,
+            action.label,
+            'Open permitted workspace',
+            action.icon,
+            action.key,
+          ),
+        )
+        .toList();
+  }
+
+  Widget _navTile(
+    BuildContext sheetContext,
+    String title,
+    String subtitle,
+    IconData icon,
+    String? action,
+  ) =>
+      ListTile(
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: _mint,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Icon(icon, color: _green, size: 20),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text(subtitle),
+        trailing: action == null
+            ? const Icon(Icons.check_circle_rounded, color: _green, size: 18)
+            : const Icon(Icons.chevron_right_rounded),
+        onTap: action == null
+            ? () => Navigator.pop(sheetContext)
+            : () {
+                Navigator.pop(sheetContext);
+                _openAction(action);
+              },
+      );
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: const Color(0xfff5f7f6),
@@ -174,31 +375,95 @@ class _BranchManagerDashboardScreenState
           foregroundColor: _ink,
           elevation: 0,
           scrolledUnderElevation: 1,
-          title: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          leading: IconButton(
+            key: const Key('branch-manager-navigation'),
+            tooltip: 'Branch navigation',
+            onPressed: _openNavigation,
+            icon: const Icon(Icons.menu_rounded),
+          ),
+          title: Row(
             children: <Widget>[
-              Text(
-                'Branch operations',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: <Color>[Color(0xff0b3b36), Color(0xff10a37f)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Center(
+                  child: Text(
+                    'S',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
               ),
-              Text(
-                'Live command centre',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+              const SizedBox(width: 10),
+              const Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'ServicePay',
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      'Branch operations',
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
           actions: <Widget>[
-            IconButton(
-              tooltip: 'Notifications',
-              onPressed: () => _showMessage(
-                'Your branch notifications remain available in ServicePay.',
-              ),
-              icon: const Icon(Icons.notifications_none_rounded),
-            ),
+            _notificationButton(),
             IconButton(
               tooltip: 'Refresh',
               onPressed: _loading ? null : _load,
               icon: const Icon(Icons.refresh_rounded),
+            ),
+            PopupMenuButton<String>(
+              key: const Key('branch-manager-profile-menu'),
+              tooltip: 'Profile and account',
+              icon: const CircleAvatar(
+                radius: 16,
+                backgroundColor: _mint,
+                child: Icon(Icons.person_outline_rounded, color: _green),
+              ),
+              onSelected: (String value) {
+                if (value == 'logout') _logout();
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(
+                  enabled: false,
+                  child: Text(
+                    _text(
+                      _dashboard?.manager ?? const <String, dynamic>{},
+                      <String>['name', 'fullName'],
+                      'Branch Manager',
+                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.logout_rounded),
+                    title: Text('Logout'),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(width: 4),
           ],
@@ -213,6 +478,24 @@ class _BranchManagerDashboardScreenState
                     child: _content(),
                   ),
       );
+
+  Widget _notificationButton() {
+    final int count = _dashboard?.openRequests ?? 0;
+    return IconButton(
+      key: const Key('branch-manager-notifications'),
+      tooltip: 'Notifications',
+      onPressed: () => _showMessage(
+        count > 0
+            ? '$count branch operation${count == 1 ? '' : 's'} need attention.'
+            : 'No branch operations need attention.',
+      ),
+      icon: Badge(
+        isLabelVisible: count > 0,
+        label: Text(count > 99 ? '99+' : '$count'),
+        child: const Icon(Icons.notifications_none_rounded),
+      ),
+    );
+  }
 
   Widget _content() {
     final BranchManagerDashboard data = _dashboard!;
@@ -231,6 +514,18 @@ class _BranchManagerDashboardScreenState
           children: <Widget>[
             if (_error != null) _RefreshWarning(message: _error!),
             _branchHeader(data, desktop),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _lastUpdatedLabel,
+                style: const TextStyle(
+                  color: Colors.black54,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
             const SizedBox(height: 12),
             _periodSelector(),
             const SizedBox(height: 16),

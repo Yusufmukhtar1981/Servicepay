@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/branch_manager/branch_manager_dashboard_api.dart';
 import 'package:servicepay_app/branch_manager/branch_manager_dashboard_screen.dart';
+import 'package:servicepay_app/login_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _DashboardApi implements BranchManagerDashboardApi {
   _DashboardApi({
@@ -232,6 +234,73 @@ void main() {
         managerName:
             'A very long branch manager name that must never widen the header',
       ),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'logout confirms, clears the session and removes dashboard history',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'test-token',
+      'refresh_token': 'test-refresh-token',
+      'user_id': 'manager-id',
+      'user_role': 'BRANCH_MANAGER',
+      'branch_id': 'branch-id',
+      'branch_dashboard_cache': 'sensitive-cache',
+    });
+    await _pumpAt(tester, const Size(430, 900), _DashboardApi());
+
+    await tester.tap(find.byKey(const Key('branch-manager-profile-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Logout'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Are you sure you want to log out?'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('branch-manager-confirm-logout')));
+    await tester.pumpAndSettle();
+
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('auth_token'), isNull);
+    expect(preferences.getString('refresh_token'), isNull);
+    expect(preferences.getString('user_id'), isNull);
+    expect(preferences.getString('branch_id'), isNull);
+    expect(find.byType(BranchManagerDashboardScreen), findsNothing);
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('navigation exposes only permitted branch workspaces',
+      (WidgetTester tester) async {
+    await _pumpAt(tester, const Size(430, 900), _DashboardApi());
+
+    await tester.tap(find.byKey(const Key('branch-manager-navigation')));
+    await tester.pumpAndSettle();
+
+    final Finder sheet = find.byType(BottomSheet);
+    expect(
+      find.descendant(of: sheet, matching: find.text('Branch workspace')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Customers')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Reports')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Branch staff')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Transactions')),
+      findsNothing,
     );
     expect(tester.takeException(), isNull);
   });
