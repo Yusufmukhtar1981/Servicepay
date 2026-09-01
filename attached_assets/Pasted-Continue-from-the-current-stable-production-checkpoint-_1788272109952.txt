@@ -1,0 +1,90 @@
+Continue from the current stable production checkpoint.
+
+IMPORTANT:
+The current Customer Frontend is stable. Dashboard, Marketplace, Delivery, Admin routes and other working production features MUST NOT be broken or redesigned.
+
+There are ONLY TWO remaining customer frontend issues to fix now:
+
+1. TRANSPORT
+2. MINI APPS
+
+CURRENT LIVE BEHAVIOR:
+- Clicking Transport only shows a toast/message:
+  "Transport is available in ServicePay Mini Apps."
+- It does not open a usable Transport experience.
+- Mini Apps itself does not provide the complete usable Mini Apps hub expected by the customer.
+
+TASK:
+
+A. MINI APPS
+1. Inspect the current Customer Frontend implementation of the Mini Apps tile.
+2. Find the existing Mini Apps page/routes/components and backend/API contracts, if any.
+3. Make the Mini Apps tile open a REAL Mini Apps hub page.
+4. The hub must display all services currently intended to live inside Mini Apps.
+5. Reuse existing working ServicePay modules and routes instead of creating duplicate business logic.
+6. Each Mini App card must be clickable and open its correct working page.
+7. Do not use placeholder toast messages for services that already exist.
+8. If a service is genuinely not implemented, clearly mark it "Coming Soon" and disable the action rather than pretending it works.
+
+B. TRANSPORT
+1. Inspect all existing Transport code before changing anything.
+2. Determine whether Transport already has:
+   - frontend page/components
+   - backend models
+   - API routes/controllers
+   - fare/booking logic
+3. If Transport already exists, wire the current dashboard Transport tile and Mini Apps Transport card to the REAL Transport page.
+4. If routing is missing, add the smallest safe route/navigation fix.
+5. Do NOT redirect Transport back to Mini Apps with only a toast.
+6. The customer must be able to enter Transport from:
+   - Dashboard Transport tile
+   - Mini Apps > Transport
+7. Both entry points must lead to the SAME real Transport module.
+
+TRANSPORT UX REQUIREMENT:
+Where supported by the existing code, the Transport page should expose:
+- Pickup location
+- Destination
+- Fare estimate
+- Vehicle/transport option
+- Customer confirmation
+- Booking/request status
+- Transaction/payment integration only if already supported safely
+
+Do NOT invent fake transport availability or fake fares.
+If some backend capability is not yet implemented, preserve the usable UI and clearly identify exactly what remains.
+
+C. ROUTE AUDIT
+1. Search the entire Customer Frontend for:
+   - Mini Apps navigation
+   - Transport navigation
+   - placeholder toast-only actions
+   - broken routes
+2. Verify that no duplicate or dead Transport/Mini Apps routes remain.
+3. Preserve all existing working features.
+
+D. VALIDATION
+Run:
+- Customer frontend build
+- Navigation tests
+- Mini Apps route tests
+- Transport route tests
+- Existing Dashboard/Marketplace/Delivery smoke tests
+
+Then publish using a normal fast-forward push.
+Do not force-push.
+
+FINAL PRODUCTION VERIFICATION MUST INCLUDE:
+- Clicking Mini Apps on servicepay.ng opens the real Mini Apps hub.
+- Clicking Transport from Dashboard opens Transport.
+- Clicking Transport inside Mini Apps opens the same Transport module.
+- Browser refresh on both pages does not produce 404.
+- No toast-only placeholder remains for Transport.
+- Existing Marketplace, Delivery, Solar, Empowerment and Dashboard remain working.
+- No new 404 or 500 errors.
+
+Do not report completion based only on local tests.
+Success means the real production customer frontend has been deployed and manually/probe verified.
+
+At the end, report:
+Feature | Entry point | Route | Production result
