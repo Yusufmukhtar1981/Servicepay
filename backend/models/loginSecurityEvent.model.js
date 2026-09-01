@@ -42,5 +42,6 @@ const loginSecurityEventSchema = new mongoose.Schema(
 );
 
 loginSecurityEventSchema.index({ user: 1, createdAt: -1 });
+loginSecurityEventSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("LoginSecurityEvent", loginSecurityEventSchema);

@@ -31,5 +31,6 @@ const branchSchema = new mongoose.Schema({
 }, { timestamps: true });
 branchSchema.index({ status: 1, state: 1 });
 branchSchema.index({ managerId: 1, status: 1 });
+branchSchema.index({ createdAt: -1 });
 branchSchema.pre("validate", function () { if (this.code) this.code = String(this.code).trim().toUpperCase(); });
 module.exports = mongoose.model("Branch", branchSchema);

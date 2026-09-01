@@ -83,6 +83,7 @@ const solarApplicationSchema = new mongoose.Schema({
 solarApplicationSchema.index({ customer: 1, createdAt: -1 });
 solarApplicationSchema.index({ branchId: 1, createdAt: -1 });
 solarApplicationSchema.index({ status: 1, createdAt: -1 });
+solarApplicationSchema.index({ createdAt: -1 });
 solarApplicationSchema.pre("save", async function () {
   if (!this.isNew && this.isModified("approvalSnapshot")) {
     const original = await this.constructor.findById(this._id).select("approvalSnapshot").lean();

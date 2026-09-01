@@ -48,8 +48,27 @@ const {
   updateAdminRiderStatus,
   updateAdminRiderVerification,
 } = require("../controllers/adminRider.controller");
+const controlCenter = require("../controllers/adminControlCenter.controller");
+const adminAccessLog = require("../middleware/adminAccessLog.middleware");
 
 const router = express.Router();
+router.use(adminAccessLog);
+
+const controlCenterBase = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole];
+router.get("/control-center/catalog", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.catalog);
+router.get("/control-center/audit-logs", ...controlCenterBase, requirePermission(P.AUDIT_VIEW), controlCenter.auditLogs);
+router.get("/control-center/security-events", ...controlCenterBase, requirePermission(P.AUDIT_VIEW), controlCenter.securityEvents);
+router.get("/control-center/access-logs", ...controlCenterBase, requirePermission(P.AUDIT_VIEW), controlCenter.accessLogs);
+router.post("/control-center/exports/:dataset.csv", ...controlCenterBase, requirePermission(P.AUDIT_EXPORT), controlCenter.exportDataset);
+router.get("/control-center/exports/history", ...controlCenterBase, requirePermission(P.AUDIT_EXPORT), controlCenter.exportHistory);
+router.get("/control-center/readiness", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.readiness);
+router.get("/control-center/privacy-requests", ...controlCenterBase, requirePermission(P.USERS_UPDATE), controlCenter.listPrivacy);
+router.post("/control-center/privacy-requests", ...controlCenterBase, requirePermission(P.USERS_UPDATE), controlCenter.createPrivacy);
+router.patch("/control-center/privacy-requests/:id", ...controlCenterBase, requirePermission(P.USERS_UPDATE), controlCenter.updatePrivacy);
+router.get("/control-center/analytics/executive", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.executiveAnalytics);
+router.get("/control-center/analytics/services", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.serviceAnalytics);
+router.get("/control-center/analytics/transactions", ...controlCenterBase, requirePermission(P.TRANSACTIONS_VIEW), controlCenter.transactionAnalytics);
+router.get("/control-center/analytics/customers", ...controlCenterBase, requirePermission(P.USERS_VIEW), controlCenter.customerAnalytics);
 
 const MANAGEMENT_ROLES = [
   "HEAD_OFFICE",

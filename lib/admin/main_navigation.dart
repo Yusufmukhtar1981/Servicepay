@@ -8,7 +8,7 @@ import 'admin_customer_support_screen.dart';
 import 'admin_kyc_review_screen.dart';
 import 'admin_empowerment_screen.dart';
 import 'admin_amana_screen.dart';
-import 'admin_fintech_operations_screen.dart';
+import 'admin_control_center_screen.dart';
 import 'admin_customer_withdrawals_screen.dart';
 import 'admin_delivery_management_screen.dart';
 import 'admin_list_workspaces.dart';
@@ -80,8 +80,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         'Control',
         Icons.admin_panel_settings_outlined,
         Icons.admin_panel_settings_rounded,
-        <String>[AdminPermissions.financeView],
-        AdminFintechOperationsScreen()),
+        <String>[AdminPermissions.dashboardView],
+        AdminControlCenterScreen()),
     _AdminDestination(
         'Withdrawals',
         Icons.payments_outlined,
@@ -196,7 +196,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final List<_AdminDestination> allowed = destinations
-        .where((_AdminDestination item) => access!.hasAny(item.permissions))
+        .where((_AdminDestination item) =>
+            access!.hasAny(item.permissions) &&
+            (item.label != 'Control' || access!.role == 'HEAD_OFFICE'))
         .toList();
     if (allowed.isEmpty) {
       return const Scaffold(
