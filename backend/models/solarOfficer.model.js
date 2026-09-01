@@ -27,6 +27,7 @@ const solarOfficerSchema = new mongoose.Schema(
       default: "ACTIVE",
       index: true,
     },
+    authorizationVersion: { type: Number, default: 0, min: 0 },
     dateJoined: { type: Date, default: Date.now },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     // Optional, backward-compatible ownership link for Business Partner teams.

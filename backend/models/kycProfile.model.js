@@ -37,6 +37,17 @@ const kycProfileSchema = new mongoose.Schema(
       default: "NOT_STARTED",
       index: true,
     },
+    assignedOfficer: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    assignmentState: { type: String, enum: ["UNASSIGNED", "ACTIVE"], default: "UNASSIGNED", index: true },
+    assignedAt: { type: Date, default: null },
+    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    assignmentVersion: { type: Number, default: 0, min: 0 },
+    assignmentHistory: [{
+      officer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+      assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+      assignedAt: { type: Date, required: true },
+      version: { type: Number, required: true },
+    }],
 
     firstName: {
       type: String,

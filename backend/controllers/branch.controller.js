@@ -14,6 +14,9 @@ const MarketplaceOrder = require("../models/marketplaceOrder.model");
 const PhoneApplication = require("../models/phoneApplication.model");
 const PhoneFinance = require("../models/phoneFinance.model");
 const PhonePayment = require("../models/phonePayment.model");
+const KycProfile = require("../models/kycProfile.model");
+const SolarAssignment = require("../models/solarAssignment.model");
+const SolarOfficer = require("../models/solarOfficer.model");
 const EmpowermentOrganization = require("../models/empowermentOrganization.model");
 const EmpowermentProgram = require("../models/empowermentProgram.model");
 const EmpowermentBeneficiary = require("../models/empowermentBeneficiary.model");
@@ -22,6 +25,14 @@ const mongoose = require("mongoose");
 const crypto = require("crypto");
 const { validateStaffPermissions, directRolePermissions } = require("../config/staffPermissions");
 const { hasPermission } = require("../middleware/staffPermission.middleware");
+const BRANCH_STAFF_JOB_TYPES = new Set([
+  "GENERAL_STAFF", "KYC_OFFICER", "DELIVERY_OFFICER", "SOLAR_OFFICER",
+  "PHONE_FINANCING_OFFICER", "MARKETPLACE_OFFICER", "SUPPORT_OFFICER",
+]);
+const branchStaffJobType = (value) => {
+  const type = String(value || "GENERAL_STAFF").trim().toUpperCase();
+  return BRANCH_STAFF_JOB_TYPES.has(type) ? type : null;
+};
 
 const id = (req) => req.user._id || req.user.id;
 const same = (a, b) => String(a) === String(b);
@@ -362,6 +373,35 @@ const staffView = (user) => ({
   department: user.department || null, jobTitle: user.jobTitle || "", status: user.status,
   branchId: user.branchId, staffId: user.staffId || null, createdAt: user.createdAt,
 });
+const solarOfficerBranch = async (branchId, session) => {
+  const branch = await Branch.findById(branchId).select("state lga address")
+    .session(session || null).lean();
+  if (!branch?.state || !branch?.lga || !branch?.address) {
+    throw new Error("The branch must have state, LGA and address before creating a Solar Officer.");
+  }
+  return branch;
+};
+const syncSolarOfficerProfile = async (staff, actorId, session, branchLocation) => {
+  if (staff.jobTitle !== "SOLAR_OFFICER") return;
+  const branch = branchLocation || await solarOfficerBranch(staff.branchId, session);
+  await SolarOfficer.findOneAndUpdate(
+    { user: staff._id },
+    {
+      $set: {
+        branchId: staff.branchId,
+        state: branch.state,
+        lga: branch.lga,
+        address: branch.address,
+        status: staff.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
+      },
+      $setOnInsert: {
+        officerId: `SOL-${String(staff._id).slice(-8).toUpperCase()}`,
+        createdBy: actorId,
+      },
+    },
+    { upsert: true, returnDocument: "after", runValidators: true, session },
+  );
+};
 const branchStaffAccess = async (req, res) => {
   const scope = branchScope(req, req.params.branchId);
   if (scope === false) { deny(res); return null; }
@@ -408,13 +448,22 @@ exports.staff = async (req, res) => {
   const phone = String(req.body.phone || "").trim();
   const email = String(req.body.email || "").trim().toLowerCase();
   const department = String(req.body.department || "").trim().toUpperCase() || null;
-  const jobTitle = String(req.body.jobTitle || "").trim();
+  const jobTitle = branchStaffJobType(req.body.jobTitle);
   const password = String(req.body.temporaryPassword ?? req.body.password ?? generateTemporaryPassword());
   if (!fullName || !phone) return managerError(res, 400, "INVALID_STAFF_INPUT", "Staff fullName and phone are required.");
+  if (!jobTitle) return managerError(res, 400, "INVALID_STAFF_JOB_TYPE", "Select a supported branch staff job type.");
   if (phone.length < 10 || password.length < 6) return managerError(res, 400, "INVALID_STAFF_INPUT", "Provide a valid phone and a temporary password of at least 6 characters.");
   try {
-    const staff = await User.create({ fullName, phone, email: email || undefined, password, department, jobTitle, role: "STAFF", isStaff: true, branchId: access.scope, staffCreatedBy: id(req), createdByStaffId: id(req), mustChangePassword: true, status: "ACTIVE" });
-    await Branch.findByIdAndUpdate(access.scope, { $addToSet: { staffIds: staff._id } });
+    const location = jobTitle === "SOLAR_OFFICER" ? await solarOfficerBranch(access.scope) : null;
+    const session = await mongoose.startSession();
+    let staff;
+    try {
+      await session.withTransaction(async () => {
+        [staff] = await User.create([{ fullName, phone, email: email || undefined, password, department, jobTitle, role: "STAFF", isStaff: true, branchId: access.scope, staffCreatedBy: id(req), createdByStaffId: id(req), mustChangePassword: true, status: "ACTIVE" }], { session });
+        await syncSolarOfficerProfile(staff, id(req), session, location);
+        await Branch.findByIdAndUpdate(access.scope, { $addToSet: { staffIds: staff._id } }, { session });
+      });
+    } finally { await session.endSession(); }
     await audit(req, "BRANCH_STAFF_CREATED", "Branch staff account created.", { branchId: String(access.scope), staffId: String(staff._id) });
     return res.status(201).json({ success: true, staff: staffView(staff), temporaryCredentials: { identifier: email || phone, email: email || null, phone, temporaryPassword: password } });
   } catch (error) {
@@ -424,25 +473,89 @@ exports.staff = async (req, res) => {
 exports.updateStaff = async (req, res) => {
   const access = await branchStaffAccess(req, res); if (!access) return;
   const staff = await managedStaff(req, res, access.scope); if (!staff) return;
+  const previousJobTitle = staff.jobTitle;
   const allowed = ["fullName", "phone", "email", "department", "jobTitle"];
+  if (req.body.jobTitle !== undefined && !branchStaffJobType(req.body.jobTitle)) {
+    return managerError(res, 400, "INVALID_STAFF_JOB_TYPE", "Select a supported branch staff job type.");
+  }
+  const proposedJobTitle = req.body.jobTitle === undefined
+    ? previousJobTitle
+    : branchStaffJobType(req.body.jobTitle);
+  let solarLocation = null;
+  if (proposedJobTitle === "SOLAR_OFFICER") {
+    try { solarLocation = await solarOfficerBranch(access.scope); }
+    catch (error) { return managerError(res, 400, "INVALID_STAFF_INPUT", error.message); }
+  }
+  if (previousJobTitle === "SOLAR_OFFICER" && proposedJobTitle !== "SOLAR_OFFICER") {
+    const profile = await SolarOfficer.findOne({ user: staff._id, branchId: access.scope }).select("_id").lean();
+    if (profile && await SolarAssignment.exists({ officer: profile._id, branchId: access.scope, status: "ACTIVE" })) {
+      return managerError(res, 409, "SOLAR_OFFICER_HAS_ACTIVE_ASSIGNMENTS", "Reassign or end this officer's active Solar workloads before changing their job type.");
+    }
+  }
   for (const key of allowed) if (req.body[key] !== undefined) {
     staff[key] = key === "email" ? String(req.body[key] || "").trim().toLowerCase() || undefined
       : key === "department" ? String(req.body[key] || "").trim().toUpperCase() || null
-        : String(req.body[key] || "").trim();
+        : key === "jobTitle" ? branchStaffJobType(req.body[key])
+          : String(req.body[key] || "").trim();
   }
   if (!String(staff.fullName || "").trim() || !String(staff.phone || "").trim() || String(staff.phone).length < 10) return managerError(res, 400, "INVALID_STAFF_INPUT", "Staff fullName and a valid phone are required.");
   try {
-    await staff.save();
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        if (previousJobTitle === "SOLAR_OFFICER" && staff.jobTitle !== "SOLAR_OFFICER") {
+          const profile = await SolarOfficer.findOne({
+            user: staff._id, branchId: access.scope,
+          }).select("_id status authorizationVersion").session(session).lean();
+          if (profile && await SolarAssignment.exists({
+            officer: profile._id, branchId: access.scope, status: "ACTIVE",
+          }).session(session)) {
+            const error = new Error("Reassign or end this officer's active Solar workloads before changing their job type.");
+            error.statusCode = 409; error.codeName = "SOLAR_OFFICER_HAS_ACTIVE_ASSIGNMENTS";
+            throw error;
+          }
+          if (profile?.status === "ACTIVE") {
+            const retired = await SolarOfficer.updateOne({
+              _id: profile._id, status: "ACTIVE",
+              authorizationVersion: Number(profile.authorizationVersion || 0),
+            }, {
+              $set: { status: "INACTIVE" },
+              $inc: { authorizationVersion: 1 },
+            }, { session });
+            if (retired.modifiedCount !== 1) {
+              const error = new Error("Solar Officer authorization changed; retry the update.");
+              error.statusCode = 409; error.codeName = "SOLAR_OFFICER_CONFLICT";
+              throw error;
+            }
+          }
+        }
+        await staff.save({ session });
+        await syncSolarOfficerProfile(staff, id(req), session, solarLocation);
+      });
+    } finally { await session.endSession(); }
     await audit(req, "BRANCH_STAFF_UPDATED", "Branch staff details updated.", { branchId: String(access.scope), staffId: String(staff._id) });
     return res.json({ success: true, staff: staffView(staff) });
-  } catch (error) { return managerError(res, error.code === 11000 ? 409 : 400, error.code === 11000 ? "STAFF_CONFLICT" : "INVALID_STAFF_INPUT", error.code === 11000 ? "An account already exists with this staff phone or email." : error.message); }
+  } catch (error) { return managerError(res, error.statusCode || (error.code === 11000 ? 409 : 400), error.codeName || (error.code === 11000 ? "STAFF_CONFLICT" : "INVALID_STAFF_INPUT"), error.code === 11000 ? "An account already exists with this staff phone or email." : error.message); }
 };
 exports.staffStatus = async (req, res) => {
   const access = await branchStaffAccess(req, res); if (!access) return;
   const staff = await managedStaff(req, res, access.scope); if (!staff) return;
   const status = String(req.body.status || "").trim().toUpperCase();
   if (!["ACTIVE", "SUSPENDED", "BLOCKED"].includes(status)) return managerError(res, 400, "INVALID_STAFF_STATUS", "Status must be ACTIVE, SUSPENDED, or BLOCKED.");
-  staff.status = status; staff.authTokenVersion = Number(staff.authTokenVersion || 0) + 1; await staff.save({ validateBeforeSave: false });
+  staff.status = status; staff.authTokenVersion = Number(staff.authTokenVersion || 0) + 1;
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      await staff.save({ validateBeforeSave: false, session });
+      await SolarOfficer.updateOne(
+        { user: staff._id, branchId: access.scope },
+        { $set: { status: status === "ACTIVE" ? "ACTIVE" : "INACTIVE" } },
+        { session },
+      );
+    });
+  } catch (error) {
+    return managerError(res, 400, "STAFF_STATUS_SYNC_FAILED", error.message);
+  } finally { await session.endSession(); }
   await audit(req, "BRANCH_STAFF_STATUS_CHANGED", `Staff status changed to ${status}.`, { branchId: String(access.scope), staffId: String(staff._id) });
   return res.json({ success: true, staff: staffView(staff) });
 };
@@ -467,6 +580,214 @@ exports.createCustomer = async (req, res) => {
     await audit(req, "BRANCH_MEMBER_ASSIGNED", "Branch customer created.", { branchId: String(scope), customerId: String(customer._id) });
     res.status(201).json({ success: true, customer: { _id: customer._id, fullName: customer.fullName, phone: customer.phone, branchId: customer.branchId } });
   } catch (error) { res.status(error.code === 11000 ? 409 : 400).json({ success: false, message: error.code === 11000 ? "Customer already exists." : error.message }); }
+};
+// Customer records are always resolved from the authenticated branch scope,
+// never a branch id supplied by the client.
+exports.customers = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const search = String(req.query.search || "").trim();
+  const status = safeStatus(req);
+  const filter = { branchId: scope, isStaff: { $ne: true }, role: "CUSTOMER", ...(status ? { status } : {}) };
+  if (search) {
+    const value = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = ["fullName", "phone", "email"].map((field) => ({ [field]: { $regex: value, $options: "i" } }));
+  }
+  const customers = await User.find(filter)
+    .select("_id fullName phone email status kycLevel createdAt updatedAt")
+    .sort({ createdAt: -1 }).limit(100).lean();
+  res.json({ success: true, customers });
+};
+exports.customer = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  if (!mongoose.isValidObjectId(req.params.customerId)) {
+    return res.status(400).json({ success: false, message: "Invalid customer ID." });
+  }
+  const customer = await User.findOne({
+    _id: req.params.customerId, branchId: scope, isStaff: { $ne: true }, role: "CUSTOMER",
+  }).select("_id fullName phone email status kycLevel createdAt updatedAt").lean();
+  if (!customer) return res.status(404).json({ success: false, message: "Customer not found." });
+  const activity = await Transaction.find({ branchId: scope, customerId: customer._id })
+    .select("reference serviceType amount status createdAt").sort({ createdAt: -1 }).limit(30).lean();
+  res.json({ success: true, customer, activity });
+};
+exports.transactions = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const status = safeStatus(req);
+  const search = String(req.query.search || "").trim();
+  const serviceType = String(req.query.serviceType || "").trim().toUpperCase();
+  const filter = scoped(scope, req, {
+    ...(status ? { status } : {}),
+    ...(serviceType ? { serviceType } : {}),
+  });
+  if (search) {
+    const value = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = ["reference", "serviceType"].map((field) => ({ [field]: { $regex: value, $options: "i" } }));
+  }
+  const transactions = await Transaction.find(filter)
+    .select("_id reference serviceType amount status createdAt customerId agentId")
+    .sort({ createdAt: -1 }).limit(Math.min(100, Math.max(1, Number(req.query.limit) || 50))).lean();
+  res.json({ success: true, transactions });
+};
+exports.officers = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  // Officers remain STAFF accounts. These labels are job assignments only and
+  // deliberately cannot turn a branch user into a privileged platform role.
+  const officerTitles = [...BRANCH_STAFF_JOB_TYPES].filter((type) => type !== "GENERAL_STAFF");
+  const officers = await User.find({
+    branchId: scope, isStaff: true, role: "STAFF",
+    jobTitle: { $in: officerTitles },
+  }).select("_id fullName phone email status department jobTitle staffId createdAt").sort({ fullName: 1 }).lean();
+  const rows = await Promise.all(officers.map(async (officer) => {
+    const solarProfile = await SolarOfficer.findOne({ user: officer._id, branchId: scope }).select("_id").lean();
+    const [kyc, delivery, phone, marketplace, solar] = await Promise.all([
+      KycProfile.countDocuments({ assignedOfficer: officer._id, assignmentState: "ACTIVE" }),
+      Delivery.countDocuments({ branchId: scope, assignedRiderId: officer._id, status: { $nin: ["DELIVERED", "CANCELLED", "FAILED"] } }),
+      PhoneApplication.countDocuments({ branchId: scope, assignedOfficer: officer._id, assignmentState: "ACTIVE" }),
+      MarketplaceOrder.countDocuments({ branchId: scope, assignedSupportOfficer: officer._id }),
+      solarProfile ? SolarAssignment.countDocuments({ branchId: scope, officer: solarProfile._id, status: "ACTIVE" }) : 0,
+    ]);
+    return { ...officer, workload: { kyc, delivery, solar, phone, marketplace, total: kyc + delivery + solar + phone + marketplace } };
+  }));
+  res.json({ success: true, officers: rows, supportedJobTypes: officerTitles });
+};
+exports.riders = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const search = String(req.query.search || "").trim();
+  const status = safeStatus(req);
+  const filter = { branchId: scope, role: "DELIVERY_RIDER", ...(status ? { status } : {}) };
+  if (search) {
+    const value = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = ["fullName", "phone", "riderId"].map((field) => ({ [field]: { $regex: value, $options: "i" } }));
+  }
+  const riders = await User.find(filter).select("_id fullName phone riderId status riderVerificationStatus availabilityStatus vehicleType riderRating createdAt").sort({ fullName: 1 }).limit(100).lean();
+  res.json({ success: true, riders });
+};
+exports.rider = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  if (!mongoose.isValidObjectId(req.params.riderId)) return res.status(400).json({ success: false, message: "Invalid rider ID." });
+  const rider = await User.findOne({ _id: req.params.riderId, branchId: scope, role: "DELIVERY_RIDER" }).select("_id fullName phone riderId status riderVerificationStatus availabilityStatus vehicleType riderRating").lean();
+  if (!rider) return res.status(404).json({ success: false, message: "Rider not found." });
+  const activity = await Delivery.find({ branchId: scope, assignedRiderId: rider._id }).select("_id trackingNumber status assignedAt deliveredAt").sort({ updatedAt: -1 }).limit(30).lean();
+  res.json({ success: true, rider, activity, withdrawals: [] });
+};
+exports.availableRiders = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid delivery ID." });
+  const delivery = await Delivery.findOne({ _id: req.params.id, branchId: scope })
+    .select("status assignedRiderId riderAcceptedAt").lean();
+  if (!delivery) return res.status(404).json({ success: false, message: "Delivery was not found." });
+  const assignable = (delivery.status === "PENDING" && !delivery.assignedRiderId) ||
+    (delivery.status === "ASSIGNED" && delivery.assignedRiderId && !delivery.riderAcceptedAt);
+  if (!assignable) return res.status(409).json({ success: false, message: "This delivery is not available for rider assignment." });
+  const riders = await User.find({ branchId: scope, role: "DELIVERY_RIDER", status: "ACTIVE", riderVerificationStatus: "VERIFIED", availabilityStatus: "ONLINE", _id: { $ne: delivery.assignedRiderId || null } })
+    .select("_id riderId fullName vehicleType availabilityStatus riderRating").sort({ riderRating: -1 }).limit(100).lean();
+  res.json({ success: true, riders });
+};
+exports.kyc = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const customers = await User.find({
+    branchId: scope, isStaff: { $ne: true }, role: "CUSTOMER",
+  }).select("_id fullName phone email").lean();
+  const ids = customers.map((customer) => customer._id);
+  const profiles = await KycProfile.find({ user: { $in: ids } })
+    .select("user level requestedLevel status assignedOfficer assignmentState assignedAt assignmentVersion updatedAt createdAt")
+    .populate("assignedOfficer", "fullName jobTitle status").lean();
+  const identity = new Map(customers.map((customer) => [String(customer._id), customer]));
+  res.json({ success: true, applications: profiles.map((profile) => ({
+    _id: profile._id, ...profile, customer: identity.get(String(profile.user)) || null,
+  })) });
+};
+exports.solarApplications = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const applications = await SolarApplication.find({ branchId: scope })
+    .select("_id status customer package branchId depositRequired depositPaid totalPayable amountPaid outstandingBalance installation createdAt updatedAt").populate("customer", "fullName phone").populate("package", "name").sort({ createdAt: -1 }).limit(100).lean();
+  const assignments = await SolarAssignment.find({ branchId: scope, application: { $in: applications.map((row) => row._id) }, status: "ACTIVE" })
+    .populate({ path: "officer", select: "officerId status user", populate: { path: "user", select: "fullName jobTitle status" } }).lean();
+  const byApplication = new Map(assignments.map((row) => [String(row.application), row]));
+  res.json({ success: true, applications: applications.map((row) => ({ ...row, activeAssignment: byApplication.get(String(row._id)) || null })) });
+};
+exports.phoneApplications = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const applications = await PhoneApplication.find({ branchId: scope })
+    .select("_id customer product status assignedOfficer assignmentState assignmentVersion createdAt updatedAt")
+    .populate("customer", "fullName phone").populate("product", "name").sort({ createdAt: -1 }).limit(100).lean();
+  res.json({ success: true, applications });
+};
+exports.marketplaceOrders = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const orders = await MarketplaceOrder.find({ branchId: scope })
+    .select("_id orderReference orderStatus totalAmount buyer customerName assignedSupportOfficer supportAssignedAt supportAssignmentVersion createdAt updatedAt")
+    .populate("buyer", "fullName phone").populate("assignedSupportOfficer", "fullName jobTitle status").sort({ createdAt: -1 }).limit(100).lean();
+  res.json({ success: true, orders });
+};
+const branchOfficer = (branchId, officerId, jobTypes) => User.findOne({
+  _id: officerId, branchId, role: "STAFF", isStaff: true, status: "ACTIVE",
+  jobTitle: { $in: jobTypes },
+});
+exports.assignKycOfficer = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const profile = await KycProfile.findById(req.params.profileId);
+  const customer = profile && await User.findOne({ _id: profile.user, branchId: scope, role: "CUSTOMER" }).select("_id").lean();
+  if (!profile || !customer) return res.status(404).json({ success: false, message: "Branch KYC application not found." });
+  const officer = await branchOfficer(scope, req.body.officerId, ["KYC_OFFICER"]);
+  if (!officer) return res.status(409).json({ success: false, message: "Select an active KYC Officer from this branch." });
+  const now = new Date(); const version = Number(profile.assignmentVersion || 0) + 1;
+  profile.assignedOfficer = officer._id; profile.assignmentState = "ACTIVE"; profile.assignedAt = now;
+  profile.assignedBy = id(req); profile.assignmentVersion = version;
+  profile.assignmentHistory.push({ officer: officer._id, assignedBy: id(req), assignedAt: now, version });
+  await profile.save();
+  res.json({ success: true, application: profile });
+};
+exports.assignMarketplaceOfficer = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const officer = await branchOfficer(scope, req.body.officerId, ["MARKETPLACE_OFFICER", "SUPPORT_OFFICER"]);
+  if (!officer) return res.status(409).json({ success: false, message: "Select an active Marketplace or Support Officer from this branch." });
+  const order = await MarketplaceOrder.findOneAndUpdate(
+    { _id: req.params.orderId, branchId: scope },
+    { $set: { assignedSupportOfficer: officer._id, supportAssignedAt: new Date(), supportAssignedBy: id(req) }, $inc: { supportAssignmentVersion: 1 } },
+    { returnDocument: "after", runValidators: true },
+  );
+  if (!order) return res.status(404).json({ success: false, message: "Branch order not found." });
+  res.json({ success: true, order });
+};
+exports.assignPhoneOfficer = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const officer = await branchOfficer(scope, req.body.officerId, ["PHONE_FINANCING_OFFICER"]);
+  if (!officer) return res.status(409).json({ success: false, message: "Select an active Phone Financing Officer from this branch." });
+  const application = await PhoneApplication.findOneAndUpdate(
+    { _id: req.params.applicationId, branchId: scope },
+    { $set: { assignedOfficer: officer._id, assignmentState: "ACTIVE", assignmentSnapshot: { officerId: officer._id, assignedBy: id(req), assignedAt: new Date() } }, $inc: { assignmentVersion: 1 } },
+    { returnDocument: "after", runValidators: true },
+  );
+  if (!application) return res.status(404).json({ success: false, message: "Branch phone application not found." });
+  res.json({ success: true, application });
+};
+exports.assignSolarOfficer = async (req, res) => {
+  const scope = branchScope(req); if (!scope) return deny(res);
+  const session = await mongoose.startSession(); let assignment;
+  try {
+    await session.withTransaction(async () => {
+      const application = await SolarApplication.findOne({ _id: req.params.applicationId, branchId: scope }).select("_id customer").session(session).lean();
+      if (!application) throw Object.assign(new Error("Branch Solar application not found."), { statusCode: 404 });
+      const officer = await SolarOfficer.findOne({ user: req.body.officerId, branchId: scope, status: "ACTIVE" })
+        .select("_id user authorizationVersion").session(session).lean();
+      const linked = officer && await User.findOne({
+        _id: officer.user, branchId: scope, role: "STAFF", isStaff: true,
+        status: "ACTIVE", jobTitle: "SOLAR_OFFICER",
+      }).select("_id").session(session).lean();
+      if (!officer || !linked) throw Object.assign(new Error("Select an active Solar Officer profile linked to active Solar staff in this branch."), { statusCode: 409 });
+      const leased = await SolarOfficer.updateOne({
+        _id: officer._id, status: "ACTIVE",
+        authorizationVersion: Number(officer.authorizationVersion || 0),
+      }, { $inc: { authorizationVersion: 1 } }, { session });
+      if (leased.modifiedCount !== 1) throw Object.assign(new Error("Solar Officer authorization changed; retry assignment."), { statusCode: 409 });
+      await SolarAssignment.updateMany({ application: application._id, status: "ACTIVE" }, { $set: { status: "REASSIGNED", endedAt: new Date() } }, { session });
+      [assignment] = await SolarAssignment.create([{ branchId: scope, application: application._id, customer: application.customer, officer: officer._id, assignedBy: id(req) }], { session });
+    });
+    return res.status(201).json({ success: true, assignment });
+  } catch (error) {
+    return res.status(error.statusCode || (error.code === 11000 ? 409 : 500)).json({ success: false, message: error.message || "Unable to assign Solar Officer." });
+  } finally { await session.endSession(); }
 };
 exports.dashboard = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);

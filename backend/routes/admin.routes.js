@@ -9,6 +9,7 @@ const {
   getAdminDeliveries,
   getAvailableRiders,
   assignRiderToDelivery,
+  reassignRiderToDelivery,
   updateDeliveryStatus,
   getAdminUsers,
   createAdminUser,
@@ -190,6 +191,15 @@ router.patch(
   enforceActiveBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   assignRiderToDelivery
+);
+
+router.patch(
+  "/deliveries/:id/reassign-rider",
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_ASSIGN),
+  reassignRiderToDelivery
 );
 
 router.patch(

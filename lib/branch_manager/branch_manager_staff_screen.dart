@@ -7,10 +7,12 @@ class BranchManagerStaffScreen extends StatefulWidget {
     super.key,
     required this.branchId,
     this.api,
+    this.officerOnly = false,
   });
 
   final String branchId;
   final BranchManagerStaffApi? api;
+  final bool officerOnly;
 
   @override
   State<BranchManagerStaffScreen> createState() =>
@@ -52,7 +54,14 @@ class _BranchManagerStaffScreenState extends State<BranchManagerStaffScreen> {
         search: _search.text.trim(),
         status: _status,
       );
-      if (mounted) setState(() => _staff = rows);
+      if (mounted) {
+        setState(() => _staff = widget.officerOnly
+            ? rows
+                .where((BranchStaff member) =>
+                    member.data['jobTitle'] != 'GENERAL_STAFF')
+                .toList()
+            : rows);
+      }
     } catch (error) {
       if (mounted) {
         setState(
@@ -94,9 +103,8 @@ class _BranchManagerStaffScreenState extends State<BranchManagerStaffScreen> {
     final TextEditingController email = TextEditingController(
       text: member?.data['email']?.toString() ?? '',
     );
-    final TextEditingController title = TextEditingController(
-      text: member?.data['jobTitle']?.toString() ?? '',
-    );
+    String jobTitle = member?.data['jobTitle']?.toString() ??
+        (widget.officerOnly ? 'KYC_OFFICER' : 'GENERAL_STAFF');
     String department = member?.data['department']?.toString() ?? 'OPERATIONS';
     final GlobalKey<FormState> form = GlobalKey<FormState>();
 
@@ -165,9 +173,42 @@ class _BranchManagerStaffScreenState extends State<BranchManagerStaffScreen> {
                         }
                       },
                     ),
-                    TextFormField(
-                      controller: title,
-                      decoration: const InputDecoration(labelText: 'Job title'),
+                    DropdownButtonFormField<String>(
+                      value: <String>[
+                        'GENERAL_STAFF',
+                        'KYC_OFFICER',
+                        'DELIVERY_OFFICER',
+                        'SOLAR_OFFICER',
+                        'PHONE_FINANCING_OFFICER',
+                        'MARKETPLACE_OFFICER',
+                        'SUPPORT_OFFICER',
+                      ].contains(jobTitle)
+                          ? jobTitle
+                          : (widget.officerOnly
+                              ? 'KYC_OFFICER'
+                              : 'GENERAL_STAFF'),
+                      decoration: const InputDecoration(
+                        labelText: 'Branch job type',
+                      ),
+                      items: <String>[
+                        if (!widget.officerOnly) 'GENERAL_STAFF',
+                        'KYC_OFFICER',
+                        'DELIVERY_OFFICER',
+                        'SOLAR_OFFICER',
+                        'PHONE_FINANCING_OFFICER',
+                        'MARKETPLACE_OFFICER',
+                        'SUPPORT_OFFICER',
+                      ]
+                          .map((String value) => DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value.replaceAll('_', ' ')),
+                              ))
+                          .toList(),
+                      onChanged: (String? value) {
+                        if (value != null) {
+                          setDialogState(() => jobTitle = value);
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -199,7 +240,7 @@ class _BranchManagerStaffScreenState extends State<BranchManagerStaffScreen> {
           'phone': phone.text.trim(),
           'email': email.text.trim(),
           'department': department,
-          'jobTitle': title.text.trim(),
+          'jobTitle': jobTitle,
         };
         if (member == null) {
           final result = await _api.create(widget.branchId, input);
@@ -218,7 +259,6 @@ class _BranchManagerStaffScreenState extends State<BranchManagerStaffScreen> {
       fullName.dispose();
       phone.dispose();
       email.dispose();
-      title.dispose();
     }
   }
 
@@ -304,7 +344,7 @@ class _BranchManagerStaffScreenState extends State<BranchManagerStaffScreen> {
           backgroundColor: _green,
           foregroundColor: Colors.white,
           icon: const Icon(Icons.person_add_alt_1),
-          label: const Text('Add staff'),
+          label: Text(widget.officerOnly ? 'Create officer' : 'Add staff'),
         ),
         body: Column(
           children: <Widget>[

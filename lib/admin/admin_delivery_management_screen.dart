@@ -25,6 +25,8 @@ class _AdminDeliveryManagementScreenState
     'PICKED_UP',
     'IN_TRANSIT',
     'DELIVERED',
+    'CANCELLED',
+    'FAILED',
   ];
   List<Map<String, dynamic>> _deliveries = <Map<String, dynamic>>[];
   String _status = 'PENDING';
@@ -81,6 +83,8 @@ class _AdminDeliveryManagementScreenState
       builder: (BuildContext context) => AssignDeliveryRiderDialog(
         api: _api,
         delivery: delivery,
+        reassign: _text(delivery['status']) == 'ASSIGNED' &&
+            _map(delivery['assignedRiderId']).isNotEmpty,
       ),
     );
     if (assigned == null || !mounted) return;
@@ -147,6 +151,8 @@ class _AdminDeliveryManagementScreenState
     final String deliveryId = _text(delivery['_id'] ?? delivery['id']);
     final bool canAssign =
         deliveryId.isNotEmpty && status == 'PENDING' && rider.isEmpty;
+    final bool canReassign =
+        deliveryId.isNotEmpty && status == 'ASSIGNED' && rider.isNotEmpty;
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       elevation: 0,
@@ -206,7 +212,7 @@ class _AdminDeliveryManagementScreenState
                   fallback: _text(delivery['riderName'], fallback: 'Rider'),
                 ),
               ),
-            if (canAssign) ...<Widget>[
+            if (canAssign || canReassign) ...<Widget>[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -214,7 +220,7 @@ class _AdminDeliveryManagementScreenState
                   key: Key('assign-rider-$deliveryId'),
                   onPressed: () => _openAssignment(delivery),
                   icon: const Icon(Icons.delivery_dining),
-                  label: const Text('Assign Rider'),
+                  label: Text(canReassign ? 'Reassign Rider' : 'Assign Rider'),
                 ),
               ),
             ],
@@ -308,10 +314,12 @@ class AssignDeliveryRiderDialog extends StatefulWidget {
     super.key,
     required this.api,
     required this.delivery,
+    this.reassign = false,
   });
 
   final AdminDeliveryApiClient api;
   final Map<String, dynamic> delivery;
+  final bool reassign;
 
   @override
   State<AssignDeliveryRiderDialog> createState() =>
@@ -375,10 +383,15 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
       _error = '';
     });
     try {
-      final Map<String, dynamic> delivery = await widget.api.assignRider(
-        deliveryId: _deliveryId,
-        riderId: riderId,
-      );
+      final Map<String, dynamic> delivery = widget.reassign
+          ? await widget.api.reassignRider(
+              deliveryId: _deliveryId,
+              riderId: riderId,
+            )
+          : await widget.api.assignRider(
+              deliveryId: _deliveryId,
+              riderId: riderId,
+            );
       if (!mounted) return;
       Navigator.of(context).pop(delivery);
     } catch (error) {
@@ -398,7 +411,9 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Assign Delivery Rider'),
+      title: Text(widget.reassign
+          ? 'Reassign Delivery Rider'
+          : 'Assign Delivery Rider'),
       content: SizedBox(
         width: 520,
         child: ConstrainedBox(
@@ -504,7 +519,7 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
                     color: Colors.white,
                   ),
                 )
-              : const Text('Assign Rider'),
+              : Text(widget.reassign ? 'Reassign Rider' : 'Assign Rider'),
         ),
       ],
     );

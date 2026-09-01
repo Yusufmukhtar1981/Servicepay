@@ -25,6 +25,10 @@ abstract class AdminDeliveryApiClient {
     required String deliveryId,
     required String riderId,
   });
+  Future<Map<String, dynamic>> reassignRider({
+    required String deliveryId,
+    required String riderId,
+  });
 }
 
 class AdminDeliveryApi implements AdminDeliveryApiClient {
@@ -186,5 +190,18 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
     );
     final Map<String, dynamic> data = mapFrom(root['data']);
     return mapFrom(data['delivery'] ?? root['delivery']);
+  }
+
+  @override
+  Future<Map<String, dynamic>> reassignRider({
+    required String deliveryId,
+    required String riderId,
+  }) async {
+    final Map<String, dynamic> root = await _request(
+      'PATCH',
+      '/deliveries/${Uri.encodeComponent(deliveryId)}/reassign-rider',
+      body: <String, dynamic>{'riderId': riderId},
+    );
+    return mapFrom(root['delivery'] ?? mapFrom(root['data'])['delivery']);
   }
 }

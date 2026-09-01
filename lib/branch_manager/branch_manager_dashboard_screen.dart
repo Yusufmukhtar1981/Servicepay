@@ -3,6 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../admin/admin_delivery_management_screen.dart';
+import '../admin/admin_delivery_api.dart';
+import '../notifications_screen.dart';
+import 'branch_manager_operations_screen.dart';
 import 'branch_manager_dashboard_api.dart';
 import 'branch_manager_staff_screen.dart';
 import '../login_screen.dart';
@@ -175,6 +179,11 @@ class _BranchManagerDashboardScreenState
     return permissions.contains('*') || permissions.contains(permission);
   }
 
+  bool _moduleAssigned(String module) =>
+      _dashboard?.modules.any((Map<String, dynamic> item) =>
+          _text(item, <String>['name']).toUpperCase() == module) ??
+      false;
+
   String get _lastUpdatedLabel {
     final DateTime? updated = _lastUpdated;
     if (updated == null) return 'Updating live data';
@@ -306,23 +315,65 @@ class _BranchManagerDashboardScreenState
           'transactions',
           Icons.receipt_long_outlined,
         ),
+      if (_has('branch.targets.view'))
+        const _ActionData(
+          'Targets',
+          'targets',
+          Icons.track_changes_outlined,
+        ),
       if (_has('branch.staff.view'))
         const _ActionData(
           'Branch staff',
           'staff',
           Icons.groups_2_outlined,
         ),
-      if (_has('branch.delivery.view'))
+      if (_has('branch.staff.view'))
+        const _ActionData(
+          'Officers',
+          'officers',
+          Icons.badge_outlined,
+        ),
+      if (_has('branch.delivery.view') && _moduleAssigned('DELIVERY'))
         const _ActionData(
           'Deliveries & riders',
           'delivery',
           Icons.local_shipping_outlined,
+        ),
+      if (_has('branch.delivery.view') && _moduleAssigned('DELIVERY'))
+        const _ActionData(
+          'Rider directory',
+          'riders',
+          Icons.two_wheeler_outlined,
         ),
       if (_has('branch.reports.view'))
         const _ActionData(
           'Reports',
           'reports',
           Icons.assessment_outlined,
+        ),
+      if (_has('branch.customers.view'))
+        const _ActionData(
+          'KYC',
+          'kyc',
+          Icons.verified_user_outlined,
+        ),
+      if (_has('branch.solar.view') && _moduleAssigned('SOLAR'))
+        const _ActionData(
+          'Solar',
+          'solar',
+          Icons.solar_power_outlined,
+        ),
+      if (_has('branch.phone.view') && _moduleAssigned('PHONE_FINANCING'))
+        const _ActionData(
+          'Phone Financing',
+          'phone',
+          Icons.phone_android_outlined,
+        ),
+      if (_has('branch.marketplace.view') && _moduleAssigned('MARKETPLACE'))
+        const _ActionData(
+          'Marketplace',
+          'marketplace',
+          Icons.storefront_outlined,
         ),
     ];
     return actions
@@ -485,10 +536,10 @@ class _BranchManagerDashboardScreenState
     return IconButton(
       key: const Key('branch-manager-notifications'),
       tooltip: 'Notifications',
-      onPressed: () => _showMessage(
-        count > 0
-            ? '$count branch operation${count == 1 ? '' : 's'} need attention.'
-            : 'No branch operations need attention.',
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const NotificationsScreen(),
+        ),
       ),
       icon: Badge(
         isLabelVisible: count > 0,
@@ -1155,13 +1206,17 @@ class _BranchManagerDashboardScreenState
         ),
       if (_has('branch.reports.view'))
         const _ActionData('View reports', 'reports', Icons.assessment_outlined),
-      if (_has('branch.delivery.manage') &&
-          data.modules.any((Map<String, dynamic> module) =>
-              _text(module, <String>['name']).toUpperCase() == 'DELIVERY'))
+      if (_has('branch.delivery.manage') && _moduleAssigned('DELIVERY'))
         const _ActionData(
           'Delivery operations',
           'delivery',
           Icons.local_shipping_outlined,
+        ),
+      if (_has('branch.delivery.manage') && _moduleAssigned('DELIVERY'))
+        const _ActionData(
+          'Assign rider',
+          'delivery',
+          Icons.person_pin_circle_outlined,
         ),
     ];
     if (actions.isEmpty) return const SizedBox.shrink();
@@ -1559,7 +1614,67 @@ class _BranchManagerDashboardScreenState
       ));
       return;
     }
-    _showMessage('Open this workspace from your ServicePay navigation.');
+    if (action == 'officers') {
+      final String branchId =
+          '${_dashboard?.branch['_id'] ?? _dashboard?.branch['id'] ?? ''}';
+      if (branchId.isEmpty) {
+        Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const _UnavailableBranchWorkspace(),
+        ));
+        return;
+      }
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) =>
+            BranchManagerStaffScreen(branchId: branchId, officerOnly: true),
+      ));
+      return;
+    }
+    if (action == 'delivery') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AdminDeliveryManagementScreen(
+            api: AdminDeliveryApi(
+              baseUrl: 'https://api.servicepay.ng/api/branches',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    if (action == 'notifications') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const NotificationsScreen(),
+        ),
+      );
+      return;
+    }
+    final BranchOperationsView? view = switch (action) {
+      'customer' => BranchOperationsView.customers,
+      'transactions' => BranchOperationsView.transactions,
+      'riders' => BranchOperationsView.riders,
+      'officers' => BranchOperationsView.officers,
+      'kyc' => BranchOperationsView.kyc,
+      'solar' => BranchOperationsView.solar,
+      'phone' => BranchOperationsView.phone,
+      'marketplace' => BranchOperationsView.marketplace,
+      'approval' => BranchOperationsView.approvals,
+      'reports' => BranchOperationsView.reports,
+      'targets' => BranchOperationsView.targets,
+      _ => null,
+    };
+    if (view != null) {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => BranchManagerOperationsScreen(
+          view: view,
+          permissions: _dashboard?.permissions ?? const <String>[],
+        ),
+      ));
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const _UnavailableBranchWorkspace(),
+    ));
   }
 
   void _showMessage(String message) {
@@ -1567,6 +1682,24 @@ class _BranchManagerDashboardScreenState
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
+}
+
+class _UnavailableBranchWorkspace extends StatelessWidget {
+  const _UnavailableBranchWorkspace();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Branch workspace')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'This operation is not assigned to your branch role.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
 }
 
 class _Panel extends StatelessWidget {
