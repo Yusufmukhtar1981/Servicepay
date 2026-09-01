@@ -1,0 +1,573 @@
+Continue from the current stable production checkpoint.
+
+IMPORTANT:
+Do NOT redesign or break the working Customer frontend, Head Office Admin, Marketplace, Delivery, Solar, Empowerment, Mini Apps, Transport, Wallet, Withdrawal, Rider flows or existing backend routes.
+
+Your task is ONLY to upgrade the BRANCH MANAGER PORTAL into the approved premium full-functioning dashboard.
+
+REFERENCE DESIGN:
+Use the approved premium ServicePay Branch Dashboard design as the visual target:
+- dark green left sidebar
+- clean white content area
+- premium fintech KPI cards
+- charts and analytics
+- live activity
+- quick actions
+- officers section
+- branch target
+- visible Logout
+- responsive mobile/desktop behavior
+
+Do NOT copy fake/demo values from the mockup.
+Every displayed value must come from real branch-scoped production data.
+
+==================================================
+A. HEADER
+==================================================
+
+Create a premium top header with:
+- ServicePay branding
+- Branch name
+- Branch code
+- Branch location
+- ACTIVE / INACTIVE status
+- Branch Manager name
+- Role label
+- Notifications icon
+- Refresh button
+- Profile/avatar menu
+- Logout button
+
+FIX THE CURRENT VISUAL ISSUE:
+The current top texts appear blurry/faint/dim.
+Make all headings, labels, cards and metrics crisp and clearly readable.
+Remove any accidental opacity, blur, overlay, backdrop-filter, disabled-state styling or low-contrast text affecting the dashboard.
+The dashboard must remain sharp on Android Chrome, desktop Chrome and responsive web.
+
+==================================================
+B. MAIN KPI CARDS
+==================================================
+
+Add branch-scoped real-time cards for:
+
+- Total Customers
+- Active Customers
+- Total Staff
+- Active Staff
+- Total Riders
+- Online Riders
+- Total Transactions
+- Transaction Volume
+- Transaction Value
+- Branch Wallet / operational balance where permitted
+- Today's Revenue / Commission where permitted
+- Marketplace Orders
+- Pending Transactions
+- Failed Transactions
+- Pending Withdrawals
+- Pending KYC
+- Pending Deliveries
+- Solar Applications
+- Assigned Riders
+- Sites / Offices if applicable
+- Branch Target
+- Target Achieved
+- Target Progress %
+
+No fake data.
+Show "No data" or 0 only when the real backend truly returns no data.
+
+==================================================
+C. STAFF MANAGEMENT — FULL FUNCTIONALITY
+==================================================
+
+Branch Manager must have a real Staff Management module.
+
+Add:
+- Staff list
+- Create Staff
+- View Staff
+- Edit permitted staff profile fields
+- Activate / deactivate staff where authorized
+- Reset temporary password / resend login details where already supported
+- Role assignment
+- Branch assignment must always remain the logged-in manager's branch unless Head Office changes it
+- Staff status
+- Last login where available
+- Search and filters
+
+Branch Manager should be able to create NEW staff even if that person does not already exist in the central Staff list.
+
+On creation:
+- create the staff account
+- assign the correct branch
+- assign permitted role
+- generate/send secure temporary login details using the existing authentication flow
+- require password change on first login if that is the current system behavior
+
+Do NOT allow Branch Manager to create HEAD_OFFICE or higher-privilege roles.
+
+==================================================
+D. OFFICERS — FULL FUNCTIONALITY
+==================================================
+
+Create an Officers module for branch-level operational officers.
+
+Support existing roles where available, such as:
+- KYC Officer
+- Delivery Officer
+- Solar Officer
+- Phone Financing Officer
+- Marketplace / Support Officer
+- other already supported operational roles
+
+Branch Manager must be able to:
+- create permitted officers
+- assign officer type
+- view officer workload/status
+- activate/deactivate where permitted
+- see officer activity
+- assign eligible work to officers
+
+Do NOT invent unsupported permissions.
+Use the existing backend roles/models if they already exist.
+If role names differ, map them safely.
+
+==================================================
+E. RIDERS — FULL FUNCTIONALITY
+==================================================
+
+Add a complete Riders module.
+
+Branch Manager must be able to:
+- View riders assigned to their branch
+- Search riders
+- See Online / Offline
+- See Active / Suspended
+- See verification status
+- See rider phone/name/ID/plate where permitted
+- View current delivery assignment
+- Assign rider to branch where authorized
+- Assign rider to a delivery
+- Reassign delivery safely where supported
+- View rider activity/history
+- View rider withdrawal status where authorized
+
+Never expose riders from unrelated branches except where backend business rules explicitly allow it.
+
+==================================================
+F. DELIVERIES — FULL FUNCTIONALITY
+==================================================
+
+Add a real Deliveries module.
+
+Show:
+- Pending
+- Assigned
+- Accepted
+- Picked Up
+- In Transit
+- Delivered
+- Cancelled
+- Failed where applicable
+
+Each delivery should show:
+- Order/reference ID
+- Customer
+- Pickup details
+- Receiver details
+- Assigned rider
+- Status
+- Amount / charge where applicable
+- Date/time
+
+Add:
+- Assign Delivery
+- Select only eligible branch riders
+- Reassign safely
+- View delivery details
+- Track assignment status
+- Filter/search
+- Pagination
+
+Do not create duplicate assignment logic.
+Reuse existing Delivery backend handlers already working in production.
+
+==================================================
+G. CUSTOMERS
+==================================================
+
+Create branch-scoped customer management:
+
+- Customer list
+- Search
+- View profile
+- KYC status
+- Account status
+- Wallet summary where permitted
+- Transaction summary
+- Branch-related activity
+
+Do NOT expose customers belonging to another branch where branch isolation applies.
+
+==================================================
+H. TRANSACTIONS
+==================================================
+
+Add:
+- Branch transaction list
+- Search by reference/customer/service
+- Date filters
+- Status filters
+- Product/service filters
+- Amount
+- Status
+- Date/time
+- Reference
+- View details
+
+Use real branch transactions only.
+
+==================================================
+I. WITHDRAWALS
+==================================================
+
+Add a branch withdrawals module:
+- Pending requests
+- Approved / completed
+- Failed
+- Customer/Rider/Staff type where applicable
+- Amount
+- Bank/account summary as permitted
+- Status
+- Reference
+- Date/time
+
+Only expose actions the Branch Manager is authorized to perform.
+Do not grant approval permission merely because the UI has a button.
+
+==================================================
+J. KYC
+==================================================
+
+Add branch-level KYC:
+- Pending KYC
+- Search
+- Customer details
+- Assigned KYC officer
+- Verification status
+- Review history
+- Assign to officer where supported
+
+Preserve Head Office approval rules if final approval is restricted.
+
+==================================================
+K. SOLAR
+==================================================
+
+Branch-level Solar module:
+- Applications
+- Pending verification
+- Assigned Solar Officer
+- Customer
+- Package
+- Upfront/payment status
+- Application status
+- Repayment summary where permitted
+
+Support assignment to Solar Officers if existing backend supports it.
+
+==================================================
+L. MARKETPLACE
+==================================================
+
+Add branch marketplace operations:
+- Marketplace orders
+- Order status
+- Customer/store
+- Amount
+- Date
+- Support/escalation visibility where allowed
+
+Do not alter the working global Marketplace business logic.
+
+==================================================
+M. CHARTS AND ANALYTICS
+==================================================
+
+Add real branch charts:
+
+1. Transaction Performance
+   - Today
+   - 7 Days
+   - 30 Days
+   - This Month
+   - Custom date range
+
+2. Transaction Status
+   - Successful
+   - Pending
+   - Failed
+
+3. Product Performance
+   - Airtime
+   - Data
+   - Electricity
+   - Transfers
+   - Withdrawals
+   - Delivery
+   - Marketplace
+   - Solar
+   - other live products
+
+4. Customer Growth
+
+5. Branch Target
+   - Target
+   - Achieved
+   - Percentage
+   - Remaining
+
+Use bounded efficient backend queries.
+Do not use unbounded aggregations.
+
+==================================================
+N. LIVE BRANCH ACTIVITY
+==================================================
+
+Add live/recent activity:
+- New customer registered
+- KYC submitted
+- Delivery assigned
+- Rider activity
+- Solar application
+- Withdrawal request
+- Marketplace order
+- Staff created
+- Officer assigned
+- important branch operational actions
+
+Show:
+- action
+- person/customer
+- time
+- status
+
+==================================================
+O. QUICK ACTIONS
+==================================================
+
+Add premium Quick Actions:
+
+- Create Staff
+- Add Officer
+- Assign Rider
+- Assign Delivery
+- View Customers
+- View Transactions
+- KYC Review
+- Withdrawals
+- Marketplace Orders
+- Solar Applications
+- Branch Reports
+- Send Notification
+
+Buttons must open REAL working flows, not toast-only placeholders.
+
+==================================================
+P. SIDEBAR
+==================================================
+
+Use this structure:
+
+MAIN MENU
+- Dashboard
+- Customers
+- Transactions
+- Staff Management
+- Riders
+- Deliveries
+- Solar
+- Marketplace
+- Withdrawals
+- KYC Verification
+- Reports
+- Notifications
+
+BRANCH TOOLS
+- Create Staff
+- Assign Rider
+- Assign Delivery
+- Officers
+- Targets & Goals
+- Branch Wallet
+- Announcements
+
+BRANCH SETTINGS
+- Branch Profile
+- Settings
+- Logout
+
+Only show modules the logged-in Branch Manager is permitted to use.
+
+==================================================
+Q. LOGOUT
+==================================================
+
+Logout must:
+- be visible in header/profile menu
+- also be available in sidebar
+- show confirmation:
+  "Are you sure you want to log out?"
+- clear access token
+- clear refresh token if used
+- clear branch/session data
+- clear cached sensitive dashboard data
+- redirect to Branch Manager login
+- browser Back must NOT reveal the protected dashboard
+- protected routes must require a valid session
+
+==================================================
+R. SECURITY / BRANCH ISOLATION
+==================================================
+
+CRITICAL:
+
+Every backend query must be branch-scoped by the authenticated manager's assigned branch.
+
+Verify:
+- Branch Manager cannot access another branch by changing IDs or query parameters
+- Cannot create staff in another branch
+- Cannot assign another branch's rider
+- Cannot view another branch's customers
+- Cannot view another branch's transactions
+- Cannot escalate their own privileges
+- Backend authorization is the source of truth
+- Frontend hiding alone is not security
+
+HEAD_OFFICE functionality must remain unchanged.
+
+==================================================
+S. RESPONSIVE DESIGN
+==================================================
+
+The approved desktop design must adapt cleanly to mobile.
+
+On Android/mobile:
+- no tiny unreadable text
+- no faint/blurry text
+- KPI cards stack cleanly
+- charts remain readable
+- sidebar becomes drawer/menu
+- Create Staff / Assign Rider / Assign Delivery remain easy to access
+- no horizontal overflow
+- Logout remains accessible
+
+==================================================
+T. PERFORMANCE
+==================================================
+
+- Progressive loading
+- Skeletons
+- Per-widget error handling
+- Retry actions
+- Pagination
+- Bounded date queries
+- Avoid duplicate API calls
+- One failed widget must not blank the whole dashboard
+- Refresh should update safely without full-page lockup
+
+==================================================
+U. REGRESSION PROTECTION
+==================================================
+
+DO NOT BREAK:
+- Head Office Admin
+- Customer frontend
+- Customer login
+- Branch login
+- Marketplace
+- Delivery
+- Rider withdrawal
+- Solar
+- Empowerment
+- Mini Apps
+- Transport
+- existing Wallet flows
+- existing production backend routes
+
+Do NOT force-push.
+Do NOT wholesale-replace shared controllers.
+
+==================================================
+V. TESTING
+==================================================
+
+Run:
+- Branch Manager authentication tests
+- Branch dashboard tests
+- Staff creation tests
+- Officer creation/assignment tests
+- Rider visibility tests
+- Rider assignment tests
+- Delivery assignment tests
+- KYC tests
+- RBAC tests
+- branch isolation/security tests
+- logout tests
+- mobile responsive tests
+- production web build
+- Admin regression tests
+- Customer frontend regression tests
+
+==================================================
+W. PRODUCTION DEPLOYMENT
+==================================================
+
+Publish only after tests pass.
+Use normal fast-forward commits/pushes.
+
+Then verify REAL production.
+
+Do NOT report success from local tests alone.
+
+FINAL SUCCESS requires all of the following in production:
+
+- Approved premium design deployed
+- Header text is crisp and readable, no dim/blurry issue
+- Staff Management opens
+- Create Staff works
+- Officers module works
+- Riders list works
+- Assign Rider works
+- Deliveries list works
+- Assign Delivery works
+- Customers work
+- Transactions work
+- Withdrawals work
+- KYC works
+- Solar works
+- Marketplace branch module works
+- Charts use real branch data
+- Quick Actions open real flows
+- Logout works
+- Browser Back after logout remains protected
+- Branch isolation verified
+- No new 404 errors
+- No new 500 errors
+- Head Office Admin remains healthy
+- Customer production remains healthy
+
+At the end provide this table:
+
+Feature | Route/API | Production result | Status
+
+And explicitly confirm:
+1. Premium Branch Dashboard deployed
+2. Staff creation working
+3. Officer management working
+4. Rider management and assignment working
+5. Delivery management and assignment working
+6. Branch isolation preserved
+7. Logout fully working
+8. No regression to Head Office or Customer production
