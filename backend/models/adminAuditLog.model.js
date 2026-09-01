@@ -157,6 +157,9 @@ const adminAuditLogSchema =
              "BRANCH_APPROVAL_SUBMITTED",
              "BRANCH_APPROVAL_REVIEWED",
              "BRANCH_OPERATIONAL_REQUEST_CREATED",
+            "PRIVACY_REQUEST_CREATED",
+            "PRIVACY_REQUEST_UPDATED",
+            "DATA_EXPORT_CREATED",
         ],
       },
 

@@ -380,6 +380,7 @@ deliverySchema.index({
   riderCommissionCredited: 1,
   createdAt: -1,
 });
+deliverySchema.index({ createdAt: -1 });
 
 /*
  * Calculate and lock Rider commission and

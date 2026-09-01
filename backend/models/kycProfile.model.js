@@ -302,6 +302,7 @@ const kycProfileSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+kycProfileSchema.index({ createdAt: -1 });
 
 module.exports =
   mongoose.models.KycProfile ||

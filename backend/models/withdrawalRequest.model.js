@@ -122,6 +122,7 @@ withdrawalRequestSchema.index(
     },
   }
 );
+withdrawalRequestSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model(
   "WithdrawalRequest",

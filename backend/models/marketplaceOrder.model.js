@@ -301,6 +301,7 @@ marketplaceOrderSchema.index({
   createdAt: -1,
 });
 marketplaceOrderSchema.index({ branchId: 1, createdAt: -1 });
+marketplaceOrderSchema.index({ createdAt: -1 });
 
 marketplaceOrderSchema.index({
   'items.merchant': 1,

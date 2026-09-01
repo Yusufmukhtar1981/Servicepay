@@ -144,6 +144,7 @@ transactionSchema.index({
   createdAt: -1,
 });
 transactionSchema.index({ branchId: 1, createdAt: -1 });
+transactionSchema.index({ createdAt: -1 });
 
 transactionSchema.index({
   serviceType: 1,
