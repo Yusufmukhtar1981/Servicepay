@@ -5,6 +5,16 @@ const Delivery = require("../models/delivery.model");
 const IdVerification = require("../models/idVerification.model");
 const DashboardTarget = require("../models/dashboardTarget.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
+const optionalModel = (path) => {
+  try { return require(path); } catch (error) {
+    if (error.code === "MODULE_NOT_FOUND" && error.message.includes(path)) return null;
+    throw error;
+  }
+};
+const Branch = optionalModel("../models/branch.model");
+const WithdrawalRequest = optionalModel("../models/withdrawalRequest.model");
+const SolarApplication = optionalModel("../models/solarApplication.model");
+const MarketplaceOrder = optionalModel("../models/marketplaceOrder.model");
 
 const FULL_ACCESS_ROLES = new Set(["HEAD_OFFICE", "ADMIN", "SUPER_ADMIN", "HEAD_OFFICE_ADMIN"]);
 const SUCCESS_STATUSES = ["SUCCESS", "SUCCESSFUL", "COMPLETED", "APPROVED"];
@@ -93,6 +103,14 @@ const targetRows = (target, current) => {
     };
   });
 };
+const aggregateBranchPerformance = (match) => Branch ? Transaction.aggregate([
+  { $match: { ...match, branchId: { $ne: null } } },
+  { $group: { _id: "$branchId", count: { $sum: 1 }, value: { $sum: { $cond: [{ $in: ["$status", SUCCESS_STATUSES] }, amount(), 0] } }, successful: statusCount(SUCCESS_STATUSES), pending: statusCount(PENDING_STATUSES), failed: statusCount(FAILED_STATUSES) } },
+  { $sort: { value: -1, count: -1 } }, { $limit: 50 },
+  { $lookup: { from: Branch.collection.name, localField: "_id", foreignField: "_id", as: "branch" } },
+  { $unwind: { path: "$branch", preserveNullAndEmptyArrays: true } },
+  { $project: { _id: 0, branchId: "$_id", branch: { $ifNull: ["$branch.name", "Unknown branch"] }, count: 1, value: 1, successful: 1, pending: 1, failed: 1 } },
+]) : Promise.resolve([]);
 
 const getExecutiveDashboard = async (req, res) => {
   let window;
@@ -107,7 +125,7 @@ const getExecutiveDashboard = async (req, res) => {
   const customerFilter = { role: "CUSTOMER", ...userScope };
   const currentMatch = transactionMatch(window.start, window.end, transactionScope);
   try {
-    const [customers, activeCustomers, agents, aggregators, stateManagers, zonalManagers, branchManagers, walletRows, currentRows, previousRows, series, products, activity, pendingKyc, pendingDeliveries, activeRiders, geography, target] = await Promise.all([
+    const [customers, activeCustomers, agents, aggregators, stateManagers, zonalManagers, branchManagers, walletRows, currentRows, previousRows, series, products, activity, pendingKyc, pendingDeliveries, activeRiders, geography, target, totalBranches, pendingWithdrawals, pendingSolar, branchRows, marketplaceRows] = await Promise.all([
       usersAllowed ? User.countDocuments(customerFilter) : null,
       usersAllowed ? User.countDocuments({ ...customerFilter, status: "ACTIVE" }) : null,
       usersAllowed ? User.countDocuments({ role: "AGENT", ...userScope }) : null,
@@ -126,12 +144,23 @@ const getExecutiveDashboard = async (req, res) => {
       deliveryAllowed && !scoped ? User.countDocuments({ role: "RIDER", status: "ACTIVE" }) : null,
       usersAllowed ? User.aggregate([{ $match: { ...userScope, role: { $in: ["AGENT", "CUSTOMER"] } } }, { $group: { _id: { zone: "$zone", state: "$state" }, users: { $sum: 1 }, agents: { $sum: { $cond: [{ $eq: ["$role", "AGENT"] }, 1, 0] } } } }, { $sort: { users: -1 } }, { $limit: 50 }]) : [],
       targetAccess(req.user) ? DashboardTarget.findOne({ key: "executive" }).select("values updatedAt").lean() : null,
+      usersAllowed && !scoped && Branch ? Branch.countDocuments({}) : null,
+      hasPermission(req.user, "withdrawals.view") && !scoped && WithdrawalRequest ? WithdrawalRequest.countDocuments({ status: "PENDING" }) : null,
+      hasPermission(req.user, "solar.view") && !scoped && SolarApplication ? SolarApplication.countDocuments({ status: { $in: ["SUBMITTED", "UNDER_REVIEW", "MORE_INFORMATION_REQUIRED", "AWAITING_DEPOSIT"] } }) : null,
+      txAllowed && !scoped ? aggregateBranchPerformance(currentMatch) : [],
+      txAllowed && !scoped && MarketplaceOrder ? MarketplaceOrder.aggregate([{ $match: { createdAt: { $gte: window.start, $lt: window.end } } }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: amount("$totalAmount") }, successful: { $sum: { $cond: [{ $in: ["$paymentStatus", ["PAID", "SUCCESS", "SUCCESSFUL"]] }, 1, 0] } }, pending: { $sum: { $cond: [{ $in: ["$paymentStatus", ["PENDING", "UNPAID", "HELD"]] }, 1, 0] } }, failed: { $sum: { $cond: [{ $in: ["$paymentStatus", ["FAILED", "REFUNDED", "CANCELLED"]] }, 1, 0] } } } }]) : [],
     ]);
     const current = summaryFrom(currentRows), previous = summaryFrom(previousRows);
     const productMap = Object.fromEntries(products.map((row) => [String(row._id || ""), row]));
     const noSafeScope = "This data cannot be safely scoped for this management role.";
-    const withdrawal = hasPermission(req.user, "withdrawals.view") ? unavailable("No withdrawal model is configured.") : unavailable("Not available for this staff role.");
-    const solar = hasPermission(req.user, "solar.view") ? unavailable("No solar application model is configured.") : unavailable("Not available for this staff role.");
+    const withdrawal = hasPermission(req.user, "withdrawals.view") && !scoped
+      ? (WithdrawalRequest ? metric(pendingWithdrawals) : unavailable("No withdrawal model is configured."))
+      : unavailable(scoped ? noSafeScope : "Not available for this staff role.");
+    const solar = hasPermission(req.user, "solar.view") && !scoped
+      ? (SolarApplication ? metric(pendingSolar) : unavailable("No solar application model is configured."))
+      : unavailable(scoped ? noSafeScope : "Not available for this staff role.");
+    const productRows = products.map((row) => ({ product: row._id || "UNKNOWN", count: row.count || 0, value: row.value || 0, successful: row.successful || 0, pending: row.pending || 0, failed: row.failed || 0 }));
+    if (marketplaceRows[0]) productRows.push({ product: "MARKETPLACE", ...marketplaceRows[0], _id: undefined });
     return res.json({ success: true, data: {
       range: window.range, startDate: window.start.toISOString(), endDate: window.end.toISOString(), generatedAt: new Date().toISOString(),
       kpis: {
@@ -144,7 +173,7 @@ const getExecutiveDashboard = async (req, res) => {
         totalAgentsAggregators: permissionMetric(req.user, "users.view", (agents || 0) + (aggregators || 0)),
         totalManagers: permissionMetric(req.user, "users.view", (stateManagers || 0) + (zonalManagers || 0)),
         totalBranchManagers: permissionMetric(req.user, "users.view", branchManagers),
-        totalBranches: unavailable("No branch model is configured in this release."),
+        totalBranches: usersAllowed && !scoped ? (Branch ? metric(totalBranches) : unavailable("No branch model is configured in this release.")) : unavailable(scoped ? noSafeScope : "Not available for this staff role."),
         managers: permissionMetric(req.user, "users.view", (stateManagers || 0) + (zonalManagers || 0)), agents: permissionMetric(req.user, "users.view", agents),
         branches: unavailable("No branch model is configured in this release."),
         todayTransactionVolume: permissionMetric(req.user, "transactions.view", current.total),
@@ -164,11 +193,11 @@ const getExecutiveDashboard = async (req, res) => {
         marketplace: unavailable("No marketplace model is configured."),
         solar,
       },
-      performance: { series: series.map((row) => ({ date: row._id, total: row.total || 0, successful: row.successful || 0, pending: row.pending || 0, failed: row.failed || 0, value: row.value || 0 })), products: products.map((row) => ({ product: row._id || "UNKNOWN", count: row.count || 0, value: row.value || 0, successful: row.successful || 0, pending: row.pending || 0, failed: row.failed || 0 })), branches: { available: false, reason: "No branch model is configured.", geography } },
-      products: products.map((row) => ({ product: row._id || "UNKNOWN", count: row.count || 0, value: row.value || 0, successful: row.successful || 0, pending: row.pending || 0, failed: row.failed || 0 })),
-      branches: [],
-      branchPerformance: { available: false, reason: "No branch model is configured in this release.", geography },
-      attention: { pendingKyc: kycAllowed && !scoped ? pendingKyc : null, pendingWithdrawals: null, failedTransactions: txAllowed ? current.failed : null, pendingDeliveries: deliveryAllowed && !scoped ? pendingDeliveries : null, pendingSolar: null },
+      performance: { series: series.map((row) => ({ date: row._id, total: row.total || 0, successful: row.successful || 0, pending: row.pending || 0, failed: row.failed || 0, value: row.value || 0 })), products: productRows, branches: Branch ? { available: true, value: branchRows } : { available: false, reason: "No branch model is configured.", geography } },
+      products: productRows,
+      branches: branchRows,
+      branchPerformance: Branch ? { available: true, value: branchRows } : { available: false, reason: "No branch model is configured in this release.", geography },
+      attention: { pendingKyc: kycAllowed && !scoped ? pendingKyc : null, pendingWithdrawals: WithdrawalRequest ? pendingWithdrawals : null, failedTransactions: txAllowed ? current.failed : null, pendingDeliveries: deliveryAllowed && !scoped ? pendingDeliveries : null, pendingSolar: SolarApplication ? pendingSolar : null },
       activity: activity.map((row) => ({ action: "Transaction recorded", target: row.reference, service: row.serviceType, amount: row.amount, status: row.status, time: row.createdAt })),
       health: { backend: metric({ status: "ok", uptimeSeconds: Math.floor(process.uptime()) }), database: metric({ status: mongoose.connection.readyState === 1 ? "connected" : "disconnected" }), authentication: unavailable("No independent authentication probe is configured."), email: unavailable("Email provider health is not checked."), providers: unavailable("External provider health is not checked.") },
       targets: targetAccess(req.user) ? targetRows(target, current) : [],
