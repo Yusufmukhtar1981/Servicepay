@@ -46,6 +46,7 @@ import 'partner_application_screen.dart';
 import 'qr_pay_screen.dart';
 
 import 'mini_apps_screen.dart';
+import 'keke_order_screen.dart';
 import 'solar_screen.dart';
 import 'phone_financing/phone_financing_screen.dart';
 
@@ -1049,7 +1050,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             'keke napep ride transport tricycle taxi driver trip movement',
         onTap: () {
           openScreen(
-            const BusinessWalletScreen(),
+            const KekeOrderScreen(),
+            routeName: '/transport',
           );
         },
       ),
@@ -1413,12 +1415,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         backgroundColor: const Color(0xFFEAF7F0),
         keywords: 'transport mobility car ride travel mini apps',
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Transport is available in ServicePay Mini Apps.',
-              ),
-            ),
+          openScreen(
+            const KekeOrderScreen(),
+            routeName: '/transport',
           );
         },
       ),

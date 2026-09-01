@@ -3,6 +3,38 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'airtime_data_screen.dart';
+import 'cards_screen.dart';
+import 'empowerment_screen.dart';
+import 'group_wallet_screen.dart';
+import 'keke_order_screen.dart';
+import 'logistics_screen.dart';
+import 'marketplace/marketplace_screen.dart';
+import 'business_wallet_screen.dart';
+
+Widget? miniAppScreenForRouteKey(String routeKey) {
+  switch (routeKey.trim()) {
+    case 'cards':
+      return const CardsScreen();
+    case 'empowerment':
+      return const EmpowermentScreen();
+    case 'businessWallet':
+      return const BusinessWalletScreen();
+    case 'delivery':
+      return const LogisticsScreen();
+    case 'airtimeData':
+      return const AirtimeDataScreen();
+    case 'groupWallet':
+      return const GroupWalletScreen();
+    case 'marketplace':
+      return const MarketplaceScreen();
+    case 'transport':
+      return const KekeOrderScreen();
+    default:
+      return null;
+  }
+}
+
 class MiniAppsScreen extends StatefulWidget {
   const MiniAppsScreen({
     super.key,
@@ -165,35 +197,26 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
   void openApp(
     Map<String, dynamic> app,
   ) {
-    final name = app['name']?.toString() ?? 'Mini App';
-
     final status = app['status']?.toString() ?? 'ACTIVE';
 
     if (status != 'ACTIVE') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '$name is coming soon.',
-          ),
-        ),
-      );
-
       return;
     }
 
-    /*
-     * V1:
-     * Existing ServicePay services remain available
-     * from the main dashboard.
-     *
-     * V2 will use routeKey to launch installed
-     * third-party and ServicePay Mini Apps directly.
-     */
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$name is available in ServicePay.',
+    final Widget? screen = miniAppScreenForRouteKey(
+      app['routeKey']?.toString() ?? '',
+    );
+
+    if (screen == null) {
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(
+          name: '/mini-apps/${app['slug'] ?? app['routeKey']}',
         ),
+        builder: (_) => screen,
       ),
     );
   }
@@ -419,12 +442,24 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                           final status = app['status']?.toString() ?? 'ACTIVE';
 
                           final isComingSoon = status != 'ACTIVE';
+                           final hasDestination =
+                               miniAppScreenForRouteKey(
+                                 app['routeKey']?.toString() ?? '',
+                               ) !=
+                               null;
+                           final isUnavailable =
+                               isComingSoon || !hasDestination;
 
                           return InkWell(
+                             key: Key(
+                               'mini-app-${app['slug'] ?? index}',
+                             ),
                             borderRadius: BorderRadius.circular(
                               22,
                             ),
-                            onTap: () => openApp(app),
+                             onTap: isUnavailable
+                                 ? null
+                                 : () => openApp(app),
                             child: Container(
                               padding: const EdgeInsets.all(
                                 16,
@@ -490,11 +525,13 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                     height: 10,
                                   ),
                                   Text(
-                                    isComingSoon ? 'Coming soon' : 'Available',
+                                     isUnavailable
+                                         ? 'Coming soon'
+                                         : 'Available',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: isComingSoon
+                                       color: isUnavailable
                                           ? Colors.orange.shade800
                                           : const Color(
                                               0xFF08783E,
