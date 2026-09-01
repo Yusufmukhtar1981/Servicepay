@@ -326,10 +326,6 @@ exports.getAdminDashboard = async (req, res) => {
           "customerId",
           "fullName name email phone"
         )
-        .populate(
-          "userId",
-          "fullName name email phone"
-        )
         .sort({
           createdAt: -1,
         })
