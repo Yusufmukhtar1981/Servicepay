@@ -30,10 +30,16 @@ const MANAGEMENT_ROLES = [
 const dashboardPermission = (req, res, next) => {
   const role = String(req.user?.role || "").toUpperCase();
   if (role !== "STAFF") return next();
+  const permissions = new Set([
+    ...(Array.isArray(req.user?.permissions) ? req.user.permissions : []),
+    ...(Array.isArray(req.user?.staffRole?.permissions)
+      ? req.user.staffRole.permissions
+      : []),
+  ].map((value) => String(value).trim().toLowerCase()));
+  if (permissions.has("*") || permissions.has("dashboard.view")) return next();
   return res.status(403).json({
     success: false,
-    message:
-      "Executive dashboard access requires a server-defined management scope.",
+    message: "Executive dashboard access requires dashboard.view permission.",
   });
 };
 
@@ -91,6 +97,7 @@ router.get(
     "HEAD_OFFICE_ADMIN",
     "ZONAL_MANAGER",
     "STATE_MANAGER",
+    "STAFF",
   ),
   getAdminDashboardExport,
 );
