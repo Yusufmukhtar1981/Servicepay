@@ -2,6 +2,7 @@ const express = require("express");
 
 const {
   protect,
+  adminOnly,
 } = require(
   "../middleware/auth.middleware"
 );
@@ -30,6 +31,7 @@ const router = express.Router();
 router.get(
   "/",
   protect,
+  adminOnly("HEAD_OFFICE"),
   kekeFareSettingController
     .adminGetFareSettings
 );
@@ -40,6 +42,7 @@ router.get(
 router.post(
   "/",
   protect,
+  adminOnly("HEAD_OFFICE"),
   kekeFareSettingController
     .adminSaveFareSetting
 );
@@ -50,6 +53,7 @@ router.post(
 router.delete(
   "/:id",
   protect,
+  adminOnly("HEAD_OFFICE"),
   kekeFareSettingController
     .adminDeleteFareSetting
 );
