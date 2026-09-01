@@ -2349,6 +2349,58 @@ exports.unassignRiderFromDelivery =
     }
   };
 
+// Branch reassignment is intentionally a single operation. Do not compose the
+// legacy unassign/assign endpoints in a client: a rider may accept between
+// those requests.
+exports.reassignRiderToDelivery = async (req, res) => {
+  const deliveryId = String(req.params.id || "").trim();
+  const riderId = String(req.body.riderId || "").trim();
+  if (!mongoose.Types.ObjectId.isValid(deliveryId) || !mongoose.Types.ObjectId.isValid(riderId)) {
+    return res.status(400).json({ success: false, message: "A valid delivery and replacement rider are required." });
+  }
+  const session = await mongoose.startSession();
+  let delivery; let rider;
+  try {
+    await session.withTransaction(async () => {
+      const current = await Delivery.findOne({
+        _id: deliveryId, ...deliveryBranchFilter(req),
+      }).select("branchId status assignedRiderId riderAcceptedAt").session(session).lean();
+      if (!current) throw Object.assign(new Error("Delivery was not found."), { statusCode: 404 });
+      if (current.status !== "ASSIGNED" || !current.assignedRiderId || current.riderAcceptedAt) {
+        throw Object.assign(new Error("Only an unaccepted assigned delivery can be reassigned."), { statusCode: 409 });
+      }
+      if (String(current.assignedRiderId) === riderId) {
+        throw Object.assign(new Error("Select a different replacement rider."), { statusCode: 400 });
+      }
+      rider = await User.findOne({
+        _id: riderId, branchId: current.branchId, role: "DELIVERY_RIDER",
+        status: "ACTIVE", riderVerificationStatus: "VERIFIED", availabilityStatus: "ONLINE",
+      }).session(session);
+      if (!rider) throw Object.assign(new Error("The selected rider is not eligible for this branch delivery."), { statusCode: 409 });
+      const eventId = randomUUID();
+      delivery = await Delivery.findOneAndUpdate({
+        _id: current._id, branchId: current.branchId, status: "ASSIGNED",
+        assignedRiderId: current.assignedRiderId, riderAcceptedAt: null,
+      }, { $set: {
+        assignedRiderId: rider._id, riderName: rider.fullName || "", riderPhone: rider.phone || "",
+        assignedBy: req.user?._id || null, assignedAt: new Date(), assignmentEventId: eventId,
+        riderRejectedAt: null, riderRejectionReason: "",
+      } }, { new: true, session, runValidators: true });
+      if (!delivery) throw Object.assign(new Error("Delivery assignment changed; reload and retry."), { statusCode: 409 });
+      await User.updateOne({ _id: current.assignedRiderId, branchId: current.branchId, role: "DELIVERY_RIDER" },
+        [{ $set: { totalAssignedDeliveries: { $max: [0, { $subtract: [{ $ifNull: ["$totalAssignedDeliveries", 0] }, 1] }] } } }], { session, updatePipeline: true });
+      await User.updateOne({ _id: rider._id, branchId: current.branchId, role: "DELIVERY_RIDER" },
+        { $inc: { totalAssignedDeliveries: 1 } }, { session });
+    });
+    try { await sendAssignmentAlertIfOnline({ rider, delivery }); } catch (error) { console.error("DELIVERY REASSIGNMENT ALERT ERROR:", error?.message); }
+    return res.status(200).json({ success: true, delivery });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ success: false, message: error.message || "Unable to reassign delivery." });
+  } finally {
+    await session.endSession();
+  }
+};
+
 /*
 |--------------------------------------------------------------------------
 | UPDATE DELIVERY STATUS

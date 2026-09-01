@@ -65,6 +65,10 @@ const marketplaceOrderSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    assignedSupportOfficer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    supportAssignedAt: { type: Date, default: null },
+    supportAssignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    supportAssignmentVersion: { type: Number, default: 0, min: 0 },
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Branch',

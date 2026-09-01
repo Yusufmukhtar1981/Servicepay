@@ -22,3 +22,10 @@ test("admin rider-assignment endpoint is protected and mounted", () => {
   assert.equal(mounted.stack.at(-1).handle, adminController.assignRiderToDelivery);
   assert.ok(mounted.stack.length >= 5);
 });
+
+test("admin rider-reassignment endpoint keeps delivery assignment protection", () => {
+  const mounted = route("/deliveries/:id/reassign-rider", "patch");
+  assert.ok(mounted);
+  assert.equal(mounted.stack.at(-1).handle, adminController.reassignRiderToDelivery);
+  assert.ok(mounted.stack.length >= 5);
+});
