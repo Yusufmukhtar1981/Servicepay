@@ -1,0 +1,258 @@
+SERVICEPAY ADMIN — ONE COMPLETE PRODUCTION TASK: ACTIVATE ALL CURRENTLY "NOT CONFIGURED / NO LIVE WORKSPACE" FINTECH CONTROL CENTER MODULES
+
+Work directly on the existing ServicePay Admin + ServicePay backend repositories and complete this task end-to-end. Do NOT only redesign the frontend. The screenshots show placeholder pages saying "NOT CONFIGURED", "NO LIVE WORKSPACE", "ACTION NONE" and "This module is intentionally unavailable until a real backend capability is connected." Replace those placeholders with REAL, LIVE, production-ready backend-connected modules.
+
+IMPORTANT SAFETY / IMPLEMENTATION RULES:
+- First inspect the existing backend models, routes, controllers, middleware, authentication, admin roles, transaction schema, user/customer schema, staff/branch schema and existing admin APIs.
+- Reuse existing real data and APIs wherever possible.
+- Do not duplicate existing transaction/user/staff collections.
+- Do not invent fake statistics.
+- Do not use mock/demo/hardcoded financial data.
+- Do not break customer app, branch dashboard, rider dashboard, marketplace, solar, delivery, withdrawal, wallet, KYC, authentication or existing admin features.
+- Preserve existing production environment variables.
+- Never expose passwords, PINs, OTPs, JWTs, API secrets, card secrets, BVN/NIN raw values or other sensitive credentials in logs.
+- All new admin endpoints must use existing admin authentication and strict role/permission checks.
+- Read-only modules must remain read-only unless an action is explicitly required below.
+- Add pagination, filtering and safe server-side limits for large datasets.
+- Add proper loading, empty, error, retry and unauthorized states.
+- Existing backend data is the source of truth.
+- If an exact backend capability genuinely cannot be implemented from the current infrastructure, show a precise unavailable reason instead of fake functionality.
+- Do not mark anything LIVE until its endpoint has been tested successfully.
+
+ACTIVATE THESE MODULES:
+
+1. AUDIT LOGS
+Create a real immutable-style administrative audit trail.
+Record important admin/staff actions including:
+- login/logout where available
+- user changes
+- KYC approval/rejection
+- wallet/manual funding actions
+- withdrawal actions
+- transaction administrative actions
+- staff creation/update/deactivation
+- branch creation/update
+- settings changes
+- role/permission changes
+- marketplace/solar/delivery administrative actions
+Store: actor ID, actor name/role, action, target type, target ID, safe before/after summary where appropriate, timestamp and available request metadata.
+Never log passwords/PINs/tokens/secrets.
+Build searchable Audit Logs UI with date, actor, role, action and module filters plus pagination and detail view.
+
+2. SECURITY EVENTS
+Build a real security-event workspace from existing authentication/security activity.
+Include events such as failed logins, repeated failed authentication, account lockouts if supported, password/PIN reset security events, suspicious admin authentication events, unauthorized/forbidden API attempts and other security events that can be reliably captured.
+Provide severity: INFO / LOW / MEDIUM / HIGH / CRITICAL.
+Show timestamp, event type, affected account, role, safe source/request metadata and status.
+Add filtering and pagination.
+Do NOT pretend to provide device intelligence, geolocation or threat detection unless real data/services exist.
+
+3. ACCESS LOGS
+Implement safe administrative/system access logging using available request/authentication metadata.
+Show timestamp, authenticated user/admin, role, HTTP method, sanitized route/resource, response status and available IP/user-agent metadata.
+Never store request bodies containing financial or authentication secrets.
+Add search/filter by date, user, role, route/method and response class.
+Use retention controls so logs cannot grow without bounds.
+
+4. DATA EXPORTS
+Create a working admin export center.
+Allow authorized admins to export permitted operational reports such as:
+- transactions
+- customers/users
+- branches
+- staff
+- deliveries
+- withdrawals
+- KYC status
+- marketplace orders where supported
+- solar applications/orders where supported
+Use CSV as the minimum supported export format.
+Apply date/filter criteria.
+Generate exports server-side safely with maximum row limits or streaming/batching.
+Track export history: requested by, report type, filters, status, created time, completion time and download availability.
+Never export passwords, PINs, tokens, API secrets or prohibited sensitive fields.
+Protect downloads with admin authorization.
+
+5. BACKUPS
+Do NOT create a fake database-backup button.
+Inspect the actual database/hosting architecture first.
+If the current infrastructure provides a real safe backup mechanism that can be integrated without exposing database credentials, build a Backups workspace showing backup status/history and permitted actions.
+If backups are provider-managed and cannot safely be triggered through the app, show REAL provider/configuration status and documented recovery readiness instead of pretending a backup occurred.
+Never place database credentials in frontend code.
+Never implement unsafe database dumps from the browser.
+
+6. PRIVACY CONTROLS
+Build a real privacy administration workspace using existing user data.
+Include:
+- privacy/data request tracking
+- account deletion requests where supported
+- data export/access requests
+- consent/preferences where such data already exists or can safely be introduced
+- retention policy/configuration display
+- request status workflow: PENDING / IN REVIEW / COMPLETED / REJECTED where appropriate
+Any destructive deletion must have confirmation, authorization and audit logging.
+Do not automatically delete financial transaction records that must be retained; implement safe anonymization/retention handling where legally/operationally required.
+
+7. EXECUTIVE DASHBOARD
+Replace placeholder with a premium live executive dashboard powered ONLY by actual ServicePay data.
+Include where available:
+- Total Customers
+- Active Customers
+- Total Agents/Aggregators
+- Total Managers
+- Total Staff
+- Total Branches
+- Active Riders
+- Total Customer Wallet Balance
+- Total Transaction Count
+- Total Transaction Value/Volume
+- Successful Transactions
+- Pending Transactions
+- Failed Transactions
+- Pending Withdrawals
+- Pending KYC Reviews
+- Pending Solar Applications
+- Marketplace activity
+- Delivery activity
+- Revenue/fees ONLY if reliably stored/calculable
+Add charts for transaction trend, success/failure/pending distribution, product/service activity and customer growth where historical data supports it.
+Add date filters: Today / 7 Days / 30 Days / custom range.
+Clearly label metrics and currency.
+Never calculate revenue from assumptions.
+
+8. SERVICE PERFORMANCE
+Build live service performance monitoring based on actual ServicePay transaction/service data.
+Cover available services such as:
+- ServicePay transfers
+- withdrawals
+- airtime
+- data
+- electricity
+- cable TV
+- NIN/ID verification
+- delivery
+- marketplace
+- solar
+- empowerment
+- QR Pay
+and any other currently active product discovered in the backend.
+For each supported service show transaction count, success rate, failure rate, pending count/value where meaningful, last activity and trend for selected period.
+Do not show artificial uptime percentages unless actual uptime monitoring exists.
+
+9. TRANSACTION ANALYTICS
+Build full real transaction analytics from the existing transaction collection/source.
+Include:
+- total count
+- total value
+- successful count/value
+- failed count/value
+- pending count/value
+- transaction type/service breakdown
+- daily/weekly/monthly trends
+- top transaction services
+- recent transaction activity
+- status distribution
+- date range filters
+- transaction type filters
+- status filters
+Charts and summary cards must derive from backend aggregation endpoints, not frontend hardcoded calculations.
+Ensure MongoDB aggregation/query performance is safe and indexed where necessary.
+
+10. CUSTOMER ANALYTICS
+Build real customer analytics from existing customer/user data.
+Include:
+- total customers
+- active customers based on a clearly defined real criterion
+- new customers today / 7 days / 30 days
+- customer growth trend
+- KYC distribution
+- customers by state where stored
+- customers by tier where stored
+- customers with wallet balances
+- transaction-active customers for selected period
+- top customers by transaction activity/value ONLY for authorized admin roles
+- recent registrations
+Do not expose unnecessary BVN/NIN or sensitive KYC data in analytics.
+
+BACKEND ARCHITECTURE:
+Create/reuse clean admin API namespaces, following the existing project conventions, for example:
+ /api/admin/audit-logs
+ /api/admin/security-events
+ /api/admin/access-logs
+ /api/admin/data-exports
+ /api/admin/backups
+ /api/admin/privacy
+ /api/admin/analytics/executive
+ /api/admin/analytics/services
+ /api/admin/analytics/transactions
+ /api/admin/analytics/customers
+
+Do not blindly use these paths if equivalent existing routes already exist; inspect and extend existing architecture instead of creating duplicates.
+
+PERFORMANCE:
+- Use MongoDB aggregation pipelines where appropriate.
+- Add indexes only after inspecting existing indexes/schema.
+- Avoid full unbounded collection scans.
+- Pagination is mandatory for logs/tables.
+- Analytics endpoints must support bounded date ranges.
+- Avoid N+1 queries.
+- Cache only where safe and ensure financial figures are not misleadingly stale.
+
+ADMIN UI:
+Maintain the existing ServicePay premium green visual identity but turn each placeholder into a professional fintech operations workspace.
+Every module should include:
+- title/header
+- live status indicator
+- useful KPI cards where appropriate
+- filters
+- tables/charts where appropriate
+- refresh
+- loading skeleton
+- empty state
+- API error/retry state
+- responsive desktop/tablet/mobile layout
+- logout/session behavior consistent with existing admin dashboard
+
+When backend is successfully connected, remove:
+"NOT CONFIGURED"
+"NO LIVE WORKSPACE"
+"ACTION NONE"
+"This module is intentionally unavailable until a real backend capability is connected."
+
+Replace with truthful statuses such as:
+Capability: LIVE
+Availability: CONNECTED
+Last refreshed: [actual timestamp]
+
+TESTING / VERIFICATION:
+Before finishing:
+1. Run backend lint/typecheck/tests/build as applicable.
+2. Run admin frontend build.
+3. Fix all compile/runtime errors introduced by this task.
+4. Test every new API endpoint using authenticated admin access.
+5. Verify analytics against actual database queries/sample totals, not mocks.
+6. Verify unauthorized users receive 401/403.
+7. Verify sensitive fields never appear in API responses/logs/exports.
+8. Verify pagination and date filters.
+9. Verify no existing ServicePay routes/features were broken.
+10. Test production build.
+
+DEPLOYMENT:
+Commit all required backend + admin changes and push them to the correct existing branches/remotes so the configured deployment services can deploy normally.
+Do not modify unrelated infrastructure.
+If deployment fails, inspect the actual deployment/build logs and fix the root cause rather than bypassing checks.
+
+FINAL REPORT:
+Do not stop after writing code.
+At completion report:
+- files changed
+- backend routes created/reused
+- database models/indexes added or reused
+- each of the 10 modules and whether it is VERIFIED LIVE
+- tests/build results
+- deployment status
+- any module that could not safely be activated and the exact technical reason
+- confirmation that no fake/mock analytics remain
+- confirmation that existing ServicePay functionality was preserved
+
+Do the entire task now as one continuous implementation. Do not ask me to manually create files that you can create yourself, and do not leave placeholder UI claiming functionality that has not been verified.
