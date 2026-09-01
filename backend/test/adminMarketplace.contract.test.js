@@ -108,3 +108,33 @@ test("APPROVED remains a backwards-compatible alias for ACTIVE", async () => {
     MarketplaceProduct.countDocuments = originalCount;
   }
 });
+
+test("ALL returns products without applying a status filter", async () => {
+  let filter;
+  const originalFind = MarketplaceProduct.find;
+  const originalCount = MarketplaceProduct.countDocuments;
+  MarketplaceProduct.find = (value) => {
+    filter = value;
+    return {
+      sort: () => ({
+        skip: () => ({
+          limit: () => ({ lean: async () => [] }),
+        }),
+      }),
+    };
+  };
+  MarketplaceProduct.countDocuments = async () => 0;
+
+  try {
+    const res = response();
+    await controller.listMarketplaceProducts(
+      { query: { status: "ALL" }, staffAccess: { isHeadOffice: true } },
+      res,
+    );
+    assert.equal(res.result.status, 200);
+    assert.equal(Object.hasOwn(filter, "status"), false);
+  } finally {
+    MarketplaceProduct.find = originalFind;
+    MarketplaceProduct.countDocuments = originalCount;
+  }
+});

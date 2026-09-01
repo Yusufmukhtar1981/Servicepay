@@ -16,6 +16,7 @@ const allowedStatuses = new Set([
 ]);
 const normalizeProductStatus = (value) => {
   const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'ALL') return '';
   return normalized === 'APPROVED' ? 'ACTIVE' : normalized;
 };
 const escapeRegex = (value) =>
@@ -43,14 +44,16 @@ exports.listMarketplaceProducts = async (req, res) => {
     if (status) {
       const normalizedStatus = normalizeProductStatus(status);
 
-      if (!allowedStatuses.has(normalizedStatus)) {
+      if (normalizedStatus && !allowedStatuses.has(normalizedStatus)) {
         return res.status(400).json({
           success: false,
           message: 'Invalid Marketplace product status.',
         });
       }
 
-      filter.status = normalizedStatus;
+      if (normalizedStatus) {
+        filter.status = normalizedStatus;
+      }
     }
 
     if (String(q || '').trim()) {

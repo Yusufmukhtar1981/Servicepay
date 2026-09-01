@@ -1691,6 +1691,7 @@ exports.getAvailableRiders =
             createdAt:
               -1,
           })
+          .limit(100)
           .lean()
           : [];
 
@@ -1729,8 +1730,6 @@ exports.getAvailableRiders =
           success: false,
           message:
             "Failed to load available riders.",
-          error:
-            error.message,
         });
     }
   };

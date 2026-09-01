@@ -24,6 +24,30 @@ const RANGE_DAYS = Object.freeze({
   "30d": 30,
 });
 const LAGOS_OFFSET_MS = 60 * 60 * 1000;
+const DASHBOARD_QUERY_TIMEOUT_MS = 8000;
+
+const boundedQuery = async (label, query, fallback) => {
+  let timeout;
+  try {
+    return await Promise.race([
+      Promise.resolve(query),
+      new Promise((resolve) => {
+        timeout = setTimeout(() => {
+          console.warn(`ADMIN_DASHBOARD_QUERY_TIMEOUT ${label}`);
+          resolve(fallback);
+        }, DASHBOARD_QUERY_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    console.error(
+      `ADMIN_DASHBOARD_QUERY_FAILED ${label}:`,
+      error?.message || error,
+    );
+    return fallback;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
 
 const toMap = (value) =>
   value && typeof value === "object" ? value : {};
@@ -301,13 +325,13 @@ const getExecutiveDashboard = async (req, res) => {
       pendingKyc,
       activity,
     ] = await Promise.all([
-      hasPermission(req.user, "users.view")
+      boundedQuery("total-customers", hasPermission(req.user, "users.view")
         ? User.countDocuments(customerFilter)
-        : Promise.resolve(null),
-      hasPermission(req.user, "users.view")
+        : Promise.resolve(null), null),
+      boundedQuery("active-customers", hasPermission(req.user, "users.view")
         ? User.countDocuments({ ...customerFilter, status: "ACTIVE" })
-        : Promise.resolve(null),
-      hasPermission(req.user, "wallets.view") ||
+        : Promise.resolve(null), null),
+      boundedQuery("wallet-balance", hasPermission(req.user, "wallets.view") ||
       hasPermission(req.user, "finance.view")
         ? User.aggregate([
             { $match: customerFilter },
@@ -327,35 +351,35 @@ const getExecutiveDashboard = async (req, res) => {
               },
             },
           ])
-        : Promise.resolve([]),
-      transactionAccess
+        : Promise.resolve([]), []),
+      boundedQuery("current-transactions", transactionAccess
         ? aggregateTransactionSummary(currentMatch)
-        : Promise.resolve([]),
-      transactionAccess
+        : Promise.resolve([]), []),
+      boundedQuery("previous-transactions", transactionAccess
         ? aggregateTransactionSummary(previousMatch)
-        : Promise.resolve([]),
-      transactionAccess
+        : Promise.resolve([]), []),
+      boundedQuery("transaction-series", transactionAccess
         ? aggregateTransactionSeries(currentMatch)
-        : Promise.resolve([]),
-      transactionAccess
+        : Promise.resolve([]), []),
+      boundedQuery("service-performance", transactionAccess
         ? aggregateServices(currentMatch)
-        : Promise.resolve([]),
-      deliveryAccess && !scopedManager
+        : Promise.resolve([]), []),
+      boundedQuery("pending-deliveries", deliveryAccess && !scopedManager
         ? Delivery.countDocuments({
             status: "PENDING",
           })
-        : Promise.resolve(null),
-      hasPermission(req.user, "delivery.view")
+        : Promise.resolve(null), null),
+      boundedQuery("active-riders", hasPermission(req.user, "delivery.view")
         ? User.countDocuments({
-            role: "RIDER",
+            role: { $in: ["RIDER", "DELIVERY_RIDER"] },
             status: "ACTIVE",
             ...userScope,
           })
-        : Promise.resolve(null),
-      kycAccess && !scopedManager
+        : Promise.resolve(null), null),
+      boundedQuery("pending-kyc", kycAccess && !scopedManager
         ? IdVerification.countDocuments({ status: "PENDING" })
-        : Promise.resolve(null),
-      safeActivity(req.user, currentMatch),
+        : Promise.resolve(null), null),
+      boundedQuery("recent-activity", safeActivity(req.user, currentMatch), []),
     ]);
 
     const current = summaryFrom(currentSummaryRows);
