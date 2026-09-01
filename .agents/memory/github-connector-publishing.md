@@ -12,3 +12,9 @@ Use the authenticated GitHub connector rather than retrying local HTTPS pushes. 
 When transporting local file contents into connector blob requests, read the files directly and encode them in memory. Avoid parsing shell marker streams: line-ending normalization can leave carriage returns in marker-derived path keys, producing an opaque GitHub `422` with missing blob content.
 
 GitHub connector reads may succeed while mutation payloads are rejected by Replit's Cloudflare layer. After any transport or HTML-block-page error, re-read the branch head before retrying; if unchanged, stop rather than repeatedly creating orphan blobs or duplicate commits.
+
+Fine-grained token access to repository contents does not necessarily authorize commits that modify `.github/workflows/*`; GitHub can reject those pushes even when ordinary source pushes succeed.
+
+**Why:** Workflow-file writes require separate workflow authorization, while an existing workflow can still run normally after an application-only commit.
+
+**How to apply:** Probe ordinary ref writes first. If only a workflow-file push is rejected, preserve the existing remote workflow and publish validated application files separately unless changing the workflow is essential.
