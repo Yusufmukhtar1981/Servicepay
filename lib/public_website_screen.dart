@@ -5,6 +5,7 @@ import 'login_screen.dart';
 import 'register_screen.dart';
 
 import 'pay_by_link_screen.dart';
+import 'privacy_policy_screen.dart';
 
 class PublicWebsiteScreen extends StatefulWidget {
   const PublicWebsiteScreen({super.key});
@@ -1585,6 +1586,15 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
                       ),
                     ),
                   ),
+                   TextButton(
+                     onPressed: _openPrivacyPolicy,
+                     child: const Text(
+                       'Privacy Policy',
+                       style: TextStyle(
+                         color: Colors.white70,
+                       ),
+                     ),
+                   ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -1604,6 +1614,14 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _openPrivacyPolicy() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const PrivacyPolicyScreen(),
       ),
     );
   }
