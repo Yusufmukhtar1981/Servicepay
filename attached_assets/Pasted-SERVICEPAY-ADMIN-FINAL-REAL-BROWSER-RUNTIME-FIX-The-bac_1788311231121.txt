@@ -1,0 +1,100 @@
+SERVICEPAY ADMIN — FINAL REAL BROWSER RUNTIME FIX
+
+The backend/tests/deployments are reported green, but in the REAL production Admin UI the Control Center modules still do NOT open for me.
+
+Do not run more unit tests and do not report success from API checks alone.
+
+Your task is to reproduce the issue in the actual production browser flow and fix it end-to-end.
+
+Target:
+https://admin.servicepay.ng
+
+Modules affected:
+- Audit Logs
+- Security Events
+- Access Logs
+- Data Exports
+- Backups / Readiness
+- Privacy Controls
+- Executive Dashboard
+- Service Performance
+- Transaction Analytics
+- Customer Analytics
+
+REQUIRED DEBUG FLOW:
+
+1. Open the production Admin site in a real browser session.
+2. Login using a valid HEAD_OFFICE/Admin account.
+3. Click EACH affected module exactly from the production navigation.
+4. Inspect browser console and Network tab for every failure.
+5. Record the exact failing request/status:
+   - 401
+   - 403
+   - 404
+   - 500
+   - CORS
+   - JSON parsing/model error
+   - route error
+   - Flutter runtime exception
+   - stale service worker/cache
+   - permission mismatch
+   - wrong API base URL
+   - wrong route mapping
+   - any other real issue
+
+6. Verify the production frontend is calling:
+   https://api.servicepay.ng
+   and NOT localhost, Replit preview, stale API URL, or a test backend.
+
+7. Verify HEAD_OFFICE role normalization is consistent across:
+   - login response
+   - JWT claims
+   - frontend guards
+   - backend middleware
+   - menu visibility
+   - route authorization
+
+8. Verify each module page is wired to the correct production endpoint and response model.
+
+9. Fix any frontend model/schema mismatch so the UI renders the actual API payload.
+
+10. Remove or update any stale placeholder/fallback route that still renders:
+   NOT CONFIGURED
+   NO LIVE WORKSPACE
+   ACTION NONE
+
+11. Check Flutter Web service worker/browser cache behavior.
+    If production is serving an old bundle:
+    - update cache/versioning correctly
+    - deploy
+    - verify a clean/incognito browser receives the new main.dart.js
+    - do not rely on my manual hard-refresh as the permanent solution
+
+12. Test using BOTH:
+    - normal production browser session
+    - clean/incognito session
+
+13. For every module, prove in the final report:
+    - clicked URL/route
+    - API request URL
+    - HTTP status
+    - response received
+    - UI rendered successfully
+    - no console/runtime error
+
+14. If any module still fails, do NOT call the release complete.
+
+15. Do not change unrelated customer, branch, rider, marketplace, wallet, withdrawal, KYC, solar, delivery, or authentication behavior.
+
+DEPLOYMENT:
+- Fix authoritative frontend/backend source only.
+- Commit and push.
+- Wait for backend deploy if backend changed.
+- Wait for Admin GitHub Actions deploy.
+- Then re-test production in browser.
+
+FINAL ACCEPTANCE CRITERIA:
+All 10 modules must open visibly in production from the Admin menu using the real HEAD_OFFICE account.
+
+A green build, HTTP 200 homepage, or passing unit tests are NOT sufficient.
+Only successful browser navigation and rendered live module data count as completion.
