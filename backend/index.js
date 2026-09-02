@@ -141,6 +141,7 @@ const adminLogisticsRoutes = require("./routes/adminLogisticsRoutes.routes");
 const branchInterstateLogisticsRoutes = require("./routes/branchInterstateLogistics.routes");
 const riderInterstateLogisticsRoutes = require("./routes/riderInterstateLogistics.routes");
 const transportLogisticsRoutes = require("./routes/transportLogistics.routes");
+const privacyRequestRoutes = require("./routes/privacyRequest.routes");
 
 app.use(helmet());
 app.use(cors());
@@ -197,6 +198,7 @@ app.use(
   "/api/auth",
   authRoutes
 );
+app.use("/api/privacy", privacyRequestRoutes);
 
 app.use(
   "/api/transfer",

@@ -352,6 +352,17 @@ class HelpSupportScreen extends StatelessWidget {
                     _openPrivacy(context);
                   },
                 ),
+                SupportActionCard(
+                  icon: Icons.delete_outline,
+                  title: 'Delete Account or Request Data',
+                  subtitle: 'Submit a secure account or data request.',
+                  iconColor: const Color(0xFFB42318),
+                  iconBackground: const Color(0xFFFEE4E2),
+                  onTap: () => launchUrl(
+                    Uri.parse('https://servicepay.ng/delete-account'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
               ],
             ),
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
@@ -100,10 +101,10 @@ class PrivacyPolicyScreen extends StatelessWidget {
         _section(
           '1. Information we collect',
           'Depending on the ServicePay feature you use, we may collect information '
-          'you provide directly, information generated when you use the service, '
-          'and information received from service providers or other parties. '
-          'We aim to collect information that is relevant to providing, securing '
-          'and improving the requested service.',
+              'you provide directly, information generated when you use the service, '
+              'and information received from service providers or other parties. '
+              'We aim to collect information that is relevant to providing, securing '
+              'and improving the requested service.',
           bullets: const [
             'Contact and account details such as your name, phone number, email address, password-related data, address and account preferences.',
             'Identity and verification details such as NIN, BVN, identity documents, verification results and photographs where a feature or legal obligation requires them.',
@@ -129,21 +130,21 @@ class PrivacyPolicyScreen extends StatelessWidget {
         _section(
           '3. Financial, wallet and payment information',
           'When you fund a wallet, pay for a service, request a withdrawal or complete '
-          'another transaction, ServicePay records the information needed to process '
-          'and reconcile that activity. Payment processors, banks, mobile-money or '
-          'telecom providers may process payment credentials or settlement details '
-          'under their own terms. We do not ask you to send payment PINs or passwords '
-          'to us through ordinary support messages. Keep those credentials private and '
-          'use only the official ServicePay flows.',
+              'another transaction, ServicePay records the information needed to process '
+              'and reconcile that activity. Payment processors, banks, mobile-money or '
+              'telecom providers may process payment credentials or settlement details '
+              'under their own terms. We do not ask you to send payment PINs or passwords '
+              'to us through ordinary support messages. Keep those credentials private and '
+              'use only the official ServicePay flows.',
         ),
         _section(
           '4. Marketplace, delivery, logistics, solar and financing data',
           'If you use Marketplace, delivery or Interstate Logistics, we may process '
-          'seller, buyer, pickup, drop-off, recipient, route, parcel, weight, vehicle, '
-          'driver, rider, tracking, delivery confirmation and support information. '
-          'If you use Solar or financing services, we may process application, '
-          'eligibility, device, installation, repayment and related service records. '
-          'The exact information depends on the service and the choices you make.',
+              'seller, buyer, pickup, drop-off, recipient, route, parcel, weight, vehicle, '
+              'driver, rider, tracking, delivery confirmation and support information. '
+              'If you use Solar or financing services, we may process application, '
+              'eligibility, device, installation, repayment and related service records. '
+              'The exact information depends on the service and the choices you make.',
         ),
         _section(
           '5. Sharing information',
@@ -164,79 +165,87 @@ class PrivacyPolicyScreen extends StatelessWidget {
         _section(
           '6. Retention',
           'We retain information for as long as reasonably necessary for the purposes '
-          'described in this policy, including to provide services, maintain accurate '
-          'financial and operational records, resolve disputes, prevent fraud, enforce '
-          'agreements and meet legal or compliance requirements. Retention periods vary '
-          'by the type of information and the service involved. When information is no '
-          'longer needed, we take reasonable steps to delete it, anonymize it or securely '
-          'dispose of it, subject to lawful exceptions.',
+              'described in this policy, including to provide services, maintain accurate '
+              'financial and operational records, resolve disputes, prevent fraud, enforce '
+              'agreements and meet legal or compliance requirements. Retention periods vary '
+              'by the type of information and the service involved. When information is no '
+              'longer needed, we take reasonable steps to delete it, anonymize it or securely '
+              'dispose of it, subject to lawful exceptions.',
         ),
         _section(
           '7. Data security',
           'We use reasonable administrative, technical and organizational safeguards '
-          'designed to protect information against unauthorized access, alteration, '
-          'loss, misuse or disclosure. No online service can guarantee absolute security. '
-          'You are responsible for protecting your device, account credentials and '
-          'transaction PIN, and for contacting us promptly if you suspect unauthorized '
-          'activity.',
+              'designed to protect information against unauthorized access, alteration, '
+              'loss, misuse or disclosure. No online service can guarantee absolute security. '
+              'You are responsible for protecting your device, account credentials and '
+              'transaction PIN, and for contacting us promptly if you suspect unauthorized '
+              'activity.',
         ),
         _section(
           '8. Your choices and rights',
           'Subject to applicable law and reasonable verification, you may ask us to '
-          'access, correct or update personal information; ask questions about its use; '
-          'object to or limit certain processing; or request deletion where retention '
-          'is not required. Some requests may affect our ability to provide a feature, '
-          'and we may retain information where required for security, legal, financial '
-          'or dispute-resolution purposes.',
+              'access, correct or update personal information; ask questions about its use; '
+              'object to or limit certain processing; or request deletion where retention '
+              'is not required. Some requests may affect our ability to provide a feature, '
+              'and we may retain information where required for security, legal, financial '
+              'or dispute-resolution purposes.',
         ),
         _section(
           '9. Account and data deletion requests',
           'To request account closure or deletion of personal information, contact '
-          'admin@servicepay.ng from the email address associated with your account where '
-          'possible. Include enough information for us to understand and verify the '
-          'request, but do not send passwords, PINs, one-time codes or identity documents '
-          'unless we specifically provide a secure verification method. Closing an '
-          'account does not automatically erase records that we must retain by law or '
-          'that are needed to prevent fraud, resolve a dispute or complete a transaction.',
+              'admin@servicepay.ng from the email address associated with your account where '
+              'possible. Include enough information for us to understand and verify the '
+              'request, but do not send passwords, PINs, one-time codes or identity documents '
+              'unless we specifically provide a secure verification method. Closing an '
+              'account does not automatically erase records that we must retain by law or '
+              'that are needed to prevent fraud, resolve a dispute or complete a transaction.',
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => launchUrl(
+            Uri.parse('https://servicepay.ng/delete-account'),
+            mode: LaunchMode.externalApplication,
+          ),
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('Open Account Deletion & Data Requests'),
         ),
         _section(
           '10. Children’s privacy',
           'ServicePay is not directed to children who are not permitted to use the '
-          'relevant service under applicable law. We do not knowingly collect personal '
-          'information from a child through a service where such collection is not '
-          'permitted. If you believe a child has provided personal information improperly, '
-          'please contact us so we can review the request.',
+              'relevant service under applicable law. We do not knowingly collect personal '
+              'information from a child through a service where such collection is not '
+              'permitted. If you believe a child has provided personal information improperly, '
+              'please contact us so we can review the request.',
         ),
         _section(
           '11. Cookies and similar technologies',
           'Our website or web applications may use cookies, local storage, session '
-          'storage and similar technologies to keep the site working, remember settings, '
-          'support authentication and understand basic usage. You can control cookies '
-          'through your browser settings, although disabling necessary technologies may '
-          'affect functionality. Our mobile applications may use device storage and '
-          'platform services for equivalent purposes.',
+              'storage and similar technologies to keep the site working, remember settings, '
+              'support authentication and understand basic usage. You can control cookies '
+              'through your browser settings, although disabling necessary technologies may '
+              'affect functionality. Our mobile applications may use device storage and '
+              'platform services for equivalent purposes.',
         ),
         _section(
           '12. Third-party services and international transfers',
           'ServicePay may link to or use third-party services, including payment, '
-          'identity, telecom, messaging, mapping, hosting, analytics and app-platform '
-          'services. Their processing is governed by their own privacy notices. Some '
-          'providers may process information outside Nigeria. Where that happens, we '
-          'take reasonable steps required by applicable law and the relevant service '
-          'arrangements to protect the information.',
+              'identity, telecom, messaging, mapping, hosting, analytics and app-platform '
+              'services. Their processing is governed by their own privacy notices. Some '
+              'providers may process information outside Nigeria. Where that happens, we '
+              'take reasonable steps required by applicable law and the relevant service '
+              'arrangements to protect the information.',
         ),
         _section(
           '13. Changes to this policy',
           'We may update this Privacy Policy when our services, technology or legal '
-          'obligations change. We will post the updated version at this URL and update '
-          'the “Last updated” date. If a change is material, we may provide an additional '
-          'notice through the ServicePay service or another appropriate channel.',
+              'obligations change. We will post the updated version at this URL and update '
+              'the “Last updated” date. If a change is material, we may provide an additional '
+              'notice through the ServicePay service or another appropriate channel.',
         ),
         _section(
           '14. Contact us',
           'Privacy questions, rights requests and data deletion requests can be sent to:',
-          closing:
-              'YUMPAY GLOBAL TECH. LTD\n'
+          closing: 'YUMPAY GLOBAL TECH. LTD\n'
               'Email: admin@servicepay.ng\n'
               'Phone: +2349136151515\n'
               'Website: https://servicepay.ng\n'

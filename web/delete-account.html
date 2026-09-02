@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Request deletion of your ServicePay account or specific personal data.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="canonical" href="https://servicepay.ng/delete-account">
+  <title>Delete Your ServicePay Account</title>
+  <style>
+    :root{--green:#08783e;--dark:#055c30;--ink:#26352d;--muted:#5d6b63;--bg:#f8faf9;--white:#fff;--line:#dfe9e3;--red:#b42318;--redbg:#fff2f0}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}
+    .site-header{background:#fff;border-bottom:1px solid var(--line);box-shadow:0 4px 18px rgba(12,30,20,.05)}
+    .header-inner,.content{width:min(980px,calc(100% - 40px));margin:0 auto}.header-inner{min-height:74px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+    .brand{display:inline-flex;align-items:center;gap:10px;color:var(--green);font-size:22px;font-weight:900;text-decoration:none}.brand img{width:42px;height:42px;object-fit:contain}.back{color:var(--green);font-size:14px;font-weight:700;text-decoration:none}
+    main{padding:36px 0 64px}.hero,.card{background:var(--white);border:1px solid var(--line);border-radius:24px;box-shadow:0 8px 30px rgba(12,30,20,.04)}.hero{padding:42px;margin-bottom:20px}
+    h1,h2{color:var(--dark);line-height:1.2}h1{margin:0;font-size:clamp(30px,5vw,42px)}h2{margin:0 0 10px;font-size:22px}.lead{max-width:760px;color:var(--muted);font-size:17px;margin:14px 0 0}.notice{margin-top:22px;padding:15px 17px;background:#effaf3;border-left:4px solid var(--green);border-radius:10px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{padding:30px}.card.wide{grid-column:1/-1}.steps{padding-left:22px;margin:12px 0 0}.steps li{margin:8px 0}.muted{color:var(--muted);font-size:14px}
+    label{display:block;margin:16px 0 6px;font-weight:750;font-size:14px}input,select,textarea{width:100%;padding:12px 13px;border:1px solid #cbd9d0;border-radius:10px;background:#fff;color:var(--ink);font:inherit}textarea{min-height:100px;resize:vertical}input:focus,select:focus,textarea:focus{outline:3px solid #b9e7ca;border-color:var(--green)}
+    .check{display:flex;gap:10px;align-items:flex-start;margin:18px 0;font-size:14px}.check input{width:auto;margin-top:5px;accent-color:var(--green)}button{border:0;border-radius:10px;padding:13px 18px;background:var(--green);color:#fff;font:inherit;font-weight:800;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.secondary{background:#edf7f0;color:var(--dark)}.result{display:none;margin-top:16px;padding:14px;border-radius:10px}.result.ok{display:block;background:#effaf3;color:#155c35}.result.error{display:block;background:var(--redbg);color:var(--red)}
+    .retention{background:#fffaf0;border-color:#f1dfae}.contact a,.card a{color:var(--green);font-weight:700}footer{padding:24px 20px 36px;color:#68766f;font-size:13px;text-align:center}
+    @media(max-width:720px){.header-inner,.content{width:min(100% - 28px,980px)}.header-inner{min-height:68px}.brand{font-size:19px}.brand img{width:36px;height:36px}.grid{grid-template-columns:1fr}.card.wide{grid-column:auto}main{padding:20px 0 38px}.hero,.card{padding:25px 21px;border-radius:18px}}
+  </style>
+</head>
+<body>
+  <header class="site-header"><div class="header-inner">
+    <a class="brand" href="/"><img src="assets/assets/image/servicepay_logo.png" alt="ServicePay logo"><span>ServicePay</span></a>
+    <a class="back" href="/">Back to ServicePay</a>
+  </div></header>
+  <main><div class="content">
+    <section class="hero">
+      <h1>Delete Your ServicePay Account</h1>
+      <p class="lead">Use this page to request closure of your ServicePay account or ask us to handle specific personal data. Your request is reviewed securely by ServicePay Support.</p>
+      <div class="notice"><strong>Important:</strong> Do not enter your password, transaction PIN, OTP, BVN, NIN, identity document or any other secret on this page.</div>
+    </section>
+    <div class="grid">
+      <section class="card">
+        <h2>Delete your account</h2>
+        <p class="muted">Account deletion is irreversible after approval. We will verify the request before taking action.</p>
+        <form data-form="deletion">
+          <label for="delete-name">Full name</label><input id="delete-name" name="fullName" required maxlength="120" autocomplete="name">
+          <label for="delete-phone">Registered phone number</label><input id="delete-phone" name="phone" required maxlength="20" autocomplete="tel">
+          <label for="delete-email">Registered email address</label><input id="delete-email" name="email" type="email" required maxlength="254" autocomplete="email">
+          <label for="delete-reason">Reason (optional)</label><textarea id="delete-reason" name="reason" maxlength="2000"></textarea>
+          <label class="check"><input type="checkbox" name="confirmation" required><span>I understand that account deletion is irreversible and that some legal, financial, fraud, security, dispute and audit records may be retained.</span></label>
+          <button type="submit">Request Account Deletion</button><div class="result" role="status"></div>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Request specific data</h2>
+        <p class="muted">Ask to access, correct, port or object to processing of specific personal data without requesting account closure.</p>
+        <form data-form="data">
+          <label for="data-name">Full name</label><input id="data-name" name="fullName" required maxlength="120" autocomplete="name">
+          <label for="data-phone">Registered phone number</label><input id="data-phone" name="phone" required maxlength="20" autocomplete="tel">
+          <label for="data-email">Registered email address</label><input id="data-email" name="email" type="email" required maxlength="254" autocomplete="email">
+          <label for="data-type">Request type</label><select id="data-type" name="requestType" required><option value="">Choose one</option><option value="ACCESS">Access my data</option><option value="CORRECTION">Correct my data</option><option value="PORTABILITY">Provide a copy of my data</option><option value="OBJECTION">Object to specific processing</option><option value="OTHER">Other privacy request</option></select>
+          <label for="data-description">Describe your request</label><textarea id="data-description" name="description" required minlength="10" maxlength="2000"></textarea>
+          <button type="submit">Submit Data Request</button><div class="result" role="status"></div>
+        </form>
+      </section>
+      <section class="card wide">
+        <h2>What happens next</h2>
+        <ol class="steps"><li>We create a unique reference ID and send confirmation to the email address you provide.</li><li>ServicePay Support verifies the request and may contact you through your registered details. We will never ask for your password, PIN or OTP.</li><li>Approved account deletion disables account access and removes or anonymizes eligible personal information.</li><li>We retain information required for legal, regulatory, financial, fraud-prevention, security, dispute-resolution and audit purposes. Transaction, wallet, payment, KYC and other evidence is not automatically deleted.</li></ol>
+        <p class="contact">Questions? Contact <a href="mailto:support@servicepay.ng">support@servicepay.ng</a>, <a href="mailto:admin@servicepay.ng">admin@servicepay.ng</a> or <a href="tel:+2349136151515">+2349136151515</a>. Read the <a href="/privacy-policy">Privacy Policy</a>.</p>
+      </section>
+    </div>
+  </div></main>
+  <footer>© 2026 ServicePay. All rights reserved.</footer>
+  <script>
+    const endpoint = (kind) => kind === 'deletion' ? 'https://api.servicepay.ng/api/privacy/account-deletion-requests' : 'https://api.servicepay.ng/api/privacy/data-requests';
+    for (const form of document.querySelectorAll('form[data-form]')) {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button'), result = form.querySelector('.result');
+        const body = Object.fromEntries(new FormData(form).entries());
+        body.confirmation = form.elements.confirmation ? form.elements.confirmation.checked : undefined;
+        button.disabled = true; result.className = 'result'; result.textContent = 'Submitting securely…';
+        try {
+          const response = await fetch(endpoint(form.dataset.form), {method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'}, body:JSON.stringify(body)});
+          const payload = await response.json();
+          if (!response.ok || payload.success === false) throw new Error(payload.message || 'We could not submit your request.');
+          result.className = 'result ok'; result.textContent = `Request received. Reference ID: ${payload.data.referenceId}. Keep this reference for Support.`;
+          form.reset();
+        } catch (error) { result.className = 'result error'; result.textContent = error.message || 'We could not submit your request. Please try again.'; }
+        finally { button.disabled = false; }
+      });
+    }
+  </script>
+</body>
+</html>

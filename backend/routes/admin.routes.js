@@ -50,6 +50,7 @@ const {
 } = require("../controllers/adminRider.controller");
 const controlCenter = require("../controllers/adminControlCenter.controller");
 const adminAccessLog = require("../middleware/adminAccessLog.middleware");
+const privacyRequestController = require("../controllers/privacyRequest.controller");
 
 const router = express.Router();
 router.use(adminAccessLog);
@@ -66,6 +67,9 @@ router.get("/control-center/readiness", ...controlCenterBase, requirePermission(
 router.get("/control-center/privacy-requests", ...controlCenterBase, requirePermission(P.USERS_UPDATE), controlCenter.listPrivacy);
 router.post("/control-center/privacy-requests", ...controlCenterBase, requirePermission(P.USERS_UPDATE), controlCenter.createPrivacy);
 router.patch("/control-center/privacy-requests/:id", ...controlCenterBase, requirePermission(P.USERS_UPDATE), controlCenter.updatePrivacy);
+router.get("/control-center/account-deletion-requests", ...controlCenterBase, requirePermission(P.PRIVACY_VIEW), privacyRequestController.listAccountDeletionRequests);
+router.get("/control-center/account-deletion-requests/:id", ...controlCenterBase, requirePermission(P.PRIVACY_VIEW), privacyRequestController.getAccountDeletionRequest);
+router.patch("/control-center/account-deletion-requests/:id", ...controlCenterBase, requirePermission(P.PRIVACY_MANAGE), privacyRequestController.updateAccountDeletionRequest);
 router.get("/control-center/analytics/executive", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.executiveAnalytics);
 router.get("/control-center/analytics/services", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.serviceAnalytics);
 router.get("/control-center/analytics/transactions", ...controlCenterBase, requirePermission(P.TRANSACTIONS_VIEW), controlCenter.transactionAnalytics);
