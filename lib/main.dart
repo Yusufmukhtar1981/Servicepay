@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'reset_password_screen.dart';
 import 'startup_session_gate.dart';
 import 'servicepay_theme.dart';
+import 'privacy_policy_screen.dart';
+import 'public_website_screen.dart';
 
 import 'rider/rider_delivery_alert_service.dart';
 
@@ -223,7 +226,11 @@ class ServicePayApp extends StatelessWidget {
       );
     }
 
-    return const StartupSessionGate();
+    if (path == '/privacy-policy' || path == '/privacy-policy/') {
+      return const PrivacyPolicyScreen();
+    }
+
+    return kIsWeb ? const PublicWebsiteScreen() : const StartupSessionGate();
   }
 
   @override
