@@ -524,7 +524,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                   const SizedBox(
                                     height: 10,
                                   ),
-                                   Text(
+                                  Text(
                                      isUnavailable
                                          ? 'Coming soon'
                                          : 'Available',

@@ -1,6 +1,5 @@
 const MarketplaceProduct = require('../models/marketplace.model');
 const MarketplaceOrder = require('../models/marketplaceOrder.model');
-const mongoose = require('mongoose');
 
 /*
  * ============================================================
@@ -14,13 +13,6 @@ const allowedStatuses = new Set([
   'REJECTED',
   'SUSPENDED',
 ]);
-const normalizeProductStatus = (value) => {
-  const normalized = String(value || '').trim().toUpperCase();
-  if (normalized === 'ALL') return '';
-  return normalized === 'APPROVED' ? 'ACTIVE' : normalized;
-};
-const escapeRegex = (value) =>
-  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const allowedFundsStatuses = new Set([
   'HELD',
   'SETTLED',
@@ -42,22 +34,20 @@ exports.listMarketplaceProducts = async (req, res) => {
     const filter = branchFilter(req);
 
     if (status) {
-      const normalizedStatus = normalizeProductStatus(status);
+      const normalizedStatus = String(status).trim().toUpperCase();
 
-      if (normalizedStatus && !allowedStatuses.has(normalizedStatus)) {
+      if (!allowedStatuses.has(normalizedStatus)) {
         return res.status(400).json({
           success: false,
           message: 'Invalid Marketplace product status.',
         });
       }
 
-      if (normalizedStatus) {
-        filter.status = normalizedStatus;
-      }
+      filter.status = normalizedStatus;
     }
 
     if (String(q || '').trim()) {
-      const search = escapeRegex(String(q).trim());
+      const search = String(q).trim();
 
       filter.$or = [
         { title: { $regex: search, $options: 'i' } },
@@ -111,33 +101,24 @@ exports.listMarketplaceProducts = async (req, res) => {
 
 exports.getMarketplaceProduct = async (req, res) => {
   try {
-    const productId = String(req.params.id || '').trim();
-    if (!mongoose.isValidObjectId(productId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid Marketplace product ID.',
-      });
+    const productId = String(req.params.id || "").trim();
+    if (!productId) {
+      return res.status(400).json({ success: false, message: "Marketplace product ID is required." });
     }
-
     const product = await MarketplaceProduct.findOne({
       _id: productId,
       ...branchFilter(req),
     }).lean();
-
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Marketplace product not found.',
-      });
+      return res.status(404).json({ success: false, message: "Marketplace product not found." });
     }
-
-    return res.json({ success: true, product });
+    return res.json({ success: true, product, data: { product } });
   } catch (error) {
-    console.error('ADMIN_MARKETPLACE_DETAIL_ERROR', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Unable to load Marketplace product.',
-    });
+    if (error?.name === "CastError") {
+      return res.status(400).json({ success: false, message: "Invalid Marketplace product ID." });
+    }
+    console.error("ADMIN_MARKETPLACE_DETAIL_ERROR", error);
+    return res.status(500).json({ success: false, message: "Unable to load Marketplace product." });
   }
 };
 
@@ -230,15 +211,7 @@ exports.updateMarketplaceProductStatus =
         });
       }
 
-      if (!mongoose.isValidObjectId(productId)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid Marketplace product ID.',
-        });
-      }
-
-      const normalizedStatus = normalizeProductStatus(status);
-      if (!allowedStatuses.has(normalizedStatus)) {
+      if (!allowedStatuses.has(status)) {
         return res.status(400).json({
           success: false,
           message:
@@ -251,7 +224,7 @@ exports.updateMarketplaceProductStatus =
           { _id: productId, ...branchFilter(req) },
           {
             $set: {
-              status: normalizedStatus,
+              status,
             },
           },
           {
@@ -271,11 +244,11 @@ exports.updateMarketplaceProductStatus =
       return res.json({
         success: true,
         message:
-          normalizedStatus === 'ACTIVE'
+          status === 'ACTIVE'
             ? 'Marketplace product approved successfully.'
-            : normalizedStatus === 'REJECTED'
+            : status === 'REJECTED'
             ? 'Marketplace product rejected.'
-            : normalizedStatus === 'SUSPENDED'
+            : status === 'SUSPENDED'
             ? 'Marketplace product suspended.'
             : 'Marketplace product returned to pending review.',
         product,

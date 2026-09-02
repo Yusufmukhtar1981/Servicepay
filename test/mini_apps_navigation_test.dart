@@ -52,7 +52,10 @@ void main() {
     await tester.ensureVisible(
       find.byKey(const Key('mini-app-data-choice')),
     );
-    await tester.tap(find.byKey(const Key('mini-app-data-choice')));
+    await tester.tap(
+      find.byKey(const Key('mini-app-data-choice')),
+      warnIfMissed: false,
+    );
     await tester.pump();
     expect(find.text('Buy Data'), findsWidgets);
   });
