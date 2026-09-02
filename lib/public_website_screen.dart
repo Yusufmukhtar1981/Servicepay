@@ -1586,15 +1586,22 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
                       ),
                     ),
                   ),
-                   TextButton(
-                     onPressed: _openPrivacyPolicy,
-                     child: const Text(
-                       'Privacy Policy',
-                       style: TextStyle(
-                         color: Colors.white70,
-                       ),
-                     ),
-                   ),
+                  TextButton(
+                    onPressed: _openPrivacyPolicy,
+                    child: const Text(
+                      'Privacy Policy',
+                      style: TextStyle(
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _openAccountDeletion,
+                    child: const Text(
+                      'Delete Account',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -1624,6 +1631,19 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
         builder: (_) => const PrivacyPolicyScreen(),
       ),
     );
+  }
+
+  Future<void> _openAccountDeletion() async {
+    final opened = await launchUrl(
+      Uri.parse('https://servicepay.ng/delete-account'),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Unable to open the account deletion page.')),
+      );
+    }
   }
 }
 

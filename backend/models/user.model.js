@@ -750,6 +750,19 @@ const userSchema = new mongoose.Schema(
     /*
      * Account status
      */
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: String,
+      default: null,
+    },
     status: {
       type: String,
       enum: [

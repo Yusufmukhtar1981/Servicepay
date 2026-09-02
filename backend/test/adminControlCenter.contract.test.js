@@ -35,7 +35,9 @@ test("access rows expire and export records preserve completion metadata", () =>
 });
 
 test("privacy workflow has constrained statuses and immutable audit actions exist", () => {
-  assert.deepEqual(PrivacyRequest.schema.path("status").enumValues, ["OPEN", "IN_REVIEW", "COMPLETED", "REJECTED"]);
+  assert.deepEqual(PrivacyRequest.schema.path("status").enumValues, [
+    "OPEN", "IN_REVIEW", "PENDING", "UNDER_REVIEW", "APPROVED", "COMPLETED", "REJECTED",
+  ]);
   const source = read("controllers/adminControlCenter.controller.js");
   assert.match(source, /span.*no more than 90 days/);
   assert.match(source, /String\(row\[key\]/);

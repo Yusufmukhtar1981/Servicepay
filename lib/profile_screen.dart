@@ -954,6 +954,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onTap: openServicePayWhatsApp,
                           ),
                           _ProfileActionTile(
+                            icon: Icons.delete_outline_rounded,
+                            title: 'Delete Account or Request Data',
+                            subtitle: 'Open the secure privacy request form',
+                            iconColor: const Color(0xFFB42318),
+                            titleColor: const Color(0xFFB42318),
+                            onTap: () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final opened = await launchUrl(
+                                Uri.parse(
+                                    'https://servicepay.ng/delete-account'),
+                                mode: LaunchMode.externalApplication,
+                              );
+                              if (!opened && mounted) {
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                      content: Text(
+                                          'Unable to open the deletion request page.')),
+                                );
+                              }
+                            },
+                          ),
+                          _ProfileActionTile(
                             icon: Icons.logout_rounded,
                             title: 'Log Out',
                             subtitle: 'Sign out of your account',
