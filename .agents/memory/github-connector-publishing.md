@@ -13,6 +13,8 @@ When transporting local file contents into connector blob requests, read the fil
 
 GitHub connector reads may succeed while mutation payloads are rejected by Replit's Cloudflare layer. After any transport or HTML-block-page error, re-read the branch head before retrying; if unchanged, stop rather than repeatedly creating orphan blobs or duplicate commits.
 
+If the workspace already has a protected GitHub push secret, a safe fallback is to clone the current remote branch into temporary storage, repeat the file-level base checks there, and push with an ephemeral credential helper. Never print the secret, embed it in a remote URL, or persist it in Git configuration.
+
 Fine-grained token access to repository contents does not necessarily authorize commits that modify `.github/workflows/*`; GitHub can reject those pushes even when ordinary source pushes succeed.
 
 **Why:** Workflow-file writes require separate workflow authorization, while an existing workflow can still run normally after an application-only commit.

@@ -1,0 +1,136 @@
+Create and deploy a complete Google Play compliant ServicePay Account Deletion and Data Deletion Request page.
+
+GOAL:
+Create a public production page at:
+https://servicepay.ng/delete-account
+
+This page must work without login and must be suitable for the Google Play Console “Delete account URL” requirement.
+
+REQUIREMENTS:
+
+1. Create a professional ServicePay branded page using the existing official ServicePay logo, colors, typography, header and footer.
+
+2. Page title:
+“Delete Your ServicePay Account”
+
+3. Clearly explain that ServicePay users can request permanent deletion of their account and associated personal data.
+
+4. Add a clear step-by-step section explaining:
+- Open ServicePay
+- Go to Profile / Settings
+- Select Account & Security
+- Choose Delete Account
+- Confirm the request
+If an in-app delete-account function is not currently available, clearly provide the web request form below as the primary deletion method. Do NOT falsely claim an in-app feature exists if it does not.
+
+5. Add a public Account Deletion Request form with:
+- Full name
+- Registered phone number
+- Registered email address
+- Reason for deletion (optional)
+- Checkbox confirming: “I understand that deleting my ServicePay account may be irreversible.”
+- Submit button: “Request Account Deletion”
+
+6. Backend:
+Create a secure endpoint for deletion requests.
+Do NOT immediately hard-delete financial records automatically.
+
+The request must:
+- create an auditable deletion-request record
+- generate a unique request/reference ID
+- record request date/time and status
+- prevent duplicate active deletion requests
+- be visible to authorized HEAD_OFFICE/Admin users
+- send confirmation to the user when possible
+- notify Admin/Support when a new request is submitted
+
+7. Admin:
+Add “Account Deletion Requests” to the Admin dashboard.
+
+Admin must be able to:
+- view request
+- search/filter requests
+- see customer details
+- see request/reference ID
+- see date submitted
+- statuses: PENDING, UNDER_REVIEW, APPROVED, COMPLETED, REJECTED
+- approve/reject where legally appropriate
+- record reason/notes
+- mark completed
+- maintain an immutable audit trail
+
+8. Data disclosure section:
+Clearly state that when an account deletion request is completed, eligible personal information will be deleted or anonymized.
+
+Also clearly state that some information may be retained when required for:
+- legal obligations
+- regulatory compliance
+- financial transaction records
+- fraud prevention
+- security
+- dispute resolution
+- accounting/audit requirements
+
+Do not promise deletion of data that ServicePay is legally required to retain.
+
+9. Add a separate section:
+“Request deletion of specific data without deleting your account”
+
+Allow users to request deletion/correction of eligible personal data without closing the whole account.
+
+Add fields:
+- Full name
+- Registered phone/email
+- Type of request: Delete specific data / Correct data / Privacy request
+- Description
+- Submit
+
+10. Include ServicePay support contact information already used by the project.
+
+11. Link this page visibly from:
+- ServicePay Privacy Policy
+- Website footer
+- Customer Settings / Privacy section where appropriate
+
+12. SEO/meta:
+Page title:
+Delete ServicePay Account | ServicePay
+
+Meta description:
+Request deletion of your ServicePay account and eligible associated personal data.
+
+13. Security:
+- Validate and sanitize all inputs
+- Add rate limiting
+- CSRF protection where applicable
+- Do not expose passwords, transaction PINs, BVN, NIN or secret credentials
+- Do not require the user to send passwords or PINs
+- Do not log sensitive credentials
+- Ensure production HTTPS
+- Do not expose internal admin endpoints publicly
+
+14. TEST BEFORE DEPLOYMENT:
+Verify:
+- https://servicepay.ng/delete-account returns HTTP 200
+- page works without login
+- mobile responsive
+- form submits successfully
+- invalid input is rejected
+- duplicate requests are handled
+- Admin can see submitted requests
+- Privacy Policy link works
+- website footer link works
+- production deployment succeeds
+
+15. Do not modify or break existing wallet, KYC, transaction, withdrawal, logistics, Marketplace, Solar, Delivery, authentication or Admin functionality.
+
+Deploy to production only after all tests pass.
+
+Finally give me:
+- production URL
+- backend endpoint created
+- database/model added
+- Admin page/route added
+- test results
+- deployment commit
+- confirmation that the exact Google Play Delete Account URL is live and publicly accessible.
