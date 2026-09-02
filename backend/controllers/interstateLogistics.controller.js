@@ -12,6 +12,7 @@ const AdminAuditLog = require("../models/adminAuditLog.model");
 const TransportDriver = require("../models/transportDriver.model");
 const TransportVehicle = require("../models/transportVehicle.model");
 const TransportTrip = require("../models/transportTrip.model");
+const Branch = require("../models/branch.model");
 const LogisticsQuote = require("../models/logisticsQuote.model");
 const { calculateInterstateQuote } = require("../services/interstatePricing.service");
 const { sendDeliveryOtp } = require("../services/logisticsSms.service");
@@ -29,8 +30,8 @@ const transitions = {
 const branchAllowed = (user, branchId) => user.role === "HEAD_OFFICE" || String(user.branchId || "") === String(branchId);
 const tracking = () => `SPX-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
 const ref = () => `INTERSTATE-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-const quoteInput = (body = {}) => ({ ...body, weightKg: body.weightKg ?? body.parcel?.weightKg, declaredValue: body.declaredValue ?? body.parcel?.declaredValue });
-const quoteHash = (body) => crypto.createHash("sha256").update(JSON.stringify({ routeId: String(body.routeId), weightKg: Number(body.weightKg), declaredValue: Number(body.declaredValue || 0), serviceType: body.serviceType, pickupMethod: body.pickupMethod, deliveryMethod: body.deliveryMethod, protection: !!body.protection })).digest("hex");
+const quoteInput = (body = {}) => ({ ...body, weightKg: body.weightKg ?? body.parcel?.weightKg, declaredValue: body.declaredValue ?? body.parcel?.declaredValue, fragile: body.fragile ?? body.parcel?.fragile });
+const quoteHash = (body) => crypto.createHash("sha256").update(JSON.stringify({ routeId: String(body.routeId), weightKg: Number(body.weightKg), declaredValue: Number(body.declaredValue || 0), serviceType: body.serviceType, pickupMethod: body.pickupMethod, deliveryMethod: body.deliveryMethod, protection: !!body.protection, fragile: !!body.fragile })).digest("hex");
 const audit = async (req, shipment, action, reason) => {
   if (req.user.role === "HEAD_OFFICE") await AdminAuditLog.create({ actorId: req.user._id, actorRole: req.user.role, actorName: req.user.fullName || "", action, reason, metadata: { shipmentId: shipment._id, trackingNumber: shipment.trackingNumber }, ipAddress: req.ip || "", userAgent: req.get?.("user-agent") || "", requestMethod: req.method || "", requestPath: req.originalUrl || "" });
   if (req.user.branchId && branchAllowed(req.user, shipment.originBranchId)) await BranchAuditLog.create({ branchId: req.user.branchId, actorId: req.user._id, action, reason, metadata: { shipmentId: shipment._id, trackingNumber: shipment.trackingNumber } });
@@ -45,7 +46,7 @@ const recordStatus = async (shipment, status, req, options = {}) => {
 };
 const getRouteQuote = async (body) => {
   const route = await LogisticsRoute.findOne({ _id: body.routeId, status: "ACTIVE" });
-  if (!route) throw new Error("An active logistics route was not found.");
+  if (!route) throw new Error("ServicePay Interstate Logistics is not yet available for this route.");
   const input = quoteInput(body);
   return { route, input, quote: calculateInterstateQuote(route, input) };
 };
@@ -124,7 +125,7 @@ exports.branchStatus = async (req, res) => {
     if (!Number.isFinite(verifiedWeightKg) || verifiedWeightKg <= 0) return res.status(400).json({ success: false, message: "Verified weight must be valid." });
     const route = await LogisticsRoute.findOne({ _id: shipment.routeId, status: "ACTIVE" });
     if (!route) return res.status(409).json({ success: false, message: "Route is unavailable for weight verification." });
-    const recalculated = calculateInterstateQuote(route, { weightKg: verifiedWeightKg, declaredValue: shipment.parcel.declaredValue, serviceType: shipment.serviceType, pickupMethod: shipment.pickupMethod, deliveryMethod: shipment.deliveryMethod, protection: shipment.protection });
+    const recalculated = calculateInterstateQuote(route, { weightKg: verifiedWeightKg, declaredValue: shipment.parcel.declaredValue, serviceType: shipment.serviceType, pickupMethod: shipment.pickupMethod, deliveryMethod: shipment.deliveryMethod, protection: shipment.protection, fragile: shipment.parcel.fragile });
     const difference = Number((recalculated.total - shipment.quote.total).toFixed(2));
     shipment.verifiedWeightKg = verifiedWeightKg;
     shipment.priceAdjustments.push({ declaredWeightKg: shipment.parcel.weightKg, verifiedWeightKg, previousTotal: shipment.quote.total, adjustedTotal: recalculated.total, difference, actorId: req.user._id });
@@ -214,24 +215,86 @@ exports.verifyDelivery = async (req, res) => {
   if (crypto.createHash("sha256").update(`${value}:${pepper}`).digest("hex") !== otp.otpHash) { otp.attempts += 1; await otp.save(); return res.status(400).json({ success: false, message: "Invalid delivery OTP." }); }
   otp.verifiedAt = new Date(); await otp.save(); await recordStatus(shipment, "DELIVERED", req, { note: "Receiver OTP verified" }); res.json({ success: true, shipment });
 };
-exports.adminRoutes = async (req, res) => { const routes = await LogisticsRoute.find().sort({ createdAt: -1 }); res.json({ success: true, routes }); };
-exports.createRoute = async (req, res) => { try { const route = await LogisticsRoute.create({ ...req.body, createdBy: req.user._id }); res.status(201).json({ success: true, route }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } };
-exports.updateRoute = async (req, res) => { const route = await LogisticsRoute.findByIdAndUpdate(req.params.id, { ...req.body, updatedBy: req.user._id }, { new: true, runValidators: true }); if (!route) return res.status(404).json({ success: false, message: "Route not found." }); res.json({ success: true, route }); };
+const routeFields = [
+  "name", "originState", "originBranchId", "destinationState",
+  "destinationBranchId", "distanceKm", "baseFare", "minimumWeightKg",
+  "maximumWeightKg", "pricePerAdditionalKg", "expressEnabled",
+  "expressSurcharge", "fragileItemSurcharge", "pickupFee", "doorDeliveryFee", "branchCollectionFee",
+  "protectionEnabled", "protectionPercent", "protectionFlatFee",
+  "standardDeliveryTime", "expressDeliveryTime", "notes", "status",
+];
+const picked = (body, fields) => Object.fromEntries(
+  fields.filter((field) => Object.prototype.hasOwnProperty.call(body || {}, field))
+    .map((field) => [field, body[field]]),
+);
+const validateRouteBranches = async (input) => {
+  if (String(input.originBranchId) === String(input.destinationBranchId)) {
+    throw new Error("Origin and destination branches must be different.");
+  }
+  const branches = await Branch.find({
+    _id: { $in: [input.originBranchId, input.destinationBranchId] },
+    status: "ACTIVE",
+  }).select("_id state");
+  if (branches.length !== 2) throw new Error("Both branches must be active.");
+  const byId = Object.fromEntries(branches.map((branch) => [String(branch._id), branch]));
+  if (String(byId[input.originBranchId]?.state || "").toUpperCase() !== String(input.originState || "").toUpperCase()) {
+    throw new Error("Origin state must match the selected origin branch.");
+  }
+  if (String(byId[input.destinationBranchId]?.state || "").toUpperCase() !== String(input.destinationState || "").toUpperCase()) {
+    throw new Error("Destination state must match the selected destination branch.");
+  }
+};
+exports.adminRoutes = async (req, res) => {
+  const routes = await LogisticsRoute.find().populate("originBranchId", "name code state").populate("destinationBranchId", "name code state").sort({ createdAt: -1 });
+  res.json({ success: true, routes });
+};
+exports.adminBranches = async (req, res) => {
+  const branches = await Branch.find({ status: "ACTIVE" }).select("_id name code state lga").sort({ state: 1, name: 1 });
+  res.json({ success: true, branches });
+};
+exports.createRoute = async (req, res) => {
+  try {
+    const input = picked(req.body, routeFields);
+    await validateRouteBranches(input);
+    if (Number(input.maximumWeightKg) < Number(input.minimumWeightKg || 0)) throw new Error("Maximum weight must be at least the included weight.");
+    const route = await LogisticsRoute.create({ ...input, createdBy: req.user._id });
+    res.status(201).json({ success: true, route });
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+};
+exports.updateRoute = async (req, res) => {
+  try {
+    const existing = await LogisticsRoute.findById(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, message: "Route not found." });
+    const input = picked(req.body, routeFields);
+    await validateRouteBranches({ ...existing.toObject(), ...input });
+    if (Number(input.maximumWeightKg ?? existing.maximumWeightKg) < Number(input.minimumWeightKg ?? existing.minimumWeightKg)) throw new Error("Maximum weight must be at least the included weight.");
+    const route = await LogisticsRoute.findByIdAndUpdate(req.params.id, { ...input, updatedBy: req.user._id }, { new: true, runValidators: true });
+    res.json({ success: true, route });
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+};
 exports.adminShipments = async (req, res) => { const q = req.query; const filter = {}; if (q.status) filter.status = String(q.status).toUpperCase(); if (q.originBranchId) filter.originBranchId = q.originBranchId; if (q.destinationBranchId) filter.destinationBranchId = q.destinationBranchId; if (q.search) filter.$or = ["trackingNumber", "sender.name", "sender.phone", "receiver.name", "receiver.phone"].map((field) => ({ [field]: { $regex: q.search, $options: "i" } })); const shipments = await Shipment.find(filter).sort({ createdAt: -1 }); res.json({ success: true, shipments }); };
-exports.createDriver = async (req, res) => { try { res.status(201).json({ success: true, driver: await TransportDriver.create({ ...req.body, createdBy: req.user._id }) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } };
-exports.createVehicle = async (req, res) => { try { res.status(201).json({ success: true, vehicle: await TransportVehicle.create({ ...req.body, createdBy: req.user._id }) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } };
+exports.createDriver = async (req, res) => { try { res.status(201).json({ success: true, driver: await TransportDriver.create({ ...picked(req.body, ["userId", "name", "phone", "driverCode", "assignedBranchId", "status"]), createdBy: req.user._id }) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } };
+exports.updateDriver = async (req, res) => { try { const driver = await TransportDriver.findByIdAndUpdate(req.params.id, { ...picked(req.body, ["userId", "name", "phone", "driverCode", "assignedBranchId", "status"]) }, { new: true, runValidators: true }); if (!driver) return res.status(404).json({ success: false, message: "Driver not found." }); res.json({ success: true, driver }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } };
+exports.deleteDriver = async (req, res) => { const driver = await TransportDriver.findByIdAndUpdate(req.params.id, { status: "INACTIVE" }, { new: true }); if (!driver) return res.status(404).json({ success: false, message: "Driver not found." }); res.json({ success: true, driver, message: "Driver marked inactive." }); };
+exports.createVehicle = async (req, res) => { try { res.status(201).json({ success: true, vehicle: await TransportVehicle.create({ ...picked(req.body, ["vehicleType", "registrationNumber", "capacityKg", "assignedBranchId", "status"]), createdBy: req.user._id }) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } };
+exports.updateVehicle = async (req, res) => { try { const vehicle = await TransportVehicle.findByIdAndUpdate(req.params.id, { ...picked(req.body, ["vehicleType", "registrationNumber", "capacityKg", "assignedBranchId", "status"]) }, { new: true, runValidators: true }); if (!vehicle) return res.status(404).json({ success: false, message: "Vehicle not found." }); res.json({ success: true, vehicle }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } };
+exports.deleteVehicle = async (req, res) => { const vehicle = await TransportVehicle.findByIdAndUpdate(req.params.id, { status: "INACTIVE" }, { new: true }); if (!vehicle) return res.status(404).json({ success: false, message: "Vehicle not found." }); res.json({ success: true, vehicle, message: "Vehicle marked inactive." }); };
 exports.createTrip = async (req, res) => {
   try {
-    const b = req.body; const driver = await TransportDriver.findOne({ _id: b.driverId, status: "ACTIVE" }); const vehicle = await TransportVehicle.findOne({ _id: b.vehicleId, status: "ACTIVE" });
+    const b = req.body;
+    const route = await LogisticsRoute.findOne({ _id: b.routeId, status: "ACTIVE" });
+    if (!route) return res.status(400).json({ success: false, message: "An active Interstate route is required." });
+    const driver = await TransportDriver.findOne({ _id: b.driverId, status: "ACTIVE" }); const vehicle = await TransportVehicle.findOne({ _id: b.vehicleId, status: "ACTIVE" });
     if (!driver || !vehicle) return res.status(400).json({ success: false, message: "Active driver and vehicle are required." });
     const shipmentIds = Array.isArray(b.shipmentIds) ? b.shipmentIds : [];
-    const shipments = await Shipment.find({ _id: { $in: shipmentIds }, originBranchId: b.originBranchId, destinationBranchId: b.destinationBranchId, status: "READY_FOR_INTERSTATE_DISPATCH" });
+    if (!shipmentIds.length) return res.status(400).json({ success: false, message: "Select at least one eligible shipment." });
+    const shipments = await Shipment.find({ _id: { $in: shipmentIds }, routeId: route._id, originBranchId: route.originBranchId, destinationBranchId: route.destinationBranchId, status: "READY_FOR_INTERSTATE_DISPATCH", transportTripId: null });
     if (shipments.length !== shipmentIds.length) return res.status(400).json({ success: false, message: "Every trip shipment must be ready for dispatch on this route." });
-    const trip = await TransportTrip.create({ ...b, tripCode: b.tripCode || `TRP-${crypto.randomBytes(5).toString("hex").toUpperCase()}`, shipmentIds, createdBy: req.user._id });
+    const trip = await TransportTrip.create({ routeId: route._id, originBranchId: route.originBranchId, destinationBranchId: route.destinationBranchId, driverId: driver._id, vehicleId: vehicle._id, departureAt: b.departureAt, expectedArrivalAt: b.expectedArrivalAt, tripCode: b.tripCode || `TRP-${crypto.randomBytes(5).toString("hex").toUpperCase()}`, shipmentIds, createdBy: req.user._id });
     await Shipment.updateMany({ _id: { $in: shipmentIds } }, { $set: { transportTripId: trip._id } }); res.status(201).json({ success: true, trip });
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 };
-exports.listTrips = async (req, res) => { res.json({ success: true, trips: await TransportTrip.find().populate("driverId", "name phone driverCode").populate("vehicleId", "registrationNumber vehicleType").sort({ departureAt: -1 }) }); };
+exports.listTrips = async (req, res) => { res.json({ success: true, trips: await TransportTrip.find().populate("routeId", "name originState destinationState").populate("driverId", "name phone driverCode").populate("vehicleId", "registrationNumber vehicleType").sort({ departureAt: -1 }) }); };
 exports.updateTripStatus = async (req, res) => {
   const session = await mongoose.startSession();
   try {
