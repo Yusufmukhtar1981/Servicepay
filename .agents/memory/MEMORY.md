@@ -21,3 +21,4 @@
 - [Twilio TURN account entitlement](twilio-turn-account-entitlement.md) — Twilio Network Traversal token generation is unavailable on Trial accounts even when SID and auth token secrets exist.
 - [Control Center reporting integrity](control-center-reporting-integrity.md) — Operational status buckets must be exhaustive; lifecycle financial views are non-additive.
 - [Admin production repository](admin-production-repository.md) — The admin custom domain is deployed from the hyphenated repository; verify the live bundle, not a similarly named repo.
+- [Interstate route activation](interstate-route-activation.md) — Never seed logistics routes automatically; Head Office must configure real branch-bound pricing before customer quotes activate.

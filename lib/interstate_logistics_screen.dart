@@ -326,7 +326,8 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
       final List<Map<String, dynamic>> routes = _LogisticsApi.list(
           data['routes'] ?? (root is Map ? root['routes'] : null));
       if (routes.isEmpty)
-        throw StateError('No interstate routes are currently available.');
+        throw StateError(
+            'ServicePay Interstate Logistics is not yet available for this route.');
       if (!mounted) return;
       setState(() {
         _routes = routes;

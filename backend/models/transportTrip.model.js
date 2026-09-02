@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const schema = new mongoose.Schema({
   tripCode: { type: String, required: true, unique: true, uppercase: true, index: true },
+  routeId: { type: mongoose.Schema.Types.ObjectId, ref: "LogisticsRoute", required: true, index: true },
   originBranchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
   destinationBranchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
   driverId: { type: mongoose.Schema.Types.ObjectId, ref: "TransportDriver", required: true, index: true },

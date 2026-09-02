@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'logistics_api.dart';
+import 'admin_logistics_setup_screen.dart';
 
 String logisticsText(dynamic value, [String fallback = '—']) {
   final String text = '${value ?? ''}'.trim();
@@ -107,6 +108,15 @@ class _LogisticsTabs extends StatelessWidget {
               children: tabs
                   .map((tab) => tab.resource == 'overview'
                       ? _OverviewPanel(api: api ?? LogisticsApi())
+                      : scope == 'admin' &&
+                              <String>{
+                                'routes',
+                                'drivers',
+                                'vehicles',
+                                'trips',
+                              }.contains(tab.resource)
+                          ? AdminLogisticsSetupScreen(
+                              resource: tab.resource, api: api ?? LogisticsApi())
                       : _OperationsList(
                           scope: scope,
                           tab: tab,
@@ -362,6 +372,7 @@ class _RecordCard extends StatelessWidget {
     final TextEditingController note = TextEditingController();
     final TextEditingController riderId = TextEditingController();
     final TextEditingController actualWeight = TextEditingController();
+    final TextEditingController evidence = TextEditingController();
     final String? action = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -382,6 +393,13 @@ class _RecordCard extends StatelessWidget {
                           const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                           labelText: 'Actual weight in KG (for verification)')),
+                  TextField(
+                      controller: evidence,
+                      minLines: 1,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                          labelText: 'Parcel evidence URLs (optional)',
+                          helperText: 'Separate HTTP(S) URLs with commas or lines')),
                 ]),
                 actions: <Widget>[
                   TextButton(
@@ -413,6 +431,7 @@ class _RecordCard extends StatelessWidget {
       note.dispose();
       riderId.dispose();
       actualWeight.dispose();
+      evidence.dispose();
       return;
     }
     try {
@@ -446,6 +465,15 @@ class _RecordCard extends StatelessWidget {
               if (action == 'verify')
                 'verifiedWeightKg': num.parse(actualWeight.text.trim()),
               if (note.text.trim().isNotEmpty) 'note': note.text.trim()
+              ,
+              if (evidence.text.trim().isNotEmpty)
+                'evidenceUrls': evidence.text
+                    .split(RegExp(r'[\s,]+'))
+                    .map((value) => value.trim())
+                    .where((value) => value.startsWith('http://') ||
+                        value.startsWith('https://'))
+                    .take(5)
+                    .toList(),
             });
       }
       onChanged();
@@ -465,6 +493,7 @@ class _RecordCard extends StatelessWidget {
       note.dispose();
       riderId.dispose();
       actualWeight.dispose();
+      evidence.dispose();
     }
   }
 

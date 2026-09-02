@@ -37,6 +37,12 @@ class LogisticsApi {
     return listOf(rows);
   }
 
+  Future<List<Map<String, dynamic>>> listBranches() async {
+    final Map<String, dynamic> root =
+        await request('GET', '/admin/logistics/interstate/branches');
+    return listOf(root['branches'] ?? map(root['data'])['branches']);
+  }
+
   Future<Map<String, dynamic>> request(
     String method,
     String path, {
@@ -62,6 +68,8 @@ class LogisticsApi {
     } else if (method == 'PATCH') {
       response =
           await _client.patch(uri, headers: headers, body: jsonEncode(body));
+    } else if (method == 'DELETE') {
+      response = await _client.delete(uri, headers: headers);
     } else {
       response = await _client.get(uri, headers: headers);
     }
