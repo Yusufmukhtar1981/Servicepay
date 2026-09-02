@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'create_delivery_screen.dart';
 import 'delivery_history_screen.dart';
+import 'interstate_logistics_screen.dart';
 import 'track_delivery_screen.dart';
 
 class LogisticsScreen extends StatelessWidget {
@@ -13,7 +14,7 @@ class LogisticsScreen extends StatelessWidget {
       backgroundColor: const Color(0xFFF5F7FB),
       appBar: AppBar(
         title: const Text(
-          'Logistics & Delivery',
+          'ServicePay Logistics',
           style: TextStyle(
             fontWeight: FontWeight.w700,
           ),
@@ -42,16 +43,59 @@ class LogisticsScreen extends StatelessWidget {
               const SizedBox(height: 14),
               _buildServiceCard(
                 context: context,
-                icon: Icons.add_box_outlined,
-                title: 'Create Delivery',
-                subtitle:
-                    'Request pickup and delivery for your package.',
+                icon: Icons.local_shipping_outlined,
+                title: 'Local Delivery',
+                subtitle: 'Request pickup and delivery for your package.',
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          const CreateDeliveryScreen(),
+                      builder: (_) => const CreateDeliveryScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              _buildServiceCard(
+                context: context,
+                icon: Icons.route_outlined,
+                title: 'Send Interstate Parcel',
+                subtitle: 'Get a live quote and send parcels across states.',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const InterstateShipmentWizard(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              _buildServiceCard(
+                context: context,
+                icon: Icons.location_searching_rounded,
+                title: 'Track Parcel',
+                subtitle: 'Track an interstate parcel safely by its number.',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const InterstateTrackingScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              _buildServiceCard(
+                context: context,
+                icon: Icons.inventory_2_outlined,
+                title: 'My Shipments',
+                subtitle: 'See your interstate shipment updates and receipts.',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MyInterstateShipmentsScreen(),
                     ),
                   );
                 },
@@ -61,14 +105,12 @@ class LogisticsScreen extends StatelessWidget {
                 context: context,
                 icon: Icons.location_searching,
                 title: 'Track Delivery',
-                subtitle:
-                    'Track your package with its tracking number.',
+                subtitle: 'Track your package with its tracking number.',
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          const TrackDeliveryScreen(),
+                      builder: (_) => const TrackDeliveryScreen(),
                     ),
                   );
                 },
@@ -78,14 +120,12 @@ class LogisticsScreen extends StatelessWidget {
                 context: context,
                 icon: Icons.history,
                 title: 'Delivery History',
-                subtitle:
-                    'View all your delivery requests and statuses.',
+                subtitle: 'View all your delivery requests and statuses.',
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          const DeliveryHistoryScreen(),
+                      builder: (_) => const DeliveryHistoryScreen(),
                     ),
                   );
                 },
@@ -202,8 +242,7 @@ class LogisticsScreen extends StatelessWidget {
               const SizedBox(width: 15),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,

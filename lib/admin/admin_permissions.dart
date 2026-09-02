@@ -23,6 +23,8 @@ abstract final class AdminPermissions {
   static const withdrawalsView = 'withdrawals.view';
   static const financeView = 'finance.view';
   static const deliveryView = 'delivery.view';
+  static const logisticsView = 'logistics.view';
+  static const logisticsManage = 'logistics.manage';
   static const marketplaceView = 'marketplace.view';
   static const solarView = 'solar.view';
   static const phoneFinancingView = 'phone_financing.view';

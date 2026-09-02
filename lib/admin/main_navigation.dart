@@ -11,6 +11,7 @@ import 'admin_amana_screen.dart';
 import 'admin_control_center_screen.dart';
 import 'admin_customer_withdrawals_screen.dart';
 import 'admin_delivery_management_screen.dart';
+import '../logistics/logistics_operations_screens.dart';
 import 'admin_list_workspaces.dart';
 import 'admin_marketplace_screen.dart';
 import 'admin_phone_financing_screen.dart';
@@ -111,6 +112,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.local_shipping,
         <String>[AdminPermissions.deliveryView],
         AdminDeliveryManagementScreen()),
+    _AdminDestination(
+        'Logistics',
+        Icons.local_shipping_outlined,
+        Icons.local_shipping_rounded,
+        <String>[AdminPermissions.logisticsView, AdminPermissions.logisticsManage],
+        AdminLogisticsScreen()),
     _AdminDestination(
         'Marketplace',
         Icons.storefront_outlined,
