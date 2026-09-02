@@ -1,0 +1,190 @@
+SERVICEPAY ADMIN — REMOVE THE GENERIC PLACEHOLDER AND WIRE THE REAL CONTROL CENTER SCREENS
+
+The Control Center routing bug is fixed: the modules now open and the correct page titles appear.
+
+However, the REAL production pages still render the OLD GENERIC PLACEHOLDER UI:
+
+Capability: NOT CONFIGURED
+Availability: NO LIVE WORKSPACE
+Action: NONE
+
+and:
+
+"A verified live workspace for [module] is not configured in the current backend."
+
+This proves routing is no longer the primary issue.
+
+The routes are opening, but they are still resolving to a generic placeholder/fallback Control Center page instead of the real module implementations.
+
+DO NOT change routes again unless necessary.
+DO NOT redesign the placeholder.
+DO NOT simply change "NOT CONFIGURED" to "LIVE".
+DO NOT hardcode success states.
+DO NOT rebuild analytics logic unless the corresponding backend endpoint is genuinely missing.
+
+FIRST, FIND THE EXACT PLACEHOLDER IMPLEMENTATION.
+
+Search the entire authoritative Admin source for these exact strings:
+
+"NOT CONFIGURED"
+"NO LIVE WORKSPACE"
+"ACTION NONE"
+"A verified live workspace"
+"This module is intentionally unavailable until a real backend capability is connected"
+
+Identify every widget/class/function/model that generates this UI.
+
+Likely examples to inspect:
+- generic ModuleWorkspace page
+- ControlCenterModulePage
+- capability registry
+- module configuration map
+- fallback builder
+- unsupported module builder
+- availability/capability resolver
+- Control Center route factory
+
+Then trace each of these 10 production routes:
+
+#/control-center/audit-logs
+#/control-center/security-events
+#/control-center/access-logs
+#/control-center/data-exports
+#/control-center/backups
+#/control-center/privacy-controls
+#/control-center/executive-dashboard
+#/control-center/service-performance
+#/control-center/transaction-analytics
+#/control-center/customer-analytics
+
+For EACH route confirm what widget/class it actually returns.
+
+THE REQUIRED FIX:
+
+1. EXECUTIVE DASHBOARD
+Route must render the real Executive Dashboard widget connected to the production Executive API.
+
+2. TRANSACTION ANALYTICS
+Route must render the real Transaction Analytics widget connected to the production transaction analytics API.
+
+3. CUSTOMER ANALYTICS
+Route must render the real Customer Analytics widget.
+
+4. SERVICE PERFORMANCE
+Route must render the real Service Performance widget.
+
+5. AUDIT LOGS
+Route must render the real Audit Logs table/workspace.
+
+6. SECURITY EVENTS
+Route must render the real Security Events workspace.
+
+7. ACCESS LOGS
+Route must render the real Access Logs workspace.
+
+8. DATA EXPORTS
+Route must render the real Data Exports workspace.
+
+9. BACKUPS
+Route must render the truthful real Backup/Readiness workspace.
+
+10. PRIVACY CONTROLS
+Route must render the real Privacy Controls workspace.
+
+If these real widgets already exist in source, wire the routes directly to them.
+
+If the Control Center uses a registry/map such as:
+module -> capability -> builder
+then populate that registry with the real builders and real API capability definitions.
+
+If a capability check is causing the fallback, inspect exactly why:
+- wrong capability key
+- wrong module ID
+- backend endpoint mismatch
+- API response model mismatch
+- permission mismatch
+- missing auth token
+- wrong API base URL
+- stale capability registry
+- default false/notConfigured flag
+- unsupported module fallback
+
+VERIFY THE BACKEND BEFORE MODIFYING IT:
+
+For each module, test the production endpoint under:
+https://api.servicepay.ng/api/admin/control-center/...
+
+Use valid HEAD_OFFICE authentication available in the project/test environment.
+
+Record:
+- endpoint
+- HTTP status
+- response shape
+
+If endpoint returns real data successfully, DO NOT rebuild that backend endpoint.
+Fix the Admin wiring/parser only.
+
+If an endpoint genuinely returns 404/500 or does not exist, then fix the actual backend route and deploy it.
+
+AUTH CHECK:
+
+Verify the Admin API client sends the current JWT/auth token to these requests.
+
+If the endpoint returns:
+401 -> fix auth header/token wiring.
+403 -> fix HEAD_OFFICE permission contract.
+404 -> fix route/path mismatch.
+200 but UI still placeholder -> fix frontend capability/parser/builder.
+500 -> fix actual backend error.
+
+CRITICAL:
+The screenshots prove the current UI is still the placeholder implementation.
+Remove the placeholder path from these 10 production modules once a real implementation exists.
+
+The placeholder may remain only for truly unsupported future modules.
+
+PRODUCTION ACCEPTANCE:
+
+After deployment, open the real production Admin and check:
+
+Executive Dashboard must show actual KPI cards/charts/data.
+Transaction Analytics must show actual transaction metrics/data.
+Customer Analytics must show actual customer metrics/data.
+Audit Logs must show its real workspace/table.
+Security Events must show its real workspace.
+Access Logs must show its real workspace.
+Data Exports must show its real workspace.
+Backups must show real readiness/status.
+Privacy Controls must show real controls/requests.
+Service Performance must show actual service metrics.
+
+NONE of these 10 pages may display:
+
+NOT CONFIGURED
+NO LIVE WORKSPACE
+ACTION NONE
+"A verified live workspace ... is not configured"
+
+Run:
+flutter pub get
+flutter analyze
+flutter build web --release
+
+Deploy the authoritative Admin repository.
+
+If backend changed, deploy the authoritative production backend first and wait until it is live.
+
+Then deploy Admin.
+
+FINAL REPORT MUST INCLUDE FOR EACH MODULE:
+- route
+- widget/class rendered
+- backend endpoint
+- HTTP status
+- whether API returned real data
+- whether placeholder was removed
+- production result
+
+Do NOT claim completion from tests/build alone.
+
+Completion means I can visibly open the production Admin page and see the real module workspace instead of the generic placeholder.
