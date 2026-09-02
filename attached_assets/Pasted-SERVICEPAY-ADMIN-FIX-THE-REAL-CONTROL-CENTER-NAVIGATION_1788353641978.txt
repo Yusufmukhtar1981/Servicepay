@@ -1,0 +1,112 @@
+SERVICEPAY ADMIN — FIX THE REAL CONTROL CENTER NAVIGATION/ROUTING BUG
+
+The backend and Control Center APIs may be working, but the actual production Admin UI still cannot open ANY of the 10 Control Center modules.
+
+IMPORTANT OBSERVATION:
+In the real production screenshots, when Audit Logs, Security Events, Access Logs, Data Exports, Backups, Privacy Controls, Executive Dashboard, Service Performance, Transaction Analytics, and Customer Analytics are selected, the browser URL still remains on:
+
+#/branches
+
+This strongly indicates a shared Admin navigation / route mapping / fallback routing bug.
+
+DO NOT work on analytics APIs again.
+DO NOT add more backend code unless a real missing backend issue is discovered.
+DO NOT report success from tests alone.
+
+FIX THE ADMIN ROUTING END-TO-END.
+
+1. Inspect the authoritative production Admin Flutter source.
+
+2. Find the complete route table / Navigator / Router / go_router configuration and every menu/sidebar action for these modules:
+
+- Audit Logs
+- Security Events
+- Access Logs
+- Data Exports
+- Backups
+- Privacy Controls
+- Executive Dashboard
+- Service Performance
+- Transaction Analytics
+- Customer Analytics
+
+3. Confirm whether they are incorrectly:
+- pointing to /branches
+- sharing the Branch route
+- using the same selectedPage/index
+- rendering through one generic fallback screen
+- using stale module IDs
+- missing route registrations
+- being intercepted by a default redirect
+- being blocked by role guard and redirected to branches
+- using the wrong Navigator context
+
+4. Give EACH module its own real production route, for example following the existing application routing convention:
+
+/control-center/audit-logs
+/control-center/security-events
+/control-center/access-logs
+/control-center/data-exports
+/control-center/backups
+/control-center/privacy-controls
+/control-center/executive-dashboard
+/control-center/service-performance
+/control-center/transaction-analytics
+/control-center/customer-analytics
+
+Use these exact paths only if compatible with the existing router architecture. Otherwise use equivalent unique paths.
+
+5. Wire every Admin sidebar/menu/button to its correct unique page.
+
+6. Remove any code that routes these modules to:
+#/branches
+or uses BranchManagementPage as fallback.
+
+7. Check HEAD_OFFICE authorization carefully.
+A valid HEAD_OFFICE user must NOT be silently redirected to /branches.
+If permission is denied, show a real 403/permission screen rather than routing to Branches.
+
+8. Ensure every destination page is imported and registered correctly.
+
+9. Ensure browser URL changes when each module is clicked.
+
+10. Ensure browser Back/Forward works correctly for each module.
+
+11. Ensure direct URL navigation works after refresh, e.g. opening a Control Center route directly must restore the same page rather than returning to branches.
+
+12. Keep the existing real backend APIs already implemented and connect each routed screen to its correct API.
+
+13. Remove the old generic placeholder Control Center workspace only after each real destination is connected.
+
+14. Run:
+flutter pub get
+flutter analyze
+flutter build web --release
+
+Fix all blocking errors.
+
+15. Deploy the authoritative Admin repository.
+
+16. AFTER DEPLOYMENT, perform REAL browser verification on:
+https://admin.servicepay.ng
+
+Login as HEAD_OFFICE and physically click all 10 modules.
+
+For EACH module prove:
+- menu clicked
+- resulting browser URL
+- rendered page title
+- API request URL
+- API HTTP status
+- live data rendered
+- no redirect to #/branches
+- no console/runtime error
+
+CRITICAL ACCEPTANCE TEST:
+If the browser address remains #/branches after selecting any Control Center module, THE TASK IS NOT COMPLETE.
+
+Do not tell me “tests passed” or “deployment succeeded” unless all 10 modules visibly open in production with their own routes.
+
+Do not modify unrelated customer, wallet, transaction, branch, rider, marketplace, solar, delivery, KYC, withdrawal, financing, empowerment or authentication behavior.
+
+Commit, push, deploy, and verify the actual production browser behavior before reporting completion.
