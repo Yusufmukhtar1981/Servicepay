@@ -58,6 +58,7 @@ const controlCenterBase = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole];
 router.get("/control-center/catalog", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.catalog);
 router.get("/control-center/audit-logs", ...controlCenterBase, requirePermission(P.AUDIT_VIEW), controlCenter.auditLogs);
 router.get("/control-center/security-events", ...controlCenterBase, requirePermission(P.AUDIT_VIEW), controlCenter.securityEvents);
+router.patch("/control-center/security-events/:id", ...controlCenterBase, requirePermission(P.AUDIT_MANAGE), controlCenter.updateSecurityEvent);
 router.get("/control-center/access-logs", ...controlCenterBase, requirePermission(P.AUDIT_VIEW), controlCenter.accessLogs);
 router.post("/control-center/exports/:dataset.csv", ...controlCenterBase, requirePermission(P.AUDIT_EXPORT), controlCenter.exportDataset);
 router.get("/control-center/exports/history", ...controlCenterBase, requirePermission(P.AUDIT_EXPORT), controlCenter.exportHistory);

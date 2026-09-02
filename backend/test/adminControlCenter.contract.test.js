@@ -55,3 +55,28 @@ test("privacy workflow has constrained statuses and immutable audit actions exis
     assert.equal(standalone.length, 1, `${Model.modelName} needs exactly one standalone descending createdAt index`);
   });
 });
+
+test("control center wires real operational models and safe operational contracts", () => {
+  const source = read("controllers/adminControlCenter.controller.js");
+  const routes = read("routes/admin.routes.js");
+  ["PhoneApplication", "PhoneFinance", "PhonePayment", "EmpowermentProgram",
+    "EmpowermentFunding", "EmpowermentDisbursement", "AmanaOrder"].forEach((model) =>
+    assert.match(source, new RegExp(`const ${model} = require`)));
+  ["FINANCING: [PhoneFinance", "EMPOWERMENT: [EmpowermentDisbursement",
+    "AMANA: [AmanaOrder", "operationalRollup", "activeRiders", "walletBalance",
+    "transactionActiveCustomers", "pagination"].forEach((contract) =>
+    assert.match(source, new RegExp(contract.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+  assert.match(routes, /patch\("\/control-center\/security-events\/:id"/);
+  ["eventType", "severity", "workflowStatus", "acknowledgedAt", "resolvedAt",
+    "investigationNote"].forEach((field) => assert.ok(LoginSecurityEvent.schema.path(field)));
+});
+
+test("readiness and analytics do not claim fake backup or provider checks", () => {
+  const source = read("controllers/adminControlCenter.controller.js");
+  assert.match(source, /manualBackupSupported: false/);
+  assert.match(source, /PROVIDER_MANAGED/);
+  assert.match(source, /NOT_LIVE_CHECKED/);
+  assert.match(source, /Boolean\(process\.env\.PAYSTACK_SECRET_KEY\)/);
+  assert.match(source, /PhoneFinance/);
+  assert.match(source, /AmanaOrder/);
+});
