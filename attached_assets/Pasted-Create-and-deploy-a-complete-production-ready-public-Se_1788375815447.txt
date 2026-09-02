@@ -1,0 +1,47 @@
+Create and deploy a complete production-ready public ServicePay Privacy Policy page for Google Play compliance.
+
+Requirements:
+- Public URL must be exactly: https://servicepay.ng/privacy-policy
+- It must work without login and must NOT return 404.
+- Use the existing ServicePay website design, branding, colors and official ServicePay logo.
+- Company/operator name: YUMPAY GLOBAL TECH. LTD
+- Product name: ServicePay
+- Country: Nigeria
+- Support/contact email: admin@servicepay.ng
+- Support phone: +2349136151515
+- Website: https://servicepay.ng
+
+The Privacy Policy must clearly cover:
+1. Information we collect
+2. Account registration and profile information
+3. Identity/KYC data such as NIN, BVN, ID documents and photos where applicable
+4. Financial and transaction information
+5. Wallet/payment and withdrawal information
+6. Device, log, IP and security information
+7. Location data where required for delivery/logistics or relevant services
+8. Marketplace, delivery, interstate logistics, solar, financing and other ServicePay feature data
+9. How information is used
+10. Legal/compliance purposes
+11. Fraud prevention and security
+12. Data sharing with payment processors, identity/KYC providers, telecom/service providers, logistics partners and regulators where legally required
+13. Data retention
+14. Data security
+15. User rights
+16. Account deletion/data deletion requests
+17. Children’s privacy
+18. Cookies/web technologies where applicable
+19. Third-party services
+20. International data transfers where applicable
+21. Changes to the Privacy Policy
+22. Contact information
+
+Important:
+- Do not invent claims about encryption, licenses, certifications, regulators or compliance that are not actually implemented.
+- Make the page suitable for Google Play User Data/Data Safety review.
+- Add a visible “Privacy Policy” link in the public website footer.
+- Preserve all existing customer features and routes.
+- If the site uses Flutter Web/GitHub Pages hash routing, implement the privacy route so direct navigation and refresh still work.
+- Build, test and deploy production.
+- Verify with an actual HTTP request that https://servicepay.ng/privacy-policy returns HTTP 200.
+- Confirm the page renders correctly on mobile and desktop.
+- Report the final deployed URL and verification result only after production is live.

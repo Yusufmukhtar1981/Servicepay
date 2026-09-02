@@ -22,3 +22,4 @@
 - [Control Center reporting integrity](control-center-reporting-integrity.md) — Operational status buckets must be exhaustive; lifecycle financial views are non-additive.
 - [Admin production repository](admin-production-repository.md) — The admin custom domain is deployed from the hyphenated repository; verify the live bundle, not a similarly named repo.
 - [Interstate route activation](interstate-route-activation.md) — Never seed logistics routes automatically; Head Office must configure real branch-bound pricing before customer quotes activate.
+- [GitHub Pages clean URLs](github-pages-clean-urls.md) — Use a root .html artifact for an exact slashless URL; directory indexes redirect to a trailing slash.
