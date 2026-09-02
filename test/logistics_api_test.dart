@@ -181,4 +181,37 @@ void main() {
               'ADDITIONAL_PAYMENT_REQUIRED')),
     );
   });
+
+  test('sends audited fallback confirmation to its canonical branch endpoint',
+      () async {
+    late http.Request captured;
+    final LogisticsApi api = LogisticsApi(
+      tokenLoader: () async => 'branch-token',
+      baseUrl: 'https://api.servicepay.ng/api',
+      client: MockClient((http.Request request) async {
+        captured = request;
+        return http.Response('{"shipment":{"status":"DELIVERED"}}', 200);
+      }),
+    );
+
+    await api.request(
+      'PATCH',
+      '/branch/logistics/interstate/shipments/shipment-1/confirm-delivery-fallback',
+      body: const <String, dynamic>{
+        'reason': 'Receiver identity was confirmed by branch supervisor.',
+        'evidenceUrls': <String>['https://evidence.servicepay.ng/proof.jpg'],
+      },
+    );
+
+    expect(
+      captured.url.path,
+      '/api/branch/logistics/interstate/shipments/shipment-1/confirm-delivery-fallback',
+    );
+    expect(captured.method, 'PATCH');
+    expect(captured.headers['authorization'], 'Bearer branch-token');
+    expect(
+      captured.body,
+      '{"reason":"Receiver identity was confirmed by branch supervisor.","evidenceUrls":["https://evidence.servicepay.ng/proof.jpg"]}',
+    );
+  });
 }

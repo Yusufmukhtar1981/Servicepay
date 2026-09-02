@@ -168,6 +168,7 @@ const adminAuditLogSchema =
               "INTERSTATE_TRIP_CREATED",
               "INTERSTATE_DRIVER_CREATED",
               "INTERSTATE_VEHICLE_CREATED",
+              "INTERSTATE_DELIVERY_FALLBACK_CONFIRMED",
         ],
       },
 

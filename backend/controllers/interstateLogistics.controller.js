@@ -150,6 +150,38 @@ exports.paySupplement = async (req, res) => {
     res.json({ success: true, data: shipment, shipment, transaction, walletBalance: user.walletBalance });
   } catch (e) { if (session.inTransaction()) await session.abortTransaction(); res.status(e.status || 500).json({ success: false, message: e.message }); } finally { session.endSession(); }
 };
+exports.confirmDeliveryFallback = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const reason = String(req.body.reason || "").trim();
+    const evidenceUrls = req.body.evidenceUrls === undefined ? [] : req.body.evidenceUrls;
+    if (reason.length < 10 || reason.length > 500) return res.status(400).json({ success: false, message: "A delivery fallback reason of 10 to 500 characters is required." });
+    if (!Array.isArray(evidenceUrls) || evidenceUrls.length > 5 || evidenceUrls.some((url) => { try { const parsed = new URL(String(url)); return !["http:", "https:"].includes(parsed.protocol); } catch (_) { return true; } })) return res.status(400).json({ success: false, message: "Evidence must contain at most five valid HTTP(S) URLs." });
+    const initial = await Shipment.findById(req.params.id).session(session);
+    if (!initial) return res.status(404).json({ success: false, message: "Shipment not found." });
+    if (initial.status === "DELIVERED") return res.json({ success: true, idempotent: true, data: initial, shipment: initial });
+    if (!branchAllowed(req.user, initial.destinationBranchId)) return res.status(403).json({ success: false, message: "Only Head Office or the destination branch can confirm this delivery." });
+    if (!["OUT_FOR_DELIVERY", "DELIVERY_ATTEMPTED", "FAILED_DELIVERY"].includes(initial.status)) return res.status(409).json({ success: false, message: "Fallback confirmation is not allowed in the shipment's current state." });
+    session.startTransaction();
+    const shipment = await Shipment.findOneAndUpdate({ _id: initial._id, status: { $in: ["OUT_FOR_DELIVERY", "DELIVERY_ATTEMPTED", "FAILED_DELIVERY"] } }, { $set: { status: "DELIVERED", deliveredAt: new Date() } }, { new: true, session });
+    if (!shipment) {
+      await session.abortTransaction();
+      const current = await Shipment.findById(initial._id);
+      if (current?.status === "DELIVERED") return res.json({ success: true, idempotent: true, data: current, shipment: current });
+      return res.status(409).json({ success: false, message: "Shipment state changed; fallback confirmation was not applied." });
+    }
+    await History.create([{ shipmentId: shipment._id, status: "DELIVERED", actorId: req.user._id, actorRole: req.user.role, branchId: req.user.role === "HEAD_OFFICE" ? shipment.destinationBranchId : req.user.branchId, note: `DELIVERY_FALLBACK: ${reason}`, evidenceUrls: evidenceUrls.map(String), publicVisible: false }], { session });
+    await session.commitTransaction();
+    const metadata = { shipmentId: shipment._id, trackingNumber: shipment.trackingNumber, method: "AUTHORIZED_FALLBACK", evidenceCount: evidenceUrls.length };
+    if (req.user.role === "HEAD_OFFICE") await AdminAuditLog.create({ actorId: req.user._id, actorRole: req.user.role, actorName: req.user.fullName || "", action: "INTERSTATE_DELIVERY_FALLBACK_CONFIRMED", reason, metadata, ipAddress: req.ip || "", userAgent: req.get("user-agent") || "", requestMethod: req.method || "", requestPath: req.originalUrl || "" });
+    else await BranchAuditLog.create({ branchId: req.user.branchId, actorId: req.user._id, action: "INTERSTATE_DELIVERY_FALLBACK_CONFIRMED", reason, metadata });
+    await Notification.create({ userId: shipment.customerId, title: "Shipment delivered", message: `Your shipment ${shipment.trackingNumber} has been confirmed as delivered.`, type: "DELIVERY", action: "DELIVERY", referenceId: shipment._id, referenceType: "INTERSTATE_SHIPMENT", reference: shipment.trackingNumber, relatedStatus: "DELIVERED", dedupeKey: `interstate-delivered-${shipment._id}` });
+    return res.json({ success: true, data: shipment, shipment });
+  } catch (error) {
+    if (session.inTransaction()) await session.abortTransaction();
+    return res.status(500).json({ success: false, message: "Unable to confirm fallback delivery." });
+  } finally { await session.endSession(); }
+};
 exports.assignRider = async (req, res) => {
   const shipment = await Shipment.findById(req.params.id); const rider = await User.findOne({ _id: req.body.riderId, role: "DELIVERY_RIDER", status: "ACTIVE" });
   if (!shipment || !rider || !branchAllowed(req.user, shipment.destinationBranchId) || String(rider.branchId) !== String(shipment.destinationBranchId)) return res.status(400).json({ success: false, message: "Valid destination-branch shipment and rider are required." });

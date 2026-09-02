@@ -302,6 +302,10 @@ class _RecordCard extends StatelessWidget {
     final String status = logisticsText(row['status']);
     final bool paymentReview = status == 'ADDITIONAL_PAYMENT_REQUIRED' ||
         status == 'REFUND_REVIEW_REQUIRED';
+    // These states are only reached after destination-hub processing. The
+    // server still enforces the authenticated branch and eligibility checks.
+    final bool fallbackEligible =
+        status == 'OUT_FOR_DELIVERY' || status == 'DELIVERY_ATTEMPTED';
     return Card(
         child: Padding(
             padding: const EdgeInsets.all(14),
@@ -335,6 +339,15 @@ class _RecordCard extends StatelessWidget {
                             icon: const Icon(Icons.play_circle_outline),
                             label: const Text('Workflow action'),
                             onPressed: () => _actionDialog(context))),
+                  if (branchActions && fallbackEligible && _id.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.verified_user_outlined),
+                        label: const Text('Fallback delivery confirmation'),
+                        onPressed: () => _fallbackDeliveryDialog(context),
+                      ),
+                    ),
                   if (tripControls && _id.isNotEmpty)
                     Align(
                         alignment: Alignment.centerRight,
@@ -501,6 +514,111 @@ class _RecordCard extends StatelessWidget {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error.message)));
       }
+    }
+  }
+
+  Future<void> _fallbackDeliveryDialog(BuildContext context) async {
+    final TextEditingController reason = TextEditingController();
+    final TextEditingController evidence = TextEditingController();
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Fallback delivery confirmation'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+          const Text(
+            'This is an audited branch confirmation used only when OTP '
+            'delivery confirmation cannot be used.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: reason,
+            minLines: 2,
+            maxLines: 4,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: 'Mandatory authorization reason',
+              helperText: '10–500 characters',
+            ),
+          ),
+          TextField(
+            controller: evidence,
+            minLines: 1,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Evidence URLs (optional)',
+              helperText:
+                  'Up to five HTTP(S) URLs; separate with commas or lines',
+            ),
+          ),
+        ]),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm audited delivery')),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      reason.dispose();
+      evidence.dispose();
+      return;
+    }
+    final String reasonText = reason.text.trim();
+    final List<String> evidenceUrls = evidence.text
+        .split(RegExp(r'[\n,]'))
+        .map((String value) => value.trim())
+        .where((String value) => value.isNotEmpty)
+        .toList();
+    final bool validUrls = evidenceUrls.every((String value) {
+      final Uri? uri = Uri.tryParse(value);
+      return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+    });
+    if (reasonText.length < 10 || reasonText.length > 500) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('Provide an authorization reason of 10–500 characters.')));
+      }
+      reason.dispose();
+      evidence.dispose();
+      return;
+    }
+    if (evidenceUrls.length > 5 || !validUrls) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('Provide at most five valid HTTP(S) evidence URLs.')));
+      }
+      reason.dispose();
+      evidence.dispose();
+      return;
+    }
+    try {
+      await api.request(
+        'PATCH',
+        '/branch/logistics/interstate/shipments/${Uri.encodeComponent(_id)}/confirm-delivery-fallback',
+        body: <String, dynamic>{
+          'reason': reasonText,
+          'evidenceUrls': evidenceUrls,
+        },
+      );
+      onChanged();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Fallback delivery confirmation was recorded in the audit trail.')));
+      }
+    } on LogisticsApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      reason.dispose();
+      evidence.dispose();
     }
   }
 }
