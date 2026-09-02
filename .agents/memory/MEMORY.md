@@ -19,3 +19,4 @@
 - [Split frontend dependencies](split-frontend-dependencies.md) — Customer code must not import Admin-only files because production builds come from separate repositories.
 - [Linked worktree recovery](linked-worktree-recovery.md) — Replit checkpoint cleanup can leave a worktree directory intact while its Git metadata disappears.
 - [Twilio TURN account entitlement](twilio-turn-account-entitlement.md) — Twilio Network Traversal token generation is unavailable on Trial accounts even when SID and auth token secrets exist.
+- [Control Center reporting integrity](control-center-reporting-integrity.md) — Operational status buckets must be exhaustive; lifecycle financial views are non-additive.

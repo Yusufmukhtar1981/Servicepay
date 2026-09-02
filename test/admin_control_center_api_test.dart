@@ -33,6 +33,7 @@ void main() {
     expect(client.request!.url.path, '/api/admin/control-center/audit-logs');
     expect(client.request!.url.queryParameters, <String, String>{
       'page': '2',
+      'limit': '25',
       'search': 'account-7',
       'action': 'warning'
     });
@@ -64,10 +65,8 @@ void main() {
     expect(client.request!.method, 'POST');
     expect(client.request!.url.path,
         '/api/admin/control-center/exports/AUDIT.csv');
-    expect(client.request!.url.queryParameters, <String, String>{
-      'start': '2024-01-02',
-      'end': '2024-01-31T23:59:59.999Z'
-    });
+    expect(client.request!.url.queryParameters,
+        <String, String>{'start': '2024-01-02', 'end': '2024-01-31'});
     expect(jsonDecode(client.request!.body), <String, dynamic>{});
   });
 
@@ -113,5 +112,55 @@ void main() {
         <String, dynamic>{'status': 'COMPLETED', 'note': 'Anonymized'});
     expect(jsonDecode(client.request!.body),
         <String, String>{'status': 'COMPLETED', 'note': 'Anonymized'});
+  });
+
+  test('sends only security event filters accepted by its endpoint', () async {
+    final _Client client = _Client();
+    final AdminControlCenterApi api = AdminControlCenterApi(client: client);
+
+    await api.module('security-events',
+        eventType: 'LOGIN_FAILURE',
+        severity: 'HIGH',
+        workflow: 'OPEN',
+        outcome: 'FAILED',
+        start: DateTime(2024, 2, 1),
+        end: DateTime(2024, 2, 7),
+        limit: 50);
+
+    expect(client.request!.url.queryParameters, <String, String>{
+      'page': '1',
+      'limit': '50',
+      'start': '2024-02-01',
+      'end': '2024-02-07',
+      'eventType': 'LOGIN_FAILURE',
+      'severity': 'HIGH',
+      'status': 'OPEN',
+      'outcome': 'FAILED',
+    });
+  });
+
+  test('patches security workflow actions with investigation note', () async {
+    final _Client client = _Client();
+    final AdminControlCenterApi api = AdminControlCenterApi(client: client);
+
+    await api.updateSecurityEvent('event-1',
+        action: 'RESOLVE', note: 'Investigated and confirmed remediation.');
+
+    expect(client.request!.method, 'PATCH');
+    expect(client.request!.url.path,
+        '/api/admin/control-center/security-events/event-1');
+    expect(jsonDecode(client.request!.body), <String, String>{
+      'action': 'RESOLVE',
+      'note': 'Investigated and confirmed remediation.'
+    });
+  });
+
+  test('rejects date ranges over the backend maximum', () async {
+    final _Client client = _Client();
+    final AdminControlCenterApi api = AdminControlCenterApi(client: client);
+    expect(
+        () => api.module('audit-logs',
+            start: DateTime(2024, 1, 1), end: DateTime(2024, 5, 1)),
+        throwsA(isA<AdminControlApiException>()));
   });
 }

@@ -37,8 +37,31 @@ class AdminControlCenterApi {
     String filter = '',
     String method = '',
     int page = 1,
+    int limit = 25,
+    DateTime? start,
+    DateTime? end,
+    String action = '',
+    String status = '',
+    String actorId = '',
+    String moduleFilter = '',
+    String eventType = '',
+    String severity = '',
+    String workflow = '',
+    String outcome = '',
+    String statusCode = '',
+    String path = '',
+    String ip = '',
+    String serviceType = '',
+    String provider = '',
+    String branchId = '',
+    String customerId = '',
+    String state = '',
+    String role = '',
+    String kycStatus = '',
+    String type = '',
+    String subjectUser = '',
   }) {
-    final String path = modulePaths[module] ?? module;
+    final String endpoint = modulePaths[module] ?? module;
     final String cleanFilter = filter.trim();
     final bool numericAccessFilter =
         module == 'access-logs' && RegExp(r'^\d{3}$').hasMatch(cleanFilter);
@@ -53,38 +76,114 @@ class AdminControlCenterApi {
                 : module == 'privacy-controls'
                     ? 'status'
                     : null;
-    return _json(path, query: <String, String>{
-      'page': page.clamp(1, 100000).toString(),
-      if (search.trim().isNotEmpty)
-        'search': search
-            .trim()
-            .substring(0, search.trim().length.clamp(0, 80).toInt()),
-      if (cleanFilter.isNotEmpty && filterKey != null)
-        filterKey: cleanFilter
-            .trim()
-            .substring(0, cleanFilter.length.clamp(0, 40).toInt()),
-      if (module == 'access-logs' && method.trim().isNotEmpty)
-        'method': method
-            .trim()
-            .substring(0, method.trim().length.clamp(0, 40).toInt()),
-    });
+    _validateRange(start, end);
+    final Map<String, String> query = <String, String>{
+      'page': page.clamp(1, 100).toString(),
+      'limit': limit.clamp(1, 100).toString(),
+      if (start != null) 'start': _date(start),
+      if (end != null) 'end': _date(end),
+      if (search.trim().isNotEmpty) 'search': _clean(search, 80),
+    };
+    void add(String key, String value, {int max = 80}) {
+      if (value.trim().isNotEmpty) query[key] = _clean(value, max);
+    }
+
+    // `filter` is retained for callers of the original API, while explicit
+    // fields ensure a workspace never sends a filter its endpoint ignores.
+    if (cleanFilter.isNotEmpty && filterKey != null) {
+      add(filterKey, cleanFilter, max: 40);
+    }
+    switch (module) {
+      case 'audit-logs':
+        add('action', action, max: 40);
+        add('status', status, max: 40);
+        add('actorId', actorId);
+        add('module', moduleFilter);
+        break;
+      case 'security-events':
+        add('eventType', eventType, max: 40);
+        add('severity', severity, max: 40);
+        add('status', workflow.isNotEmpty ? workflow : status, max: 40);
+        add('outcome', outcome, max: 40);
+        break;
+      case 'access-logs':
+        add('method', method, max: 16);
+        add('statusCode', statusCode, max: 3);
+        add('actorId', actorId);
+        add('path', path);
+        add('ip', ip);
+        break;
+      case 'privacy-controls':
+        add('status', status, max: 40);
+        add('type', type, max: 40);
+        add('subjectUser', subjectUser);
+        break;
+      case 'transaction-analytics':
+        add('serviceType', serviceType, max: 60);
+        add('status', status, max: 40);
+        add('provider', provider, max: 80);
+        add('branchId', branchId);
+        add('customerId', customerId);
+        break;
+      case 'customer-analytics':
+        add('status', status, max: 40);
+        add('state', state, max: 80);
+        add('role', role, max: 40);
+        add('kycStatus', kycStatus, max: 16);
+        break;
+    }
+    return _json(endpoint, query: query);
+  }
+
+  /// Updates the investigation workflow for a returned security event.
+  Future<Map<String, dynamic>> updateSecurityEvent(
+    String id, {
+    required String action,
+    required String note,
+  }) {
+    final String safeId = id.trim();
+    final String safeAction = action.trim().toUpperCase();
+    if (safeId.isEmpty ||
+        !const <String>['ACKNOWLEDGE', 'RESOLVE', 'REOPEN']
+            .contains(safeAction)) {
+      throw const AdminControlApiException(
+          0, 'Choose a valid security event action.');
+    }
+    if ((safeAction == 'ACKNOWLEDGE' || safeAction == 'RESOLVE') &&
+        note.trim().length < 10) {
+      throw const AdminControlApiException(
+          0, 'Provide an investigation note of at least 10 characters.');
+    }
+    return _requestJson(
+      'PATCH',
+      'security-events/${Uri.encodeComponent(safeId)}',
+      payload: <String, dynamic>{
+        'action': safeAction,
+        if (note.trim().isNotEmpty) 'note': _clean(note, 1000),
+      },
+    );
   }
 
   Future<AdminControlExport> exportDataset(
     String dataset, {
     DateTime? from,
     DateTime? to,
+    String status = '',
+    String service = '',
   }) async {
     final String safeDataset =
         dataset.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
     if (safeDataset.isEmpty) {
       throw const AdminControlApiException(0, 'Choose a valid dataset.');
     }
+    _validateRange(from, to);
     final http.Response response = await _request(
         'POST', 'exports/$safeDataset.csv',
         query: <String, String>{
           if (from != null) 'start': _date(from),
-          if (to != null) 'end': _endOfDay(to),
+          if (to != null) 'end': _date(to),
+          if (status.trim().isNotEmpty) 'status': _clean(status, 40),
+          if (service.trim().isNotEmpty) 'service': _clean(service, 60),
         },
         payload: <String, dynamic>{},
         headers: const <String, String>{
@@ -219,9 +318,21 @@ class AdminControlCenterApi {
 
   String _date(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-  String _endOfDay(DateTime value) =>
-      DateTime.utc(value.year, value.month, value.day, 23, 59, 59, 999)
-          .toIso8601String();
+  String _clean(String value, int maximum) {
+    final String trimmed = value.trim();
+    return trimmed.substring(0, trimmed.length.clamp(0, maximum).toInt());
+  }
+
+  void _validateRange(DateTime? start, DateTime? end) {
+    if (start != null && end != null) {
+      final DateTime first = DateTime(start.year, start.month, start.day);
+      final DateTime last = DateTime(end.year, end.month, end.day);
+      if (first.isAfter(last) || last.difference(first).inDays > 90) {
+        throw const AdminControlApiException(
+            0, 'Use dates spanning no more than 90 days.');
+      }
+    }
+  }
 
   void _check(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) {

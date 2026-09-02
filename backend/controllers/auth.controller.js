@@ -225,12 +225,22 @@ const recordLoginSecurityEvent = async (req, {
   outcome,
 }) => {
   try {
+    const normalizedIdentifier = String(identifier || "").trim().toLowerCase();
+    const failures = outcome === "FAILED" ? await LoginSecurityEvent.countDocuments({
+      identifier: normalizedIdentifier, outcome: "FAILED",
+      createdAt: { $gte: new Date(Date.now() - 15 * 60 * 1000) },
+    }) : 0;
     await LoginSecurityEvent.create({
       user: user?._id || null,
-      identifier: String(identifier || "").trim().toLowerCase(),
+      identifier: normalizedIdentifier,
       outcome,
+      eventType: outcome === "FAILED" ? "LOGIN_FAILED" : outcome === "REVOKED" ? "SESSION_REVOKED" : "LOGIN_SUCCESS",
+      severity: outcome === "FAILED" && failures >= 4 ? "HIGH" : outcome === "FAILED" ? "MEDIUM" : outcome === "REVOKED" ? "MEDIUM" : "LOW",
       ipAddress: String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim(),
       userAgent: String(req.headers["user-agent"] || "").slice(0, 1000),
+      // Successful authentication is informational and needs no investigation.
+      // Failed and revoked sessions remain actionable by default.
+      workflowStatus: outcome === "SUCCESS" ? "RESOLVED" : "OPEN",
     });
   } catch (error) {
     console.error("LOGIN SECURITY EVENT ERROR:", error.message);

@@ -101,6 +101,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("EMAIL_CAMPAIGN_HISTORY_VIEW", "email_campaign.history_view", "COMMUNICATIONS", "View email campaign history", "View customer email campaign status and safe delivery results."),
   permission("EMAIL_CAMPAIGN_MANAGE", "email_campaign.manage", "COMMUNICATIONS", "Manage email campaigns", "Delete drafts and cancel eligible campaigns.", "CRITICAL"),
   permission("AUDIT_VIEW", "audit.view", "AUDIT", "View audit logs", "View immutable Admin audit logs.", "PRIVILEGED"),
+  permission("AUDIT_MANAGE", "audit.manage", "AUDIT", "Manage security-event investigations", "Acknowledge, resolve, or reopen security events.", "PRIVILEGED"),
   permission("AUDIT_EXPORT", "audit.export", "AUDIT", "Export audit logs", "Export permitted audit records.", "PRIVILEGED"),
   permission("REPORTS_VIEW", "reports.view", "REPORTS", "View reports", "View permitted operational reports."),
   permission("REPORTS_EXPORT", "reports.export", "REPORTS", "Export reports", "Export permitted operational reports.", "PRIVILEGED"),

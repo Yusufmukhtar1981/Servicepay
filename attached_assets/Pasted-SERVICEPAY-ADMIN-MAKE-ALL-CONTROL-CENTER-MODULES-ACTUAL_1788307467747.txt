@@ -1,0 +1,325 @@
+SERVICEPAY ADMIN — MAKE ALL CONTROL CENTER MODULES ACTUALLY FUNCTIONAL (ONE COMPLETE FIX)
+
+The Admin deployment pipeline is now healthy and production deploys successfully, but the Control Center modules are STILL not functional in production.
+
+Current problem:
+The following pages still show placeholder/fallback states such as:
+- Capability: NOT CONFIGURED
+- Availability: NO LIVE WORKSPACE
+- Action: NONE
+- "A verified live workspace ... is not configured in the current backend."
+- "This module is intentionally unavailable until a real backend capability is connected."
+
+THIS IS NO LONGER A DEPLOYMENT TASK.
+Do not merely redesign these pages, rename labels, hide the warnings, hardcode fake numbers, or replace the placeholder text with fake success states.
+
+Your task is to implement the REAL backend capabilities, APIs, database queries, permissions, frontend integrations and production wiring required to make every module below genuinely functional using ServicePay's existing production data.
+
+MODULES TO COMPLETE:
+
+1. EXECUTIVE DASHBOARD
+Create a real executive dashboard backed by production APIs/database.
+Show live:
+- Total Customers
+- Active Customers
+- Total Agents/Aggregators
+- Total Managers
+- Total Branch Managers
+- Total Branches
+- Total customer wallet balance
+- Transaction volume/count
+- Transaction value
+- Successful transactions
+- Pending transactions
+- Failed transactions
+- Pending withdrawals
+- Pending KYC reviews
+- Pending Solar applications
+- Active Riders
+- Marketplace orders
+- Delivery operations
+- Solar operations
+- Phone financing
+- Empowerment
+- Amana
+- service health
+- recent operational activity
+- charts for transaction trends
+- product/service performance
+- date filters: Today, 7 Days, 30 Days, This Month, custom range
+
+No invented values. All metrics must come from existing production collections/services.
+
+2. TRANSACTION ANALYTICS
+Implement real analytics from ServicePay transaction data:
+- total count
+- total value
+- success/pending/failed
+- success rate
+- transaction type breakdown
+- daily/weekly/monthly trends
+- service/product breakdown
+- charts
+- date filtering
+- search/filter
+- drill-down into underlying transactions
+- CSV export
+
+3. CUSTOMER ANALYTICS
+Implement from real customer/user records:
+- total customers
+- active/inactive
+- new registrations
+- KYC tiers/status
+- verified/unverified
+- wallet balance aggregation
+- transaction-active customers
+- growth trends
+- customer activity
+- state/location breakdown where existing data supports it
+- date filtering and CSV export
+
+4. SERVICE PERFORMANCE
+Use actual transactions/orders/service records.
+Include all existing ServicePay products where data exists:
+Airtime, Data, Electricity, Cable TV, Exam PIN, NIN/ID Verification,
+Delivery, Marketplace, Solar, Phone Financing, Empowerment, Amana,
+ServicePay transfers and Withdrawals.
+
+For each service show:
+- transaction/request count
+- value where applicable
+- successful
+- pending
+- failed
+- success rate
+- recent activity
+- trend
+- backend/API operational status where genuinely measurable
+
+5. AUDIT LOGS
+Build a persistent server-side audit logging system.
+Record important admin/staff actions including:
+- actor user ID
+- actor name/email/role
+- action
+- target/resource
+- target ID
+- before/after values where appropriate and safe
+- IP if available
+- user agent/device if available
+- timestamp
+- status/result
+
+Provide Admin UI with:
+- pagination
+- search
+- date filters
+- actor filter
+- action filter
+- module filter
+- details view
+
+Do not expose passwords, PINs, tokens, secrets, API secrets or sensitive credentials in audit logs.
+
+6. ACCESS LOGS
+Implement real authentication/access event logging:
+- successful login
+- failed login
+- logout
+- password change/reset events
+- PIN reset events where appropriate
+- account lock/security access events
+- actor/user
+- role
+- IP where available
+- device/user-agent
+- timestamp
+- result
+
+Add pagination, filtering, search and details.
+
+Never store raw passwords, PINs, OTPs, JWTs or secrets.
+
+7. SECURITY EVENTS
+Create genuine security-event detection/storage based on events ServicePay can actually observe.
+Include where supported:
+- repeated failed login attempts
+- account lock events
+- suspicious authentication attempts
+- permission/authorization failures
+- unusual admin actions
+- repeated PIN failures
+- critical configuration/security changes
+
+Provide:
+- severity
+- event type
+- actor/user
+- timestamp
+- status
+- investigation details
+- acknowledgement/resolution workflow
+
+Do not fabricate security events.
+
+8. DATA EXPORTS
+Implement working exports for authorized HEAD_OFFICE users:
+- Transactions
+- Customers
+- KYC
+- Withdrawals
+- Deliveries
+- Marketplace
+- Solar
+- Financing
+- Empowerment
+- Branches
+- Staff
+- Audit Logs
+where data exists.
+
+CSV export must actually download.
+Apply current filters/date ranges.
+Enforce permissions server-side.
+Never export passwords, PIN hashes, OTPs, auth tokens, API secrets or prohibited sensitive fields.
+
+9. BACKUPS
+Do NOT create a fake backup system.
+
+First inspect the actual production database/storage architecture.
+If the current infrastructure provides a safe supported backup mechanism that can be controlled from ServicePay, implement:
+- backup status
+- last successful backup
+- backup history
+- failure status
+- authorized manual backup trigger only if genuinely supported and safe.
+
+If backup execution belongs to the managed database provider and cannot safely be triggered by this application, build an honest read-only backup status/instructions integration instead of pretending a backup occurred.
+
+Never expose database credentials.
+
+10. PRIVACY CONTROLS
+Implement genuine privacy/administrative controls supported by the existing system:
+- customer data export request tracking
+- account/data deletion request workflow where legally/technically appropriate
+- privacy request statuses
+- admin review
+- audit trail
+- retention/configuration controls only where the backend genuinely supports enforcement
+
+Do not add cosmetic toggles that have no backend effect.
+
+ARCHITECTURE REQUIREMENTS:
+
+A. Inspect the CURRENT production backend first.
+Reuse existing:
+- models
+- collections
+- transaction records
+- users
+- roles
+- branches
+- deliveries
+- marketplace
+- KYC
+- Solar
+- financing
+- Empowerment
+- Amana
+- withdrawals
+and existing API conventions.
+
+B. Create missing backend routes/services/models only where required.
+
+C. Every Admin page must call real backend APIs.
+Remove the generic placeholder implementation ONLY after its replacement has a verified live backend capability.
+
+D. Authorization:
+These Control Center capabilities are HEAD_OFFICE/admin restricted.
+Enforce permissions on BOTH frontend and backend.
+Never rely only on hiding menu items.
+
+E. Security:
+Never return or log:
+- password/password hashes
+- transaction PIN/PIN hashes
+- OTPs
+- JWTs
+- API secrets
+- provider secret keys
+- database credentials.
+
+F. Performance:
+Use server-side aggregation/pagination.
+Do not download entire production collections into the browser to calculate analytics.
+Add sensible indexes where necessary and safe.
+Avoid expensive unbounded queries.
+
+G. Compatibility:
+Do not break:
+- customer app
+- Admin
+- Branch Dashboard
+- Rider
+- Marketplace
+- Delivery
+- Solar
+- Financing
+- Empowerment
+- Amana
+- existing authentication
+- existing wallet/transaction flows.
+
+H. REPOSITORY/DEPLOYMENT SAFETY:
+The previous root cause involved an outdated standalone servicepay_admin snapshot.
+Before coding, verify exactly which repository/source tree deploys:
+1. api.servicepay.ng
+2. admin.servicepay.ng
+
+Make changes in the authoritative repositories only.
+Do NOT repair a stale copy while production deploys another copy.
+
+I. VALIDATION:
+Before declaring success:
+- run backend tests/checks
+- run Flutter pub get
+- run flutter analyze
+- build Admin web release
+- test relevant API endpoints with authenticated HEAD_OFFICE access
+- verify unauthorized roles receive 401/403 as appropriate
+- deploy backend if backend changed
+- wait until backend production deployment succeeds
+- deploy Admin
+- wait until Admin production deployment succeeds
+- verify admin.servicepay.ng against the NEW build
+- verify APIs are returning REAL production-derived data
+- open and test EVERY module listed above in production
+
+IMPORTANT:
+A green GitHub workflow alone is NOT completion.
+
+Completion requires every listed module to stop showing:
+"NOT CONFIGURED"
+"NO LIVE WORKSPACE"
+"Action NONE"
+
+and instead render its genuine operational workspace backed by real production APIs.
+
+Do not report success from source inspection or local build alone.
+
+FINAL REPORT REQUIRED:
+For every module, report:
+1. backend endpoint(s)
+2. frontend screen integrated
+3. production data source/model
+4. permission enforced
+5. production test result
+6. deployment commit(s)
+7. backend deployment status
+8. Admin GitHub Actions run/status
+9. production URL verification
+
+If any capability cannot truthfully be implemented because the production infrastructure does not provide it, explicitly identify that capability and the exact infrastructure dependency required. Do not fake it.
+
+Start now and complete this as one end-to-end repair.

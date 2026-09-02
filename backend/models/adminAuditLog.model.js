@@ -160,6 +160,7 @@ const adminAuditLogSchema =
             "PRIVACY_REQUEST_CREATED",
             "PRIVACY_REQUEST_UPDATED",
             "DATA_EXPORT_CREATED",
+             "SECURITY_EVENT_UPDATED",
         ],
       },
 
