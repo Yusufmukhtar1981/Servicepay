@@ -64,7 +64,7 @@ test("control center wires real operational models and safe operational contract
     assert.match(source, new RegExp(`const ${model} = require`)));
   ["FINANCING: [PhoneFinance", "EMPOWERMENT: [EmpowermentDisbursement",
     "AMANA: [AmanaOrder", "operationalRollup", "activeRiders", "walletBalance",
-    "transactionActiveCustomers", "pagination"].forEach((contract) =>
+    "transactionActiveCustomers", "pagination", "workforce: workforceSummary"].forEach((contract) =>
     assert.match(source, new RegExp(contract.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
   assert.match(routes, /patch\("\/control-center\/security-events\/:id"/);
   ["eventType", "severity", "workflowStatus", "acknowledgedAt", "resolvedAt",

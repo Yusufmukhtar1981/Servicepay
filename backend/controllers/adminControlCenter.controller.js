@@ -306,7 +306,25 @@ exports.executiveAnalytics = async (req, res, next) => { try {
   ]);
   const tx = transactionTotals[0] || { count: 0, value: 0, successful: 0, pending: 0, failed: 0, refunded: 0, other: 0 }; tx.successRate = tx.count ? tx.successful * 100 / tx.count : 0;
   const customer = customers[0] || { total: 0, active: 0, verified: 0, new: 0 }; customer.inactive = customer.total - customer.active; customer.unverified = customer.total - customer.verified;
-  return res.json({ success: true, data: { customers: customer, workforce, branches, activeRiders, walletBalance: wallet[0]?.value || 0, transactions: tx, transactionTrend, operations, recentActivity: recentActivity.map(clean), pendingOperations: { withdrawals: pendingWithdrawals, kyc: pendingKyc, solar: pendingSolar, deliveries: pendingDeliveries } } });
+  const workforceSummary = {
+    agents: 0,
+    aggregators: 0,
+    stateManagers: 0,
+    zonalManagers: 0,
+    branchManagers: 0,
+  };
+  const workforceFields = {
+    AGENT: "agents",
+    AGGREGATOR: "aggregators",
+    STATE_MANAGER: "stateManagers",
+    ZONAL_MANAGER: "zonalManagers",
+    BRANCH_MANAGER: "branchManagers",
+  };
+  workforce.forEach((row) => {
+    const field = workforceFields[row._id];
+    if (field) workforceSummary[field] = row.count;
+  });
+  return res.json({ success: true, data: { customers: customer, workforce: workforceSummary, branches, activeRiders, walletBalance: wallet[0]?.value || 0, transactions: tx, transactionTrend, operations, recentActivity: recentActivity.map(clean), pendingOperations: { withdrawals: pendingWithdrawals, kyc: pendingKyc, solar: pendingSolar, deliveries: pendingDeliveries } } });
 } catch (e) { next(e); } };
 exports.serviceAnalytics = async (req, res, next) => { try {
   const range = dates(req, res); if (!range) return;
