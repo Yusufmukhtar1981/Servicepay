@@ -11,10 +11,12 @@ import 'admin_amana_screen.dart';
 import 'admin_control_center_screen.dart';
 import 'admin_customer_withdrawals_screen.dart';
 import 'admin_delivery_management_screen.dart';
+import '../logistics/logistics_operations_screens.dart';
 import 'admin_list_workspaces.dart';
 import 'admin_marketplace_screen.dart';
 import 'admin_phone_financing_screen.dart';
 import 'admin_airtime_to_cash_screen.dart';
+import 'admin_branch_management_screen.dart';
 import 'admin_solar_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
@@ -44,6 +46,16 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.dashboard_rounded,
         <String>[AdminPermissions.dashboardView],
         AdminDashboardScreen()),
+    _AdminDestination(
+        'Branches',
+        Icons.account_tree_outlined,
+        Icons.account_tree,
+        <String>[
+          AdminPermissions.branchesView,
+          AdminPermissions.branchDashboardView,
+          AdminPermissions.branchesApprovalsView,
+        ],
+        AdminBranchManagementScreen()),
     _AdminDestination(
         'Funding',
         Icons.account_balance_wallet_outlined,
@@ -100,6 +112,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.local_shipping,
         <String>[AdminPermissions.deliveryView],
         AdminDeliveryManagementScreen()),
+    _AdminDestination(
+        'Logistics',
+        Icons.local_shipping_outlined,
+        Icons.local_shipping_rounded,
+        <String>[AdminPermissions.logisticsView, AdminPermissions.logisticsManage],
+        AdminLogisticsScreen()),
     _AdminDestination(
         'Marketplace',
         Icons.storefront_outlined,

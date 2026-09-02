@@ -135,6 +135,12 @@ const phoneFinancingRoutes = require("./routes/phoneFinancing.routes");
 const businessPartnerRoutes = require("./routes/businessPartner.routes");
 const adminAssignmentsRoutes = require("./routes/adminAssignments.routes");
 const branchRoutes = require("./routes/branch.routes");
+const interstateLogisticsRoutes = require("./routes/interstateLogistics.routes");
+const adminInterstateLogisticsRoutes = require("./routes/adminInterstateLogistics.routes");
+const adminLogisticsRoutes = require("./routes/adminLogisticsRoutes.routes");
+const branchInterstateLogisticsRoutes = require("./routes/branchInterstateLogistics.routes");
+const riderInterstateLogisticsRoutes = require("./routes/riderInterstateLogistics.routes");
+const transportLogisticsRoutes = require("./routes/transportLogistics.routes");
 
 app.use(helmet());
 app.use(cors());
@@ -326,6 +332,17 @@ app.use("/api/phone-financing", phoneFinancingRoutes);
 app.use("/api/business-partner", businessPartnerRoutes);
 app.use("/api/admin/assignments", adminAssignmentsRoutes);
 app.use("/api/branches", branchRoutes);
+/* Interstate logistics is additive; legacy /api/delivery remains untouched. */
+app.use("/api/logistics/interstate", interstateLogisticsRoutes);
+app.use("/api/admin/logistics/interstate", adminInterstateLogisticsRoutes);
+app.use("/api/admin/logistics/routes", adminLogisticsRoutes);
+app.use("/api/branch/logistics/interstate", branchInterstateLogisticsRoutes);
+app.use("/api/rider/logistics/interstate", riderInterstateLogisticsRoutes);
+// Operations dashboard compatibility paths. They use the identical guarded routers.
+app.use("/api/admin/logistics", adminInterstateLogisticsRoutes);
+app.use("/api/branch/logistics", branchInterstateLogisticsRoutes);
+app.use("/api/rider/logistics", riderInterstateLogisticsRoutes);
+app.use("/api/logistics/transport", transportLogisticsRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,

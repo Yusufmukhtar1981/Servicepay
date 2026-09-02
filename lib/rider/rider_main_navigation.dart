@@ -11,6 +11,7 @@ import 'rider_withdrawal_screen.dart';
 
 import 'rider_transaction_pin_screen.dart';
 import 'rider_delivery_alert_service.dart';
+import '../logistics/logistics_operations_screens.dart';
 
 class RiderApi {
   static const String baseUrl = 'https://api.servicepay.ng/api';
@@ -297,7 +298,8 @@ class RiderApi {
  * 1. Keke
  * 2. Deliveries
  * 3. Earnings
- * 4. Profile
+ * 4. Interstate
+ * 5. Profile
  */
 class RiderMainNavigation extends StatefulWidget {
   const RiderMainNavigation({
@@ -321,6 +323,7 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
       KekeDriverScreen(),
       RiderDeliveriesScreen(),
       RiderEarningsScreen(),
+      RiderInterstateDeliveriesScreen(),
       RiderProfileScreen(),
     ];
     RiderDeliveryAlertService.activate(
@@ -560,6 +563,15 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
               Icons.account_balance_wallet_rounded,
             ),
             label: 'Earnings',
+          ),
+          NavigationDestination(
+            icon: Icon(
+              Icons.route_outlined,
+            ),
+            selectedIcon: Icon(
+              Icons.route_rounded,
+            ),
+            label: 'Interstate',
           ),
           NavigationDestination(
             icon: Icon(

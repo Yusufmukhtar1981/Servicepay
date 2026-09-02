@@ -23,6 +23,8 @@ abstract final class AdminPermissions {
   static const withdrawalsView = 'withdrawals.view';
   static const financeView = 'finance.view';
   static const deliveryView = 'delivery.view';
+  static const logisticsView = 'logistics.view';
+  static const logisticsManage = 'logistics.manage';
   static const marketplaceView = 'marketplace.view';
   static const solarView = 'solar.view';
   static const phoneFinancingView = 'phone_financing.view';
@@ -59,6 +61,35 @@ abstract final class AdminPermissions {
   static const fraudRiskRestrict = 'fraud_risk.restrict';
   static const reportsView = 'reports.view';
   static const reportsExport = 'reports.export';
+
+  // Canonical branch-management permissions supplied by the API.
+  static const branchesView = 'branches.view';
+  static const branchesManage = 'branches.manage';
+  static const branchesTargetsManage = 'branches.targets.manage';
+  static const branchesApprovalsView = 'branches.approvals.view';
+  static const branchesApprovalsManage = 'branches.approvals.manage';
+  static const branchesReportsView = 'branches.reports.view';
+  static const branchesStaffManage = 'branches.staff.manage';
+  static const branchDashboardView = 'branch.dashboard.view';
+  static const branchStaffView = 'branch.staff.view';
+  static const branchStaffManage = 'branch.staff.manage';
+  static const branchCustomersView = 'branch.customers.view';
+  static const branchCustomersCreate = 'branch.customers.create';
+  static const branchDeliveryView = 'branch.delivery.view';
+  static const branchDeliveryManage = 'branch.delivery.manage';
+  static const branchSolarView = 'branch.solar.view';
+  static const branchSolarManage = 'branch.solar.manage';
+  static const branchMarketplaceView = 'branch.marketplace.view';
+  static const branchMarketplaceManage = 'branch.marketplace.manage';
+  static const branchPhoneView = 'branch.phone.view';
+  static const branchPhoneManage = 'branch.phone.manage';
+  static const branchEmpowermentView = 'branch.empowerment.view';
+  static const branchEmpowermentManage = 'branch.empowerment.manage';
+  static const branchTargetsView = 'branch.targets.view';
+  static const branchApprovalsView = 'branch.approvals.view';
+  static const branchApprovalsSubmit = 'branch.approvals.submit';
+  static const branchReportsView = 'branch.reports.view';
+  static const branchFinanceView = 'branch.finance.view';
 }
 
 class AdminAccess {

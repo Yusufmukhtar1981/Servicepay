@@ -9,6 +9,7 @@ import '../notifications_screen.dart';
 import 'branch_manager_operations_screen.dart';
 import 'branch_manager_dashboard_api.dart';
 import 'branch_manager_staff_screen.dart';
+import '../logistics/logistics_operations_screens.dart';
 import '../login_screen.dart';
 
 class BranchManagerDashboardScreen extends StatefulWidget {
@@ -344,6 +345,14 @@ class _BranchManagerDashboardScreenState
           'Rider directory',
           'riders',
           Icons.two_wheeler_outlined,
+        ),
+      if (_has('branch.logistics.view') ||
+          _has('branch.logistics.manage') ||
+          _moduleAssigned('LOGISTICS'))
+        const _ActionData(
+          'Interstate logistics',
+          'logistics',
+          Icons.local_shipping_outlined,
         ),
       if (_has('branch.reports.view'))
         const _ActionData(
@@ -1638,6 +1647,12 @@ class _BranchManagerDashboardScreenState
             ),
           ),
         ),
+      );
+      return;
+    }
+    if (action == 'logistics') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const BranchLogisticsScreen()),
       );
       return;
     }

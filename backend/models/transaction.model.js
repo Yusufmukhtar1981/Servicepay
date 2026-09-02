@@ -69,6 +69,7 @@ const transactionSchema =
            "PHONE_FINANCING_INSTALLMENT",
            "PHONE_FINANCING_REFUND",
            "PROTECTED_DEAL",
+           "INTERSTATE_LOGISTICS",
         ],
         required: true,
         index: true,
