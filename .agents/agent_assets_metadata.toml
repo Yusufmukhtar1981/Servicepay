@@ -28,3 +28,17 @@ mtime_ms = 1788433947438
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:72276743-721a-4a04-8411-e33fbed2e854/1dc9f8b7-fb95-48dd-9358-ca1724901a6b/d8a6811a-9ace-4e45-bcd5-f1ce3aa9ce03"
 storage_version_token = "1788434033635009"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "GNzf19IDDaE23kzR26Ilq"
+uri = "file://release/app-release-v2.aab"
+type = "unspecified"
+title = "ServicePay Android Production AAB v2"
+description = "Verified production release for ng.servicepay.app targeting Android API 36, version 1.0.0 (2), signed with the existing ServicePay upload key."
+logical_id = "47208982-1dfa-420f-a4dc-30e3de1ae9b0"
+content_hash = "sha256:7d925a5e5099a8c5bb0db0e9fa0d22902195388e4b04c92cae11b136bab3a51c"
+size = 91316887
+mtime_ms = 1788442413663
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:72276743-721a-4a04-8411-e33fbed2e854/47208982-1dfa-420f-a4dc-30e3de1ae9b0/0d2991d8-4255-42b3-9b39-9c6b78b49cba"
+storage_version_token = "1788442500622465"
+content_type = "application/octet-stream"
