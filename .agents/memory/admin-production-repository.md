@@ -14,3 +14,9 @@ The Admin Pages workflow analyzes test code before building. When a production i
 **Why:** A valid Admin build was blocked by a stale Delivery API fake, and the corrective test-only push did not start a replacement deployment.
 
 **How to apply:** Run the repository's exact analyze command before pushing. Include interface/test-double compatibility with the triggering `lib/**` change, or make a harmless `lib/**` follow-up if a corrected latest-main deployment must be triggered.
+
+Complete Admin screens can silently disappear from production when they remain on disk but are no longer imported and registered in the authoritative navigation; Flutter then tree-shakes them from the web bundle.
+
+**Why:** Transaction Intelligence retained its screen, models, API client, permissions, and live backend routes, but a navigation rewrite omitted its import and destination.
+
+**How to apply:** Treat normal Transactions and Transaction Intelligence as independent permission-gated destinations. Test full-access roles and explicit staff permissions, then confirm both labels exist in the deployed `main.dart.js`.
