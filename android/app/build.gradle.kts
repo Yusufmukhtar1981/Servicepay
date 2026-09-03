@@ -21,7 +21,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.servicepay_app"
+    namespace = "ng.servicepay.app"
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
@@ -32,7 +32,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.servicepay_app"
+        applicationId = "ng.servicepay.app"
 
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
