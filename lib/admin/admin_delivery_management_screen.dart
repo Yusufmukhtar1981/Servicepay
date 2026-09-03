@@ -19,6 +19,7 @@ class _AdminDeliveryManagementScreenState
     extends State<AdminDeliveryManagementScreen> {
   late final AdminDeliveryApiClient _api;
   final List<String> _statuses = const <String>[
+    'ALL',
     'PENDING',
     'ASSIGNED',
     'ACCEPTED',
@@ -27,9 +28,10 @@ class _AdminDeliveryManagementScreenState
     'DELIVERED',
     'CANCELLED',
     'FAILED',
+    'REFUNDED',
   ];
   List<Map<String, dynamic>> _deliveries = <Map<String, dynamic>>[];
-  String _status = 'PENDING';
+  String _status = 'ALL';
   String _error = '';
   bool _loading = true;
 
@@ -291,7 +293,9 @@ class _AdminDeliveryManagementScreenState
                     : _deliveries.isEmpty
                         ? _messageState(
                             icon: Icons.inventory_2_outlined,
-                            title: 'No ${_status.toLowerCase()} deliveries',
+                            title: _status == 'ALL'
+                                ? 'No deliveries'
+                                : 'No ${_status.toLowerCase()} deliveries',
                           )
                         : RefreshIndicator(
                             onRefresh: _loadDeliveries,

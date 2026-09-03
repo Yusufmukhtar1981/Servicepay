@@ -22,6 +22,7 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
   int riderLoadCount = 0;
   int assignmentCount = 0;
   bool assigned = false;
+  final List<String> requestedStatuses = <String>[];
 
   final Map<String, dynamic> delivery = <String, dynamic>{
     '_id': 'delivery-1',
@@ -42,9 +43,18 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
 
   @override
   Future<List<Map<String, dynamic>>> getDeliveries({
-    String status = 'PENDING',
+    String status = 'ALL',
   }) async {
-    if (assigned && status == 'PENDING') return <Map<String, dynamic>>[];
+    requestedStatuses.add(status);
+    if (assigned) {
+      return <Map<String, dynamic>>[
+        <String, dynamic>{
+          ...delivery,
+          'status': 'ASSIGNED',
+          'assignedRiderId': rider,
+        },
+      ];
+    }
     return <Map<String, dynamic>>[delivery];
   }
 
@@ -157,6 +167,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(api.requestedStatuses, <String>['ALL']);
     expect(find.text('SP-DELIVERY-1'), findsOneWidget);
     await tester.tap(find.byKey(const Key('assign-rider-delivery-1')));
     await tester.pumpAndSettle();
@@ -169,7 +180,29 @@ void main() {
 
     expect(api.assignmentCount, 1);
     expect(find.text('Rider assigned successfully.'), findsOneWidget);
-    expect(find.text('No pending deliveries'), findsOneWidget);
+    expect(find.text('ASSIGNED'), findsOneWidget);
+  });
+
+  test('delivery list omits an ALL status query', () async {
+    final MockClient client = MockClient((http.Request request) async {
+      expect(
+        request.url.toString(),
+        'https://api.servicepay.ng/api/admin/deliveries?page=1&limit=100',
+      );
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{'deliveries': <Map<String, dynamic>>[]},
+        }),
+        200,
+      );
+    });
+
+    final AdminDeliveryApi api = AdminDeliveryApi(
+      client: client,
+      tokenLoader: () async => 'admin-token',
+    );
+    expect(await api.getDeliveries(), isEmpty);
   });
 
   testWidgets('failed rider loading can be retried inside the modal',

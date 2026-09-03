@@ -19,6 +19,8 @@ class _BranchApi implements AdminBranchManagementApi {
   Future<void> assignManager(String branchId, String userId,
       {String? jobTitle}) async {}
   @override
+  Future<void> removeManager(String branchId) async {}
+  @override
   Future<void> assignMember(String branchId, String userId,
       {String? jobTitle}) async {}
   @override

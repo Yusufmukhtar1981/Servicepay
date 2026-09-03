@@ -47,7 +47,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         <String>[AdminPermissions.dashboardView],
         AdminDashboardScreen()),
     _AdminDestination(
-        'Branches',
+        'Branch Management',
         Icons.account_tree_outlined,
         Icons.account_tree,
         <String>[
@@ -116,7 +116,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         'Logistics',
         Icons.local_shipping_outlined,
         Icons.local_shipping_rounded,
-        <String>[AdminPermissions.logisticsView, AdminPermissions.logisticsManage],
+        <String>[
+          AdminPermissions.logisticsView,
+          AdminPermissions.logisticsManage
+        ],
         AdminLogisticsScreen()),
     _AdminDestination(
         'Marketplace',

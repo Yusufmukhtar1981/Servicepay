@@ -21,6 +21,7 @@ exports.getAdminDashboardExport = getDashboardExport;
 
 const DELIVERY_STATUSES = [
   "PENDING",
+  "ASSIGNED",
   "ACCEPTED",
   "PICKED_UP",
   "IN_TRANSIT",
@@ -28,6 +29,32 @@ const DELIVERY_STATUSES = [
   "CANCELLED",
   "FAILED",
 ];
+
+const TRANSACTION_STATUS_FILTERS = Object.freeze({
+  SUCCESS: ["SUCCESS", "SUCCESSFUL", "COMPLETED", "APPROVED"],
+  SUCCESSFUL: ["SUCCESS", "SUCCESSFUL", "COMPLETED", "APPROVED"],
+  COMPLETED: ["SUCCESS", "SUCCESSFUL", "COMPLETED", "APPROVED"],
+  APPROVED: ["SUCCESS", "SUCCESSFUL", "COMPLETED", "APPROVED"],
+  PENDING: ["PENDING", "PROCESSING"],
+  PROCESSING: ["PENDING", "PROCESSING"],
+  FAILED: ["FAILED", "CANCELLED", "REJECTED"],
+  REVERSED: ["REVERSED", "REFUNDED"],
+  REFUNDED: ["REVERSED", "REFUNDED"],
+});
+
+const DELIVERY_STATUS_FILTERS = Object.freeze({
+  PENDING: ["PENDING", "CREATED", "AWAITING_ASSIGNMENT"],
+  ASSIGNED: ["ASSIGNED", "RIDER_ASSIGNED"],
+  ACCEPTED: ["ACCEPTED", "RIDER_ACCEPTED"],
+  PICKED_UP: ["PICKED_UP", "PICKEDUP", "COLLECTED"],
+  IN_TRANSIT: ["IN_TRANSIT", "INTRANSIT", "ON_THE_WAY"],
+  DELIVERED: ["DELIVERED", "COMPLETED"],
+  COMPLETED: ["DELIVERED", "COMPLETED"],
+  CANCELLED: ["CANCELLED", "CANCELED"],
+  CANCELED: ["CANCELLED", "CANCELED"],
+  FAILED: ["FAILED", "DELIVERY_FAILED"],
+  REFUNDED: ["REFUNDED"],
+});
 
 const toPositiveInteger = (
   value,
@@ -55,6 +82,19 @@ const normalizeDeliveryStatus = (value = "") => {
     .trim()
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
+};
+
+const canonicalDeliveryStatus = (value = "") => {
+  const normalized = normalizeDeliveryStatus(value);
+  if (["CREATED", "AWAITING_ASSIGNMENT"].includes(normalized)) return "PENDING";
+  if (normalized === "RIDER_ASSIGNED") return "ASSIGNED";
+  if (normalized === "RIDER_ACCEPTED") return "ACCEPTED";
+  if (["PICKEDUP", "COLLECTED"].includes(normalized)) return "PICKED_UP";
+  if (["INTRANSIT", "ON_THE_WAY"].includes(normalized)) return "IN_TRANSIT";
+  if (normalized === "COMPLETED") return "DELIVERED";
+  if (normalized === "CANCELED") return "CANCELLED";
+  if (normalized === "DELIVERY_FAILED") return "FAILED";
+  return normalized;
 };
 
 const deliveryBranchFilter = (req) => {
@@ -481,11 +521,9 @@ exports.getAdminTransactions = async (
       req.query.search ?? ""
     ).trim();
 
-    const status = String(
+    const status = normalizeDeliveryStatus(
       req.query.status ?? ""
-    )
-      .trim()
-      .toUpperCase();
+    );
 
     const serviceType = String(
       req.query.serviceType ??
@@ -498,39 +536,9 @@ exports.getAdminTransactions = async (
     const filter = {};
 
     if (status && status !== "ALL") {
-      if (status === "SUCCESSFUL") {
-        filter.status = {
-          $in: [
-            "SUCCESS",
-            "SUCCESSFUL",
-            "COMPLETED",
-            "APPROVED",
-          ],
-        };
-      } else if (status === "FAILED") {
-        filter.status = {
-          $in: [
-            "FAILED",
-            "CANCELLED",
-            "REJECTED",
-          ],
-        };
-      } else if (status === "PENDING") {
-        filter.status = {
-          $in: [
-            "PENDING",
-            "PROCESSING",
-          ],
-        };
-      } else if (status === "REVERSED") {
-        filter.status = {
-          $in: [
-            "REVERSED",
-            "REFUNDED",
-          ],
-        };
-      } else {
-        filter.status = status;
+      const acceptedStatuses = TRANSACTION_STATUS_FILTERS[status];
+      if (acceptedStatuses) {
+        filter.status = { $in: acceptedStatuses };
       }
     }
 
@@ -624,11 +632,6 @@ exports.getAdminTransactions = async (
             customerId: {
               $in: userIds,
             },
-          },
-          {
-            userId: {
-              $in: userIds,
-            },
           }
         );
       }
@@ -643,10 +646,6 @@ exports.getAdminTransactions = async (
       Transaction.find(filter)
         .populate(
           "customerId",
-          "fullName name email phone role status"
-        )
-        .populate(
-          "userId",
           "fullName name email phone role status"
         )
         .sort({
@@ -995,19 +994,10 @@ exports.getAdminDeliveries = async (
     const filter = { ...deliveryBranchFilter(req) };
 
     if (status && status !== "ALL") {
-      if (
-        !DELIVERY_STATUSES.includes(status)
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid delivery status.",
-          allowedStatuses:
-            DELIVERY_STATUSES,
-        });
+      const acceptedStatuses = DELIVERY_STATUS_FILTERS[status];
+      if (acceptedStatuses) {
+        filter.status = { $in: acceptedStatuses };
       }
-
-      filter.status = status;
     }
 
     if (search) {
@@ -1107,6 +1097,7 @@ exports.getAdminDeliveries = async (
       filteredTotal,
       totalDeliveries,
       pendingDeliveries,
+      assignedDeliveries,
       acceptedDeliveries,
       pickedUpDeliveries,
       inTransitDeliveries,
@@ -1137,6 +1128,10 @@ exports.getAdminDeliveries = async (
 
       Delivery.countDocuments({
         status: "PENDING",
+      }),
+
+      Delivery.countDocuments({
+        status: "ASSIGNED",
       }),
 
       Delivery.countDocuments({
@@ -1188,6 +1183,11 @@ exports.getAdminDeliveries = async (
       ]),
     ]);
 
+    const normalizedDeliveries = deliveries.map((delivery) => ({
+      ...delivery,
+      status: canonicalDeliveryStatus(delivery.status),
+    }));
+
     const totalPages = Math.max(
       1,
       Math.ceil(
@@ -1204,13 +1204,13 @@ exports.getAdminDeliveries = async (
         "Deliveries loaded successfully.",
 
       data: {
-        deliveries,
+        deliveries: normalizedDeliveries,
 
         summary: {
           total: totalDeliveries,
           pending: pendingDeliveries,
           accepted: acceptedDeliveries,
-          assigned: acceptedDeliveries,
+          assigned: assignedDeliveries,
           pickedUp: pickedUpDeliveries,
           inTransit: inTransitDeliveries,
           delivered: deliveredDeliveries,
