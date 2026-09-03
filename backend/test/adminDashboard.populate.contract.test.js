@@ -10,3 +10,12 @@ test("Admin dashboard only populates current Transaction relationships", () => {
   assert.match(dashboard, /\.populate\(\s*"customerId"/);
   assert.doesNotMatch(dashboard, /\.populate\(\s*"userId"/);
 });
+
+test("Admin transaction list only populates current Transaction relationships", () => {
+  const source = fs.readFileSync(require.resolve("../controllers/admin.controller"), "utf8");
+  const start = source.indexOf("exports.getAdminTransactions =");
+  const end = source.indexOf("exports.unassignRiderFromDelivery", start);
+  const transactions = source.slice(start, end);
+  assert.match(transactions, /\.populate\(\s*"customerId"/);
+  assert.doesNotMatch(transactions, /\.populate\(\s*"userId"/);
+});

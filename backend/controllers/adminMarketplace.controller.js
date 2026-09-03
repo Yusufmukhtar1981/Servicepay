@@ -34,16 +34,20 @@ exports.listMarketplaceProducts = async (req, res) => {
     const filter = branchFilter(req);
 
     if (status) {
-      const normalizedStatus = String(status).trim().toUpperCase();
+      const requestedStatus = String(status).trim().toUpperCase();
+      const normalizedStatus =
+        requestedStatus === 'APPROVED' ? 'ACTIVE' : requestedStatus;
 
-      if (!allowedStatuses.has(normalizedStatus)) {
+      if (normalizedStatus !== 'ALL' && !allowedStatuses.has(normalizedStatus)) {
         return res.status(400).json({
           success: false,
           message: 'Invalid Marketplace product status.',
         });
       }
 
-      filter.status = normalizedStatus;
+      if (normalizedStatus !== 'ALL') {
+        filter.status = normalizedStatus;
+      }
     }
 
     if (String(q || '').trim()) {

@@ -75,8 +75,15 @@ router.get("/control-center/analytics/services", ...controlCenterBase, requirePe
 router.get("/control-center/analytics/transactions", ...controlCenterBase, requirePermission(P.TRANSACTIONS_VIEW), controlCenter.transactionAnalytics);
 router.get("/control-center/analytics/customers", ...controlCenterBase, requirePermission(P.USERS_VIEW), controlCenter.customerAnalytics);
 
-const MANAGEMENT_ROLES = [
+const HEAD_OFFICE_ROLES = [
   "HEAD_OFFICE",
+  "ADMIN",
+  "SUPER_ADMIN",
+  "HEAD_OFFICE_ADMIN",
+];
+
+const MANAGEMENT_ROLES = [
+  ...HEAD_OFFICE_ROLES,
   "ZONAL_MANAGER",
   "STATE_MANAGER",
 ];
@@ -186,7 +193,7 @@ router.patch(
 router.get(
   "/transactions",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...HEAD_OFFICE_ROLES),
   getAdminTransactions
 );
 

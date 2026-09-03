@@ -53,11 +53,35 @@ const audit = async (req, action, reason, metadata = {}, before = null, after = 
 };
 const page = (req) => Math.max(1, Number(req.query.page) || 1);
 const headOffice = (req, res) => req.staffAccess.isHeadOffice || (res.status(403).json({ success: false, message: "Head Office access only." }), false);
-const dateFilter = (req) => {
+const lagosDayBoundary = (value, nextDay = false) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return null;
+  const boundary = new Date(Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]) + (nextDay ? 1 : 0),
+    -1,
+  ));
+  return Number.isNaN(+boundary) ? null : boundary;
+};
+const requestedDateRange = (req) => {
   const range = {};
-  if (req.query.startDate) { const date = new Date(req.query.startDate); if (!Number.isNaN(+date)) range.$gte = date; }
-  if (req.query.endDate) { const date = new Date(req.query.endDate); if (!Number.isNaN(+date)) { date.setHours(23, 59, 59, 999); range.$lte = date; } }
+  const start = lagosDayBoundary(req.query.startDate);
+  const end = lagosDayBoundary(req.query.endDate, true);
+  if (start) range.$gte = start;
+  if (end) range.$lt = end;
+  return range;
+};
+const dateFilter = (req) => {
+  const range = requestedDateRange(req);
   return Object.keys(range).length ? { createdAt: range } : {};
+};
+const targetDateFilter = (req) => {
+  const range = requestedDateRange(req);
+  const filter = {};
+  if (range.$gte) filter.endDate = { $gte: range.$gte };
+  if (range.$lt) filter.startDate = { $lt: range.$lt };
+  return filter;
 };
 const scoped = (branchId, req, extra = {}) => ({ branchId, ...dateFilter(req), ...extra });
 const groupedStatuses = async (Model, filter) => Object.fromEntries((await Model.aggregate([
@@ -122,6 +146,18 @@ const dashboardAccess = (req, section) => {
   if (req.staffAccess?.isHeadOffice || !modules[section]) return true;
   return (req.branchScope?.assignedModules || []).map((v) => String(v).toUpperCase())
     .includes(modules[section]);
+};
+const permittedRevenue = (req, metrics) => {
+  const sections = [
+    ["transactions", metrics.transactions?.value],
+    ["deliveries", metrics.deliveries?.value],
+    ["marketplace", metrics.marketplace?.value],
+    ["solar", metrics.solar?.payments?.value],
+    ["phoneFinancing", metrics.phoneFinancing?.payments?.value],
+  ];
+  const permitted = sections.filter(([section]) => dashboardAccess(req, section));
+  if (!permitted.length) return null;
+  return permitted.reduce((total, [, value]) => total + (Number(value) || 0), 0);
 };
 const metricsForBranch = async (branchId, req) => {
   // Every query explicitly requires branchId. Legacy null-stamped data is Head
@@ -794,19 +830,19 @@ exports.dashboard = async (req, res) => {
   if (!scope) return exports.overview(req, res);
   const base = scoped(scope, req);
   const [metrics, targets, pendingApprovals, approvalStatuses, openRequests, staff, branch] = await Promise.all([
-    metricsForBranch(scope, req), BranchTarget.find({ branchId: scope, ...(req.query.module ? { module: String(req.query.module).toUpperCase() } : {}) }).lean(),
+    metricsForBranch(scope, req), BranchTarget.find({ branchId: scope, ...targetDateFilter(req), ...(req.query.module ? { module: String(req.query.module).toUpperCase() } : {}) }).lean(),
     BranchApprovalRequest.countDocuments({ ...base, status: { $in: ["SUBMITTED", "PENDING_HEAD_OFFICE"] } }),
     groupedStatuses(BranchApprovalRequest, base),
     BranchOperationalRequest.countDocuments({ ...base, status: { $in: ["OPEN", "IN_PROGRESS"] } }),
     User.find({ branchId: scope, isStaff: true }).select("_id fullName staffId jobTitle department status role lastStaffLoginAt").sort({ fullName: 1 }).lean(),
     Branch.findById(scope).select("_id code name status state lga assignedModules managerId openingDate").lean(),
   ]);
+  const visibleRevenue = permittedRevenue(req, metrics);
   for (const section of ["users", "staff", "transactions", "deliveries", "solar", "marketplace", "phoneFinancing", "empowerment"]) {
     if (!dashboardAccess(req, section)) delete metrics[section];
   }
-  if (!dashboardAccess(req, "transactions") && !dashboardAccess(req, "deliveries") &&
-      !dashboardAccess(req, "marketplace") && !dashboardAccess(req, "solar") &&
-      !dashboardAccess(req, "phoneFinancing")) delete metrics.revenue;
+  if (visibleRevenue === null) delete metrics.revenue;
+  else metrics.revenue = visibleRevenue;
   const approvals = { approved: approvalStatuses.APPROVED || 0, rejected: approvalStatuses.REJECTED || 0, correctionRequested: approvalStatuses.CORRECTION_REQUESTED || 0 };
   const dashboard = {
     branchId: scope,
@@ -991,4 +1027,10 @@ exports.audit = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
   const logs = await BranchAuditLog.find(scope ? { branchId: scope } : {}).sort({ createdAt: -1 }).limit(100).lean();
   res.json({ success: true, logs });
+};
+
+exports.__dashboardTest = {
+  requestedDateRange,
+  targetDateFilter,
+  permittedRevenue,
 };
