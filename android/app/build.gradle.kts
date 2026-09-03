@@ -35,8 +35,8 @@ android {
         applicationId = "ng.servicepay.app"
 
         minSdk = 23
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
+        targetSdk = 36
+        versionCode = 2
         versionName = flutter.versionName
     }
 
