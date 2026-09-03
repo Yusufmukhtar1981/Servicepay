@@ -14,3 +14,17 @@ mtime_ms = 1787525090280
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:72276743-721a-4a04-8411-e33fbed2e854/ce7fbf5c-54b2-4082-ae82-6fd5db6917d5/14c63af3-056b-499a-94ba-52a23b92c16e"
 storage_version_token = "1787525106706730"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "Q0Ufq-Kvljto6rUou_Xt-"
+uri = "file://release/app-release.aab"
+type = "unspecified"
+title = "ServicePay Android App Bundle"
+description = "Production release AAB, version 1.0.0 (1), release-signed with the ServicePay upload key and ready for Google Play Console upload."
+logical_id = "1dc9f8b7-fb95-48dd-9358-ca1724901a6b"
+content_hash = "sha256:d38e1cbf9a471f1cd23708d081e11906bd3ba24e3709d4d71f39ac0a15d31d99"
+size = 91316399
+mtime_ms = 1788400095621
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:72276743-721a-4a04-8411-e33fbed2e854/1dc9f8b7-fb95-48dd-9358-ca1724901a6b/e513697c-1490-41c6-bd7a-b538309661d9"
+storage_version_token = "1788400103048473"
+content_type = "application/octet-stream"
