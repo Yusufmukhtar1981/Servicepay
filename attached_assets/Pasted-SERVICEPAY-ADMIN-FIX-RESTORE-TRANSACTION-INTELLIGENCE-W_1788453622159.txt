@@ -1,0 +1,155 @@
+SERVICEPAY ADMIN FIX — RESTORE TRANSACTION INTELLIGENCE WITHOUT BREAKING ANYTHING ELSE
+
+Branch Management has now been restored successfully.
+
+However, I noticed that the existing "Transaction Intelligence" feature/page is now missing from the Admin Dashboard.
+
+IMPORTANT:
+Do NOT redesign the Admin Dashboard.
+Do NOT remove Branch Management.
+Do NOT remove or replace normal Admin Transactions.
+Do NOT create a fake placeholder page.
+
+Find the EXISTING Transaction Intelligence implementation in the codebase and restore it completely.
+
+TASKS:
+
+1. SEARCH EXISTING CODE
+Search frontend and backend for all existing references to:
+- Transaction Intelligence
+- Transactions Intelligence
+- transaction-intelligence
+- transactionIntel
+- transactionAnalytics
+- transactionInsights
+- intelligence
+- analytics related to transactions
+
+Check:
+- Admin navigation/sidebar/bottom navigation
+- Admin routes
+- page components
+- role permissions
+- backend routes/controllers/services
+- API client methods
+
+2. RESTORE ADMIN NAVIGATION
+Transaction Intelligence must appear again in the Admin Dashboard navigation for:
+- HEAD_OFFICE
+- SUPER_ADMIN
+- authorized ADMIN roles
+
+Do not expose it to unauthorized roles.
+
+3. RESTORE ROUTE
+Make sure the existing Transaction Intelligence route opens correctly.
+
+If the route/component still exists but disappeared from navigation:
+→ restore the menu entry and permission.
+
+If navigation exists but route was renamed/broken:
+→ reconnect it to the correct existing page.
+
+If frontend exists but backend API is broken:
+→ repair the API integration.
+
+Do NOT duplicate the feature.
+
+4. PRESERVE NORMAL TRANSACTIONS
+"Admin Transactions" and "Transaction Intelligence" are TWO DIFFERENT ADMIN FEATURES.
+
+Both must remain available:
+- Transactions = operational transaction records/list/details
+- Transaction Intelligence = transaction analytics/intelligence/insights
+
+Do not merge or replace one with the other.
+
+5. RESTORE EXISTING INTELLIGENCE CAPABILITIES
+Preserve and reconnect every Transaction Intelligence capability already present in the repository/database.
+
+This may include existing:
+- transaction KPIs
+- total transaction volume
+- total transaction value
+- success rate
+- failed transaction analysis
+- pending transaction analysis
+- transaction trends
+- product/channel breakdown
+- customer transaction behavior
+- unusual transaction activity
+- charts
+- date filters
+- status filters
+- product filters
+- comparison periods
+- recent intelligence/insights
+- drill-down into relevant transactions
+
+Only restore features that actually exist in the codebase.
+Do not populate the screen with fake/mock production data.
+
+6. RBAC / PERMISSION AUDIT
+Check whether recent Branch/Admin permission changes accidentally hid Transaction Intelligence.
+
+Fix the actual permission/navigation regression.
+
+HEAD_OFFICE must have access.
+
+Do not disable authentication or bypass RBAC globally.
+
+7. API / DATA
+Verify every API used by Transaction Intelligence:
+- route exists
+- HTTP method matches
+- auth token works
+- permissions work
+- date/status/product query filters are accepted
+- response shape matches frontend
+- aggregation errors are handled safely
+- empty datasets show a proper empty state instead of crashing
+
+Use REAL production transaction data.
+
+8. DASHBOARD SAFETY
+While restoring Transaction Intelligence, verify these remain visible and working:
+- Dashboard
+- Transactions
+- Transaction Intelligence
+- Delivery Management
+- Branch Management
+
+Do not allow restoring one menu item to remove another.
+
+9. TEST
+After implementation, login as HEAD_OFFICE and verify:
+
+→ Admin Dashboard opens
+→ Branch Management is still visible
+→ Transactions is visible and opens
+→ Transaction Intelligence is visible
+→ Transaction Intelligence opens successfully
+→ real analytics/data loads
+→ filters work
+→ charts/metrics render
+→ no blank page
+→ no endless loading
+→ no unauthorized error
+→ no API 404/500 caused by the feature
+
+10. DEPLOY
+Run build/type checks and deploy using the project's existing production workflow.
+
+At the end report:
+1. Why Transaction Intelligence disappeared
+2. Exact navigation/route/permission fixed
+3. Files changed
+4. APIs repaired/reconnected
+5. Tests completed
+6. Deployment status
+
+IMPORTANT:
+Restore the EXISTING Transaction Intelligence feature.
+Do not create a simplified replacement.
+Do not stop at diagnosis.
+Implement, test and deploy the fix completely.
