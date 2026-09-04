@@ -10,6 +10,7 @@
 - [Business Partner UI capabilities](business-partner-ui-capabilities.md) — Officer controls follow approved service capabilities, not the legacy management catalog key alone.
 - [Flutter web cache isolation](flutter-replit-preview-caching.md) — Non-PWA releases must unregister legacy workers and clear Flutter caches before loading fresh assets.
 - [Flutter package cache persistence](flutter-package-cache-persistence.md) — Use a workspace-local PUB_CACHE so workflow builds do not lose packages between processes.
+- [Flutter build directory portability](flutter-build-directory-portability.md) — Never commit build as an absolute /tmp symlink; clean publish builders cannot follow it.
 - [Bank transfer settlement safety](bank-transfer-settlement-safety.md) — Do not expose customer requery until ambiguous outcomes and concurrent settlement are safe.
 - [PIN admission and payment retries](pin-admission-payment-retries.md) — Complete PIN admission before wallet transactions; ambiguous responses must preserve the payment request key.
 - [Notification lifecycle independence](notification-lifecycle-independence.md) — In-app financial activity must not depend on email availability; new filters must continue matching legacy records.
