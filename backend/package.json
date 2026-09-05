@@ -6,7 +6,11 @@
   "scripts": {
     "start": "cd .. && node backend/index.js",
     "dev": "nodemon index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "start:vull-sandbox": "node vull-sandbox/index.js",
+    "worker:vull-sandbox": "node vull-sandbox/worker.js",
+    "test:vull-sandbox": "node --test vull-sandbox/test/**/*.test.js",
+    "provision:vull-sandbox": "node vull-sandbox/scripts/provision.js"
   },
   "keywords": [],
   "author": "",
