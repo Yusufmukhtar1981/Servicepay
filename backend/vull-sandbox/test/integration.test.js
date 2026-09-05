@@ -35,8 +35,9 @@ test.before(async () => {
   await productionConnection.asPromise();
   for (const name of ["users", "partners", "wallets", "transactions"]) await productionConnection.collection(name).insertOne({ sentinel: name, nested: { unchanged: true } });
   productionSnapshot = await Promise.all(["users", "partners", "wallets", "transactions"].map(name => productionConnection.collection(name).find({}).toArray()));
-  cfg = { authPepper: "test-pepper", webhookSecret: "test-webhook", nodeEnv: "test" };
+  cfg = { authPepper: "test-pepper", webhookSecret: "test-webhook", nodeEnv: "test", workerHeartbeatMaxAgeMs: 15_000 };
   credentials = { a: await credential("clienta"), b: await credential("clientb") };
+  await models.WorkerState.create({ environment: "SANDBOX", name: "webhook-delivery", heartbeatAt: new Date() });
   server = http.createServer(app(models, cfg)); await new Promise(resolve => server.listen(0, resolve)); port = server.address().port;
 });
 test.after(async () => { await new Promise(resolve => server.close(resolve)); await connection.close(); await productionConnection.close(); await mongo.stop(); });
@@ -47,6 +48,16 @@ test("production database/default mongoose are isolated from every sandbox flow"
   assert.equal((await productionConnection.db.listCollections({ name: "vullsandboxcredentials" }).toArray()).length, 0);
   assert.equal(mongoose.connection.readyState, 0);
   assert.equal(mongoose.modelNames().length, 0);
+});
+
+test("deployment liveness and readiness endpoints are public and sandbox-bound", async () => {
+  const live = await request("GET", "/v1/live", undefined, {}, null);
+  assert.equal(live.status, 200);
+  assert.equal(live.body.environment, "SANDBOX");
+  const health = await request("GET", "/v1/health", undefined, {}, null);
+  assert.equal(health.status, 200);
+  assert.deepEqual(health.body, { status: "ok", environment: "SANDBOX", database: "ready", webhookWorker: "ready" });
+  assert.deepEqual((await request("GET", "/", undefined, {}, null)).body, health.body);
 });
 
 test("checkout scenarios, reads, idempotency, and isolated credentials", async () => {

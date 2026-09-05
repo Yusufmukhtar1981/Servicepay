@@ -67,3 +67,17 @@ test("poll loop delivers work appearing after an empty pass and stops", async ()
   assert.equal(deliveries, 1);
   assert.equal(controller.signal.aborted, true);
 });
+
+test("poll loop fails after three consecutive processing errors", async () => {
+  let errors = 0;
+  await assert.rejects(
+    pollLoop({
+      processPending: async () => { throw new Error("database unavailable"); },
+      sleep: async () => {},
+      onError: () => { errors += 1; },
+      maxConsecutiveErrors: 3,
+    }),
+    /database unavailable/
+  );
+  assert.equal(errors, 3);
+});

@@ -29,9 +29,27 @@ function app(
     },
   }));
 
-  api.get("/v1/health", (_req, res) => {
+  const liveness = (_req, res) => {
     res.json({ status: "ok", environment: "SANDBOX" });
-  });
+  };
+
+  const readiness = async (_req, res) => {
+    try {
+      const database = models.Credential.db;
+      if (database.readyState !== 1) throw new Error("database is not connected");
+      await database.db.admin().ping();
+      const workerState = await models.WorkerState.findOne({ name: "webhook-delivery" }).lean();
+      const heartbeatAge = workerState?.heartbeatAt ? Date.now() - new Date(workerState.heartbeatAt).getTime() : Infinity;
+      if (heartbeatAge > cfg.workerHeartbeatMaxAgeMs) throw new Error("webhook worker heartbeat is stale");
+      res.json({ status: "ok", environment: "SANDBOX", database: "ready", webhookWorker: "ready" });
+    } catch {
+      res.status(503).json({ status: "unavailable", environment: "SANDBOX" });
+    }
+  };
+
+  api.get("/v1/live", liveness);
+  api.get("/v1/health", readiness);
+  api.get("/", readiness);
 
   api.use("/v1", auth(models, cfg));
   api.use("/v1", (req, res, next) => {

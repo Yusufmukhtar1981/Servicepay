@@ -18,12 +18,17 @@ async function pollLoop({
   signal,
   sleep = delay,
   onError = () => {},
+  maxConsecutiveErrors = 3,
 }) {
+  let consecutiveErrors = 0;
   while (!signal?.aborted) {
     try {
       await processPending();
+      consecutiveErrors = 0;
     } catch (error) {
+      consecutiveErrors += 1;
       onError(error);
+      if (consecutiveErrors >= maxConsecutiveErrors) throw error;
     }
     if (!signal?.aborted) await sleep(pollIntervalMs, signal);
   }
@@ -39,11 +44,20 @@ async function runWorker({
   await connection.asPromise();
   const models = await initializeModels(createModels(connection));
   const worker = deliveryWorker(models, cfg);
+  console.log("VULL sandbox webhook worker started.");
   try {
     await pollLoop({
-      processPending: () => worker.processPending(),
+      processPending: async () => {
+        await worker.processPending();
+        await models.WorkerState.findOneAndUpdate(
+          { name: "webhook-delivery" },
+          { $set: { heartbeatAt: new Date() }, $setOnInsert: { environment: "SANDBOX", name: "webhook-delivery" } },
+          { upsert: true, new: true }
+        );
+      },
       pollIntervalMs: cfg.workerPollIntervalMs,
       signal,
+      onError: error => console.error(`VULL sandbox webhook worker polling failed: ${error.message}`),
     });
   } finally {
     await connection.close();

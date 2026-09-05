@@ -10,6 +10,13 @@ function fingerprint(identity) {
   return crypto.createHash("sha256").update(`${identity.host}/${identity.database}`).digest("hex");
 }
 function csv(value) { return String(value || "").split(",").map(item => item.trim().toLowerCase()).filter(Boolean); }
+function integer(value, name, { minimum, maximum }) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}.`);
+  }
+  return parsed;
+}
 function config(env = process.env) {
   if (env.VULL_ENV !== "sandbox") throw new Error("VULL_ENV must be exactly sandbox.");
   const inherited = LIVE_DB_VARIABLES.find(name => String(env[name] || "").trim());
@@ -27,10 +34,10 @@ function config(env = process.env) {
   const authPepper = String(env.VULL_SANDBOX_AUTH_PEPPER || "");
   const webhookSecret = String(env.VULL_SANDBOX_WEBHOOK_SIGNING_SECRET || "");
   if (!authPepper || !webhookSecret) throw new Error("Sandbox auth pepper and webhook signing secret are required.");
-  const workerPollIntervalMs = Number(env.VULL_SANDBOX_WORKER_POLL_INTERVAL_MS || 1000);
-  if (!Number.isSafeInteger(workerPollIntervalMs) || workerPollIntervalMs < 100 || workerPollIntervalMs > 60_000) {
-    throw new Error("VULL_SANDBOX_WORKER_POLL_INTERVAL_MS must be an integer from 100 to 60000.");
-  }
-  return { mongoUri: uri, authPepper, webhookSecret, port: Number(env.VULL_SANDBOX_PORT || 3003), nodeEnv: env.NODE_ENV || "development", workerPollIntervalMs };
+  const workerPollIntervalMs = integer(env.VULL_SANDBOX_WORKER_POLL_INTERVAL_MS || 1000, "VULL_SANDBOX_WORKER_POLL_INTERVAL_MS", { minimum: 100, maximum: 60_000 });
+  const port = integer(env.PORT || env.VULL_SANDBOX_PORT || 3003, "PORT", { minimum: 1, maximum: 65_535 });
+  const initialBalanceMinor = integer(env.VULL_SANDBOX_INITIAL_BALANCE_MINOR || 10_000_000, "VULL_SANDBOX_INITIAL_BALANCE_MINOR", { minimum: 0, maximum: 100_000_000 });
+  const workerHeartbeatMaxAgeMs = Math.max(15_000, workerPollIntervalMs * 3);
+  return { mongoUri: uri, authPepper, webhookSecret, port, nodeEnv: env.NODE_ENV || "development", workerPollIntervalMs, workerHeartbeatMaxAgeMs, initialBalanceMinor };
 }
 module.exports = { config, safeMongoIdentity, fingerprint, LIVE_DB_VARIABLES };

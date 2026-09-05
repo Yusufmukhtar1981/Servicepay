@@ -17,7 +17,7 @@ const { assertSafeCallback } = require("../services/webhookDelivery");
   const models = await initializeModels(createModels(connection));
   const apiKey = `vull_sb_${crypto.randomBytes(18).toString("hex")}`, secret = crypto.randomBytes(32).toString("base64url");
   const credential = await models.Credential.create({ environment:"SANDBOX", apiKey, secretHash:hash(secret,cfg.authPepper), callbackUrl, status:"ACTIVE" });
-  await models.Wallet.create({ environment:"SANDBOX", credentialId:credential._id, balanceMinor:Number(process.env.VULL_SANDBOX_INITIAL_BALANCE_MINOR || 0) });
+  await models.Wallet.create({ environment:"SANDBOX", credentialId:credential._id, balanceMinor:cfg.initialBalanceMinor });
   await fs.writeFile(outputFile, `${JSON.stringify({ environment:"SANDBOX", apiKey, apiSecret:secret })}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
   console.log(`Sandbox credentials written to ${outputFile}`);
   await connection.close();

@@ -82,7 +82,12 @@ function createModels(connection) {
     status: { type: String, enum: ["COMPLETE"], default: "COMPLETE" }, report: { type: mongoose.Schema.Types.Mixed, required: true },
   }));
   Reconciliation.schema.index({ environment: 1, credentialId: 1, reference: 1 }, { unique: true });
-  return { Credential, Wallet, Transaction, Ledger, Idempotency, Webhook, Refund, Subscription, Reconciliation };
+  const WorkerState = connection.model("VullSandboxWorkerState", schema({
+    name: { type: String, required: true, enum: ["webhook-delivery"] },
+    heartbeatAt: { type: Date, required: true },
+  }));
+  WorkerState.schema.index({ environment: 1, name: 1 }, { unique: true });
+  return { Credential, Wallet, Transaction, Ledger, Idempotency, Webhook, Refund, Subscription, Reconciliation, WorkerState };
 }
 
 async function initializeModels(models) {
