@@ -9,6 +9,9 @@ const RiderWithdrawal = require(
   "../models/riderWithdrawal.model"
 );
 const { verifyTransactionPin } = require("../services/transactionPin.service");
+const AppSettings = require("../models/appSettings.model");
+const RiderWalletLedger = require("../models/riderWalletLedger.model");
+const AdminAuditLog = require("../models/adminAuditLog.model");
 
 /*
 |--------------------------------------------------------------------------
@@ -91,6 +94,15 @@ const roundMoney = (
     amount.toFixed(2)
   );
 };
+
+const appendRiderLedger = (entry, session) => RiderWalletLedger.create([entry], { session });
+const auditWithdrawalAction = (req, action, withdrawal, previousStatus, session) => AdminAuditLog.create([{
+  actorId: req.user._id, actorRole: normalizeStatus(req.user.role), actorName: req.user.fullName || req.user.name || "",
+  targetUserId: withdrawal.riderId, action, reason: `Rider withdrawal ${withdrawal.reference} changed from ${previousStatus} to ${withdrawal.status}.`,
+  previousData: { status: previousStatus }, newData: { status: withdrawal.status },
+  metadata: { withdrawalId: String(withdrawal._id), reference: withdrawal.reference },
+  requestMethod: req.method || "", requestPath: req.originalUrl || "", status: "SUCCESSFUL",
+}], { session });
 
 const isValidObjectId = (
   value
@@ -454,6 +466,32 @@ const returnLockedFunds =
     const now =
       new Date();
 
+    await appendRiderLedger({
+      riderId: withdrawal.riderId,
+      type: "WITHDRAWAL_REVERSAL",
+      direction: "DEBIT",
+      balanceAccount: "RESERVED",
+      amount,
+      oldBalance: amount,
+      newBalance: 0,
+      reference: `${withdrawal.reference}-REVERSAL-RELEASE`,
+      withdrawalId: withdrawal._id,
+      reason: reason || `Withdrawal ${status.toLowerCase()}`,
+      adminId: reviewedBy,
+    }, session);
+    await appendRiderLedger({
+      riderId: withdrawal.riderId,
+      type: "WITHDRAWAL_REVERSAL",
+      direction: "CREDIT",
+      amount,
+      oldBalance: roundMoney(updatedRider.pendingRiderSettlement - amount),
+      newBalance: roundMoney(updatedRider.pendingRiderSettlement),
+      reference: `${withdrawal.reference}-REVERSAL`,
+      withdrawalId: withdrawal._id,
+      reason: reason || `Withdrawal ${status.toLowerCase()}`,
+      adminId: reviewedBy,
+    }, session);
+
     withdrawal.status =
       status;
 
@@ -600,6 +638,7 @@ exports.getCommissionSummary =
               "REJECTED",
               "FAILED",
               "CANCELLED",
+              "REVERSED",
             ],
           },
         }),
@@ -1258,6 +1297,21 @@ exports.createWithdrawalRequest =
       }
 
       /*
+       * Availability is checked before PIN verification because PIN
+       * verification records security admission state. A disabled product
+       * must be a completely side-effect-free refusal.
+       */
+      const withdrawalSettings = await AppSettings.findOne({
+        key: "GLOBAL_SETTINGS",
+      }).lean();
+      if (withdrawalSettings?.riderWithdrawalControl?.enabled === false) {
+        return res.status(503).json({
+          success: false,
+          message: "Rider withdrawal is temporarily unavailable. Please try again later.",
+        });
+      }
+
+      /*
        * PIN reservation/clearing writes are intentionally completed before
        * opening the financial transaction. verifyTransactionPin owns its
        * security writes outside caller sessions.
@@ -1342,6 +1396,17 @@ exports.createWithdrawalRequest =
           }
 
           logStage("rider_validated");
+
+          const settings = await AppSettings.findOne({
+            key: "GLOBAL_SETTINGS",
+          }).session(session);
+          if (settings?.riderWithdrawalControl?.enabled === false) {
+            const error = new Error(
+              "Rider withdrawal is temporarily unavailable. Please try again later."
+            );
+            error.statusCode = 503;
+            throw error;
+          }
 
           const duplicate = await RiderWithdrawal.findOne({
             riderId: rider._id,
@@ -1518,6 +1583,29 @@ exports.createWithdrawalRequest =
 
           createdWithdrawal =
             withdrawals[0];
+          await appendRiderLedger({
+            riderId: rider._id,
+            type: "WITHDRAWAL_RESERVED",
+            direction: "DEBIT",
+            amount: totalDebit,
+            oldBalance: roundMoney(updatedRider.pendingRiderSettlement + totalDebit),
+            newBalance: roundMoney(updatedRider.pendingRiderSettlement),
+            reference: `${reference}-RESERVED`,
+            withdrawalId: createdWithdrawal._id,
+            reason: "Rider withdrawal funds reserved",
+          }, session);
+          await appendRiderLedger({
+            riderId: rider._id,
+            type: "WITHDRAWAL_RESERVED",
+            direction: "CREDIT",
+            balanceAccount: "RESERVED",
+            amount: totalDebit,
+            oldBalance: 0,
+            newBalance: totalDebit,
+            reference: `${reference}-RESERVED-HOLD`,
+            withdrawalId: createdWithdrawal._id,
+            reason: "Rider withdrawal reserve created",
+          }, session);
           transactionResult = {
             createdWithdrawal,
             updatedRider,
@@ -1974,10 +2062,12 @@ exports.approveWithdrawal =
               req.body.note
             );
 
+          const previousStatus = withdrawal.status;
           updatedWithdrawal =
             await withdrawal.save({
               session,
             });
+          await auditWithdrawalAction(req, "RIDER_WITHDRAWAL_APPROVED", updatedWithdrawal, "PENDING", session);
         }
       );
 
@@ -2128,6 +2218,7 @@ exports.rejectWithdrawal =
             throw error;
           }
 
+          const previousStatus = withdrawal.status;
           updatedWithdrawal =
             await returnLockedFunds({
               withdrawal,
@@ -2142,6 +2233,7 @@ exports.rejectWithdrawal =
 
               session,
             });
+          await auditWithdrawalAction(req, "RIDER_WITHDRAWAL_REJECTED", updatedWithdrawal, previousStatus, session);
         }
       );
 
@@ -2211,6 +2303,7 @@ exports.rejectWithdrawal =
 
 exports.markWithdrawalProcessing =
   async (req, res) => {
+    const session = await mongoose.startSession();
     try {
       if (
         !validateHeadOffice(
@@ -2238,8 +2331,9 @@ exports.markWithdrawalProcessing =
         });
       }
 
-      const withdrawal =
-        await RiderWithdrawal.findOneAndUpdate(
+      let withdrawal;
+      await session.withTransaction(async () => {
+        withdrawal = await RiderWithdrawal.findOneAndUpdate(
           {
             _id:
               withdrawalId,
@@ -2285,6 +2379,7 @@ exports.markWithdrawalProcessing =
           {
             new: true,
             runValidators: true,
+            session,
           }
         )
           .populate(
@@ -2292,13 +2387,14 @@ exports.markWithdrawalProcessing =
             "riderId fullName phone email"
           );
 
-      if (!withdrawal) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Only an APPROVED withdrawal can be marked as processing.",
-        });
-      }
+        if (!withdrawal) {
+          const error = new Error("Only an APPROVED withdrawal can be marked as processing.");
+          error.statusCode = 400;
+          throw error;
+        }
+
+        await auditWithdrawalAction(req, "RIDER_WITHDRAWAL_PROCESSING", withdrawal, "APPROVED", session);
+      });
 
       return res.status(200).json({
         success: true,
@@ -2317,13 +2413,15 @@ exports.markWithdrawalProcessing =
         error
       );
 
-      return res.status(500).json({
+      return res.status(error.statusCode || 500).json({
         success: false,
         message:
           "Unable to mark withdrawal as processing.",
         error:
           error.message,
       });
+    } finally {
+      await session.endSession();
     }
   };
 
@@ -2424,6 +2522,7 @@ exports.markWithdrawalPaid =
             throw error;
           }
 
+          const previousStatus = withdrawal.status;
           const amount =
             roundMoney(
               withdrawal.amount
@@ -2521,6 +2620,21 @@ exports.markWithdrawalPaid =
             await withdrawal.save({
               session,
             });
+          await appendRiderLedger({
+            riderId: withdrawal.riderId,
+            type: "WITHDRAWAL_PAID",
+            direction: "DEBIT",
+            amount: roundMoney(withdrawal.totalDebit),
+            balanceAccount: "RESERVED",
+            oldBalance: roundMoney(withdrawal.totalDebit),
+            newBalance: 0,
+            reference: `${withdrawal.reference}-PAID`,
+            withdrawalId: withdrawal._id,
+            reason: "Rider withdrawal paid",
+            adminId: req.user._id,
+            metadata: { paidAmount: amount, fee: roundMoney(withdrawal.fee) },
+          }, session);
+          await auditWithdrawalAction(req, "RIDER_WITHDRAWAL_PAID", updatedWithdrawal, previousStatus, session);
         }
       );
 
@@ -2684,6 +2798,7 @@ exports.markWithdrawalFailed =
             withdrawal
               .providerResponse;
 
+          const previousStatus = withdrawal.status;
           updatedWithdrawal =
             await returnLockedFunds({
               withdrawal,
@@ -2698,6 +2813,7 @@ exports.markWithdrawalFailed =
 
               session,
             });
+          await auditWithdrawalAction(req, "RIDER_WITHDRAWAL_FAILED", updatedWithdrawal, previousStatus, session);
         }
       );
 
@@ -2751,3 +2867,46 @@ exports.markWithdrawalFailed =
       await session.endSession();
     }
   };
+
+/*
+ * Reverse only an unpaid, reserved withdrawal. PAID records are intentionally
+ * excluded: reversing a confirmed bank settlement requires a separate
+ * recovery process, never an admin button.
+ */
+exports.reverseWithdrawal = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    if (!validateHeadOffice(req, res)) return;
+    const withdrawalId = normalizeText(req.params.id);
+    const reason = normalizeText(req.body.reason);
+    if (!isValidObjectId(withdrawalId) || reason.length < 3) {
+      return res.status(400).json({ success: false, message: "A valid withdrawal ID and reversal reason are required." });
+    }
+    let updatedWithdrawal;
+    await session.withTransaction(async () => {
+      const withdrawal = await RiderWithdrawal.findById(withdrawalId).session(session);
+      if (!withdrawal) throw Object.assign(new Error("Withdrawal request not found."), { statusCode: 404 });
+      if (withdrawal.status === "REVERSED") {
+        updatedWithdrawal = withdrawal;
+        return;
+      }
+      if (!["PENDING", "APPROVED", "PROCESSING"].includes(withdrawal.status)) {
+        throw Object.assign(new Error(`This withdrawal cannot be reversed because its current status is ${withdrawal.status}.`), { statusCode: 400 });
+      }
+      const previousStatus = withdrawal.status;
+      updatedWithdrawal = await returnLockedFunds({
+        withdrawal, reviewedBy: req.user._id, status: "REVERSED", reason, session,
+      });
+      await auditWithdrawalAction(req, "RIDER_WITHDRAWAL_REVERSED", updatedWithdrawal, previousStatus, session);
+    });
+    return res.status(200).json({
+      success: true,
+      message: updatedWithdrawal.status === "REVERSED" ? "Rider withdrawal reversed successfully." : "Rider withdrawal reversal already completed.",
+      withdrawal: updatedWithdrawal,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ success: false, message: error.message || "Unable to reverse Rider withdrawal." });
+  } finally {
+    await session.endSession();
+  }
+};

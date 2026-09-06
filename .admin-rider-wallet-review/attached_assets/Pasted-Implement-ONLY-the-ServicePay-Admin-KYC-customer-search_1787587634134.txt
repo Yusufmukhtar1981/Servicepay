@@ -1,0 +1,101 @@
+Implement ONLY the ServicePay Admin KYC customer search and manual verification UI in this servicepay-admin project.
+
+IMPORTANT:
+Do not modify Empowerment screens in this task.
+Do not create fake/mock APIs.
+Use the real production ServicePay backend API already implemented.
+
+Backend contract already available:
+
+1. Search:
+GET /api/admin/kyc?search=<value>
+or inspect the current backend contract and use the exact existing production equivalent.
+
+Search must support:
+- customer full name
+- phone number
+- email
+- exact NIN
+- exact BVN
+
+2. Manual verification:
+Use the existing protected Head Office KYC status endpoint.
+The request must support:
+{
+  "status": "VERIFIED",
+  "manualOverride": true
+}
+
+Build/upgrade the actual Admin KYC screen.
+
+Requirements:
+
+- Add a prominent search box at the top of the Admin KYC page.
+- Search by name, phone, email, NIN or BVN.
+- Show matching customer results immediately below.
+- Each result must show:
+  full name,
+  phone,
+  email,
+  KYC status,
+  NIN,
+  BVN,
+  tier if available.
+
+- Clicking a result must open full customer KYC details.
+
+KYC detail must display:
+- Customer name
+- ServicePay account
+- Phone
+- Email
+- NIN
+- BVN
+- Current KYC status
+- Tier
+- Submitted date
+- Documents if available
+- Verification method
+- Verified by
+- Verified date
+
+Add a green button:
+“Manual Verify / Approve”
+
+Head Office must be able to manually approve a customer even when optional documents/provider verification are incomplete, provided the submitted NIN and BVN are valid 11-digit numeric values.
+
+After approval:
+- Persist VERIFIED status through the production backend.
+- Do not fake local success.
+- Reload the customer from server.
+- Display VERIFIED.
+- Display MANUAL_ADMIN_OVERRIDE when returned.
+- Display verifiedBy and verifiedAt when returned.
+
+Authorization:
+- Preserve HEAD_OFFICE-only manual verification.
+- Normal staff/customers must not have access.
+
+UX:
+- Loading indicator
+- No customer found state
+- API error message
+- Refresh button
+- Responsive web/mobile layout
+- Existing ServicePay green styling
+
+Do not modify:
+- Empowerment UI
+- Wallet
+- Transactions
+- Other admin modules
+
+Before finishing:
+1. Inspect the current Admin KYC implementation and existing API service.
+2. Reuse existing authentication and API base URL.
+3. List exactly which files were changed.
+4. State the exact production search endpoint used.
+5. State the exact production manual verification endpoint used.
+6. Confirm the UI is connected to the server and not mock data.
+7. Run all available checks.
+8. Leave changes ready for commit/push.

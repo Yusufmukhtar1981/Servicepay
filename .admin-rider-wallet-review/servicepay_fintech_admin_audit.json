@@ -1,0 +1,282 @@
+{
+  "project": "/workspaces/servicepay-admin",
+  "admin_files": 36,
+  "widgets_found": 57,
+  "safe_zero_arg_widgets": 20,
+  "argument_widgets": 36,
+  "dashboard_safety_checks": {
+    "Fintech Control Center": true,
+    "Current Dashboard tab": true,
+    "Legacy dashboard import": true,
+    "IndexedStack safety": true
+  },
+  "safe_widgets": [
+    {
+      "class": "AdminAirtimeToCashScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_airtime_to_cash_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminCardsScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_cards_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminControlCenterScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_control_center_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminDataPricingScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_data_pricing_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminEmpowermentScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_empowerment_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminKycScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_kyc_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminManualFundingScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_manual_funding_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminMarketplaceScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_marketplace_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminNotificationsScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_notifications_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminPartnerApplicationsScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_partner_applications_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminPartnerScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_partner_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminProductCommissionScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_product_commission_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "CreateRiderDialog",
+      "type": "StatefulWidget",
+      "file": "admin/admin_riders_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": ""
+    },
+    {
+      "class": "EmptyRidersCard",
+      "type": "StatelessWidget",
+      "file": "admin/admin_riders_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": ") else ...riders.map( buildRiderCard, ), const SizedBox(height: 90), ], ), ),"
+    },
+    {
+      "class": "AdminSettingsScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_settings_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminTransactionsScreen",
+      "type": "StatefulWidget",
+      "file": "admin/admin_transactions_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminLoginScreen",
+      "type": "StatefulWidget",
+      "file": "admin/login_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "AdminLoginScreen",
+      "type": "StatefulWidget",
+      "file": "admin/login_screen.staff_backup_20260802_195231.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    },
+    {
+      "class": "ServicepayAdminApp",
+      "type": "StatelessWidget",
+      "file": "admin/main.dart",
+      "safe_zero_arg": true,
+      "constructor": ")"
+    },
+    {
+      "class": "AdminUsersScreen",
+      "type": "StatefulWidget",
+      "file": "admin/users_screen.dart",
+      "safe_zero_arg": true,
+      "constructor": "{super.key}"
+    }
+  ],
+  "categories": {
+    "KYC / KYB": [
+      {
+        "class": "AdminKycScreen",
+        "type": "StatefulWidget",
+        "file": "admin/admin_kyc_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Users / Customers": [
+      {
+        "class": "AdminUsersScreen",
+        "type": "StatefulWidget",
+        "file": "admin/users_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Transactions": [
+      {
+        "class": "AdminTransactionsScreen",
+        "type": "StatefulWidget",
+        "file": "admin/admin_transactions_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Wallet / Funding": [
+      {
+        "class": "AdminManualFundingScreen",
+        "type": "StatefulWidget",
+        "file": "admin/admin_manual_funding_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Withdrawal": [],
+    "Staff / Roles": [
+      {
+        "class": "AdminLoginScreen",
+        "type": "StatefulWidget",
+        "file": "admin/login_screen.staff_backup_20260802_195231.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Notifications": [
+      {
+        "class": "AdminNotificationsScreen",
+        "type": "StatefulWidget",
+        "file": "admin/admin_notifications_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Delivery / Riders": [
+      {
+        "class": "CreateRiderDialog",
+        "type": "StatefulWidget",
+        "file": "admin/admin_riders_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": ""
+      },
+      {
+        "class": "EmptyRidersCard",
+        "type": "StatelessWidget",
+        "file": "admin/admin_riders_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": ") else ...riders.map( buildRiderCard, ), const SizedBox(height: 90), ], ), ),"
+      }
+    ],
+    "Empowerment": [
+      {
+        "class": "AdminEmpowermentScreen",
+        "type": "StatefulWidget",
+        "file": "admin/admin_empowerment_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Amana": [],
+    "Settings": [
+      {
+        "class": "AdminSettingsScreen",
+        "type": "StatefulWidget",
+        "file": "admin/admin_settings_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Data / Airtime Pricing": [
+      {
+        "class": "AdminDataPricingScreen",
+        "type": "StatefulWidget",
+        "file": "admin/admin_data_pricing_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      },
+      {
+        "class": "AdminAirtimeToCashScreen",
+        "type": "StatefulWidget",
+        "file": "admin/admin_airtime_to_cash_screen.dart",
+        "safe_zero_arg": true,
+        "constructor": "{super.key}"
+      }
+    ],
+    "Reconciliation / Settlement": [],
+    "Fraud / Compliance": [],
+    "Reports / Analytics": []
+  },
+  "route_files": [
+    "lib/wallet_screen.dart",
+    "lib/dashboard_screen.dart",
+    "lib/login_screen.dart",
+    "lib/logistics_screen.dart",
+    "lib/admin/staff_management_screen.dart",
+    "lib/admin/staff_management_screen.roles_backup_20260802_213056.dart",
+    "lib/admin/staff_management_screen.status_backup_20260802_211105.dart",
+    "lib/admin/main_navigation.dart",
+    "lib/admin/admin_dashboard_legacy_screen.dart",
+    "lib/admin/login_screen.staff_backup_20260802_195231.dart",
+    "lib/admin/login_screen.dart",
+    "lib/admin/admin_control_center_screen.dart",
+    "lib/admin/admin_dashboard_screen.backup_20260817_161117.dart",
+    "lib/admin/main_navigation.staff_management_backup_20260802_201324.dart"
+  ]
+}

@@ -49,6 +49,7 @@ const {
   updateAdminRiderVerification,
 } = require("../controllers/adminRider.controller");
 const controlCenter = require("../controllers/adminControlCenter.controller");
+const riderWalletAdminController = require("../controllers/adminRiderWallet.controller");
 const adminAccessLog = require("../middleware/adminAccessLog.middleware");
 const privacyRequestController = require("../controllers/privacyRequest.controller");
 
@@ -281,6 +282,9 @@ router.get("/riders/:id", protect, loadStaffRole, requirePermission(P.RIDERS_VIE
 router.patch("/riders/:id", protect, loadStaffRole, requirePermission(P.RIDERS_MANAGE), updateAdminRider);
 router.patch("/riders/:id/status", protect, loadStaffRole, requirePermission(P.RIDERS_MANAGE), updateAdminRiderStatus);
 router.patch("/riders/:id/verification", protect, loadStaffRole, requirePermission(P.RIDERS_MANAGE), updateAdminRiderVerification);
+router.patch("/riders/:id/wallet", protect, adminOnly(...HEAD_OFFICE_ROLES), riderWalletAdminController.adjustRiderWallet);
+router.get("/rider-withdrawal-control", protect, adminOnly(...HEAD_OFFICE_ROLES), riderWalletAdminController.getWithdrawalControl);
+router.patch("/rider-withdrawal-control", protect, adminOnly(...HEAD_OFFICE_ROLES), riderWalletAdminController.updateWithdrawalControl);
 
 router.post("/transaction-requery", protect, loadStaffRole, requirePermission(P.TRANSACTIONS_REQUERY), adminTransactionRequeryController.adminRequeryTransaction);
 router.get("/bank-reconciliation", protect, loadStaffRole, requirePermission(P.FINANCE_RECONCILE), adminBankReconciliationController.listBankReconciliation);

@@ -632,6 +632,16 @@ const fintechControlSettingsSchema =
     { _id: false }
   );
 
+const riderWithdrawalControlSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: true },
+    updatedAt: { type: Date, default: Date.now },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    updatedByName: { type: String, trim: true, default: "" },
+  },
+  { _id: false }
+);
+
 /*
 |--------------------------------------------------------------------------
 | MAIN APPLICATION SETTINGS
@@ -722,6 +732,11 @@ const appSettingsSchema =
 
       fintechControl: {
         type: fintechControlSettingsSchema,
+        default: () => ({}),
+      },
+
+      riderWithdrawalControl: {
+        type: riderWithdrawalControlSchema,
         default: () => ({}),
       },
 

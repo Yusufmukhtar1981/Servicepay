@@ -1,0 +1,87 @@
+name: Deploy ServicePay Admin Web
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - "lib/**"
+      - "web/**"
+      - "assets/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/deploy_admin_web.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: servicepay-admin-pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Admin Web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter information
+        run: flutter doctor -v
+
+      - name: Enable Flutter Web
+        run: flutter config --enable-web
+
+      - name: Clean project
+        run: flutter clean
+
+      - name: Install packages
+        run: flutter pub get
+
+      - name: Analyze Admin source
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build Admin website
+        run: |
+          flutter build web \
+            --release \
+            --target=lib/admin/main.dart \
+            --base-href=/
+
+      - name: Add Admin custom domain
+        run: echo "admin.servicepay.ng" > build/web/CNAME
+
+      - name: Verify build output
+        run: |
+          test -f build/web/index.html
+          test -f build/web/CNAME
+          ls -la build/web
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Admin website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+      - name: Deploy Admin website
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,229 @@
+{
+  "verified_safe_screens": [
+    {
+      "class": "AdminAirtimeToCashScreen",
+      "file": "lib/admin/admin_airtime_to_cash_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminAmanaScreen",
+      "file": "lib/admin/admin_amana_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminBusinessWithdrawalsScreen",
+      "file": "lib/admin/admin_business_withdrawals_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminControlCenterScreen",
+      "file": "lib/admin/admin_control_center_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminDashboardScreen",
+      "file": "lib/admin/admin_dashboard_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminDataPricingScreen",
+      "file": "lib/admin/admin_data_pricing_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminDeliveryCoverageScreen",
+      "file": "lib/admin/admin_delivery_coverage_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminDeliveryScreen",
+      "file": "lib/admin/admin_delivery_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminEmpowermentScreen",
+      "file": "lib/admin/admin_empowerment_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminKekeFareScreen",
+      "file": "lib/admin/admin_keke_fare_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminKycScreen",
+      "file": "lib/admin/admin_kyc_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminLoginScreen",
+      "file": "lib/admin/login_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminManualFundingScreen",
+      "file": "lib/admin/admin_manual_funding_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminMarketplaceScreen",
+      "file": "lib/admin/admin_marketplace_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminNotificationsScreen",
+      "file": "lib/admin/admin_notifications_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminPartnerApplicationsScreen",
+      "file": "lib/admin/admin_partner_applications_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminPartnerScreen",
+      "file": "lib/admin/admin_partner_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminProductCommissionScreen",
+      "file": "lib/admin/admin_product_commission_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminRidersScreen",
+      "file": "lib/admin/admin_riders_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminRiderWithdrawalsScreen",
+      "file": "lib/admin/admin_rider_withdrawals_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminSettingsScreen",
+      "file": "lib/admin/admin_settings_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminTransactionsScreen",
+      "file": "lib/admin/admin_transactions_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "AdminUsersScreen",
+      "file": "lib/admin/users_screen.dart",
+      "constructor": "{super.key}",
+      "safe_no_args": true
+    },
+    {
+      "class": "CreateStaffScreen",
+      "file": "lib/admin/create_staff_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "RolesPermissionsScreen",
+      "file": "lib/admin/roles_permissions_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    },
+    {
+      "class": "StaffManagementScreen",
+      "file": "lib/admin/staff_management_screen.dart",
+      "constructor": "{ super.key, }",
+      "safe_no_args": true
+    }
+  ],
+  "screens_requiring_review": [],
+  "module_files": {
+    "KYC / KYB": [
+      "lib/admin/admin_kyc_screen.dart"
+    ],
+    "Customers": [
+      "lib/admin/create_admin_user_dialog.dart",
+      "lib/admin/users_screen.dart"
+    ],
+    "Transactions": [
+      "lib/admin/admin_transactions_screen.dart"
+    ],
+    "Wallet / Funding": [
+      "lib/admin/admin_manual_funding_screen.dart",
+      "lib/wallet_screen.dart"
+    ],
+    "Withdrawals": [
+      "lib/admin/admin_business_withdrawals_screen.dart",
+      "lib/admin/admin_rider_withdrawals_screen.dart"
+    ],
+    "Data Pricing": [
+      "lib/admin/admin_data_pricing_screen.dart"
+    ],
+    "Airtime To Cash": [
+      "lib/admin/admin_airtime_to_cash_screen.dart"
+    ],
+    "Notifications": [
+      "lib/admin/admin_notifications_screen.dart",
+      "lib/notifications_screen.dart"
+    ],
+    "Staff": [
+      "lib/admin/create_staff_screen.dart",
+      "lib/admin/staff_management_screen.dart"
+    ],
+    "Riders": [
+      "lib/admin/admin_rider_withdrawals_screen.dart",
+      "lib/admin/admin_riders_screen.dart"
+    ],
+    "Delivery": [
+      "lib/admin/admin_delivery_coverage_screen.dart",
+      "lib/admin/admin_delivery_screen.dart",
+      "lib/create_delivery_screen.dart",
+      "lib/delivery_history_screen.dart",
+      "lib/track_delivery_screen.dart"
+    ],
+    "Empowerment": [
+      "lib/admin/admin_empowerment_screen.dart"
+    ],
+    "Amana": [
+      "lib/admin/admin_amana_screen.dart"
+    ],
+    "Settings": [
+      "lib/admin/admin_settings_screen.dart"
+    ],
+    "Reconciliation": [],
+    "Settlement": [],
+    "Fraud / Risk": [],
+    "Reports": [],
+    "Ledger": [],
+    "Commission": [
+      "lib/admin/admin_product_commission_screen.dart"
+    ]
+  },
+  "dashboard_checks": {
+    "Fintech Control Center": true,
+    "Current Dashboard": true,
+    "Legacy preservation": true,
+    "IndexedStack": true
+  }
+}

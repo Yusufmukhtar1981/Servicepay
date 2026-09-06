@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 
 const User = require(
   "../models/user.model"
@@ -6,6 +7,9 @@ const User = require(
 
 const KekeRide = require(
   "../models/kekeRide.model"
+);
+const RiderWalletLedger = require(
+  "../models/riderWalletLedger.model"
 );
 
 const {
@@ -1722,8 +1726,10 @@ exports.completeRide = async (
     }
 
     if (
-      ride.status !==
-      "RIDE_STARTED"
+      ride.status !== "RIDE_STARTED" &&
+      !(ride.paymentMethod === "WALLET" &&
+        ride.status === "RIDE_COMPLETED" &&
+        ride.paymentStatus === "PAID")
     ) {
       return res
         .status(409)
@@ -1836,6 +1842,7 @@ exports.completeRide = async (
 
     ride.driverEarning =
       driverEarning;
+    let walletCompletedAtomically = false;
 
     /*
      * ===================================================
@@ -1845,66 +1852,69 @@ exports.completeRide = async (
 
     if (
       ride.paymentMethod ===
-        "WALLET" &&
-      ride.paymentStatus !==
-        "PAID"
+        "WALLET"
     ) {
-      if (
-        Number(
-          customer.walletBalance ||
-            0
-        ) <
-        totalFare
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-
-            message:
-              "Customer wallet balance is insufficient to complete payment.",
-
-            totalFare,
-
-            walletBalance:
-              Number(
-                customer.walletBalance ||
-                  0
-              ),
-          });
+      const settlementSession = await mongoose.startSession();
+      try {
+        await settlementSession.withTransaction(async () => {
+          const reference = `RIDER-KEKE-${ride._id}-EARNING`;
+          const currentRide = await KekeRide.findOne({
+            _id: ride._id,
+            driverId: req.user._id,
+          }).session(settlementSession);
+          if (!currentRide) throw Object.assign(new Error("Keke ride not found."), { statusCode: 404 });
+          if (currentRide.status !== "RIDE_STARTED" || currentRide.paymentStatus === "PAID") {
+            const alreadyCredited = await RiderWalletLedger.exists({ reference }).session(settlementSession);
+            if (currentRide.paymentStatus === "PAID" && alreadyCredited) return;
+            throw Object.assign(new Error("Only a started unpaid ride can be completed."), { statusCode: 409 });
+          }
+          const currentDriver = await User.findById(currentRide.driverId).session(settlementSession);
+          if (!currentDriver) throw Object.assign(new Error("Keke driver account was not found."), { statusCode: 404 });
+          const oldBalance = Number(currentDriver.pendingRiderSettlement || 0);
+          const updatedCustomer = await User.findOneAndUpdate(
+            { _id: currentRide.customerId, walletBalance: { $gte: totalFare } },
+            { $inc: { walletBalance: -totalFare } },
+            { new: true, session: settlementSession }
+          );
+          if (!updatedCustomer) {
+            throw Object.assign(new Error("Customer wallet balance is insufficient to complete payment."), { statusCode: 400 });
+          }
+          const updatedDriver = await User.findByIdAndUpdate(
+            currentRide.driverId,
+            {
+              $inc: {
+                totalRiderEarnings: driverEarning,
+                pendingRiderSettlement: driverEarning,
+                totalCompletedDeliveries: 1,
+              },
+              $set: { riderCurrentJobId: null, availabilityStatus: "ONLINE" },
+            },
+            { new: true, session: settlementSession }
+          );
+          await RiderWalletLedger.create([{
+            riderId: currentRide.driverId, type: "DELIVERY_EARNING", direction: "CREDIT",
+            amount: driverEarning, oldBalance, newBalance: Number(updatedDriver.pendingRiderSettlement || 0),
+            reference, reason: "Keke ride driver earning",
+            metadata: { kekeRideId: String(currentRide._id), rideReference: currentRide.rideReference },
+          }], { session: settlementSession });
+          currentRide.servicePayCommission = servicePayCommission;
+          currentRide.driverEarning = driverEarning;
+          currentRide.paymentStatus = "PAID";
+          currentRide.markRideCompleted();
+          await currentRide.save({ session: settlementSession });
+        });
+      } finally {
+        await settlementSession.endSession();
       }
-
-      /*
-       * Debit customer the full ride fare.
-       */
-      customer.walletBalance =
-        Number(
-          customer.walletBalance ||
-            0
-        ) -
-        totalFare;
-
-      /*
-       * Rider gets ONLY driver share.
-       */
-      driver.totalRiderEarnings =
-        Number(
-          driver.totalRiderEarnings ||
-            0
-        ) +
-        driverEarning;
-
-      driver.pendingRiderSettlement =
-        Number(
-          driver.pendingRiderSettlement ||
-            0
-        ) +
-        driverEarning;
-
-      ride.paymentStatus =
-        "PAID";
-
-      await customer.save();
+      const [freshRide, freshCustomer, freshDriver] = await Promise.all([
+        KekeRide.findById(ride._id),
+        User.findById(customer._id),
+        User.findById(driver._id),
+      ]);
+      ride.set(freshRide.toObject());
+      customer.set(freshCustomer.toObject());
+      driver.set(freshDriver.toObject());
+      walletCompletedAtomically = true;
     } else if (
       ride.paymentMethod ===
         "CASH"
@@ -1926,23 +1936,14 @@ exports.completeRide = async (
         "PAID";
     }
 
-    ride.markRideCompleted();
-
-    driver.riderCurrentJobId =
-      null;
-
-    driver.availabilityStatus =
-      "ONLINE";
-
-    driver.totalCompletedDeliveries =
-      Number(
-        driver.totalCompletedDeliveries ||
-          0
-      ) + 1;
-
-    await driver.save();
-
-    await ride.save();
+    if (!walletCompletedAtomically) {
+      ride.markRideCompleted();
+      driver.riderCurrentJobId = null;
+      driver.availabilityStatus = "ONLINE";
+      driver.totalCompletedDeliveries = Number(driver.totalCompletedDeliveries || 0) + 1;
+      await driver.save();
+      await ride.save();
+    }
 
     return res
       .status(200)
@@ -2006,7 +2007,7 @@ exports.completeRide = async (
     );
 
     return res
-      .status(500)
+      .status(error.statusCode || 500)
       .json({
         success: false,
         message:

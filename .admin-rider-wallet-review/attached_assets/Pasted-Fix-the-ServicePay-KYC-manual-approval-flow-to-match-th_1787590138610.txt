@@ -1,0 +1,65 @@
+Fix the ServicePay KYC manual approval flow to match the required Head Office behavior.
+
+CURRENT PROBLEM:
+The Admin KYC UI currently says:
+"Manual verification is allowed only when both submitted NIN and BVN contain exactly 11 numeric digits."
+
+This is wrong for HEAD_OFFICE manual override.
+
+REQUIRED BEHAVIOR:
+
+1. HEAD_OFFICE must be able to manually VERIFY / APPROVE any customer KYC record even if:
+   - NIN is missing
+   - BVN is missing
+   - optional documents are missing
+   - DOB/address/gender are missing
+   - the customer has not completed every normal KYC requirement
+
+2. Only HEAD_OFFICE may use this override.
+   Other admin roles must NOT be able to bypass KYC requirements.
+
+3. Remove the frontend restriction that disables or blocks
+   "Manual Verify / Approve"
+   when NIN or BVN is missing.
+
+4. Remove the backend requirement that manualOverride=true needs both NIN and BVN.
+
+5. When HEAD_OFFICE manually approves:
+   - KycProfile.status = VERIFIED
+   - user.kycVerified = true
+   - verifiedBy = current admin
+   - verifiedAt = current timestamp
+   - verificationMethod = MANUAL_ADMIN_OVERRIDE
+   - preserve any NIN/BVN already submitted
+   - do not fabricate NIN/BVN if they are missing
+   - create a clear KYC audit-history entry
+
+6. The Admin KYC details screen should clearly show:
+   MANUAL ADMIN OVERRIDE
+   when this method was used.
+
+7. Keep the normal customer KYC validation separate:
+   customers may submit valid 11-digit NIN and/or BVN for manual review,
+   but HEAD_OFFICE approval must never depend on both being present.
+
+8. Keep the KYC search working for:
+   - customer name
+   - phone
+   - email
+   - NIN
+   - BVN
+
+9. Make sure a manually VERIFIED customer immediately satisfies
+   ServicePay Empowerment beneficiary KYC checks.
+
+10. Add/update tests covering:
+   - Head Office can approve with no NIN and no BVN
+   - Head Office can approve with only NIN
+   - Head Office can approve with only BVN
+   - Head Office can approve with both
+   - non-Head-Office roles cannot override
+   - manual override metadata persists
+   - Empowerment recognizes the verified customer
+
+Run all available tests/analyzer checks, fix any errors, then commit and push the final changes to main.
+Do not change unrelated ServicePay features.

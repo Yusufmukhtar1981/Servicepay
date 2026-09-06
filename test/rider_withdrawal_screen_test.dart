@@ -129,6 +129,48 @@ void main() {
     await tester.pumpAndSettle();
     expect(postCount, 2);
   });
+
+  testWidgets(
+      'loads the authenticated withdrawal toggle and prevents disabled requests',
+      (WidgetTester tester) async {
+    final List<http.Request> requests = <http.Request>[];
+    final MockClient client = MockClient((http.Request request) async {
+      requests.add(request);
+      if (request.url.path.endsWith('/rider/withdrawal-availability')) {
+        return http.Response(
+          '{"data":{"enabled":false}}',
+          200,
+        );
+      }
+      return _responseFor(request);
+    });
+
+    await _pumpScreen(tester, client, () => keyOne);
+
+    final http.Request settingsRequest = requests.singleWhere(
+      (http.Request request) =>
+          request.url.path.endsWith('/rider/withdrawal-availability'),
+    );
+    expect(settingsRequest.headers['authorization'], 'Bearer rider-token');
+    expect(
+      find.text(
+        'Rider withdrawal is temporarily unavailable. Please try again later.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<TextFormField>(find.byType(TextFormField).first).enabled,
+      isFalse,
+    );
+
+    await _showRequestButton(tester, find.text('Request Withdrawal'));
+    await tester.tap(find.text('Request Withdrawal'));
+    await tester.pump();
+    expect(
+      requests.where((http.Request request) => request.method == 'POST'),
+      isEmpty,
+    );
+  });
 }
 
 Future<void> _pumpScreen(
@@ -197,6 +239,12 @@ Future<void> _dismissKeyboard(WidgetTester tester) async {
 }
 
 http.Response _responseFor(http.Request request) {
+  if (request.url.path.endsWith('/rider/withdrawal-availability')) {
+    return http.Response(
+      '{"data":{"enabled":true}}',
+      200,
+    );
+  }
   if (request.url.path.endsWith('/commission-summary')) {
     return http.Response(
       '{"data":{"summary":{"totalCommissionEarned":10000,'

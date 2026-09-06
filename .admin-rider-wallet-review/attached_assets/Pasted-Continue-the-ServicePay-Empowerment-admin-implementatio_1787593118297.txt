@@ -1,0 +1,65 @@
+Continue the ServicePay Empowerment admin implementation.
+
+The backend disbursement API is now available in production from the Servicepay repository.
+
+Update the existing admin Empowerment screen so Head Office can actually pay approved + verified beneficiaries.
+
+Requirements:
+
+1. In the Beneficiaries section, for every beneficiary whose:
+   - applicationStatus == APPROVED
+   - verificationStatus == VERIFIED
+   - payment status is not already PAID
+   show a green button:
+   "Disburse / Pay"
+
+2. When "Disburse / Pay" is clicked:
+   - show a confirmation dialog
+   - show beneficiary name
+   - program name
+   - configured amount per beneficiary
+   - ServicePay account / wallet identity
+   - warning that payment will credit the beneficiary wallet
+
+3. Call the real production backend API.
+Use the existing admin bearer-token authentication and existing API base URL.
+Do not create fake/local payment logic.
+
+4. The backend already controls the payout amount from the program configuration.
+The admin UI must NOT allow manual amount editing.
+
+5. After successful payment:
+   - refresh beneficiary data from server
+   - show status PAID
+   - show success message
+   - hide/disable the Disburse button
+   - display paid amount, payment reference, and paid date if returned
+
+6. Also complete the existing "Disbursements" management section:
+   - list recent disbursement batches/history
+   - show beneficiary/program/amount/status/reference/date
+   - allow refresh
+   - display failed/reversed states clearly
+   - no manual editing of financial outcome
+
+7. Head Office only:
+   - customers, state managers, zonal managers, aggregators must not see or execute disbursement actions.
+
+8. Preserve the current verified workflow:
+   SUBMITTED -> UNDER_REVIEW -> VERIFIED -> APPROVED -> PAID
+
+9. Prevent duplicate payment:
+   - if beneficiary is already PAID, never show active pay button.
+   - handle duplicate/idempotency response from backend gracefully.
+
+10. Use a unique Idempotency-Key for each payment request, at least 12 characters, as required by backend.
+
+11. Keep the current ServicePay green admin design and make the new buttons/dialogs responsive on mobile and desktop.
+
+12. Run analyzer/tests/build if available.
+Fix any compile/analyzer errors.
+Commit all changes with a clear message and push to origin/main.
+
+Important:
+Do not modify backend files in this servicepay-admin repository.
+Do not invent endpoints. Inspect the existing backend/API contract or current code references and wire the admin UI to the real production disbursement endpoints.

@@ -11,6 +11,9 @@ const riderController = require(
 const riderWithdrawalController = require(
   "../controllers/riderWithdrawal.controller"
 );
+const riderWalletAdminController = require(
+  "../controllers/adminRiderWallet.controller"
+);
 
 const riderDeliveryController = require(
   "../controllers/riderDelivery.controller"
@@ -145,6 +148,11 @@ router.patch(
   protect,
   riderWithdrawalController.markWithdrawalFailed
 );
+router.patch(
+  "/admin/withdrawals/:id/reverse",
+  protect,
+  riderWithdrawalController.reverseWithdrawal
+);
 
 
 /*
@@ -157,6 +165,12 @@ router.get(
   "/commission-summary",
   protect,
   riderWithdrawalController.getCommissionSummary
+);
+
+router.get(
+  "/withdrawal-availability",
+  protect,
+  riderWalletAdminController.getWithdrawalControl
 );
 
 router.get(

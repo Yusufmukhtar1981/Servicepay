@@ -1,0 +1,302 @@
+Please fix and upgrade ONLY the ServicePay Rider Wallet / Withdrawal system and its Admin controls.
+
+CURRENT PRODUCTION ISSUES:
+
+1. Rider withdrawal still does not complete.
+   - Rider enters amount
+   - selects bank
+   - account name verifies
+   - transaction PIN is entered
+   - taps Request Withdrawal
+   - UI stays on “Submitting…”
+   - eventually shows “The server took too long to respond.”
+
+2. In the Admin Dashboard there is currently NO proper CREDIT or DEBIT control for Rider wallets.
+
+3. In the Admin Dashboard there is NO ON/OFF feature toggle to enable or disable Rider Withdrawal.
+
+Do NOT modify VULL.
+Do NOT reset, recreate, truncate or delete production data.
+Do NOT destroy existing Rider withdrawal history.
+Do NOT automatically deploy until all tests pass.
+
+==================================================
+PART A — FIX RIDER WITHDRAWAL COMPLETELY
+==================================================
+
+Trace the Rider Withdrawal flow end-to-end from frontend to backend and database.
+
+Expected behavior:
+
+When Rider submits withdrawal:
+
+1. Authenticate Rider.
+2. Validate withdrawal feature is enabled.
+3. Validate amount.
+4. Validate Rider withdrawable balance.
+5. Validate transaction PIN.
+6. Validate bank/account information.
+7. Generate a unique idempotency/reference key.
+8. Create withdrawal request in database with status PENDING.
+9. Safely reserve/deduct the requested amount according to the existing wallet accounting model.
+10. Immediately return success to the Rider.
+
+IMPORTANT:
+Do NOT wait for bank transfer/provider settlement during Rider request submission if Admin approval is required.
+
+The frontend should receive success within a few seconds and show:
+
+“Withdrawal request submitted successfully”
+
+Then automatically:
+- refresh Rider available balance
+- refresh Total Earned
+- refresh Pending Withdrawal
+- refresh Total Withdrawn
+- refresh Withdrawal History
+
+Withdrawal statuses must support at least:
+
+PENDING
+APPROVED / PROCESSING
+PAID / SUCCESSFUL
+FAILED
+REJECTED
+REVERSED
+
+Prevent double withdrawal:
+- double tap
+- frontend retry
+- network retry
+- same idempotency key
+
+A single request must NEVER debit the Rider twice.
+
+If a withdrawal fails/rejects after funds were reserved, restore the funds exactly once.
+
+==================================================
+PART B — ADMIN RIDER WALLET CREDIT / DEBIT
+==================================================
+
+Add a premium Rider Wallet Management section in ServicePay Admin.
+
+Admin must be able to search Rider by:
+- Rider name
+- phone number
+- email
+- Rider ID
+
+When Rider is selected, display:
+
+- Rider name
+- Rider ID
+- phone
+- status
+- Total Earned
+- Available Balance
+- Pending Withdrawal
+- Total Withdrawn
+- Total Credits
+- Total Debits
+- last transactions
+
+Add two clear buttons:
+
+CREDIT RIDER WALLET
+DEBIT RIDER WALLET
+
+CREDIT FORM:
+- Amount
+- Reason
+- Admin note/reference
+- Confirm action
+
+DEBIT FORM:
+- Amount
+- Reason
+- Admin note/reference
+- Confirm action
+
+Rules:
+
+1. Do not allow negative values.
+2. Do not allow zero amount.
+3. Do not debit more than Rider available balance unless an explicit existing business rule allows it.
+4. Every adjustment must create an immutable wallet ledger entry.
+5. Never directly change wallet balance without creating a ledger transaction.
+6. Save:
+   - Rider ID
+   - amount
+   - type CREDIT/DEBIT
+   - old balance
+   - new balance
+   - reason
+   - admin user
+   - timestamp
+   - unique reference
+
+Show successful confirmation such as:
+
+“Rider wallet credited successfully”
+
+or
+
+“Rider wallet debited successfully”
+
+==================================================
+PART C — RIDER WITHDRAWAL ON/OFF TOGGLE
+==================================================
+
+Add an Admin feature control:
+
+RIDER WITHDRAWAL
+[ ENABLED / DISABLED ]
+
+Place it in the appropriate Admin:
+Feature Controls / App Settings / Fintech Controls area.
+
+When ENABLED:
+Riders can submit withdrawal requests.
+
+When DISABLED:
+Riders must not be able to submit withdrawal requests.
+
+Backend enforcement is REQUIRED.
+Do not rely only on hiding the button.
+
+If disabled and Rider opens Withdrawal page, show a clear message:
+
+“Rider withdrawal is temporarily unavailable. Please try again later.”
+
+Admin toggle changes must persist in the database and survive server restart/deploy.
+
+Also display:
+- current state
+- last updated time
+- admin who changed it
+
+==================================================
+PART D — ADMIN WITHDRAWAL MANAGEMENT
+==================================================
+
+Ensure Admin has a Rider Withdrawals page showing:
+
+- Rider
+- amount
+- bank
+- account number
+- account name
+- reference
+- requested date
+- status
+- available balance
+- action buttons
+
+Admin actions:
+
+VIEW
+APPROVE
+MARK PROCESSING
+MARK PAID
+REJECT
+
+Rules:
+
+- Never mark PAID twice.
+- Never deduct funds twice.
+- Rejected withdrawal must restore reserved funds exactly once where applicable.
+- All actions must be audit logged.
+
+==================================================
+PART E — LEDGER & AUDIT SAFETY
+==================================================
+
+Use proper wallet ledger accounting.
+
+Every Rider wallet change must create a ledger entry for:
+
+- Delivery earnings
+- Admin Credit
+- Admin Debit
+- Withdrawal Reserved
+- Withdrawal Paid
+- Withdrawal Reversal
+- Any other existing adjustment
+
+Do not silently mutate balances.
+
+Add transaction references and audit logs.
+
+==================================================
+PART F — FRONTEND TIMEOUT FIX
+==================================================
+
+Fix the current “The server took too long to respond” issue.
+
+Inspect:
+- API request timeout
+- hanging await
+- provider calls
+- database locks
+- unresolved promises
+- PIN validation
+- withdrawal transaction creation
+
+Return a proper HTTP response for every path.
+
+Examples:
+
+201 — withdrawal request created
+400 — invalid amount
+401/403 — invalid PIN/auth
+409 — duplicate request
+422 — insufficient balance
+503 — withdrawal feature disabled
+500 — unexpected server error
+
+The frontend must stop “Submitting…” on all success and failure paths.
+
+==================================================
+TEST ALL OF THESE
+==================================================
+
+Test:
+
+1. Valid Rider withdrawal
+2. Wrong PIN
+3. Insufficient balance
+4. Withdrawal feature disabled
+5. Withdrawal feature enabled
+6. Duplicate double-tap
+7. Network retry
+8. Admin Rider wallet Credit
+9. Admin Rider wallet Debit
+10. Debit greater than balance
+11. Admin approves withdrawal
+12. Admin rejects withdrawal
+13. Balance reversal on rejection
+14. Mark Paid only once
+15. Rider history refresh
+16. Admin audit log
+17. Existing withdrawal history preserved
+
+At the end report exactly:
+
+ROOT CAUSE OF WITHDRAWAL TIMEOUT:
+RIDER WITHDRAWAL: PASS/FAIL
+WITHDRAWAL CREATES PENDING RECORD: PASS/FAIL
+PIN VALIDATION: PASS/FAIL
+BALANCE VALIDATION: PASS/FAIL
+DOUBLE-DEBIT PROTECTION: PASS/FAIL
+ADMIN CREDIT RIDER WALLET: PASS/FAIL
+ADMIN DEBIT RIDER WALLET: PASS/FAIL
+RIDER WITHDRAWAL TOGGLE: PASS/FAIL
+BACKEND TOGGLE ENFORCEMENT: PASS/FAIL
+ADMIN WITHDRAWAL MANAGEMENT: PASS/FAIL
+LEDGER / AUDIT TRAIL: PASS/FAIL
+FRONTEND TIMEOUT HANDLING: PASS/FAIL
+EXISTING DATA PRESERVED: YES/NO
+SAFE TO DEPLOY: YES/NO
+
+Do not deploy automatically.
+Stop after implementation and testing so I can review the result first.

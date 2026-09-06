@@ -132,6 +132,7 @@ const riderWithdrawalSchema =
           "PAID",
           "REJECTED",
           "FAILED",
+           "REVERSED",
           "CANCELLED",
         ],
         default: "PENDING",

@@ -29,6 +29,8 @@ class RiderWithdrawalScreen extends StatefulWidget {
 
 class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
   static const Color primaryGreen = Color(0xFF159447);
+  static const String withdrawalUnavailableMessage =
+      'Rider withdrawal is temporarily unavailable. Please try again later.';
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -42,6 +44,8 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
 
   bool isLoading = true;
   bool isSubmitting = false;
+  // Fail closed until the authenticated feature setting has been loaded.
+  bool isWithdrawalEnabled = false;
   bool hidePin = true;
   late final http.Client _httpClient;
   late final bool _ownsHttpClient;
@@ -349,6 +353,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
         loadCommissionSummary(),
         loadWithdrawalHistory(),
         loadBanks(),
+        loadWithdrawalSettings(),
       ]);
     } on TimeoutException {
       showMessage(
@@ -444,6 +449,95 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
       withdrawalFee = number(
         summary['withdrawalFee'],
       );
+    });
+  }
+
+  bool? boolFromDynamic(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is num) {
+      return value == 1;
+    }
+
+    switch (value?.toString().trim().toLowerCase()) {
+      case 'true':
+      case '1':
+      case 'enabled':
+        return true;
+      case 'false':
+      case '0':
+      case 'disabled':
+        return false;
+    }
+
+    return null;
+  }
+
+  Future<void> loadWithdrawalSettings() async {
+    final String token = await getToken();
+
+    if (token.isEmpty) {
+      throw Exception(
+        'Rider login token was not found.',
+      );
+    }
+
+    final http.Response response = await _httpClient.get(
+      Uri.parse(
+        '${widget.apiBaseUrl}/rider/withdrawal-availability',
+      ),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(
+      const Duration(seconds: 35),
+    );
+
+    final Map<String, dynamic> root = decodeResponse(response);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        text(
+          root['message'],
+          fallback: 'Unable to load withdrawal settings.',
+        ),
+      );
+    }
+
+    final Map<String, dynamic> data = mapFromDynamic(root['data']);
+    final Map<String, dynamic> settings = mapFromDynamic(
+      data['settings'] ?? root['settings'],
+    );
+    final bool? enabled = boolFromDynamic(
+      data['enabled'] ??
+          data['withdrawalEnabled'] ??
+          data['withdrawalsEnabled'] ??
+          data['riderWithdrawalEnabled'] ??
+          settings['enabled'] ??
+          settings['withdrawalEnabled'] ??
+          settings['withdrawalsEnabled'] ??
+          settings['riderWithdrawalEnabled'] ??
+          root['enabled'] ??
+          root['withdrawalEnabled'] ??
+          root['withdrawalsEnabled'] ??
+          root['riderWithdrawalEnabled'],
+    );
+
+    if (enabled == null) {
+      throw const FormatException(
+        'The withdrawal settings response is missing its enabled state.',
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      isWithdrawalEnabled = enabled;
     });
   }
 
@@ -646,6 +740,11 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
 
   Future<void> submitWithdrawal() async {
     FocusScope.of(context).unfocus();
+
+    if (!isWithdrawalEnabled) {
+      showMessage(withdrawalUnavailableMessage);
+      return;
+    }
 
     final bool valid = formKey.currentState?.validate() ?? false;
 
@@ -1101,6 +1200,8 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
   Widget build(
     BuildContext context,
   ) {
+    final bool withdrawalFormEnabled = isWithdrawalEnabled && !isSubmitting;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
@@ -1203,6 +1304,24 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  if (!isWithdrawalEnabled) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF7ED),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        withdrawalUnavailableMessage,
+                        style: TextStyle(
+                          color: Color(0xFF9A3412),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Form(
                     key: formKey,
                     child: Container(
@@ -1220,7 +1339,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                         children: [
                           TextFormField(
                             controller: amountController,
-                            enabled: !isSubmitting,
+                            enabled: withdrawalFormEnabled,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
@@ -1266,7 +1385,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                                 );
                               },
                             ).toList(),
-                            onChanged: isSubmitting
+                            onChanged: !withdrawalFormEnabled
                                 ? null
                                 : (String? code) {
                                     final Map<String, String> selected =
@@ -1297,7 +1416,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                           const SizedBox(height: 14),
                           TextFormField(
                             controller: accountNumberController,
-                            enabled: !isSubmitting,
+                            enabled: withdrawalFormEnabled,
                             keyboardType: TextInputType.number,
                             maxLength: 10,
                             inputFormatters: [
@@ -1319,7 +1438,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                           const SizedBox(height: 14),
                           TextFormField(
                             controller: accountNameController,
-                            enabled: !isSubmitting,
+                            enabled: withdrawalFormEnabled,
                             textCapitalization: TextCapitalization.words,
                             validator: validateAccountName,
                             decoration: const InputDecoration(
@@ -1333,7 +1452,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                           const SizedBox(height: 14),
                           TextFormField(
                             controller: pinController,
-                            enabled: !isSubmitting,
+                            enabled: withdrawalFormEnabled,
                             obscureText: hidePin,
                             keyboardType: TextInputType.number,
                             maxLength: 4,
@@ -1351,11 +1470,13 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                                 Icons.lock_outline,
                               ),
                               suffixIcon: IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    hidePin = !hidePin;
-                                  });
-                                },
+                                onPressed: withdrawalFormEnabled
+                                    ? () {
+                                        setState(() {
+                                          hidePin = !hidePin;
+                                        });
+                                      }
+                                    : null,
                                 icon: Icon(
                                   hidePin
                                       ? Icons.visibility_off_outlined
@@ -1395,7 +1516,9 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
                             width: double.infinity,
                             height: 54,
                             child: FilledButton.icon(
-                              onPressed: isSubmitting ? null : submitWithdrawal,
+                              onPressed: withdrawalFormEnabled
+                                  ? submitWithdrawal
+                                  : null,
                               style: FilledButton.styleFrom(
                                 backgroundColor: primaryGreen,
                               ),
