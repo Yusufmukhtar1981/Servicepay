@@ -51,6 +51,21 @@ const riderWithdrawalSchema =
         index: true,
       },
 
+      /*
+       * A caller supplied key makes submission safe to retry. The intent
+       * digest is deliberately not exposed to riders or administrators.
+       */
+      idempotencyKey: {
+        type: String,
+        trim: true,
+      },
+
+      idempotencyIntent: {
+        type: String,
+        trim: true,
+        select: false,
+      },
+
       amount: {
         type: Number,
         required: true,
@@ -290,6 +305,26 @@ riderWithdrawalSchema.index({
   reference: 1,
   riderId: 1,
 });
+
+/*
+ * A key belongs to one rider only. Partial indexing keeps legacy withdrawal
+ * records (which predate idempotency) valid while preventing a retry from
+ * locking funds twice.
+ */
+riderWithdrawalSchema.index(
+  {
+    riderId: 1,
+    idempotencyKey: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: {
+        $type: "string",
+      },
+    },
+  }
+);
 
 /*
  * Return a safe Rider-facing withdrawal object.

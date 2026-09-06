@@ -13,4 +13,4 @@ Complete transaction-PIN admission before entering the wallet transaction, but k
 
 **Why:** PIN lockout counters and wallet mutations have different concurrency requirements; combining them can create false lockouts or duplicate payment retries.
 
-**How to apply:** Preserve the payment reference and idempotency key across retryable admission outcomes, then atomically commit debit, credit, transfer, histories, ledger entries, and successful attempt state.
+**How to apply:** Do not read a User inside a business transaction and then run PIN admission that writes that User outside the transaction; the stale snapshot can cause repeated write conflicts. Admit PIN first, then open the transaction and re-read eligibility/balance. Preserve the payment reference and idempotency key across retryable outcomes.

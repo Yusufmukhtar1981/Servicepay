@@ -1017,10 +1017,47 @@ exports.getMyWithdrawalById =
 
 exports.createWithdrawalRequest =
   async (req, res) => {
-    const session =
-      await mongoose.startSession();
+    const startedAt = Date.now();
+    let session = null;
+    let riderId = null;
+    let idempotencyKey = "";
+    let reference = null;
+    let respondWithDuplicate = null;
+    const logStage = (stage, details = {}) => {
+      console.info("rider_withdrawal", {
+        stage,
+        riderId: riderId ? String(riderId) : undefined,
+        idempotencyKey: idempotencyKey || undefined,
+        reference: reference || undefined,
+        durationMs: Date.now() - startedAt,
+        status: details.status || stage,
+        ...details,
+      });
+    };
 
     try {
+      riderId = getAuthenticatedUserId(req);
+      idempotencyKey = normalizeText(
+        (typeof req.get === "function" &&
+          req.get("Idempotency-Key")) ||
+          req.headers?.["idempotency-key"]
+      );
+      logStage("received");
+
+      if (!riderId) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication is required.",
+        });
+      }
+
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{11,127}$/.test(idempotencyKey)) {
+        return res.status(400).json({
+          success: false,
+          message: "A valid Idempotency-Key header (12-128 safe characters) is required.",
+        });
+      }
+
       const amount =
         roundMoney(
           req.body.amount
@@ -1163,14 +1200,86 @@ exports.createWithdrawalRequest =
           amount + fee
         );
 
-      let createdWithdrawal =
-        null;
+      const idempotencyIntent = crypto
+        .createHash("sha256")
+        .update(JSON.stringify({
+          amount,
+          bankCode,
+          accountNumber,
+          accountName,
+          narration,
+          currency: "NGN",
+        }))
+        .digest("hex");
 
-      let updatedRider =
-        null;
+      respondWithDuplicate = async (withdrawal) => {
+        const existingIntent = withdrawal.idempotencyIntent;
+        if (existingIntent !== idempotencyIntent) {
+          return res.status(409).json({
+            success: false,
+            code: "IDEMPOTENCY_KEY_INTENT_CONFLICT",
+            message:
+              "This Idempotency-Key has already been used for a different withdrawal request.",
+          });
+        }
+        const currentRider = await User.findById(riderId)
+          .select("pendingRiderSettlement");
+        logStage("duplicate_resolved", {
+          status: withdrawal.status,
+          reference: withdrawal.reference,
+        });
+        return res.status(200).json({
+          success: true,
+          message: "Rider commission withdrawal request already submitted.",
+          data: {
+            withdrawal: withdrawalForRider(withdrawal),
+            availableCommission: roundMoney(
+              currentRider?.pendingRiderSettlement
+            ),
+          },
+          withdrawal: withdrawalForRider(withdrawal),
+          availableCommission: roundMoney(
+            currentRider?.pendingRiderSettlement
+          ),
+        });
+      };
+
+      /*
+       * Retried HTTP requests must not consume another PIN admission. This
+       * lookup also gives an immediately committed request precedence over
+       * validation of a newly resent body.
+       */
+      const preexisting = await RiderWithdrawal.findOne({
+        riderId,
+        idempotencyKey,
+      }).select("+idempotencyIntent");
+      if (preexisting) {
+        return respondWithDuplicate(preexisting);
+      }
+
+      /*
+       * PIN reservation/clearing writes are intentionally completed before
+       * opening the financial transaction. verifyTransactionPin owns its
+       * security writes outside caller sessions.
+       */
+      try {
+        await verifyTransactionPin(riderId, transactionPin);
+        logStage("pin_admitted");
+      } catch (error) {
+        logStage("pin_rejected", {
+          status: error.statusCode || 400,
+        });
+        throw error;
+      }
+
+      session = await mongoose.startSession();
+      logStage("transaction_started");
+      let transactionResult = null;
 
       await session.withTransaction(
         async () => {
+          let createdWithdrawal = null;
+          let updatedRider = null;
           const rider =
             await getAuthenticatedRider(
               req, {
@@ -1232,11 +1341,29 @@ exports.createWithdrawalRequest =
             throw error;
           }
 
-          await verifyTransactionPin(
-            rider._id,
-            transactionPin,
-            { session }
-          );
+          logStage("rider_validated");
+
+          const duplicate = await RiderWithdrawal.findOne({
+            riderId: rider._id,
+            idempotencyKey,
+          })
+            .select("+idempotencyIntent")
+            .session(session);
+          if (duplicate) {
+            if (duplicate.idempotencyIntent !== idempotencyIntent) {
+              const error = new Error(
+                "This Idempotency-Key has already been used for a different withdrawal request."
+              );
+              error.statusCode = 409;
+              error.code = "IDEMPOTENCY_KEY_INTENT_CONFLICT";
+              throw error;
+            }
+            transactionResult = {
+              duplicate,
+              updatedRider: rider,
+            };
+            return;
+          }
 
           const existingActive =
             await RiderWithdrawal.findOne({
@@ -1272,6 +1399,9 @@ exports.createWithdrawalRequest =
 
                 status:
                   "ACTIVE",
+
+                riderVerificationStatus:
+                  "VERIFIED",
 
                 pendingRiderSettlement: {
                   $gte:
@@ -1328,8 +1458,9 @@ exports.createWithdrawalRequest =
 
             throw error;
           }
+          logStage("balance_reserved");
 
-          const reference =
+          reference =
             generateWithdrawalReference();
 
           const withdrawals =
@@ -1340,6 +1471,10 @@ exports.createWithdrawalRequest =
                     rider._id,
 
                   reference,
+
+                  idempotencyKey,
+
+                  idempotencyIntent,
 
                   amount,
 
@@ -1383,9 +1518,39 @@ exports.createWithdrawalRequest =
 
           createdWithdrawal =
             withdrawals[0];
+          transactionResult = {
+            createdWithdrawal,
+            updatedRider,
+          };
+          logStage("request_created", {
+            status: createdWithdrawal.status,
+          });
+        },
+        {
+          readConcern: {
+            level: "snapshot",
+          },
+          writeConcern: {
+            w: "majority",
+            wtimeout: 5000,
+          },
+          maxCommitTimeMS: 5000,
         }
       );
 
+      if (transactionResult?.duplicate) {
+        return respondWithDuplicate(
+          transactionResult.duplicate
+        );
+      }
+
+      const createdWithdrawal =
+        transactionResult?.createdWithdrawal;
+      const updatedRider =
+        transactionResult?.updatedRider;
+      logStage("committed", {
+        status: createdWithdrawal?.status,
+      });
       return res.status(201).json({
         success: true,
         message:
@@ -1416,10 +1581,29 @@ exports.createWithdrawalRequest =
           ),
       });
     } catch (error) {
-      console.error(
-        "Create Rider withdrawal error:",
-        error
-      );
+      logStage("rollback", {
+        status: error.statusCode || 500,
+        code: error.code,
+      });
+
+      /*
+       * A duplicate-key error or an unknown commit result can occur after the
+       * server has committed the transaction. Resolve by the durable key
+       * before reporting uncertainty; this never performs a second debit.
+       */
+      if (riderId && idempotencyKey) {
+        try {
+          const committed = await RiderWithdrawal.findOne({
+            riderId,
+            idempotencyKey,
+          }).select("+idempotencyIntent");
+          if (committed && respondWithDuplicate) {
+            return respondWithDuplicate(committed);
+          }
+        } catch (lookupError) {
+          // The original error remains the safest response if resolution fails.
+        }
+      }
 
       return res
         .status(
@@ -1440,7 +1624,9 @@ exports.createWithdrawalRequest =
           ),
         });
     } finally {
-      await session.endSession();
+      if (session) {
+        await session.endSession();
+      }
     }
   };
 
