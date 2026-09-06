@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:servicepay_app/qr_pay_screen.dart';
+import 'package:servicepay_app/servicepay_transfer_helper.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -107,6 +108,9 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('PAYMENT SUCCESSFUL'), findsOneWidget);
     },
@@ -117,13 +121,13 @@ void main() {
     (WidgetTester tester) async {
       bool viewedTransaction = false;
       final MockClient client = MockClient((http.Request request) async {
-        expect(request.headers['Idempotency-Key'], startsWith('QR-'));
+        expect(request.headers['Idempotency-Key'], startsWith('SPC-'));
         expect(request.body, isNot(contains('transactionPin')));
-        expect(jsonDecode(request.body), <String, dynamic>{
-          'receiverPhone': '08012345678',
-          'amount': 2500.0,
-          'pin': '1234',
-        });
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['receiverPhone'], '08012345678');
+        expect(body['amount'], 2500.0);
+        expect(body['pin'], '1234');
+        expect(body['clientReference'], request.headers['Idempotency-Key']);
 
         return http.Response(
           jsonEncode(<String, dynamic>{
@@ -201,9 +205,9 @@ void main() {
       await tester.pump();
 
       expect(find.text('PAYMENT PROCESSING'), findsOneWidget);
-      expect(find.textContaining('Check Transactions'), findsOneWidget);
+      expect(find.text('Payment is being confirmed.'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('TRY AGAIN'), findsOneWidget);
+      expect(find.text('CHECK STATUS'), findsOneWidget);
     },
   );
 
@@ -220,7 +224,7 @@ void main() {
 
       expect(find.text('PAYMENT SUCCESSFUL'), findsNothing);
       expect(find.text('PAYMENT PROCESSING'), findsOneWidget);
-      expect(find.textContaining('could not be confirmed'), findsOneWidget);
+      expect(find.text('Payment is being confirmed.'), findsOneWidget);
     },
   );
 
@@ -292,8 +296,8 @@ void main() {
       await submitPayment(tester);
       await tester.pump();
 
-      expect(find.text('PAYMENT NOT COMPLETED'), findsOneWidget);
-      expect(find.textContaining('Check your connection'), findsOneWidget);
+      expect(find.text('PAYMENT PROCESSING'), findsOneWidget);
+      expect(find.text('Payment is being confirmed.'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
     },
   );
@@ -302,8 +306,24 @@ void main() {
     'times out into a safe retry state on small Android layouts',
     (WidgetTester tester) async {
       final Completer<http.Response> response = Completer<http.Response>();
+      int postRequests = 0;
+      int statusRequests = 0;
       final MockClient client = MockClient((http.Request request) async {
-        return response.future;
+        if (request.method == 'POST') {
+          postRequests += 1;
+          return response.future;
+        }
+        expect(request.method, 'GET');
+        expect(request.url.path,
+            '/api/transfer/servicepay/status/${request.url.pathSegments.last}');
+        statusRequests += 1;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': true,
+            'data': <String, dynamic>{'status': 'PENDING'},
+          }),
+          200,
+        );
       });
 
       await pumpSheet(
@@ -315,10 +335,11 @@ void main() {
       await submitPayment(tester);
       await tester.pump(const Duration(milliseconds: 150));
 
-      expect(find.text('PAYMENT STATUS UNKNOWN'), findsOneWidget);
-      expect(
-          find.textContaining('may still have been received'), findsOneWidget);
-      expect(find.text('TRY AGAIN'), findsOneWidget);
+      expect(find.text('PAYMENT PROCESSING'), findsOneWidget);
+      expect(find.text('Payment is being confirmed.'), findsOneWidget);
+      expect(find.text('CHECK STATUS'), findsOneWidget);
+      expect(postRequests, 1);
+      expect(statusRequests, 3);
       expect(tester.takeException(), isNull);
     },
   );
@@ -339,6 +360,187 @@ void main() {
       expect(find.text('Amina Yusuf'), findsOneWidget);
       expect(find.text('Continue Payment'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'restores a pending QR intent after restart and rechecks without posting',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'auth_token': 'test-token',
+        'user_id': 'sender-1',
+        'user_phone': '08000000000',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await savePendingServicePayTransfer(
+        prefs,
+        PendingServicePayTransfer(
+          reference: 'SPC-restored-reference',
+          idempotencyKey: 'SPC-restored-reference',
+          receiverPhone: '08012345678',
+          amount: 2500,
+          flowType: 'qr',
+          createdAt: DateTime(2026, 1, 1),
+        ),
+      );
+      int posts = 0;
+      int gets = 0;
+      final client = MockClient((request) async {
+        if (request.method == 'POST') posts += 1;
+        if (request.method == 'GET') {
+          gets += 1;
+          expect(request.url.path,
+              '/api/transfer/servicepay/status/SPC-restored-reference');
+          return http.Response(jsonEncode(<String, dynamic>{
+            'success': true,
+            'data': <String, dynamic>{
+              'status': 'SUCCESS',
+              'reference': 'SPC-restored-reference',
+              'amount': 2500,
+            },
+          }), 200);
+        }
+        throw StateError('unexpected request');
+      });
+
+      await pumpSheet(tester, client: client);
+      await tester.pump();
+      await tester.pump();
+
+      expect(posts, 0);
+      expect(gets, 1);
+      expect(find.text('PAYMENT SUCCESSFUL'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'QrPayScreen recovers before scanning and uses status receipt identity',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'auth_token': 'test-token',
+        'user_id': 'sender-1',
+        'user_phone': '08000000000',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await savePendingServicePayTransfer(
+        prefs,
+        PendingServicePayTransfer(
+          reference: 'SPC-parent-recovery',
+          idempotencyKey: 'SPC-parent-recovery',
+          receiverPhone: '08012345678',
+          amount: 2500,
+          flowType: 'qr',
+          createdAt: DateTime.now(),
+        ),
+      );
+      int posts = 0;
+      int gets = 0;
+      final client = MockClient((request) async {
+        if (request.method == 'POST') posts += 1;
+        if (request.method == 'GET') {
+          gets += 1;
+          expect(request.url.path,
+              '/api/transfer/servicepay/status/SPC-parent-recovery');
+          return http.Response(jsonEncode(<String, dynamic>{
+            'success': true,
+            'data': <String, dynamic>{
+              'status': 'SUCCESS',
+              'reference': 'SPC-parent-recovery',
+              'amount': 2500,
+              'receiver': <String, dynamic>{
+                'fullName': 'Authoritative Status Recipient',
+                'phone': '08012345678',
+              },
+            },
+          }), 200);
+        }
+        throw StateError('unexpected request');
+      });
+      await tester.pumpWidget(MaterialApp(home: QrPayScreen(client: client)));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(posts, 0);
+      expect(gets, 1);
+      expect(find.text('Authoritative Status Recipient'), findsOneWidget);
+      // Recovery sheet is modal, so no scanner route/payment POST can occur.
+      expect(find.text('Scan ServicePay QR'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'backdated QR intent remains pending through 404s and only rechecks GET',
+    (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'auth_token': 'test-token',
+        'user_id': 'sender-1',
+        'user_phone': '08000000000',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await savePendingServicePayTransfer(
+        prefs,
+        PendingServicePayTransfer(
+          reference: 'SPC-old-delayed-post',
+          idempotencyKey: 'stable-old-key',
+          receiverPhone: '08012345678',
+          amount: 2500,
+          flowType: 'qr',
+          createdAt: DateTime.utc(2020, 1, 1),
+        ),
+      );
+      int posts = 0;
+      int gets = 0;
+      final client = MockClient((request) async {
+        if (request.method == 'POST') {
+          posts += 1;
+          throw StateError('a recovery flow must never POST');
+        }
+        gets += 1;
+        expect(request.method, 'GET');
+        expect(request.url.path,
+            '/api/transfer/servicepay/status/SPC-old-delayed-post');
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': false,
+            'message': 'Reference not found',
+          }),
+          404,
+        );
+      });
+
+      await tester.pumpWidget(MaterialApp(home: QrPayScreen(client: client)));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('PAYMENT PROCESSING'), findsOneWidget);
+      expect(find.text('CHECK STATUS'), findsOneWidget);
+      expect(posts, 0);
+      expect(gets, 3);
+
+      tester
+          .widget<ElevatedButton>(
+              find.byKey(const Key('qr-payment-retry')))
+          .onPressed!
+          .call();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('PAYMENT PROCESSING'), findsOneWidget);
+      expect(posts, 0);
+      expect(gets, 6);
+      final retained =
+          restorePendingServicePayTransfer(prefs, flowType: 'qr');
+      expect(retained?.reference, 'SPC-old-delayed-post');
+      expect(retained?.idempotencyKey, 'stable-old-key');
     },
   );
 }

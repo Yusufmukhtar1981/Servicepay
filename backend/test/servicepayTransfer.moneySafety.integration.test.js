@@ -7,6 +7,7 @@ const User = require("../models/user.model");
 const Transfer = require("../models/transfer.model");
 const Transaction = require("../models/transaction.model");
 const LedgerEntry = require("../models/ledgerEntry.model");
+const ServicePayTransferAttempt = require("../models/servicePayTransferAttempt.model");
 const controller = require("../controllers/transfer.controller");
 const {
   verifyTransactionPin,
@@ -15,7 +16,7 @@ const {
 let mongo;
 let sequence = 0;
 const originalStartSession = mongoose.startSession.bind(mongoose);
-const models = [User, Transfer, Transaction, LedgerEntry];
+const models = [User, Transfer, Transaction, LedgerEntry, ServicePayTransferAttempt];
 
 const customer = (label, walletBalance) => User.create({
   fullName: `${label} ${sequence}`,
@@ -28,12 +29,13 @@ const customer = (label, walletBalance) => User.create({
   status: "ACTIVE",
 });
 
-const request = ({ sender, receiver, amount = 100, key, pin = "1234" }) => ({
+const request = ({ sender, receiver, amount = 100, key, pin = "1234", clientReference }) => ({
   user: { _id: sender._id },
   body: {
     receiverPhone: receiver.phone,
     amount,
     pin,
+    ...(clientReference ? { clientReference } : {}),
   },
   get(name) {
     return name.toLowerCase() === "idempotency-key" ? key : undefined;
@@ -55,6 +57,18 @@ const call = async (options) => {
   return result;
 };
 
+const statusCall = async ({ sender, reference }) => {
+  const result = { status: 200 };
+  await controller.getServicePayTransferStatus(
+    { user: { _id: sender._id }, params: { reference } },
+    {
+      status(code) { result.status = code; return this; },
+      json(body) { result.body = body; return this; },
+    }
+  );
+  return result;
+};
+
 const assertExactTransfer = async ({
   sender,
   receiver,
@@ -65,7 +79,7 @@ const assertExactTransfer = async ({
   assert.equal((await User.findById(sender._id)).walletBalance, senderBalance);
   assert.equal((await User.findById(receiver._id)).walletBalance, receiverBalance);
   assert.equal(await Transfer.countDocuments(), count);
-  assert.equal(await Transaction.countDocuments({ serviceType: "TRANSFER" }), count);
+  assert.equal(await Transaction.countDocuments({ serviceType: "TRANSFER" }), count * 2);
   assert.equal(await LedgerEntry.countDocuments({ service: "SERVICEPAY_TRANSFER" }), count * 2);
   assert.equal(await LedgerEntry.countDocuments({
     service: "SERVICEPAY_TRANSFER",
@@ -124,6 +138,89 @@ test("normal transfer atomically writes one debit, credit, transfer, transaction
     receiver,
     senderBalance: 400,
     receiverBalance: 150,
+  });
+  const recipientHistory = await Transaction.findOne({ customerId: receiver._id });
+  assert.ok(recipientHistory);
+  assert.equal(recipientHistory.providerResponse.reference, result.body.data.reference);
+  assert.notEqual(recipientHistory.reference, result.body.data.reference);
+});
+
+test("sender status lookup reports committed requests as SUCCESS and hides them from other senders", async () => {
+  const sender = await customer("Sender", 500);
+  const receiver = await customer("Receiver", 0);
+  const otherSender = await customer("OtherSender", 500);
+  const result = await call({
+    sender, receiver, key: "status-success-request",
+  });
+
+  const status = await statusCall({ sender, reference: result.body.data.reference });
+  assert.equal(status.status, 200);
+  assert.equal(status.body.data.status, "SUCCESS");
+  assert.equal(String(status.body.data.receiver.id), String(receiver._id));
+  assert.equal(status.body.data.receiver.fullName, receiver.fullName);
+  assert.equal(status.body.data.receiver.phone, receiver.phone);
+  assert.equal(status.body.data.sender.walletBalance, 400);
+  assert.equal(status.body.data.receipt.reference, result.body.data.reference);
+  assert.equal(status.body.data.receipt.beneficiaryPhone, receiver.phone);
+  assert.equal((await statusCall({ sender: otherSender, reference: result.body.data.reference })).status, 404);
+});
+
+test("status lookup reports a reserved in-flight request as PENDING", async () => {
+  const sender = await customer("Sender", 500);
+  const reference = "client-in-flight-request-001";
+  await ServicePayTransferAttempt.create({
+    sender: sender._id,
+    receiverPhone: "08000000000",
+    amount: 100,
+    reference,
+    idempotencyKey: "in-flight-status-request-key",
+    status: "PENDING",
+    leaseExpiresAt: new Date(Date.now() + 60_000),
+  });
+  const status = await statusCall({ sender, reference });
+  assert.equal(status.status, 200);
+  assert.equal(status.body.data.status, "PENDING");
+});
+
+test("status reconciliation marks an expired pending reservation FAILED", async () => {
+  const sender = await customer("Sender", 500);
+  const reference = "client-expired-request-001";
+  await ServicePayTransferAttempt.create({
+    sender: sender._id,
+    receiverPhone: "08000000000",
+    amount: 100,
+    reference,
+    idempotencyKey: "expired-status-request-key",
+    status: "PENDING",
+    leaseExpiresAt: new Date(Date.now() - 60_000),
+  });
+  const status = await statusCall({ sender, reference });
+  assert.equal(status.status, 200);
+  assert.equal(status.body.data.status, "FAILED");
+  assert.equal(status.body.data.failureCode, "TRANSFER_REQUEST_EXPIRED");
+});
+
+test("an expired reservation cannot subsequently move money", async () => {
+  const sender = await customer("Sender", 500);
+  const receiver = await customer("Receiver", 0);
+  const reference = "client-expired-no-commit-001";
+  await ServicePayTransferAttempt.create({
+    sender: sender._id,
+    receiverPhone: receiver.phone,
+    amount: 100,
+    reference,
+    idempotencyKey: "expired-no-commit-request-key",
+    status: "PENDING",
+    leaseExpiresAt: new Date(Date.now() - 60_000),
+  });
+  assert.equal((await statusCall({ sender, reference })).body.data.status, "FAILED");
+  const result = await call({
+    sender, receiver, key: "expired-no-commit-request-key", clientReference: reference,
+  });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.code, "TRANSFER_REQUEST_EXPIRED");
+  await assertExactTransfer({
+    sender, receiver, senderBalance: 500, receiverBalance: 0, count: 0,
   });
 });
 
@@ -302,7 +399,7 @@ test("simultaneous transfers from one sender cannot overspend the wallet", async
     100
   );
   assert.equal(await Transfer.countDocuments(), 1);
-  assert.equal(await Transaction.countDocuments({ serviceType: "TRANSFER" }), 1);
+  assert.equal(await Transaction.countDocuments({ serviceType: "TRANSFER" }), 2);
   assert.equal(await LedgerEntry.countDocuments({ service: "SERVICEPAY_TRANSFER" }), 2);
 });
 
@@ -347,6 +444,19 @@ test("PIN failure creates no debit, credit, transaction, transfer, or ledger ent
     receiverBalance: 0,
     count: 0,
   });
+});
+
+test("definitive failed requests remain visible as FAILED without financial records", async () => {
+  const sender = await customer("Sender", 500);
+  const receiver = await customer("Receiver", 0);
+  const reference = "client-pin-failure-001";
+  const result = await call({
+    sender, receiver, key: "failed-request-status-key", pin: "9999", clientReference: reference,
+  });
+  assert.equal(result.status, 401);
+  const status = await statusCall({ sender, reference });
+  assert.equal(status.status, 200);
+  assert.equal(status.body.data.status, "FAILED");
 });
 
 test("two concurrent correct PIN verifications do not create a false persistent lock", async () => {
