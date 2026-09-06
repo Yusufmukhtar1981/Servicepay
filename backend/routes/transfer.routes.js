@@ -49,6 +49,16 @@ router.post(
 );
 
 /*
+ * Recovery-safe ServicePay transfer outcome lookup.  This is read-only and
+ * deliberately does not pass through debit/restriction middleware.
+ */
+router.get(
+  "/servicepay/status/:reference",
+  protect,
+  transferController.getServicePayTransferStatus
+);
+
+/*
  * Return the supported Nigerian banks
  * and their Squad/NIBSS bank codes.
  */

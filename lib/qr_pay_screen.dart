@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -10,9 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 import 'transactions_screen.dart';
+import 'servicepay_transfer_helper.dart';
 
 class QrPayScreen extends StatefulWidget {
-  const QrPayScreen({super.key});
+  const QrPayScreen({super.key, this.client});
+  final http.Client? client;
 
   @override
   State<QrPayScreen> createState() => _QrPayScreenState();
@@ -22,11 +23,47 @@ class _QrPayScreenState extends State<QrPayScreen> {
   String userId = '';
   String userName = '';
   String userPhone = '';
+  bool recoveryBlocked = true;
+  PendingServicePayTransfer? pendingQrIntent;
 
   @override
   void initState() {
     super.initState();
-    _loadUser();
+    _loadUser().then((_) => _recoverPendingQrIntent());
+  }
+
+  Future<void> _recoverPendingQrIntent() async {
+    final prefs = await SharedPreferences.getInstance();
+    final intent = restorePendingServicePayTransfer(prefs, flowType: 'qr');
+    if (!mounted) return;
+    if (intent == null) {
+      setState(() => recoveryBlocked = false);
+      return;
+    }
+    setState(() => pendingQrIntent = intent);
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => QrPaymentSheet(
+        receiverId: '',
+        receiverName: 'ServicePay customer',
+        receiverPhone: intent.receiverPhone,
+        client: widget.client,
+        restorePendingIntent: false,
+        restoredIntent: intent,
+        onRecoveryResolved: () {
+          if (mounted) {
+            setState(() {
+              pendingQrIntent = null;
+              recoveryBlocked = false;
+            });
+          }
+        },
+      ),
+    );
   }
 
   Future<void> _loadUser() async {
@@ -51,6 +88,12 @@ class _QrPayScreenState extends State<QrPayScreen> {
   }
 
   Future<void> _openScanner() async {
+    if (recoveryBlocked || pendingQrIntent != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Resolve the pending payment status first.')),
+      );
+      return;
+    }
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => const _ServicePayQrScannerScreen(),
@@ -59,11 +102,50 @@ class _QrPayScreenState extends State<QrPayScreen> {
 
     if (!mounted || result == null) return;
 
-    final receiverId = (result['userId'] ?? '').toString();
-    final receiverName = (result['name'] ?? '').toString();
     final receiverPhone = (result['phone'] ?? '').toString();
-
-    if (receiverId.isNotEmpty && receiverId == userId) {
+    if (!RegExp(r'^\d{11}$').hasMatch(receiverPhone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This QR code has no valid phone number.')),
+      );
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+    Map<String, dynamic> verified;
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.servicepay.ng/api/transfer/beneficiary/$receiverPhone'),
+        headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+      );
+      final root = decodeServicePayResponse(response.body);
+      final data = servicePayData(root);
+      final rawBeneficiary = data['beneficiary'];
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          root['success'] != true ||
+          rawBeneficiary is! Map) {
+        throw Exception(servicePayMessage(root, data,
+            fallback: 'Unable to verify QR beneficiary.'));
+      }
+      verified = Map<String, dynamic>.from(rawBeneficiary);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to verify QR beneficiary.')),
+      );
+      return;
+    }
+    final verifiedPhone = verified['phone']?.toString().trim() ?? '';
+    final verifiedName = verified['fullName']?.toString().trim() ?? '';
+    if (verifiedPhone != receiverPhone || verifiedName.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('QR beneficiary verification failed.')),
+      );
+      return;
+    }
+    if (verifiedPhone == userPhone) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('You cannot pay your own ServicePay QR.'),
@@ -72,14 +154,15 @@ class _QrPayScreenState extends State<QrPayScreen> {
       return;
     }
 
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => QrPaymentSheet(
-        receiverId: receiverId,
-        receiverName: receiverName,
-        receiverPhone: receiverPhone,
+        receiverId: verified['id']?.toString() ?? '',
+        receiverName: verifiedName,
+        receiverPhone: verifiedPhone,
         onViewTransaction: () {
           Navigator.of(context).push(
             MaterialPageRoute<void>(
@@ -225,7 +308,7 @@ class _QrPayScreenState extends State<QrPayScreen> {
                     borderRadius: BorderRadius.circular(20),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(20),
-                      onTap: _openScanner,
+                      onTap: recoveryBlocked ? null : _openScanner,
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(18),
@@ -435,6 +518,9 @@ class QrPaymentSheet extends StatefulWidget {
   final http.Client? client;
   final Duration requestTimeout;
   final VoidCallback? onViewTransaction;
+  final bool restorePendingIntent;
+  final PendingServicePayTransfer? restoredIntent;
+  final VoidCallback? onRecoveryResolved;
 
   const QrPaymentSheet({
     super.key,
@@ -444,6 +530,9 @@ class QrPaymentSheet extends StatefulWidget {
     this.client,
     this.requestTimeout = const Duration(seconds: 30),
     this.onViewTransaction,
+    this.restorePendingIntent = true,
+    this.restoredIntent,
+    this.onRecoveryResolved,
   });
 
   @override
@@ -458,53 +547,50 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
   QrPaymentReceipt? receipt;
   String outcomeMessage = '';
   String? idempotencyKey;
+  String? clientReference;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.restorePendingIntent) {
+      _restorePendingIntent();
+    }
+    if (widget.restoredIntent != null) {
+      final intent = widget.restoredIntent!;
+      idempotencyKey = intent.idempotencyKey;
+      clientReference = intent.reference;
+      amountController.text = intent.amount.toString();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _requeryStatus();
+      });
+    }
+  }
+
+  Future<void> _restorePendingIntent() async {
+    final prefs = await SharedPreferences.getInstance();
+    final intent =
+        restorePendingServicePayTransfer(prefs, flowType: 'qr');
+    if (intent == null) return;
+    idempotencyKey = intent.idempotencyKey;
+    clientReference = intent.reference;
+    amountController.text = intent.amount.toString();
+    if (!mounted) return;
+    setState(() {
+      status = QrPaymentStatus.pending;
+      outcomeMessage = 'Payment is being confirmed.';
+    });
+    await _recoverStatus(
+      intent.reference,
+      prefs.getString('auth_token') ?? prefs.getString('token') ?? '',
+      intent.amount,
+    );
+  }
 
   @override
   void dispose() {
     amountController.dispose();
     pinController.dispose();
     super.dispose();
-  }
-
-  String _newIdempotencyKey() {
-    final int randomPart = math.Random.secure().nextInt(1 << 32);
-    return 'QR-${DateTime.now().microsecondsSinceEpoch}-$randomPart';
-  }
-
-  Map<String, dynamic> _responseData(dynamic decoded) {
-    if (decoded is! Map) {
-      return <String, dynamic>{};
-    }
-
-    final Map<String, dynamic> root = Map<String, dynamic>.from(decoded);
-    final dynamic nested = root['data'];
-
-    if (nested is Map) {
-      return Map<String, dynamic>.from(nested);
-    }
-
-    return root;
-  }
-
-  String _responseMessage(
-    Map<String, dynamic> root,
-    Map<String, dynamic> data, {
-    required String fallback,
-  }) {
-    final dynamic value =
-        root['message'] ?? root['error'] ?? data['message'] ?? data['error'];
-    final String message = value?.toString().trim() ?? '';
-    return message.isEmpty ? fallback : message;
-  }
-
-  String _normalizedStatus(Map<String, dynamic> data) {
-    final dynamic receipt = data['receipt'];
-    final dynamic receiptStatus = receipt is Map ? receipt['status'] : null;
-
-    return (data['status'] ?? data['paymentStatus'] ?? receiptStatus ?? '')
-        .toString()
-        .trim()
-        .toUpperCase();
   }
 
   Future<void> _saveReturnedBalance(
@@ -539,6 +625,7 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
 
       if (!preserveIdempotencyKey) {
         idempotencyKey = null;
+        clientReference = null;
       }
     });
   }
@@ -587,8 +674,20 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
     });
 
     try {
-      final String requestKey = idempotencyKey ??= _newIdempotencyKey();
+      final String reference = clientReference ??= newServicePayClientReference();
+      final String requestKey = idempotencyKey ??= reference;
       final prefs = await SharedPreferences.getInstance();
+      await savePendingServicePayTransfer(
+        prefs,
+        PendingServicePayTransfer(
+          reference: reference,
+          idempotencyKey: requestKey,
+          receiverPhone: widget.receiverPhone.trim(),
+          amount: amount,
+          flowType: 'qr',
+          createdAt: DateTime.now(),
+        ),
+      );
 
       final token =
           prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
@@ -623,6 +722,7 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
                   'receiverPhone': widget.receiverPhone.trim(),
                   'amount': amount,
                   'pin': pin,
+                  'clientReference': reference,
                 },
               ),
             )
@@ -633,117 +733,128 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
         }
       }
 
-      Map<String, dynamic> root = <String, dynamic>{};
-
-      try {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) {
-          root = decoded;
-        } else if (decoded is Map) {
-          root = Map<String, dynamic>.from(decoded);
-        }
-      } catch (_) {}
-
-      final Map<String, dynamic> data = _responseData(root);
-      final String normalizedStatus = _normalizedStatus(data);
-      final bool isPending = response.statusCode == 202 ||
-          const <String>{
-            'PENDING',
-            'PROCESSING',
-            'IN_PROGRESS',
-          }.contains(normalizedStatus);
-      final bool isFailedStatus = const <String>{
-        'FAILED',
-        'FAIL',
-        'DECLINED',
-        'CANCELLED',
-      }.contains(normalizedStatus);
-      final bool isSuccessfulStatus = const <String>{
-        'SUCCESSFUL',
-        'SUCCESS',
-        'COMPLETED',
-        'PAID',
-      }.contains(normalizedStatus);
-      final bool explicitlySuccessful =
-          root['success'] == true || data['success'] == true;
-      final bool explicitlyFailed =
-          root['success'] == false || data['success'] == false;
-      final bool success = response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          explicitlySuccessful &&
-          isSuccessfulStatus &&
-          !isFailedStatus;
-
-      if (!mounted) return;
-
-      if (isPending) {
-        setState(() {
-          status = QrPaymentStatus.pending;
-          outcomeMessage =
-              'Your payment is still being processed. Check Transactions for the final status.';
-        });
-        return;
-      }
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          !explicitlyFailed &&
-          !success) {
-        setState(() {
-          status = QrPaymentStatus.pending;
-          outcomeMessage =
-              'ServicePay received the request, but the final payment status could not be confirmed. Try again safely or check Transactions.';
-        });
-        return;
-      }
-
-      if (!success) {
-        setState(() {
-          status = QrPaymentStatus.failure;
-          outcomeMessage = _responseMessage(
-            root,
-            data,
-            fallback: 'Payment failed. Please check the details and try again.',
-          );
-        });
-        return;
-      }
-
-      final QrPaymentReceipt receiptData = QrPaymentReceipt.fromResponse(
-        data,
-        fallbackAmount: amount,
-        fallbackRecipient: widget.receiverName,
-        fallbackRecipientPhone: widget.receiverPhone,
+      final result = parseServicePayTransferResponse(
+        statusCode: response.statusCode,
+        root: decodeServicePayResponse(response.body),
       );
-
-      await _saveReturnedBalance(prefs, data);
-
-      if (!mounted) return;
-
-      pinController.clear();
-
-      setState(() {
-        status = QrPaymentStatus.success;
-        receipt = receiptData;
-        outcomeMessage = '';
-      });
+      if (result.state != ServicePayTransferState.success) {
+        if (result.state == ServicePayTransferState.failed) {
+          _showFailure(result.message);
+        } else {
+          await _recoverStatus(reference, token, amount);
+        }
+        return;
+      }
+      await _showSuccess(
+        result.data,
+        fallbackAmount: amount,
+        preferences: prefs,
+      );
     } on TimeoutException {
-      if (!mounted) return;
-
-      setState(() {
-        status = QrPaymentStatus.timeout;
-        outcomeMessage =
-            'The request timed out. Your payment may still have been received. Try again safely or check Transactions before submitting a new payment.';
-      });
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          status = QrPaymentStatus.pending;
+          outcomeMessage = 'Payment is being confirmed.';
+        });
+      }
+      await _recoverStatus(
+        clientReference!,
+        prefs.getString('auth_token') ?? prefs.getString('token') ?? '',
+        amount,
+      );
     } catch (_) {
-      if (!mounted) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          status = QrPaymentStatus.pending;
+          outcomeMessage = 'Payment is being confirmed.';
+        });
+      }
+      await _recoverStatus(
+        clientReference!,
+        prefs.getString('auth_token') ?? prefs.getString('token') ?? '',
+        amount,
+      );
+    }
+  }
 
+  Future<void> _showSuccess(Map<String, dynamic> data,
+      {required double fallbackAmount,
+      required SharedPreferences preferences}) async {
+    final receiptData = QrPaymentReceipt.fromResponse(data,
+        fallbackAmount: fallbackAmount,
+        fallbackRecipient: widget.receiverName,
+        fallbackRecipientPhone: widget.receiverPhone);
+    await _saveReturnedBalance(preferences, data);
+    if (!mounted) return;
+    pinController.clear();
+    setState(() {
+      status = QrPaymentStatus.success;
+      receipt = receiptData;
+      outcomeMessage = '';
+    });
+    await clearPendingServicePayTransfer(preferences);
+    widget.onRecoveryResolved?.call();
+  }
+
+  void _showFailure(String message) {
+    if (!mounted) return;
+    setState(() {
+      status = QrPaymentStatus.failure;
+      outcomeMessage = message;
+      idempotencyKey = null;
+      clientReference = null;
+    });
+    SharedPreferences.getInstance().then(clearPendingServicePayTransfer);
+    widget.onRecoveryResolved?.call();
+  }
+
+  Future<void> _recoverStatus(
+      String reference, String token, double amount) async {
+    ServicePayTransferResult? result;
+    final client = widget.client ?? http.Client();
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final response = await client
+            .get(Uri.parse(
+                'https://api.servicepay.ng/api/transfer/servicepay/status/$reference'),
+                headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'})
+            .timeout(widget.requestTimeout);
+        result = parseServicePayTransferResponse(
+            statusCode: response.statusCode,
+            root: decodeServicePayResponse(response.body));
+        if (result.state != ServicePayTransferState.pending) break;
+      }
+    } catch (_) {
+      // A status request failure is still an unconfirmed payment, never a retry POST.
+    } finally {
+      if (widget.client == null) client.close();
+    }
+    if (!mounted) return;
+    if (result?.state == ServicePayTransferState.success) {
+      final prefs = await SharedPreferences.getInstance();
+      await _showSuccess(result!.data,
+          fallbackAmount: amount, preferences: prefs);
+    } else if (result?.state == ServicePayTransferState.failed) {
+      _showFailure(result!.message);
+    } else {
       setState(() {
-        status = QrPaymentStatus.failure;
-        outcomeMessage =
-            'Unable to reach ServicePay. Check your connection and try again.';
+        status = QrPaymentStatus.pending;
+        outcomeMessage = 'Payment is being confirmed.';
       });
     }
+  }
+
+  Future<void> _requeryStatus() async {
+    final reference = clientReference;
+    if (reference == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => status = QrPaymentStatus.submitting);
+    await _recoverStatus(reference,
+        prefs.getString('auth_token') ?? prefs.getString('token') ?? '',
+        double.tryParse(amountController.text.trim().replaceAll(',', '')) ?? 0);
   }
 
   String _formatMoney(double amount) {
@@ -828,12 +939,10 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
               Expanded(
                 child: ElevatedButton(
                   key: const Key('qr-payment-retry'),
-                  onPressed: () {
-                    _resetForRetry(
-                      preserveIdempotencyKey: true,
-                    );
-                  },
-                  child: const Text('TRY AGAIN'),
+                  onPressed: isPending
+                      ? _requeryStatus
+                      : () => _resetForRetry(preserveIdempotencyKey: false),
+                  child: Text(isPending ? 'CHECK STATUS' : 'TRY AGAIN'),
                 ),
               ),
             ],

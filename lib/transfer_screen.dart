@@ -1,10 +1,11 @@
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'servicepay_transfer_helper.dart';
 
 bool retainServicePayTransferRequestKey({
   required int statusCode,
@@ -17,7 +18,8 @@ bool retainServicePayTransferRequestKey({
 }
 
 class TransferScreen extends StatefulWidget {
-  const TransferScreen({super.key});
+  const TransferScreen({super.key, this.client});
+  final http.Client? client;
 
   @override
   State<TransferScreen> createState() => _TransferScreenState();
@@ -37,17 +39,55 @@ class _TransferScreenState extends State<TransferScreen> {
   bool isLoading = false;
   String? pendingTransferRequestKey;
   String? pendingTransferSignature;
+  String? pendingClientReference;
+  bool hasUnresolvedIntent = false;
+  bool isRestoringIntent = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _restorePendingIntent();
+  }
+
+  Future<void> _restorePendingIntent() async {
+    final prefs = await SharedPreferences.getInstance();
+    final intent =
+        restorePendingServicePayTransfer(prefs, flowType: 'normal');
+    if (intent == null) {
+      if (mounted) setState(() => isRestoringIntent = false);
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        hasUnresolvedIntent = true;
+        isRestoringIntent = false;
+      });
+    }
+    pendingTransferRequestKey = intent.idempotencyKey;
+    pendingClientReference = intent.reference;
+    pendingTransferSignature =
+        '${intent.receiverPhone}:${intent.amount.toStringAsFixed(2)}';
+    phoneController.text = intent.receiverPhone;
+    amountController.text = intent.amount.toString();
+    await recoverTransferStatus(
+      token: prefs.getString('auth_token') ?? '',
+      reference: intent.reference,
+    );
+  }
 
   String requestKeyForTransfer(String receiverPhone, double amount) {
+    if (hasUnresolvedIntent && pendingTransferRequestKey != null) {
+      return pendingTransferRequestKey!;
+    }
     final String signature = '$receiverPhone:${amount.toStringAsFixed(2)}';
     if (pendingTransferRequestKey != null &&
         pendingTransferSignature == signature) {
       return pendingTransferRequestKey!;
     }
 
-    final String key =
-        'servicepay-${DateTime.now().microsecondsSinceEpoch}-${math.Random.secure().nextInt(1 << 32)}';
+    final String key = newServicePayClientReference();
     pendingTransferRequestKey = key;
+    pendingClientReference = key;
     pendingTransferSignature = signature;
     return key;
   }
@@ -55,6 +95,8 @@ class _TransferScreenState extends State<TransferScreen> {
   void clearPendingTransferRequest() {
     pendingTransferRequestKey = null;
     pendingTransferSignature = null;
+    pendingClientReference = null;
+    SharedPreferences.getInstance().then(clearPendingServicePayTransfer);
   }
 
   @override
@@ -644,8 +686,19 @@ class _TransferScreenState extends State<TransferScreen> {
         receiverPhone,
         amount,
       );
+      await savePendingServicePayTransfer(
+        preferences,
+        PendingServicePayTransfer(
+          reference: pendingClientReference!,
+          idempotencyKey: requestKey,
+          receiverPhone: receiverPhone,
+          amount: amount,
+          flowType: 'normal',
+          createdAt: DateTime.now(),
+        ),
+      );
 
-      final http.Response response = await http
+      final http.Response response = await (widget.client ?? http.Client())
           .post(
             Uri.parse(
               '$baseUrl/transfer/servicepay',
@@ -660,6 +713,7 @@ class _TransferScreenState extends State<TransferScreen> {
               'receiverPhone': receiverPhone,
               'amount': amount,
               'pin': pin,
+              'clientReference': pendingClientReference,
             }),
           )
           .timeout(
@@ -674,13 +728,25 @@ class _TransferScreenState extends State<TransferScreen> {
         return;
       }
 
-      final bool requestSuccessful = response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          responseData['success'] == true;
+      final ServicePayTransferResult parsed = parseServicePayTransferResponse(
+        statusCode: response.statusCode,
+        root: responseData,
+      );
+      final bool requestSuccessful =
+          parsed.state == ServicePayTransferState.success;
 
       if (!requestSuccessful) {
         final String responseCode =
             responseData['code']?.toString().trim() ?? '';
+        if (parsed.state == ServicePayTransferState.pending ||
+            responseCode == 'TRANSFER_RESULT_UNCONFIRMED' ||
+            responseCode == 'TRANSFER_TEMPORARILY_UNAVAILABLE') {
+          await recoverTransferStatus(
+            token: token,
+            reference: requestKey,
+          );
+          return;
+        }
         if (!retainServicePayTransferRequestKey(
           statusCode: response.statusCode,
           responseCode: responseCode,
@@ -688,15 +754,14 @@ class _TransferScreenState extends State<TransferScreen> {
           clearPendingTransferRequest();
         }
         showMessage(
-          responseData['message']?.toString() ??
-              'Transfer failed. Please try again.',
+          parsed.message,
         );
 
         return;
       }
 
       final double? newBalance = extractWalletBalance(
-        responseData,
+        {'data': parsed.data},
       );
 
       if (newBalance != null) {
@@ -706,7 +771,7 @@ class _TransferScreenState extends State<TransferScreen> {
         );
       }
 
-      final dynamic data = responseData['data'];
+      final dynamic data = parsed.data;
 
       String reference = '';
       String confirmedReceiverName = beneficiaryName;
@@ -791,6 +856,26 @@ class _TransferScreenState extends State<TransferScreen> {
                     ),
                   ),
                 ],
+                if (newBalance != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'New balance: ₦${newBalance.toStringAsFixed(2)}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  'Date: ${DateTime.now().toLocal().toString().substring(0, 16)}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
               ],
             ),
             actions: [
@@ -825,17 +910,76 @@ class _TransferScreenState extends State<TransferScreen> {
       if (!mounted) {
         return;
       }
-
-      showMessage(
-        'The transfer result could not be confirmed. Check Transactions and '
-        'your wallet balance before attempting another transfer.',
-      );
+      final key = pendingTransferRequestKey;
+      if (key != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await recoverTransferStatus(
+          token: prefs.getString('auth_token') ?? '',
+          reference: key,
+        );
+      } else {
+        showMessage('Unable to confirm the transfer status.');
+      }
     } finally {
       if (mounted) {
         setState(() {
           isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> recoverTransferStatus({
+    required String token,
+    required String reference,
+  }) async {
+    ServicePayTransferResult? result;
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final response = await (widget.client ?? http.Client())
+            .get(
+              Uri.parse('$baseUrl/transfer/servicepay/status/$reference'),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            )
+            .timeout(const Duration(seconds: 15));
+        result = parseServicePayTransferResponse(
+          statusCode: response.statusCode,
+          root: decodeResponse(response.body),
+        );
+        if (result.state != ServicePayTransferState.pending) break;
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    if (result?.state == ServicePayTransferState.failed) {
+      clearPendingTransferRequest();
+      setState(() => hasUnresolvedIntent = false);
+      showMessage(result!.message);
+    } else if (result?.state == ServicePayTransferState.success) {
+      // The backend has conclusively accepted the transfer; present its receipt.
+      clearPendingTransferRequest();
+      setState(() => hasUnresolvedIntent = false);
+      showMessage('Transfer successful. Reference: ${result!.data['reference'] ?? reference}',
+          isError: false);
+    } else {
+      setState(() => hasUnresolvedIntent = true);
+      showMessage('Payment is being confirmed.');
+    }
+  }
+
+  Future<void> checkPendingTransferStatus() async {
+    if (isLoading || pendingClientReference == null) return;
+    setState(() => isLoading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await recoverTransferStatus(
+        token: prefs.getString('auth_token') ?? '',
+        reference: pendingClientReference!,
+      );
+    } finally {
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -936,7 +1080,9 @@ class _TransferScreenState extends State<TransferScreen> {
               ),
               TextFormField(
                 controller: phoneController,
-                enabled: !isLoading,
+                key: const Key('transfer-phone-input'),
+                enabled:
+                    !isLoading && !hasUnresolvedIntent && !isRestoringIntent,
                 keyboardType: TextInputType.phone,
                 maxLength: 11,
                 inputFormatters: [
@@ -978,7 +1124,9 @@ class _TransferScreenState extends State<TransferScreen> {
               ),
               TextFormField(
                 controller: amountController,
-                enabled: !isLoading,
+                key: const Key('transfer-amount-input'),
+                enabled:
+                    !isLoading && !hasUnresolvedIntent && !isRestoringIntent,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -1054,7 +1202,12 @@ class _TransferScreenState extends State<TransferScreen> {
               SizedBox(
                 height: 55,
                 child: FilledButton.icon(
-                  onPressed: isLoading ? null : transferMoney,
+                  key: const Key('transfer-submit'),
+                  onPressed: isLoading || isRestoringIntent
+                      ? null
+                      : hasUnresolvedIntent
+                          ? checkPendingTransferStatus
+                          : transferMoney,
                   style: FilledButton.styleFrom(
                     backgroundColor: primaryGreen,
                   ),
@@ -1071,7 +1224,11 @@ class _TransferScreenState extends State<TransferScreen> {
                           Icons.send_outlined,
                         ),
                   label: Text(
-                    isLoading ? 'Verifying...' : 'Transfer Money',
+                    isLoading || isRestoringIntent
+                        ? 'Checking...'
+                        : hasUnresolvedIntent
+                            ? 'CHECK STATUS'
+                            : 'Transfer Money',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
