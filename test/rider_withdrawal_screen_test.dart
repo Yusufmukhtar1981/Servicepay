@@ -171,6 +171,33 @@ void main() {
       isEmpty,
     );
   });
+
+  testWidgets(
+      'keeps the existing Rider withdrawal feature enabled when the control endpoint is not deployed',
+      (WidgetTester tester) async {
+    final MockClient client = MockClient((http.Request request) async {
+      if (request.url.path.endsWith('/rider/withdrawal-availability')) {
+        return http.Response(
+          '{"message":"Route not found"}',
+          404,
+        );
+      }
+      return _responseFor(request);
+    });
+
+    await _pumpScreen(tester, client, () => keyOne);
+
+    expect(
+      find.text(
+        'Rider withdrawal is temporarily unavailable. Please try again later.',
+      ),
+      findsNothing,
+    );
+    expect(
+      tester.widget<TextFormField>(find.byType(TextFormField).first).enabled,
+      isTrue,
+    );
+  });
 }
 
 Future<void> _pumpScreen(

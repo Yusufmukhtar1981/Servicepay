@@ -244,18 +244,48 @@ test("Rider ledger rejects document and query mutations/deletions", async () => 
   assert.equal(await RiderWalletLedger.countDocuments({ riderId: rider._id }), 2);
 });
 
-test("enforces the persistent withdrawal feature control before reserving funds", async () => {
+test("persisted toggle refuses OFF with 503 then accepts ON with 201", async () => {
   const rider = await createRider();
+  const admin = await createAdmin();
   await AppSettings.create({
     key: "GLOBAL_SETTINGS",
     riderWithdrawalControl: { enabled: false, updatedAt: new Date() },
   });
 
-  const res = await submit(rider, "withdrawal-feature-disabled");
+  const disabled = await submit(rider, "withdrawal-feature-disabled");
+  const toggle = response();
+  await adminWalletController.updateWithdrawalControl({
+    user: admin, body: { enabled: true, reason: "Enable withdrawals" },
+    method: "PATCH", originalUrl: "/api/admin/rider-withdrawal-control",
+  }, toggle);
+  const enabled = await submit(rider, "withdrawal-feature-enabled");
 
-  assert.equal(res.statusCode, 503);
-  assert.equal(await RiderWithdrawal.countDocuments(), 0);
-  assert.equal((await User.findById(rider._id)).pendingRiderSettlement, 10000);
+  assert.equal(disabled.statusCode, 503);
+  assert.equal(toggle.statusCode, 200);
+  assert.equal(enabled.statusCode, 201);
+  assert.equal((await AppSettings.getGlobalSettings()).riderWithdrawalControl.enabled, true);
+  assert.equal(await RiderWithdrawal.countDocuments(), 1);
+  assert.equal((await User.findById(rider._id)).pendingRiderSettlement, 5000);
+});
+
+test("new pending Rider withdrawal is visible to authorized Head Office queue", async () => {
+  const rider = await createRider();
+  const admin = await createAdmin();
+  const submitted = await submit(rider, "withdrawal-admin-queue-visible");
+  const res = response();
+  await controller.getAllWithdrawals({
+    user: admin,
+    query: { status: "PENDING", limit: 20, page: 1 },
+  }, res);
+
+  assert.equal(submitted.statusCode, 201);
+  assert.equal(res.statusCode, 200);
+  const item = res.body.data.withdrawals.find(
+    (withdrawal) => withdrawal.reference === submitted.body.withdrawal.reference
+  );
+  assert.ok(item);
+  assert.equal(item.status, "PENDING");
+  assert.equal(String(item.riderId._id), String(rider._id));
 });
 
 test("admin credits/debits only Rider settlement balance and records immutable entries", async () => {
@@ -297,7 +327,10 @@ test("admin toggle persists enabled state and writes audit evidence", async () =
   assert.equal(off.statusCode, 200);
   assert.equal(on.statusCode, 200);
   assert.equal((await AppSettings.getGlobalSettings()).riderWithdrawalControl.enabled, true);
-  assert.equal(await AdminAuditLog.countDocuments({ action: "RIDER_WITHDRAWAL_TOGGLE_UPDATED" }), 2);
+  assert.equal(await AdminAuditLog.countDocuments({
+    action: "RIDER_WITHDRAWAL_TOGGLE_UPDATED",
+    actorId: admin._id,
+  }), 2);
 });
 
 test("approve, processing and paid are audited and paid settlement is exact-once", async () => {

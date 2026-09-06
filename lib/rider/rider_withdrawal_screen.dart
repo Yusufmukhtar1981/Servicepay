@@ -498,6 +498,19 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
 
     final Map<String, dynamic> root = decodeResponse(response);
 
+    // Rider withdrawal existed before the persisted feature-control endpoint.
+    // During a staggered frontend/backend rollout, a 404 therefore means the
+    // control does not exist yet and must preserve the existing enabled state.
+    if (response.statusCode == 404) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        isWithdrawalEnabled = true;
+      });
+      return;
+    }
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         text(
