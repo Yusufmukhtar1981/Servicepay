@@ -26,6 +26,9 @@ const {
 } = require("./services/email.service");
 const { resumePendingCampaigns } = require("./services/communicationCampaign.service");
 const {
+  startServicePayTransferMonitor,
+} = require("./services/servicePayTransferMonitor.service");
+const {
   logFirebaseConfigurationStatus,
 } = require("./services/riderDeliveryAlert.service");
 
@@ -396,6 +399,7 @@ server.listen(PORT, "0.0.0.0", () => {
       );
 
       await startEmailAutomation();
+      startServicePayTransferMonitor();
     })
     .catch((error) => {
       console.error(

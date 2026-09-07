@@ -13,6 +13,7 @@
 - [Flutter build directory portability](flutter-build-directory-portability.md) — Never commit build as an absolute /tmp symlink; clean publish builders cannot follow it.
 - [Bank transfer settlement safety](bank-transfer-settlement-safety.md) — Do not expose customer requery until ambiguous outcomes and concurrent settlement are safe.
 - [PIN admission and payment retries](pin-admission-payment-retries.md) — Complete PIN admission before wallet transactions; ambiguous responses must preserve the payment request key.
+- [Transfer alert references](transfer-alert-references.md) — Treat client transfer references as untrusted PII; operations alerts must use secret-keyed correlation references.
 - [Notification lifecycle independence](notification-lifecycle-independence.md) — In-app financial activity must not depend on email availability; new filters must continue matching legacy records.
 - [Render Node runtime precedence](render-node-runtime-precedence.md) — Service-level NODE_VERSION overrides repository runtime pins; verify effective build logs before changing lockfiles.
 - [Android build resource pressure](android-build-resource-pressure.md) — Run release APK builds without concurrent Flutter workflows; container restarts can interrupt Gradle.
