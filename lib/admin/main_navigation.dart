@@ -259,6 +259,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
     if (currentIndex >= allowed.length) currentIndex = 0;
     final int executiveIndex = allowed.indexWhere(
         (_AdminDestination item) => item.label == 'Executive Management');
+    final int dashboardIndex =
+        allowed.indexWhere((_AdminDestination item) => item.label == 'Dashboard');
+    void openAdminDashboard() {
+      if (dashboardIndex < 0) return;
+      setState(() => currentIndex = dashboardIndex);
+    }
     void openExecutiveManagement({bool createSvp = false}) {
       if (executiveIndex < 0) return;
       setState(() => currentIndex = executiveIndex);
@@ -293,7 +299,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
                 }
                 if (item.label == 'Executive Management') {
                   return ExecutiveManagementScreen(
-                      key: executiveManagementKey);
+                    key: executiveManagementKey,
+                    onBackToAdminDashboard: openAdminDashboard,
+                  );
                 }
                 return item.page;
               }).toList(),

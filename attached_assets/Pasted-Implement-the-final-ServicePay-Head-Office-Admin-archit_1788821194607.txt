@@ -1,0 +1,190 @@
+Implement the final ServicePay Head Office Admin architecture exactly as follows.
+
+IMPORTANT:
+Work ONLY inside the main `Servicepay` project.
+DO NOT modify the separate `servicepay-admin` project.
+DO NOT modify VULL.
+DO NOT delete, reset, truncate, recreate, or modify existing production data.
+
+GOAL:
+The existing ServicePay Head Office/Admin Dashboard must remain the MAIN dashboard.
+
+The newly created Executive Management interface must NOT replace the main Admin Dashboard.
+
+========================================
+1. PRESERVE MAIN HEAD OFFICE DASHBOARD
+========================================
+
+Keep the existing Head Office/Admin Dashboard as the default page immediately after Head Office login.
+
+Preserve its current Executive Overview and all existing metrics/features, including existing navigation and Fintech Control Center.
+
+Do not redesign or replace this dashboard with the Executive Management screen.
+
+After successful HEAD_OFFICE login:
+
+HEAD_OFFICE LOGIN
+        ↓
+MAIN SERVICEPAY ADMIN DASHBOARD
+        ↓
+Executive Management
+        ↓
+EXECUTIVE MANAGEMENT MODULE
+
+========================================
+2. EXECUTIVE MANAGEMENT = SEPARATE MODULE
+========================================
+
+Keep the Executive Management design that is currently visible in Preview.
+
+I approve that design.
+
+However, it must exist ONLY as a separate Executive Management module/page.
+
+Add a clearly visible:
+
+Executive Management
+
+navigation item/card to the existing Head Office Admin Dashboard.
+
+When clicked, open the existing Executive Management interface.
+
+Do NOT make Executive Management the default Admin home page.
+
+========================================
+3. EXECUTIVE MANAGEMENT CONTENT
+========================================
+
+Preserve the current Executive Management interface and functionality including:
+
+Executive Overview
+SVP Management
+Create SVP
+Reports
+Audit Logs
+SVP Performance
+Transaction Intelligence
+Staff Performance
+Branch Performance
+Live Operations
+
+Keep the current premium Executive Management layout.
+
+The + CREATE SVP button must remain clearly visible.
+
+========================================
+4. NAVIGATION
+========================================
+
+Inside Executive Management add/retain a clear:
+
+← Back to Admin Dashboard
+
+action.
+
+Clicking it must return to the normal ServicePay Head Office Dashboard without logout or authentication loss.
+
+Navigation hierarchy must be:
+
+ServicePay Head Office
+ ├── Dashboard
+ ├── Executive Management
+ │    ├── Executive Overview
+ │    ├── SVP Management
+ │    ├── Create SVP
+ │    ├── SVP Performance
+ │    ├── Transaction Intelligence
+ │    ├── Staff Performance
+ │    ├── Branch Performance
+ │    ├── Live Operations
+ │    ├── Reports
+ │    └── Audit Logs
+ ├── Branch Management
+ ├── Funding
+ ├── Users
+ ├── Transactions
+ ├── Notifications
+ ├── Email Center
+ ├── Support
+ ├── Control
+ ├── Withdrawals
+ ├── Airtime Cash
+ ├── Delivery
+ ├── Logistics
+ ├── Marketplace
+ ├── Phone Finance
+ ├── KYC
+ └── all other existing ServicePay modules
+
+Do not remove any existing navigation item.
+
+========================================
+5. ROLE ACCESS
+========================================
+
+Executive Management must be accessible only to authorized Head Office/full-access administrative roles.
+
+SVPs must NOT receive unrestricted Head Office access.
+
+SVP users should only see their own scoped Executive/SVP dashboard and authorized data.
+
+Keep backend authorization authoritative.
+
+========================================
+6. VISUAL VERIFICATION
+========================================
+
+Do not mark this task PASS based only on source code or automated tests.
+
+Actually run the Admin Preview and log in through the normal Head Office login flow.
+
+Visually verify:
+
+A. After login, the FIRST page is the existing ServicePay Head Office/Admin Dashboard.
+
+B. Executive Management is clearly visible as a navigation option/card.
+
+C. Clicking Executive Management opens the approved Executive Management screen.
+
+D. + CREATE SVP is visible inside Executive Management.
+
+E. Back to Admin Dashboard returns to the original Head Office Dashboard.
+
+Capture/inspect both screens during verification.
+
+========================================
+7. SAFETY
+========================================
+
+Preserve all existing ServicePay functionality.
+
+Do not alter customer wallet balances.
+Do not alter transactions.
+Do not alter users.
+Do not alter existing branches.
+Do not alter production records.
+Do not deploy automatically.
+
+Do not touch:
+- servicepay-admin
+- VULL
+
+At completion report exactly:
+
+MAIN HEAD OFFICE DASHBOARD PRESERVED: PASS/FAIL
+MAIN DASHBOARD IS DEFAULT AFTER LOGIN: PASS/FAIL
+EXECUTIVE MANAGEMENT SEPARATE MODULE: PASS/FAIL
+EXECUTIVE MANAGEMENT NAVIGATION VISIBLE: PASS/FAIL
+CREATE SVP VISIBLE: PASS/FAIL
+BACK TO ADMIN DASHBOARD: PASS/FAIL
+SVP MANAGEMENT: PASS/FAIL
+ROLE/SCOPE ENFORCEMENT: PASS/FAIL
+EXISTING SERVICEPAY FEATURES PRESERVED: YES/NO
+PRODUCTION DATA PRESERVED: YES/NO
+SERVICEPAY-ADMIN MODIFIED: YES/NO
+VULL MODIFIED: YES/NO
+VISUALLY VERIFIED WITH NORMAL HEAD OFFICE LOGIN: YES/NO
+SAFE TO DEPLOY: YES/NO
+
+Do NOT deploy automatically.
+Stop after verification and wait for my approval.

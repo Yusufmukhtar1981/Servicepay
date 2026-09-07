@@ -6,9 +6,14 @@ import 'svp_management_screen.dart';
 import 'svp_reports_screen.dart';
 
 class ExecutiveManagementScreen extends StatefulWidget {
-  const ExecutiveManagementScreen({super.key, this.api});
+  const ExecutiveManagementScreen({
+    super.key,
+    this.api,
+    this.onBackToAdminDashboard,
+  });
 
   final SvpApiService? api;
+  final VoidCallback? onBackToAdminDashboard;
 
   @override
   State<ExecutiveManagementScreen> createState() =>
@@ -86,31 +91,50 @@ class ExecutiveManagementScreenState extends State<ExecutiveManagementScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Row(
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (wide) _Rail(selected: selected, onSelect: _select),
+          if (widget.onBackToAdminDashboard != null)
+            Material(
+              color: const Color(0xFFE6F0ED),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: widget.onBackToAdminDashboard,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('Back to Admin Dashboard'),
+                ),
+              ),
+            ),
           Expanded(
-            child: loading
-                ? const _ExecutiveSkeleton()
-                : error != null
-                    ? _Failure(message: error!, retry: _load)
-                    : IndexedStack(
-                        index: selected,
-                        children: [
-                          _Overview(
-                            svps: svps,
-                            onSelect: _select,
-                            onCreate: () {
-                              setState(() => selected = 1);
-                              managementKey.currentState?.openCreate();
-                            },
-                          ),
-                          SvpManagementScreen(key: managementKey),
-                          const SvpReportsScreen(headOffice: true),
-                          const SvpAuditScreen(headOffice: true),
-                        ],
-                      ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (wide) _Rail(selected: selected, onSelect: _select),
+                Expanded(
+                  child: loading
+                      ? const _ExecutiveSkeleton()
+                      : error != null
+                          ? _Failure(message: error!, retry: _load)
+                          : IndexedStack(
+                              index: selected,
+                              children: [
+                                _Overview(
+                                  svps: svps,
+                                  onSelect: _select,
+                                  onCreate: () {
+                                    setState(() => selected = 1);
+                                    managementKey.currentState?.openCreate();
+                                  },
+                                ),
+                                SvpManagementScreen(key: managementKey),
+                                const SvpReportsScreen(headOffice: true),
+                                const SvpAuditScreen(headOffice: true),
+                              ],
+                            ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -85,6 +85,33 @@ void main() {
     }
   });
 
+  testWidgets('Executive Management returns to Admin Dashboard without logout',
+      (tester) async {
+    var returnedToDashboard = false;
+    final api = SvpApiService(
+      client: MockClient((request) async => http.Response(
+          jsonEncode({'success': true, 'data': []}), 200)),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: ExecutiveManagementScreen(
+        api: api,
+        onBackToAdminDashboard: () => returnedToDashboard = true,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Back to Admin Dashboard'), findsOneWidget);
+    expect(find.text('CREATE SVP'), findsOneWidget);
+    await tester.tap(find.text('Back to Admin Dashboard'));
+    await tester.pump();
+
+    expect(returnedToDashboard, isTrue);
+    expect(
+        (await SharedPreferences.getInstance()).getString('auth_token'),
+        'test-token');
+  });
+
   test('Head Office roles see exactly one consolidated executive destination',
       () {
     for (final role in const [
