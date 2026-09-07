@@ -56,6 +56,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
   AdminAccess? access;
   String? refreshError;
   late final AdminSessionService sessionService;
+  final GlobalKey<ExecutiveManagementScreenState> executiveManagementKey =
+      GlobalKey<ExecutiveManagementScreenState>();
 
   static const List<_AdminDestination> destinations = <_AdminDestination>[
     _AdminDestination(
@@ -255,6 +257,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
       );
     }
     if (currentIndex >= allowed.length) currentIndex = 0;
+    final int executiveIndex = allowed.indexWhere(
+        (_AdminDestination item) => item.label == 'Executive Management');
+    void openExecutiveManagement({bool createSvp = false}) {
+      if (executiveIndex < 0) return;
+      setState(() => currentIndex = executiveIndex);
+      if (createSvp) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          executiveManagementKey.currentState?.openCreate();
+        });
+      }
+    }
+
     final wide = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
       body: Row(
@@ -268,8 +282,21 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
           Expanded(
             child: IndexedStack(
               index: currentIndex,
-              children:
-                  allowed.map((_AdminDestination item) => item.page).toList(),
+              children: allowed.map((_AdminDestination item) {
+                if (item.label == 'Dashboard') {
+                  return AdminDashboardScreen(
+                    showExecutiveManagement: executiveIndex >= 0,
+                    onOpenExecutiveManagement: openExecutiveManagement,
+                    onCreateSvp: () =>
+                        openExecutiveManagement(createSvp: true),
+                  );
+                }
+                if (item.label == 'Executive Management') {
+                  return ExecutiveManagementScreen(
+                      key: executiveManagementKey);
+                }
+                return item.page;
+              }).toList(),
             ),
           ),
         ],

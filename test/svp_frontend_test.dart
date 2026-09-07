@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:servicepay_app/admin/admin_permissions.dart';
+import 'package:servicepay_app/admin/admin_dashboard_screen.dart';
 import 'package:servicepay_app/admin/main_navigation.dart';
 import 'package:servicepay_app/admin/svp_api_service.dart';
 import 'package:servicepay_app/admin/svp_command_center_screen.dart';
@@ -352,6 +353,41 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Executive Management'), findsOneWidget);
     expect(find.text('CREATE SVP'), findsOneWidget);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets(
+      'real Head Office dashboard visibly exposes both executive shortcuts',
+      (tester) async {
+    var executiveOpened = false;
+    var createOpened = false;
+    SharedPreferences.setMockInitialValues({
+      'auth_token': 'test-token',
+      'user_name': 'Head Office',
+      'user_role': 'HEAD_OFFICE',
+    });
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.pumpWidget(MaterialApp(
+      home: AdminDashboardScreen(
+        showExecutiveManagement: true,
+        onOpenExecutiveManagement: () => executiveOpened = true,
+        onCreateSvp: () => createOpened = true,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('EXECUTIVE MANAGEMENT'), findsOneWidget);
+    expect(
+        find.text(
+            'Manage SVPs, executive reports, permissions and performance'),
+        findsOneWidget);
+    expect(find.text('OPEN EXECUTIVE MANAGEMENT'), findsOneWidget);
+    expect(find.text('+ CREATE SVP'), findsOneWidget);
+
+    await tester.tap(find.text('OPEN EXECUTIVE MANAGEMENT'));
+    await tester.tap(find.text('+ CREATE SVP'));
+    expect(executiveOpened, isTrue);
+    expect(createOpened, isTrue);
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 

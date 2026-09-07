@@ -12,7 +12,16 @@ import 'admin_phone_financing_screen.dart';
 import 'admin_delivery_management_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({super.key});
+  const AdminDashboardScreen({
+    super.key,
+    this.showExecutiveManagement = false,
+    this.onOpenExecutiveManagement,
+    this.onCreateSvp,
+  });
+
+  final bool showExecutiveManagement;
+  final VoidCallback? onOpenExecutiveManagement;
+  final VoidCallback? onCreateSvp;
 
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
@@ -94,63 +103,70 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required IconData icon,
     required Color color,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(
-              alpha: 0.05,
-            ),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: color.withValues(
-                alpha: 0.12,
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool compact = constraints.maxWidth < 220;
+        return Container(
+          padding: EdgeInsets.all(compact ? 12 : 18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: 0.05,
+                ),
+                blurRadius: 12,
+                offset: const Offset(0, 5),
               ),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 28,
-            ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+          child: Row(
+            children: [
+              Container(
+                width: compact ? 44 : 52,
+                height: compact ? 44 : 52,
+                decoration: BoxDecoration(
+                  color: color.withValues(
+                    alpha: 0.12,
                   ),
+                  borderRadius: BorderRadius.circular(15),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
-                  ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: compact ? 24 : 28,
                 ),
-              ],
-            ),
+              ),
+              SizedBox(width: compact ? 10 : 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: compact ? 20 : 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: compact ? 12 : 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -204,6 +220,81 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           size: 17,
         ),
         onTap: onTap,
+      ),
+    );
+  }
+
+  Widget buildExecutiveManagementCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: <Color>[Color(0xFF102C35), Color(0xFF087E6A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: const Color(0xFF087E6A).withValues(alpha: 0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Row(
+            children: <Widget>[
+              Icon(Icons.account_balance_rounded,
+                  color: Colors.white, size: 28),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'EXECUTIVE MANAGEMENT',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Manage SVPs, executive reports, permissions and performance',
+            style: TextStyle(color: Color(0xFFD5E9E4), height: 1.35),
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: <Widget>[
+              FilledButton.icon(
+                onPressed: widget.onOpenExecutiveManagement,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF087E6A),
+                ),
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: const Text('OPEN EXECUTIVE MANAGEMENT'),
+              ),
+              OutlinedButton.icon(
+                onPressed: widget.onCreateSvp,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white70),
+                ),
+                icon: const Icon(Icons.person_add_alt_1_rounded),
+                label: const Text('+ CREATE SVP'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -310,6 +401,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ],
                     ),
                   ),
+                  if (widget.showExecutiveManagement) ...<Widget>[
+                    const SizedBox(height: 18),
+                    buildExecutiveManagementCard(),
+                  ],
                   const SizedBox(height: 26),
                   const Text(
                     'Overview',
@@ -325,7 +420,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 14,
                     crossAxisSpacing: 14,
-                    childAspectRatio: 1.55,
+                    childAspectRatio:
+                        MediaQuery.sizeOf(context).width < 600 ? 1.25 : 1.55,
                     children: [
                       buildStatCard(
                         title: 'Total Users',

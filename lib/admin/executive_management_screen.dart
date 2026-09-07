@@ -12,15 +12,16 @@ class ExecutiveManagementScreen extends StatefulWidget {
 
   @override
   State<ExecutiveManagementScreen> createState() =>
-      _ExecutiveManagementScreenState();
+      ExecutiveManagementScreenState();
 }
 
-class _ExecutiveManagementScreenState extends State<ExecutiveManagementScreen> {
+class ExecutiveManagementScreenState extends State<ExecutiveManagementScreen> {
   late final SvpApiService api;
   int selected = 0;
   final GlobalKey<SvpManagementScreenState> managementKey =
       GlobalKey<SvpManagementScreenState>();
   bool loading = true;
+  bool pendingCreate = false;
   String? error;
   List<dynamic> svps = const [];
 
@@ -46,6 +47,7 @@ class _ExecutiveManagementScreenState extends State<ExecutiveManagementScreen> {
         svps = (result['data'] as List?) ?? const [];
         loading = false;
       });
+      _openPendingCreate();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -118,6 +120,27 @@ class _ExecutiveManagementScreenState extends State<ExecutiveManagementScreen> {
   }
 
   void _select(int value) => setState(() => selected = value);
+
+  void openCreate() {
+    setState(() => selected = 1);
+    if (loading) {
+      pendingCreate = true;
+      return;
+    }
+    _showCreateForm();
+  }
+
+  void _openPendingCreate() {
+    if (!pendingCreate) return;
+    pendingCreate = false;
+    _showCreateForm();
+  }
+
+  void _showCreateForm() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      managementKey.currentState?.openCreate();
+    });
+  }
 }
 
 class _Rail extends StatelessWidget {
