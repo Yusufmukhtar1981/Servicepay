@@ -1,0 +1,59 @@
+STOP modifying features.
+
+The Executive Management code already exists and your internal visual test reported PASS, but I still cannot see it when I personally open the ServicePay Head Office.
+
+The remaining task is ONLY to make sure I can open the SAME actual preview/build that you visually verified.
+
+DO NOT rebuild SVP.
+DO NOT change backend logic.
+DO NOT touch servicepay-admin.
+DO NOT touch VULL.
+DO NOT deploy automatically.
+
+1. Identify the exact runnable Admin preview service inside the main Servicepay project.
+
+2. Start the real Admin frontend service and keep it running.
+
+3. Report the exact preview URL/path I should open manually.
+
+4. Do NOT use a temporary browser-only authenticated session as the sole proof.
+
+5. Confirm what login URL I should use.
+
+6. Confirm which credentials/role flow will route a real HEAD_OFFICE login to:
+   lib/admin/admin_dashboard_screen.dart
+   through:
+   lib/admin/main_navigation.dart
+
+7. Verify that after a normal manual Head Office login, without test token injection, the dashboard visibly contains:
+   - EXECUTIVE MANAGEMENT
+   - + CREATE SVP
+
+8. If those items only appear with your temporary test token/session, fix the real normal-login role/session mapping so the legitimate Head Office account sees them too.
+
+9. Verify the actual role returned after normal Head Office login.
+Do not assume HEAD_OFFICE. Inspect the real authenticated response/state.
+
+10. If the Head Office account gets a legacy role such as:
+    ADMIN
+    SUPER_ADMIN
+    HEAD_OFFICE_ADMIN
+then map that role safely to the same Executive Management visibility.
+
+11. Keep the preview running for my own manual test.
+
+At the end report exactly:
+
+ADMIN PREVIEW SERVICE RUNNING: YES/NO
+EXACT PREVIEW URL:
+LOGIN URL:
+NORMAL HEAD OFFICE LOGIN TESTED: YES/NO
+REAL AUTHENTICATED ROLE:
+TEMPORARY TEST TOKEN REQUIRED: YES/NO
+EXECUTIVE MANAGEMENT VISIBLE AFTER NORMAL LOGIN: PASS/FAIL
+CREATE SVP VISIBLE AFTER NORMAL LOGIN: PASS/FAIL
+PREVIEW KEPT RUNNING FOR USER: YES/NO
+READY FOR USER MANUAL TEST: YES/NO
+
+Do not deploy.
+Do not stop the preview service after testing.

@@ -74,6 +74,17 @@ void main() {
     expect(home, isNot(isA<customer_navigation.MainNavigation>()));
   });
 
+  test('all legitimate Head Office roles enter the real Admin shell', () {
+    for (final role in const [
+      'HEAD_OFFICE',
+      'HEAD_OFFICE_ADMIN',
+      'SUPER_ADMIN',
+      'ADMIN',
+    ]) {
+      expect(authenticatedHomeForRole(role), isA<AdminMainNavigation>());
+    }
+  });
+
   test('Head Office roles see exactly one consolidated executive destination',
       () {
     for (final role in const [

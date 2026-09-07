@@ -58,6 +58,10 @@ Widget authenticatedHomeForRole(String role) {
       return const PhoneFinancingOfficerDashboardScreen();
     case 'BUSINESS_PARTNER':
       return const BusinessPartnerDashboardScreen();
+    case 'HEAD_OFFICE':
+    case 'HEAD_OFFICE_ADMIN':
+    case 'SUPER_ADMIN':
+    case 'ADMIN':
     case 'STAFF':
       return const AdminMainNavigation();
     case 'SVP':
