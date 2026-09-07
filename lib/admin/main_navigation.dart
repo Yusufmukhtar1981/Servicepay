@@ -22,11 +22,36 @@ import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_session_service.dart';
 import 'login_screen.dart';
+import 'svp_management_screen.dart';
+import 'svp_reports_screen.dart';
+import 'svp_audit_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key, this.sessionService});
 
   final AdminSessionService? sessionService;
+
+  static List<String> visibleDestinationLabels(AdminAccess access) {
+    final isHeadOffice = const {
+      'HEAD_OFFICE',
+      'HEAD_OFFICE_ADMIN',
+      'SUPER_ADMIN',
+    }.contains(access.role);
+    if (!isHeadOffice || !access.isFullAccess) {
+      return const [];
+    }
+    final labels = <String>[];
+    if (access.has(AdminPermissions.staffView)) {
+      labels.addAll(const ['Staff & Roles', 'SVP Management']);
+    }
+    if (access.has(AdminPermissions.reportsView)) {
+      labels.add('SVP Reports');
+    }
+    if (access.has(AdminPermissions.auditView)) {
+      labels.add('SVP Audit Logs');
+    }
+    return labels;
+  }
 
   @override
   State<AdminMainNavigation> createState() => _AdminMainNavigationState();
@@ -155,7 +180,34 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.manage_accounts,
         <String>[AdminPermissions.rolesView, AdminPermissions.staffView],
         AdminRolesPermissionsScreen()),
+    _AdminDestination('SVP Management', Icons.badge_outlined, Icons.badge,
+        <String>[AdminPermissions.staffView], SvpManagementScreen()),
+    _AdminDestination(
+        'SVP Reports',
+        Icons.assignment_outlined,
+        Icons.assignment,
+        <String>[AdminPermissions.reportsView],
+        SvpReportsScreen(headOffice: true)),
+    _AdminDestination(
+        'SVP Audit Logs',
+        Icons.manage_history_outlined,
+        Icons.manage_history,
+        <String>[AdminPermissions.auditView],
+        SvpAuditScreen(headOffice: true)),
   ];
+
+  static List<String> _visibleDestinationLabels(AdminAccess access) {
+    return destinations
+        .where((_AdminDestination item) =>
+            (!item.label.startsWith('SVP ') && item.label != 'SVP Management' ||
+                (const {'HEAD_OFFICE', 'HEAD_OFFICE_ADMIN', 'SUPER_ADMIN'}
+                        .contains(access.role) &&
+                    access.isFullAccess)) &&
+            access.hasAny(item.permissions) &&
+            (item.label != 'Control' || access.role == 'HEAD_OFFICE'))
+        .map((_AdminDestination item) => item.label)
+        .toList();
+  }
 
   @override
   void initState() {
@@ -216,10 +268,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
     if (access == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final List<String> labels = _visibleDestinationLabels(access!);
     final List<_AdminDestination> allowed = destinations
-        .where((_AdminDestination item) =>
-            access!.hasAny(item.permissions) &&
-            (item.label != 'Control' || access!.role == 'HEAD_OFFICE'))
+        .where((_AdminDestination item) => labels.contains(item.label))
         .toList();
     if (allowed.isEmpty) {
       return const Scaffold(

@@ -55,6 +55,14 @@ const privacyRequestController = require("../controllers/privacyRequest.controll
 
 const router = express.Router();
 router.use(adminAccessLog);
+// SVP access is deliberately isolated to /api/svp.  A permission assigned to
+// an SVP must never make an existing administrative route reachable.
+router.use((req, res, next) => {
+  if (String(req.user?.role || "").trim().toUpperCase() === "SVP") {
+    return res.status(403).json({ success: false, message: "SVP access is available only through the dedicated SVP API." });
+  }
+  return next();
+});
 
 const controlCenterBase = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole];
 router.get("/control-center/catalog", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.catalog);

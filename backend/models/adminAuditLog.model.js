@@ -178,6 +178,13 @@ const adminAuditLogSchema =
                "RIDER_WITHDRAWAL_REJECTED",
                "RIDER_WITHDRAWAL_FAILED",
                "RIDER_WITHDRAWAL_REVERSED",
+            "SVP_CREATED",
+            "SVP_UPDATED",
+            "SVP_STATUS_UPDATED",
+            "SVP_PASSWORD_RESET",
+            "SVP_SESSIONS_REVOKED",
+            "SVP_REPORT_CREATED",
+            "SVP_REPORT_REVIEWED",
         ],
       },
 

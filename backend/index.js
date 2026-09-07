@@ -142,6 +142,7 @@ const branchInterstateLogisticsRoutes = require("./routes/branchInterstateLogist
 const riderInterstateLogisticsRoutes = require("./routes/riderInterstateLogistics.routes");
 const transportLogisticsRoutes = require("./routes/transportLogistics.routes");
 const privacyRequestRoutes = require("./routes/privacyRequest.routes");
+const svpRoutes = require("./routes/svp.routes");
 
 app.use(helmet());
 app.use(cors());
@@ -325,6 +326,7 @@ app.use("/api/admin/kyc", adminKycRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/staff-management", staffManagementRoutes);
 app.use("/api/admin/role-users", adminRoleUsersRoutes);
+app.use("/api/svp", svpRoutes);
 
 app.use("/api/mini-apps", miniAppRoutes);
 app.use("/api/sudo", sudoRoutes);

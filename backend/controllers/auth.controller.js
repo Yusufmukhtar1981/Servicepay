@@ -497,6 +497,10 @@ const formatUser = (user) => {
         ? user.staffRoleId
             .permissions
         : [],
+    executiveId: user.role === "SVP" ? user.executiveId || null : undefined,
+    executiveTitle: user.role === "SVP" ? user.executiveTitle || "" : undefined,
+    svpPermissions: user.role === "SVP" ? user.svpPermissions || [] : undefined,
+    svpScope: user.role === "SVP" ? user.svpScope || null : undefined,
 
     createdAt:
       user.createdAt,

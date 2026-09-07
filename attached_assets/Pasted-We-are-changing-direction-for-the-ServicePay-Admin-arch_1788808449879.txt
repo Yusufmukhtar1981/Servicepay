@@ -1,0 +1,385 @@
+We are changing direction for the ServicePay Admin architecture.
+
+From now on, continue the Head Office/Admin development inside the MAIN ServicePay project, not inside the separate servicepay-admin project.
+
+IMPORTANT:
+- Work ONLY on ServicePay.
+- DO NOT touch VULL.
+- DO NOT delete/reset/truncate production data.
+- DO NOT remove any working ServicePay customer/backend features.
+- DO NOT create duplicate business logic unnecessarily.
+- Do NOT deploy automatically.
+
+CURRENT DECISION:
+The separate servicepay-admin frontend is served through GitHub Pages and has diverged from the main backend/API.
+
+To avoid maintaining two disconnected Admin systems, move/merge the Executive Management/SVP Admin functionality into the MAIN ServicePay project’s existing Head Office/Admin area, using the main ServicePay backend and real production API architecture.
+
+==================================================
+1. INSPECT MAIN SERVICEPAY ADMIN ARCHITECTURE
+==================================================
+
+Locate the existing Head Office/Admin system inside the main ServicePay project.
+
+Identify:
+- Admin routes
+- Head Office role
+- Admin navigation
+- Backend APIs
+- Staff management
+- Branch management
+- Rider management
+- Transactions
+- Wallet controls
+- Feature controls
+- Reports
+- Permissions
+- Current admin dashboard entry point
+
+Do not rebuild existing working modules.
+
+==================================================
+2. ADD EXECUTIVE MANAGEMENT TO MAIN SERVICEPAY ADMIN
+==================================================
+
+Add a visible section:
+
+EXECUTIVE MANAGEMENT
+
+Inside:
+
+- SVP Management
+- SVP Reports
+- SVP Audit Logs
+
+This must be part of the existing Head Office/Admin UI in the main ServicePay project.
+
+==================================================
+3. REUSE EXISTING SVP IMPLEMENTATION
+==================================================
+
+Reuse the existing SVP backend/business rules already implemented previously where safe.
+
+Do NOT duplicate:
+- SVP role
+- SVP permission model
+- SVP scope model
+- SVP reports
+- SVP audit logs
+
+Connect them to the main ServicePay backend/API.
+
+==================================================
+4. HEAD OFFICE → CREATE SVP
+==================================================
+
+Head Office must be able to:
+
+- Create SVP
+- Edit SVP
+- Activate/Suspend/Disable SVP
+- Reset password
+- Revoke sessions
+- Assign permissions
+- Assign scope
+- View reports
+- View audit logs
+
+Support MULTIPLE SVPs.
+
+Create SVP form:
+
+Full Name
+Email
+Phone
+Executive ID
+SVP Title
+Department
+Scope Type
+Assigned Region/State/Branches/Products
+Permissions
+Temporary Password
+Status
+
+==================================================
+5. SVP LOGIN + DASHBOARD
+==================================================
+
+SVP must login through the main ServicePay authentication system.
+
+Role:
+SVP
+
+After login route to:
+
+SVP EXECUTIVE COMMAND CENTER
+
+Do not route SVP to:
+- Customer Dashboard
+- Rider Dashboard
+- Branch Manager Dashboard
+- Head Office Dashboard
+
+==================================================
+6. SVP EXECUTIVE COMMAND CENTER
+==================================================
+
+Show:
+
+- Total Customers
+- Active Customers
+- Total Staff
+- Active Staff
+- Total Branches
+- Total Riders
+- Total Managers
+- Total Agents/Aggregators
+- Total Business Partners
+- Total Officers
+- Transaction Volume
+- Transaction Value
+- Successful Transactions
+- Pending Transactions
+- Failed Transactions
+- Customer Wallet Balance
+- Rider Wallet Balance
+- Pending Withdrawals
+- Pending KYC
+- Pending Solar Applications
+- Pending Phone Financing
+- Pending Deliveries
+- Marketplace Orders
+- Revenue
+- Commissions
+
+Respect SVP scope and permissions.
+
+==================================================
+7. TRANSACTION INTELLIGENCE
+==================================================
+
+SVP should be able to view permitted:
+
+- Wallet transfers
+- Withdrawals
+- Airtime
+- Data
+- Electricity
+- Cable
+- Marketplace
+- Delivery
+- Solar
+- Empowerment
+- Phone Financing
+- NIN Verification
+- QR Pay
+- Group Wallet/Ajo
+- Other existing products
+
+Add filters by:
+date
+status
+product
+branch
+staff
+rider
+customer
+reference
+
+==================================================
+8. STAFF + BRANCH PERFORMANCE
+==================================================
+
+Add:
+
+STAFF PERFORMANCE
+BRANCH PERFORMANCE
+
+Show:
+- Targets
+- Achievements
+- Transaction volume/value
+- Revenue
+- Activity
+- Ranking
+- Pending tasks
+
+==================================================
+9. LIVE OPERATIONS
+==================================================
+
+Show:
+
+- Pending Withdrawals
+- Failed Transactions
+- Pending KYC
+- Pending Riders
+- Pending Deliveries
+- Unassigned Deliveries
+- Pending Solar
+- Pending Phone Financing
+- Pending Empowerment
+- Marketplace issues
+- Branch issues
+- Staff issues
+
+Use real data only.
+
+==================================================
+10. SVP → HEAD OFFICE REPORTING
+==================================================
+
+SVP can submit:
+
+- Daily Report
+- Weekly Report
+- Monthly Report
+- Quarterly Report
+- Incident Report
+- Operational Report
+- Financial Performance Report
+- Branch Performance Report
+- Staff Performance Report
+
+Statuses:
+
+DRAFT
+SUBMITTED
+UNDER_REVIEW
+ACKNOWLEDGED
+ACTION_REQUIRED
+RESOLVED
+CLOSED
+
+Head Office can:
+- View
+- Comment
+- Acknowledge
+- Request Action
+- Resolve
+- Close
+
+==================================================
+11. SECURITY
+==================================================
+
+Head Office remains highest authority.
+
+SVP must NOT:
+- create Head Office users
+- create another SVP
+- change own permissions
+- access secrets/API keys
+- reset production database
+- delete wallet history
+- delete transaction history
+- override Head Office
+- perform unrestricted financial adjustments
+
+Backend enforcement is mandatory.
+
+==================================================
+12. MULTIPLE SVP SUPPORT
+==================================================
+
+Allow multiple SVPs with independent:
+
+- accounts
+- titles
+- departments
+- scopes
+- permissions
+- reports
+- audit logs
+
+Scope types:
+
+GLOBAL
+REGION
+STATE
+BRANCHES
+DEPARTMENT
+PRODUCTS
+CUSTOM
+
+==================================================
+13. PRESERVE EXISTING MAIN SERVICEPAY
+==================================================
+
+Do NOT break:
+
+- Customer app
+- Head Office dashboard
+- Staff management
+- Branch system
+- Rider system
+- Withdrawals
+- Credit/Debit
+- Feature controls
+- Transactions
+- Wallets
+- Delivery
+- Solar
+- Marketplace
+- Empowerment
+- Phone Financing
+- KYC
+- Business Partners
+- Notifications
+- Existing auth
+
+==================================================
+14. TEST END-TO-END
+==================================================
+
+Test:
+
+Head Office login
+→ Executive Management
+→ SVP Management
+→ Create SVP
+→ SVP account saved
+→ SVP login
+→ SVP Executive Command Center
+→ permitted data visible
+→ unauthorized data blocked
+→ SVP submits report
+→ Head Office receives report
+→ Head Office changes permissions
+→ permission change enforced
+→ suspend SVP
+→ SVP blocked
+→ reactivate works
+
+Also test second SVP to confirm multiple-SVP isolation.
+
+==================================================
+15. FINAL REPORT
+==================================================
+
+At the end report exactly:
+
+MAIN SERVICEPAY ADMIN FOUND: YES/NO
+EXECUTIVE MANAGEMENT ADDED: PASS/FAIL
+SVP MANAGEMENT: PASS/FAIL
+CREATE SVP: PASS/FAIL
+MULTIPLE SVP SUPPORT: PASS/FAIL
+SVP LOGIN: PASS/FAIL
+SVP EXECUTIVE DASHBOARD: PASS/FAIL
+TRANSACTION INTELLIGENCE: PASS/FAIL
+STAFF PERFORMANCE: PASS/FAIL
+BRANCH PERFORMANCE: PASS/FAIL
+LIVE OPERATIONS: PASS/FAIL
+SVP REPORTING: PASS/FAIL
+HEAD OFFICE REPORT REVIEW: PASS/FAIL
+PERMISSION ENFORCEMENT: PASS/FAIL
+SCOPE ENFORCEMENT: PASS/FAIL
+AUDIT LOGS: PASS/FAIL
+EXISTING SERVICEPAY FEATURES PRESERVED: YES/NO
+PRODUCTION DATA PRESERVED: YES/NO
+SERVICEPAY-ADMIN MODIFIED: YES/NO
+VULL TOUCHED: YES/NO
+SAFE TO DEPLOY: YES/NO
+
+Do NOT deploy automatically.
+Stop after implementation, build validation and tests.
