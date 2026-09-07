@@ -1,0 +1,214 @@
+IMPORTANT: Work ONLY inside the main Servicepay project.
+
+The previous implementation reported:
+- EXECUTIVE MANAGEMENT ADDED: PASS
+- SVP MANAGEMENT: PASS
+- CREATE SVP: PASS
+- SAFE TO DEPLOY: YES
+
+But when I log into the actual ServicePay Head Office Admin Dashboard, there is still NO visible "Executive Management", "SVP Management", or "Create SVP" anywhere in the navigation.
+
+Therefore the task is NOT complete.
+
+Do not just run tests and report PASS.
+Fix the REAL Head Office Admin UI and verify the feature is visibly accessible from the actual dashboard/navigation used by Head Office.
+
+REQUIREMENTS:
+
+1. IDENTIFY THE REAL HEAD OFFICE ADMIN
+- Trace the exact Admin Dashboard/navigation currently rendered for the real HEAD_OFFICE account in the main Servicepay project.
+- Do not create a parallel admin shell, demo page, hidden route, or separate dashboard.
+- Integrate Executive Management directly into the existing Head Office Admin navigation.
+
+2. ADD A CLEAR VISIBLE NAVIGATION ITEM
+
+Add a clearly visible main navigation item:
+
+EXECUTIVE MANAGEMENT
+
+Use a professional executive/business icon.
+
+It MUST appear for:
+- HEAD_OFFICE
+- SUPER_ADMIN
+- ADMIN
+- HEAD_OFFICE_ADMIN
+
+subject to the existing canonical authorization rules.
+
+It must work on:
+- Desktop navigation
+- Mobile navigation
+- Horizontal/scrollable admin navigation if that is what the existing dashboard uses.
+
+Do not hide it off-screen without making it reachable.
+
+3. EXECUTIVE MANAGEMENT HOME
+
+When Head Office clicks "Executive Management", open a premium management page containing:
+
+- Executive Overview
+- SVP Management
+- Create SVP
+- Active SVPs
+- Suspended SVPs
+- SVP Performance
+- Transaction Intelligence
+- Staff Performance
+- Branch Performance
+- Live Operations
+- Reports
+- Audit Logs
+
+4. CREATE SVP MUST BE OBVIOUS
+
+Inside Executive Management place a prominent:
+
++ CREATE SVP
+
+button.
+
+Head Office must be able to create multiple SVP accounts.
+
+Create SVP form should include at minimum:
+
+- Full Name
+- Email
+- Phone Number
+- Employee/Executive ID
+- Position/Title
+- Region Scope
+- State Scope
+- Branch Scope
+- Permission Level
+- Status
+- Temporary Password / secure credential flow
+
+After creation:
+- Account must be saved to the real database.
+- SVP must be able to login.
+- SVP must receive only authorized scope.
+- Multiple SVPs must be supported independently.
+
+5. SVP MANAGEMENT TABLE
+
+Show all SVPs with:
+
+- Name
+- SVP ID
+- Email
+- Phone
+- Scope
+- Status
+- Last Login
+- Created Date
+- Performance
+- View
+- Edit
+- Permissions
+- Suspend/Activate
+- Reset Password
+- Audit History
+
+6. HEAD OFFICE CONTROL
+
+Head Office must be able to:
+- Create SVP
+- Edit SVP
+- Suspend/activate SVP
+- Change permissions
+- Change assigned scope
+- Reset credentials
+- Review SVP reports
+- Review SVP activities/audit logs
+
+SVP must report upward to Head Office.
+
+7. DO NOT BREAK EXISTING ADMIN
+
+Preserve ALL existing ServicePay Head Office features and navigation.
+
+Do NOT remove or replace:
+- Dashboard
+- Transactions
+- Customers
+- Wallet controls
+- Staff
+- Branches
+- Riders
+- Delivery
+- Solar
+- Marketplace
+- Empowerment
+- Amana
+- Notifications
+- Fintech Control
+- Settings
+- or any other existing module.
+
+8. VERIFY THE REAL UI — NOT ONLY UNIT TESTS
+
+Start the actual Servicepay application.
+
+Login/render using the real Head Office navigation.
+
+Verify visually that:
+
+HEAD OFFICE
+   ↓
+EXECUTIVE MANAGEMENT
+   ↓
+SVP MANAGEMENT
+   ↓
++ CREATE SVP
+
+is visible and clickable.
+
+Test desktop AND mobile-width navigation.
+
+If the menu is horizontally scrollable, verify Executive Management can actually be reached by the user.
+
+9. DO NOT REPORT PASS JUST BECAUSE CODE EXISTS
+
+"PASS" is allowed only if the actual rendered Head Office UI contains the visible Executive Management menu and Create SVP button.
+
+If it is not visible in the real rendered dashboard, continue fixing it.
+
+10. PROJECT SAFETY
+
+- Work ONLY in main Servicepay.
+- Do NOT modify servicepay-admin.
+- Do NOT modify VULL.
+- Do NOT delete/reset/truncate production data.
+- Do NOT create fake production users.
+- Preserve existing production data.
+- Preserve existing authentication and permissions.
+- Do not deploy automatically.
+
+11. FINAL VISUAL VERIFICATION
+
+Before finishing, open the actual Head Office Admin preview and visually verify Executive Management is visible.
+
+Report exactly:
+
+REAL HEAD OFFICE ADMIN IDENTIFIED: YES/NO
+EXECUTIVE MANAGEMENT VISIBLE IN REAL NAVIGATION: PASS/FAIL
+DESKTOP NAVIGATION: PASS/FAIL
+MOBILE NAVIGATION: PASS/FAIL
+SVP MANAGEMENT PAGE VISIBLE: PASS/FAIL
+CREATE SVP BUTTON VISIBLE: PASS/FAIL
+CREATE SVP FORM: PASS/FAIL
+MULTIPLE SVP SUPPORT: PASS/FAIL
+SVP LOGIN: PASS/FAIL
+HEAD OFFICE PERMISSIONS: PASS/FAIL
+SVP SCOPE ENFORCEMENT: PASS/FAIL
+SVP REPORTING: PASS/FAIL
+AUDIT LOGS: PASS/FAIL
+EXISTING SERVICEPAY FEATURES PRESERVED: YES/NO
+PRODUCTION DATA PRESERVED: YES/NO
+SERVICEPAY-ADMIN MODIFIED: NO
+VULL MODIFIED: NO
+READY FOR ME TO VISUALLY TEST: YES/NO
+
+Do NOT deploy automatically.
+Stop only after READY FOR ME TO VISUALLY TEST is YES.

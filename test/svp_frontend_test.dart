@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +9,7 @@ import 'package:servicepay_app/admin/admin_permissions.dart';
 import 'package:servicepay_app/admin/main_navigation.dart';
 import 'package:servicepay_app/admin/svp_api_service.dart';
 import 'package:servicepay_app/admin/svp_command_center_screen.dart';
+import 'package:servicepay_app/admin/executive_management_screen.dart';
 import 'package:servicepay_app/admin/svp_management_screen.dart';
 import 'package:servicepay_app/main_navigation.dart' as customer_navigation;
 import 'package:servicepay_app/login_routing.dart';
@@ -71,20 +73,26 @@ void main() {
     expect(home, isNot(isA<customer_navigation.MainNavigation>()));
   });
 
-  test('Head Office sees SVP navigation while unpermissioned staff does not',
+  test('Head Office roles see exactly one consolidated executive destination',
       () {
-    final headOffice = AdminAccess(
-      role: 'HEAD_OFFICE',
-      permissions: {'staff.view', 'reports.view', 'audit.view'},
-    );
-    final staff = const AdminAccess(role: 'STAFF', permissions: {});
-    final labels = AdminMainNavigation.visibleDestinationLabels(headOffice);
-    final staffLabels = AdminMainNavigation.visibleDestinationLabels(staff);
-    expect(labels,
-        containsAll(['SVP Management', 'SVP Reports', 'SVP Audit Logs']));
-    expect(staffLabels, isNot(contains('SVP Management')));
-    expect(staffLabels, isNot(contains('SVP Reports')));
-    expect(staffLabels, isNot(contains('SVP Audit Logs')));
+    for (final role in const [
+      'HEAD_OFFICE',
+      'HEAD_OFFICE_ADMIN',
+      'SUPER_ADMIN',
+      'ADMIN',
+    ]) {
+      final labels = AdminMainNavigation.visibleDestinationLabels(
+        AdminAccess(role: role, permissions: const {}),
+      );
+      expect(labels.where((label) => label == 'Executive Management'),
+          hasLength(1));
+      expect(labels, isNot(contains('SVP Management')));
+      expect(labels, isNot(contains('SVP Reports')));
+      expect(labels, isNot(contains('SVP Audit Logs')));
+    }
+    final staffLabels = AdminMainNavigation.visibleDestinationLabels(
+        const AdminAccess(role: 'STAFF', permissions: {}));
+    expect(staffLabels, isNot(contains('Executive Management')));
   });
 
   test('SVP form payload preserves required fields, allowlist and scope shape',
@@ -313,6 +321,38 @@ void main() {
     expect(labels.any((x) => x.startsWith('Empowerment')), isTrue);
     expect(labels.any((x) => x.startsWith('Branch issues')), isTrue);
     expect(labels.any((x) => x.startsWith('Staff issues')), isTrue);
+  });
+
+  testWidgets('wide executive surface renders its destination and create CTA',
+      (tester) async {
+    final api = SvpApiService(
+      client: MockClient((_) async => http.Response(
+          jsonEncode({'success': true, 'data': <dynamic>[]}), 200)),
+    );
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    await tester
+        .pumpWidget(MaterialApp(home: ExecutiveManagementScreen(api: api)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Executive Management'), findsOneWidget);
+    expect(find.text('CREATE SVP'), findsOneWidget);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('narrow executive surface keeps create CTA reachable',
+      (tester) async {
+    final api = SvpApiService(
+      client: MockClient((_) async => http.Response(
+          jsonEncode({'success': true, 'data': <dynamic>[]}), 200)),
+    );
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester
+        .pumpWidget(MaterialApp(home: ExecutiveManagementScreen(api: api)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Executive Management'), findsOneWidget);
+    expect(find.text('CREATE SVP'), findsOneWidget);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
   test('performance contract retains every backend performance field', () {

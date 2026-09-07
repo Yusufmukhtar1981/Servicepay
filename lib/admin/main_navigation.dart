@@ -22,9 +22,7 @@ import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_session_service.dart';
 import 'login_screen.dart';
-import 'svp_management_screen.dart';
-import 'svp_reports_screen.dart';
-import 'svp_audit_screen.dart';
+import 'executive_management_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key, this.sessionService});
@@ -32,25 +30,20 @@ class AdminMainNavigation extends StatefulWidget {
   final AdminSessionService? sessionService;
 
   static List<String> visibleDestinationLabels(AdminAccess access) {
-    final isHeadOffice = const {
-      'HEAD_OFFICE',
-      'HEAD_OFFICE_ADMIN',
-      'SUPER_ADMIN',
-    }.contains(access.role);
-    if (!isHeadOffice || !access.isFullAccess) {
-      return const [];
-    }
-    final labels = <String>[];
-    if (access.has(AdminPermissions.staffView)) {
-      labels.addAll(const ['Staff & Roles', 'SVP Management']);
-    }
-    if (access.has(AdminPermissions.reportsView)) {
-      labels.add('SVP Reports');
-    }
-    if (access.has(AdminPermissions.auditView)) {
-      labels.add('SVP Audit Logs');
-    }
-    return labels;
+    return _AdminMainNavigationState.destinations
+        .where((_AdminDestination item) =>
+            (item.label != 'Executive Management' ||
+                (const {
+                      'HEAD_OFFICE',
+                      'HEAD_OFFICE_ADMIN',
+                      'SUPER_ADMIN',
+                      'ADMIN'
+                    }.contains(access.role) &&
+                    access.isFullAccess)) &&
+            access.hasAny(item.permissions) &&
+            (item.label != 'Control' || access.role == 'HEAD_OFFICE'))
+        .map((_AdminDestination item) => item.label)
+        .toList();
   }
 
   @override
@@ -71,6 +64,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.dashboard_rounded,
         <String>[AdminPermissions.dashboardView],
         AdminDashboardScreen()),
+    _AdminDestination(
+        'Executive Management',
+        Icons.insights_outlined,
+        Icons.insights,
+        <String>[AdminPermissions.staffView],
+        ExecutiveManagementScreen()),
     _AdminDestination(
         'Branch Management',
         Icons.account_tree_outlined,
@@ -180,33 +179,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.manage_accounts,
         <String>[AdminPermissions.rolesView, AdminPermissions.staffView],
         AdminRolesPermissionsScreen()),
-    _AdminDestination('SVP Management', Icons.badge_outlined, Icons.badge,
-        <String>[AdminPermissions.staffView], SvpManagementScreen()),
-    _AdminDestination(
-        'SVP Reports',
-        Icons.assignment_outlined,
-        Icons.assignment,
-        <String>[AdminPermissions.reportsView],
-        SvpReportsScreen(headOffice: true)),
-    _AdminDestination(
-        'SVP Audit Logs',
-        Icons.manage_history_outlined,
-        Icons.manage_history,
-        <String>[AdminPermissions.auditView],
-        SvpAuditScreen(headOffice: true)),
   ];
 
   static List<String> _visibleDestinationLabels(AdminAccess access) {
-    return destinations
-        .where((_AdminDestination item) =>
-            (!item.label.startsWith('SVP ') && item.label != 'SVP Management' ||
-                (const {'HEAD_OFFICE', 'HEAD_OFFICE_ADMIN', 'SUPER_ADMIN'}
-                        .contains(access.role) &&
-                    access.isFullAccess)) &&
-            access.hasAny(item.permissions) &&
-            (item.label != 'Control' || access.role == 'HEAD_OFFICE'))
-        .map((_AdminDestination item) => item.label)
-        .toList();
+    return AdminMainNavigation.visibleDestinationLabels(access);
   }
 
   @override
@@ -279,43 +255,120 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
       );
     }
     if (currentIndex >= allowed.length) currentIndex = 0;
+    final wide = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
-      body: IndexedStack(
-        index: currentIndex,
-        children: allowed.map((_AdminDestination item) => item.page).toList(),
+      body: Row(
+        children: [
+          if (wide)
+            _DesktopAdminNavigation(
+              destinations: allowed,
+              currentIndex: currentIndex,
+              onSelect: (index) => setState(() => currentIndex = index),
+            ),
+          Expanded(
+            child: IndexedStack(
+              index: currentIndex,
+              children:
+                  allowed.map((_AdminDestination item) => item.page).toList(),
+            ),
+          ),
+        ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF0F766E),
-        unselectedItemColor: const Color(0xFF94A3B8),
-        backgroundColor: Colors.white,
-        elevation: 12,
-        selectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 11,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 11,
-        ),
-        onTap: (int index) {
-          setState(() {
-            currentIndex = index;
-          });
-        },
-        items: allowed
-            .map(
-              (_AdminDestination item) => BottomNavigationBarItem(
-                icon: Icon(item.icon),
-                activeIcon: Icon(item.activeIcon),
-                label: item.label,
-              ),
-            )
-            .toList(),
-      ),
+      bottomNavigationBar: wide
+          ? null
+          : _MobileAdminNavigation(
+              destinations: allowed,
+              currentIndex: currentIndex,
+              onSelect: (index) => setState(() => currentIndex = index),
+            ),
     );
   }
+}
+
+class _DesktopAdminNavigation extends StatelessWidget {
+  const _DesktopAdminNavigation({
+    required this.destinations,
+    required this.currentIndex,
+    required this.onSelect,
+  });
+
+  final List<_AdminDestination> destinations;
+  final int currentIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFFE6F0ED),
+        child: SizedBox(
+          width: 248,
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+              child: Column(
+                children: List.generate(destinations.length, (index) {
+                  final item = destinations[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: ListTile(
+                      selected: currentIndex == index,
+                      selectedTileColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      leading: Icon(
+                          currentIndex == index ? item.activeIcon : item.icon),
+                      title: Text(item.label,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w700)),
+                      onTap: () => onSelect(index),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _MobileAdminNavigation extends StatelessWidget {
+  const _MobileAdminNavigation({
+    required this.destinations,
+    required this.currentIndex,
+    required this.onSelect,
+  });
+
+  final List<_AdminDestination> destinations;
+  final int currentIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.white,
+        elevation: 10,
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            child: Row(
+              children: List.generate(destinations.length, (index) {
+                final item = destinations[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    selected: currentIndex == index,
+                    avatar: Icon(
+                        currentIndex == index ? item.activeIcon : item.icon,
+                        size: 18),
+                    label: Text(item.label),
+                    onSelected: (_) => onSelect(index),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+      );
 }
 
 class _AdminDestination {

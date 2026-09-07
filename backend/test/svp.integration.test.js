@@ -65,6 +65,48 @@ test("route middleware chain enforces protect, exact role, and permission", asyn
   assert.equal(result.response.statusCode, 403);
 });
 
+test("all canonical full-access roles can enter Executive Management", async () => {
+  const roles = ["HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "SUPER_ADMIN", "ADMIN"];
+  const middleware = [
+    protect,
+    adminOnly(...roles),
+  ];
+  for (const [index, role] of roles.entries()) {
+    const user = role === "HEAD_OFFICE"
+      ? ho
+      : await User.create({
+          fullName: `${role} Executive`,
+          phone: `0810000000${index}`,
+          email: `${role.toLowerCase()}@svp.test`,
+          password: "StrongPass1!",
+          role,
+        });
+    const token = jwt.sign({ id: user._id, authTokenVersion: 0 }, process.env.JWT_SECRET);
+    const result = await middlewareChain(middleware, {
+      headers: { authorization: `Bearer ${token}` },
+      originalUrl: "/api/svp",
+      url: "/api/svp",
+    });
+    assert.equal(result.reached, true, `${role} should reach Executive Management`);
+  }
+
+  const staff = await User.create({
+    fullName: "Unauthorized Staff",
+    phone: "08199999999",
+    email: "unauthorized@svp.test",
+    password: "StrongPass1!",
+    role: "STAFF",
+  });
+  const token = jwt.sign({ id: staff._id, authTokenVersion: 0 }, process.env.JWT_SECRET);
+  const denied = await middlewareChain(middleware, {
+    headers: { authorization: `Bearer ${token}` },
+    originalUrl: "/api/svp",
+    url: "/api/svp",
+  });
+  assert.equal(denied.reached, false);
+  assert.equal(denied.response.statusCode, 403);
+});
+
 test("canonical scopes map safely and deny unsupported domains by default", async () => {
   for (const scope of [{ type: "GLOBAL" }, { type: "REGION", region: "West" }, { type: "STATE", state: "Lagos" }, { type: "BRANCHES", branchIds: [branch._id] }, { type: "DEPARTMENT", department: "OPERATIONS" }, { type: "PRODUCTS", products: ["AIRTIME"] }, { type: "CUSTOM", filters: { branchIds: [branch._id] } }]) assert.ok(normalizeScope(scope).type);
   assert.deepEqual(await filterFor({ type: "PRODUCTS", products: ["AIRTIME"] }, "branch"), { _id: { $exists: false } });

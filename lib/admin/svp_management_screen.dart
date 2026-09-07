@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'admin_permissions.dart';
 import 'svp_api_service.dart';
+import 'svp_audit_screen.dart';
 
 class SvpFormPayload {
   static Map<String, dynamic> build({
@@ -38,10 +39,10 @@ class SvpFormPayload {
 class SvpManagementScreen extends StatefulWidget {
   const SvpManagementScreen({super.key});
   @override
-  State<SvpManagementScreen> createState() => _SvpManagementScreenState();
+  SvpManagementScreenState createState() => SvpManagementScreenState();
 }
 
-class _SvpManagementScreenState extends State<SvpManagementScreen> {
+class SvpManagementScreenState extends State<SvpManagementScreen> {
   final api = SvpApiService();
   List<dynamic> items = const [];
   bool loading = true;
@@ -68,6 +69,8 @@ class _SvpManagementScreenState extends State<SvpManagementScreen> {
       if (mounted) setState(() => loading = false);
     }
   }
+
+  void openCreate() => _form();
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -125,29 +128,117 @@ class _SvpManagementScreenState extends State<SvpManagementScreen> {
             icon: const Icon(Icons.person_add_alt_1),
             label: const Text('Create SVP')),
       );
+  String _value(Map x, String key) {
+    final value = x[key];
+    return value == null || value.toString().trim().isEmpty
+        ? 'Unavailable'
+        : value.toString();
+  }
+
   Widget _tile(Map<String, dynamic> x) => Card(
-      elevation: 0,
-      margin: const EdgeInsets.fromLTRB(16, 6, 16, 2),
-      child: ListTile(
-        title: Text('${x['fullName'] ?? 'Unnamed'}',
-            style: const TextStyle(fontWeight: FontWeight.w800)),
-        subtitle: Text(
-            '${x['executiveId'] ?? '—'} · ${x['department'] ?? '—'}\n${x['email'] ?? '—'}'),
-        isThreeLine: true,
-        trailing: PopupMenuButton<String>(
-            onSelected: (v) => _action(v, x),
-            itemBuilder: (_) => const [
+        elevation: 0,
+        margin: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              CircleAvatar(
+                backgroundColor: const Color(0xFFD9EEE8),
+                foregroundColor: const Color(0xFF087E6A),
+                child:
+                    Text(_value(x, 'fullName').substring(0, 1).toUpperCase()),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_value(x, 'fullName'),
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                      Text(
+                          '${_value(x, 'executiveId')} · ${_value(x, 'title')}',
+                          style: const TextStyle(
+                              color: Color(0xFF66817B), fontSize: 12)),
+                    ]),
+              ),
+              _statusChip(_value(x, 'status')),
+              PopupMenuButton<String>(
+                onSelected: (v) => _action(v, x),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'view', child: Text('View details')),
                   PopupMenuItem(value: 'edit', child: Text('Edit access')),
+                  PopupMenuItem(
+                      value: 'permissions', child: Text('Permissions')),
+                  PopupMenuItem(value: 'audit', child: Text('Audit history')),
                   PopupMenuItem(value: 'ACTIVE', child: Text('Activate')),
                   PopupMenuItem(value: 'SUSPENDED', child: Text('Suspend')),
-                  PopupMenuItem(value: 'reset', child: Text('Reset password')),
+                  PopupMenuItem(
+                      value: 'reset', child: Text('Reset credentials')),
                   PopupMenuItem(value: 'revoke', child: Text('Revoke sessions'))
-                ]),
-      ));
+                ],
+              ),
+            ]),
+            const Divider(height: 22),
+            Wrap(
+              spacing: 22,
+              runSpacing: 10,
+              children: [
+                _field('Email', _value(x, 'email')),
+                _field('Phone', _value(x, 'phone')),
+                _field('Scope',
+                    (x['scope'] as Map?)?['type']?.toString() ?? 'Unavailable'),
+                _field('Last login', _value(x, 'lastLogin')),
+                _field('Created', _value(x, 'createdAt')),
+                _field('Performance', _value(x, 'performance')),
+              ],
+            ),
+          ]),
+        ),
+      );
+
+  Widget _field(String label, String value) => SizedBox(
+        width: 150,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label.toUpperCase(),
+              style: const TextStyle(
+                  fontSize: 9, letterSpacing: .8, color: Color(0xFF66817B))),
+          const SizedBox(height: 3),
+          Text(value,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      );
+
+  Widget _statusChip(String value) => Chip(
+        label: Text(value),
+        labelStyle: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: value == 'ACTIVE'
+                ? const Color(0xFF087E6A)
+                : const Color(0xFF9A5B16)),
+        backgroundColor: value == 'ACTIVE'
+            ? const Color(0xFFE1F3ED)
+            : const Color(0xFFFFEED9),
+        side: BorderSide.none,
+      );
   Future<void> _action(String action, Map x) async {
     try {
       if (action == 'edit') {
         return _form(existing: x);
+      }
+      if (action == 'view' || action == 'permissions') {
+        return _details(x, permissionsOnly: action == 'permissions');
+      }
+      if (action == 'audit') {
+        if (!mounted) return;
+        await Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => const SvpAuditScreen(headOffice: true)));
+        return;
       }
       if (action == 'reset' || action == 'revoke') {
         final password = action == 'reset' ? await _passwordDialog() : null;
@@ -169,6 +260,49 @@ class _SvpManagementScreenState extends State<SvpManagementScreen> {
       }
     }
   }
+
+  Future<void> _details(Map x, {required bool permissionsOnly}) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(permissionsOnly ? 'Permissions' : _value(x, 'fullName')),
+        content: SizedBox(
+          width: 440,
+          child: permissionsOnly
+              ? Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: ((x['permissions'] as List?) ?? const [])
+                      .map((p) => Chip(label: Text('$p')))
+                      .toList(),
+                )
+              : ListView(
+                  shrinkWrap: true,
+                  children: [
+                    _detailRow('ID', _value(x, 'executiveId')),
+                    _detailRow('Email', _value(x, 'email')),
+                    _detailRow('Phone', _value(x, 'phone')),
+                    _detailRow('Title', _value(x, 'title')),
+                    _detailRow(
+                        'Scope',
+                        (x['scope'] as Map?)?['type']?.toString() ??
+                            'Unavailable'),
+                    _detailRow('Last login', _value(x, 'lastLogin')),
+                    _detailRow('Created date', _value(x, 'createdAt')),
+                    _detailRow('Performance', _value(x, 'performance')),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) => ListTile(
+        dense: true,
+        title: Text(label, style: const TextStyle(color: Color(0xFF66817B))),
+        trailing:
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+      );
 
   Future<String?> _passwordDialog() async {
     final c = TextEditingController();
@@ -315,8 +449,15 @@ class _SvpFormState extends State<_SvpForm> {
                                         ? 'Required'
                                         : null),
                             decoration: InputDecoration(
-                                labelText: k.replaceAll(
-                                    RegExp(r'([A-Z])'), ' \$1'))))),
+                                labelText: const <String, String>{
+                              'fullName': 'Full Name',
+                              'executiveId': 'Employee / Executive ID',
+                              'email': 'Email',
+                              'phone': 'Phone Number',
+                              'password': 'Temporary Password',
+                              'title': 'Position / Title',
+                              'department': 'Department',
+                            }[k])))),
                     DropdownButtonFormField<String>(
                         value: scopeType,
                         decoration: const InputDecoration(labelText: 'Scope'),

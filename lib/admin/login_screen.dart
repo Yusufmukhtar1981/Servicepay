@@ -15,7 +15,10 @@ class AdminLoginScreen extends StatefulWidget {
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
-  static const String baseUrl = 'https://api.servicepay.ng/api';
+  static const String baseUrl = String.fromEnvironment(
+    'SERVICEPAY_API_BASE_URL',
+    defaultValue: 'https://api.servicepay.ng/api',
+  );
 
   final TextEditingController emailController = TextEditingController();
 

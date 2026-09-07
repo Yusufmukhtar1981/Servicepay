@@ -5,7 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class SvpApiService {
   SvpApiService(
-      {http.Client? client, this.baseUrl = 'https://api.servicepay.ng/api'})
+      {http.Client? client,
+      this.baseUrl = const String.fromEnvironment(
+        'SERVICEPAY_API_BASE_URL',
+        defaultValue: 'https://api.servicepay.ng/api',
+      )})
       : _client = client ?? http.Client();
 
   final http.Client _client;

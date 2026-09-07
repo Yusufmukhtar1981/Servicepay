@@ -13,7 +13,10 @@ class AdminSessionExpiredException implements Exception {
 class AdminSessionService {
   AdminSessionService({
     http.Client? client,
-    this.baseUrl = 'https://api.servicepay.ng/api',
+    this.baseUrl = const String.fromEnvironment(
+      'SERVICEPAY_API_BASE_URL',
+      defaultValue: 'https://api.servicepay.ng/api',
+    ),
     this.preferencesLoader = SharedPreferences.getInstance,
   }) : _client = client ?? http.Client();
 
