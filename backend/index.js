@@ -17,6 +17,8 @@ const fintechControlMiddleware = require("./middleware/fintechControl.middleware
 
 require("dotenv").config();
 
+const { getBuildInfo } = require("./utils/buildInfo");
+
 const connectDB = require("./config/db");
 const {
   startEmailAutomation,
@@ -169,14 +171,20 @@ app.use(
   })
 );
 
-app.get("/", (req, res) => {
+const buildInfo = getBuildInfo();
+
+function sendServiceHealth(req, res) {
   res.status(200).json({
     success: true,
     status: "OK",
     message:
       "Servicepay Backend is running",
+    ...buildInfo,
   });
-});
+}
+
+app.get("/", sendServiceHealth);
+app.get("/version", sendServiceHealth);
 
 
 /*

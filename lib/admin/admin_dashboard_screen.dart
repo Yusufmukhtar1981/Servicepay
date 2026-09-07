@@ -10,6 +10,7 @@ import 'admin_solar_screen.dart';
 import 'admin_trust_profiles_screen.dart';
 import 'admin_phone_financing_screen.dart';
 import 'admin_delivery_management_screen.dart';
+import 'admin_build_info.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({
@@ -396,6 +397,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               fontWeight: FontWeight.w600,
                               fontSize: 12,
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          AdminBuildInfo.label,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
