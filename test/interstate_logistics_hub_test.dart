@@ -34,4 +34,113 @@ void main() {
     expect(find.byType(InterstateShipmentWizard), findsOneWidget);
     expect(find.byType(AppBar), findsOneWidget);
   });
+
+  testWidgets('route states are chosen before an unsupported pair is shown',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: ServicePayTheme.light(),
+      home: InterstateShipmentWizard(
+        routesLoader: () async => <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'kano-abuja',
+            'originState': 'KANO',
+            'destinationState': 'ABUJA',
+          },
+          <String, dynamic>{
+            'id': 'abuja-kano',
+            'originState': 'ABUJA',
+            'destinationState': 'KANO',
+          },
+          <String, dynamic>{
+            'id': 'kano-lagos',
+            'originState': 'KANO',
+            'destinationState': 'LAGOS',
+          },
+          <String, dynamic>{
+            'id': 'kano-kano-branches',
+            'originState': 'KANO',
+            'destinationState': 'KANO',
+          },
+        ],
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byKey(const Key('interstate-unsupported-route')), findsNothing);
+    await tester.tap(find.byKey(const Key('interstate-pickup-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('KANO').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('interstate-destination-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ABUJA').last);
+    await tester.pumpAndSettle();
+    expect(find.text('KANO → ABUJA'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('interstate-pickup-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ABUJA').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('interstate-destination-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('LAGOS').last);
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const Key('interstate-unsupported-route')), findsOneWidget);
+  });
+
+  testWidgets(
+      'empty active configuration is not presented as an unsupported pair',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: ServicePayTheme.light(),
+      home: InterstateShipmentWizard(
+          routesLoader: () async => <Map<String, dynamic>>[]),
+    ));
+    await tester.pump();
+
+    expect(find.text('No active interstate routes are configured right now.'),
+        findsOneWidget);
+    expect(find.byKey(const Key('interstate-unsupported-route')), findsNothing);
+  });
+
+  testWidgets('same-state-pair routes retain backend names and delivery times',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: ServicePayTheme.light(),
+      home: InterstateShipmentWizard(
+        routesLoader: () async => <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'kano-abuja-central',
+            'name': 'Kano Central to Abuja Main',
+            'originState': 'KANO',
+            'destinationState': 'ABUJA',
+            'standardDeliveryTime': '1–2 business days',
+          },
+          <String, dynamic>{
+            'id': 'kano-abuja-east',
+            'name': 'Kano East to Abuja Garki',
+            'originState': 'KANO',
+            'destinationState': 'ABUJA',
+            'standardDeliveryTime': '2–3 business days',
+          },
+        ],
+      ),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('interstate-pickup-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('KANO').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('interstate-destination-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ABUJA').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kano Central to Abuja Main'), findsOneWidget);
+    expect(find.text('1–2 business days'), findsOneWidget);
+    expect(find.text('Kano East to Abuja Garki'), findsOneWidget);
+    expect(find.text('2–3 business days'), findsOneWidget);
+  });
 }
