@@ -2,6 +2,7 @@ const express = require("express");
 const adminTransactionRequeryController = require("../controllers/adminTransactionRequery.controller");
 const adminBankReconciliationController = require("../controllers/adminBankReconciliation.controller");
 const transactionIntelligenceController = require("../controllers/adminTransactionIntelligence.controller");
+const fraudRiskController = require("../controllers/adminFraudRisk.controller");
 
 const {
   getAdminDashboard,
@@ -10,7 +11,10 @@ const {
   getAvailableRiders,
   assignRiderToDelivery,
   reassignRiderToDelivery,
+  unassignRiderFromDelivery,
   updateDeliveryStatus,
+  updateDeliveryPrice,
+  runRiderPushDiagnostic,
   getAdminUsers,
   createAdminUser,
   updateAdminUserStatus,
@@ -243,10 +247,30 @@ router.patch(
 );
 
 router.patch(
+  "/deliveries/:id/unassign-rider",
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_ASSIGN),
+  unassignRiderFromDelivery
+);
+
+router.patch(
   "/deliveries/:id/status",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_UPDATE),
   updateDeliveryStatus
+);
+
+router.patch(
+  "/deliveries/:id/price",
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_UPDATE),
+  updateDeliveryPrice
 );
 
 const marketplaceView = [
@@ -290,6 +314,15 @@ router.get("/riders/:id", protect, loadStaffRole, requirePermission(P.RIDERS_VIE
 router.patch("/riders/:id", protect, loadStaffRole, requirePermission(P.RIDERS_MANAGE), updateAdminRider);
 router.patch("/riders/:id/status", protect, loadStaffRole, requirePermission(P.RIDERS_MANAGE), updateAdminRiderStatus);
 router.patch("/riders/:id/verification", protect, loadStaffRole, requirePermission(P.RIDERS_MANAGE), updateAdminRiderVerification);
+router.post(
+  "/riders/:id/push-diagnostic",
+  protect,
+  adminOnly("HEAD_OFFICE", "ADMIN", "SUPER_ADMIN"),
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.DELIVERY_ASSIGN),
+  runRiderPushDiagnostic
+);
 router.patch("/riders/:id/wallet", protect, adminOnly(...HEAD_OFFICE_ROLES), riderWalletAdminController.adjustRiderWallet);
 router.get("/rider-withdrawal-control", protect, adminOnly(...HEAD_OFFICE_ROLES), riderWalletAdminController.getWithdrawalControl);
 router.patch("/rider-withdrawal-control", protect, adminOnly(...HEAD_OFFICE_ROLES), riderWalletAdminController.updateWithdrawalControl);
@@ -311,5 +344,13 @@ router.get("/transaction-intelligence/transactions/:transactionId", ...transacti
 router.get("/transaction-intelligence/transactions/:transactionId/timeline", ...transactionIntelligenceView, transactionIntelligenceController.getTransactionTimeline);
 router.post("/transaction-intelligence/transactions/:transactionId/requery", protect, loadStaffRole, requirePermission(P.TRANSACTION_INTELLIGENCE_REQUERY), transactionIntelligenceController.requeryTransaction);
 router.post("/transaction-intelligence/export.csv", protect, loadStaffRole, requirePermission(P.TRANSACTION_INTELLIGENCE_EXPORT), transactionIntelligenceController.exportTransactions);
+
+const fraudRiskView = [
+  protect,
+  loadStaffRole,
+  enforceActiveBranchScope,
+  requirePermission(P.FRAUD_RISK_VIEW),
+];
+router.post("/fraud-risk/export.csv", ...fraudRiskView, fraudRiskController.exportCsv);
 
 module.exports = router;

@@ -23,6 +23,7 @@ import 'admin_roles_permissions_screen.dart';
 import 'admin_session_service.dart';
 import 'login_screen.dart';
 import 'executive_management_screen.dart';
+import 'admin_feature_controls_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key, this.sessionService});
@@ -120,6 +121,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.admin_panel_settings_rounded,
         <String>[AdminPermissions.dashboardView],
         AdminControlCenterScreen()),
+    _AdminDestination(
+        'Feature Controls',
+        Icons.toggle_on_outlined,
+        Icons.toggle_on,
+        <String>[AdminPermissions.settingsView],
+        AdminFeatureControlsScreen()),
     _AdminDestination(
         'Withdrawals',
         Icons.payments_outlined,
@@ -259,12 +266,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
     if (currentIndex >= allowed.length) currentIndex = 0;
     final int executiveIndex = allowed.indexWhere(
         (_AdminDestination item) => item.label == 'Executive Management');
-    final int dashboardIndex =
-        allowed.indexWhere((_AdminDestination item) => item.label == 'Dashboard');
+    final int dashboardIndex = allowed
+        .indexWhere((_AdminDestination item) => item.label == 'Dashboard');
     void openAdminDashboard() {
       if (dashboardIndex < 0) return;
       setState(() => currentIndex = dashboardIndex);
     }
+
     void openExecutiveManagement({bool createSvp = false}) {
       if (executiveIndex < 0) return;
       setState(() => currentIndex = executiveIndex);
@@ -293,8 +301,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
                   return AdminDashboardScreen(
                     showExecutiveManagement: executiveIndex >= 0,
                     onOpenExecutiveManagement: openExecutiveManagement,
-                    onCreateSvp: () =>
-                        openExecutiveManagement(createSvp: true),
+                    onCreateSvp: () => openExecutiveManagement(createSvp: true),
                   );
                 }
                 if (item.label == 'Executive Management') {

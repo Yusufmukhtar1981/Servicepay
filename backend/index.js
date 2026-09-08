@@ -179,12 +179,18 @@ function sendServiceHealth(req, res) {
     status: "OK",
     message:
       "Servicepay Backend is running",
-    ...buildInfo,
+    release: buildInfo.release,
+    commit: buildInfo.commit,
   });
 }
 
+function sendServiceVersion(req, res) {
+  res.status(200).json(buildInfo);
+}
+
 app.get("/", sendServiceHealth);
-app.get("/version", sendServiceHealth);
+app.get("/version", sendServiceVersion);
+app.get("/api/version", sendServiceVersion);
 
 
 /*

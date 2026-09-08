@@ -1,5 +1,3 @@
-const packageJson = require("../../package.json");
-
 function sanitizeBuildValue(value, fallback) {
   const sanitized = String(value || "")
     .trim()
@@ -15,12 +13,16 @@ function getBuildInfo(environment = process.env) {
   );
 
   return Object.freeze({
-    version: sanitizeBuildValue(packageJson.version, "unknown"),
-    build: sanitizeBuildValue(
+    service: "servicepay-api",
+    release: sanitizeBuildValue(
       environment.SERVICEPAY_BUILD_VERSION || commit,
       "development"
     ),
     commit: commit === "unknown" ? commit : commit.slice(0, 12),
+    environment: sanitizeBuildValue(
+      environment.SERVICEPAY_ENVIRONMENT || environment.NODE_ENV,
+      "development"
+    ),
   });
 }
 

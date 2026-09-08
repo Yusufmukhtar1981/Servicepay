@@ -1,0 +1,287 @@
+Proceed with CONTROLLED SERVICEPAY RELEASE RECONCILIATION — PHASE 1 ONLY.
+
+The audit has confirmed the root cause:
+
+- Main Servicepay repository is the canonical ServicePay codebase.
+- servicepay.ng is served from the main Servicepay repository.
+- admin.servicepay.ng is still served from the legacy servicepay-admin repository.
+- Workspace/live versions do not match.
+- A stale production build exists.
+- Multiple conflicting deployment paths exist.
+- Recent fixes therefore passed locally/preview but were not actually live.
+
+We now need to prepare ONE canonical production architecture.
+
+IMPORTANT SAFETY RULES:
+
+1. Work ONLY on ServicePay.
+2. DO NOT touch VULL.
+3. DO NOT delete/reset/truncate production data.
+4. DO NOT modify customer balances.
+5. DO NOT perform destructive database migrations.
+6. DO NOT deploy or publish automatically yet.
+7. DO NOT remove the legacy servicepay-admin deployment yet.
+8. Preserve it temporarily as rollback protection.
+9. Preserve the existing approved Main Head Office Dashboard exactly as the default dashboard after login.
+10. Executive Management must remain a separate module accessible from the Main Head Office Dashboard.
+11. Do not replace the Main Dashboard with Executive Management.
+
+==================================================
+PHASE 1 — PREPARE CANONICAL SERVICEPAY RELEASE
+==================================================
+
+Use the main:
+
+Yusufmukhtar1981/Servicepay
+
+repository as the canonical source.
+
+Canonical components:
+
+CUSTOMER FRONTEND:
+main Servicepay repository
+
+HEAD OFFICE ADMIN:
+main Servicepay repository
+lib/admin/main.dart
+
+BACKEND/API:
+main Servicepay repository
+backend/
+
+==================================================
+A. VERIFY AND FREEZE CURRENT LIVE STATE
+==================================================
+
+Record the current live versions serving:
+
+servicepay.ng
+admin.servicepay.ng
+api.servicepay.ng
+
+Record:
+
+repository
+branch
+commit
+deployment provider
+build identifier
+
+Do not modify them yet.
+
+==================================================
+B. PREPARE CANONICAL HEAD OFFICE ADMIN
+==================================================
+
+Verify the Admin build from:
+
+lib/admin/main.dart
+
+contains BOTH:
+
+1. EXISTING MAIN HEAD OFFICE DASHBOARD
+
+This remains the DEFAULT page immediately after Head Office login.
+
+2. EXECUTIVE MANAGEMENT
+
+This remains a SEPARATE module.
+
+It must contain:
+
+- Executive Overview
+- SVP Management
+- Create SVP
+- SVP Performance
+- Transaction Intelligence
+- Staff Performance
+- Branch Performance
+- Live Operations
+- Reports
+- Audit Logs
+- Back to Admin Dashboard
+
+Executive Management must NEVER replace the Main Head Office Dashboard.
+
+==================================================
+C. VERIFY ALL EXISTING ADMIN FEATURES
+==================================================
+
+Before release, confirm the canonical Admin still contains all existing ServicePay administration modules.
+
+Do not remove existing features.
+
+Verify especially:
+
+Dashboard
+Users
+Transactions
+Funding
+Withdrawals
+Riders
+Branches
+Staff
+Notifications
+Email Center
+Support
+Fintech Control
+Delivery
+Logistics
+Marketplace
+Phone Finance
+KYC
+Solar
+Empowerment
+Amana
+Feature Controls
+Permissions/Roles
+and all other existing modules.
+
+==================================================
+D. RECONCILE BACKEND
+==================================================
+
+Identify the exact Render service currently serving:
+
+api.servicepay.ng
+
+and determine:
+
+repository
+branch
+deployed commit
+
+Compare it with:
+
+main Servicepay/backend/
+
+Prepare the canonical backend release from main Servicepay/backend.
+
+Verify routes required for:
+
+Rider Withdrawal
+Rider Credit
+Rider Debit
+Feature Controls
+Executive Management
+SVP Management
+Create SVP
+SVP authentication
+SVP permissions/scopes
+Executive reports
+Audit logs
+
+Do NOT deploy yet.
+
+==================================================
+E. ADD RELEASE IDENTIFICATION
+==================================================
+
+Add safe build identification to canonical builds.
+
+ADMIN:
+Expose a small non-sensitive build identifier.
+
+Example:
+
+ServicePay Admin
+Build: <release-id>
+Commit: <short-commit>
+
+API:
+Provide a safe version endpoint such as:
+
+GET /api/version
+
+Return only:
+
+service
+release
+commit
+environment
+
+Never expose secrets, database URLs, tokens, keys, passwords, or infrastructure credentials.
+
+==================================================
+F. PREPARE ROLLBACK
+==================================================
+
+Keep the current legacy servicepay-admin production deployment untouched.
+
+Record its current production commit as:
+
+LEGACY_ADMIN_ROLLBACK_COMMIT
+
+Do not delete it.
+
+We will only retire the legacy deployment AFTER the new canonical Admin has been successfully deployed and live-verified.
+
+==================================================
+G. RELEASE VALIDATION
+==================================================
+
+Run complete tests/builds for:
+
+Customer Frontend
+Head Office Admin
+Backend
+
+Then verify specifically:
+
+MAIN HEAD OFFICE DASHBOARD: PASS
+EXECUTIVE MANAGEMENT MODULE: PASS
+CREATE SVP: PASS
+SVP MANAGEMENT: PASS
+RIDER WITHDRAWAL: PASS
+RIDER CREDIT/DEBIT: PASS
+FEATURE CONTROLS: PASS
+BACKEND ROUTES: PASS
+ADMIN RELEASE BUILD: PASS
+CUSTOMER RELEASE BUILD: PASS
+
+Do not count preview success as live success.
+
+==================================================
+STOP BEFORE DEPLOYMENT
+==================================================
+
+Do NOT deploy.
+
+Do NOT change admin.servicepay.ng DNS yet.
+
+Do NOT remove GitHub Pages yet.
+
+Do NOT change production database.
+
+Stop after preparing and validating the canonical release.
+
+Return exactly:
+
+CANONICAL CUSTOMER READY: YES/NO
+CANONICAL ADMIN READY: YES/NO
+CANONICAL BACKEND READY: YES/NO
+
+MAIN DASHBOARD PRESERVED: YES/NO
+EXECUTIVE MANAGEMENT SEPARATE: YES/NO
+CREATE SVP READY: YES/NO
+SVP MANAGEMENT READY: YES/NO
+
+RIDER WITHDRAWAL READY: YES/NO
+RIDER CREDIT/DEBIT READY: YES/NO
+FEATURE CONTROLS READY: YES/NO
+
+API PRODUCTION SOURCE IDENTIFIED: YES/NO
+API CURRENT COMMIT IDENTIFIED: YES/NO
+
+ADMIN VERSION IDENTIFICATION READY: YES/NO
+API VERSION IDENTIFICATION READY: YES/NO
+
+LEGACY ADMIN ROLLBACK PRESERVED: YES/NO
+PRODUCTION DATA MODIFIED: NO
+VULL MODIFIED: NO
+DEPLOYMENT PERFORMED: NO
+
+SAFE TO BEGIN CONTROLLED DEPLOYMENT: YES/NO
+
+If SAFE TO BEGIN CONTROLLED DEPLOYMENT is YES, STOP.
+Wait for my approval before deploying anything.

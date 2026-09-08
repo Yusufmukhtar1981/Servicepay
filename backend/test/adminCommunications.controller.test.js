@@ -9,6 +9,7 @@ const Campaign = require("../models/communicationCampaign.model");
 const Recipient = require("../models/communicationRecipient.model");
 const communications = require("../controllers/adminCommunications.controller");
 const { processCampaign } = require("../services/communicationCampaign.service");
+const emailService = require("../services/email.service");
 
 let mongo;
 let sequence = 0;
@@ -179,14 +180,43 @@ test("worker leaves a campaign processing when recipient snapshot count mismatch
 });
 
 test("email test persists a TEST campaign and never creates a broadcast", async () => {
-  const result = await call(communications.testEmail, {
-    subject: "Test message",
-    message: "This is a provider-safe test.",
-    email: "recipient@servicepay.test",
+  const originalSendEmail = emailService.sendEmail;
+  emailService.sendEmail = async () => ({
+    success: true,
+    messageId: "test-provider-message-id",
   });
-  assert.equal(result.status, 201);
-  assert.equal(result.body.campaign.kind, "TEST");
-  assert.equal(result.body.campaign.recipientCount, 1);
-  assert.equal(await Campaign.countDocuments({ kind: "BROADCAST" }), 0);
-  assert.equal(await Recipient.countDocuments({}), 1);
+  try {
+    const result = await call(communications.testEmail, {
+      subject: "Test message",
+      message: "This is a provider-safe test.",
+      email: "recipient@servicepay.test",
+    });
+    assert.equal(result.status, 201);
+    assert.equal(result.body.campaign.kind, "TEST");
+    assert.equal(result.body.campaign.recipientCount, 1);
+    assert.equal(await Campaign.countDocuments({ kind: "BROADCAST" }), 0);
+    assert.equal(await Recipient.countDocuments({}), 1);
+  } finally {
+    emailService.sendEmail = originalSendEmail;
+  }
+});
+
+test("email test returns 503 when the provider is unavailable", async () => {
+  const originalSendEmail = emailService.sendEmail;
+  emailService.sendEmail = async () => ({
+    success: false,
+    skipped: true,
+    reason: "RESEND_NOT_CONFIGURED",
+  });
+  try {
+    const result = await call(communications.testEmail, {
+      subject: "Test message",
+      message: "This is a provider-safe test.",
+      email: "recipient@servicepay.test",
+    });
+    assert.equal(result.status, 503);
+    assert.equal(result.body.provider.status, "UNAVAILABLE");
+  } finally {
+    emailService.sendEmail = originalSendEmail;
+  }
 });

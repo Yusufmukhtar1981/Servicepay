@@ -1,6 +1,6 @@
 # ServicePay production reconciliation
 
-Audit date: 2026-09-07
+Audit date: 2026-09-08
 
 This document is the release source of truth until the legacy deployment paths
 are retired. It records observed production evidence; it does not authorize a
@@ -10,9 +10,9 @@ deployment, migration, data change, or deletion.
 
 | Project/component | Purpose | Repository/source | Branch and observed revision | Provider and live domain | Build/output | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| Main ServicePay workspace | Canonical customer, Head Office/Admin source, backend, and shared Flutter code | `Yusufmukhtar1981/Servicepay`; local branch `staff-dashboard-release-final` | Workspace `d00f2b63e8fd`; GitHub `main` `4bd63911d322` | Replit also has a public static deployment at `servicepay.replit.app` | `flutter build web --release`; `build/web` | Canonical source, but workspace and GitHub `main` do not match |
+| Main ServicePay workspace | Canonical customer, Head Office/Admin source, backend, and shared Flutter code | `Yusufmukhtar1981/Servicepay`; local branch `staff-dashboard-release-final` | Workspace base `d4c6b813e9ae`; GitHub `main` `4bd63911d322` | Replit also has a public static deployment at `servicepay.replit.app` | `flutter build web --release`; `build/web` | Canonical source, but workspace and GitHub `main` do not match |
 | Customer frontend | Production customer Flutter web | `Yusufmukhtar1981/Servicepay` | GitHub `main` `4bd63911d322` | GitHub Pages, `servicepay.ng` | `.github/workflows/deploy-customer-web.yml`; `build/web` | Active production |
-| Canonical Head Office/Admin source | Current approved Admin and Executive/SVP implementation | Main repository, `lib/admin/main.dart` | Workspace `d00f2b63e8fd` | Development preview only; port 8080 | `tool/build_admin_web.sh`; default `build/admin-web` | Canonical source, not live production |
+| Canonical Head Office/Admin source | Current approved Admin and Executive/SVP implementation | Main repository, `lib/admin/main.dart` | Workspace base `d4c6b813e9ae` | Development preview only; port 8080 | `tool/build_admin_web.sh`; default `build/admin-web` | Canonical source, not live production |
 | Legacy Admin deployment | Admin currently served to users | `Yusufmukhtar1981/servicepay-admin` | GitHub `main` `b00e08521ed0` | GitHub Pages, `admin.servicepay.ng` | `.github/workflows/deploy_admin_web.yml`; `build/web` | Active legacy production |
 | Backend/API | Canonical Express API in the main repository | Main repository, `backend/` | Live commit unknown because production exposes no version and Render management authentication failed | Render behind Cloudflare, `api.servicepay.ng` | `node backend/index.js`; Docker image/runtime output | Active production; deployed source revision not identifiable |
 | Replit static deployment | Alternate customer build path | Current Repl | Last successful Replit build revision not exposed in the app | Replit Static, `servicepay.replit.app` | `.replit` deployment; `build/web` | Active conflicting/alternate path; not a custom production domain |
@@ -44,6 +44,49 @@ deployment, migration, data change, or deletion.
 5. A code/test/preview PASS therefore cannot prove that the custom production
    domain contains the change.
 
+## Controlled release reconciliation — Phase 1
+
+Phase 1 prepared and validated canonical release candidates only. No deployment,
+DNS change, production mutation, migration, legacy Admin edit, or VULL change was
+performed.
+
+Release identification used for the candidate builds:
+
+- Workspace branch: `staff-dashboard-release-final`
+- Workspace base commit: `d4c6b813e9ae6bbfe68c37e6688cd39080ce9ceb`
+- Candidate release: `2026.09.08`
+- Legacy Admin rollback commit:
+  `b00e08521ed04958900afde624de2ef7dc191778`
+
+Validated Phase 1 matrix:
+
+| Check | Result |
+| --- | --- |
+| Complete Flutter test suite | PASS — 275 tests |
+| Complete ServicePay backend test suite | PASS — 487 tests |
+| ServicePay JavaScript syntax checks | PASS; dependency and VULL paths excluded |
+| Canonical Customer release build from `lib/main.dart` | PASS |
+| Canonical Admin release build from `lib/admin/main.dart` | PASS |
+| Admin release/commit identifier in compiled artifact | PASS |
+| Dashboard remains Admin destination index 0 | PASS |
+| Executive Management remains a separate destination | PASS |
+| Create SVP and SVP Management implementation | PASS |
+| Rider withdrawal customer flow and protected Admin control endpoints | PASS |
+| Rider wallet credit/debit protected Admin endpoint | PASS |
+| Authenticated Feature Controls UI and persistent backend contract | PASS |
+| Feature Controls requires explicit reason and confirmation before PUT | PASS |
+| API `GET /api/version` exact four-field local smoke | PASS |
+| API production repository/branch identified | NO |
+| API current deployed commit identified | NO |
+| Legacy Admin rollback source modified | NO |
+| Production data modified | NO |
+| Deployment performed | NO |
+
+The workspace-wide analyzer also traverses third-party Dart templates under
+`node_modules/firebase-tools`; those templates report missing template-only
+packages. Focused analysis of changed ServicePay Flutter source passed, and both
+canonical release builds completed.
+
 ## Recent-fix live evidence
 
 | Capability | Canonical code | Preview | Live build/UI | Live API | Reconciliation result |
@@ -73,7 +116,8 @@ No step below should run until a human explicitly approves the reconciliation.
    release identifier and commit, or verify the host supplies
    `RENDER_GIT_COMMIT`.
 5. Deploy that exact commit to the one canonical Render service.
-6. Verify `/` and `/version` expose the expected non-sensitive identifiers.
+6. Verify `GET /api/version` returns only `service`, `release`, `commit`, and
+   `environment` with the expected non-sensitive identifiers.
 7. Use normal credentials and status-only GET probes for every critical route
    family. Never test with balance-changing requests.
 8. Compare the live commit to the approved commit before declaring
@@ -172,7 +216,9 @@ SVP BACKEND LIVE: NOT DEPLOYED
 
 MAIN HEAD OFFICE DASHBOARD PRESERVED: YES
 
-VERSION IDENTIFICATION AVAILABLE: NO
+CANONICAL ADMIN/API VERSION IDENTIFICATION READY: YES
+
+LIVE VERSION MATCH: NO
 
 CANONICAL RELEASE PIPELINE DEFINED: YES
 
@@ -184,4 +230,4 @@ ROOT CAUSE OF RECENT “PASS BUT NOT WORKING” ISSUES: Changes were implemented
 
 RECOMMENDED RECONCILIATION ACTIONS: Repair Render management access and pin the live API commit; reconcile the workspace branch with `Servicepay/main`; approve one Admin static target that builds `lib/admin/main.dart`; produce versioned immutable backend/Admin/customer artifacts; release and verify one component at a time; retain legacy paths only for approved rollback until retirement is authorized.
 
-SAFE TO BEGIN CONTROLLED RECONCILIATION/RELEASE: NO
+SAFE TO BEGIN CONTROLLED RECONCILIATION/RELEASE: NO — Render source and deployed commit remain unidentified

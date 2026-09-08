@@ -22,10 +22,8 @@ test("fintech case schema requires unique idempotency and reference fields", () 
   assert.equal(FintechCase.schema.path("notes").schema.path("body").options.required, true);
 });
 
-test("risk alerts require idempotency and deduplicate transaction plus kind", () => {
-  assert.equal(RiskAlert.schema.path("idempotencyKey").options.unique, true);
-  assert.ok(RiskAlert.schema.indexes().some(([keys, options]) =>
-    keys.transaction === 1 && keys.kind === 1 && options.unique === true));
+test("risk alerts deduplicate by transaction, rule code, and rule version identity", () => {
+  assert.equal(RiskAlert.schema.path("identity").options.unique, true);
 });
 
 test("audit model registers fintech actions and immutable bulk guard", () => {

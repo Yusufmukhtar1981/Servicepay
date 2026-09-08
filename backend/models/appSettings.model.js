@@ -628,6 +628,11 @@ const fintechControlSettingsSchema =
         complaintsPolicyUrl: { type: String, trim: true, maxlength: 1000, default: "" },
         dataProtectionPolicyUrl: { type: String, trim: true, maxlength: 1000, default: "" },
       },
+      featureToggles: {
+        type: Map,
+        of: Boolean,
+        default: () => ({}),
+      },
     },
     { _id: false }
   );

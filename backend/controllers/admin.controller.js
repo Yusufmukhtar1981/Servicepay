@@ -6,7 +6,13 @@ const Transaction = require("../models/transaction.model");
 const Delivery = require("../models/delivery.model");
 const {
   sendAssignmentAlertIfOnline,
+  sendAssignmentCancellation,
+  sendRiderDiagnosticAlert,
+  firebaseDiagnosticStatus,
 } = require("../services/riderDeliveryAlert.service");
+const {
+  creditRiderCommissionIfEligible,
+} = require("../services/riderCommission.service");
 const {
   getExecutiveDashboard,
    getDashboardTargets,
@@ -29,6 +35,8 @@ const DELIVERY_STATUSES = [
   "CANCELLED",
   "FAILED",
 ];
+const PAYMENT_STATUSES = ["UNPAID", "PAID", "REFUNDED"];
+const COMMISSION_TYPES = ["PERCENTAGE", "FIXED"];
 
 const TRANSACTION_STATUS_FILTERS = Object.freeze({
   SUCCESS: ["SUCCESS", "SUCCESSFUL", "COMPLETED", "APPROVED"],
@@ -70,6 +78,13 @@ const toPositiveInteger = (
   return Math.min(parsed, maximum);
 };
 
+const toValidAmount = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? Number(parsed.toFixed(2))
+    : null;
+};
+
 const escapeRegex = (value = "") => {
   return String(value).replace(
     /[.*+?^${}()|[\]\\]/g,
@@ -109,6 +124,15 @@ const deliveryBranchFilter = (req) => {
   const branchId = req.branchScope?._id || scope.branchId;
   return branchId ? { branchId } : { _id: null };
 };
+
+const findAdminDeliveryForResponse = (req, deliveryId) =>
+  Delivery.findOne({
+    _id: deliveryId,
+    ...deliveryBranchFilter(req),
+  })
+    .populate("customerId", "fullName name email phone role status")
+    .populate("assignedRiderId", "riderId fullName name phone role status vehicleType plateNumber availabilityStatus")
+    .lean();
 
 exports.getAvailableRiders = async (req, res) => {
   try {
@@ -267,6 +291,50 @@ exports.assignRiderToDelivery = async (req, res) => {
     },
     delivery: updatedDelivery,
   });
+};
+
+exports.runRiderPushDiagnostic = async (req, res) => {
+  try {
+    const riderId = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(riderId)) {
+      return res.status(400).json({ success: false, message: "Invalid Rider ID." });
+    }
+    const rider = await User.findOne({
+      _id: riderId,
+      role: "DELIVERY_RIDER",
+      status: "ACTIVE",
+      ...deliveryBranchFilter(req),
+    }).select("_id riderId availabilityStatus riderVerificationStatus").lean();
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Active Delivery Rider was not found." });
+    }
+    const result = await sendRiderDiagnosticAlert({ rider });
+    const firebase = firebaseDiagnosticStatus();
+    const status = result.sent ? 200 : result.reason === "rider-offline" ? 409 : 503;
+    return res.status(status).json({
+      success: result.sent,
+      message: result.sent
+        ? "Rider push diagnostic was accepted by Firebase."
+        : "Rider push diagnostic could not be sent.",
+      // Deliberately expose operational counts and configuration state only.
+      // Device tokens and Firebase credentials are never included here.
+      diagnostic: {
+        riderId: rider.riderId || String(rider._id),
+        online: rider.availabilityStatus === "ONLINE",
+        activeTokenCount: result.activeTokenCount || 0,
+        providerAccepted: Boolean(result.providerAccepted),
+        successes: result.successes || 0,
+        failures: result.failures || 0,
+        reason: result.reason || null,
+        firebaseAvailable: firebase.available,
+        firebaseProjectId: firebase.projectId,
+        firebaseReason: firebase.reason,
+      },
+    });
+  } catch (error) {
+    console.error(`[PUSH] Rider diagnostic failed reason=${error?.code || error?.name || "unknown"}.`);
+    return res.status(500).json({ success: false, message: "Unable to run the Rider push diagnostic." });
+  }
 };
 
 exports.getAdminDashboard = async (req, res) => {
@@ -1299,10 +1367,10 @@ exports.updateDeliveryStatus = async (
       });
     }
 
-    const delivery =
-      await Delivery.findById(
-        deliveryId
-      );
+    const delivery = await Delivery.findOne({
+      _id: deliveryId,
+      ...deliveryBranchFilter(req),
+    });
 
     if (!delivery) {
       return res.status(404).json({
@@ -1428,9 +1496,10 @@ exports.updateDeliveryStatus = async (
     await delivery.save();
 
     const updatedDelivery =
-      await Delivery.findById(
-        delivery._id
-      )
+      await Delivery.findOne({
+        _id: delivery._id,
+        ...deliveryBranchFilter(req),
+      })
         .populate(
           "customerId",
           "fullName name email phone role status"
@@ -1474,6 +1543,87 @@ exports.updateDeliveryStatus = async (
       message:
         "Failed to update delivery status.",
       error: error.message,
+    });
+  }
+};
+
+exports.updateDeliveryPrice = async (req, res) => {
+  try {
+    const deliveryId = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(deliveryId)) {
+      return res.status(400).json({ success: false, message: "Invalid delivery ID." });
+    }
+    const deliveryFee = toValidAmount(
+      req.body?.deliveryFee ?? req.body?.price ?? req.body?.amount
+    );
+    if (deliveryFee === null) {
+      return res.status(400).json({ success: false, message: "Enter a valid delivery price." });
+    }
+    const paymentStatus = String(req.body?.paymentStatus ?? "UNPAID").trim().toUpperCase();
+    if (!PAYMENT_STATUSES.includes(paymentStatus)) {
+      return res.status(400).json({ success: false, message: "Invalid payment status.", allowedPaymentStatuses: PAYMENT_STATUSES });
+    }
+    const commissionType = String(
+      req.body?.riderCommissionType ?? req.body?.commissionType ?? "PERCENTAGE"
+    ).trim().toUpperCase();
+    const commissionValue = toValidAmount(
+      req.body?.riderCommissionValue ?? req.body?.commissionValue ?? 80
+    );
+    if (!COMMISSION_TYPES.includes(commissionType) || commissionValue === null ||
+        (commissionType === "PERCENTAGE" && commissionValue > 100) ||
+        (commissionType === "FIXED" && commissionValue > deliveryFee)) {
+      return res.status(400).json({ success: false, message: "Invalid Rider commission configuration." });
+    }
+    const delivery = await Delivery.findOne({
+      _id: deliveryId,
+      ...deliveryBranchFilter(req),
+    });
+    if (!delivery) {
+      return res.status(404).json({ success: false, message: "Delivery was not found." });
+    }
+    if (delivery.riderCommissionCredited && (
+      Number(delivery.deliveryFee) !== deliveryFee ||
+      delivery.riderCommissionType !== commissionType ||
+      Number(delivery.riderCommissionValue) !== commissionValue
+    )) {
+      return res.status(400).json({ success: false, message: "The delivery price or commission cannot be changed after Rider commission has been credited." });
+    }
+    const previousDeliveryFee = Number(delivery.deliveryFee || 0);
+    delivery.deliveryFee = deliveryFee;
+    delivery.paymentStatus = paymentStatus;
+    delivery.riderCommissionType = commissionType;
+    delivery.riderCommissionValue = commissionValue;
+    delivery.paidAt = paymentStatus === "PAID" ? (delivery.paidAt || new Date()) : null;
+    delivery.refundedAt = paymentStatus === "REFUNDED" ? (delivery.refundedAt || new Date()) : null;
+    if (req.body?.adminNote !== undefined) delivery.adminNote = String(req.body.adminNote ?? "").trim();
+    const calculation = delivery.calculateCommission();
+    if (!delivery.riderCommissionCredited) delivery.riderCommissionStatus = "PENDING";
+    await delivery.save();
+    const commission = await creditRiderCommissionIfEligible({
+      deliveryId: delivery._id,
+      riderId: delivery.assignedRiderId,
+    });
+    const updatedDelivery = await findAdminDeliveryForResponse(req, delivery._id);
+    return res.json({
+      success: true,
+      message: "Delivery price and Rider commission updated successfully.",
+      data: {
+        delivery: updatedDelivery,
+        previousDeliveryFee,
+        currentDeliveryFee: deliveryFee,
+        riderCommissionAmount: calculation.riderCommissionAmount,
+        servicepayProfit: calculation.servicepayProfit,
+        commission,
+      },
+      delivery: updatedDelivery,
+    });
+  } catch (error) {
+    console.error("Update delivery price error:", error);
+    return res.status(error?.name === "ValidationError" ? 400 : 500).json({
+      success: false,
+      message: error?.name === "ValidationError"
+        ? "Invalid delivery price or commission information."
+        : "Failed to update delivery price.",
     });
   }
 };
