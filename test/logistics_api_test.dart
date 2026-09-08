@@ -103,6 +103,63 @@ void main() {
     expect(captured.method, 'POST');
   });
 
+  test('uses explicit Head Office route lifecycle endpoints', () async {
+    final List<http.Request> captured = <http.Request>[];
+    final LogisticsApi api = LogisticsApi(
+      tokenLoader: () async => 'head-office-token',
+      baseUrl: 'https://api.servicepay.ng/api',
+      client: MockClient((http.Request request) async {
+        captured.add(request);
+        return http.Response('{"success":true}', 200);
+      }),
+    );
+
+    await api.setRouteActive('route-1', true);
+    await api.setRouteActive('route-1', false);
+    await api.archiveRoute('route-1', reason: 'Pricing retired');
+    await api.restoreRoute('route-1');
+
+    expect(
+        captured.map((request) => '${request.method} ${request.url.path}'),
+        <String>[
+          'PATCH /api/admin/logistics/interstate/routes/route-1/activate',
+          'PATCH /api/admin/logistics/interstate/routes/route-1/deactivate',
+          'POST /api/admin/logistics/interstate/routes/route-1/archive',
+          'POST /api/admin/logistics/interstate/routes/route-1/restore',
+        ]);
+    expect(captured[2].body, '{"reason":"Pricing retired"}');
+  });
+
+  test('validates directional route pricing before Head Office submission', () {
+    final Map<String, dynamic> route = <String, dynamic>{
+      'name': 'Kano to Abuja',
+      'originState': 'KANO',
+      'originBranchId': 'kano',
+      'destinationState': 'ABUJA',
+      'destinationBranchId': 'abuja',
+      'baseFare': 5000,
+      'minimumWeightKg': 1,
+      'maximumWeightKg': 20,
+      'pricePerAdditionalKg': 500,
+      'maximumDimensionCm': 100,
+      'oversizeSurcharge': 1000,
+      'standardDeliveryTime': '2–3 business days',
+      'expressEnabled': false,
+    };
+    expect(validateInterstateRoutePayload(route), isNull);
+    expect(validateInterstateRoutePayload(<String, dynamic>{
+      ...route,
+      'originBranchId': 'abuja',
+      'destinationBranchId': 'kano',
+      'name': 'Abuja to Kano',
+      'baseFare': 6500,
+    }), isNull);
+    expect(validateInterstateRoutePayload(
+        <String, dynamic>{...route, 'destinationBranchId': 'kano'}), contains('different'));
+    expect(validateInterstateRoutePayload(
+        <String, dynamic>{...route, 'baseFare': -1}), contains('non-negative'));
+  });
+
   test('sends an allowed trip transition to the canonical admin endpoint',
       () async {
     late http.Request captured;

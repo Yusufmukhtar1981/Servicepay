@@ -293,11 +293,24 @@ abstract final class InterstateLogisticsContracts {
       .trim();
 }
 
+typedef InterstatePostRequest = Future<dynamic> Function(
+    String path, Map<String, dynamic> body,
+    {String? idempotencyKey});
+
 class InterstateShipmentWizard extends StatefulWidget {
-  const InterstateShipmentWizard({super.key, this.routesLoader});
+  const InterstateShipmentWizard({
+    super.key,
+    this.routesLoader,
+    this.postRequest,
+    this.transactionPinLoader,
+  });
 
   /// Test seam; production always loads the authenticated active-route API.
   final Future<List<Map<String, dynamic>>> Function()? routesLoader;
+  /// Test seam; production posts to the authenticated Interstate API.
+  final InterstatePostRequest? postRequest;
+  /// Test seam; production always uses the secure transaction PIN dialog.
+  final Future<String?> Function()? transactionPinLoader;
   @override
   State<InterstateShipmentWizard> createState() =>
       _InterstateShipmentWizardState();
@@ -371,6 +384,15 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
   }
 
   String _value(String key) => _fields[key]!.text.trim();
+
+  Future<dynamic> _post(String path, Map<String, dynamic> body,
+      {String? idempotencyKey}) {
+    final InterstatePostRequest? request = widget.postRequest;
+    if (request != null) {
+      return request(path, body, idempotencyKey: idempotencyKey);
+    }
+    return _LogisticsApi.post(path, body, idempotencyKey: idempotencyKey);
+  }
 
   Future<void> _loadConfiguration() async {
     setState(() {
@@ -456,7 +478,7 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
   Future<void> _quoteShipment() async {
     setState(() => _submitting = true);
     try {
-      final dynamic result = await _LogisticsApi.post('/quote', _payload());
+      final dynamic result = await _post('/quote', _payload());
       final Map<String, dynamic> quote =
           InterstateLogisticsContracts.quote(result);
       if (quote.isEmpty)
@@ -501,7 +523,7 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
       }
       Map<String, dynamic> shipment = _createdShipment ?? <String, dynamic>{};
       if (shipment.isEmpty) {
-        final dynamic created = await _LogisticsApi.post(
+        final dynamic created = await _post(
           '/shipments',
           <String, dynamic>{
             ..._payload(),
@@ -518,10 +540,13 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
       if (id.isEmpty)
         throw StateError(
             'Shipment creation could not be confirmed. Your wallet has not been charged.');
-      final String? pin =
-          mounted ? await showTransactionPinDialog(context) : null;
+      final String? pin = widget.transactionPinLoader != null
+          ? await widget.transactionPinLoader!()
+          : mounted
+              ? await showTransactionPinDialog(context)
+              : null;
       if (pin == null) return;
-      final dynamic paid = await _LogisticsApi.post(
+      final dynamic paid = await _post(
         '/shipments/$id/pay',
         <String, dynamic>{
           'transactionPin': pin,
