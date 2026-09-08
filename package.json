@@ -1,10 +1,10 @@
 {
   "version": "1.0.0",
   "private": true,
-  "packageManager": "npm@10.9.4",
+  "packageManager": "npm@10.8.2",
   "engines": {
-    "node": "22.x",
-    "npm": "10.9.4"
+    "node": "20.20.x",
+    "npm": "10.x"
   },
   "scripts": {
     "start": "node backend/index.js"

@@ -1,0 +1,105 @@
+We have now identified the actual Render production backend:
+
+Service:
+servicepay-backend
+
+Repository:
+Yusufmukhtar1981/Servicepay
+
+Branch:
+main
+
+The latest Render deploy failed during dependency installation.
+
+Exact Render error:
+
+Node.js: 22.22.0
+
+Build command:
+npm install
+
+Failure:
+npm error Exit handler never called!
+Build failed with status 1.
+
+DO NOT redeploy yet.
+DO NOT modify production data.
+DO NOT touch VULL.
+DO NOT reimplement Interstate Logistics or ServicePay Call.
+
+Fix ONLY the backend build reliability problem and prepare a safe release.
+
+1. Inspect:
+   - backend/package.json
+   - package-lock.json
+   - engines.node
+   - .node-version
+   - .nvmrc
+   - Render build configuration
+
+2. Determine the Node version currently used successfully by the ServicePay backend in development/tests.
+
+3. Pin a stable Node.js version explicitly for Render instead of relying on Render defaults.
+
+Prefer a stable compatible Node LTS version supported by the current dependency tree.
+
+Do NOT blindly upgrade dependencies.
+
+4. If package-lock.json is valid and committed, use deterministic dependency installation:
+
+npm ci
+
+instead of:
+
+npm install
+
+for the production backend build.
+
+5. Do not delete package-lock.json unless it is proven corrupt.
+
+6. Reproduce the backend install/build locally in a clean environment using the exact pinned Node version.
+
+7. Run all backend tests.
+
+8. Confirm the build does NOT produce:
+
+“Exit handler never called!”
+
+9. Review the current main branch for unrelated unfinished backend changes.
+
+We already know Interstate and Call fixes are ready, but the branch contains unrelated work.
+
+Do NOT prepare a wholesale production deployment if unrelated unfinished changes remain.
+
+10. Determine the exact commit/diff required for:
+   - Interstate Logistics backend fix
+   - ServicePay Call backend fix
+   - Render build reliability fix
+
+11. Do not deploy anything.
+
+Report exactly:
+
+RENDER BUILD ROOT CAUSE:
+PINNED NODE VERSION:
+NODE VERSION CONFIGURED: PASS/FAIL
+NPM CI USED: YES/NO
+CLEAN DEPENDENCY INSTALL: PASS/FAIL
+BACKEND BUILD: PASS/FAIL
+BACKEND TESTS: PASS/FAIL
+
+INTERSTATE FIX INCLUDED: YES/NO
+CALL FIX INCLUDED: YES/NO
+UNRELATED UNFINISHED CHANGES INCLUDED: YES/NO
+
+SAFE RELEASE COMMIT IDENTIFIED: YES/NO
+SAFE RELEASE COMMIT/BRANCH:
+
+DESTRUCTIVE DATABASE CHANGE REQUIRED: YES/NO
+PRODUCTION DATA MODIFIED: NO
+VULL MODIFIED: NO
+DEPLOYMENT PERFORMED: NO
+
+SAFE FOR MANUAL RENDER DEPLOY: YES/NO
+
+Stop before deployment.
