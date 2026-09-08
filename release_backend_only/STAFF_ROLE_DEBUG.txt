@@ -1,0 +1,884 @@
+
+==========================================================================================
+FILE: backend/controllers/staffManagement.controller.js
+==========================================================================================
+    1: const Role = require("../models/role.model");
+    2: const User = require("../models/user.model");
+    3: 
+    4: const {
+    5:   STAFF_PERMISSION_VALUES,
+    6: } = require("../config/staffPermissions");
+    7: 
+    8: const normalizeRoleName = (value) =>
+    9:   String(value || "")
+   10:     .trim()
+   11:     .toUpperCase()
+   12:     .replace(/[^A-Z0-9]+/g, "_")
+   13:     .replace(/^_+|_+$/g, "");
+   14: 
+   15: const normalizePermissions = (permissions) => {
+   16:   if (!Array.isArray(permissions)) {
+   17:     return [];
+   18:   }
+   19: 
+   20:   const allowed = new Set(STAFF_PERMISSION_VALUES);
+   21: 
+   22:   return [
+   23:     ...new Set(
+   24:       permissions
+   25:         .map((item) => String(item || "").trim())
+   26:         .filter((item) => allowed.has(item))
+   27:     ),
+   28:   ];
+   29: };
+   30: 
+   31: const publicRole = (role) => ({
+   32:   id: role._id,
+   33:   _id: role._id,
+   34:   name: role.name,
+   35:   displayName: role.displayName,
+   36:   department: role.department,
+   37:   description: role.description,
+   38:   permissions: role.permissions || [],
+   39:   isSystemRole: role.isSystemRole === true,
+   40:   status: role.status,
+   41:   createdAt: role.createdAt,
+   42:   updatedAt: role.updatedAt,
+   43: });
+   44: 
+   45: const publicStaff = (staff) => ({
+   46:   id: staff._id,
+   47:   _id: staff._id,
+   48:   fullName: staff.fullName,
+   49:   phone: staff.phone,
+   50:   email: staff.email,
+   51:   role: staff.role,
+   52:   status: staff.status,
+   53:   isStaff: staff.isStaff,
+   54:   staffId: staff.staffId,
+   55:   department: staff.department,
+   56:   staffRoleId: staff.staffRoleId,
+   57:   mustChangePassword: staff.mustChangePassword,
+   58:   lastStaffLoginAt: staff.lastStaffLoginAt,
+   59:   createdAt: staff.createdAt,
+   60:   updatedAt: staff.updatedAt,
+   61: });
+   62: 
+   63: exports.getPermissionCatalog = async (req, res) => {
+   64:   return res.status(200).json({
+   65:     success: true,
+   66:     count: STAFF_PERMISSION_VALUES.length,
+   67:     permissions: STAFF_PERMISSION_VALUES,
+   68:   });
+   69: };
+   70: 
+   71: exports.createRole = async (req, res) => {
+   72:   try {
+   73:     const {
+   74:       name,
+   75:       displayName,
+   76:       department,
+   77:       description,
+   78:       permissions,
+   79:     } = req.body || {};
+   80: 
+   81:     const roleName = normalizeRoleName(name);
+   82: 
+   83:     if (!roleName || !displayName || !department) {
+   84:       return res.status(400).json({
+   85:         success: false,
+   86:         message:
+   87:           "Role name, display name and department are required.",
+   88:       });
+   89:     }
+   90: 
+   91:     const existingRole = await Role.findOne({
+   92:       name: roleName,
+   93:     });
+   94: 
+   95:     if (existingRole) {
+   96:       return res.status(409).json({
+   97:         success: false,
+   98:         message: "A staff role with this name already exists.",
+   99:       });
+  100:     }
+  101: 
+  102:     const role = await Role.create({
+  103:       name: roleName,
+  104:       displayName: String(displayName).trim(),
+  105:       department: String(department)
+  106:         .trim()
+  107:         .toUpperCase(),
+  108:       description: String(description || "").trim(),
+  109:       permissions: normalizePermissions(permissions),
+  110:       isSystemRole: false,
+  111:       status: "ACTIVE",
+  112:       createdBy: req.user._id,
+  113:       updatedBy: req.user._id,
+  114:     });
+  115: 
+  116:     return res.status(201).json({
+  117:       success: true,
+  118:       message: "Staff role created successfully.",
+  119:       role: publicRole(role),
+  120:     });
+  121:   } catch (error) {
+  122:     console.error("Create staff role error:", error);
+  123: 
+  124:     return res.status(500).json({
+  125:       success: false,
+  126:       message: "Unable to create the staff role.",
+  127:     });
+  128:   }
+  129: };
+  130: 
+  131: exports.getRoles = async (req, res) => {
+  132:   try {
+  133:     const status = String(
+  134:       req.query.status || "ALL"
+  135:     )
+  136:       .trim()
+  137:       .toUpperCase();
+  138: 
+  139:     const query = {};
+  140: 
+  141:     if (status !== "ALL") {
+  142:       query.status = status;
+  143:     }
+  144: 
+  145:     const roles = await Role.find(query)
+  146:       .sort({
+  147:         department: 1,
+  148:         displayName: 1,
+  149:       })
+  150:       .lean();
+  151: 
+  152:     return res.status(200).json({
+  153:       success: true,
+  154:       count: roles.length,
+  155:       roles: roles.map(publicRole),
+  156:     });
+  157:   } catch (error) {
+  158:     console.error("Get staff roles error:", error);
+  159: 
+  160:     return res.status(500).json({
+  161:       success: false,
+  162:       message: "Unable to load staff roles.",
+  163:     });
+  164:   }
+  165: };
+  166: 
+  167: exports.updateRole = async (req, res) => {
+  168:   try {
+  169:     const role = await Role.findById(
+  170:       req.params.roleId
+  171:     );
+  172: 
+  173:     if (!role) {
+  174:       return res.status(404).json({
+  175:         success: false,
+  176:         message: "Staff role was not found.",
+  177:       });
+  178:     }
+  179: 
+  180:     const {
+  181:       displayName,
+  182:       department,
+  183:       description,
+  184:       permissions,
+  185:       status,
+  186:     } = req.body || {};
+  187: 
+  188:     if (displayName !== undefined) {
+  189:       role.displayName = String(displayName).trim();
+  190:     }
+  191: 
+  192:     if (department !== undefined) {
+  193:       role.department = String(department)
+  194:         .trim()
+  195:         .toUpperCase();
+  196:     }
+  197: 
+  198:     if (description !== undefined) {
+  199:       role.description = String(description).trim();
+  200:     }
+  201: 
+  202:     if (permissions !== undefined) {
+  203:       role.permissions =
+  204:         normalizePermissions(permissions);
+  205:     }
+  206: 
+  207:     if (status !== undefined) {
+  208:       role.status = String(status)
+  209:         .trim()
+  210:         .toUpperCase();
+  211:     }
+  212: 
+  213:     role.updatedBy = req.user._id;
+  214: 
+  215:     await role.save();
+  216: 
+  217:     return res.status(200).json({
+  218:       success: true,
+  219:       message: "Staff role updated successfully.",
+  220:       role: publicRole(role),
+  221:     });
+  222:   } catch (error) {
+  223:     console.error("Update staff role error:", error);
+  224: 
+  225:     return res.status(500).json({
+  226:       success: false,
+  227:       message: "Unable to update the staff role.",
+  228:     });
+  229:   }
+  230: };
+  231: 
+  232: exports.createStaff = async (req, res) => {
+  233:   try {
+  234:     const {
+  235:       fullName,
+  236:       phone,
+  237:       email,
+  238:       password,
+  239:       roleId,
+  240:     } = req.body || {};
+  241: 
+  242:     if (
+  243:       !fullName ||
+  244:       !phone ||
+  245:       !email ||
+  246:       !password ||
+  247:       !roleId
+  248:     ) {
+  249:       return res.status(400).json({
+  250:         success: false,
+  251:         message:
+  252:           "Full name, phone, email, temporary password and staff role are required.",
+  253:       });
+  254:     }
+  255: 
+  256:     if (String(password).length < 6) {
+  257:       return res.status(400).json({
+  258:         success: false,
+  259:         message:
+  260:           "Temporary password must contain at least 6 characters.",
+  261:       });
+  262:     }
+  263: 
+  264:     const staffRole = await Role.findOne({
+  265:       _id: roleId,
+  266:       status: "ACTIVE",
+  267:     });
+  268: 
+  269:     if (!staffRole) {
+  270:       return res.status(400).json({
+  271:         success: false,
+  272:         message:
+  273:           "The selected staff role is unavailable.",
+  274:       });
+  275:     }
+  276: 
+  277:     const normalizedEmail = String(email)
+  278:       .trim()
+  279:       .toLowerCase();
+  280: 
+  281:     const normalizedPhone = String(phone).trim();
+  282: 
+  283:     const existingUser = await User.findOne({
+  284:       $or: [
+  285:         {
+  286:           email: normalizedEmail,
+  287:         },
+  288:         {
+  289:           phone: normalizedPhone,
+  290:         },
+  291:       ],
+  292:     });
+  293: 
+  294:     if (existingUser) {
+  295:       return res.status(409).json({
+  296:         success: false,
+  297:         message:
+  298:           "An account already exists with this email or phone number.",
+  299:       });
+  300:     }
+  301: 
+  302:     const latestStaff = await User.findOne({
+  303:       isStaff: true,
+  304:       staffId: {
+  305:         $regex: /^SP-STF-/,
+  306:       },
+  307:     })
+  308:       .sort({
+  309:         createdAt: -1,
+  310:       })
+  311:       .select("staffId")
+  312:       .lean();
+  313: 
+  314:     const previousNumber =
+  315:       Number(
+  316:         String(latestStaff?.staffId || "")
+  317:           .replace("SP-STF-", "")
+  318:       ) || 0;
+  319: 
+  320:     const nextStaffId =
+  321:       `SP-STF-${String(previousNumber + 1).padStart(
+  322:         5,
+  323:         "0"
+  324:       )}`;
+  325: 
+  326:     const staff = await User.create({
+  327:       fullName: String(fullName).trim(),
+  328:       phone: normalizedPhone,
+  329:       email: normalizedEmail,
+  330:       password: String(password),
+  331: 
+  332:       role: "STAFF",
+  333:       status: "ACTIVE",
+  334: 
+  335:       isStaff: true,
+  336:       staffId: nextStaffId,
+  337:       staffRoleId: staffRole._id,
+  338:       department: staffRole.department,
+  339:       staffCreatedBy: req.user._id,
+  340:       mustChangePassword: true,
+  341: 
+  342:       walletBalance: 0,
+  343:       commissionBalance: 0,
+  344:       totalEarnings: 0,
+  345:     });
+  346: 
+  347:     await staff.populate(
+  348:       "staffRoleId",
+  349:       "name displayName department permissions status"
+  350:     );
+  351: 
+  352:     return res.status(201).json({
+  353:       success: true,
+  354:       message: "Staff account created successfully.",
+  355:       staff: publicStaff(staff),
+  356:     });
+  357:   } catch (error) {
+  358:     console.error("Create staff error:", error);
+  359: 
+  360:     return res.status(500).json({
+  361:       success: false,
+  362:       message: "Unable to create the staff account.",
+  363:     });
+  364:   }
+  365: };
+  366: 
+  367: exports.getStaff = async (req, res) => {
+  368:   try {
+  369:     const status = String(
+  370:       req.query.status || "ALL"
+  371:     )
+  372:       .trim()
+  373:       .toUpperCase();
+  374: 
+  375:     const search = String(
+  376:       req.query.search || ""
+  377:     ).trim();
+  378: 
+  379:     const query = {
+  380:       isStaff: true,
+  381:       role: "STAFF",
+  382:     };
+  383: 
+  384:     if (status !== "ALL") {
+  385:       query.status = status;
+  386:     }
+  387: 
+  388:     if (search) {
+  389:       query.$or = [
+  390:         {
+  391:           fullName: {
+  392:             $regex: search,
+  393:             $options: "i",
+  394:           },
+  395:         },
+  396:         {
+  397:           email: {
+  398:             $regex: search,
+  399:             $options: "i",
+  400:           },
+  401:         },
+  402:         {
+  403:           phone: {
+  404:             $regex: search,
+  405:             $options: "i",
+  406:           },
+  407:         },
+  408:         {
+  409:           staffId: {
+  410:             $regex: search,
+  411:             $options: "i",
+  412:           },
+  413:         },
+  414:       ];
+  415:     }
+  416: 
+  417:     const staff = await User.find(query)
+  418:       .select("-password")
+  419:       .populate(
+  420:         "staffRoleId",
+  421:         "name displayName department permissions status"
+  422:       )
+  423:       .sort({
+  424:         createdAt: -1,
+  425:       });
+  426: 
+  427:     return res.status(200).json({
+  428:       success: true,
+  429:       count: staff.length,
+  430:       staff: staff.map(publicStaff),
+  431:     });
+  432:   } catch (error) {
+  433:     console.error("Get staff error:", error);
+  434: 
+  435:     return res.status(500).json({
+  436:       success: false,
+  437:       message: "Unable to load staff accounts.",
+  438:     });
+  439:   }
+  440: };
+  441: 
+  442: exports.updateStaffStatus = async (req, res) => {
+  443:   try {
+  444:     const status = String(
+  445:       req.body?.status || ""
+  446:     )
+  447:       .trim()
+  448:       .toUpperCase();
+  449: 
+  450:     if (
+  451:       ![
+  452:         "ACTIVE",
+  453:         "SUSPENDED",
+  454:         "BLOCKED",
+  455:       ].includes(status)
+  456:     ) {
+  457:       return res.status(400).json({
+  458:         success: false,
+  459:         message:
+  460:           "Status must be ACTIVE, SUSPENDED or BLOCKED.",
+  461:       });
+  462:     }
+  463: 
+  464:     const staff = await User.findOne({
+  465:       _id: req.params.staffId,
+  466:       isStaff: true,
+  467:       role: "STAFF",
+  468:     });
+  469: 
+  470:     if (!staff) {
+  471:       return res.status(404).json({
+  472:         success: false,
+  473:         message: "Staff account was not found.",
+  474:       });
+  475:     }
+  476: 
+  477:     staff.status = status;
+  478: 
+  479:     await staff.save({
+  480:       validateBeforeSave: false,
+  481:     });
+  482: 
+  483:     return res.status(200).json({
+  484:       success: true,
+  485:       message: `Staff account changed to ${status}.`,
+  486:       staff: publicStaff(staff),
+  487:     });
+  488:   } catch (error) {
+  489:     console.error(
+  490:       "Update staff status error:",
+  491:       error
+  492:     );
+  493: 
+  494:     return res.status(500).json({
+  495:       success: false,
+  496:       message:
+  497:         "Unable to update the staff account status.",
+  498:     });
+  499:   }
+  500: };
+  501: 
+  502: 
+  503: exports.seedDefaultRoles = async (req, res) => {
+  504:   try {
+  505:     const {
+  506:       STAFF_PERMISSIONS: P,
+  507:     } = require("../config/staffPermissions");
+  508: 
+  509:     const defaultRoles = [
+  510:       {
+  511:         name: "SUB_ADMIN",
+  512:         displayName: "Sub Admin",
+  513:         department: "ADMINISTRATION",
+  514:         description:
+  515:           "Assists Head Office with selected administrative operations.",
+  516:         permissions: [
+  517:           P.DASHBOARD_VIEW,
+  518:           P.STAFF_CREATE,
+  519:           P.STAFF_VIEW,
+  520:           P.STAFF_UPDATE,
+  521:           P.STAFF_SUSPEND,
+  522:           P.ROLES_VIEW,
+  523:           P.USERS_VIEW,
+  524:           P.USERS_UPDATE,
+  525:           P.USERS_SUSPEND,
+  526:           P.USERS_BLOCK,
+  527:           P.TRANSACTIONS_VIEW,
+  528:           P.TRANSACTIONS_EXPORT,
+  529:           P.WALLETS_VIEW,
+  530:           P.DELIVERY_VIEW,
+  531:           P.SUPPORT_VIEW,
+  532:           P.KYC_VIEW,
+  533:           P.AUDIT_VIEW,
+  534:           P.REPORTS_VIEW,
+  535:           P.REPORTS_EXPORT,
+  536:           P.NOTIFICATIONS_CREATE,
+  537:           P.NOTIFICATIONS_SEND,
+  538:         ],
+  539:       },
+  540:       {
+  541:         name: "OPERATIONS_MANAGER",
+  542:         displayName: "Operations Manager",
+  543:         department: "OPERATIONS",
+  544:         description:
+  545:           "Manages daily ServicePay operational activity.",
+  546:         permissions: [
+  547:           P.DASHBOARD_VIEW,
+  548:           P.USERS_VIEW,
+  549:           P.TRANSACTIONS_VIEW,
+  550:           P.TRANSACTIONS_EXPORT,
+  551:           P.WALLETS_VIEW,
+  552:           P.DELIVERY_VIEW,
+  553:           P.DELIVERY_ASSIGN,
+  554:           P.DELIVERY_UPDATE,
+  555:           P.DELIVERY_CANCEL,
+  556:           P.SUPPORT_VIEW,
+  557:           P.SUPPORT_ASSIGN,
+  558:           P.SUPPORT_RESOLVE,
+  559:           P.KYC_VIEW,
+  560:           P.REPORTS_VIEW,
+  561:           P.REPORTS_EXPORT,
+  562:         ],
+  563:       },
+  564:       {
+  565:         name: "DELIVERY_MANAGER",
+  566:         displayName: "Delivery Manager",
+  567:         department: "DELIVERY",
+  568:         description:
+  569:           "Manages delivery requests and delivery staff.",
+  570:         permissions: [
+  571:           P.DASHBOARD_VIEW,
+  572:           P.USERS_VIEW,
+  573:           P.DELIVERY_VIEW,
+  574:           P.DELIVERY_ASSIGN,
+  575:           P.DELIVERY_UPDATE,
+  576:           P.DELIVERY_CANCEL,
+  577:           P.REPORTS_VIEW,
+  578:           P.REPORTS_EXPORT,
+  579:         ],
+  580:       },
+  581:       {
+  582:         name: "FINANCE_MANAGER",
+  583:         displayName: "Finance Manager",
+  584:         department: "FINANCE",
+  585:         description:
+  586:           "Oversees wallets, reconciliation and financial approvals.",
+  587:         permissions: [
+  588:           P.DASHBOARD_VIEW,
+  589:           P.USERS_VIEW,
+  590:           P.TRANSACTIONS_VIEW,
+  591:           P.TRANSACTIONS_EXPORT,
+  592:           P.TRANSACTIONS_REVERSE,
+  593:           P.WALLETS_VIEW,
+  594:           P.WALLETS_FUND,
+  595:           P.WALLETS_ADJUST,
+  596:           P.WALLETS_FREEZE,
+  597:           P.FINANCE_VIEW,
+  598:           P.FINANCE_RECONCILE,
+  599:           P.FINANCE_EXPORT,
+  600:           P.FINANCE_APPROVE,
+  601:           P.AUDIT_VIEW,
+  602:           P.REPORTS_VIEW,
+  603:           P.REPORTS_EXPORT,
+  604:         ],
+  605:       },
+  606:       {
+  607:         name: "ACCOUNTANT",
+  608:         displayName: "Accountant",
+  609:         department: "FINANCE",
+  610:         description:
+  611:           "Handles financial reports and reconciliation.",
+  612:         permissions: [
+  613:           P.DASHBOARD_VIEW,
+  614:           P.TRANSACTIONS_VIEW,
+  615:           P.TRANSACTIONS_EXPORT,
+  616:           P.WALLETS_VIEW,
+  617:           P.FINANCE_VIEW,
+  618:           P.FINANCE_RECONCILE,
+  619:           P.FINANCE_EXPORT,
+  620:           P.REPORTS_VIEW,
+  621:           P.REPORTS_EXPORT,
+  622:         ],
+  623:       },
+  624:       {
+  625:         name: "INTERNAL_AUDITOR",
+  626:         displayName: "Internal Auditor",
+  627:         department: "AUDIT",
+  628:         description:
+  629:           "Read-only internal audit and control access.",
+  630:         permissions: [
+  631:           P.DASHBOARD_VIEW,
+  632:           P.STAFF_VIEW,
+  633:           P.ROLES_VIEW,
+  634:           P.USERS_VIEW,
+  635:           P.TRANSACTIONS_VIEW,
+  636:           P.TRANSACTIONS_EXPORT,
+  637:           P.WALLETS_VIEW,
+  638:           P.FINANCE_VIEW,
+  639:           P.FINANCE_EXPORT,
+  640:           P.DELIVERY_VIEW,
+  641:           P.SUPPORT_VIEW,
+  642:           P.KYC_VIEW,
+  643:           P.AUDIT_VIEW,
+  644:           P.AUDIT_EXPORT,
+  645:           P.REPORTS_VIEW,
+  646:           P.REPORTS_EXPORT,
+  647:           P.SETTINGS_VIEW,
+  648:         ],
+  649:       },
+  650:       {
+  651:         name: "COMPLIANCE_MANAGER",
+  652:         displayName: "Compliance Manager",
+  653:         department: "COMPLIANCE",
+  654:         description:
+  655:           "Manages KYC and compliance operations.",
+  656:         permissions: [
+  657:           P.DASHBOARD_VIEW,
+  658:           P.USERS_VIEW,
+  659:           P.USERS_UPDATE,
+  660:           P.USERS_SUSPEND,
+  661:           P.USERS_BLOCK,
+  662:           P.TRANSACTIONS_VIEW,
+  663:           P.KYC_VIEW,
+  664:           P.KYC_APPROVE,
+  665:           P.KYC_REJECT,
+  666:           P.AUDIT_VIEW,
+  667:           P.AUDIT_EXPORT,
+  668:           P.REPORTS_VIEW,
+  669:           P.REPORTS_EXPORT,
+  670:         ],
+  671:       },
+  672:       {
+  673:         name: "KYC_OFFICER",
+  674:         displayName: "KYC Officer",
+  675:         department: "COMPLIANCE",
+  676:         description:
+  677:           "Reviews KYC and identity verification submissions.",
+  678:         permissions: [
+  679:           P.DASHBOARD_VIEW,
+  680:           P.USERS_VIEW,
+  681:           P.KYC_VIEW,
+  682:           P.KYC_APPROVE,
+  683:           P.KYC_REJECT,
+  684:           P.REPORTS_VIEW,
+  685:         ],
+  686:       },
+  687:       {
+  688:         name: "SUPPORT_MANAGER",
+  689:         displayName: "Support Manager",
+  690:         department: "CUSTOMER_SUPPORT",
+  691:         description:
+  692:           "Manages support complaints and escalations.",
+  693:         permissions: [
+  694:           P.DASHBOARD_VIEW,
+  695:           P.STAFF_VIEW,
+  696:           P.USERS_VIEW,
+  697:           P.USERS_UPDATE,
+  698:           P.TRANSACTIONS_VIEW,
+  699:           P.WALLETS_VIEW,
+  700:           P.SUPPORT_VIEW,
+  701:           P.SUPPORT_CREATE,
+  702:           P.SUPPORT_ASSIGN,
+  703:           P.SUPPORT_RESOLVE,
+  704:           P.REPORTS_VIEW,
+  705:           P.REPORTS_EXPORT,
+  706:         ],
+  707:       },
+  708:       {
+  709:         name: "SUPPORT_STAFF",
+  710:         displayName: "Support Staff",
+  711:         department: "CUSTOMER_SUPPORT",
+  712:         description:
+  713:           "Handles customer enquiries and support cases.",
+  714:         permissions: [
+  715:           P.DASHBOARD_VIEW,
+  716:           P.USERS_VIEW,
+  717:           P.TRANSACTIONS_VIEW,
+  718:           P.SUPPORT_VIEW,
+  719:           P.SUPPORT_CREATE,
+  720:           P.SUPPORT_RESOLVE,
+  721:         ],
+  722:       },
+  723:     ];
+  724: 
+  725:     const results = [];
+  726: 
+  727:     for (const roleData of defaultRoles) {
+  728:       const role = await Role.findOneAndUpdate(
+  729:         {
+  730:           name: roleData.name,
+  731:         },
+  732:         {
+  733:           ...roleData,
+  734:           isSystemRole: true,
+  735:           status: "ACTIVE",
+  736:           updatedBy: req.user._id,
+  737:           $setOnInsert: {
+  738:             createdBy: req.user._id,
+  739:           },
+  740:         },
+  741:         {
+  742:           upsert: true,
+  743:           new: true,
+  744:           runValidators: true,
+  745:           setDefaultsOnInsert: true,
+  746:         }
+  747:       );
+  748: 
+  749:       results.push(publicRole(role));
+  750:     }
+  751: 
+  752:     return res.status(200).json({
+  753:       success: true,
+  754:       message:
+  755:         "Default staff roles created or updated successfully.",
+  756:       count: results.length,
+  757:       roles: results,
+  758:     });
+  759:   } catch (error) {
+  760:     console.error(
+  761:       "Seed default staff roles error:",
+  762:       error
+  763:     );
+  764: 
+  765:     return res.status(500).json({
+  766:       success: false,
+  767:       message:
+  768:         "Unable to create the default staff roles.",
+  769:     });
+  770:   }
+  771: };
+  772: 
+  773: module.exports.publicRole = publicRole;
+  774: module.exports.publicStaff = publicStaff;
+------------------------------------------------------------------------------------------
+
+==========================================================================================
+FILE: backend/routes/staffManagement.routes.js
+==========================================================================================
+    1: const express = require("express");
+    2: 
+    3: const {
+    4:   getPermissionCatalog,
+    5:   createRole,
+    6:   getRoles,
+    7:   updateRole,
+    8:   createStaff,
+    9:   getStaff,
+   10:   updateStaffStatus,
+   11:   seedDefaultRoles,
+   12: } = require("../controllers/staffManagement.controller");
+   13: 
+   14: const {
+   15:   protect,
+   16: } = require("../middleware/auth.middleware");
+   17: 
+   18: const {
+   19:   loadStaffRole,
+   20:   requirePermission,
+   21: } = require("../middleware/staffPermission.middleware");
+   22: 
+   23: const {
+   24:   STAFF_PERMISSIONS: P,
+   25: } = require("../config/staffPermissions");
+   26: 
+   27: const router = express.Router();
+   28: 
+   29: /*
+   30:  * Every endpoint here requires a logged-in user.
+   31:  * HEAD_OFFICE receives full access inside loadStaffRole.
+   32:  */
+   33: router.use(
+   34:   protect,
+   35:   loadStaffRole
+   36: );
+   37: 
+   38: router.post(
+   39:   "/roles/seed-defaults",
+   40:   requirePermission(
+   41:     P.ROLES_CREATE
+   42:   ),
+   43:   seedDefaultRoles
+   44: );
+   45: 
+   46: router.get(
+   47:   "/permissions",
+   48:   requirePermission(
+   49:     P.ROLES_VIEW
+   50:   ),
+   51:   getPermissionCatalog
+   52: );
+   53: 
+   54: router
+   55:   .route("/roles")
+   56:   .get(
+   57:     requirePermission(
+   58:       P.ROLES_VIEW
+   59:     ),
+   60:     getRoles
+   61:   )
+   62:   .post(
+   63:     requirePermission(
+   64:       P.ROLES_CREATE
+   65:     ),
+   66:     createRole
+   67:   );
+   68: 
+   69: router.put(
+   70:   "/roles/:roleId",
+   71:   requirePermission(
+   72:     P.ROLES_UPDATE
+   73:   ),
+   74:   updateRole
+   75: );
+   76: 
+   77: router
+   78:   .route("/staff")
+   79:   .get(
+   80:     requirePermission(
+   81:       P.STAFF_VIEW
+   82:     ),
+   83:     getStaff
+   84:   )
+   85:   .post(
+   86:     requirePermission(
+   87:       P.STAFF_CREATE
+   88:     ),
+   89:     createStaff
+   90:   );
+   91: 
+   92: router.put(
+   93:   "/staff/:staffId/status",
+   94:   requirePermission(
+   95:     P.STAFF_SUSPEND
+   96:   ),
+   97:   updateStaffStatus
+   98: );
+   99: 
+  100: module.exports = router;
+------------------------------------------------------------------------------------------

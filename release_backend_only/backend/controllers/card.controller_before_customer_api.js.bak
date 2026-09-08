@@ -1,0 +1,200 @@
+const Card = require('../models/card.model');
+
+function makeReference() {
+  return `SPCARD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
+exports.requestCard = async (req, res) => {
+  try {
+    const cardType = String(req.body.cardType || '').trim().toUpperCase();
+
+    if (!['PHYSICAL', 'VIRTUAL'].includes(cardType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'cardType must be PHYSICAL or VIRTUAL',
+      });
+    }
+
+    const existing = await Card.findOne({
+      user: req.user._id,
+      cardType,
+      status: {
+        $in: ['PENDING', 'APPROVED', 'PROCESSING', 'ACTIVE', 'FROZEN'],
+      },
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: `You already have an active or pending ${cardType.toLowerCase()} card request.`,
+        card: existing,
+      });
+    }
+
+    if (
+      cardType === 'PHYSICAL' &&
+      !String(req.body.deliveryAddress || '').trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery address is required for a physical card.',
+      });
+    }
+
+    const card = await Card.create({
+      user: req.user._id,
+      cardType,
+      deliveryAddress: String(req.body.deliveryAddress || '').trim(),
+      state: String(req.body.state || '').trim(),
+      lga: String(req.body.lga || '').trim(),
+      requestReference: makeReference(),
+      status: 'PENDING',
+    });
+
+    return res.status(201).json({
+      success: true,
+      message:
+        cardType === 'PHYSICAL'
+          ? 'Physical card request submitted successfully.'
+          : 'Virtual card request submitted successfully.',
+      card,
+    });
+  } catch (error) {
+    console.error('requestCard error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to submit card request.',
+    });
+  }
+};
+
+exports.myCards = async (req, res) => {
+  try {
+    const cards = await Card.find({
+      user: req.user._id,
+    }).sort({ createdAt: -1 });
+
+    return res.json({
+      success: true,
+      cards,
+    });
+  } catch (error) {
+    console.error('myCards error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load cards.',
+    });
+  }
+};
+
+exports.getCard = async (req, res) => {
+  try {
+    const card = await Card.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    });
+
+    if (!card) {
+      return res.status(404).json({
+        success: false,
+        message: 'Card not found.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      card,
+    });
+  } catch (error) {
+    console.error('getCard error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load card.',
+    });
+  }
+};
+
+exports.freezeCard = async (req, res) => {
+  try {
+    const card = await Card.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    });
+
+    if (!card) {
+      return res.status(404).json({
+        success: false,
+        message: 'Card not found.',
+      });
+    }
+
+    if (card.status !== 'ACTIVE') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only an active card can be frozen.',
+      });
+    }
+
+    card.status = 'FROZEN';
+    card.frozenAt = new Date();
+
+    await card.save();
+
+    return res.json({
+      success: true,
+      message: 'Card frozen successfully.',
+      card,
+    });
+  } catch (error) {
+    console.error('freezeCard error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to freeze card.',
+    });
+  }
+};
+
+exports.unfreezeCard = async (req, res) => {
+  try {
+    const card = await Card.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    });
+
+    if (!card) {
+      return res.status(404).json({
+        success: false,
+        message: 'Card not found.',
+      });
+    }
+
+    if (card.status !== 'FROZEN') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only a frozen card can be unfrozen.',
+      });
+    }
+
+    card.status = 'ACTIVE';
+    card.frozenAt = null;
+
+    await card.save();
+
+    return res.json({
+      success: true,
+      message: 'Card unfrozen successfully.',
+      card,
+    });
+  } catch (error) {
+    console.error('unfreezeCard error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to unfreeze card.',
+    });
+  }
+};

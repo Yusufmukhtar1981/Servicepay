@@ -1,0 +1,10 @@
+const router = require("express").Router();
+const c = require("../controllers/interstateLogistics.controller");
+const { protect, adminOnly } = require("../middleware/auth.middleware");
+router.use(protect, adminOnly("DELIVERY_RIDER"));
+router.get("/shipments", c.riderShipment);
+router.get("/deliveries", c.riderShipment);
+router.post("/shipments/:id/delivery-otp", c.sendOtp);
+router.post("/shipments/:id/verify-delivery", c.verifyDelivery);
+router.patch("/deliveries/:id/complete", c.verifyDelivery);
+module.exports = router;

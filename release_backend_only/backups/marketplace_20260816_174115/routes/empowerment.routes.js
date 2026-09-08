@@ -1,0 +1,135 @@
+const express = require("express");
+
+const {
+  protect,
+} = require("../middleware/auth.middleware");
+
+const {
+  createOrganization,
+  listOrganizations,
+  createProgram,
+  addBeneficiary,
+  listPrograms,
+  listBeneficiaries,
+  updateOrganizationStatus,
+  updateProgramStatus,
+  updateBeneficiaryStatus,
+  applyForProgram,
+  getMyApplications,
+  listAvailablePrograms,
+  bulkAddBeneficiaries,
+  getProgramStatistics,
+  createDisbursementPreview,
+  prepareDisbursementBatch,
+  listDisbursementBatches,
+  getEmpowermentDashboardSummary,
+  getEmpowermentAuditTrail,
+} = require(
+  "../controllers/empowerment.controller"
+);
+
+const router = express.Router();
+
+router.use(protect);
+
+router.post(
+  "/organizations",
+  createOrganization
+);
+
+router.get(
+  "/organizations",
+  listOrganizations
+);
+
+router.post(
+  "/programs",
+  createProgram
+);
+
+router.get(
+  "/programs",
+  listPrograms
+);
+
+router.post(
+  "/beneficiaries",
+  addBeneficiary
+);
+
+router.get(
+  "/programs/:programId/beneficiaries",
+  listBeneficiaries
+);
+
+
+router.patch(
+  "/organizations/:id/status",
+  updateOrganizationStatus
+);
+
+router.patch(
+  "/programs/:id/status",
+  updateProgramStatus
+);
+
+router.patch(
+  "/beneficiaries/:id/status",
+  updateBeneficiaryStatus
+);
+
+
+router.get(
+  "/available-programs",
+  listAvailablePrograms
+);
+
+router.get(
+  "/my-applications",
+  getMyApplications
+);
+
+router.post(
+  "/programs/:programId/apply",
+  applyForProgram
+);
+
+
+router.post(
+  "/programs/:programId/bulk-beneficiaries",
+  bulkAddBeneficiaries
+);
+
+router.get(
+  "/programs/:programId/statistics",
+  getProgramStatistics
+);
+
+
+router.post(
+  "/programs/:programId/disbursement-preview",
+  createDisbursementPreview
+);
+
+router.post(
+  "/disbursement-batches/:batchId/prepare",
+  prepareDisbursementBatch
+);
+
+router.get(
+  "/programs/:programId/disbursement-batches",
+  listDisbursementBatches
+);
+
+
+router.get(
+  "/dashboard-summary",
+  getEmpowermentDashboardSummary
+);
+
+router.get(
+  "/audit-trail",
+  getEmpowermentAuditTrail
+);
+
+module.exports = router;

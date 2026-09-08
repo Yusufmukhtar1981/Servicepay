@@ -1,0 +1,2218 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class KekeOrderScreen extends StatefulWidget {
+  const KekeOrderScreen({
+    super.key,
+  });
+
+  @override
+  State<KekeOrderScreen> createState() =>
+      _KekeOrderScreenState();
+}
+
+class _KekeOrderScreenState
+    extends State<KekeOrderScreen> {
+  static const String baseUrl =
+      'https://api.servicepay.ng/api';
+
+  static const Color primaryGreen =
+      Color(0xFF0F766E);
+
+  final MapController _mapController =
+      MapController();
+
+  final TextEditingController
+      _pickupAddressController =
+      TextEditingController();
+
+  final TextEditingController
+      _destinationAddressController =
+      TextEditingController();
+
+  bool _isLoadingLocation = true;
+  bool _isRequestingRide = false;
+  bool _isLoadingOtp = false;
+  bool _isEstimatingFare = false;
+
+  String _statusMessage =
+      'Getting your current location...';
+
+  String? _rideOtp;
+
+  LatLng? _pickupLocation;
+  LatLng? _destinationLocation;
+  LatLng? _driverLocation;
+
+  Map<String, dynamic>? _activeRide;
+  Map<String, dynamic>? _fareEstimate;
+
+  Timer? _ridePollingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _initializeScreen();
+  }
+
+  @override
+  void dispose() {
+    _ridePollingTimer?.cancel();
+
+    _pickupAddressController.dispose();
+    _destinationAddressController.dispose();
+
+    super.dispose();
+  }
+
+  Future<void> _initializeScreen() async {
+    await _loadCurrentLocation();
+
+    await _loadActiveRide();
+  }
+
+  Future<String?> _getAuthToken() async {
+    final SharedPreferences prefs =
+        await SharedPreferences.getInstance();
+
+    const List<String> tokenKeys =
+        <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
+
+    for (final String key in tokenKeys) {
+      final String? value =
+          prefs.getString(key);
+
+      if (value == null ||
+          value.trim().isEmpty) {
+        continue;
+      }
+
+      String token =
+          value.trim();
+
+      if (token
+          .toLowerCase()
+          .startsWith(
+            'bearer ',
+          )) {
+        token =
+            token.substring(7).trim();
+      }
+
+      if (token.isNotEmpty) {
+        return token;
+      }
+    }
+
+    return null;
+  }
+
+  String? _rideId(
+    Map<String, dynamic>? ride,
+  ) {
+    if (ride == null) {
+      return null;
+    }
+
+    final String value =
+        ride['_id']?.toString() ??
+            ride['id']?.toString() ??
+            '';
+
+    if (value.trim().isEmpty) {
+      return null;
+    }
+
+    return value.trim();
+  }
+
+  Future<void> _loadCurrentLocation() async {
+    try {
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = true;
+
+          _statusMessage =
+              'Getting your current location...';
+        });
+      }
+
+      final bool enabled =
+          await Geolocator
+              .isLocationServiceEnabled();
+
+      if (!enabled) {
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation =
+                false;
+
+            _statusMessage =
+                'Please turn on location service.';
+          });
+        }
+
+        return;
+      }
+
+      LocationPermission permission =
+          await Geolocator
+              .checkPermission();
+
+      if (permission ==
+          LocationPermission.denied) {
+        permission =
+            await Geolocator
+                .requestPermission();
+      }
+
+      if (permission ==
+              LocationPermission.denied ||
+          permission ==
+              LocationPermission
+                  .deniedForever) {
+        if (mounted) {
+          setState(() {
+            _isLoadingLocation =
+                false;
+
+            _statusMessage =
+                'Location permission is required to order Keke.';
+          });
+        }
+
+        return;
+      }
+
+      final Position position =
+          await Geolocator
+              .getCurrentPosition(
+        locationSettings:
+            const LocationSettings(
+          accuracy:
+              LocationAccuracy.high,
+        ),
+      );
+
+      final LatLng current =
+          LatLng(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (mounted) {
+        setState(() {
+          _pickupLocation =
+              current;
+
+          _isLoadingLocation =
+              false;
+
+          _statusMessage =
+              'Current location ready.';
+        });
+      }
+
+      WidgetsBinding.instance
+          .addPostFrameCallback(
+        (_) {
+          try {
+            _mapController.move(
+              current,
+              16,
+            );
+          } catch (_) {}
+        },
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation =
+              false;
+
+          _statusMessage =
+              'Unable to get current location.';
+        });
+      }
+    }
+  }
+
+  Future<void> _loadActiveRide() async {
+    try {
+      final String? token =
+          await _getAuthToken();
+
+      if (token == null) {
+        return;
+      }
+
+      final http.Response response =
+          await http
+              .get(
+        Uri.parse(
+          '$baseUrl/keke-rides/active',
+        ),
+        headers:
+            <String, String>{
+          'Authorization':
+              'Bearer $token',
+          'Accept':
+              'application/json',
+        },
+      )
+              .timeout(
+        const Duration(
+          seconds: 30,
+        ),
+      );
+
+      final dynamic decoded =
+          jsonDecode(
+        response.body,
+      );
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded
+              is! Map<String, dynamic>) {
+        return;
+      }
+
+      final dynamic ride =
+          decoded['ride'];
+
+      if (ride is! Map) {
+        return;
+      }
+
+      final Map<String, dynamic>
+          normalizedRide =
+          Map<String, dynamic>.from(
+        ride,
+      );
+
+      if (mounted) {
+        setState(() {
+          _activeRide =
+              normalizedRide;
+        });
+      }
+
+      _extractRideLocations(
+        normalizedRide,
+      );
+
+      final String status =
+          normalizedRide['status']
+                  ?.toString() ??
+              '';
+
+      final String? rideId =
+          _rideId(
+        normalizedRide,
+      );
+
+      if (rideId != null &&
+          <String>[
+            'DRIVER_ARRIVED',
+            'RIDE_STARTED',
+          ].contains(status)) {
+        await _loadRideOtp(
+          rideId,
+        );
+      }
+
+      _startRidePolling();
+    } catch (_) {}
+  }
+
+  void _extractRideLocations(
+    Map<String, dynamic> ride,
+  ) {
+    try {
+      final dynamic pickup =
+          ride['pickup'];
+
+      if (pickup is Map) {
+        final dynamic location =
+            pickup['location'];
+
+        if (location is Map) {
+          final dynamic coordinates =
+              location['coordinates'];
+
+          if (coordinates is List &&
+              coordinates.length >= 2) {
+            _pickupLocation =
+                LatLng(
+              (coordinates[1] as num)
+                  .toDouble(),
+              (coordinates[0] as num)
+                  .toDouble(),
+            );
+          }
+        }
+      }
+
+      final dynamic destination =
+          ride['destination'];
+
+      if (destination is Map) {
+        final dynamic location =
+            destination['location'];
+
+        if (location is Map) {
+          final dynamic coordinates =
+              location['coordinates'];
+
+          if (coordinates is List &&
+              coordinates.length >= 2) {
+            _destinationLocation =
+                LatLng(
+              (coordinates[1] as num)
+                  .toDouble(),
+              (coordinates[0] as num)
+                  .toDouble(),
+            );
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (_) {}
+  }
+
+  void _startRidePolling() {
+    _ridePollingTimer?.cancel();
+
+    _ridePollingTimer =
+        Timer.periodic(
+      const Duration(
+        seconds: 5,
+      ),
+      (_) async {
+        await _refreshRideAndDriver();
+      },
+    );
+  }
+
+  Future<void>
+      _refreshRideAndDriver() async {
+    final Map<String, dynamic>?
+        ride =
+        _activeRide;
+
+    final String? rideId =
+        _rideId(
+      ride,
+    );
+
+    if (rideId == null) {
+      return;
+    }
+
+    await _loadRideDetails(
+      rideId,
+    );
+
+    await _loadDriverLocation(
+      rideId,
+    );
+
+    final String status =
+        _activeRide?['status']
+                ?.toString() ??
+            '';
+
+    if (<String>[
+      'DRIVER_ARRIVED',
+      'RIDE_STARTED',
+    ].contains(status)) {
+      await _loadRideOtp(
+        rideId,
+      );
+    }
+  }
+
+  Future<void> _loadRideDetails(
+    String rideId,
+  ) async {
+    try {
+      final String? token =
+          await _getAuthToken();
+
+      if (token == null) {
+        return;
+      }
+
+      final http.Response response =
+          await http
+              .get(
+        Uri.parse(
+          '$baseUrl/keke-rides/$rideId',
+        ),
+        headers:
+            <String, String>{
+          'Authorization':
+              'Bearer $token',
+          'Accept':
+              'application/json',
+        },
+      )
+              .timeout(
+        const Duration(
+          seconds: 20,
+        ),
+      );
+
+      final dynamic decoded =
+          jsonDecode(
+        response.body,
+      );
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded
+              is! Map<String, dynamic> ||
+          decoded['ride'] is! Map) {
+        return;
+      }
+
+      final Map<String, dynamic>
+          updatedRide =
+          Map<String, dynamic>.from(
+        decoded['ride'] as Map,
+      );
+
+      final String status =
+          updatedRide['status']
+                  ?.toString() ??
+              '';
+
+      if (mounted) {
+        setState(() {
+          _activeRide =
+              updatedRide;
+        });
+      }
+
+      if (<String>[
+        'RIDE_COMPLETED',
+        'CANCELLED',
+        'NO_DRIVER_FOUND',
+      ].contains(status)) {
+        _ridePollingTimer?.cancel();
+
+        if (mounted) {
+          setState(() {
+            if (status !=
+                'RIDE_COMPLETED') {
+              _rideOtp = null;
+            }
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadRideOtp(
+    String rideId,
+  ) async {
+    if (_isLoadingOtp) {
+      return;
+    }
+
+    try {
+      _isLoadingOtp = true;
+
+      final String? token =
+          await _getAuthToken();
+
+      if (token == null) {
+        return;
+      }
+
+      final http.Response response =
+          await http
+              .get(
+        Uri.parse(
+          '$baseUrl/keke-rides/$rideId/otp',
+        ),
+        headers:
+            <String, String>{
+          'Authorization':
+              'Bearer $token',
+          'Accept':
+              'application/json',
+        },
+      )
+              .timeout(
+        const Duration(
+          seconds: 20,
+        ),
+      );
+
+      final dynamic decoded =
+          jsonDecode(
+        response.body,
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          decoded is Map<String, dynamic>) {
+        final dynamic ride =
+            decoded['ride'];
+
+        if (ride is Map) {
+          final String otp =
+              ride['otp']
+                      ?.toString()
+                      .trim() ??
+                  '';
+
+          if (otp.isNotEmpty &&
+              mounted) {
+            setState(() {
+              _rideOtp =
+                  otp;
+            });
+          }
+        }
+      }
+    } catch (_) {
+      // Polling will try again.
+    } finally {
+      _isLoadingOtp = false;
+    }
+  }
+
+  Future<void> _loadDriverLocation(
+    String rideId,
+  ) async {
+    try {
+      final String? token =
+          await _getAuthToken();
+
+      if (token == null) {
+        return;
+      }
+
+      final http.Response response =
+          await http
+              .get(
+        Uri.parse(
+          '$baseUrl/keke-rides/$rideId/driver-location',
+        ),
+        headers:
+            <String, String>{
+          'Authorization':
+              'Bearer $token',
+          'Accept':
+              'application/json',
+        },
+      )
+              .timeout(
+        const Duration(
+          seconds: 20,
+        ),
+      );
+
+      final dynamic decoded =
+          jsonDecode(
+        response.body,
+      );
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded
+              is! Map<String, dynamic>) {
+        return;
+      }
+
+      final dynamic location =
+          decoded['location'];
+
+      if (location is! Map) {
+        return;
+      }
+
+      final double? latitude =
+          _toDouble(
+        location['latitude'],
+      );
+
+      final double? longitude =
+          _toDouble(
+        location['longitude'],
+      );
+
+      if (latitude == null ||
+          longitude == null) {
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _driverLocation =
+              LatLng(
+            latitude,
+            longitude,
+          );
+        });
+      }
+    } catch (_) {}
+  }
+
+  double? _toDouble(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+      value.toString(),
+    );
+  }
+
+  Future<void> _selectDestination(
+    LatLng point,
+  ) async {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _destinationLocation =
+          point;
+
+      if (_destinationAddressController
+          .text
+          .trim()
+          .isEmpty) {
+        _destinationAddressController
+                .text =
+            'Selected destination';
+      }
+
+      _statusMessage =
+          'Destination selected.';
+      _fareEstimate = null;
+    });
+
+    await _estimateFare();
+  }
+
+  double _distanceKm(
+    LatLng start,
+    LatLng end,
+  ) {
+    const double earthRadiusKm = 6371;
+    final double lat1 = start.latitude * math.pi / 180;
+    final double lat2 = end.latitude * math.pi / 180;
+    final double deltaLat =
+        (end.latitude - start.latitude) * math.pi / 180;
+    final double deltaLng =
+        (end.longitude - start.longitude) * math.pi / 180;
+    final double a = math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
+        math.cos(lat1) *
+            math.cos(lat2) *
+            math.sin(deltaLng / 2) *
+            math.sin(deltaLng / 2);
+    return earthRadiusKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  Future<bool> _estimateFare() async {
+    final LatLng? pickup = _pickupLocation;
+    final LatLng? destination = _destinationLocation;
+    if (pickup == null || destination == null || _isEstimatingFare) {
+      return false;
+    }
+
+    try {
+      setState(() {
+        _isEstimatingFare = true;
+        _fareEstimate = null;
+      });
+
+      final String? token = await _getAuthToken();
+      if (token == null) {
+        _showMessage('Please login again.');
+        return false;
+      }
+
+      final http.Response response = await http
+          .post(
+            Uri.parse('$baseUrl/keke-fare/estimate'),
+            headers: <String, String>{
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(<String, dynamic>{
+              'distanceKm': _distanceKm(pickup, destination),
+              'waitingMinutes': 0,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      final dynamic decoded = jsonDecode(response.body);
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          decoded is Map &&
+          decoded['fare'] is Map) {
+        if (mounted) {
+          setState(() {
+            _fareEstimate =
+                Map<String, dynamic>.from(decoded['fare'] as Map);
+          });
+        }
+        return true;
+      }
+
+      _showMessage(
+        decoded is Map
+            ? decoded['message']?.toString() ?? 'Unable to estimate fare.'
+            : 'Unable to estimate fare.',
+      );
+      return false;
+    } catch (_) {
+      _showMessage('Unable to estimate fare. Please try again.');
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isEstimatingFare = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _confirmRideRequest(
+    String pickupAddress,
+    String destinationAddress,
+  ) async {
+    final Map<String, dynamic>? estimate = _fareEstimate;
+    if (estimate == null) {
+      return false;
+    }
+    final double totalFare = _toDouble(estimate['totalFare']) ?? 0;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm Keke request'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$pickupAddress → $destinationAddress'),
+              const SizedBox(height: 16),
+              const Text('Vehicle: Keke Napep'),
+              const Text('Payment: ServicePay Wallet'),
+              const SizedBox(height: 8),
+              Text(
+                'Estimated fare: ₦${totalFare.toStringAsFixed(0)}',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your wallet is charged only when the ride is completed.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm request'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _useCurrentLocation()
+      async {
+    await _loadCurrentLocation();
+  }
+
+  Future<void> _copyOtp() async {
+    final String otp =
+        _rideOtp?.trim() ?? '';
+
+    if (otp.isEmpty) {
+      return;
+    }
+
+    await Clipboard.setData(
+      ClipboardData(
+        text: otp,
+      ),
+    );
+
+    _showMessage(
+      'Ride OTP copied.',
+    );
+  }
+
+  Future<void> _requestKeke() async {
+    if (_isRequestingRide) {
+      return;
+    }
+
+    final LatLng? pickup =
+        _pickupLocation;
+
+    final LatLng? destination =
+        _destinationLocation;
+
+    if (pickup == null) {
+      _showMessage(
+        'Please allow ServicePay to access your current location.',
+      );
+
+      return;
+    }
+
+    if (destination == null) {
+      _showMessage(
+        'Tap the map to select your destination.',
+      );
+
+      return;
+    }
+
+    final String pickupAddress =
+        _pickupAddressController.text
+                .trim()
+                .isEmpty
+            ? 'Current Location'
+            : _pickupAddressController
+                .text
+                .trim();
+
+    final String destinationAddress =
+        _destinationAddressController
+            .text
+            .trim();
+
+    if (destinationAddress.isEmpty) {
+      _showMessage(
+        'Please enter destination name or address.',
+      );
+
+      return;
+    }
+
+    if (_fareEstimate == null) {
+      final bool estimated = await _estimateFare();
+      if (!estimated) {
+        return;
+      }
+    }
+
+    final bool confirmed = await _confirmRideRequest(
+      pickupAddress,
+      destinationAddress,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      if (mounted) {
+        setState(() {
+          _isRequestingRide =
+              true;
+
+          _rideOtp =
+              null;
+
+          _statusMessage =
+              'Searching for nearest Keke driver...';
+        });
+      }
+
+      final String? token =
+          await _getAuthToken();
+
+      if (token == null) {
+        _showMessage(
+          'Please login again.',
+        );
+
+        return;
+      }
+
+      final http.Response response =
+          await http
+              .post(
+        Uri.parse(
+          '$baseUrl/keke-rides',
+        ),
+        headers:
+            <String, String>{
+          'Authorization':
+              'Bearer $token',
+          'Content-Type':
+              'application/json',
+          'Accept':
+              'application/json',
+        },
+        body:
+            jsonEncode(
+          <String, dynamic>{
+            'pickupAddress':
+                pickupAddress,
+
+            'pickupLatitude':
+                pickup.latitude,
+
+            'pickupLongitude':
+                pickup.longitude,
+
+            'destinationAddress':
+                destinationAddress,
+
+            'destinationLatitude':
+                destination.latitude,
+
+            'destinationLongitude':
+                destination.longitude,
+
+            'paymentMethod':
+                'WALLET',
+          },
+        ),
+      )
+              .timeout(
+        const Duration(
+          seconds: 45,
+        ),
+      );
+
+      final dynamic decoded =
+          jsonDecode(
+        response.body,
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          decoded
+              is Map<String, dynamic>) {
+        final dynamic ride =
+            decoded['ride'];
+
+        if (ride is Map) {
+          final Map<String, dynamic>
+              normalizedRide =
+              Map<String, dynamic>.from(
+            ride,
+          );
+
+          if (mounted) {
+            setState(() {
+              _activeRide =
+                  normalizedRide;
+
+              _statusMessage =
+                  decoded['message']
+                          ?.toString() ??
+                      'Keke request created.';
+            });
+          }
+
+          _startRidePolling();
+
+          _showMessage(
+            decoded['message']
+                    ?.toString() ??
+                'Keke request created.',
+          );
+        }
+
+        return;
+      }
+
+      final String message =
+          decoded is Map
+              ? decoded['message']
+                      ?.toString() ??
+                  'Unable to request Keke.'
+              : 'Unable to request Keke.';
+
+      if (mounted) {
+        setState(() {
+          _statusMessage =
+              message;
+        });
+      }
+
+      _showMessage(
+        message,
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _statusMessage =
+              'Unable to request Keke.';
+        });
+      }
+
+      _showMessage(
+        'Unable to request Keke. Please try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRequestingRide =
+              false;
+        });
+      }
+    }
+  }
+  Future<void> _cancelRide() async {
+    final Map<String, dynamic>? ride =
+        _activeRide;
+
+    final String? rideId =
+        _rideId(
+      ride,
+    );
+
+    if (rideId == null) {
+      return;
+    }
+
+    try {
+      final String? token =
+          await _getAuthToken();
+
+      if (token == null) {
+        return;
+      }
+
+      final http.Response response =
+          await http
+              .post(
+        Uri.parse(
+          '$baseUrl/keke-rides/$rideId/cancel',
+        ),
+        headers:
+            <String, String>{
+          'Authorization':
+              'Bearer $token',
+          'Content-Type':
+              'application/json',
+          'Accept':
+              'application/json',
+        },
+        body:
+            jsonEncode(
+          <String, dynamic>{
+            'reason':
+                'Cancelled by customer',
+          },
+        ),
+      )
+              .timeout(
+        const Duration(
+          seconds: 30,
+        ),
+      );
+
+      final dynamic decoded =
+          jsonDecode(
+        response.body,
+      );
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        _ridePollingTimer
+            ?.cancel();
+
+        if (mounted) {
+          setState(() {
+            _activeRide =
+                null;
+
+            _driverLocation =
+                null;
+
+            _rideOtp =
+                null;
+
+            _statusMessage =
+                'Ride cancelled.';
+          });
+        }
+
+        _showMessage(
+          decoded is Map
+              ? decoded['message']
+                      ?.toString() ??
+                  'Ride cancelled.'
+              : 'Ride cancelled.',
+        );
+
+        return;
+      }
+
+      _showMessage(
+        decoded is Map
+            ? decoded['message']
+                    ?.toString() ??
+                'Unable to cancel ride.'
+            : 'Unable to cancel ride.',
+      );
+    } catch (_) {
+      _showMessage(
+        'Unable to cancel ride.',
+      );
+    }
+  }
+
+  void _showMessage(
+    String message,
+  ) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content:
+              Text(
+            message,
+          ),
+          behavior:
+              SnackBarBehavior
+                  .floating,
+        ),
+      );
+  }
+
+  List<Marker> _buildMarkers() {
+    final List<Marker> markers =
+        <Marker>[];
+
+    if (_pickupLocation != null) {
+      markers.add(
+        Marker(
+          point:
+              _pickupLocation!,
+          width:
+              52,
+          height:
+              52,
+          child:
+              const _MapPin(
+            icon:
+                Icons
+                    .person_pin_circle,
+            color:
+                primaryGreen,
+          ),
+        ),
+      );
+    }
+
+    if (_destinationLocation !=
+        null) {
+      markers.add(
+        Marker(
+          point:
+              _destinationLocation!,
+          width:
+              52,
+          height:
+              52,
+          child:
+              const _MapPin(
+            icon:
+                Icons
+                    .location_on,
+            color:
+                Colors.red,
+          ),
+        ),
+      );
+    }
+
+    if (_driverLocation != null) {
+      markers.add(
+        Marker(
+          point:
+              _driverLocation!,
+          width:
+              56,
+          height:
+              56,
+          child:
+              const _MapPin(
+            icon:
+                Icons
+                    .electric_rickshaw,
+            color:
+                Colors.orange,
+          ),
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  String _rideStatusLabel(
+    String status,
+  ) {
+    switch (status) {
+      case 'SEARCHING_DRIVER':
+        return 'Searching for driver';
+
+      case 'DRIVER_ASSIGNED':
+        return 'Driver found';
+
+      case 'DRIVER_COMING':
+        return 'Driver is coming';
+
+      case 'DRIVER_ARRIVED':
+        return 'Driver has arrived';
+
+      case 'RIDE_STARTED':
+        return 'Ride in progress';
+
+      case 'RIDE_COMPLETED':
+        return 'Ride completed';
+
+      case 'CANCELLED':
+        return 'Ride cancelled';
+
+      case 'NO_DRIVER_FOUND':
+        return 'No nearby driver';
+
+      default:
+        return status;
+    }
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final LatLng initialCenter =
+        _pickupLocation ??
+            const LatLng(
+              9.0820,
+              8.6753,
+            );
+
+    return Scaffold(
+      appBar:
+          AppBar(
+        title:
+            const Text(
+          'ServicePay Keke',
+        ),
+        backgroundColor:
+            primaryGreen,
+        foregroundColor:
+            Colors.white,
+      ),
+      body:
+          Column(
+        children:
+            <Widget>[
+          Expanded(
+            flex:
+                6,
+            child:
+                Stack(
+              children:
+                  <Widget>[
+                FlutterMap(
+                  mapController:
+                      _mapController,
+                  options:
+                      MapOptions(
+                    initialCenter:
+                        initialCenter,
+                    initialZoom:
+                        15,
+                    onTap:
+                        (
+                      TapPosition _,
+                      LatLng point,
+                    ) {
+                      if (_activeRide ==
+                          null) {
+                        _selectDestination(
+                          point,
+                        );
+                      }
+                    },
+                  ),
+                  children:
+                      <Widget>[
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName:
+                          'ng.servicepay.app',
+                    ),
+                    MarkerLayer(
+                      markers:
+                          _buildMarkers(),
+                    ),
+                  ],
+                ),
+                Positioned(
+                  top:
+                      12,
+                  right:
+                      12,
+                  child:
+                      FloatingActionButton
+                          .small(
+                    heroTag:
+                        'current_location',
+                    backgroundColor:
+                        Colors.white,
+                    foregroundColor:
+                        primaryGreen,
+                    onPressed:
+                        _useCurrentLocation,
+                    child:
+                        const Icon(
+                      Icons
+                          .my_location,
+                    ),
+                  ),
+                ),
+                if (_isLoadingLocation)
+                  const Positioned.fill(
+                    child:
+                        ColoredBox(
+                      color:
+                          Color(
+                        0x55FFFFFF,
+                      ),
+                      child:
+                          Center(
+                        child:
+                            CircularProgressIndicator(),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex:
+                5,
+            child:
+                _activeRide ==
+                        null
+                    ? _buildOrderPanel()
+                    : _buildActiveRidePanel(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrderPanel() {
+    return SingleChildScrollView(
+      padding:
+          const EdgeInsets.all(
+        16,
+      ),
+      child:
+          Column(
+        crossAxisAlignment:
+            CrossAxisAlignment
+                .stretch,
+        children:
+            <Widget>[
+          Text(
+            _statusMessage,
+            style:
+                const TextStyle(
+              fontWeight:
+                  FontWeight.w600,
+            ),
+          ),
+          const SizedBox(
+            height:
+                14,
+          ),
+          TextField(
+            controller:
+                _pickupAddressController,
+            decoration:
+                const InputDecoration(
+              labelText:
+                  'Pickup',
+              hintText:
+                  'Current Location',
+              prefixIcon:
+                  Icon(
+                Icons
+                    .trip_origin,
+              ),
+              border:
+                  OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(
+            height:
+                12,
+          ),
+          TextField(
+            controller:
+                _destinationAddressController,
+            decoration:
+                const InputDecoration(
+              labelText:
+                  'Destination',
+              hintText:
+                  'Enter destination then tap map',
+              prefixIcon:
+                  Icon(
+                Icons
+                    .location_on,
+              ),
+              border:
+                  OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(
+            height:
+                10,
+          ),
+          Text(
+            _destinationLocation ==
+                    null
+                ? 'Tap your destination on the map.'
+                : 'Destination selected on map.',
+            style:
+                TextStyle(
+              color:
+                  _destinationLocation ==
+                          null
+                      ? Colors.grey
+                      : primaryGreen,
+            ),
+          ),
+          if (_destinationLocation != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              key: const Key('transport-fare-estimate'),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF7F0),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFCFE7D8)),
+              ),
+              child: _isEstimatingFare
+                  ? const Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text('Calculating fare…'),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        const Icon(
+                          Icons.electric_rickshaw_rounded,
+                          color: primaryGreen,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Keke Napep',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              Text('ServicePay Wallet'),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          _fareEstimate == null
+                              ? 'Fare unavailable'
+                              : '₦${(_toDouble(_fareEstimate!['totalFare']) ?? 0).toStringAsFixed(0)}',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+          const SizedBox(
+            height:
+                18,
+          ),
+          SizedBox(
+            height:
+                52,
+            child:
+                ElevatedButton.icon(
+              onPressed:
+                  _isRequestingRide
+                      ? null
+                      : _requestKeke,
+              style:
+                  ElevatedButton
+                      .styleFrom(
+                backgroundColor:
+                    primaryGreen,
+                foregroundColor:
+                    Colors.white,
+              ),
+              icon:
+                  _isRequestingRide
+                      ? const SizedBox(
+                          width:
+                              20,
+                          height:
+                              20,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth:
+                                2,
+                            color:
+                                Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons
+                              .electric_rickshaw,
+                        ),
+              label:
+                  Text(
+                _isRequestingRide
+                    ? 'Searching...'
+                    : 'Request Keke',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveRidePanel() {
+    final Map<String, dynamic> ride =
+        _activeRide!;
+
+    final String status =
+        ride['status']
+                ?.toString() ??
+            '';
+
+    final dynamic driver =
+        ride['driverId'] ??
+            ride['driver'];
+
+    String driverName =
+        'Waiting for driver';
+
+    String plateNumber =
+        '';
+
+    String phone =
+        '';
+
+    if (driver is Map) {
+      driverName =
+          driver['fullName']
+                  ?.toString() ??
+              driverName;
+
+      plateNumber =
+          driver['plateNumber']
+                  ?.toString() ??
+              '';
+
+      phone =
+          driver['phone']
+                  ?.toString() ??
+              '';
+    } else {
+      final dynamic snapshot =
+          ride['driverSnapshot'];
+
+      if (snapshot is Map) {
+        driverName =
+            snapshot['fullName']
+                    ?.toString() ??
+                driverName;
+
+        plateNumber =
+            snapshot['plateNumber']
+                    ?.toString() ??
+                '';
+
+        phone =
+            snapshot['phone']
+                    ?.toString() ??
+                '';
+      }
+    }
+
+    final dynamic totalFareValue =
+        ride['totalFare'];
+
+    final String totalFare =
+        totalFareValue ==
+                null
+            ? '-'
+            : totalFareValue
+                .toString();
+
+    return SingleChildScrollView(
+      padding:
+          const EdgeInsets.all(
+        16,
+      ),
+      child:
+          Column(
+        crossAxisAlignment:
+            CrossAxisAlignment
+                .stretch,
+        children:
+            <Widget>[
+          Row(
+            children:
+                <Widget>[
+              const Icon(
+                Icons
+                    .electric_rickshaw,
+                color:
+                    primaryGreen,
+                size:
+                    30,
+              ),
+              const SizedBox(
+                width:
+                    10,
+              ),
+              Expanded(
+                child:
+                    Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children:
+                      <Widget>[
+                    Text(
+                      _rideStatusLabel(
+                        status,
+                      ),
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
+                        fontSize:
+                            18,
+                      ),
+                    ),
+                    const SizedBox(
+                      height:
+                          2,
+                    ),
+                    Text(
+                      ride['rideReference']
+                              ?.toString() ??
+                          ride['reference']
+                              ?.toString() ??
+                          '',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(
+            height:
+                16,
+          ),
+          Card(
+            child:
+                Padding(
+              padding:
+                  const EdgeInsets.all(
+                14,
+              ),
+              child:
+                  Column(
+                children:
+                    <Widget>[
+                  _InfoRow(
+                    icon:
+                        Icons.person,
+                    label:
+                        'Driver',
+                    value:
+                        driverName,
+                  ),
+                  if (plateNumber
+                      .isNotEmpty)
+                    _InfoRow(
+                      icon:
+                          Icons
+                              .confirmation_number,
+                      label:
+                          'Plate',
+                      value:
+                          plateNumber,
+                    ),
+                  if (phone
+                      .isNotEmpty)
+                    _InfoRow(
+                      icon:
+                          Icons.phone,
+                      label:
+                          'Phone',
+                      value:
+                          phone,
+                    ),
+                  _InfoRow(
+                    icon:
+                        Icons
+                            .payments_outlined,
+                    label:
+                        'Estimated Fare',
+                    value:
+                        '₦$totalFare',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(
+            height:
+                10,
+          ),
+          if (_driverLocation !=
+              null)
+            const Text(
+              'Driver location is updating live on the map.',
+              style:
+                  TextStyle(
+                color:
+                    primaryGreen,
+                fontWeight:
+                    FontWeight.w600,
+              ),
+            ),
+
+          /*
+           * =================================================
+           * RIDE OTP CARD
+           * =================================================
+           */
+          if (status ==
+              'DRIVER_ARRIVED') ...<Widget>[
+            const SizedBox(
+              height:
+                  14,
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.all(
+                18,
+              ),
+              decoration:
+                  BoxDecoration(
+                color:
+                    const Color(
+                  0xFFEAF7F0,
+                ),
+                borderRadius:
+                    BorderRadius.circular(
+                  20,
+                ),
+                border:
+                    Border.all(
+                  color:
+                      primaryGreen.withValues(
+                    alpha:
+                        0.30,
+                  ),
+                ),
+              ),
+              child:
+                  Column(
+                children:
+                    <Widget>[
+                  const Icon(
+                    Icons
+                        .verified_user_rounded,
+                    color:
+                        primaryGreen,
+                    size:
+                        34,
+                  ),
+                  const SizedBox(
+                    height:
+                        8,
+                  ),
+                  const Text(
+                    'Ride OTP',
+                    style:
+                        TextStyle(
+                      color:
+                          primaryGreen,
+                      fontWeight:
+                          FontWeight.w800,
+                      fontSize:
+                          16,
+                    ),
+                  ),
+                  const SizedBox(
+                    height:
+                        8,
+                  ),
+                  if (_rideOtp ==
+                      null)
+                    const Padding(
+                      padding:
+                          EdgeInsets.symmetric(
+                        vertical:
+                            12,
+                      ),
+                      child:
+                          CircularProgressIndicator(
+                        color:
+                            primaryGreen,
+                      ),
+                    )
+                  else ...<Widget>[
+                    SelectableText(
+                      _rideOtp!,
+                      style:
+                          const TextStyle(
+                        fontSize:
+                            38,
+                        fontWeight:
+                            FontWeight.w900,
+                        letterSpacing:
+                            10,
+                        color:
+                            Color(
+                          0xFF064E3B,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(
+                      height:
+                          10,
+                    ),
+                    const Text(
+                      'Give this 4-digit code to your driver before the ride starts.',
+                      textAlign:
+                          TextAlign.center,
+                      style:
+                          TextStyle(
+                        color:
+                            Color(
+                          0xFF475467,
+                        ),
+                        height:
+                            1.4,
+                      ),
+                    ),
+                    const SizedBox(
+                      height:
+                          12,
+                    ),
+                    OutlinedButton.icon(
+                      onPressed:
+                          _copyOtp,
+                      icon:
+                          const Icon(
+                        Icons.copy_rounded,
+                      ),
+                      label:
+                          const Text(
+                        'Copy OTP',
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+
+          if (status ==
+              'RIDE_STARTED') ...<Widget>[
+            const SizedBox(
+              height:
+                  14,
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.all(
+                16,
+              ),
+              decoration:
+                  BoxDecoration(
+                color:
+                    const Color(
+                  0xFFEAF7F0,
+                ),
+                borderRadius:
+                    BorderRadius.circular(
+                  18,
+                ),
+              ),
+              child:
+                  const Row(
+                children:
+                    <Widget>[
+                  Icon(
+                    Icons
+                        .route_rounded,
+                    color:
+                        primaryGreen,
+                  ),
+                  SizedBox(
+                    width:
+                        10,
+                  ),
+                  Expanded(
+                    child:
+                        Text(
+                      'Your ride is in progress. Driver location will continue updating on the map.',
+                      style:
+                          TextStyle(
+                        fontWeight:
+                            FontWeight.w600,
+                        height:
+                            1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(
+            height:
+                16,
+          ),
+
+          if (!<String>[
+            'RIDE_STARTED',
+            'RIDE_COMPLETED',
+            'CANCELLED',
+          ].contains(
+            status,
+          ))
+            OutlinedButton.icon(
+              onPressed:
+                  _cancelRide,
+              icon:
+                  const Icon(
+                Icons.close,
+              ),
+              label:
+                  const Text(
+                'Cancel Ride',
+              ),
+            ),
+
+          if (status ==
+                  'RIDE_COMPLETED' ||
+              status ==
+                  'CANCELLED' ||
+              status ==
+                  'NO_DRIVER_FOUND')
+            ElevatedButton(
+              onPressed:
+                  () {
+                _ridePollingTimer
+                    ?.cancel();
+
+                setState(() {
+                  _activeRide =
+                      null;
+
+                  _driverLocation =
+                      null;
+
+                  _rideOtp =
+                      null;
+
+                  _statusMessage =
+                      'Current location ready.';
+                });
+              },
+              style:
+                  ElevatedButton
+                      .styleFrom(
+                backgroundColor:
+                    primaryGreen,
+                foregroundColor:
+                    Colors.white,
+              ),
+              child:
+                  const Text(
+                'Order Another Keke',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapPin extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+
+  const _MapPin({
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Container(
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.white,
+        shape:
+            BoxShape.circle,
+        boxShadow:
+            const <BoxShadow>[
+          BoxShadow(
+            blurRadius:
+                8,
+            color:
+                Colors.black26,
+          ),
+        ],
+      ),
+      child:
+          Icon(
+        icon,
+        color:
+            color,
+        size:
+            34,
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Padding(
+      padding:
+          const EdgeInsets.symmetric(
+        vertical:
+            7,
+      ),
+      child:
+          Row(
+        children:
+            <Widget>[
+          Icon(
+            icon,
+            size:
+                20,
+            color:
+                _KekeOrderScreenState
+                    .primaryGreen,
+          ),
+          const SizedBox(
+            width:
+                10,
+          ),
+          SizedBox(
+            width:
+                110,
+            child:
+                Text(
+              label,
+              style:
+                  const TextStyle(
+                color:
+                    Colors.grey,
+              ),
+            ),
+          ),
+          Expanded(
+            child:
+                Text(
+              value,
+              textAlign:
+                  TextAlign.right,
+              style:
+                  const TextStyle(
+                fontWeight:
+                    FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

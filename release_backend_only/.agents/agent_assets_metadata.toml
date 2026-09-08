@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "KYKd9E201qsxQfKpjawPO"
+uri = "file://servicepay-kyc-current-main.zip"
+type = "unspecified"
+title = "ServicePay KYC patch for current main"
+description = "ZIP containing only servicepay-kyc-current-main.patch. Exported from commit 8fae798 and verified with git apply --check against a fresh clone of origin/main (085cd92)."
+logical_id = "ce7fbf5c-54b2-4082-ae82-6fd5db6917d5"
+content_hash = "sha256:f6a753d31daaa2570520425ec4fe7111f645bc89ea588b1bc6d53f7cca56a7b8"
+size = 31609
+mtime_ms = 1787525090280
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:72276743-721a-4a04-8411-e33fbed2e854/ce7fbf5c-54b2-4082-ae82-6fd5db6917d5/14c63af3-056b-499a-94ba-52a23b92c16e"
+storage_version_token = "1787525106706730"
+content_type = "application/octet-stream"

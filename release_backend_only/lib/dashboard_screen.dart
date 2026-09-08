@@ -1,0 +1,5778 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'airtime_screen.dart';
+import 'ai_support_screen.dart';
+import 'amana_screen.dart';
+import 'cable_screen.dart';
+import 'data_screen.dart';
+import 'electricity_screen.dart';
+import 'exam_pin_screen.dart';
+import 'flight_booking_screen.dart';
+import 'id_verification_screen.dart';
+import 'logistics_screen.dart';
+import 'delivery_history_screen.dart';
+import 'notifications_screen.dart';
+import 'transactions_screen.dart';
+import 'transfer_screen.dart';
+import 'wallet_screen.dart';
+
+import 'airtime_to_cash_screen.dart';
+
+import 'pay_by_link_screen.dart';
+import 'request_money_screen.dart';
+import 'business_wallet_screen.dart';
+import 'community_agent_locator_screen.dart';
+import 'group_wallet_screen.dart';
+import 'help_support_screen.dart';
+import 'profile_screen.dart';
+
+import 'withdrawal_screen.dart';
+
+import 'referral_screen.dart';
+
+import 'empowerment_screen.dart';
+import 'program_sponsor_screen.dart';
+import 'kyc_screen.dart';
+import 'cards_screen.dart';
+
+import 'partner_application_screen.dart';
+
+import 'qr_pay_screen.dart';
+
+import 'mini_apps_screen.dart';
+import 'keke_order_screen.dart';
+import 'solar_screen.dart';
+import 'phone_financing/phone_financing_screen.dart';
+
+import 'marketplace/marketplace_screen.dart';
+import 'marketplace/marketplace_my_orders_screen.dart';
+import 'trust/trust_dashboard_entry.dart';
+import 'trust/trust_search_screen.dart';
+import 'voice_call_screen.dart';
+
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({
+    super.key,
+    this.client,
+  });
+
+  final http.Client? client;
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen>
+    with TickerProviderStateMixin {
+  final ImagePicker _profileImagePicker = ImagePicker();
+  late final AnimationController _motionController;
+  late final AnimationController _refreshController;
+  late final http.Client _client;
+  late final bool _ownsClient;
+
+  String profilePhotoUrl = '';
+  bool isUploadingProfilePhoto = false;
+
+  static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  static const Color primaryGreen = Color(0xFF08783E);
+
+  static const Color softGreen = Color(0xFFEAF7F0);
+
+  final TextEditingController searchController = TextEditingController();
+
+  String userName = 'Customer';
+  double walletBalance = 0;
+
+  int unreadNotifications = 0;
+
+  bool isLoading = true;
+  bool isRefreshing = false;
+  bool hideBalance = false;
+  bool isLoadingRecentActivity = true;
+  bool isLoadingServiceStatuses = false;
+
+  String searchQuery = '';
+  String recentActivityError = '';
+  List<Map<String, dynamic>> recentTransactions = <Map<String, dynamic>>[];
+  List<_DashboardServiceStatus> activeServiceStatuses =
+      <_DashboardServiceStatus>[];
+
+  Map<String, bool> serviceAvailability = <String, bool>{
+    'kekeNapep': true,
+    'amana': true,
+    'airtime': true,
+    'data': true,
+    'electricity': true,
+    'cableTv': true,
+    'examPin': true,
+    'ninVerification': true,
+    'delivery': true,
+    'flightBooking': true,
+    'bankTransfer': true,
+    'servicepayTransfer': true,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsClient = widget.client == null;
+    _client = widget.client ?? http.Client();
+    _motionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3600),
+    )..repeat(reverse: true);
+    _refreshController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    );
+    _loadSavedProfilePhoto();
+    loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    _motionController.dispose();
+    _refreshController.dispose();
+    searchController.dispose();
+    if (_ownsClient) {
+      _client.close();
+    }
+    super.dispose();
+  }
+
+  Future<String?> getSavedAuthToken(
+    SharedPreferences preferences,
+  ) async {
+    const List<String> tokenKeys = <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
+
+    for (final String key in tokenKeys) {
+      final String? value = preferences.getString(key);
+
+      if (value == null || value.trim().isEmpty) {
+        continue;
+      }
+
+      String token = value.trim();
+
+      if (token.toLowerCase().startsWith('bearer ')) {
+        token = token.substring(7).trim();
+      }
+
+      if (token.isNotEmpty) {
+        return token;
+      }
+    }
+
+    return null;
+  }
+
+  Future<bool> loadDashboard({
+    bool refreshing = false,
+  }) async {
+    if (refreshing && isRefreshing) {
+      return false;
+    }
+
+    bool receivedFreshWalletBalance = false;
+
+    if (mounted) {
+      setState(() {
+        if (refreshing) {
+          isRefreshing = true;
+        } else {
+          isLoading = true;
+        }
+      });
+    }
+
+    try {
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+
+      final String savedName = preferences.getString('user_name') ??
+          preferences.getString('full_name') ??
+          preferences.getString('name') ??
+          'Customer';
+
+      final double savedBalance = preferences.getDouble('wallet_balance') ?? 0;
+
+      if (mounted) {
+        setState(() {
+          userName = savedName.trim().isEmpty ? 'Customer' : savedName.trim();
+
+          walletBalance = savedBalance;
+        });
+      }
+
+      await _loadServiceAvailability();
+
+      final String? token = await getSavedAuthToken(preferences);
+
+      if (token == null || token.isEmpty) {
+        if (mounted) {
+          setState(() {
+            isLoadingRecentActivity = false;
+            recentActivityError =
+                'Your login session has expired. Please log in again.';
+          });
+        }
+        return false;
+      }
+
+      final List<dynamic> results =
+          await Future.wait<dynamic>(<Future<dynamic>>[
+        _loadWalletBalance(token, preferences),
+        _loadRecentTransactions(token),
+        _loadNotificationSummary(token),
+        _loadActiveServiceStatuses(token),
+      ]);
+      receivedFreshWalletBalance = results.first == true;
+    } catch (_) {
+      // Keep locally saved dashboard values.
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+        });
+      }
+    }
+
+    return receivedFreshWalletBalance;
+  }
+
+  Future<bool> _loadWalletBalance(
+    String token,
+    SharedPreferences preferences,
+  ) async {
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/wallet'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+      );
+
+      if (response.statusCode != 200) {
+        return false;
+      }
+
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+
+      if (decoded is! Map) {
+        return false;
+      }
+
+      final Map<String, dynamic> data = Map<String, dynamic>.from(decoded);
+      dynamic rawBalance = data['walletBalance'] ?? data['balance'];
+
+      if (data['data'] is Map) {
+        final Map<String, dynamic> nested = Map<String, dynamic>.from(
+          data['data'] as Map,
+        );
+        rawBalance ??= nested['walletBalance'] ?? nested['balance'];
+      }
+
+      final double? freshBalance = rawBalance is num
+          ? rawBalance.toDouble()
+          : double.tryParse(rawBalance?.toString() ?? '');
+
+      if (freshBalance == null) {
+        return false;
+      }
+
+      await preferences.setDouble('wallet_balance', freshBalance);
+
+      if (mounted) {
+        setState(() {
+          walletBalance = freshBalance;
+        });
+      }
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _loadRecentTransactions(String token) async {
+    if (mounted) {
+      setState(() {
+        isLoadingRecentActivity = true;
+        recentActivityError = '';
+      });
+    }
+
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/transactions').replace(
+          queryParameters: const <String, String>{
+            'limit': '5',
+          },
+        ),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+      );
+
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError(
+          _dashboardResponseMessage(
+            decoded,
+            fallback: 'Unable to load recent activity.',
+          ),
+        );
+      }
+
+      final List<Map<String, dynamic>>? loaded =
+          _extractRecentTransactions(decoded);
+
+      if (loaded == null) {
+        throw StateError('Recent activity returned an invalid response.');
+      }
+
+      loaded.sort((Map<String, dynamic> left, Map<String, dynamic> right) {
+        final DateTime? leftDate = _recentTransactionDate(left);
+        final DateTime? rightDate = _recentTransactionDate(right);
+
+        return (rightDate?.millisecondsSinceEpoch ?? 0).compareTo(
+          leftDate?.millisecondsSinceEpoch ?? 0,
+        );
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        recentTransactions = loaded.take(5).toList();
+        recentActivityError = '';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        recentTransactions = <Map<String, dynamic>>[];
+        recentActivityError = error
+            .toString()
+            .replaceFirst('Bad state: ', '')
+            .replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingRecentActivity = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadNotificationSummary(String token) async {
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/notifications'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 20),
+      );
+
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          decoded is! Map ||
+          decoded['success'] != true) {
+        return;
+      }
+
+      final dynamic rawCount = decoded['unreadCount'];
+      final int? count = rawCount is num
+          ? rawCount.toInt()
+          : int.tryParse(rawCount?.toString() ?? '');
+
+      if (!mounted || count == null) {
+        return;
+      }
+
+      setState(() {
+        unreadNotifications = count < 0 ? 0 : count;
+      });
+    } catch (_) {
+      // Keep the last known notification count without showing fake unread data.
+    }
+  }
+
+  Future<void> _loadActiveServiceStatuses(String token) async {
+    if (mounted) {
+      setState(() {
+        isLoadingServiceStatuses = true;
+      });
+    }
+
+    try {
+      final List<List<Map<String, dynamic>>> results =
+          await Future.wait<List<Map<String, dynamic>>>(
+        <Future<List<Map<String, dynamic>>>>[
+          _loadDashboardList(token, '/delivery/my', <String>['deliveries']),
+          _loadDashboardList(
+            token,
+            '/marketplace/orders/mine',
+            <String>['orders'],
+          ),
+          _loadDashboardList(
+            token,
+            '/solar/my-finance',
+            <String>['finances', 'finance'],
+          ),
+          _loadDashboardList(
+            token,
+            '/phone-financing/my-finance',
+            <String>['finances', 'finance'],
+          ),
+          _loadDashboardList(
+            token,
+            '/empowerment/my-applications',
+            <String>['applications'],
+          ),
+        ],
+      );
+
+      final List<_DashboardServiceStatus> statuses =
+          <_DashboardServiceStatus>[];
+
+      void addLatest({
+        required List<Map<String, dynamic>> records,
+        required String service,
+        required String statusKey,
+        required Set<String> terminalStatuses,
+        required IconData icon,
+        required String Function(Map<String, dynamic>) detail,
+      }) {
+        final List<Map<String, dynamic>> active = records.where(
+          (Map<String, dynamic> record) {
+            final String status =
+                record[statusKey]?.toString().trim().toUpperCase() ?? '';
+            return status.isNotEmpty && !terminalStatuses.contains(status);
+          },
+        ).toList()
+          ..sort(
+            (Map<String, dynamic> left, Map<String, dynamic> right) =>
+                (_recentTransactionDate(right)?.millisecondsSinceEpoch ?? 0)
+                    .compareTo(
+              _recentTransactionDate(left)?.millisecondsSinceEpoch ?? 0,
+            ),
+          );
+
+        if (active.isEmpty) {
+          return;
+        }
+
+        final Map<String, dynamic> record = active.first;
+        final String status =
+            record[statusKey]!.toString().trim().replaceAll('_', ' ');
+        statuses.add(
+          _DashboardServiceStatus(
+            service: service,
+            status: status,
+            detail: detail(record),
+            icon: icon,
+          ),
+        );
+      }
+
+      addLatest(
+        records: results[0],
+        service: 'Delivery',
+        statusKey: 'status',
+        terminalStatuses: const <String>{
+          'DELIVERED',
+          'CANCELLED',
+          'FAILED',
+        },
+        icon: Icons.local_shipping_rounded,
+        detail: (Map<String, dynamic> item) {
+          return (item['packageName'] ??
+                  item['trackingNumber'] ??
+                  'Delivery in progress')
+              .toString();
+        },
+      );
+      addLatest(
+        records: results[1],
+        service: 'Marketplace',
+        statusKey: 'orderStatus',
+        terminalStatuses: const <String>{
+          'DELIVERED',
+          'CANCELLED',
+          'REFUNDED',
+          'FAILED',
+        },
+        icon: Icons.storefront_rounded,
+        detail: (Map<String, dynamic> item) {
+          final String id = (item['_id'] ?? item['id'] ?? '').toString();
+          return id.isEmpty ? 'Marketplace order' : 'Order ${_shortId(id)}';
+        },
+      );
+      addLatest(
+        records: results[2],
+        service: 'Solar',
+        statusKey: 'status',
+        terminalStatuses: const <String>{
+          'COMPLETED',
+          'CANCELLED',
+          'REJECTED',
+          'FAILED',
+        },
+        icon: Icons.solar_power_rounded,
+        detail: _financeStatusDetail,
+      );
+      addLatest(
+        records: results[3],
+        service: 'Phone Financing',
+        statusKey: 'status',
+        terminalStatuses: const <String>{
+          'COMPLETED',
+          'CANCELLED',
+          'REJECTED',
+          'FAILED',
+        },
+        icon: Icons.phone_android_rounded,
+        detail: _financeStatusDetail,
+      );
+      addLatest(
+        records: results[4],
+        service: 'Empowerment',
+        statusKey: 'applicationStatus',
+        terminalStatuses: const <String>{
+          'COMPLETED',
+          'CANCELLED',
+          'REJECTED',
+          'FAILED',
+        },
+        icon: Icons.volunteer_activism_rounded,
+        detail: (Map<String, dynamic> item) {
+          final dynamic program = item['program'];
+          if (program is Map) {
+            final String name =
+                (program['name'] ?? program['title'] ?? '').toString().trim();
+            if (name.isNotEmpty) return name;
+          }
+          return (item['verificationStatus'] ?? 'Application update')
+              .toString();
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          activeServiceStatuses = statuses;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingServiceStatuses = false;
+        });
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadDashboardList(
+    String token,
+    String path,
+    List<String> keys,
+  ) async {
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl$path'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 20));
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return <Map<String, dynamic>>[];
+      }
+
+      dynamic value = decoded;
+      if (decoded is Map) {
+        for (final String key in keys) {
+          if (decoded[key] is List) {
+            value = decoded[key];
+            break;
+          }
+          if (decoded['data'] is Map && decoded['data'][key] is List) {
+            value = decoded['data'][key];
+            break;
+          }
+        }
+      }
+
+      if (value is Map) {
+        value = <dynamic>[value];
+      }
+      if (value is! List) {
+        return <Map<String, dynamic>>[];
+      }
+      return value
+          .whereType<Map>()
+          .map((Map item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  String _shortId(String value) =>
+      value.length <= 8 ? value : value.substring(value.length - 8);
+
+  String _financeStatusDetail(Map<String, dynamic> finance) {
+    final dynamic schedule = finance['paymentSchedule'] ?? finance['schedule'];
+    if (schedule is List) {
+      for (final dynamic entry in schedule) {
+        if (entry is! Map) continue;
+        final String status =
+            entry['status']?.toString().trim().toUpperCase() ?? '';
+        final String due = entry['dueDate']?.toString().trim() ?? '';
+        if (status == 'PENDING' && due.isNotEmpty) {
+          final DateTime? date = DateTime.tryParse(due)?.toLocal();
+          if (date != null) {
+            return 'Next payment ${date.day}/${date.month}/${date.year}';
+          }
+        }
+      }
+    }
+    final String reference = (finance['reference'] ?? '').toString().trim();
+    return reference.isEmpty ? 'Finance plan active' : reference;
+  }
+
+  dynamic _decodeDashboardResponse(String body) {
+    if (body.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _dashboardResponseMessage(
+    dynamic decoded, {
+    required String fallback,
+  }) {
+    if (decoded is Map) {
+      final dynamic message =
+          decoded['message'] ?? decoded['error'] ?? decoded['detail'];
+
+      if (message != null && message.toString().trim().isNotEmpty) {
+        return message.toString();
+      }
+    }
+
+    return fallback;
+  }
+
+  List<Map<String, dynamic>>? _extractRecentTransactions(dynamic decoded) {
+    dynamic list;
+
+    if (decoded is List) {
+      list = decoded;
+    } else if (decoded is Map) {
+      list = decoded['transactions'];
+
+      if (list == null && decoded['data'] is Map) {
+        list = decoded['data']['transactions'];
+      }
+
+      if (list == null && decoded['data'] is List) {
+        list = decoded['data'];
+      }
+
+      if (list == null && decoded['wallet'] is Map) {
+        list = decoded['wallet']['transactions'];
+      }
+    }
+
+    if (list is! List) {
+      return null;
+    }
+
+    final List<Map<String, dynamic>> transactions = list
+        .whereType<Map>()
+        .map(
+          (Map item) => Map<String, dynamic>.from(item),
+        )
+        .toList();
+
+    if (list.isNotEmpty && transactions.isEmpty) {
+      return null;
+    }
+
+    return transactions;
+  }
+
+  String _recentTransactionTitle(Map<String, dynamic> transaction) {
+    final dynamic value = transaction['serviceType'] ??
+        transaction['type'] ??
+        transaction['transactionType'] ??
+        transaction['category'] ??
+        'Transaction';
+    final String cleaned =
+        value.toString().replaceAll('_', ' ').replaceAll('-', ' ').trim();
+
+    if (cleaned.isEmpty) {
+      return 'Transaction';
+    }
+
+    return cleaned
+        .split(RegExp(r'\s+'))
+        .where((String word) => word.isNotEmpty)
+        .map(
+          (String word) =>
+              '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}',
+        )
+        .join(' ');
+  }
+
+  String _recentTransactionDescription(Map<String, dynamic> transaction) {
+    final dynamic value = transaction['description'] ??
+        transaction['narration'] ??
+        transaction['message'] ??
+        transaction['counterparty'] ??
+        transaction['recipientPhone'] ??
+        transaction['phone'];
+    final String text = value?.toString().trim() ?? '';
+
+    return text.isEmpty ? 'Details unavailable' : text;
+  }
+
+  String _recentTransactionStatus(Map<String, dynamic> transaction) {
+    final dynamic rawStatus =
+        transaction['status'] ?? transaction['paymentStatus'];
+    final String status = rawStatus?.toString().trim().toUpperCase() ?? '';
+
+    if (status.isEmpty) {
+      return 'STATUS UNAVAILABLE';
+    }
+
+    if (status == 'SUCCESS' || status == 'COMPLETED' || status == 'PAID') {
+      return 'SUCCESSFUL';
+    }
+
+    if (status == 'FAIL' ||
+        status == 'FAILED' ||
+        status == 'DECLINED' ||
+        status == 'CANCELLED') {
+      return 'FAILED';
+    }
+
+    return status;
+  }
+
+  double? _recentTransactionAmount(Map<String, dynamic> transaction) {
+    final dynamic value = transaction['amount'] ??
+        transaction['totalAmount'] ??
+        transaction['value'];
+
+    if (value == null) {
+      return null;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value.toString().replaceAll(',', '').trim());
+  }
+
+  String? _recentTransactionDirection(Map<String, dynamic> transaction) {
+    final String direction =
+        (transaction['direction'] ?? '').toString().trim().toUpperCase();
+
+    if (direction == 'CREDIT' || direction == 'DEBIT') {
+      return direction;
+    }
+
+    return null;
+  }
+
+  DateTime? _recentTransactionDate(Map<String, dynamic> transaction) {
+    final dynamic value = transaction['createdAt'] ??
+        transaction['date'] ??
+        transaction['transactionDate'] ??
+        transaction['updatedAt'];
+
+    return value == null
+        ? null
+        : DateTime.tryParse(value.toString())?.toLocal();
+  }
+
+  String _recentTransactionDateLabel(Map<String, dynamic> transaction) {
+    final DateTime? date = _recentTransactionDate(transaction);
+
+    if (date == null) {
+      return 'Date unavailable';
+    }
+
+    final String day = date.day.toString().padLeft(2, '0');
+    final String month = date.month.toString().padLeft(2, '0');
+    final String hour = date.hour.toString().padLeft(2, '0');
+    final String minute = date.minute.toString().padLeft(2, '0');
+
+    return '$day/$month/${date.year} • $hour:$minute';
+  }
+
+  IconData _recentTransactionIcon(String title) {
+    final String value = title.toLowerCase();
+
+    if (value.contains('airtime')) return Icons.phone_android_rounded;
+    if (value.contains('data')) return Icons.wifi_rounded;
+    if (value.contains('transfer')) return Icons.send_rounded;
+    if (value.contains('fund') || value.contains('wallet')) {
+      return Icons.account_balance_wallet_rounded;
+    }
+    if (value.contains('delivery') || value.contains('logistic')) {
+      return Icons.local_shipping_rounded;
+    }
+    if (value.contains('electric')) return Icons.lightbulb_rounded;
+    if (value.contains('cable')) return Icons.live_tv_rounded;
+
+    return Icons.receipt_long_rounded;
+  }
+
+  Future<void> _refreshDashboard() async {
+    if (isRefreshing || isLoading) {
+      return;
+    }
+
+    _refreshController.repeat();
+    final bool refreshed = await loadDashboard(refreshing: true);
+    _refreshController.stop();
+    _refreshController.reset();
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            refreshed
+                ? 'Dashboard updated'
+                : 'Saved dashboard data is still showing',
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+          backgroundColor: refreshed ? primaryGreen : const Color(0xFF5F6C64),
+        ),
+      );
+  }
+
+  Future<void> _loadServiceAvailability() async {
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse(
+          '$baseUrl/settings/public',
+        ),
+        headers: const <String, String>{
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 20),
+      );
+
+      if (response.statusCode != 200) {
+        return;
+      }
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      if (decoded is! Map) {
+        return;
+      }
+
+      dynamic settings = decoded['settings'];
+
+      settings ??= decoded['data'] is Map ? decoded['data']['settings'] : null;
+
+      if (settings is! Map) {
+        return;
+      }
+
+      final dynamic rawServices = settings['services'];
+
+      if (rawServices is! Map) {
+        return;
+      }
+
+      final Map<String, bool> fresh = Map<String, bool>.from(
+        serviceAvailability,
+      );
+
+      for (final String key in fresh.keys.toList()) {
+        if (rawServices[key] is bool) {
+          fresh[key] = rawServices[key] == true;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          serviceAvailability = fresh;
+        });
+      }
+    } catch (_) {
+      // Keep last/default visibility values.
+    }
+  }
+
+  String? _serviceKeyForTitle(
+    String title,
+  ) {
+    const Map<String, String> map = <String, String>{
+      'Keke Napep': 'kekeNapep',
+      'ServicePay Amana': 'amana',
+      'Airtime': 'airtime',
+      'Data': 'data',
+      'Electricity': 'electricity',
+      'Cable TV': 'cableTv',
+      'Exam PIN': 'examPin',
+      'NIN Verification': 'ninVerification',
+      'Delivery': 'delivery',
+      'Flight Booking': 'flightBooking',
+      'Withdrawal': 'bankTransfer',
+      'ServicePay Transfer': 'servicepayTransfer',
+    };
+
+    return map[title];
+  }
+
+  bool _isServiceVisible(
+    String title,
+  ) {
+    final String? key = _serviceKeyForTitle(title);
+
+    if (key == null) {
+      return true;
+    }
+
+    return serviceAvailability[key] != false;
+  }
+
+  String firstName() {
+    final String trimmed = userName.trim();
+
+    if (trimmed.isEmpty) {
+      return 'Customer';
+    }
+
+    return trimmed
+        .split(
+          RegExp(r'\s+'),
+        )
+        .first;
+  }
+
+  String formatMoney(double amount) {
+    final String value = amount.toStringAsFixed(2);
+
+    final List<String> parts = value.split('.');
+
+    final String whole = parts.first;
+
+    final StringBuffer formatted = StringBuffer();
+
+    for (int index = 0; index < whole.length; index++) {
+      final int remaining = whole.length - index;
+
+      formatted.write(
+        whole[index],
+      );
+
+      if (remaining > 1 && remaining % 3 == 1) {
+        formatted.write(',');
+      }
+    }
+
+    return '₦${formatted.toString()}.${parts.last}';
+  }
+
+  void openScreen(
+    Widget screen, {
+    String? routeName,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: routeName),
+        builder: (_) => screen,
+      ),
+    );
+  }
+
+  List<_DashboardService> popularServices() {
+    return <_DashboardService>[
+      _DashboardService(
+        title: 'Keke Napep',
+        icon: Icons.electric_rickshaw_rounded,
+        iconColor: const Color(0xFFF59E0B),
+        backgroundColor: const Color(0xFFFFF7DF),
+        keywords:
+            'keke napep ride transport tricycle taxi driver trip movement',
+        onTap: () {
+          openScreen(
+            const KekeOrderScreen(),
+            routeName: '/transport',
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'ServicePay Amana',
+        icon: Icons.volunteer_activism_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'amana family support food school fees medical assistance',
+        onTap: () {
+          openScreen(
+            const AmanaScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Airtime',
+        icon: Icons.phone_android_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'airtime recharge phone',
+        onTap: () {
+          openScreen(
+            const AirtimeScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Data',
+        icon: Icons.signal_cellular_alt_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFF0F7FF),
+        keywords: 'data internet bundle',
+        onTap: () {
+          openScreen(
+            const DataScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Electricity',
+        icon: Icons.lightbulb_rounded,
+        iconColor: const Color(0xFFF59E0B),
+        backgroundColor: const Color(0xFFFFF7DF),
+        keywords: 'electricity power light bill',
+        onTap: () {
+          openScreen(
+            const ElectricityScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Cable TV',
+        icon: Icons.live_tv_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'cable tv dstv gotv startimes',
+        onTap: () {
+          openScreen(
+            const CableScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Exam PIN',
+        icon: Icons.workspace_premium_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'exam pin waec neco jamb',
+        onTap: () {
+          openScreen(
+            const ExamPinScreen(),
+          );
+        },
+      ),
+    ];
+  }
+
+  List<_DashboardService> moreServices() {
+    return <_DashboardService>[
+      _DashboardService(
+        title: 'ServicePay Call',
+        subtitle: 'Private customer calling',
+        icon: Icons.call_rounded,
+        iconColor: const Color(0xFF14733E),
+        backgroundColor: const Color(0xFFE4F3E9),
+        keywords: 'voice call private customer phone audio',
+        onTap: () {
+          openScreen(
+            const VoiceCallScreen(),
+            routeName: '/calls',
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'ServicePay Solar',
+        subtitle: 'Solar power & finance',
+        icon: Icons.solar_power_rounded,
+        iconColor: const Color(0xFFF59E0B),
+        backgroundColor: const Color(0xFFFFF7DF),
+        keywords:
+            'solar power energy inverter battery panel electricity finance installment',
+        onTap: () {
+          openScreen(
+            const SolarScreen(),
+            routeName: '/solar',
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Phone Financing',
+        subtitle: 'Own an Android phone weekly',
+        icon: Icons.phone_android_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'phone financing android smartphone weekly payment device',
+        onTap: () {
+          openScreen(
+            const PhoneFinancingScreen(),
+            routeName: '/phone-financing',
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'AI Support',
+        subtitle: 'Ask ServicePay',
+        icon: Icons.support_agent_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFE5F5EA),
+        keywords:
+            'ai support ask servicepay help customer care chat transaction issue',
+        onTap: () {
+          openScreen(
+            const AiSupportScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Cards',
+        icon: Icons.credit_card_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords:
+            'card cards atm physical virtual debit payment servicepay card',
+        onTap: () {
+          openScreen(
+            const CardsScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Mini Apps',
+        icon: Icons.credit_card_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords:
+            'card cards atm physical virtual debit payment servicepay card',
+        onTap: () {
+          openScreen(
+            const MiniAppsScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'QR Pay',
+        icon: Icons.qr_code_scanner_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'qr pay scan receive servicepay payment transfer',
+        onTap: () {
+          openScreen(
+            const QrPayScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Empowerment',
+        icon: Icons.volunteer_activism_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'empowerment program grant support beneficiary',
+        onTap: () {
+          openScreen(
+            const EmpowermentScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Program Sponsor',
+        icon: Icons.corporate_fare_rounded,
+        iconColor: const Color(0xFF003F26),
+        backgroundColor: const Color(0xFFE6F3EC),
+        keywords:
+            'program sponsor organization ngo cooperative foundation government grant initiative',
+        onTap: () {
+          openScreen(
+            const ProgramSponsorScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'NIN Verification',
+        icon: Icons.fingerprint_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'nin verification identity',
+        onTap: () {
+          openScreen(
+            const IdVerificationScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Delivery',
+        icon: Icons.local_shipping_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'delivery logistics courier',
+        onTap: () {
+          openScreen(
+            const LogisticsScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Airtime to Cash',
+        icon: Icons.currency_exchange_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'airtime cash convert airtime wallet mtn airtel glo 9mobile',
+        onTap: () {
+          openScreen(
+            const AirtimeToCashScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Pay-by-Link',
+        icon: Icons.link_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'merchant payment link pay by link',
+        onTap: () {
+          openScreen(
+            const PayByLinkScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Request Money',
+        icon: Icons.request_page_rounded,
+        iconColor: const Color(0xFF2563EB),
+        backgroundColor: const Color(0xFFEFF6FF),
+        keywords: 'request money collect payment',
+        onTap: () {
+          openScreen(
+            const RequestMoneyScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Business Wallet',
+        icon: Icons.storefront_rounded,
+        iconColor: const Color(0xFF7C3AED),
+        backgroundColor: const Color(0xFFF5F3FF),
+        keywords: 'business wallet sme merchant',
+        onTap: () {
+          openScreen(
+            const BusinessWalletScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Partner API',
+        icon: Icons.api_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'partner api developer integration merchant business',
+        onTap: () {
+          openScreen(
+            const PartnerApplicationScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Agent Locator',
+        icon: Icons.location_on_rounded,
+        iconColor: const Color(0xFFEA580C),
+        backgroundColor: const Color(0xFFFFF7ED),
+        keywords: 'agent locator aggregator nearby',
+        onTap: () {
+          openScreen(
+            const CommunityAgentLocatorScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Group Wallet / Ajo',
+        icon: Icons.groups_rounded,
+        iconColor: const Color(0xFF0F766E),
+        backgroundColor: const Color(0xFFF0FDFA),
+        keywords: 'group wallet ajo contribution savings',
+        onTap: () {
+          openScreen(
+            const GroupWalletScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Flight Booking',
+        icon: Icons.flight_takeoff_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'flight booking airline travel',
+        onTap: () {
+          openScreen(
+            const FlightBookingScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Withdrawal',
+        icon: Icons.account_balance_wallet_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'bank transfer send money',
+        onTap: () {
+          openScreen(
+            const WithdrawalScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'ServicePay Transfer',
+        icon: Icons.send_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'servicepay transfer send money',
+        onTap: () {
+          openScreen(
+            const TransferScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Marketplace',
+        icon: Icons.storefront_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'marketplace shopping merchant store shop mini apps',
+        onTap: () {
+          openScreen(
+            const MarketplaceScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Transport',
+        icon: Icons.directions_car_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'transport mobility car ride travel mini apps',
+        onTap: () {
+          openScreen(
+            const KekeOrderScreen(),
+            routeName: '/transport',
+          );
+        },
+      ),
+    ];
+  }
+
+  List<_DashboardService> filtered(
+    List<_DashboardService> services,
+  ) {
+    final List<_DashboardService> visible = services
+        .where(
+          (_DashboardService service) => _isServiceVisible(
+            service.title,
+          ),
+        )
+        .toList();
+
+    final String query = searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) {
+      return visible;
+    }
+
+    return visible.where(
+      (_DashboardService service) {
+        final String searchable =
+            '${service.title} ${service.keywords}'.toLowerCase();
+
+        return searchable.contains(
+          query,
+        );
+      },
+    ).toList();
+  }
+
+  Widget buildHeader() {
+    return buildDashboardHeader();
+  }
+
+  Widget buildDashboardHeader() {
+    final String customerFirstName = firstName();
+    final String initial = customerFirstName.isEmpty
+        ? 'S'
+        : customerFirstName.substring(0, 1).toUpperCase();
+    final int hour = DateTime.now().hour;
+    final String greeting = hour < 12
+        ? 'Good morning,'
+        : hour < 17
+            ? 'Good afternoon,'
+            : 'Good evening,';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Container(
+              width: 48,
+              height: 48,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE9F8EF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD4EBDD)),
+              ),
+              child: Image.asset(
+                'assets/image/servicepay_logo.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: primaryGreen,
+                  size: 27,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'ServicePay',
+                    style: TextStyle(
+                      color: Color(0xFF13251A),
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.55,
+                    ),
+                  ),
+                  SizedBox(height: 1),
+                  Text(
+                    'Simple. Secure. Instant.',
+                    style: TextStyle(
+                      color: Color(0xFF708078),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _headerIconButton(
+              tooltip: 'Refresh dashboard',
+              icon: Icons.refresh_rounded,
+              onTap: _refreshDashboard,
+            ),
+            const SizedBox(width: 8),
+            _headerIconButton(
+              tooltip: 'Notifications',
+              icon: Icons.notifications_none_rounded,
+              onTap: () async {
+                final int? unread = await Navigator.of(context).push<int>(
+                  MaterialPageRoute<int>(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                );
+                if (mounted && unread != null) {
+                  setState(() {
+                    unreadNotifications = unread < 0 ? 0 : unread;
+                  });
+                }
+              },
+              showDot: unreadNotifications > 0,
+            ),
+            const SizedBox(width: 8),
+            Semantics(
+              button: true,
+              label: 'Change profile photo',
+              child: GestureDetector(
+                onTap: isUploadingProfilePhoto
+                    ? null
+                    : _showProfilePhotoSourceSheet,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFEAF7F0),
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x1A08783E),
+                        blurRadius: 12,
+                        offset: Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: isUploadingProfilePhoto
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(
+                            color: primaryGreen,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : profilePhotoUrl.trim().isNotEmpty
+                          ? Image.network(
+                              profilePhotoUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Text(
+                                initial,
+                                style: const TextStyle(
+                                  color: primaryGreen,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              initial,
+                              style: const TextStyle(
+                                color: primaryGreen,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 23),
+        Text(
+          greeting,
+          style: const TextStyle(
+            color: Color(0xFF63736A),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          customerFirstName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Color(0xFF122219),
+            fontSize: 27,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -1,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _headerIconButton({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool showDot = false,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2EAE5)),
+              ),
+              child: Icon(icon, size: 22, color: const Color(0xFF315645)),
+            ),
+            if (showDot)
+              Positioned(
+                right: 4,
+                top: 3,
+                child: Container(
+                  key: const Key('dashboard-unread-badge'),
+                  constraints: const BoxConstraints(
+                    minWidth: 15,
+                    minHeight: 15,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8503D),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    unreadNotifications > 9
+                        ? '9+'
+                        : unreadNotifications.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildTopQuickTools() {
+    final List<_DashboardTool> tools = <_DashboardTool>[
+      _DashboardTool(
+        label: 'Refresh',
+        icon: Icons.refresh_rounded,
+        onTap: _refreshDashboard,
+        key: const Key('dashboard-refresh-tool'),
+      ),
+      _DashboardTool(
+        label: 'History',
+        icon: Icons.receipt_long_outlined,
+        onTap: () => openScreen(const TransactionsScreen()),
+        key: const Key('dashboard-history-tool'),
+      ),
+      _DashboardTool(
+        label: 'Help',
+        icon: Icons.headset_mic_outlined,
+        onTap: () => openScreen(const HelpSupportScreen()),
+        key: const Key('dashboard-help-tool'),
+      ),
+      _DashboardTool(
+        label: 'Settings',
+        icon: Icons.tune_rounded,
+        onTap: () => openScreen(const ProfileScreen()),
+        key: const Key('dashboard-settings-tool'),
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: const Color(0xFFE3EDE7)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0F0B3B20),
+            blurRadius: 16,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: tools
+            .map(
+              (_DashboardTool tool) => Expanded(
+                child: _dashboardToolCard(tool),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _dashboardToolCard(_DashboardTool tool) {
+    final Widget icon = tool.label == 'Refresh'
+        ? RotationTransition(
+            turns: _refreshController,
+            child: Icon(tool.icon, size: 20, color: primaryGreen),
+          )
+        : Icon(tool.icon, size: 20, color: primaryGreen);
+
+    return Semantics(
+      button: true,
+      label: tool.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: tool.key,
+          onTap: isRefreshing && tool.label == 'Refresh' ? null : tool.onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 3),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  width: 35,
+                  height: 35,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: softGreen,
+                    shape: BoxShape.circle,
+                  ),
+                  child: icon,
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  tool.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF45564C),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildPremiumBalanceCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 17, 18, 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFFF8FFFA), Color(0xFFE5F7EC)],
+        ),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: const Color(0xFFCFE9D8)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x1608783E),
+            blurRadius: 22,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Positioned(
+            right: -10,
+            top: 24,
+            child: IgnorePointer(
+              child: _floating(
+                index: 1,
+                child: Container(
+                  width: 92,
+                  height: 92,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: primaryGreen.withValues(alpha: 0.08),
+                    border: Border.all(
+                      color: primaryGreen.withValues(alpha: 0.12),
+                      width: 9,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.shield_rounded,
+                    color: primaryGreen,
+                    size: 39,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Row(
+                      children: <Widget>[
+                        const Flexible(
+                          child: Text(
+                            'Available Balance',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Color(0xFF51645A),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Semantics(
+                          button: true,
+                          label: hideBalance ? 'Show balance' : 'Hide balance',
+                          child: Tooltip(
+                            message:
+                                hideBalance ? 'Show balance' : 'Hide balance',
+                            child: InkWell(
+                              onTap: () =>
+                                  setState(() => hideBalance = !hideBalance),
+                              borderRadius: BorderRadius.circular(18),
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: Icon(
+                                  hideBalance
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: primaryGreen,
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Tooltip(
+                    message: 'Open wallet',
+                    child: IconButton(
+                      onPressed: () => openScreen(const WalletScreen()),
+                      icon: const Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 20,
+                      ),
+                      color: primaryGreen,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 7),
+              Text(
+                hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF102A1B),
+                  fontSize: 29,
+                  height: 1.05,
+                  letterSpacing: -1.2,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 7,
+                runSpacing: 9,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primaryGreen.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.verified_user_outlined,
+                            size: 14, color: primaryGreen),
+                        SizedBox(width: 4),
+                        Text(
+                          'Secured & Protected',
+                          style: TextStyle(
+                            color: primaryGreen,
+                            fontSize: 9.8,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: <Widget>[
+                      _balanceActionButton(
+                        label: 'Add Money',
+                        icon: Icons.add_rounded,
+                        filled: true,
+                        onTap: () => openScreen(const WalletScreen()),
+                      ),
+                      _balanceActionButton(
+                        label: 'Send Money',
+                        icon: Icons.send_rounded,
+                        filled: false,
+                        onTap: () => openScreen(const TransferScreen()),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _balanceActionButton({
+    required String label,
+    required IconData icon,
+    required bool filled,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: filled ? primaryGreen : Colors.white.withValues(alpha: 0.76),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 15, color: filled ? Colors.white : primaryGreen),
+              const SizedBox(width: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  color: filled ? Colors.white : primaryGreen,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildPremiumActionRow() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE3ECE6)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0C102A1B),
+            blurRadius: 15,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final List<Widget> actions = <Widget>[
+            _premiumWalletAction(
+              icon: Icons.swap_horiz_rounded,
+              label: 'Transfer',
+              detail: 'Send funds',
+              key: const Key('dashboard-transfer-action'),
+              onTap: () => openScreen(const TransferScreen()),
+            ),
+            _premiumWalletAction(
+              icon: Icons.south_west_rounded,
+              label: 'Withdraw',
+              detail: 'Cash out',
+              key: const Key('dashboard-withdraw-action'),
+              onTap: () => openScreen(const WithdrawalScreen()),
+            ),
+            _premiumWalletAction(
+              icon: Icons.qr_code_scanner_rounded,
+              label: 'QR Pay',
+              detail: 'Scan & pay',
+              key: const Key('dashboard-qr-pay-action'),
+              onTap: () => openScreen(const QrPayScreen()),
+            ),
+          ];
+
+          Widget actionPair(int first, int second) {
+            return Row(
+              children: <Widget>[
+                Expanded(child: actions[first]),
+                _premiumActionDivider(),
+                Expanded(child: actions[second]),
+              ],
+            );
+          }
+
+          if (constraints.maxWidth < 380) {
+            return Column(
+              children: <Widget>[
+                actionPair(0, 1),
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFE5EEE8),
+                ),
+                actions[2],
+              ],
+            );
+          }
+
+          return Row(
+            children: <Widget>[
+              Expanded(child: actions[0]),
+              _premiumActionDivider(),
+              Expanded(child: actions[1]),
+              _premiumActionDivider(),
+              Expanded(child: actions[2]),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _premiumActionDivider() {
+    return Container(
+      width: 1,
+      height: 46,
+      color: const Color(0xFFE5EEE8),
+    );
+  }
+
+  Widget _premiumWalletAction({
+    required IconData icon,
+    required String label,
+    required String detail,
+    Key? key,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: key,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 35,
+                height: 35,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: softGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: primaryGreen, size: 20),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.visible,
+                style: const TextStyle(
+                  color: Color(0xFF263D30),
+                  fontSize: 10.8,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  if (constraints.maxWidth < 96) {
+                    return const SizedBox(height: 2);
+                  }
+                  return Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF839189),
+                      fontSize: 8.8,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildActiveServiceStatuses() {
+    if (!isLoadingServiceStatuses && activeServiceStatuses.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Text(
+          'Active Services',
+          style: TextStyle(
+            color: Color(0xFF15281B),
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (isLoadingServiceStatuses && activeServiceStatuses.isEmpty)
+          Container(
+            key: const Key('dashboard-service-status-loading'),
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE3ECE6)),
+            ),
+            child: const Row(
+              children: <Widget>[
+                _DashboardLoadingBar(width: 42, height: 42),
+                SizedBox(width: 12),
+                Expanded(child: _DashboardLoadingBar(width: 170)),
+              ],
+            ),
+          )
+        else
+          for (int index = 0; index < activeServiceStatuses.length; index++)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: index == activeServiceStatuses.length - 1 ? 0 : 9,
+              ),
+              child: _buildActiveServiceStatusCard(
+                activeServiceStatuses[index],
+              ),
+            ),
+      ],
+    );
+  }
+
+  Widget _buildActiveServiceStatusCard(_DashboardServiceStatus item) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        key: Key(
+          'dashboard-service-status-${item.service.toLowerCase().replaceAll(' ', '-')}',
+        ),
+        onTap: () => _openServiceStatus(item.service),
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE3ECE6)),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: softGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(item.icon, color: primaryGreen, size: 21),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      item.service,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF263D30),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      item.detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF78877E),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 92),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primaryGreen.withValues(alpha: 0.09),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    item.status,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: primaryGreen,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF91A096),
+                size: 19,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openServiceStatus(String service) {
+    switch (service) {
+      case 'Delivery':
+        openScreen(const DeliveryHistoryScreen());
+        return;
+      case 'Marketplace':
+        openScreen(const MarketplaceMyOrdersScreen());
+        return;
+      case 'Solar':
+        openScreen(const SolarScreen());
+        return;
+      case 'Phone Financing':
+        openScreen(const PhoneFinancingScreen());
+        return;
+      case 'Empowerment':
+        openScreen(const EmpowermentScreen());
+        return;
+    }
+  }
+
+  Widget buildPremiumServices() {
+    final List<_DashboardService> all = <_DashboardService>[
+      ...filtered(popularServices()),
+      ...filtered(moreServices()),
+    ];
+    final Map<String, _DashboardService> unique = <String, _DashboardService>{
+      for (final _DashboardService service in all)
+        service.title.toLowerCase(): service,
+    };
+
+    _DashboardService? findByName(String name) {
+      return unique.values.cast<_DashboardService?>().firstWhere(
+            (_DashboardService? service) =>
+                service?.title.toLowerCase().contains(name.toLowerCase()) ??
+                false,
+            orElse: () => null,
+          );
+    }
+
+    final List<_DashboardService> selected = <_DashboardService>[
+      for (final String title in <String>[
+        'Delivery',
+        'ServicePay Solar',
+        'Empowerment',
+        'Marketplace',
+        'ServicePay Amana',
+        'NIN Verification',
+        'Data',
+        'Airtime',
+        'Electricity',
+      ])
+        if (findByName(title) case final _DashboardService service) service,
+    ];
+
+    if (selected.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 16, 12, 13),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFCFFFD),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE1EEE6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Services',
+                  style: TextStyle(
+                    color: Color(0xFF15281B),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => _ServicePayAllServicesScreen(
+                        services: unique.values.toList(),
+                      ),
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(foregroundColor: primaryGreen),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'All Services',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, size: 18),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: selected.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 9,
+                  crossAxisSpacing: 9,
+                  mainAxisExtent: 104,
+                ),
+                itemBuilder: (BuildContext context, int index) {
+                  return _premiumServiceItem(
+                    selected[index],
+                    index: index,
+                  );
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _premiumServiceItem(
+    _DashboardService service, {
+    required int index,
+  }) {
+    return _floating(
+      index: index + 3,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: service.onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE6EEE9)),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                  color: Color(0x110B3B20),
+                  blurRadius: 10,
+                  offset: Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: service.backgroundColor.withValues(alpha: 0.72),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    service.icon,
+                    color: primaryGreen,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  service.title,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF405348),
+                    fontSize: 10.2,
+                    height: 1.1,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (service.subtitle.isNotEmpty)
+                  Text(
+                    service.subtitle,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF6C7D73),
+                      fontSize: 8,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildPremiumInviteBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 17, 16, 17),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFF003F26), Color(0xFF08783E)],
+        ),
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x38004326),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Invite & Earn',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Share ServicePay with friends and earn rewards together.',
+                  style: TextStyle(
+                    color: Color(0xFFD4F5DD),
+                    fontSize: 11.5,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 13),
+                Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(17),
+                  child: InkWell(
+                    onTap: () => openScreen(const ReferralScreen()),
+                    borderRadius: BorderRadius.circular(17),
+                    child: const Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                      child: Text(
+                        'Invite Now',
+                        style: TextStyle(
+                          color: primaryGreen,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          _floating(
+            index: 12,
+            child: Container(
+              width: 72,
+              height: 72,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.20),
+                ),
+              ),
+              child: const Icon(
+                Icons.card_giftcard_rounded,
+                color: Color(0xFFE0FFE8),
+                size: 37,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _floating({required int index, required Widget child}) {
+    return AnimatedBuilder(
+      animation: _motionController,
+      child: child,
+      builder: (BuildContext context, Widget? child) {
+        final double phase =
+            _motionController.value * math.pi * 2 + (index * math.pi / 4);
+        return Transform.translate(
+          offset: Offset(0, math.sin(phase) * 1.8),
+          child: Transform.scale(
+            scale: 1 + (math.cos(phase) * 0.012),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget buildWalletCard() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      Color(0xFF079A55),
+                      Color(0xFF08783E),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0x2208783E),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.shield_outlined,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 7),
+                        const Text(
+                          'Available Balance',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () {
+                            setState(() {
+                              hideBalance = !hideBalance;
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              hideBalance
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            openScreen(const WalletScreen());
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Wallet',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(width: 2),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 11),
+                    Text(
+                      hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 19),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.lock_outline_rounded,
+                                color: Colors.white70,
+                                size: 15,
+                              ),
+                              SizedBox(width: 5),
+                              Text(
+                                'Secured & Protected',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Spacer(),
+                        Material(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(30),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(30),
+                            onTap: () {
+                              openScreen(const WalletScreen());
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.add_rounded,
+                                    color: primaryGreen,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Add Money',
+                                    style: TextStyle(
+                                      color: primaryGreen,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: const Color(0xFFE7EEE9),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.swap_horiz_rounded,
+                        label: 'Transfer',
+                        onTap: () {
+                          openScreen(const TransferScreen());
+                        },
+                      ),
+                    ),
+                    _walletDivider(),
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.account_balance_wallet_rounded,
+                        label: 'Withdrawal',
+                        onTap: () {
+                          openScreen(const WithdrawalScreen());
+                        },
+                      ),
+                    ),
+                    _walletDivider(),
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.add_card_rounded,
+                        label: 'Wallet',
+                        onTap: () {
+                          openScreen(const WalletScreen());
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _walletDivider() {
+    return Container(
+      width: 1,
+      height: 38,
+      margin: const EdgeInsets.symmetric(
+        horizontal: 6,
+      ),
+      color: Colors.white.withValues(
+        alpha: 0.16,
+      ),
+    );
+  }
+
+  Widget buildSearchBar() {
+    return TextField(
+      controller: searchController,
+      onChanged: (String value) {
+        setState(() {
+          searchQuery = value;
+        });
+      },
+      decoration: InputDecoration(
+        hintText: 'Search services',
+        hintStyle: const TextStyle(
+          color: Color(0xFF98A2B3),
+        ),
+        prefixIcon: const Icon(
+          Icons.search_rounded,
+          color: primaryGreen,
+        ),
+        suffixIcon: searchQuery.isEmpty
+            ? Container(
+                margin: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: softGreen,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.tune_rounded,
+                  color: primaryGreen,
+                ),
+              )
+            : IconButton(
+                onPressed: () {
+                  searchController.clear();
+
+                  setState(() {
+                    searchQuery = '';
+                  });
+                },
+                icon: const Icon(
+                  Icons.close_rounded,
+                ),
+              ),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(
+            color: Color(0xFFE4E7EC),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(
+            color: Color(0xFFE4E7EC),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(
+            color: primaryGreen,
+            width: 1.5,
+          ),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 18,
+        ),
+      ),
+    );
+  }
+
+  Widget buildQuickActions() {
+    final List<Widget> items = <Widget>[];
+
+    void addItem({
+      required String feature,
+      required IconData icon,
+      required String label,
+      required VoidCallback onTap,
+    }) {
+      if (serviceAvailability[feature] == false) {
+        return;
+      }
+
+      if (items.isNotEmpty) {
+        items.add(
+          _quickDivider(),
+        );
+      }
+
+      items.add(
+        SizedBox(
+          width: 82,
+          child: _QuickAction(
+            icon: icon,
+            label: label,
+            onTap: onTap,
+          ),
+        ),
+      );
+    }
+
+    addItem(
+      feature: 'walletFunding',
+      icon: Icons.account_balance_wallet_rounded,
+      label: 'Wallet',
+      onTap: () {
+        openScreen(
+          const WalletScreen(),
+        );
+      },
+    );
+
+    addItem(
+      feature: 'bankTransfer',
+      icon: Icons.account_balance_wallet_rounded,
+      label: 'Withdrawal',
+      onTap: () {
+        openScreen(
+          const WithdrawalScreen(),
+        );
+      },
+    );
+
+    addItem(
+      feature: 'kyc',
+      icon: Icons.verified_user_rounded,
+      label: 'KYC',
+      onTap: () {
+        openScreen(
+          const KycScreen(),
+        );
+      },
+    );
+
+    addItem(
+      feature: 'trust',
+      icon: Icons.shield_outlined,
+      label: 'Trust',
+      onTap: () {
+        openScreen(const TrustSearchScreen());
+      },
+    );
+
+    // Transactions is not a service switch.
+    if (items.isNotEmpty) {
+      items.add(
+        _quickDivider(),
+      );
+    }
+
+    items.add(
+      SizedBox(
+        width: 82,
+        child: _QuickAction(
+          icon: Icons.receipt_long_rounded,
+          label: 'Transactions',
+          onTap: () {
+            openScreen(
+              const TransactionsScreen(),
+            );
+          },
+        ),
+      ),
+    );
+
+    if (serviceAvailability['ninVerification'] != false) {
+      items.add(
+        _quickDivider(),
+      );
+
+      items.add(
+        SizedBox(
+          width: 82,
+          child: _QuickAction(
+            icon: Icons.badge_rounded,
+            label: 'Verify ID',
+            onTap: () {
+              openScreen(
+                const IdVerificationScreen(),
+              );
+            },
+          ),
+        ),
+      );
+
+      items.add(
+        _quickDivider(),
+      );
+
+      items.add(
+        SizedBox(
+          width: 82,
+          child: _QuickAction(
+            icon: Icons.handshake_rounded,
+            label: 'Partner API',
+            onTap: () {
+              openScreen(
+                const PartnerApplicationScreen(),
+              );
+            },
+          ),
+        ),
+      );
+
+      if (items.isNotEmpty) {
+        items.add(
+          _quickDivider(),
+        );
+      }
+
+      items.add(
+        SizedBox(
+          width: 82,
+          child: _QuickAction(
+            icon: Icons.volunteer_activism_rounded,
+            label: 'Empowerment',
+            onTap: () {
+              openScreen(
+                const EmpowermentScreen(),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    final preferredOrder = <String>[
+      'KYC',
+      'Empowerment',
+      'Transfer',
+      'Withdrawal',
+    ];
+
+    final visibleItems = <Widget>[];
+
+    for (final wantedLabel in preferredOrder) {
+      for (final item in items) {
+        if (item is Expanded &&
+            item.child is _QuickAction &&
+            (item.child as _QuickAction).label == wantedLabel) {
+          visibleItems.add(item);
+          break;
+        }
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 17,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(23),
+        border: Border.all(
+          color: const Color(0xFFE7EAEF),
+        ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0F101828),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: visibleItems,
+      ),
+    );
+  }
+
+  Widget _quickDivider() {
+    return Container(
+      width: 1,
+      height: 55,
+      color: const Color(0xFFE4E7EC),
+    );
+  }
+
+  Future<void> _loadSavedProfilePhoto() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final saved = prefs.getString('profile_photo_url')?.trim() ?? '';
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      profilePhotoUrl = saved;
+    });
+  }
+
+  Future<String> _getProfilePhotoToken() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    const keys = <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
+
+    for (final key in keys) {
+      final value = prefs.getString(key)?.trim() ?? '';
+
+      if (value.isEmpty) {
+        continue;
+      }
+
+      return value
+          .replaceFirst(
+            RegExp(
+              r'^Bearer\s+',
+              caseSensitive: false,
+            ),
+            '',
+          )
+          .trim();
+    }
+
+    return '';
+  }
+
+  Future<void> _showProfilePhotoSourceSheet() async {
+    if (isUploadingProfilePhoto || !mounted) {
+      return;
+    }
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              8,
+              18,
+              20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Profile photo',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF16231D),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                const Text(
+                  'Choose how you want to add your photo.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF748078),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ListTile(
+                  leading: const Icon(
+                    Icons.photo_library_rounded,
+                    color: Color(0xFF08783E),
+                  ),
+                  title: const Text(
+                    'Choose from gallery',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                      ImageSource.gallery,
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.camera_alt_rounded,
+                    color: Color(0xFF08783E),
+                  ),
+                  title: const Text(
+                    'Take a photo',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                      ImageSource.camera,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (source == null || !mounted) {
+      return;
+    }
+
+    await _pickAndUploadProfilePhoto(source);
+  }
+
+  Future<void> _pickAndUploadProfilePhoto(
+    ImageSource source,
+  ) async {
+    try {
+      final picked = await _profileImagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1200,
+        maxHeight: 1200,
+      );
+
+      if (picked == null) {
+        return;
+      }
+
+      final token = await _getProfilePhotoToken();
+
+      if (token.isEmpty) {
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Session expired. Please log in again.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isUploadingProfilePhoto = true;
+      });
+
+      final bytes = await picked.readAsBytes();
+
+      final request = http.MultipartRequest(
+        'PATCH',
+        Uri.parse(
+          '$baseUrl/auth/profile/photo',
+        ),
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'photo',
+          bytes,
+          filename: picked.name.isEmpty ? 'profile_photo.jpg' : picked.name,
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(
+            const Duration(seconds: 60),
+          );
+
+      final response = await http.Response.fromStream(
+        streamedResponse,
+      );
+
+      Map<String, dynamic> data = <String, dynamic>{};
+
+      try {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map) {
+          data = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true;
+
+      if (!success) {
+        if (!mounted) {
+          return;
+        }
+
+        final message = data['message']?.toString().trim() ?? '';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              message.isNotEmpty ? message : 'Unable to update profile photo.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      final newUrl = data['profilePhotoUrl']?.toString().trim() ?? '';
+
+      if (newUrl.isEmpty) {
+        throw Exception(
+          'Profile photo URL missing from server.',
+        );
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString(
+        'profile_photo_url',
+        newUrl,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        profilePhotoUrl = newUrl;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Profile photo updated successfully.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to upload profile photo. Please try again.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isUploadingProfilePhoto = false;
+        });
+      }
+    }
+  }
+
+  Widget buildPremiumHeader() {
+    final displayName =
+        userName.trim().isEmpty ? 'ServicePay User' : userName.trim();
+
+    final firstName = displayName.split(RegExp(r'\s+')).first.trim();
+
+    final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'S';
+
+    final hour = DateTime.now().hour;
+
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 40,
+            height: 40,
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF7F0),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Image.asset(
+              'assets/image/servicepay_logo.png',
+              fit: BoxFit.contain,
+              errorBuilder: (
+                context,
+                error,
+                stackTrace,
+              ) {
+                return const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: Color(0xFF08783E),
+                  size: 22,
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  greeting,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF7A8981),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  firstName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.35,
+                    color: Color(0xFF17231D),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              openScreen(
+                const NotificationsScreen(),
+              );
+            },
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: const Color(0xFFE7ECE9),
+                ),
+              ),
+              child: const Icon(
+                Icons.notifications_none_rounded,
+                color: Color(0xFF355B49),
+                size: 21,
+              ),
+            ),
+          ),
+          const SizedBox(width: 9),
+          GestureDetector(
+            onTap:
+                isUploadingProfilePhoto ? null : _showProfilePhotoSourceSheet,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                Container(
+                  width: 44,
+                  height: 44,
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFEAF7F0),
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 2,
+                    ),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: profilePhotoUrl.trim().isNotEmpty
+                      ? Image.network(
+                          profilePhotoUrl,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                          errorBuilder: (
+                            context,
+                            error,
+                            stackTrace,
+                          ) {
+                            return Text(
+                              initial,
+                              style: const TextStyle(
+                                color: Color(0xFF08783E),
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            );
+                          },
+                        )
+                      : Text(
+                          initial,
+                          style: const TextStyle(
+                            color: Color(0xFF08783E),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 19,
+                    height: 19,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF08783E),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                    ),
+                    child: isUploadingProfilePhoto
+                        ? const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.camera_alt_rounded,
+                            color: Colors.white,
+                            size: 10,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPremiumServiceHub() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+          ),
+          child: buildSearchBar(),
+        ),
+        const SizedBox(height: 15),
+        Row(
+          children: <Widget>[
+            const Expanded(
+              child: Text(
+                'Quick Actions',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.25,
+                  color: Color(0xFF17231D),
+                ),
+              ),
+            ),
+            Text(
+              'Everyday banking',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF728078).withValues(alpha: 0.90),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 8,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+          ),
+          child: buildQuickActions(),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'All Services',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.3,
+            color: Color(0xFF17231D),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.fromLTRB(
+            7,
+            9,
+            7,
+            10,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+          ),
+          child: buildAllServicesCompact(),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: <Color>[
+                Color(0xFF075C3A),
+                Color(0xFF159653),
+              ],
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x1C08783E),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              15,
+              13,
+              10,
+              13,
+            ),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 45,
+                  height: 45,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(
+                      alpha: 0.14,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.card_giftcard_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Invite friends to ServicePay',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'Share your referral code and grow your ServicePay network.',
+                        style: TextStyle(
+                          color: Color(0xFFD9EFE5),
+                          fontSize: 10.8,
+                          height: 1.3,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () {
+                      openScreen(
+                        const ReferralScreen(),
+                      );
+                    },
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget buildAllServicesCompact() {
+    final List<_DashboardService> combined = <_DashboardService>[
+      ...filtered(popularServices()),
+      ...filtered(moreServices()),
+    ];
+
+    final Map<String, _DashboardService> unique = <String, _DashboardService>{};
+
+    for (final service in combined) {
+      unique[service.title] = service;
+    }
+
+    final services = unique.values.toList();
+
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      itemCount: services.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        crossAxisSpacing: 7,
+        mainAxisSpacing: 8,
+        childAspectRatio: 0.80,
+      ),
+      itemBuilder: (
+        BuildContext context,
+        int index,
+      ) {
+        final _DashboardService service = services[index];
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: service.onTap,
+            borderRadius: BorderRadius.circular(17),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(
+                4,
+                9,
+                4,
+                6,
+              ),
+              decoration: BoxDecoration(
+                color: service.backgroundColor,
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(
+                  color: Colors.black.withValues(
+                    alpha: 0.025,
+                  ),
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: 0.72,
+                      ),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Icon(
+                      service.icon,
+                      color: service.iconColor,
+                      size: 23,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        service.title,
+                        maxLines: 2,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.3,
+                          height: 1.06,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF34463D),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget buildPopularServices() {
+    final List<_DashboardService> services = filtered(
+      popularServices(),
+    );
+
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const _SectionHeader(
+          title: 'Popular Services',
+        ),
+        const SizedBox(height: 13),
+        SizedBox(
+          height: 128,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: services.length,
+            padding: const EdgeInsets.only(
+              right: 3,
+            ),
+            separatorBuilder: (_, __) => const SizedBox(width: 11),
+            itemBuilder: (
+              BuildContext context,
+              int index,
+            ) {
+              return SizedBox(
+                width: 88,
+                child: _PopularServiceCard(
+                  service: services[index],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ===== SERVICEPAY MODERN HOME SERVICES =====
+
+  // ===== SERVICEPAY HOME BANNERS =====
+  Widget buildHomeBanners() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Column(
+            children: [
+              // Promo banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFEAF8EF),
+                      Color(0xFFF6FCF8),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFDDEFE4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Promo Deals',
+                            style: TextStyle(
+                              color: primaryGreen,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Enjoy amazing offers on your favorite ServicePay services.',
+                            style: TextStyle(
+                              color: Color(0xFF536159),
+                              fontSize: 12,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => _ServicePayAllServicesScreen(
+                                    services: <_DashboardService>[
+                                      ...popularServices(),
+                                      ...moreServices(),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: primaryGreen,
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: const Text(
+                                'View Deals',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 82,
+                      height: 82,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.card_giftcard_rounded,
+                        size: 48,
+                        color: primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Referral banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFEAF3FF),
+                      Color(0xFFF7FAFF),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFDCE9F8),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Refer & Earn',
+                            style: TextStyle(
+                              color: Color(0xFF1764B0),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Invite friends to ServicePay and enjoy referral rewards.',
+                            style: TextStyle(
+                              color: Color(0xFF536159),
+                              fontSize: 12,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ReferralScreen(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1764B0),
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: const Text(
+                                'Refer Now',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 82,
+                      height: 82,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.group_add_rounded,
+                        size: 47,
+                        color: Color(0xFF1764B0),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildModernHomeServices() {
+    final all = <_DashboardService>[
+      ...filtered(popularServices()),
+      ...filtered(moreServices()),
+    ];
+
+    final unique = <String, _DashboardService>{};
+    for (final service in all) {
+      unique.putIfAbsent(service.title.toLowerCase(), () => service);
+    }
+
+    final services = unique.values.toList();
+
+    _DashboardService? findService(List<String> names) {
+      for (final name in names) {
+        for (final service in services) {
+          if (service.title.toLowerCase().contains(name.toLowerCase())) {
+            return service;
+          }
+        }
+      }
+      return null;
+    }
+
+    final preferred = <_DashboardService?>[
+      findService(['Airtime']),
+      findService(['Data']),
+      findService(['Electricity']),
+      findService(['Cable']),
+      findService(['Delivery']),
+      findService(['NIN']),
+      findService(['Empowerment']),
+      findService(['Cards']),
+    ];
+
+    final selected = <_DashboardService>[];
+
+    for (final service in preferred) {
+      if (service != null &&
+          !selected.any(
+            (item) => item.title.toLowerCase() == service.title.toLowerCase(),
+          )) {
+        selected.add(service);
+      }
+    }
+
+    for (final service in services) {
+      if (selected.length >= 7) break;
+
+      if (!selected.any(
+        (item) => item.title.toLowerCase() == service.title.toLowerCase(),
+      )) {
+        selected.add(service);
+      }
+    }
+
+    if (selected.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(14, 17, 14, 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFFE7EEE9),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Services',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF16231C),
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _ServicePayAllServicesScreen(
+                            services: services,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 5,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'All Services',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: primaryGreen,
+                            ),
+                          ),
+                          SizedBox(width: 2),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 18,
+                            color: primaryGreen,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: selected.length + 1,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisExtent: 92,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 10,
+                ),
+                itemBuilder: (context, index) {
+                  if (index == selected.length) {
+                    return _modernHomeServiceItem(
+                      icon: Icons.grid_view_rounded,
+                      title: 'More',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => _ServicePayAllServicesScreen(
+                              services: services,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  }
+
+                  final service = selected[index];
+
+                  return _modernHomeServiceItem(
+                    icon: service.icon,
+                    title: service.title,
+                    onTap: service.onTap,
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              const TrustDashboardEntry(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modernHomeServiceItem({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Column(
+          children: [
+            Container(
+              width: 47,
+              height: 47,
+              decoration: BoxDecoration(
+                color: softGreen,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                icon,
+                size: 24,
+                color: primaryGreen,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 10.8,
+                  height: 1.08,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF536159),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildMoreServices() {
+    final List<_DashboardService> services = filtered(
+      moreServices(),
+    );
+
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const _SectionHeader(
+          title: 'More Services',
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 120,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: services.length,
+            padding: const EdgeInsets.only(
+              right: 3,
+            ),
+            separatorBuilder: (_, __) => const SizedBox(width: 11),
+            itemBuilder: (
+              BuildContext context,
+              int index,
+            ) {
+              final _DashboardService service = services[index];
+
+              return Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(19),
+                child: InkWell(
+                  onTap: service.onTap,
+                  borderRadius: BorderRadius.circular(19),
+                  child: Container(
+                    width: 145,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(19),
+                      border: Border.all(
+                        color: const Color(
+                          0xFFE7EAEF,
+                        ),
+                      ),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(
+                            0x0B101828,
+                          ),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Container(
+                          width: 43,
+                          height: 43,
+                          decoration: BoxDecoration(
+                            color: service.backgroundColor,
+                            borderRadius: BorderRadius.circular(
+                              14,
+                            ),
+                          ),
+                          child: Icon(
+                            service.icon,
+                            color: service.iconColor,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          service.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(
+                              0xFF1D2939,
+                            ),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildEmptySearch() {
+    if (searchQuery.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final bool hasPopular = filtered(
+      popularServices(),
+    ).isNotEmpty;
+
+    final bool hasMore = filtered(
+      moreServices(),
+    ).isNotEmpty;
+
+    if (hasPopular || hasMore) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFFE4E7EC),
+        ),
+      ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.search_off_rounded,
+            size: 44,
+            color: Color(0xFF98A2B3),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No service found for “$searchQuery”',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF475467),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPromoBanner() {
+    return Container(
+      height: 144,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(25),
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: <Color>[
+            Color(0xFF003B29),
+            Color(0xFF006A3C),
+            Color(0xFF088149),
+          ],
+        ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x33004E2C),
+            blurRadius: 22,
+            offset: Offset(0, 11),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              right: -35,
+              top: -48,
+              child: Container(
+                width: 190,
+                height: 190,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                      alpha: 0.07,
+                    ),
+                    width: 27,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 15,
+              bottom: 8,
+              child: Transform.rotate(
+                angle: -0.12,
+                child: Container(
+                  width: 73,
+                  height: 109,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        Color(0xFF17C86B),
+                        Color(0xFF006B3B),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(
+                        alpha: 0.40,
+                      ),
+                      width: 2,
+                    ),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(
+                          0x66000000,
+                        ),
+                        blurRadius: 16,
+                        offset: Offset(0, 9),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'S',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 39,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Positioned(
+              right: 94,
+              top: 18,
+              child: Icon(
+                Icons.bolt_rounded,
+                color: Color(0x66FFD54F),
+                size: 29,
+              ),
+            ),
+            const Positioned(
+              right: 112,
+              bottom: 21,
+              child: Icon(
+                Icons.monetization_on_rounded,
+                color: Color(0xFFFFC94B),
+                size: 28,
+              ),
+            ),
+            const Positioned(
+              right: 28,
+              top: 15,
+              child: Icon(
+                Icons.wifi_rounded,
+                color: Color(0x668EEA93),
+                size: 27,
+              ),
+            ),
+            const Positioned(
+              left: 21,
+              top: 20,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'One Platform,',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    'Many Solutions',
+                    style: TextStyle(
+                      color: Color(
+                        0xFF91EE96,
+                      ),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Fast. Secure. Reliable.',
+                    style: TextStyle(
+                      color: Color(
+                        0xFFD9F5E4,
+                      ),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Positioned(
+              right: 53,
+              bottom: 9,
+              child: Icon(
+                Icons.shield_rounded,
+                color: Color(0xFF9DE8B9),
+                size: 31,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildRecentActivity() {
+    final Widget content;
+
+    if (isLoadingRecentActivity) {
+      content = Column(
+        children: List<Widget>.generate(
+          3,
+          (int index) => Padding(
+            padding: EdgeInsets.only(bottom: index == 2 ? 0 : 12),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEAF2ED),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      _DashboardLoadingBar(width: 118),
+                      SizedBox(height: 7),
+                      _DashboardLoadingBar(width: 82, height: 9),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const _DashboardLoadingBar(width: 58),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else if (recentActivityError.isNotEmpty && recentTransactions.isEmpty) {
+      content = _DashboardEmptyState(
+        icon: Icons.cloud_off_rounded,
+        title: 'Activity unavailable',
+        message: recentActivityError,
+        actionLabel: 'Retry',
+        actionKey: const Key('dashboard-recent-activity-retry'),
+        onAction: () async {
+          final SharedPreferences preferences =
+              await SharedPreferences.getInstance();
+          final String? token = await getSavedAuthToken(preferences);
+
+          if (token == null || token.isEmpty) {
+            if (mounted) {
+              setState(() {
+                recentActivityError =
+                    'Your login session has expired. Please log in again.';
+              });
+            }
+            return;
+          }
+
+          await _loadRecentTransactions(token);
+        },
+      );
+    } else if (recentTransactions.isEmpty) {
+      content = const _DashboardEmptyState(
+        icon: Icons.receipt_long_rounded,
+        title: 'No recent transactions',
+        message: 'Your latest activity will appear here.',
+      );
+    } else {
+      content = Column(
+        children: <Widget>[
+          for (int index = 0; index < recentTransactions.length; index++)
+            _buildRecentTransactionRow(
+              recentTransactions[index],
+              isLast: index == recentTransactions.length - 1,
+            ),
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE2ECE5)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0B102A1B),
+            blurRadius: 16,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Recent Activity',
+                  style: TextStyle(
+                    color: Color(0xFF15281B),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              TextButton(
+                key: const Key('dashboard-see-all-transactions'),
+                onPressed: () => openScreen(const TransactionsScreen()),
+                style: TextButton.styleFrom(
+                  foregroundColor: primaryGreen,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  minimumSize: const Size(48, 44),
+                  textStyle: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text('See All Transactions'),
+                    SizedBox(width: 2),
+                    Icon(Icons.chevron_right_rounded, size: 17),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          content,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentTransactionRow(
+    Map<String, dynamic> transaction, {
+    required bool isLast,
+  }) {
+    final String title = _recentTransactionTitle(transaction);
+    final String description = _recentTransactionDescription(transaction);
+    final String status = _recentTransactionStatus(transaction);
+    final String? direction = _recentTransactionDirection(transaction);
+    final double? amount = _recentTransactionAmount(transaction);
+    final Color statusColor = status == 'SUCCESSFUL'
+        ? primaryGreen
+        : status == 'FAILED'
+            ? const Color(0xFFB42318)
+            : status == 'STATUS UNAVAILABLE'
+                ? const Color(0xFF667085)
+                : const Color(0xFFB54708);
+    final Color directionColor = direction == 'CREDIT'
+        ? primaryGreen
+        : direction == 'DEBIT'
+            ? const Color(0xFF344054)
+            : const Color(0xFF667085);
+    final String amountLabel = amount == null
+        ? 'Amount unavailable'
+        : '${direction == 'CREDIT' ? '+' : direction == 'DEBIT' ? '-' : ''}₦${amount.toStringAsFixed(2)}';
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 11),
+      child: Column(
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: softGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _recentTransactionIcon(title),
+                  color: primaryGreen,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF263D30),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF78877E),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 5,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
+                        Text(
+                          _recentTransactionDateLabel(transaction),
+                          style: const TextStyle(
+                            color: Color(0xFF98A69D),
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            status,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          amountLabel,
+                          style: TextStyle(
+                            color: directionColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (!isLast)
+            const Padding(
+              padding: EdgeInsets.only(left: 52, top: 11),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: Color(0xFFF0F3F1),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9FB),
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: primaryGreen,
+          onRefresh: _refreshDashboard,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
+                children: <Widget>[
+                  buildHeader(),
+                  const SizedBox(height: 18),
+                  buildTopQuickTools(),
+                  const SizedBox(height: 16),
+                  if (isLoading)
+                    const LinearProgressIndicator(
+                      color: primaryGreen,
+                      backgroundColor: softGreen,
+                      minHeight: 2,
+                    ),
+                  if (isLoading) const SizedBox(height: 10),
+                  buildPremiumBalanceCard(),
+                  const SizedBox(height: 12),
+                  buildPremiumActionRow(),
+                  const SizedBox(height: 20),
+                  buildActiveServiceStatuses(),
+                  if (isLoadingServiceStatuses ||
+                      activeServiceStatuses.isNotEmpty)
+                    const SizedBox(height: 18),
+                  buildPremiumServices(),
+                  const SizedBox(height: 18),
+                  buildRecentActivity(),
+                  const SizedBox(height: 18),
+                  buildPremiumInviteBanner(),
+                  const SizedBox(height: 14),
+                  const TrustDashboardEntry(),
+                  if (isRefreshing)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 18),
+                      child: Center(
+                        child: Text(
+                          'Refreshing dashboard…',
+                          style: TextStyle(
+                            color: Color(0xFF667085),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 22),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardTool {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final Key key;
+
+  const _DashboardTool({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    required this.key,
+  });
+}
+
+class _DashboardServiceStatus {
+  final String service;
+  final String status;
+  final String detail;
+  final IconData icon;
+
+  const _DashboardServiceStatus({
+    required this.service,
+    required this.status,
+    required this.detail,
+    required this.icon,
+  });
+}
+
+class _DashboardLoadingBar extends StatelessWidget {
+  final double width;
+  final double height;
+
+  const _DashboardLoadingBar({
+    required this.width,
+    this.height = 12,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF2ED),
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+}
+
+class _DashboardEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final Key? actionKey;
+  final VoidCallback? onAction;
+
+  const _DashboardEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.actionKey,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFCFB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEAF0EC)),
+      ),
+      child: Column(
+        children: <Widget>[
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEAF7F0),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: _DashboardScreenState.primaryGreen,
+              size: 21,
+            ),
+          ),
+          const SizedBox(height: 9),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF263D30),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF78877E),
+              fontSize: 10.5,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (actionLabel != null && onAction != null) ...<Widget>[
+            const SizedBox(height: 10),
+            TextButton(
+              key: actionKey,
+              onPressed: onAction,
+              style: TextButton.styleFrom(
+                foregroundColor: _DashboardScreenState.primaryGreen,
+                textStyle: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              child: Text(actionLabel!),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardService {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color iconColor;
+  final Color backgroundColor;
+  final String keywords;
+  final VoidCallback onTap;
+
+  const _DashboardService({
+    required this.title,
+    this.subtitle = '',
+    required this.icon,
+    required this.iconColor,
+    required this.backgroundColor,
+    required this.keywords,
+    required this.onTap,
+  });
+}
+
+class _WalletAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _WalletAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: SizedBox(
+          height: 82,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 27,
+                color: const Color(0xFF08783E),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF26342D),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 4,
+        ),
+        child: Column(
+          children: <Widget>[
+            Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: _DashboardScreenState.softGreen,
+                borderRadius: BorderRadius.circular(
+                  14,
+                ),
+              ),
+              child: Icon(
+                icon,
+                color: _DashboardScreenState.primaryGreen,
+                size: 24,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF344054),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader({
+    required this.title,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 19,
+              color: Color(0xFF101828),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const Text(
+          'View All',
+          style: TextStyle(
+            color: _DashboardScreenState.primaryGreen,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(width: 4),
+        const Icon(
+          Icons.chevron_right_rounded,
+          color: _DashboardScreenState.primaryGreen,
+        ),
+      ],
+    );
+  }
+}
+
+class _PopularServiceCard extends StatelessWidget {
+  final _DashboardService service;
+
+  const _PopularServiceCard({
+    required this.service,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: service.onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 9,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(
+              20,
+            ),
+            border: Border.all(
+              color: const Color(
+                0xFFE7EAEF,
+              ),
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(
+                  0x0D101828,
+                ),
+                blurRadius: 13,
+                offset: Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: service.backgroundColor,
+                  borderRadius: BorderRadius.circular(
+                    15,
+                  ),
+                ),
+                child: Icon(
+                  service.icon,
+                  color: service.iconColor,
+                  size: 27,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                service.title,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(
+                    0xFF1D2939,
+                  ),
+                  fontSize: 11,
+                  height: 1.15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ===== SERVICEPAY ALL SERVICES SCREEN =====
+class _ServicePayAllServicesScreen extends StatefulWidget {
+  final List<_DashboardService> services;
+
+  const _ServicePayAllServicesScreen({
+    required this.services,
+  });
+
+  @override
+  State<_ServicePayAllServicesScreen> createState() =>
+      _ServicePayAllServicesScreenState();
+}
+
+class _ServicePayAllServicesScreenState
+    extends State<_ServicePayAllServicesScreen> {
+  final TextEditingController _controller = TextEditingController();
+  String query = '';
+
+  static const Color _green = Color(0xFF08783E);
+  static const Color _softGreen = Color(0xFFEAF7F0);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _categoryFor(String title) {
+    if (title == 'Partner API') {
+      return 'Business Services';
+    }
+
+    final t = title.toLowerCase();
+
+    if (t.contains('airtime') ||
+        t.contains('data') ||
+        t.contains('electricity') ||
+        t.contains('cable') ||
+        t.contains('exam')) {
+      return 'Bills & Utilities';
+    }
+
+    if (t.contains('nin') || t.contains('verification') || t.contains('kyc')) {
+      return 'Identity & Verification';
+    }
+
+    if (t.contains('delivery') ||
+        t.contains('rider') ||
+        t.contains('logistic')) {
+      return 'Delivery & Logistics';
+    }
+
+    if (t.contains('empower') ||
+        t.contains('grant') ||
+        t.contains('donation')) {
+      return 'Empowerment & Grants';
+    }
+
+    if (t.contains('business') || t.contains('merchant')) {
+      return 'Business Services';
+    }
+
+    if (t.contains('wallet') ||
+        t.contains('withdraw') ||
+        t.contains('transfer') ||
+        t.contains('cash') ||
+        t.contains('ajo') ||
+        t.contains('group')) {
+      return 'Financial Services';
+    }
+
+    if (t.contains('flight') || t.contains('travel') || t.contains('hotel')) {
+      return 'Travel';
+    }
+
+    return 'Other Services';
+  }
+
+  IconData _categoryIcon(String category) {
+    switch (category) {
+      case 'Bills & Utilities':
+        return Icons.receipt_long_rounded;
+      case 'Identity & Verification':
+        return Icons.verified_user_rounded;
+      case 'Delivery & Logistics':
+        return Icons.local_shipping_rounded;
+      case 'Empowerment & Grants':
+        return Icons.volunteer_activism_rounded;
+      case 'Business Services':
+        return Icons.business_center_rounded;
+      case 'Financial Services':
+        return Icons.account_balance_wallet_rounded;
+      case 'Travel':
+        return Icons.flight_takeoff_rounded;
+      default:
+        return Icons.apps_rounded;
+    }
+  }
+
+  List<_DashboardService> get _filtered {
+    final q = query.trim().toLowerCase();
+
+    if (q.isEmpty) {
+      return widget.services;
+    }
+
+    return widget.services
+        .where((service) => service.title.toLowerCase().contains(q))
+        .toList();
+  }
+
+  Map<String, List<_DashboardService>> get _groups {
+    final result = <String, List<_DashboardService>>{};
+
+    for (final service in _filtered) {
+      final category = _categoryFor(service.title);
+      result.putIfAbsent(category, () => <_DashboardService>[]);
+      result[category]!.add(service);
+    }
+
+    const order = <String>[
+      'Bills & Utilities',
+      'Financial Services',
+      'Identity & Verification',
+      'Delivery & Logistics',
+      'Business Services',
+      'Empowerment & Grants',
+      'Travel',
+      'Other Services',
+    ];
+
+    final sorted = <String, List<_DashboardService>>{};
+
+    for (final category in order) {
+      final items = result[category];
+      if (items != null && items.isNotEmpty) {
+        sorted[category] = items;
+      }
+    }
+
+    return sorted;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _groups;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAF9),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF14211B),
+        centerTitle: false,
+        title: const Text(
+          'All Services',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+              child: TextField(
+                controller: _controller,
+                onChanged: (value) {
+                  setState(() => query = value);
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search ServicePay services',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            _controller.clear();
+                            setState(() => query = '');
+                          },
+                        ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 15,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE4ECE7),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: _green,
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: groups.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No service found',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF66756D),
+                        ),
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
+                      children: [
+                        for (final entry in groups.entries) ...[
+                          _buildSection(
+                            entry.key,
+                            entry.value,
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSection(
+    String title,
+    List<_DashboardService> services,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _softGreen,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(
+                _categoryIcon(title),
+                size: 20,
+                color: _green,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF14211B),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
+          itemCount: services.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4,
+            mainAxisExtent: 94,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 12,
+          ),
+          itemBuilder: (context, index) {
+            final service = services[index];
+
+            return InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: service.onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 2,
+                  vertical: 4,
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _softGreen,
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          service.icon,
+                          size: 24,
+                          color: _green,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Expanded(
+                      child: Text(
+                        service.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 10.8,
+                          height: 1.08,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF536159),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// Partner API customer dashboard deployment trigger
