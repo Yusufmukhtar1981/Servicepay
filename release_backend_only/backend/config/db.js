@@ -2,9 +2,14 @@ const fixCardRequestReferenceIndex = require('../scripts/fixCardRequestReference
 const mongoose = require("mongoose");
 
 const connectDB = async () => {
+  const mongoUri = process.env.MONGODB_URI;
+  if (typeof mongoUri !== "string" || !mongoUri.trim()) {
+    throw new Error("Required MongoDB environment variable is missing: MONGODB_URI");
+  }
+
   try {
     const connection = await mongoose.connect(
-      process.env.MONGODB_URI
+      mongoUri
     );
 
     await fixCardRequestReferenceIndex();

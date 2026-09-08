@@ -1,0 +1,112 @@
+The reviewed backend-only Render release reached runtime, but Render logs show TWO exact startup blockers.
+
+DO NOT deploy again yet.
+DO NOT modify production data.
+DO NOT touch VULL.
+DO NOT broaden the release.
+
+EXACT RENDER RUNTIME ERRORS:
+
+1. MongoDB:
+MongoDB connection error:
+The 'uri' parameter to openUri() must be a string, got "undefined".
+
+2. Call signaling:
+Error: Cannot find module 'socket.io'
+Require stack:
+backend/services/callSignaling.service.js
+backend/index.js
+
+The Render service Root Directory is:
+backend
+
+The Build Command is:
+npm ci
+
+TASK A — FIX SOCKET.IO DEPENDENCY
+
+1. Inspect backend/package.json and backend/package-lock.json.
+2. Confirm callSignaling.service.js directly requires/imports socket.io.
+3. If socket.io is missing from backend production dependencies, add the correct compatible socket.io package to backend/package.json and regenerate backend/package-lock.json deterministically.
+4. Do NOT rely on the repository-root package.json because Render executes npm ci from backend/.
+5. Run a clean install from backend/ exactly as Render does:
+   npm ci
+6. Verify:
+   node -e "require('socket.io')"
+   succeeds.
+7. Start the backend locally from backend/ and confirm the socket.io module error is gone.
+
+TASK B — IDENTIFY MONGODB ENVIRONMENT REQUIREMENT
+
+1. Inspect backend database/bootstrap code.
+2. Identify the EXACT environment variable name(s) accepted for the MongoDB connection.
+Examples may include MONGODB_URI, MONGO_URI, DATABASE_URL, etc., but DO NOT guess.
+
+3. Report:
+   EXACT MONGODB ENV VARIABLE EXPECTED BY CODE:
+   FALLBACK VARIABLE NAMES IF ANY:
+
+4. Do NOT print any database URI or secret value.
+
+5. Add startup validation so that if the required Mongo environment variable is absent, the application fails with a safe clear message such as:
+   "Required MongoDB environment variable is missing"
+instead of exposing or passing undefined to mongoose.
+
+Do not hard-code credentials.
+
+TASK C — KEEP RELEASE ISOLATED
+
+Only allow changes strictly required for:
+- socket.io production dependency
+- safe Mongo environment validation
+
+Do NOT include unrelated features.
+
+Run:
+- clean backend npm ci
+- backend build/start check
+- targeted Call tests
+- targeted Interstate tests
+- targeted auth tests
+- syntax checks
+- git diff --check
+
+If all code checks pass, update the existing reviewed release branch:
+
+release/backend-only-2026.09.08
+
+with one additional reviewed commit.
+
+Do NOT deploy automatically.
+
+REPORT EXACTLY:
+
+SOCKET.IO MISSING FROM BACKEND DEPENDENCIES: YES/NO
+SOCKET.IO DEPENDENCY FIXED: YES/NO
+SOCKET.IO REQUIRE TEST: PASS/FAIL
+
+EXACT MONGODB ENV VARIABLE EXPECTED BY CODE:
+MONGODB STARTUP VALIDATION: PASS/FAIL
+
+CLEAN BACKEND NPM CI: PASS/FAIL
+BACKEND STARTUP WITHOUT MODULE ERROR: PASS/FAIL
+INTERSTATE TESTS: PASS/FAIL
+CALL TESTS: PASS/FAIL
+AUTH TESTS: PASS/FAIL
+SYNTAX CHECKS: PASS/FAIL
+GIT DIFF CHECK: PASS/FAIL
+
+UNRELATED FILES INCLUDED: YES/NO
+UPDATED RELEASE COMMIT:
+RELEASE BRANCH PUSHED: YES/NO
+
+PRODUCTION DATA MODIFIED: NO
+DEPLOYMENT PERFORMED: NO
+VULL MODIFIED: NO
+
+RENDER ENVIRONMENT ACTION REQUIRED FROM USER: YES/NO
+EXACT VARIABLE NAME USER MUST VERIFY IN RENDER:
+
+SAFE FOR NEXT MANUAL DEPLOY: YES/NO
+
+Stop before deployment.
