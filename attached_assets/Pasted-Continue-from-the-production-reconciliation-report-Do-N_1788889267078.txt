@@ -1,0 +1,81 @@
+Continue from the production reconciliation report.
+
+Do NOT re-implement Interstate Logistics.
+Do NOT re-implement ServicePay Call.
+Those fixes are already implemented.
+
+The blocker is now the unidentified Render production backend.
+
+We know:
+
+Customer production:
+https://servicepay.ng
+-> GitHub Pages
+-> Yusufmukhtar1981/Servicepay
+-> main
+
+Production API:
+https://api.servicepay.ng/api
+-> Cloudflare
+-> servicepay-j6jg.onrender.com
+
+Current Render management authorization returned HTTP 401.
+
+TASK:
+
+1. Inspect the existing ServicePay workspace Secrets/Integrations/configuration for the Render management credential that is intended to manage the production service.
+
+2. Determine whether:
+   - the Render API key is missing,
+   - expired/revoked,
+   - incorrect,
+   - or the integration is using the wrong credential.
+
+3. Do NOT print or expose any secret value.
+
+4. Do NOT change production yet.
+5. Do NOT regenerate credentials automatically.
+6. Do NOT deploy anything.
+7. Do NOT change DNS or Cloudflare.
+8. Do NOT modify production database/data.
+9. Do NOT modify VULL.
+
+If a valid existing Render credential is available, use it READ-ONLY to identify:
+
+- exact Render service
+- service ID/name
+- connected GitHub repository
+- branch
+- currently deployed commit/revision
+- deploy method
+- relevant production environment/configuration
+- whether auto-deploy is enabled
+
+Then compare that exact live backend revision with the current ServicePay backend containing the Interstate and Call fixes.
+
+Also confirm whether deploying the current backend would introduce any unrelated unfinished features or destructive changes.
+
+If the existing Render credential is invalid/missing, STOP and tell me exactly what I need to reconnect/update in Replit or Render. Do not guess.
+
+At the end report exactly:
+
+RENDER MANAGEMENT ACCESS: PASS/FAIL
+RENDER SERVICE IDENTIFIED: YES/NO
+LIVE BACKEND REPOSITORY:
+LIVE BACKEND BRANCH:
+LIVE BACKEND REVISION:
+LIVE BACKEND MATCHES WORKSPACE: YES/NO/UNVERIFIED
+
+INTERSTATE BACKEND FIX READY FOR RELEASE: YES/NO
+CALL BACKEND FIX READY FOR RELEASE: YES/NO
+UNRELATED UNFINISHED CHANGES IN RELEASE: YES/NO
+DESTRUCTIVE DATABASE CHANGE REQUIRED: YES/NO
+PRODUCTION DATA MODIFIED: NO
+VULL MODIFIED: NO
+
+NEXT REQUIRED USER ACTION:
+[exact action]
+
+SAFE TO BEGIN CONTROLLED DEPLOYMENT: YES/NO
+
+STOP before any deployment.
