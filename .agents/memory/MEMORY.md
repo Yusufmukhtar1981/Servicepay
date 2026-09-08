@@ -25,4 +25,5 @@
 - [Admin production repository](admin-production-repository.md) — The admin custom domain is deployed from the hyphenated repository; verify the live bundle, not a similarly named repo.
 - [ServicePay executive administration](servicepay-executive-administration.md) — Executive and SVP capabilities belong in the main ServicePay Admin; keep the separate Admin project untouched.
 - [Interstate route activation](interstate-route-activation.md) — Never seed logistics routes automatically; Head Office must configure real branch-bound pricing before customer quotes activate.
+- [Interstate quote integrity](interstate-quote-integrity.md) — Bind every price-affecting parcel field to one canonical quote, stored shipment, and later recalculation.
 - [GitHub Pages clean URLs](github-pages-clean-urls.md) — Use a root .html artifact for an exact slashless URL; directory indexes redirect to a trailing slash.
