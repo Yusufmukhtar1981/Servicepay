@@ -1,0 +1,116 @@
+The REAL ServicePay backend at api.servicepay.ng is now successfully deployed and LIVE.
+
+However, after real customer testing:
+- Interstate Logistics still does not work.
+- ServicePay Call still does not work.
+
+Do NOT modify or redeploy the backend.
+Do NOT modify production data.
+Do NOT touch VULL.
+Do NOT touch servicepay-admin.
+
+Diagnose ONLY the REAL ServicePay CUSTOMER FRONTEND served at:
+
+https://servicepay.ng
+
+Important known architecture:
+- Customer Frontend: GitHub Pages from Yusufmukhtar1981/Servicepay
+- Backend API: https://api.servicepay.ng
+- Backend is now healthy and already deployed.
+
+TASK 1 — VERIFY LIVE CUSTOMER BUILD
+
+1. Fetch/read the actual production servicepay.ng HTML and JS bundle.
+2. Identify the exact live frontend commit/build if possible.
+3. Confirm whether the live bundle contains the latest Interstate Logistics customer UI fixes.
+4. Confirm whether the live bundle contains the latest ServicePay Call microphone/session fixes.
+5. Confirm the production API base URL is still:
+   https://api.servicepay.ng/api
+
+Do not rely on local Preview.
+Verify the REAL public servicepay.ng build.
+
+TASK 2 — IF LIVE FRONTEND IS STALE
+
+If the live frontend does NOT contain those fixes:
+
+Create a CLEAN CUSTOMER-WEB-ONLY release based on the authoritative customer frontend main.
+
+Include ONLY:
+- Interstate customer UI/route selection fixes
+- ServicePay Call customer UI/microphone permission/session fixes
+- strictly required frontend dependencies/configuration
+
+Do NOT include:
+- Admin changes
+- SVP/Executive Management work
+- unfinished Staff Dashboard work
+- unrelated customer features
+- backend changes
+- VULL changes
+
+Review every changed file before release.
+
+TASK 3 — BUILD AND TEST
+
+Run:
+- flutter analyze
+- relevant Interstate UI tests
+- relevant Call UI tests
+- authentication/navigation tests affected
+- flutter web release build
+- git diff --check
+
+Also verify the generated production web bundle actually contains markers for both fixes.
+
+TASK 4 — SERVICE WORKER / CACHE
+
+Check whether an old Flutter service worker/cache could keep customers on the old build.
+
+Ensure the new production build will update correctly without deleting customer data or sessions unnecessarily.
+
+Do NOT disable caching globally unless required.
+
+TASK 5 — PREPARE RELEASE ONLY
+
+If everything passes:
+- create a reviewed customer-web-only release commit/branch
+- push that release safely
+- DO NOT deploy automatically
+- DO NOT merge unrelated work into main
+
+Report exactly:
+
+LIVE CUSTOMER FRONTEND VERIFIED: YES/NO
+LIVE CUSTOMER FRONTEND STALE: YES/NO
+LIVE FRONTEND COMMIT/BUILD:
+
+INTERSTATE FIX PRESENT IN LIVE BUNDLE: YES/NO
+CALL FIX PRESENT IN LIVE BUNDLE: YES/NO
+API BASE URL CORRECT: YES/NO
+
+CUSTOMER WEB RELEASE BRANCH:
+CUSTOMER WEB RELEASE COMMIT:
+
+UNRELATED CHANGES INCLUDED: YES/NO
+
+INTERSTATE UI TESTS: PASS/FAIL
+CALL UI TESTS: PASS/FAIL
+AUTH/NAV TESTS: PASS/FAIL
+FLUTTER ANALYZE: PASS/FAIL
+FLUTTER WEB BUILD: PASS/FAIL
+PRODUCTION BUNDLE MARKERS: PASS/FAIL
+GIT DIFF CHECK: PASS/FAIL
+
+SERVICE WORKER/CACHE ISSUE FOUND: YES/NO
+
+BACKEND MODIFIED: NO
+PRODUCTION DATA MODIFIED: NO
+SERVICEPAY-ADMIN MODIFIED: NO
+VULL MODIFIED: NO
+DEPLOYMENT PERFORMED: NO
+
+SAFE TO DEPLOY CUSTOMER FRONTEND: YES/NO
+
+If SAFE TO DEPLOY CUSTOMER FRONTEND is YES, STOP.
+I will perform the final customer frontend deployment manually.
