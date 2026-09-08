@@ -156,7 +156,7 @@ test("maintenance, limits, and feature toggles persist with an audit trail", asy
           tier1Daily: 1200,
           tier1PerTransaction: 300,
         },
-        featureToggles: { airtime: false },
+        featureToggles: { airtime: false, delivery: false },
       },
     },
   });
@@ -217,7 +217,7 @@ test("middleware enforces maintenance, feature toggles, and tier transaction lim
           apiEnabled: true,
         },
         serviceLimits: { tier1PerTransaction: 200 },
-        featureToggles: { airtime: false },
+        featureToggles: { airtime: false, delivery: false },
       },
     },
   });
@@ -230,6 +230,14 @@ test("middleware enforces maintenance, feature toggles, and tier transaction lim
   });
   assert.equal(disabledFeature.status, 503);
   assert.equal(disabledFeature.body.code, "FEATURE_DISABLED");
+
+  const disabledInterstate = await runMiddleware({
+    user: { role: "CUSTOMER", kycTier: "TIER_1" },
+    originalUrl: "/api/logistics/interstate/routes",
+    method: "GET",
+  });
+  assert.equal(disabledInterstate.status, 503);
+  assert.equal(disabledInterstate.body.code, "FEATURE_DISABLED");
 
   const limited = await runMiddleware({
     user: { role: "CUSTOMER", kycTier: "TIER_1" },

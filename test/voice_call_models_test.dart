@@ -142,4 +142,77 @@ void main() {
     expect(shouldTerminateServerOnNegotiationFailure(true, ''), isFalse);
     expect(shouldTerminateServerOnNegotiationFailure(true, 'call-1'), isTrue);
   });
+
+  test('microphone failures have accurate user-facing classifications', () {
+    expect(const MicrophoneAccessFailure(MicrophoneAccessResult.granted).result,
+        MicrophoneAccessResult.granted);
+    expect(classifyMicrophoneError(StateError('NotAllowedError')).result,
+        MicrophoneAccessResult.denied);
+    expect(classifyMicrophoneError(UnsupportedError('not supported')).result,
+        MicrophoneAccessResult.unsupported);
+    expect(classifyMicrophoneError(StateError('network timeout')).result,
+        MicrophoneAccessResult.network);
+    expect(classifyMicrophoneError(StateError('TURN config missing')).result,
+        MicrophoneAccessResult.config);
+    expect(classifyMicrophoneError(StateError('unknown API issue')).result,
+        MicrophoneAccessResult.api);
+    expect(const MicrophoneAccessFailure(MicrophoneAccessResult.denied).message,
+        'Microphone permission is required for ServicePay calls.');
+  });
+
+  test('call start guard allows only one in-flight start', () {
+    final guard = CallStartGuard();
+    expect(guard.tryAcquire(), isTrue);
+    expect(guard.tryAcquire(), isFalse);
+    guard.release();
+    expect(guard.tryAcquire(), isTrue);
+  });
+
+  test('cleanup policy releases local media for all terminal paths', () {
+    expect(
+        shouldReleaseCallResources(
+            state: VoiceCallState.ringing, declined: true, disposing: false),
+        isTrue);
+    expect(
+        shouldReleaseCallResources(
+            state: VoiceCallState.ended, declined: false, disposing: false),
+        isTrue);
+    expect(
+        shouldReleaseCallResources(
+            state: VoiceCallState.error, declined: false, disposing: false),
+        isTrue);
+    expect(
+        shouldReleaseCallResources(
+            state: VoiceCallState.active, declined: false, disposing: true),
+        isTrue);
+    expect(
+        shouldReleaseCallResources(
+            state: VoiceCallState.active, declined: false, disposing: false),
+        isFalse);
+  });
+
+  test('call setup and session failures do not impersonate microphone denial',
+      () {
+    expect(callSetupErrorMessage(StateError('TURN config missing')),
+        'Calling configuration is unavailable. Please try again later.');
+    expect(callSetupErrorMessage(StateError('network timeout')),
+        'Connection lost. Retry?');
+    expect(callSetupErrorMessage(StateError('peer failed')),
+        'The call could not start. Please try again.');
+    expect(callSessionResponseMessage(409, const <String, dynamic>{}),
+        'User unavailable');
+    expect(callSessionResponseMessage(429, const <String, dynamic>{}),
+        'Too many call attempts. Please wait and try again.');
+  });
+
+  test('terminal provider outcomes retain customer-facing meaning', () {
+    expect(terminalCallMessage('DECLINED'), 'Call declined');
+    expect(terminalCallMessage('BUSY'), 'User unavailable');
+    expect(terminalCallMessage('MISSED'), 'User unavailable');
+    expect(terminalCallMessage('CANCELLED'), 'Call cancelled');
+    expect(terminalCallMessage('ENDED'), 'Call ended');
+    expect(terminalCallActionPath('DECLINED'), 'decline');
+    expect(terminalCallActionPath('CANCELLED'), 'cancel');
+    expect(terminalCallActionPath('ENDED'), 'end');
+  });
 }

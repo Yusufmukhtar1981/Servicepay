@@ -201,6 +201,7 @@ function disabledService(req, control) {
   const path = String(req.originalUrl || req.url || "").toLowerCase();
   const toggles = control?.featureToggles || {};
   const map = [
+    ["/logistics/interstate", "delivery"],
     ["/airtime", "airtime"],
     ["/data", "data"],
     ["/electricity", "electricity"],

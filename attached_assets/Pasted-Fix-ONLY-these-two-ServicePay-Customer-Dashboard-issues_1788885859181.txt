@@ -1,0 +1,272 @@
+Fix ONLY these two ServicePay Customer Dashboard issues end-to-end:
+
+1. Interstate Logistics / Send Interstate Parcel
+2. ServicePay-to-ServicePay Call microphone/permission flow
+
+IMPORTANT:
+- Work ONLY inside the main Servicepay project.
+- Do NOT modify VULL.
+- Do NOT modify the legacy servicepay-admin project.
+- Do NOT reset/delete/truncate production data.
+- Do NOT change customer wallet balances during testing.
+- Do NOT deploy automatically.
+- Do not report PASS based only on code/tests/preview.
+- Verify using the real Customer Dashboard flow.
+
+==================================================
+PART A — FIX INTERSTATE LOGISTICS
+==================================================
+
+CURRENT CUSTOMER ERROR:
+
+“ServicePay Interstate Logistics is not yet available for this route.”
+
+When the customer opens:
+
+Send Interstate Parcel
+
+the service currently becomes unavailable instead of allowing a valid interstate shipment.
+
+Trace the complete flow:
+
+Customer frontend
+→ interstate logistics availability check
+→ backend route
+→ route/state configuration
+→ pricing/service availability
+→ shipment creation
+
+Identify the exact root cause.
+
+Check for:
+- missing backend endpoint
+- missing state/route configuration
+- incorrect route matching
+- unsupported default state
+- frontend treating null/empty response as unavailable
+- feature toggle incorrectly disabled
+- API timeout/error being converted into “route unavailable”
+- production API missing newer logistics routes
+
+Implement a proper interstate logistics system.
+
+Customer should be able to select:
+
+Pickup State
+Pickup City/LGA
+Pickup Address
+Sender Name
+Sender Phone
+
+Destination State
+Destination City/LGA
+Destination Address
+Receiver Name
+Receiver Phone
+
+Parcel Category
+Parcel Description
+Parcel Value
+Parcel Weight/Size if already supported
+
+Then calculate/show:
+
+Delivery Price
+Estimated Delivery Time
+Route Availability
+
+The customer should only see “Route unavailable” if the selected route is genuinely unsupported.
+
+If a route is temporarily unsupported, show:
+
+“This interstate route is not currently available. Please select another destination or try again later.”
+
+Do NOT show the unavailable screen before the customer has selected a real route.
+
+Add/verify Admin configuration for interstate routes if it already exists:
+
+- Origin State
+- Destination State
+- Price
+- Estimated Days
+- Enabled/Disabled
+
+Use the existing logistics architecture where possible.
+
+Do not create duplicate shipment systems.
+
+Test at least:
+- Kano → Abuja
+- Kano → Lagos
+- Abuja → Kano
+- same-state route
+- unsupported route
+- feature disabled
+- invalid address
+- successful parcel request
+
+==================================================
+PART B — FIX SERVICEPAY CALL
+==================================================
+
+CURRENT CUSTOMER ERROR:
+
+“Microphone access is required to place a call.
+Check permission and try again.”
+
+The call screen opens but the customer cannot proceed.
+
+Trace the complete ServicePay-to-ServicePay calling flow:
+
+Customer taps Call
+→ microphone permission
+→ browser/webview permission
+→ call session creation
+→ signaling/LiveKit or existing call provider
+→ ringing
+→ answer
+→ active audio call
+
+Fix microphone permission handling properly.
+
+Requirements:
+
+1. Before starting the call, check microphone permission.
+
+2. If permission has never been requested:
+   request it automatically.
+
+3. If the user grants permission:
+   continue the call immediately without requiring the customer to restart the entire flow.
+
+4. If permission is denied:
+   show a clear message:
+
+“Microphone permission is required for ServicePay calls.”
+
+Add a button:
+
+“Allow Microphone”
+
+5. If permission is permanently blocked:
+   show instructions/button to open browser/app settings where technically supported.
+
+6. On Android Chrome / PWA / WebView:
+   handle getUserMedia permission correctly.
+
+7. Use:
+   navigator.mediaDevices.getUserMedia({ audio: true })
+
+or the correct existing platform-specific implementation.
+
+8. Detect unsupported browsers/devices and show a proper message instead of failing silently.
+
+9. Release microphone tracks when call ends.
+
+10. Prevent duplicate call sessions when “Call again” is tapped repeatedly.
+
+11. Preserve:
+   - block/privacy controls
+   - caller/callee identity
+   - existing call history
+   - secure signaling
+   - authentication
+
+==================================================
+PART C — CALL UX
+==================================================
+
+The customer call flow should be:
+
+Customer Profile / Chat
+→ Call
+→ microphone permission if needed
+→ Calling...
+→ Ringing
+→ Connected
+→ Mute/Unmute
+→ Speaker
+→ End Call
+
+If callee rejects:
+“Call declined”
+
+If unavailable:
+“User unavailable”
+
+If network fails:
+“Connection lost. Retry?”
+
+If microphone permission fails:
+show permission-specific error, not generic call failure.
+
+==================================================
+PART D — REAL CUSTOMER TEST
+==================================================
+
+Test both features using the actual Customer Dashboard, not mocked UI.
+
+INTERSTATE:
+Customer Dashboard
+→ Logistics
+→ Send Interstate Parcel
+→ select route
+→ price/availability loads
+→ submit parcel
+→ request is saved
+→ visible in customer history/admin logistics
+
+CALL:
+Customer A
+→ Customer B
+→ Call
+→ microphone permission
+→ call starts
+→ Customer B receives incoming call
+→ answer
+→ two-way audio
+→ end call
+
+Also test:
+- microphone denied
+- microphone granted
+- retry
+- call declined
+- user offline
+- network interruption
+
+==================================================
+PART E — LIVE/RELEASE STATUS
+==================================================
+
+Because recent ServicePay changes have sometimes passed in preview but were not live, report status separately.
+
+At the end report exactly:
+
+INTERSTATE LOGISTICS ROOT CAUSE:
+INTERSTATE ROUTE API: PASS/FAIL
+ROUTE AVAILABILITY: PASS/FAIL
+ROUTE PRICING: PASS/FAIL
+PARCEL CREATION: PASS/FAIL
+CUSTOMER INTERSTATE UI: PASS/FAIL
+
+CALL ROOT CAUSE:
+MICROPHONE PERMISSION REQUEST: PASS/FAIL
+MICROPHONE GRANT FLOW: PASS/FAIL
+MICROPHONE DENIED FLOW: PASS/FAIL
+CALL SESSION CREATION: PASS/FAIL
+INCOMING CALL: PASS/FAIL
+TWO-WAY AUDIO: PASS/FAIL
+CALL END/CLEANUP: PASS/FAIL
+
+IMPLEMENTATION: PASS/FAIL
+PREVIEW VERIFIED: PASS/FAIL
+DEPLOYED: YES/NO
+LIVE VERIFIED: PASS/FAIL/NOT DEPLOYED
+
+EXISTING SERVICEPAY FEATURES PRESERVED: YES/NO
+PRODUCTION DATA PRESERVED: YES/NO
+VULL MODIFIED: NO
+
+Do NOT deploy automatically.
+Stop after implementation and real preview verification.

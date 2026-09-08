@@ -34,4 +34,73 @@ void main() {
     expect(find.byType(InterstateShipmentWizard), findsOneWidget);
     expect(find.byType(AppBar), findsOneWidget);
   });
+
+  testWidgets('route states are chosen before an unsupported pair is shown',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: ServicePayTheme.light(),
+      home: InterstateShipmentWizard(
+        routesLoader: () async => <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'kano-abuja',
+            'originState': 'KANO',
+            'destinationState': 'ABUJA',
+          },
+          <String, dynamic>{
+            'id': 'abuja-kano',
+            'originState': 'ABUJA',
+            'destinationState': 'KANO',
+          },
+          <String, dynamic>{
+            'id': 'kano-lagos',
+            'originState': 'KANO',
+            'destinationState': 'LAGOS',
+          },
+          <String, dynamic>{
+            'id': 'kano-kano-branches',
+            'originState': 'KANO',
+            'destinationState': 'KANO',
+          },
+        ],
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byKey(const Key('interstate-unsupported-route')), findsNothing);
+    await tester.tap(find.byKey(const Key('interstate-pickup-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('KANO').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('interstate-destination-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ABUJA').last);
+    await tester.pumpAndSettle();
+    expect(find.text('KANO → ABUJA'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('interstate-pickup-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ABUJA').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('interstate-destination-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('LAGOS').last);
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const Key('interstate-unsupported-route')), findsOneWidget);
+  });
+
+  testWidgets(
+      'empty active configuration is not presented as an unsupported pair',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: ServicePayTheme.light(),
+      home: InterstateShipmentWizard(
+          routesLoader: () async => <Map<String, dynamic>>[]),
+    ));
+    await tester.pump();
+
+    expect(find.text('No active interstate routes are configured right now.'),
+        findsOneWidget);
+    expect(find.byKey(const Key('interstate-unsupported-route')), findsNothing);
+  });
 }

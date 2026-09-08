@@ -176,7 +176,8 @@ class _LogisticsApi {
       final String message = decoded is Map
           ? '${decoded['message'] ?? decoded['error'] ?? 'The logistics service could not process this request.'}'
           : 'The logistics service could not process this request.';
-      throw StateError(message);
+      final String code = decoded is Map ? '${decoded['code'] ?? ''}' : '';
+      throw _LogisticsApiException(message, response.statusCode, code);
     }
     return decoded;
   }
@@ -191,6 +192,15 @@ class _LogisticsApi {
       : <Map<String, dynamic>>[];
   static dynamic data(dynamic root) =>
       root is Map && root['data'] != null ? root['data'] : root;
+}
+
+class _LogisticsApiException implements Exception {
+  const _LogisticsApiException(this.message, this.statusCode, this.code);
+  final String message;
+  final int statusCode;
+  final String code;
+  @override
+  String toString() => message;
 }
 
 /// Canonical response and request adapters kept public for contract tests.
@@ -234,6 +244,48 @@ abstract final class InterstateLogisticsContracts {
     return value is num ? value : num.tryParse('${value ?? ''}') ?? 0;
   }
 
+  /// Active configured state pairs only. A state pair may deliberately have
+  /// more than one branch-to-branch route, so callers must retain the route.
+  static List<String> pickupStates(List<Map<String, dynamic>> routes) =>
+      _states(routes.map((Map<String, dynamic> route) => route['originState']));
+
+  static List<String> destinationStates(List<Map<String, dynamic>> routes) =>
+      _states(routes
+          .map((Map<String, dynamic> route) => route['destinationState']));
+
+  static List<Map<String, dynamic>> routesForStatePair(
+      List<Map<String, dynamic>> routes,
+      String pickupState,
+      String destinationState) {
+    final String origin = pickupState.trim().toUpperCase();
+    final String destination = destinationState.trim().toUpperCase();
+    return routes
+        .where((Map<String, dynamic> route) =>
+            '${route['originState'] ?? ''}'.trim().toUpperCase() == origin &&
+            '${route['destinationState'] ?? ''}'.trim().toUpperCase() ==
+                destination)
+        .toList();
+  }
+
+  static List<String> _states(Iterable<dynamic> values) {
+    final Set<String> states = values
+        .map((dynamic value) => '${value ?? ''}'.trim())
+        .where((String value) => value.isNotEmpty)
+        .toSet();
+    final List<String> result = states.toList()..sort();
+    return result;
+  }
+
+  static String routeLoadError({
+    required int statusCode,
+    required String code,
+  }) {
+    if (statusCode == 503 && code == 'FEATURE_DISABLED') {
+      return 'Interstate Logistics is temporarily unavailable. Please try again later.';
+    }
+    return 'We could not load configured routes ($statusCode). Please retry.';
+  }
+
   static String _label(String key) => key
       .replaceAllMapped(
           RegExp(r'([a-z])([A-Z])'), (Match m) => '${m[1]} ${m[2]}')
@@ -242,7 +294,10 @@ abstract final class InterstateLogisticsContracts {
 }
 
 class InterstateShipmentWizard extends StatefulWidget {
-  const InterstateShipmentWizard({super.key});
+  const InterstateShipmentWizard({super.key, this.routesLoader});
+
+  /// Test seam; production always loads the authenticated active-route API.
+  final Future<List<Map<String, dynamic>>> Function()? routesLoader;
   @override
   State<InterstateShipmentWizard> createState() =>
       _InterstateShipmentWizardState();
@@ -257,6 +312,9 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
   String _error = '';
   List<Map<String, dynamic>> _routes = <Map<String, dynamic>>[];
   Map<String, dynamic>? _route;
+  String? _pickupState;
+  String? _destinationState;
+  String _routeSelectionError = '';
   Map<String, dynamic>? _quote;
   Map<String, dynamic>? _createdShipment;
   Map<String, dynamic>? _shipment;
@@ -320,14 +378,16 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
       _error = '';
     });
     try {
-      final dynamic root = await _LogisticsApi.get('/routes');
-      final Map<String, dynamic> data =
-          _LogisticsApi.map(_LogisticsApi.data(root));
-      final List<Map<String, dynamic>> routes = _LogisticsApi.list(
-          data['routes'] ?? (root is Map ? root['routes'] : null));
-      if (routes.isEmpty)
-        throw StateError(
-            'ServicePay Interstate Logistics is not yet available for this route.');
+      final List<Map<String, dynamic>> routes;
+      if (widget.routesLoader != null) {
+        routes = await widget.routesLoader!();
+      } else {
+        final dynamic root = await _LogisticsApi.get('/routes');
+        final Map<String, dynamic> data =
+            _LogisticsApi.map(_LogisticsApi.data(root));
+        routes = _LogisticsApi.list(
+            data['routes'] ?? (root is Map ? root['routes'] : null));
+      }
       if (!mounted) return;
       setState(() {
         _routes = routes;
@@ -336,7 +396,12 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
     } catch (e) {
       if (mounted)
         setState(() {
-          _error = e.toString().replaceFirst('Bad state: ', '');
+          _error = e is _LogisticsApiException
+              ? InterstateLogisticsContracts.routeLoadError(
+                  statusCode: e.statusCode,
+                  code: e.code,
+                )
+              : 'We could not load route configuration. Please retry.';
           _busy = false;
         });
     }
@@ -344,6 +409,10 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
 
   Map<String, dynamic> _payload() => <String, dynamic>{
         'routeId': _route?['_id'] ?? _route?['id'],
+        // These express the user's selected directed pair. The API verifies
+        // them against the route instead of trusting a client route id alone.
+        'originState': _pickupState,
+        'destinationState': _destinationState,
         'sender': <String, dynamic>{
           'name': _value('senderName'),
           'phone': _value('senderPhone'),
@@ -617,23 +686,84 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: children))))));
-  Widget _routePage() => _scroll(<Widget>[
-        const _PageTitle(
-            'Route', 'Select an active route configured by ServicePay.'),
-        ..._routes.map((Map<String, dynamic> route) {
-          return Card(
-              child: RadioListTile<Map<String, dynamic>>(
-                  value: route,
-                  groupValue: _route,
-                  onChanged: (Map<String, dynamic>? v) =>
-                      setState(() => _route = v),
-                  title: Text(
-                      '${route['routeName'] ?? '${route['originState']} → ${route['destinationState']}'}',
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(
-                      '${route['expectedDeliveryTime'] ?? route['deliveryTimeframe'] ?? 'Timeframe supplied at quote'}')));
-        })
-      ]);
+  Widget _routePage() {
+    final List<String> pickupStates =
+        InterstateLogisticsContracts.pickupStates(_routes);
+    final List<String> destinationStates =
+        InterstateLogisticsContracts.destinationStates(_routes);
+    final List<Map<String, dynamic>> pairRoutes =
+        _pickupState == null || _destinationState == null
+            ? <Map<String, dynamic>>[]
+            : InterstateLogisticsContracts.routesForStatePair(
+                _routes, _pickupState!, _destinationState!);
+    return _scroll(<Widget>[
+      const _PageTitle('Route',
+          'Choose pickup and destination states from active ServicePay routes.'),
+      if (_routes.isEmpty)
+        const Text('No active interstate routes are configured right now.'),
+      if (_routes.isNotEmpty) ...<Widget>[
+        DropdownButtonFormField<String>(
+          key: const Key('interstate-pickup-state'),
+          value: _pickupState,
+          decoration: const InputDecoration(labelText: 'Pickup state'),
+          items: pickupStates
+              .map((String state) =>
+                  DropdownMenuItem<String>(value: state, child: Text(state)))
+              .toList(),
+          onChanged: (String? state) => setState(() {
+            _pickupState = state;
+            _destinationState = null;
+            _route = null;
+            _routeSelectionError = '';
+          }),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          key: const Key('interstate-destination-state'),
+          value: _destinationState,
+          decoration: const InputDecoration(labelText: 'Destination state'),
+          items: destinationStates
+              .map((String state) =>
+                  DropdownMenuItem<String>(value: state, child: Text(state)))
+              .toList(),
+          onChanged: _pickupState == null
+              ? null
+              : (String? state) => setState(() {
+                    _destinationState = state;
+                    _route = null;
+                    _routeSelectionError = state == null ||
+                            InterstateLogisticsContracts.routesForStatePair(
+                                    _routes, _pickupState!, state)
+                                .isNotEmpty
+                        ? ''
+                        : 'This interstate route is not currently available. Please select another destination or try again later.';
+                  }),
+        ),
+        if (_routeSelectionError.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(_routeSelectionError,
+                key: const Key('interstate-unsupported-route'),
+                style: const TextStyle(color: Colors.red)),
+          ),
+        const SizedBox(height: 12),
+      ],
+      ...pairRoutes.map((Map<String, dynamic> route) {
+        return Card(
+            child: RadioListTile<Map<String, dynamic>>(
+                value: route,
+                groupValue: _route,
+                onChanged: (Map<String, dynamic>? v) =>
+                    setState(() => _route = v),
+                title: Text(
+                    '${route['routeName'] ?? '${route['originState']} → ${route['destinationState']}'}',
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text(
+                    '${route['expectedDeliveryTime'] ?? route['deliveryTimeframe'] ?? 'Timeframe supplied at quote'}')));
+      })
+    ]);
+  }
+
   Widget _peoplePage() => _scroll(<Widget>[
         const _PageTitle('Sender & receiver',
             'Contact details are used only to process this shipment.'),
