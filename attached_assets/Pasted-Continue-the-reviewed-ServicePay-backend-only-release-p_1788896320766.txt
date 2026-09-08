@@ -1,0 +1,156 @@
+Continue the reviewed ServicePay backend-only release preparation.
+
+IMPORTANT:
+The previous safety gate found:
+
+- Release branch tests: 438/444 passed
+- The SAME six tests also fail identically on pristine authoritative origin/main
+- Therefore these six failures are PRE-EXISTING BASELINE FAILURES and were NOT introduced by this release.
+- CLEAN NPM CI: PASS
+- BACKEND BUILD: PASS
+- SYNTAX CHECKS: PASS
+- GIT DIFF CHECK: PASS
+- UNRELATED FILES: NONE
+- DESTRUCTIVE DATABASE CHANGE REQUIRED: NO
+
+Do NOT fix unrelated baseline test failures inside this Interstate/Call release.
+
+Instead, perform a strict NO-REGRESSION BASELINE COMPARISON.
+
+==================================================
+1. IDENTIFY THE SIX BASELINE FAILURES
+==================================================
+
+List each failing test exactly:
+
+- test file
+- test name
+- failure/error
+- whether it also fails on pristine origin/main
+
+For every one, prove:
+
+BASELINE MAIN: FAIL
+RELEASE BRANCH: SAME FAIL
+
+If any failure is new, different, or worse on the release branch:
+STOP and mark release unsafe.
+
+==================================================
+2. RUN TARGETED RELEASE TESTS
+==================================================
+
+Run all tests directly related to:
+
+- Interstate Logistics
+- route availability
+- route pricing
+- parcel creation
+- ServicePay Call backend/session/signaling
+- authentication/authorization affected by these changes
+- Render startup/build configuration
+
+All targeted release tests must PASS.
+
+==================================================
+3. VERIFY NO REGRESSION
+==================================================
+
+Compare authoritative main vs release branch.
+
+The release is allowed to proceed only if:
+
+NEW FAILURES INTRODUCED BY RELEASE = 0
+
+Do NOT weaken tests.
+Do NOT skip failing tests globally.
+Do NOT delete tests.
+Do NOT change production behavior to satisfy unrelated tests.
+
+==================================================
+4. REVIEW RELEASE DIFF AGAIN
+==================================================
+
+The release must contain ONLY:
+
+INTERSTATE:
+- backend/controllers/interstateLogistics.controller.js
+- backend/test/interstateLogistics.controller.test.js
+
+RENDER BUILD:
+- .node-version
+- Dockerfile
+- package.json
+- package-lock.json
+
+STRICT REQUIRED BACKEND DEPENDENCIES:
+- backend/package.json
+- backend/package-lock.json
+
+CALL:
+No additional backend file if the required Call backend already exists unchanged in authoritative main.
+
+If any other file exists in the diff, STOP.
+
+==================================================
+5. CREATE RELEASE COMMIT
+==================================================
+
+If:
+
+- clean npm ci passes
+- backend build passes
+- targeted release tests pass
+- syntax checks pass
+- git diff check passes
+- no new test failures are introduced
+- unrelated files = none
+- no destructive DB changes
+
+then create a reviewed release commit on:
+
+release/backend-only-2026.09.08
+
+Do NOT merge to main.
+Do NOT deploy.
+Do NOT modify production.
+
+==================================================
+6. FINAL REPORT
+==================================================
+
+Report exactly:
+
+BASELINE FAILURES COUNT:
+BASELINE FAILURE LIST:
+
+RELEASE FAILURES COUNT:
+NEW FAILURES INTRODUCED BY RELEASE:
+
+TARGETED INTERSTATE TESTS: PASS/FAIL
+TARGETED CALL TESTS: PASS/FAIL
+TARGETED AUTH TESTS: PASS/FAIL
+RENDER BUILD TEST: PASS/FAIL
+
+CLEAN NPM CI: PASS/FAIL
+BACKEND BUILD: PASS/FAIL
+SYNTAX CHECKS: PASS/FAIL
+GIT DIFF CHECK: PASS/FAIL
+
+UNRELATED FILES: NONE / list
+UNRELATED UNFINISHED CHANGES INCLUDED: YES/NO
+
+RELEASE BRANCH:
+RELEASE COMMIT:
+
+DESTRUCTIVE DATABASE CHANGE REQUIRED: YES/NO
+PRODUCTION DATA MODIFIED: NO
+VULL MODIFIED: NO
+DEPLOYMENT PERFORMED: NO
+
+NO-REGRESSION GATE: PASS/FAIL
+SAFE RELEASE COMMIT IDENTIFIED: YES/NO
+SAFE FOR MANUAL RENDER DEPLOY: YES/NO
+
+If SAFE FOR MANUAL RENDER DEPLOY is YES, STOP.
+Do not deploy automatically.
