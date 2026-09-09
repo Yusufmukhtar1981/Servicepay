@@ -30,16 +30,57 @@ const transitions = {
 const branchAllowed = (user, branchId) => user.role === "HEAD_OFFICE" || String(user.branchId || "") === String(branchId);
 const tracking = () => `SPX-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
 const ref = () => `INTERSTATE-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-const quoteInput = (body = {}) => ({ ...body, weightKg: body.weightKg ?? body.parcel?.weightKg, declaredValue: body.declaredValue ?? body.parcel?.declaredValue, fragile: body.fragile ?? body.parcel?.fragile });
-const quoteHash = (body) => crypto.createHash("sha256").update(JSON.stringify({ routeId: String(body.routeId), weightKg: Number(body.weightKg), declaredValue: Number(body.declaredValue || 0), serviceType: body.serviceType, pickupMethod: body.pickupMethod, deliveryMethod: body.deliveryMethod, protection: !!body.protection, fragile: !!body.fragile })).digest("hex");
 const logisticsError = (message, status, code) => Object.assign(new Error(message), { status, code });
 const responseError = (res, error, fallbackStatus = 400) =>
   res.status(error.status || fallbackStatus).json({ success: false, ...(error.code ? { code: error.code } : {}), message: error.message });
-const state = (value) => String(value || "").trim().toUpperCase();
+const quoteInput = (body = {}) => ({
+  ...body,
+  weightKg: body.weightKg ?? body.parcel?.weightKg,
+  declaredValue: body.declaredValue ?? body.parcel?.declaredValue,
+  dimensions: canonicalDimensions(body),
+  fragile: body.fragile ?? body.parcel?.fragile,
+});
+const normalizedState = (value) => String(value || "").trim().toUpperCase();
+const dimensionKeys = ["length", "width", "height"];
+const normalizedDimensions = (dimensions = {}) => ({
+  length: Number(dimensions.length || 0),
+  width: Number(dimensions.width || 0),
+  height: Number(dimensions.height || 0),
+});
+const validatedDimensions = (dimensions) => {
+  if (dimensions === undefined || dimensions === null) return normalizedDimensions();
+  if (typeof dimensions !== "object" || Array.isArray(dimensions)) throw new Error("Parcel dimensions must be an object.");
+  const unknown = Object.keys(dimensions).filter((key) => !dimensionKeys.includes(key));
+  if (unknown.length) throw new Error("Parcel dimensions may include only length, width, and height.");
+  const normalized = normalizedDimensions(dimensions);
+  if (Object.values(normalized).some((value) => !Number.isFinite(value) || value < 0)) throw new Error("Parcel dimensions must be valid non-negative numbers.");
+  return normalized;
+};
+const canonicalDimensions = (body) => {
+  const topLevel = body.dimensions === undefined ? null : validatedDimensions(body.dimensions);
+  const nested = body.parcel?.dimensions === undefined ? null : validatedDimensions(body.parcel.dimensions);
+  if (topLevel && nested && JSON.stringify(topLevel) !== JSON.stringify(nested)) throw new Error("Top-level and parcel dimensions must match.");
+  return topLevel || nested || normalizedDimensions();
+};
+const quoteHash = (body) => crypto.createHash("sha256").update(JSON.stringify({
+  routeId: String(body.routeId),
+  originState: normalizedState(body.originState),
+  destinationState: normalizedState(body.destinationState),
+  weightKg: Number(body.weightKg),
+  declaredValue: Number(body.declaredValue || 0),
+  dimensions: normalizedDimensions(body.dimensions),
+  serviceType: body.serviceType,
+  pickupMethod: body.pickupMethod,
+  deliveryMethod: body.deliveryMethod,
+  protection: !!body.protection,
+  fragile: !!body.fragile,
+})).digest("hex");
+const activeRouteFilter = (extra = {}) => ({ ...extra, status: "ACTIVE", isArchived: { $ne: true } });
 const validateRouteLocations = (body, route) => {
   const sender = body.sender || {};
   const receiver = body.receiver || {};
-  if (state(sender.state) !== state(route.originState) || state(receiver.state) !== state(route.destinationState)) {
+  if (normalizedState(sender.state) !== normalizedState(route.originState) ||
+      normalizedState(receiver.state) !== normalizedState(route.destinationState)) {
     throw logisticsError("Sender and receiver states must match the selected route.", 400, "ROUTE_STATE_MISMATCH");
   }
   if (!String(sender.lga || "").trim() || !String(sender.address || "").trim() ||
@@ -59,33 +100,44 @@ const recordStatus = async (shipment, status, req, options = {}) => {
   await History.create({ shipmentId: shipment._id, status, actorId: req.user?._id || null, actorRole: req.user?.role || "SYSTEM", branchId: options.branchId || req.user?.branchId || null, locationText: options.locationText || "", note: options.note || "", evidenceUrls: options.evidenceUrls || [], publicVisible: options.publicVisible !== false });
   await audit(req, shipment, "INTERSTATE_STATUS_UPDATED", `Status changed to ${status}`);
 };
-const getRouteQuote = async (body) => {
+const assertRouteDirection = (route, body) => {
+  const originState = normalizedState(body.originState);
+  const destinationState = normalizedState(body.destinationState);
+  if (!originState || !destinationState) throw logisticsError("Origin and destination states are required.", 400, "ROUTE_DIRECTION_REQUIRED");
+  if (originState !== normalizedState(route.originState) || destinationState !== normalizedState(route.destinationState)) {
+    throw logisticsError("The selected route does not match this shipment direction.", 400, "ROUTE_STATE_MISMATCH");
+  }
+  if (body.sender?.state && normalizedState(body.sender.state) !== originState) throw logisticsError("Sender state must match the selected route origin.", 400, "ROUTE_STATE_MISMATCH");
+  if (body.receiver?.state && normalizedState(body.receiver.state) !== destinationState) throw logisticsError("Receiver state must match the selected route destination.", 400, "ROUTE_STATE_MISMATCH");
+};
+const getRouteQuote = async (body, session = null) => {
   if (!mongoose.isValidObjectId(body.routeId)) {
     throw logisticsError("The selected route is invalid.", 404, "ROUTE_NOT_FOUND");
   }
-  const route = await LogisticsRoute.findById(body.routeId);
+  let routeQuery = LogisticsRoute.findById(body.routeId);
+  if (session) routeQuery = routeQuery.session(session);
+  const route = await routeQuery;
   if (!route) throw logisticsError("The selected route no longer exists.", 404, "ROUTE_NOT_FOUND");
-  if (route.status !== "ACTIVE") {
+  if (route.status !== "ACTIVE" || route.isArchived === true) {
     throw logisticsError("The selected route is currently inactive.", 409, "ROUTE_INACTIVE");
   }
-  // A client may send the selected pair alongside its route id. Validate both
-  // availability and that the selected route actually belongs to that pair.
   if (body.originState !== undefined || body.destinationState !== undefined) {
-    const originState = state(body.originState);
-    const destinationState = state(body.destinationState);
-    const configured = originState && destinationState && await LogisticsRoute.exists({
+    const originState = normalizedState(body.originState);
+    const destinationState = normalizedState(body.destinationState);
+    let configuredQuery = LogisticsRoute.exists(activeRouteFilter({
       originState,
       destinationState,
-      status: "ACTIVE",
-    });
-    if (!configured) {
-      throw logisticsError("This interstate route is not currently available. Please select another destination or try again later.", 422, "ROUTE_UNSUPPORTED");
-    }
-    if (originState !== state(route.originState) ||
-        destinationState !== state(route.destinationState)) {
-      throw logisticsError("The selected route does not match the pickup and destination states.", 400, "ROUTE_STATE_MISMATCH");
+    }));
+    if (session) configuredQuery = configuredQuery.session(session);
+    if (!originState || !destinationState || !await configuredQuery) {
+      throw logisticsError(
+        "This interstate route is not currently available. Please select another destination or try again later.",
+        422,
+        "ROUTE_UNSUPPORTED",
+      );
     }
   }
+  assertRouteDirection(route, body);
   validateRouteLocations(body, route);
   const input = quoteInput(body);
   return { route, input, quote: calculateInterstateQuote(route, input) };
@@ -95,17 +147,39 @@ exports.quote = async (req, res) => {
   catch (e) { return responseError(res, e); }
 };
 exports.createShipment = async (req, res) => {
+  const session = await mongoose.startSession();
   try {
-    const b = req.body; const { route, input, quote } = await getRouteQuote(b);
-    const savedQuote = await LogisticsQuote.findOne({ _id: b.quoteId, customerId: req.user._id, routeId: route._id, expiresAt: { $gt: new Date() } });
-    if (!savedQuote || savedQuote.routeVersion !== String(route.updatedAt.getTime()) || savedQuote.inputHash !== quoteHash(input)) return res.status(409).json({ success: false, code: "QUOTE_STALE", message: "Quote is stale or no longer matches shipment details. Request a new quote." });
+    const b = req.body;
     if (!b.sender?.name || !b.sender?.phone || !b.sender?.address || !b.sender?.lga || !b.receiver?.name || !b.receiver?.phone || !b.receiver?.address || !b.receiver?.lga || !b.parcel?.category || !b.parcel?.description || !b.prohibitedItemsAcknowledged) return res.status(400).json({ success: false, code: "SHIPMENT_DETAILS_INVALID", message: "Provide complete sender, receiver, parcel details and prohibited-items acknowledgement." });
     const prohibited = ["WEAPONS", "EXPLOSIVES", "ILLEGAL_DRUGS", "DANGEROUS_CHEMICALS", "CASH", "CURRENCY"];
     if (prohibited.includes(String(b.parcel.category).toUpperCase())) return res.status(400).json({ success: false, message: "This parcel category is prohibited." });
-    const shipment = await Shipment.create({ customerId: req.user._id, routeId: route._id, originBranchId: route.originBranchId, destinationBranchId: route.destinationBranchId, sender: { ...b.sender, state: route.originState }, receiver: { ...b.receiver, state: route.destinationState }, pickupMethod: b.pickupMethod, deliveryMethod: b.deliveryMethod, parcel: { ...b.parcel, specialHandlingNote: b.parcel.specialHandlingNote ?? b.parcel.specialHandling ?? "" }, serviceType: b.serviceType, protection: !!b.protection, quote: { routeVersion: savedQuote.routeVersion, breakdown: quote.breakdown, total: quote.total, expectedDelivery: quote.expectedDelivery }, status: "AWAITING_PAYMENT" });
-    await History.create({ shipmentId: shipment._id, status: "AWAITING_PAYMENT", actorId: req.user._id, actorRole: req.user.role, branchId: route.originBranchId, note: "Shipment created" });
+    session.startTransaction();
+    const { route, input, quote } = await getRouteQuote(b, session);
+    const admission = await LogisticsRoute.updateOne(
+      activeRouteFilter({ _id: route._id }),
+      { $inc: { shipmentAdmissionVersion: 1 } },
+      { session, timestamps: false },
+    );
+    if (admission.modifiedCount !== 1) {
+      const error = new Error("This route became unavailable. Request a new quote.");
+      error.status = 409; error.code = "ROUTE_UNAVAILABLE";
+      throw error;
+    }
+    const savedQuote = await LogisticsQuote.findOne({ _id: b.quoteId, customerId: req.user._id, routeId: route._id, expiresAt: { $gt: new Date() } }).session(session);
+    if (!savedQuote || savedQuote.routeVersion !== String(route.updatedAt.getTime()) || savedQuote.inputHash !== quoteHash(input)) {
+      const error = new Error("Quote is stale or no longer matches shipment details. Request a new quote.");
+      error.status = 409; error.code = "QUOTE_STALE";
+      throw error;
+    }
+    const [shipment] = await Shipment.create([{ customerId: req.user._id, routeId: route._id, originBranchId: route.originBranchId, destinationBranchId: route.destinationBranchId, sender: { ...b.sender, state: route.originState }, receiver: { ...b.receiver, state: route.destinationState }, pickupMethod: b.pickupMethod, deliveryMethod: b.deliveryMethod, parcel: { ...b.parcel, dimensions: input.dimensions, specialHandlingNote: b.parcel.specialHandlingNote ?? b.parcel.specialHandling ?? "" }, serviceType: b.serviceType, protection: !!b.protection, quote: { routeVersion: savedQuote.routeVersion, breakdown: quote.breakdown, total: quote.total, expectedDelivery: quote.expectedDelivery }, status: "AWAITING_PAYMENT" }], { session });
+    await History.create([{ shipmentId: shipment._id, status: "AWAITING_PAYMENT", actorId: req.user._id, actorRole: req.user.role, branchId: route.originBranchId, note: "Shipment created" }], { session });
+    await session.commitTransaction();
     return res.status(201).json({ success: true, data: shipment, shipment });
-  } catch (e) { return responseError(res, e); }
+  } catch (e) {
+    if (session.inTransaction()) await session.abortTransaction();
+    const concurrent = e.hasErrorLabel?.("TransientTransactionError") || e.code === 112;
+    return res.status(e.status || (concurrent ? 409 : 400)).json({ success: false, code: e.code && typeof e.code === "string" ? e.code : concurrent ? "ROUTE_CHANGED" : undefined, message: concurrent ? "The route changed while creating this shipment. Request a new quote." : e.message });
+  } finally { await session.endSession(); }
 };
 exports.pay = async (req, res) => {
   const session = await mongoose.startSession();
@@ -117,7 +191,7 @@ exports.pay = async (req, res) => {
     session.startTransaction();
     const shipment = await Shipment.findOne({ _id: req.params.id, customerId: req.user._id, paymentStatus: "UNPAID", status: "AWAITING_PAYMENT" }).session(session);
     if (!shipment) throw Object.assign(new Error("Shipment is not available for payment."), { status: 404 });
-    const route = await LogisticsRoute.findOne({ _id: shipment.routeId, status: "ACTIVE" }).session(session);
+    const route = await LogisticsRoute.findOne(activeRouteFilter({ _id: shipment.routeId })).session(session);
     if (!route || shipment.quote.routeVersion !== String(route.updatedAt.getTime())) throw Object.assign(new Error("Route pricing changed. Request a new quote before payment."), { status: 409, code: "QUOTE_STALE" });
     shipment.paymentIdempotencyKey = key; shipment.trackingNumber = tracking(); shipment.paymentStatus = "PAID"; shipment.paidAt = new Date(); shipment.status = "PAID";
     const user = await User.findOneAndUpdate({ _id: req.user._id, status: "ACTIVE", walletBalance: { $gte: shipment.quote.total } }, { $inc: { walletBalance: -shipment.quote.total, totalTransactions: 1 } }, { new: true, session });
@@ -131,7 +205,7 @@ exports.pay = async (req, res) => {
   } catch (e) { if (session.inTransaction()) await session.abortTransaction(); if (e.code === 11000) { const retryKey = String(req.get("Idempotency-Key") || req.body.idempotencyKey || "").trim() || `shipment-payment:${req.params.id}`; const shipment = await Shipment.findOne({ customerId: req.user._id, paymentIdempotencyKey: retryKey }).populate("paymentTransactionId"); if (shipment) return res.json({ success: true, idempotent: true, data: shipment, shipment, transaction: shipment.paymentTransactionId }); } return res.status(e.status || 500).json({ success: false, message: e.message || "Payment failed." }); } finally { session.endSession(); }
 };
 exports.myShipments = async (req, res) => { const filter = { customerId: req.user._id }; if (req.query.status) filter.status = String(req.query.status).toUpperCase(); const shipments = await Shipment.find(filter).sort({ createdAt: -1 }); res.json({ success: true, count: shipments.length, shipments }); };
-exports.customerRoutes = async (req, res) => { const routes = await LogisticsRoute.find({ status: "ACTIVE" }).select("-createdBy -updatedBy").sort({ originState: 1, destinationState: 1 }); res.json({ success: true, data: { routes }, routes }); };
+exports.customerRoutes = async (req, res) => { const routes = await LogisticsRoute.find(activeRouteFilter()).select("-createdBy -updatedBy -archivedBy -archiveReason").sort({ originState: 1, destinationState: 1 }); res.json({ success: true, data: { routes }, routes }); };
 exports.config = exports.customerRoutes;
 exports.getShipment = async (req, res) => { const shipment = await Shipment.findOne({ _id: req.params.id, customerId: req.user._id }); if (!shipment) return res.status(404).json({ success: false, message: "Shipment not found." }); const timeline = await History.find({ shipmentId: shipment._id }).sort({ createdAt: 1 }); res.json({ success: true, shipment, timeline }); };
 exports.track = async (req, res) => { const shipment = await Shipment.findOne({ trackingNumber: String(req.params.trackingNumber).toUpperCase() }).select("trackingNumber sender.state receiver.state status quote.expectedDelivery createdAt updatedAt deliveredAt"); if (!shipment) return res.status(404).json({ success: false, message: "Invalid tracking number." }); const timeline = await History.find({ shipmentId: shipment._id, publicVisible: true }).select("status locationText createdAt").sort({ createdAt: 1 }); res.json({ success: true, shipment: { trackingNumber: shipment.trackingNumber, origin: shipment.sender.state, destination: shipment.receiver.state, status: shipment.status, expectedDelivery: shipment.quote.expectedDelivery, latestUpdate: shipment.updatedAt }, timeline }); };
@@ -163,9 +237,9 @@ exports.branchStatus = async (req, res) => {
   if (status === "VERIFIED_AT_ORIGIN_HUB" && req.body.verifiedWeightKg !== undefined) {
     const verifiedWeightKg = Number(req.body.verifiedWeightKg);
     if (!Number.isFinite(verifiedWeightKg) || verifiedWeightKg <= 0) return res.status(400).json({ success: false, message: "Verified weight must be valid." });
-    const route = await LogisticsRoute.findOne({ _id: shipment.routeId, status: "ACTIVE" });
+    const route = await LogisticsRoute.findOne(activeRouteFilter({ _id: shipment.routeId }));
     if (!route) return res.status(409).json({ success: false, message: "Route is unavailable for weight verification." });
-    const recalculated = calculateInterstateQuote(route, { weightKg: verifiedWeightKg, declaredValue: shipment.parcel.declaredValue, serviceType: shipment.serviceType, pickupMethod: shipment.pickupMethod, deliveryMethod: shipment.deliveryMethod, protection: shipment.protection, fragile: shipment.parcel.fragile });
+    const recalculated = calculateInterstateQuote(route, { weightKg: verifiedWeightKg, declaredValue: shipment.parcel.declaredValue, dimensions: shipment.parcel.dimensions, serviceType: shipment.serviceType, pickupMethod: shipment.pickupMethod, deliveryMethod: shipment.deliveryMethod, protection: shipment.protection, fragile: shipment.parcel.fragile });
     const difference = Number((recalculated.total - shipment.quote.total).toFixed(2));
     shipment.verifiedWeightKg = verifiedWeightKg;
     shipment.priceAdjustments.push({ declaredWeightKg: shipment.parcel.weightKg, verifiedWeightKg, previousTotal: shipment.quote.total, adjustedTotal: recalculated.total, difference, actorId: req.user._id });
@@ -258,15 +332,40 @@ exports.verifyDelivery = async (req, res) => {
 const routeFields = [
   "name", "originState", "originBranchId", "destinationState",
   "destinationBranchId", "distanceKm", "baseFare", "minimumWeightKg",
-  "maximumWeightKg", "pricePerAdditionalKg", "expressEnabled",
+  "maximumWeightKg", "pricePerAdditionalKg", "maximumDimensionCm", "oversizeSurcharge", "expressEnabled",
   "expressSurcharge", "fragileItemSurcharge", "pickupFee", "doorDeliveryFee", "branchCollectionFee",
   "protectionEnabled", "protectionPercent", "protectionFlatFee",
   "standardDeliveryTime", "expressDeliveryTime", "notes", "status",
 ];
+const routeNumericFields = [
+  "baseFare", "minimumWeightKg", "maximumWeightKg", "pricePerAdditionalKg",
+  "maximumDimensionCm", "oversizeSurcharge", "distanceKm", "expressSurcharge",
+  "fragileItemSurcharge", "pickupFee", "doorDeliveryFee", "branchCollectionFee",
+  "protectionPercent", "protectionFlatFee",
+];
+const routeStatuses = ["ACTIVE", "INACTIVE", "PAUSED", "UNAVAILABLE"];
 const picked = (body, fields) => Object.fromEntries(
   fields.filter((field) => Object.prototype.hasOwnProperty.call(body || {}, field))
     .map((field) => [field, body[field]]),
 );
+const validateRouteInput = (input) => {
+  for (const field of ["name", "originState", "originBranchId", "destinationState", "destinationBranchId", "standardDeliveryTime"]) {
+    if (!String(input[field] || "").trim()) throw new Error(`${field} is required.`);
+  }
+  for (const field of routeNumericFields) {
+    if (input[field] === undefined || input[field] === null || input[field] === "") continue;
+    const value = Number(input[field]);
+    if (!Number.isFinite(value) || value < 0) throw new Error(`${field} must be a non-negative number.`);
+  }
+  for (const field of ["baseFare", "maximumWeightKg", "pricePerAdditionalKg"]) {
+    if (input[field] === undefined || input[field] === null || input[field] === "") throw new Error(`${field} is required.`);
+  }
+  if (Number(input.maximumWeightKg) < Number(input.minimumWeightKg || 0)) throw new Error("Maximum weight must be at least the included weight.");
+  if (input.expressEnabled && !String(input.expressDeliveryTime || "").trim()) throw new Error("Express delivery time is required when express service is enabled.");
+  const status = String(input.status || "ACTIVE").toUpperCase();
+  if (!routeStatuses.includes(status)) throw new Error("Invalid route status.");
+  input.status = status;
+};
 const validateRouteBranches = async (input) => {
   if (String(input.originBranchId) === String(input.destinationBranchId)) {
     throw new Error("Origin and destination branches must be different.");
@@ -285,7 +384,8 @@ const validateRouteBranches = async (input) => {
   }
 };
 exports.adminRoutes = async (req, res) => {
-  const routes = await LogisticsRoute.find().populate("originBranchId", "name code state").populate("destinationBranchId", "name code state").sort({ createdAt: -1 });
+  const filter = String(req.query.includeArchived || "").toLowerCase() === "true" ? {} : { isArchived: { $ne: true } };
+  const routes = await LogisticsRoute.find(filter).populate("originBranchId", "name code state").populate("destinationBranchId", "name code state").sort({ createdAt: -1 });
   res.json({ success: true, routes });
 };
 exports.adminBranches = async (req, res) => {
@@ -295,22 +395,90 @@ exports.adminBranches = async (req, res) => {
 exports.createRoute = async (req, res) => {
   try {
     const input = picked(req.body, routeFields);
+    validateRouteInput(input);
     await validateRouteBranches(input);
-    if (Number(input.maximumWeightKg) < Number(input.minimumWeightKg || 0)) throw new Error("Maximum weight must be at least the included weight.");
-    const route = await LogisticsRoute.create({ ...input, createdBy: req.user._id });
+    const route = await LogisticsRoute.create({ ...input, isArchived: false, archivedAt: null, archivedBy: null, archiveReason: "", createdBy: req.user._id });
     res.status(201).json({ success: true, route });
-  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+  } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ success: false, code: e.code === 11000 ? "ROUTE_ALREADY_EXISTS" : undefined, message: e.code === 11000 ? "A route already exists for this directional branch pair." : e.message }); }
 };
 exports.updateRoute = async (req, res) => {
   try {
     const existing = await LogisticsRoute.findById(req.params.id);
     if (!existing) return res.status(404).json({ success: false, message: "Route not found." });
+    if (existing.isArchived) return res.status(409).json({ success: false, code: "ROUTE_ARCHIVED", message: "Restore this route before editing it." });
     const input = picked(req.body, routeFields);
-    await validateRouteBranches({ ...existing.toObject(), ...input });
-    if (Number(input.maximumWeightKg ?? existing.maximumWeightKg) < Number(input.minimumWeightKg ?? existing.minimumWeightKg)) throw new Error("Maximum weight must be at least the included weight.");
+    const merged = { ...existing.toObject(), ...input };
+    validateRouteInput(merged);
+    await validateRouteBranches(merged);
     const route = await LogisticsRoute.findByIdAndUpdate(req.params.id, { ...input, updatedBy: req.user._id }, { new: true, runValidators: true });
     res.json({ success: true, route });
-  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+  } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ success: false, code: e.code === 11000 ? "ROUTE_ALREADY_EXISTS" : undefined, message: e.code === 11000 ? "A route already exists for this directional branch pair." : e.message }); }
+};
+const setRouteStatus = async (req, res, status) => {
+  const route = await LogisticsRoute.findById(req.params.id);
+  if (!route) return res.status(404).json({ success: false, message: "Route not found." });
+  if (route.isArchived) return res.status(409).json({ success: false, code: "ROUTE_ARCHIVED", message: "Restore this route before changing its status." });
+  route.status = status;
+  route.updatedBy = req.user._id;
+  await route.save();
+  return res.json({ success: true, route });
+};
+exports.activateRoute = async (req, res) => {
+  try { return await setRouteStatus(req, res, "ACTIVE"); }
+  catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+};
+exports.deactivateRoute = async (req, res) => {
+  try { return await setRouteStatus(req, res, "INACTIVE"); }
+  catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+};
+exports.archiveRoute = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const reason = String(req.body.reason || "").trim();
+    if (reason.length < 5 || reason.length > 500) return res.status(400).json({ success: false, code: "ARCHIVE_REASON_REQUIRED", message: "Provide an archive reason of 5 to 500 characters." });
+    session.startTransaction();
+    const route = await LogisticsRoute.findById(req.params.id).session(session);
+    if (!route) {
+      await session.abortTransaction();
+      return res.status(404).json({ success: false, message: "Route not found." });
+    }
+    if (route.isArchived) {
+      await session.abortTransaction();
+      return res.json({ success: true, idempotent: true, route });
+    }
+    const activeShipment = await Shipment.exists({ routeId: route._id, status: { $nin: ["DELIVERED", "CANCELLED", "RETURNED"] } }).session(session);
+    if (activeShipment) {
+      await session.abortTransaction();
+      return res.status(409).json({ success: false, code: "ROUTE_HAS_ACTIVE_SHIPMENTS", message: "This route has active shipments and cannot be archived yet. Deactivate it instead." });
+    }
+    route.status = "INACTIVE";
+    route.isArchived = true;
+    route.archivedAt = new Date();
+    route.archivedBy = req.user._id;
+    route.archiveReason = reason;
+    route.updatedBy = req.user._id;
+    await route.save({ session });
+    await session.commitTransaction();
+    return res.json({ success: true, route, message: "Route archived safely." });
+  } catch (e) {
+    if (session.inTransaction()) await session.abortTransaction();
+    const concurrent = e.hasErrorLabel?.("TransientTransactionError") || e.code === 112;
+    return res.status(concurrent ? 409 : 400).json({ success: false, code: concurrent ? "ROUTE_CHANGED" : undefined, message: concurrent ? "The route changed while it was being archived. Review active shipments and retry." : e.message });
+  } finally { await session.endSession(); }
+};
+exports.restoreRoute = async (req, res) => {
+  try {
+    const route = await LogisticsRoute.findById(req.params.id);
+    if (!route) return res.status(404).json({ success: false, message: "Route not found." });
+    route.status = "INACTIVE";
+    route.isArchived = false;
+    route.archivedAt = null;
+    route.archivedBy = null;
+    route.archiveReason = "";
+    route.updatedBy = req.user._id;
+    await route.save();
+    return res.json({ success: true, route, message: "Route restored as inactive." });
+  } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
 };
 exports.adminShipments = async (req, res) => { const q = req.query; const filter = {}; if (q.status) filter.status = String(q.status).toUpperCase(); if (q.originBranchId) filter.originBranchId = q.originBranchId; if (q.destinationBranchId) filter.destinationBranchId = q.destinationBranchId; if (q.search) filter.$or = ["trackingNumber", "sender.name", "sender.phone", "receiver.name", "receiver.phone"].map((field) => ({ [field]: { $regex: q.search, $options: "i" } })); const shipments = await Shipment.find(filter).sort({ createdAt: -1 }); res.json({ success: true, shipments }); };
 exports.createDriver = async (req, res) => { try { res.status(201).json({ success: true, driver: await TransportDriver.create({ ...picked(req.body, ["userId", "name", "phone", "driverCode", "assignedBranchId", "status"]), createdBy: req.user._id }) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } };
@@ -322,7 +490,7 @@ exports.deleteVehicle = async (req, res) => { const vehicle = await TransportVeh
 exports.createTrip = async (req, res) => {
   try {
     const b = req.body;
-    const route = await LogisticsRoute.findOne({ _id: b.routeId, status: "ACTIVE" });
+    const route = await LogisticsRoute.findOne(activeRouteFilter({ _id: b.routeId }));
     if (!route) return res.status(400).json({ success: false, message: "An active Interstate route is required." });
     const driver = await TransportDriver.findOne({ _id: b.driverId, status: "ACTIVE" }); const vehicle = await TransportVehicle.findOne({ _id: b.vehicleId, status: "ACTIVE" });
     if (!driver || !vehicle) return res.status(400).json({ success: false, message: "Active driver and vehicle are required." });
@@ -371,3 +539,4 @@ exports.adminOverview = async (req, res) => {
 };
 exports.adminExceptions = async (req, res) => { const exceptions = await Shipment.find({ status: { $in: ["DELIVERY_ATTEMPTED", "FAILED_DELIVERY", "RETURN_INITIATED"] } }).sort({ updatedAt: -1 }); res.json({ success: true, data: { exceptions }, exceptions }); };
 exports.adminReturns = async (req, res) => { const returns = await Shipment.find({ status: { $in: ["RETURN_INITIATED", "RETURN_IN_TRANSIT", "RETURNED"] } }).sort({ updatedAt: -1 }); res.json({ success: true, data: { returns }, returns }); };
+exports._test = { assertRouteDirection, canonicalDimensions, quoteHash };
