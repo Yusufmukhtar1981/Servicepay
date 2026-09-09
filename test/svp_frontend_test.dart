@@ -125,13 +125,25 @@ void main() {
       );
       expect(labels.where((label) => label == 'Executive Management'),
           hasLength(1));
-      expect(labels, isNot(contains('SVP Management')));
+      expect(labels.where((label) => label == 'SVP'), hasLength(1));
       expect(labels, isNot(contains('SVP Reports')));
       expect(labels, isNot(contains('SVP Audit Logs')));
     }
     final staffLabels = AdminMainNavigation.visibleDestinationLabels(
         const AdminAccess(role: 'STAFF', permissions: {}));
     expect(staffLabels, isNot(contains('Executive Management')));
+  });
+
+  test('SVP Admin destination reuses the existing management permission and page',
+      () {
+    final labels = AdminMainNavigation.visibleDestinationLabels(
+      AdminAccess(role: 'STAFF', permissions: const {
+        AdminPermissions.svpManagementView,
+      }),
+    );
+
+    expect(labels, contains('SVP'));
+    expect(labels, isNot(contains('Executive Management')));
   });
 
   test('SVP form payload preserves required fields, allowlist and scope shape',

@@ -24,11 +24,17 @@ import 'admin_session_service.dart';
 import 'login_screen.dart';
 import 'executive_management_screen.dart';
 import 'admin_feature_controls_screen.dart';
+import 'svp_management_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
-  const AdminMainNavigation({super.key, this.sessionService});
+  const AdminMainNavigation({
+    super.key,
+    this.sessionService,
+    this.initialDestinationLabel,
+  });
 
   final AdminSessionService? sessionService;
+  final String? initialDestinationLabel;
 
   static List<String> visibleDestinationLabels(AdminAccess access) {
     return _AdminMainNavigationState.destinations
@@ -73,6 +79,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.insights,
         <String>[AdminPermissions.staffView],
         ExecutiveManagementScreen()),
+    _AdminDestination(
+        'SVP',
+        Icons.badge_outlined,
+        Icons.badge,
+        <String>[AdminPermissions.svpManagementView],
+        SvpManagementScreen()),
     _AdminDestination(
         'Branch Management',
         Icons.account_tree_outlined,
@@ -219,7 +231,22 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
     setState(() => refreshError = null);
     try {
       final AdminAccess value = await sessionService.refresh();
-      if (mounted) setState(() => access = value);
+      if (mounted) {
+        final visibleLabels =
+            AdminMainNavigation.visibleDestinationLabels(value);
+        final allowed = destinations
+            .where((_AdminDestination item) => visibleLabels.contains(item.label))
+            .toList();
+        final requestedIndex = widget.initialDestinationLabel == null
+            ? -1
+            : allowed.indexWhere(
+                (_AdminDestination item) =>
+                    item.label == widget.initialDestinationLabel);
+        setState(() {
+          access = value;
+          if (requestedIndex >= 0) currentIndex = requestedIndex;
+        });
+      }
     } on AdminSessionExpiredException {
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
