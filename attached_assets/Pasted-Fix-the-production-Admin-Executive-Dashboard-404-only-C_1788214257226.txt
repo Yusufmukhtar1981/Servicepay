@@ -1,0 +1,78 @@
+Fix the production Admin Executive Dashboard 404 only.
+
+Current production error:
+GET /api/admin/dashboard/executive?range=today
+returns:
+Route not found
+
+IMPORTANT:
+- Do not redesign the Admin Dashboard.
+- Do not touch Branch Management, wallet, payments, MongoDB, JWT, Rider ringing, or other working features.
+- Fix only the frontend/backend route contract for the Executive Command Center.
+
+Do the following:
+
+1. Inspect the Admin frontend code and identify the exact endpoint used for:
+   Executive Command Center / Current Dashboard.
+
+2. Inspect backend admin routes/controllers and determine whether the intended Executive Dashboard endpoint:
+   - already exists under a different path,
+   - exists but is not mounted,
+   - exists but is behind the wrong router prefix,
+   - or is genuinely missing.
+
+3. Do NOT create duplicate business logic if an existing dashboard summary/controller already exists.
+Reuse the existing safe admin dashboard aggregation where possible.
+
+4. Ensure the production API supports the exact endpoint expected by the frontend, preferably:
+   GET /api/admin/dashboard/executive?range=today
+
+Support safe range values:
+- today
+- yesterday
+- week
+- month
+
+5. Protect the route with existing Admin/Super Admin authentication and RBAC.
+
+Expected unauthorized behavior:
+401/403
+
+Expected authorized behavior:
+200
+
+6. Response must return the real Executive Dashboard data expected by the current UI.
+Do not return placeholder/fake values.
+
+7. If the backend already uses another canonical endpoint, either:
+   - update the frontend to use that canonical endpoint,
+   OR
+   - add a backward-compatible alias safely.
+
+Choose the smallest production-safe fix.
+
+8. Verify locally:
+- Admin login: 200
+- GET /api/admin/dashboard/executive?range=today: 200
+- invalid/unsupported range handled safely
+- unauthenticated request: 401/403
+- no 500 errors
+
+9. Deploy the backend/frontend change through the existing working production workflow.
+
+10. Verify production:
+- admin.servicepay.ng loads
+- Executive Command Center loads
+- no “Route not found”
+- api.servicepay.ng endpoint returns 200 when authenticated
+- browser console has no related failed API request
+
+Return:
+- root cause
+- frontend file changed
+- backend file changed
+- exact route mounted
+- local result
+- production result
+
+Proceed now and do not modify unrelated ServicePay features.

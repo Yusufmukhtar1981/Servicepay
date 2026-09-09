@@ -14,6 +14,7 @@ const LEGAL_KEYS = [
   "privacyPolicyUrl", "termsAndConditionsUrl", "amlPolicyUrl",
   "complaintsPolicyUrl", "dataProtectionPolicyUrl",
 ];
+const TOGGLE_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
 const defaultControl = () => ({
   maintenance: {
@@ -29,6 +30,11 @@ const defaultControl = () => ({
 
 const object = (value) =>
   value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+const plainMap = (value) => {
+  if (value instanceof Map) return Object.fromEntries(value.entries());
+  return object(value);
+};
 
 const boolean = (value, fallback) => {
   if (value === undefined) return fallback;
@@ -55,12 +61,16 @@ const date = (value, fallback) => {
 function current(settings) {
   const defaults = defaultControl();
   const raw = settings?.fintechControl?.toObject?.() || settings?.fintechControl || {};
+  const services = settings?.services?.toObject?.() || settings?.services || {};
   return {
     maintenance: { ...defaults.maintenance, ...object(raw.maintenance) },
     serviceLimits: { ...defaults.serviceLimits, ...object(raw.serviceLimits) },
     transactionFees: { ...defaults.transactionFees, ...object(raw.transactionFees) },
     legalPolicies: { ...defaults.legalPolicies, ...object(raw.legalPolicies) },
-    featureToggles: { ...(settings?.services?.toObject?.() || settings?.services || {}) },
+    featureToggles: {
+      ...plainMap(raw.featureToggles),
+      ...services,
+    },
   };
 }
 
@@ -101,6 +111,13 @@ exports.getFintechControlSettings = async (req, res) => {
 
 exports.updateFintechControlSettings = async (req, res) => {
   try {
+    const reason = String(req.body?.reason || "").trim();
+    if (reason.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: "A specific audit reason of at least 10 characters is required.",
+      });
+    }
     const settings = await AppSettings.getGlobalSettings();
     const previous = current(settings);
     const body = object(req.body?.fintechControl || req.body);
@@ -136,6 +153,12 @@ exports.updateFintechControlSettings = async (req, res) => {
       if (legal[key] !== undefined) next.legalPolicies[key] = String(legal[key] || "").trim().slice(0, 1000);
     }
     for (const [key, value] of Object.entries(toggles)) {
+      if (!TOGGLE_KEY.test(key)) {
+        return res.status(400).json({
+          success: false,
+          message: `featureToggles.${key} is not a valid toggle key.`,
+        });
+      }
       const enabled = boolean(value, undefined);
       if (enabled === null || enabled === undefined) {
         return res.status(400).json({ success: false, message: `featureToggles.${key} must be true or false.` });
@@ -143,11 +166,17 @@ exports.updateFintechControlSettings = async (req, res) => {
       next.featureToggles[key] = enabled;
     }
 
+    const opaqueToggles = Object.fromEntries(
+      Object.entries(next.featureToggles).filter(
+        ([key]) => !settings.schema.path(`services.${key}`)
+      )
+    );
     settings.set("fintechControl", {
       maintenance: next.maintenance,
       serviceLimits: next.serviceLimits,
       transactionFees: next.transactionFees,
       legalPolicies: next.legalPolicies,
+      featureToggles: opaqueToggles,
     });
     settings.set("platform.maintenanceMode", next.maintenance.enabled);
     settings.set("platform.maintenanceMessage", next.maintenance.message);
@@ -157,7 +186,7 @@ exports.updateFintechControlSettings = async (req, res) => {
     settings.updatedBy = actor(req) || settings.updatedBy;
     settings.lastUpdatedBy = actor(req) || settings.lastUpdatedBy;
     settings.lastUpdatedByName = req.user?.fullName || req.user?.name || "";
-    settings.lastUpdateReason = String(req.body?.reason || "Fintech Control Center update").trim().slice(0, 500);
+    settings.lastUpdateReason = reason.slice(0, 500);
     await settings.save();
 
     const saved = current(settings);

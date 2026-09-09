@@ -1,0 +1,70 @@
+Complete the production backend implementation for Head Office manual KYC verification/approval.
+
+The servicepay-admin frontend has already been updated to allow HEAD_OFFICE manual override even when NIN/BVN are missing. Now implement and verify the production API in this Servicepay backend repository.
+
+REQUIRED:
+
+1. Find the existing KYC model/controller/routes and production admin KYC endpoints.
+
+2. Ensure HEAD_OFFICE-only KYC search supports:
+   - full name
+   - phone
+   - email
+   - exact NIN
+   - exact BVN
+
+3. Implement or fix the protected route used by servicepay-admin for manual KYC approval.
+
+Expected behavior:
+PATCH /api/admin/kyc/:kycId/status
+
+Accept:
+{
+  "status": "VERIFIED",
+  "manualOverride": true
+}
+
+4. When manualOverride=true and authenticated role is HEAD_OFFICE:
+   - DO NOT require NIN
+   - DO NOT require BVN
+   - DO NOT require optional KYC documents
+   - DO NOT require DOB/address/gender
+   - allow manual verification even if normal customer requirements are incomplete
+
+5. On successful manual verification persist:
+   - KycProfile.status = VERIFIED
+   - User.kycVerified = true
+   - verifiedBy = authenticated Head Office admin
+   - verifiedAt = current timestamp
+   - verificationMethod = MANUAL_ADMIN_OVERRIDE
+   - preserve any submitted NIN/BVN
+   - never fabricate missing NIN/BVN
+   - create an audit/history record for MANUAL_ADMIN_OVERRIDE
+
+6. Only HEAD_OFFICE can use manualOverride.
+   All other roles must receive 403 if they attempt to bypass requirements.
+
+7. Existing VERIFIED profiles must not be downgraded accidentally.
+
+8. Make sure ServicePay Empowerment beneficiary verification uses the persisted KYC VERIFIED state so a Head-Office-manually-verified customer immediately passes Empowerment KYC checks.
+
+9. Keep normal customer KYC submission separate:
+   customers can submit NIN/BVN for manual review, but customer-side submission must not grant VERIFIED status itself.
+
+10. Add tests for:
+   - Head Office approval with no NIN/BVN
+   - only NIN
+   - only BVN
+   - both NIN/BVN
+   - non-Head-Office override blocked
+   - verifiedBy/verifiedAt/method persisted
+   - user.kycVerified updated
+   - Empowerment recognizes manually verified customer
+   - existing VERIFIED record cannot be downgraded
+
+11. Run backend tests and syntax checks.
+Fix all errors.
+
+12. Commit and push the completed backend changes to main.
+
+Do not change unrelated ServicePay features.

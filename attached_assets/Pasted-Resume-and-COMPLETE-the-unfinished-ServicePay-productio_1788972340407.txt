@@ -1,0 +1,109 @@
+Resume and COMPLETE the unfinished ServicePay production release work from the exact current repository state.
+
+IMPORTANT:
+- Work ONLY inside the main ServicePay project.
+- DO NOT modify VULL.
+- DO NOT modify the legacy servicepay-admin project.
+- DO NOT reset, delete, truncate, or replace production data.
+- DO NOT force-push.
+- DO NOT recreate work that is already committed.
+- Preserve all existing ServicePay features.
+
+Known state:
+1. Real live backend service is the Render service named "Servicepay" serving api.servicepay.ng.
+2. MONGODB_URI exists in the real Render service.
+3. The backend-only release branch already exists and was previously verified.
+4. Interstate Logistics backend work and ServicePay Call backend work have already been implemented/tested.
+5. Customer frontend fixes have also been prepared.
+6. The previous customer-web manual workflow failed because GitHub Pages environment protection only allowed main.
+7. Main was later safely fast-forwarded to the approved customer frontend commit.
+8. Interstate customer UI is now live but shows:
+   "No active interstate routes are configured right now."
+   This means the UI is deployed, but no real active routes have been configured yet.
+9. Do not create fake/demo production routes without explicit approval.
+
+Your job now:
+
+A. AUDIT CURRENT LIVE STATE FIRST
+- Identify current main commit.
+- Identify current live customer frontend commit/build.
+- Identify current live Render backend commit.
+- Confirm api.servicepay.ng points to the correct Render service.
+- Confirm MONGODB_URI is loaded.
+- Confirm socket.io dependency is installed in the backend runtime.
+- Confirm backend boots without module/startup errors.
+
+B. FINISH BACKEND RELEASE
+- Compare the verified backend-only release against current authoritative main.
+- Include ONLY the already approved Interstate Logistics + ServicePay Call backend fixes and required startup/dependency fixes.
+- Exclude unrelated unfinished work.
+- Run clean npm ci.
+- Run syntax checks.
+- Run targeted Interstate tests.
+- Run targeted Call tests.
+- Run auth tests.
+- Run backend startup validation.
+- Run git diff safety check.
+- If clean, create/verify one reviewed backend release commit and push normally.
+- Configure Render to deploy that exact reviewed commit/branch safely.
+- Do not deploy a broad mixed-development branch.
+
+C. VERIFY LIVE BACKEND AFTER DEPLOY
+Verify through api.servicepay.ng:
+- Backend health responds successfully.
+- MongoDB connection succeeds.
+- Interstate routes API is mounted.
+- Interstate quote/pricing flow works.
+- Shipment creation endpoint works when a valid active route exists.
+- ServicePay Call signaling endpoint works.
+- socket.io loads successfully.
+- No 404/500/module-not-found startup regression.
+- Existing transfers, wallet, withdrawals, auth, marketplace, delivery, KYC and other ServicePay APIs remain intact.
+
+D. CUSTOMER FRONTEND
+- Confirm the approved customer frontend is already live from main.
+- Confirm Interstate screen loads correctly.
+- Confirm Call screen requests microphone permission BEFORE creating a call session.
+- Confirm microphone denied/retry/app-settings states work correctly.
+- Do not redeploy customer web unnecessarily if the correct approved build is already live.
+
+E. INTERSTATE ROUTE MANAGEMENT
+Do NOT seed fake routes.
+Instead:
+- Confirm Head Office/Admin has a real route-management interface for:
+  pickup state,
+  destination state,
+  directional pricing,
+  reverse pricing,
+  weight/oversize pricing,
+  activate/deactivate,
+  archive/restore.
+- If the management UI/code already exists but is not live, prepare and deploy ONLY the required approved Admin change through the correct canonical ServicePay Admin deployment path.
+- Do not touch the legacy servicepay-admin project unless it is conclusively proven to be the actual production target.
+- Preserve the existing main Head Office Dashboard.
+
+F. FINAL ACCEPTANCE
+Do not report PASS merely because unit tests pass.
+Verify the REAL live domains.
+
+At the end report exactly:
+
+REAL SERVICEPAY BACKEND IDENTIFIED: YES/NO
+LIVE BACKEND COMMIT:
+MONGODB_URI VERIFIED: YES/NO
+SOCKET.IO LIVE: PASS/FAIL
+INTERSTATE BACKEND LIVE: PASS/FAIL
+INTERSTATE CUSTOMER UI LIVE: PASS/FAIL
+INTERSTATE ACTIVE ROUTES CONFIGURED: YES/NO
+INTERSTATE HEAD OFFICE ROUTE MANAGEMENT: PASS/FAIL
+SERVICEPAY CALL BACKEND LIVE: PASS/FAIL
+MICROPHONE PERMISSION FLOW LIVE: PASS/FAIL
+CUSTOMER FRONTEND LIVE COMMIT:
+EXISTING SERVICEPAY FEATURES PRESERVED: YES/NO
+PRODUCTION DATA PRESERVED: YES/NO
+VULL MODIFIED: NO
+LEGACY SERVICEPAY-ADMIN MODIFIED: NO
+REMAINING BLOCKER: NONE or exact blocker
+SERVICEPAY INTERSTATE + CALL READY FOR REAL CUSTOMER TEST: YES/NO
+
+If the only remaining reason Interstate cannot be used is that no real routes have been created yet, say that clearly and STOP. Do not fabricate production routes.

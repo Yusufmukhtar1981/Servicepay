@@ -1,0 +1,84 @@
+Continue from the current production checkpoint.
+
+IMPORTANT: Delivery and Marketplace are now working. DO NOT break or rewrite them.
+
+I manually tested the live Admin portal and found additional real production 404 errors that must now be fixed.
+
+Current confirmed production failures:
+1. GET /api/admin/customer360/search?query=...
+   -> Route not found
+
+2. GET /api/admin/transaction-intelligence/summary?...
+   -> Route not found
+
+3. GET /api/admin/riders?limit=100
+   -> Route not found
+
+4. GET /api/admin/keke-fare
+   -> Route not found
+
+Your task:
+
+1. Inspect the current servicepay-admin frontend and identify every Admin page that calls an /api/admin/* endpoint.
+2. Compare those frontend API calls against the actual backend route table.
+3. Create a complete missing-route inventory before changing code.
+4. Add ONLY the missing backend routes/controllers needed by the current Admin production UI.
+5. Reuse existing models/services/business logic wherever possible.
+6. Preserve authentication, authorization, RBAC, branch scoping and HEAD_OFFICE access rules.
+7. Do NOT replace whole controllers.
+8. Do NOT remove newer backend metrics or existing working routes.
+9. Do NOT modify Delivery or Marketplace unless required to preserve compatibility.
+10. Do NOT force-push.
+
+At minimum, implement and validate:
+
+- /api/admin/customer360/search
+- /api/admin/transaction-intelligence/summary
+- /api/admin/riders
+- /api/admin/keke-fare
+
+For Customer 360:
+- search must support phone, name, email and ServicePay/customer identifier where available
+- return the customer context expected by the current Admin frontend
+- use safe bounded queries
+- return proper 200/404/400 responses rather than Route not found
+
+For Transaction Intelligence:
+- return the exact summary payload shape expected by the current Admin page
+- preserve existing transaction metrics
+- avoid unbounded aggregation queries
+
+For Riders:
+- return rider list with pagination/limit support
+- preserve rider status, verification and branch visibility rules
+- support HEAD_OFFICE/Admin access correctly
+
+For Keke Fare:
+- return the exact payload expected by the current Admin frontend
+- preserve existing fare/configuration logic if already present elsewhere
+
+Then:
+11. Search the entire current Admin frontend for any other /api/admin/* calls whose routes do not exist in backend production.
+12. Fix those missing route contracts in the same minimal patch so we do not discover them one by one later.
+13. Add focused contract tests for every newly reconciled route.
+14. Run the Admin production web build.
+15. Commit only the minimal backend compatibility patch.
+16. Push normally to backend main.
+17. Wait for production deployment.
+18. Test the REAL production endpoints, authenticated where required.
+
+FINAL SUCCESS REQUIREMENT:
+Do not report completion because local tests pass.
+
+Success means:
+- Customer 360 loads and search works in live admin.servicepay.ng
+- Transaction Intelligence loads in live admin.servicepay.ng
+- Riders page loads in live admin.servicepay.ng
+- Keke Fare page loads in live admin.servicepay.ng
+- No Route not found errors remain for current Admin /api/admin/* pages
+- Existing Dashboard, Delivery and Marketplace remain working
+- No new 500 errors
+- Remote main matches the deployed commit
+
+Before finishing, provide a concise table:
+Admin page | endpoint | production status | HTTP result

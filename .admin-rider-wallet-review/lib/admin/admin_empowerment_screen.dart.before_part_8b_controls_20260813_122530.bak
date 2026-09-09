@@ -1,0 +1,775 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AdminEmpowermentScreen extends StatefulWidget {
+  const AdminEmpowermentScreen({super.key});
+
+  @override
+  State<AdminEmpowermentScreen> createState() => _AdminEmpowermentScreenState();
+}
+
+class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  bool isLoading = true;
+  String errorMessage = '';
+
+  Map<String, dynamic> summary = {};
+  List<dynamic> recentActivity = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadDashboard();
+  }
+
+  Future<String> _getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.getString('auth_token') ??
+        prefs.getString('admin_token') ??
+        prefs.getString('token') ??
+        '';
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) return value;
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value?.toString() ?? '0',
+        ) ??
+        0;
+  }
+
+  double _asDouble(dynamic value) {
+    if (value is double) return value;
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value?.toString() ?? '0',
+        ) ??
+        0;
+  }
+
+  String money(dynamic value) {
+    final amount = _asDouble(value);
+
+    final parts = amount.toStringAsFixed(0).split('');
+
+    final buffer = StringBuffer();
+
+    for (int i = 0; i < parts.length; i++) {
+      final position = parts.length - i;
+
+      buffer.write(parts[i]);
+
+      if (position > 1 && position % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+
+    return '₦${buffer.toString()}';
+  }
+
+  Future<void> loadDashboard() async {
+    if (mounted) {
+      setState(() {
+        isLoading = true;
+        errorMessage = '';
+      });
+    }
+
+    try {
+      final token = await _getToken();
+
+      if (token.isEmpty) {
+        throw Exception(
+          'Admin login token not found.',
+        );
+      }
+
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/empowerment/dashboard-summary',
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final body = jsonDecode(response.body);
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          body is Map &&
+          body['success'] == true) {
+        final rawSummary = body['summary'];
+
+        final rawRecent = body['recentActivity'];
+
+        if (!mounted) return;
+
+        setState(() {
+          summary = rawSummary is Map
+              ? Map<String, dynamic>.from(
+                  rawSummary,
+                )
+              : {};
+
+          if (rawRecent is Map) {
+            final beneficiaries = rawRecent['beneficiaries'];
+
+            final batches = rawRecent['disbursementBatches'];
+
+            recentActivity = [
+              if (beneficiaries is List)
+                ...beneficiaries.map(
+                  (item) => {
+                    'type': 'BENEFICIARY',
+                    'data': item,
+                  },
+                ),
+              if (batches is List)
+                ...batches.map(
+                  (item) => {
+                    'type': 'DISBURSEMENT',
+                    'data': item,
+                  },
+                ),
+            ];
+          } else {
+            recentActivity = [];
+          }
+
+          isLoading = false;
+        });
+
+        return;
+      }
+
+      throw Exception(
+        body is Map
+            ? (body['message'] ?? 'Unable to load dashboard.').toString()
+            : 'Unable to load dashboard.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+        errorMessage = e.toString().replaceFirst(
+              'Exception: ',
+              '',
+            );
+      });
+    }
+  }
+
+  Map<String, dynamic> _section(
+    String key,
+  ) {
+    final value = summary[key];
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(
+        value,
+      );
+    }
+
+    return {};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final organizations = _section('organizations');
+
+    final programs = _section('programs');
+
+    final beneficiaries = _section('beneficiaries');
+
+    final financials = _section('financials');
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F8F6),
+      appBar: AppBar(
+        title: const Text(
+          'ServicePay Empowerment',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        backgroundColor: const Color(0xFF08783E),
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: isLoading ? null : loadDashboard,
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
+          ),
+        ],
+      ),
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : errorMessage.isNotEmpty
+              ? _errorView()
+              : RefreshIndicator(
+                  onRefresh: loadDashboard,
+                  child: ListView(
+                    padding: const EdgeInsets.all(
+                      18,
+                    ),
+                    children: [
+                      _heroCard(),
+                      const SizedBox(
+                        height: 18,
+                      ),
+                      const Text(
+                        'Overview',
+                        style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w900,
+                          color: Color(
+                            0xFF17231C,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 12,
+                      ),
+                      _metricGrid(
+                        organizations,
+                        programs,
+                        beneficiaries,
+                      ),
+                      const SizedBox(
+                        height: 22,
+                      ),
+                      const Text(
+                        'Financial Summary',
+                        style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 12,
+                      ),
+                      _financialCard(
+                        financials,
+                      ),
+                      const SizedBox(
+                        height: 22,
+                      ),
+                      _quickActions(),
+                      const SizedBox(
+                        height: 22,
+                      ),
+                      const Text(
+                        'Recent Activity',
+                        style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 12,
+                      ),
+                      _recentActivity(),
+                    ],
+                  ),
+                ),
+    );
+  }
+
+  Widget _heroCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF08783E),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: const Row(
+        children: [
+          CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.white24,
+            child: Icon(
+              Icons.volunteer_activism_rounded,
+              color: Colors.white,
+              size: 32,
+            ),
+          ),
+          SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Empowerment Control Center',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'Manage organizations, programs, beneficiaries and disbursements.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricGrid(
+    Map<String, dynamic> organizations,
+    Map<String, dynamic> programs,
+    Map<String, dynamic> beneficiaries,
+  ) {
+    return LayoutBuilder(
+      builder: (
+        context,
+        constraints,
+      ) {
+        final wide = constraints.maxWidth >= 700;
+
+        final width =
+            wide ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
+
+        final cards = [
+          _MetricCard(
+            title: 'Organizations',
+            value: '${_asInt(organizations['total'])}',
+            subtitle: '${_asInt(organizations['active'])} active',
+            icon: Icons.account_balance_rounded,
+          ),
+          _MetricCard(
+            title: 'Programs',
+            value: '${_asInt(programs['total'])}',
+            subtitle: '${_asInt(programs['active'])} active',
+            icon: Icons.campaign_rounded,
+          ),
+          _MetricCard(
+            title: 'Beneficiaries',
+            value: '${_asInt(beneficiaries['total'])}',
+            subtitle: '${_asInt(beneficiaries['approved'])} approved',
+            icon: Icons.groups_rounded,
+          ),
+          _MetricCard(
+            title: 'Paid',
+            value: '${_asInt(beneficiaries['paid'])}',
+            subtitle: '${_asInt(beneficiaries['pending'])} pending',
+            icon: Icons.payments_rounded,
+          ),
+        ];
+
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: cards
+              .map(
+                (card) => SizedBox(
+                  width: width,
+                  child: card,
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _financialCard(
+    Map<String, dynamic> financials,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(
+            0xFFE3ECE6,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          _moneyRow(
+            'Total Budget',
+            financials['totalBudget'],
+          ),
+          const Divider(height: 26),
+          _moneyRow(
+            'Total Disbursed',
+            financials['totalDisbursed'],
+          ),
+          const Divider(height: 26),
+          _moneyRow(
+            'Remaining Budget',
+            financials['remainingBudget'],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _moneyRow(
+    String label,
+    dynamic value,
+  ) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 15,
+              color: Color(
+                0xFF667085,
+              ),
+            ),
+          ),
+        ),
+        Text(
+          money(value),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: Color(
+              0xFF08783E,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _quickActions() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Management',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _actionRow(
+            Icons.account_balance_outlined,
+            'Organizations',
+            'Government, NGO and private organizations',
+          ),
+          _actionRow(
+            Icons.campaign_outlined,
+            'Programs',
+            'Create and manage empowerment programs',
+          ),
+          _actionRow(
+            Icons.groups_outlined,
+            'Beneficiaries',
+            'Review applications and beneficiaries',
+          ),
+          _actionRow(
+            Icons.payments_outlined,
+            'Disbursements',
+            'Preview and manage payment batches',
+          ),
+          _actionRow(
+            Icons.history_rounded,
+            'Audit Trail',
+            'Review empowerment activities',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionRow(
+    IconData icon,
+    String title,
+    String subtitle,
+  ) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        backgroundColor: const Color(
+          0xFFEAF7F0,
+        ),
+        child: Icon(
+          icon,
+          color: const Color(
+            0xFF08783E,
+          ),
+        ),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      subtitle: Text(subtitle),
+      trailing: const Icon(
+        Icons.chevron_right_rounded,
+      ),
+      onTap: () {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$title screen will be added in the next Empowerment admin step.',
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _recentActivity() {
+    if (recentActivity.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(
+            18,
+          ),
+        ),
+        child: const Center(
+          child: Text(
+            'No recent empowerment activity yet.',
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: recentActivity
+            .take(10)
+            .map(
+              (item) => _activityTile(
+                Map<String, dynamic>.from(
+                  item as Map,
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _activityTile(
+    Map<String, dynamic> wrapper,
+  ) {
+    final type = wrapper['type']?.toString() ?? '';
+
+    final raw = wrapper['data'];
+
+    final data = raw is Map
+        ? Map<String, dynamic>.from(
+            raw,
+          )
+        : <String, dynamic>{};
+
+    if (type == 'DISBURSEMENT') {
+      return ListTile(
+        leading: const CircleAvatar(
+          child: Icon(
+            Icons.payments_outlined,
+          ),
+        ),
+        title: Text(
+          data['batchReference']?.toString() ?? 'Disbursement batch',
+        ),
+        subtitle: Text(
+          data['status']?.toString() ?? 'Prepared',
+        ),
+      );
+    }
+
+    return ListTile(
+      leading: const CircleAvatar(
+        child: Icon(
+          Icons.person_outline_rounded,
+        ),
+      ),
+      title: Text(
+        data['fullName']?.toString() ??
+            data['name']?.toString() ??
+            'Beneficiary',
+      ),
+      subtitle: Text(
+        data['applicationStatus']?.toString() ??
+            data['status']?.toString() ??
+            'Application',
+      ),
+    );
+  }
+
+  Widget _errorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 54,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Unable to load Empowerment',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              errorMessage,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              onPressed: loadDashboard,
+              icon: const Icon(
+                Icons.refresh,
+              ),
+              label: const Text(
+                'Try Again',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final String subtitle;
+  final IconData icon;
+
+  const _MetricCard({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(
+            0xFFE5ECE8,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(
+                0xFFEAF7F0,
+              ),
+              borderRadius: BorderRadius.circular(
+                14,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: const Color(
+                0xFF08783E,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(
+                      0xFF667085,
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  height: 3,
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(
+                      0xFF667085,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -156,7 +156,7 @@ test("maintenance, limits, and feature toggles persist with an audit trail", asy
           tier1Daily: 1200,
           tier1PerTransaction: 300,
         },
-        featureToggles: { airtime: false },
+        featureToggles: { airtime: false, delivery: false },
       },
     },
   });
@@ -185,6 +185,7 @@ test("rejects invalid negative limits without changing saved controls", async ()
   const initial = await call(updateFintechControlSettings, {
     method: "PUT",
     body: {
+      reason: "Set initial transaction limit",
       fintechControl: { serviceLimits: { tier1PerTransaction: 700 } },
     },
   });
@@ -193,6 +194,7 @@ test("rejects invalid negative limits without changing saved controls", async ()
   const rejected = await call(updateFintechControlSettings, {
     method: "PUT",
     body: {
+      reason: "Reject invalid transaction limit",
       fintechControl: { serviceLimits: { tier1PerTransaction: -1 } },
     },
   });
@@ -207,6 +209,7 @@ test("middleware enforces maintenance, feature toggles, and tier transaction lim
   await call(updateFintechControlSettings, {
     method: "PUT",
     body: {
+      reason: "Exercise middleware controls",
       fintechControl: {
         maintenance: {
           enabled: false,
@@ -214,7 +217,7 @@ test("middleware enforces maintenance, feature toggles, and tier transaction lim
           apiEnabled: true,
         },
         serviceLimits: { tier1PerTransaction: 200 },
-        featureToggles: { airtime: false },
+        featureToggles: { airtime: false, delivery: false },
       },
     },
   });
@@ -228,6 +231,14 @@ test("middleware enforces maintenance, feature toggles, and tier transaction lim
   assert.equal(disabledFeature.status, 503);
   assert.equal(disabledFeature.body.code, "FEATURE_DISABLED");
 
+  const disabledInterstate = await runMiddleware({
+    user: { role: "CUSTOMER", kycTier: "TIER_1" },
+    originalUrl: "/api/logistics/interstate/routes",
+    method: "GET",
+  });
+  assert.equal(disabledInterstate.status, 503);
+  assert.equal(disabledInterstate.body.code, "FEATURE_DISABLED");
+
   const limited = await runMiddleware({
     user: { role: "CUSTOMER", kycTier: "TIER_1" },
     originalUrl: "/api/bills/purchase",
@@ -240,6 +251,7 @@ test("middleware enforces maintenance, feature toggles, and tier transaction lim
   await call(updateFintechControlSettings, {
     method: "PUT",
     body: {
+      reason: "Enable scheduled maintenance",
       fintechControl: { maintenance: { enabled: true } },
     },
   });
@@ -250,6 +262,46 @@ test("middleware enforces maintenance, feature toggles, and tier transaction lim
   });
   assert.equal(maintenance.status, 503);
   assert.equal(maintenance.body.maintenance, true);
+});
+
+test("PUT requires an explicit audit reason before changing settings", async () => {
+  const rejected = await call(updateFintechControlSettings, {
+    method: "PUT",
+    body: {
+      fintechControl: { featureToggles: { airtime: false } },
+    },
+  });
+
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.body.message, /audit reason/i);
+  assert.equal(await AppSettings.countDocuments({}), 0);
+  assert.equal(await AdminAuditLog.countDocuments({}), 0);
+});
+
+test("unknown toggle keys round-trip without overriding canonical services", async () => {
+  const saved = await call(updateFintechControlSettings, {
+    method: "PUT",
+    body: {
+      reason: "Preserve future service toggle",
+      fintechControl: {
+        featureToggles: {
+          airtime: false,
+          futureService: false,
+        },
+      },
+    },
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.data.featureToggles.airtime, false);
+  assert.equal(saved.body.data.featureToggles.futureService, false);
+
+  const reloaded = await call(getFintechControlSettings);
+  assert.equal(reloaded.body.data.featureToggles.airtime, false);
+  assert.equal(reloaded.body.data.featureToggles.futureService, false);
+
+  const settings = await AppSettings.getGlobalSettings();
+  assert.equal(settings.services.airtime, false);
+  assert.equal(settings.fintechControl.featureToggles.get("futureService"), false);
 });
 
 test("HEAD_OFFICE authorization middleware blocks non-Head Office settings updates", async () => {

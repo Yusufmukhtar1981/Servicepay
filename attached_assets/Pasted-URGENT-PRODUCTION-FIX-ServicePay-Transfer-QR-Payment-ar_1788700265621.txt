@@ -1,0 +1,121 @@
+URGENT PRODUCTION FIX — ServicePay Transfer + QR Payment are currently failing.
+
+Users have been unable to complete ServicePay-to-ServicePay transfers and QR payments for several days.
+
+Observed errors:
+1. ServicePay Transfer:
+"The transfer result could not be confirmed. Check Transactions and your wallet balance before attempting another transfer."
+
+2. QR Payment:
+"PAYMENT NOT COMPLETED — Unable to reach ServicePay. Check your connection and try again."
+
+Do a COMPLETE END-TO-END investigation and fix. Do NOT only change UI/error messages.
+
+TASKS:
+
+1. SERVICEPAY-TO-SERVICEPAY TRANSFER
+- Trace the complete Flutter → API → database → wallet transaction flow.
+- Verify the recipient lookup by phone number / ServicePay ID works.
+- Verify beneficiary name lookup works before PIN confirmation.
+- Check transfer endpoint, authentication/JWT, transaction PIN verification, request payload and API response.
+- Check sender wallet debit and recipient wallet credit.
+- Ensure both debit and credit are atomic.
+- Create/update the transaction record correctly.
+- Return a clear SUCCESS response only after the database transaction is committed.
+- Return the real backend error when the transfer fails.
+- Prevent duplicate transfers if the user taps the button multiple times.
+- Add/use a unique idempotency/reference key for every transfer.
+- Never debit the sender if the recipient cannot be credited.
+- Never show “unknown/unconfirmed” when the backend already has a final transaction state.
+
+2. QR PAYMENT
+- Trace QR generation → QR scan → beneficiary lookup → amount → PIN → payment API → wallet debit/credit → transaction confirmation.
+- Verify the QR payload generated for every ServicePay account is valid and can correctly identify the recipient.
+- Check QR payment endpoint and route registration.
+- Fix any wrong API URL, timeout, CORS/network exception, token/authentication issue or request parsing issue.
+- QR payment must use the same safe wallet transfer engine as ServicePay-to-ServicePay transfer instead of maintaining a separate unreliable wallet debit/credit implementation.
+- Return SUCCESS only after sender debit + recipient credit + transaction record are committed.
+- Add idempotency protection to prevent duplicate QR payments.
+
+3. UNKNOWN/NETWORK RESULT HANDLING
+If the mobile app loses connection after submitting:
+- Do NOT automatically submit the payment again.
+- Query the backend using the transaction reference.
+- Backend must return one of:
+  SUCCESS
+  FAILED
+  PENDING
+- If SUCCESS, show successful payment.
+- If FAILED, show failed payment and allow retry.
+- If PENDING, show "Payment is being confirmed" and requery safely.
+- Never create a second transaction during requery.
+
+4. WALLET SAFETY
+Implement/verify atomic wallet processing:
+- validate sender
+- validate recipient
+- validate amount
+- validate sufficient balance
+- validate transaction PIN
+- generate unique transaction reference
+- debit sender
+- credit recipient
+- save matching transaction ledger records
+- commit all operations together
+- rollback everything if any step fails
+
+5. LOGGING
+Add production-safe logs for:
+- transfer reference
+- sender ID
+- recipient ID
+- endpoint
+- HTTP status
+- transaction status
+- wallet debit result
+- wallet credit result
+- database commit/rollback
+Do NOT log passwords, PINs, JWTs or other secrets.
+
+6. TEST THESE CASES BEFORE MARKING COMPLETE
+- ₦100 ServicePay transfer between two real test users
+- ₦500 ServicePay transfer between two real test users
+- QR payment between two real test users
+- insufficient balance
+- wrong PIN
+- invalid recipient
+- network interruption immediately after submit
+- double-tap Transfer Money
+- double-tap QR Pay
+- app closed immediately after payment submission
+- confirm sender transaction history
+- confirm recipient transaction history
+- confirm sender balance
+- confirm recipient balance
+
+7. FRONTEND
+After backend is fixed:
+- Disable Transfer/Pay button immediately after first tap.
+- Show Processing...
+- Do not allow another submission while processing.
+- Display beneficiary name before PIN.
+- On success show amount, beneficiary name, reference, date/time and new balance.
+- On failure show the REAL safe error.
+- For uncertain network status, requery the existing reference instead of initiating another payment.
+
+8. DEPLOYMENT
+- Fix both backend and Flutter/web frontend where necessary.
+- Deploy backend to production.
+- Publish/deploy frontend changes.
+- Verify the production API, not only localhost/dev.
+- Run actual production tests.
+
+IMPORTANT:
+Do not mark this task complete until BOTH ServicePay-to-ServicePay Transfer AND QR Payment successfully move real test wallet funds between two ServicePay test accounts, transaction histories are correct, balances reconcile exactly, and repeated taps cannot cause duplicate debit.
+
+Also inspect recent production logs to identify the original root cause and report:
+ROOT CAUSE:
+FILES CHANGED:
+ENDPOINTS FIXED:
+TEST RESULTS:
+DEPLOYMENT STATUS:

@@ -1,0 +1,3373 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'airtime_screen.dart';
+import 'amana_screen.dart';
+import 'cable_screen.dart';
+import 'data_screen.dart';
+import 'electricity_screen.dart';
+import 'exam_pin_screen.dart';
+import 'flight_booking_screen.dart';
+import 'id_verification_screen.dart';
+import 'logistics_screen.dart';
+import 'notifications_screen.dart';
+import 'transactions_screen.dart';
+import 'transfer_screen.dart';
+import 'wallet_screen.dart';
+
+import 'airtime_to_cash_screen.dart';
+
+import 'pay_by_link_screen.dart';
+import 'request_money_screen.dart';
+import 'business_wallet_screen.dart';
+import 'community_agent_locator_screen.dart';
+import 'group_wallet_screen.dart';
+
+import 'withdrawal_screen.dart';
+
+import 'referral_screen.dart';
+
+import 'empowerment_screen.dart';
+import 'cards_screen.dart';
+
+import 'partner_application_screen.dart';
+
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final ImagePicker _profileImagePicker = ImagePicker();
+
+  String profilePhotoUrl = '';
+  bool isUploadingProfilePhoto = false;
+
+  static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  static const Color primaryGreen = Color(0xFF08783E);
+
+  static const Color softGreen = Color(0xFFEAF7F0);
+
+  final TextEditingController searchController = TextEditingController();
+
+  String userName = 'Customer';
+  double walletBalance = 0;
+
+  int unreadNotifications = 1;
+
+  bool isLoading = true;
+  bool isRefreshing = false;
+  bool hideBalance = false;
+
+  String searchQuery = '';
+
+  Map<String, bool> serviceAvailability = <String, bool>{
+    'kekeNapep': true,
+    'amana': true,
+    'airtime': true,
+    'data': true,
+    'electricity': true,
+    'cableTv': true,
+    'examPin': true,
+    'ninVerification': true,
+    'delivery': true,
+    'flightBooking': true,
+    'walletFunding': true,
+    'bankTransfer': true,
+    'servicepayTransfer': true,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedProfilePhoto();
+    loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Future<String?> getSavedAuthToken(
+    SharedPreferences preferences,
+  ) async {
+    const List<String> tokenKeys = <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
+
+    for (final String key in tokenKeys) {
+      final String? value = preferences.getString(key);
+
+      if (value == null || value.trim().isEmpty) {
+        continue;
+      }
+
+      String token = value.trim();
+
+      if (token.toLowerCase().startsWith('bearer ')) {
+        token = token.substring(7).trim();
+      }
+
+      if (token.isNotEmpty) {
+        return token;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> loadDashboard({
+    bool refreshing = false,
+  }) async {
+    if (mounted) {
+      setState(() {
+        if (refreshing) {
+          isRefreshing = true;
+        } else {
+          isLoading = true;
+        }
+      });
+    }
+
+    try {
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+
+      final String savedName = preferences.getString('user_name') ??
+          preferences.getString('full_name') ??
+          preferences.getString('name') ??
+          'Customer';
+
+      final double savedBalance = preferences.getDouble('wallet_balance') ?? 0;
+
+      if (mounted) {
+        setState(() {
+          userName = savedName.trim().isEmpty ? 'Customer' : savedName.trim();
+
+          walletBalance = savedBalance;
+        });
+      }
+
+      await _loadServiceAvailability();
+
+      final String? token = await getSavedAuthToken(preferences);
+
+      if (token == null || token.isEmpty) {
+        return;
+      }
+
+      final http.Response response = await http.get(
+        Uri.parse('$baseUrl/wallet'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+      );
+
+      if (response.statusCode != 200) {
+        return;
+      }
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      if (decoded is! Map) {
+        return;
+      }
+
+      final Map<String, dynamic> data = Map<String, dynamic>.from(decoded);
+
+      dynamic rawBalance = data['walletBalance'] ?? data['balance'];
+
+      if (data['data'] is Map) {
+        final Map<String, dynamic> nested = Map<String, dynamic>.from(
+          data['data'] as Map,
+        );
+
+        rawBalance ??= nested['walletBalance'] ?? nested['balance'];
+      }
+
+      final double freshBalance = rawBalance is num
+          ? rawBalance.toDouble()
+          : double.tryParse(
+                rawBalance?.toString() ?? '',
+              ) ??
+              walletBalance;
+
+      await preferences.setDouble(
+        'wallet_balance',
+        freshBalance,
+      );
+
+      if (mounted) {
+        setState(() {
+          walletBalance = freshBalance;
+        });
+      }
+    } catch (_) {
+      // Keep locally saved dashboard values.
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadServiceAvailability() async {
+    try {
+      final http.Response response = await http.get(
+        Uri.parse(
+          '$baseUrl/settings/public',
+        ),
+        headers: const <String, String>{
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 20),
+      );
+
+      if (response.statusCode != 200) {
+        return;
+      }
+
+      final dynamic decoded = jsonDecode(response.body);
+
+      if (decoded is! Map) {
+        return;
+      }
+
+      dynamic settings = decoded['settings'];
+
+      settings ??= decoded['data'] is Map ? decoded['data']['settings'] : null;
+
+      if (settings is! Map) {
+        return;
+      }
+
+      final dynamic rawServices = settings['services'];
+
+      if (rawServices is! Map) {
+        return;
+      }
+
+      final Map<String, bool> fresh = Map<String, bool>.from(
+        serviceAvailability,
+      );
+
+      for (final String key in fresh.keys.toList()) {
+        if (rawServices[key] is bool) {
+          fresh[key] = rawServices[key] == true;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          serviceAvailability = fresh;
+        });
+      }
+    } catch (_) {
+      // Keep last/default visibility values.
+    }
+  }
+
+  String? _serviceKeyForTitle(
+    String title,
+  ) {
+    const Map<String, String> map = <String, String>{
+      'Keke Napep': 'kekeNapep',
+      'ServicePay Amana': 'amana',
+      'Airtime': 'airtime',
+      'Data': 'data',
+      'Electricity': 'electricity',
+      'Cable TV': 'cableTv',
+      'Exam PIN': 'examPin',
+      'NIN Verification': 'ninVerification',
+      'Delivery': 'delivery',
+      'Flight Booking': 'flightBooking',
+      'Wallet Funding': 'walletFunding',
+      'Withdrawal': 'bankTransfer',
+      'ServicePay Transfer': 'servicepayTransfer',
+    };
+
+    return map[title];
+  }
+
+  bool _isServiceVisible(
+    String title,
+  ) {
+    final String? key = _serviceKeyForTitle(title);
+
+    if (key == null) {
+      return true;
+    }
+
+    return serviceAvailability[key] != false;
+  }
+
+  String firstName() {
+    final String trimmed = userName.trim();
+
+    if (trimmed.isEmpty) {
+      return 'Customer';
+    }
+
+    return trimmed
+        .split(
+          RegExp(r'\s+'),
+        )
+        .first;
+  }
+
+  String formatMoney(double amount) {
+    final String value = amount.toStringAsFixed(2);
+
+    final List<String> parts = value.split('.');
+
+    final String whole = parts.first;
+
+    final StringBuffer formatted = StringBuffer();
+
+    for (int index = 0; index < whole.length; index++) {
+      final int remaining = whole.length - index;
+
+      formatted.write(
+        whole[index],
+      );
+
+      if (remaining > 1 && remaining % 3 == 1) {
+        formatted.write(',');
+      }
+    }
+
+    return '₦${formatted.toString()}.${parts.last}';
+  }
+
+  void openScreen(Widget screen) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => screen,
+      ),
+    );
+  }
+
+  List<_DashboardService> popularServices() {
+    return <_DashboardService>[
+      _DashboardService(
+        title: 'Keke Napep',
+        icon: Icons.electric_rickshaw_rounded,
+        iconColor: const Color(0xFFF59E0B),
+        backgroundColor: const Color(0xFFFFF7DF),
+        keywords:
+            'keke napep ride transport tricycle taxi driver trip movement',
+        onTap: () {
+          openScreen(
+            const BusinessWalletScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'ServicePay Amana',
+        icon: Icons.volunteer_activism_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'amana family support food school fees medical assistance',
+        onTap: () {
+          openScreen(
+            const AmanaScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Airtime',
+        icon: Icons.phone_android_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'airtime recharge phone',
+        onTap: () {
+          openScreen(
+            const AirtimeScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Data',
+        icon: Icons.signal_cellular_alt_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFF0F7FF),
+        keywords: 'data internet bundle',
+        onTap: () {
+          openScreen(
+            const DataScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Electricity',
+        icon: Icons.lightbulb_rounded,
+        iconColor: const Color(0xFFF59E0B),
+        backgroundColor: const Color(0xFFFFF7DF),
+        keywords: 'electricity power light bill',
+        onTap: () {
+          openScreen(
+            const ElectricityScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Cable TV',
+        icon: Icons.live_tv_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'cable tv dstv gotv startimes',
+        onTap: () {
+          openScreen(
+            const CableScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Exam PIN',
+        icon: Icons.workspace_premium_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'exam pin waec neco jamb',
+        onTap: () {
+          openScreen(
+            const ExamPinScreen(),
+          );
+        },
+      ),
+    ];
+  }
+
+  List<_DashboardService> moreServices() {
+    return <_DashboardService>[
+      _DashboardService(
+        title: 'Cards',
+        icon: Icons.credit_card_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords:
+            'card cards atm physical virtual debit payment servicepay card',
+        onTap: () {
+          openScreen(
+            const CardsScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Empowerment',
+        icon: Icons.volunteer_activism_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'empowerment program grant support beneficiary',
+        onTap: () {
+          openScreen(
+            const EmpowermentScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'NIN Verification',
+        icon: Icons.fingerprint_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'nin verification identity',
+        onTap: () {
+          openScreen(
+            const IdVerificationScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Delivery',
+        icon: Icons.local_shipping_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'delivery logistics courier',
+        onTap: () {
+          openScreen(
+            const LogisticsScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Airtime to Cash',
+        icon: Icons.currency_exchange_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'airtime cash convert airtime wallet mtn airtel glo 9mobile',
+        onTap: () {
+          openScreen(
+            const AirtimeToCashScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Pay-by-Link',
+        icon: Icons.link_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'merchant payment link pay by link',
+        onTap: () {
+          openScreen(
+            const PayByLinkScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Request Money',
+        icon: Icons.request_page_rounded,
+        iconColor: const Color(0xFF2563EB),
+        backgroundColor: const Color(0xFFEFF6FF),
+        keywords: 'request money collect payment',
+        onTap: () {
+          openScreen(
+            const RequestMoneyScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Business Wallet',
+        icon: Icons.storefront_rounded,
+        iconColor: const Color(0xFF7C3AED),
+        backgroundColor: const Color(0xFFF5F3FF),
+        keywords: 'business wallet sme merchant',
+        onTap: () {
+          openScreen(
+            const BusinessWalletScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Partner API',
+        icon: Icons.api_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'partner api developer integration merchant business',
+        onTap: () {
+          openScreen(
+            const PartnerApplicationScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Agent Locator',
+        icon: Icons.location_on_rounded,
+        iconColor: const Color(0xFFEA580C),
+        backgroundColor: const Color(0xFFFFF7ED),
+        keywords: 'agent locator aggregator nearby',
+        onTap: () {
+          openScreen(
+            const CommunityAgentLocatorScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Group Wallet / Ajo',
+        icon: Icons.groups_rounded,
+        iconColor: const Color(0xFF0F766E),
+        backgroundColor: const Color(0xFFF0FDFA),
+        keywords: 'group wallet ajo contribution savings',
+        onTap: () {
+          openScreen(
+            const GroupWalletScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Flight Booking',
+        icon: Icons.flight_takeoff_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'flight booking airline travel',
+        onTap: () {
+          openScreen(
+            const FlightBookingScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Wallet Funding',
+        icon: Icons.account_balance_wallet_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'wallet funding fund wallet deposit',
+        onTap: () {
+          openScreen(
+            const WalletScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'Withdrawal',
+        icon: Icons.account_balance_wallet_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'bank transfer send money',
+        onTap: () {
+          openScreen(
+            const WithdrawalScreen(),
+          );
+        },
+      ),
+      _DashboardService(
+        title: 'ServicePay Transfer',
+        icon: Icons.send_rounded,
+        iconColor: const Color(0xFF08783E),
+        backgroundColor: const Color(0xFFEAF7F0),
+        keywords: 'servicepay transfer send money',
+        onTap: () {
+          openScreen(
+            const TransferScreen(),
+          );
+        },
+      ),
+    ];
+  }
+
+  List<_DashboardService> filtered(
+    List<_DashboardService> services,
+  ) {
+    final List<_DashboardService> visible = services
+        .where(
+          (_DashboardService service) => _isServiceVisible(
+            service.title,
+          ),
+        )
+        .toList();
+
+    final String query = searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) {
+      return visible;
+    }
+
+    return visible.where(
+      (_DashboardService service) {
+        final String searchable =
+            '${service.title} ${service.keywords}'.toLowerCase();
+
+        return searchable.contains(
+          query,
+        );
+      },
+    ).toList();
+  }
+
+  Widget buildHeader() {
+    return buildPremiumHeader();
+  }
+
+  Widget buildWalletCard() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      Color(0xFF079A55),
+                      Color(0xFF08783E),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0x2208783E),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.shield_outlined,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 7),
+                        const Text(
+                          'Available Balance',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () {
+                            setState(() {
+                              hideBalance = !hideBalance;
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              hideBalance
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            openScreen(const WalletScreen());
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Wallet',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(width: 2),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 11),
+                    Text(
+                      hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 19),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.lock_outline_rounded,
+                                color: Colors.white70,
+                                size: 15,
+                              ),
+                              SizedBox(width: 5),
+                              Text(
+                                'Secured & Protected',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Spacer(),
+                        Material(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(30),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(30),
+                            onTap: () {
+                              openScreen(const WalletScreen());
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.add_rounded,
+                                    color: primaryGreen,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Add Money',
+                                    style: TextStyle(
+                                      color: primaryGreen,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: const Color(0xFFE7EEE9),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.swap_horiz_rounded,
+                        label: 'Transfer',
+                        onTap: () {
+                          openScreen(const TransferScreen());
+                        },
+                      ),
+                    ),
+                    _walletDivider(),
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.account_balance_wallet_rounded,
+                        label: 'Withdrawal',
+                        onTap: () {
+                          openScreen(const WithdrawalScreen());
+                        },
+                      ),
+                    ),
+                    _walletDivider(),
+                    Expanded(
+                      child: _WalletAction(
+                        icon: Icons.add_card_rounded,
+                        label: 'Wallet',
+                        onTap: () {
+                          openScreen(const WalletScreen());
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _walletDivider() {
+    return Container(
+      width: 1,
+      height: 38,
+      margin: const EdgeInsets.symmetric(
+        horizontal: 6,
+      ),
+      color: Colors.white.withValues(
+        alpha: 0.16,
+      ),
+    );
+  }
+
+  Widget buildSearchBar() {
+    return TextField(
+      controller: searchController,
+      onChanged: (String value) {
+        setState(() {
+          searchQuery = value;
+        });
+      },
+      decoration: InputDecoration(
+        hintText: 'Search services',
+        hintStyle: const TextStyle(
+          color: Color(0xFF98A2B3),
+        ),
+        prefixIcon: const Icon(
+          Icons.search_rounded,
+          color: primaryGreen,
+        ),
+        suffixIcon: searchQuery.isEmpty
+            ? Container(
+                margin: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: softGreen,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.tune_rounded,
+                  color: primaryGreen,
+                ),
+              )
+            : IconButton(
+                onPressed: () {
+                  searchController.clear();
+
+                  setState(() {
+                    searchQuery = '';
+                  });
+                },
+                icon: const Icon(
+                  Icons.close_rounded,
+                ),
+              ),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(
+            color: Color(0xFFE4E7EC),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(
+            color: Color(0xFFE4E7EC),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(
+            color: primaryGreen,
+            width: 1.5,
+          ),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 18,
+        ),
+      ),
+    );
+  }
+
+  Widget buildQuickActions() {
+    final List<Widget> items = <Widget>[];
+
+    void addItem({
+      required String feature,
+      required IconData icon,
+      required String label,
+      required VoidCallback onTap,
+    }) {
+      if (serviceAvailability[feature] == false) {
+        return;
+      }
+
+      if (items.isNotEmpty) {
+        items.add(
+          _quickDivider(),
+        );
+      }
+
+      items.add(
+        Expanded(
+          child: _QuickAction(
+            icon: icon,
+            label: label,
+            onTap: onTap,
+          ),
+        ),
+      );
+    }
+
+    addItem(
+      feature: 'walletFunding',
+      icon: Icons.account_balance_wallet_rounded,
+      label: 'Wallet',
+      onTap: () {
+        openScreen(
+          const WalletScreen(),
+        );
+      },
+    );
+
+    addItem(
+      feature: 'bankTransfer',
+      icon: Icons.account_balance_wallet_rounded,
+      label: 'Withdrawal',
+      onTap: () {
+        openScreen(
+          const WithdrawalScreen(),
+        );
+      },
+    );
+
+    // Transactions is not a service switch.
+    if (items.isNotEmpty) {
+      items.add(
+        _quickDivider(),
+      );
+    }
+
+    items.add(
+      Expanded(
+        child: _QuickAction(
+          icon: Icons.receipt_long_rounded,
+          label: 'Transactions',
+          onTap: () {
+            openScreen(
+              const TransactionsScreen(),
+            );
+          },
+        ),
+      ),
+    );
+
+    if (serviceAvailability['ninVerification'] != false) {
+      items.add(
+        _quickDivider(),
+      );
+
+      items.add(
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.badge_rounded,
+            label: 'Verify ID',
+            onTap: () {
+              openScreen(
+                const IdVerificationScreen(),
+              );
+            },
+          ),
+        ),
+      );
+
+      items.add(
+        _quickDivider(),
+      );
+
+      items.add(
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.handshake_rounded,
+            label: 'Partner API',
+            onTap: () {
+              openScreen(
+                const PartnerApplicationScreen(),
+              );
+            },
+          ),
+        ),
+      );
+
+      if (items.isNotEmpty) {
+        items.add(
+          _quickDivider(),
+        );
+      }
+
+      items.add(
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.volunteer_activism_rounded,
+            label: 'Empowerment',
+            onTap: () {
+              openScreen(
+                const EmpowermentScreen(),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 17,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(23),
+        border: Border.all(
+          color: const Color(0xFFE7EAEF),
+        ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0F101828),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: items,
+      ),
+    );
+  }
+
+  Widget _quickDivider() {
+    return Container(
+      width: 1,
+      height: 55,
+      color: const Color(0xFFE4E7EC),
+    );
+  }
+
+  Future<void> _loadSavedProfilePhoto() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final saved = prefs.getString('profile_photo_url')?.trim() ?? '';
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      profilePhotoUrl = saved;
+    });
+  }
+
+  Future<String> _getProfilePhotoToken() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    const keys = <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ];
+
+    for (final key in keys) {
+      final value = prefs.getString(key)?.trim() ?? '';
+
+      if (value.isEmpty) {
+        continue;
+      }
+
+      return value
+          .replaceFirst(
+            RegExp(
+              r'^Bearer\s+',
+              caseSensitive: false,
+            ),
+            '',
+          )
+          .trim();
+    }
+
+    return '';
+  }
+
+  Future<void> _showProfilePhotoSourceSheet() async {
+    if (isUploadingProfilePhoto || !mounted) {
+      return;
+    }
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              8,
+              18,
+              20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Profile photo',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF16231D),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                const Text(
+                  'Choose how you want to add your photo.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF748078),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ListTile(
+                  leading: const Icon(
+                    Icons.photo_library_rounded,
+                    color: Color(0xFF08783E),
+                  ),
+                  title: const Text(
+                    'Choose from gallery',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                      ImageSource.gallery,
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.camera_alt_rounded,
+                    color: Color(0xFF08783E),
+                  ),
+                  title: const Text(
+                    'Take a photo',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                      ImageSource.camera,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (source == null || !mounted) {
+      return;
+    }
+
+    await _pickAndUploadProfilePhoto(source);
+  }
+
+  Future<void> _pickAndUploadProfilePhoto(
+    ImageSource source,
+  ) async {
+    try {
+      final picked = await _profileImagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1200,
+        maxHeight: 1200,
+      );
+
+      if (picked == null) {
+        return;
+      }
+
+      final token = await _getProfilePhotoToken();
+
+      if (token.isEmpty) {
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Session expired. Please log in again.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isUploadingProfilePhoto = true;
+      });
+
+      final bytes = await picked.readAsBytes();
+
+      final request = http.MultipartRequest(
+        'PATCH',
+        Uri.parse(
+          '$baseUrl/auth/profile/photo',
+        ),
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'photo',
+          bytes,
+          filename: picked.name.isEmpty ? 'profile_photo.jpg' : picked.name,
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(
+            const Duration(seconds: 60),
+          );
+
+      final response = await http.Response.fromStream(
+        streamedResponse,
+      );
+
+      Map<String, dynamic> data = <String, dynamic>{};
+
+      try {
+        final decoded = jsonDecode(response.body);
+
+        if (decoded is Map) {
+          data = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true;
+
+      if (!success) {
+        if (!mounted) {
+          return;
+        }
+
+        final message = data['message']?.toString().trim() ?? '';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              message.isNotEmpty ? message : 'Unable to update profile photo.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      final newUrl = data['profilePhotoUrl']?.toString().trim() ?? '';
+
+      if (newUrl.isEmpty) {
+        throw Exception(
+          'Profile photo URL missing from server.',
+        );
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString(
+        'profile_photo_url',
+        newUrl,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        profilePhotoUrl = newUrl;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Profile photo updated successfully.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to upload profile photo. Please try again.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isUploadingProfilePhoto = false;
+        });
+      }
+    }
+  }
+
+  Widget buildPremiumHeader() {
+    final displayName =
+        userName.trim().isEmpty ? 'ServicePay User' : userName.trim();
+
+    final firstName = displayName.split(RegExp(r'\s+')).first.trim();
+
+    final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'S';
+
+    final hour = DateTime.now().hour;
+
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 40,
+            height: 40,
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF7F0),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Image.asset(
+              'assets/image/servicepay_logo.png',
+              fit: BoxFit.contain,
+              errorBuilder: (
+                context,
+                error,
+                stackTrace,
+              ) {
+                return const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: Color(0xFF08783E),
+                  size: 22,
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  greeting,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF7A8981),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  firstName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.35,
+                    color: Color(0xFF17231D),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              openScreen(
+                const NotificationsScreen(),
+              );
+            },
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: const Color(0xFFE7ECE9),
+                ),
+              ),
+              child: const Icon(
+                Icons.notifications_none_rounded,
+                color: Color(0xFF355B49),
+                size: 21,
+              ),
+            ),
+          ),
+          const SizedBox(width: 9),
+          GestureDetector(
+            onTap:
+                isUploadingProfilePhoto ? null : _showProfilePhotoSourceSheet,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                Container(
+                  width: 44,
+                  height: 44,
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFEAF7F0),
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 2,
+                    ),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: profilePhotoUrl.trim().isNotEmpty
+                      ? Image.network(
+                          profilePhotoUrl,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                          errorBuilder: (
+                            context,
+                            error,
+                            stackTrace,
+                          ) {
+                            return Text(
+                              initial,
+                              style: const TextStyle(
+                                color: Color(0xFF08783E),
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            );
+                          },
+                        )
+                      : Text(
+                          initial,
+                          style: const TextStyle(
+                            color: Color(0xFF08783E),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 19,
+                    height: 19,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF08783E),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                    ),
+                    child: isUploadingProfilePhoto
+                        ? const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.camera_alt_rounded,
+                            color: Colors.white,
+                            size: 10,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPremiumServiceHub() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+          ),
+          child: buildSearchBar(),
+        ),
+        const SizedBox(height: 15),
+        Row(
+          children: <Widget>[
+            const Expanded(
+              child: Text(
+                'Quick Actions',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.25,
+                  color: Color(0xFF17231D),
+                ),
+              ),
+            ),
+            Text(
+              'Everyday banking',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF728078).withValues(alpha: 0.90),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 8,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+          ),
+          child: buildQuickActions(),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'All Services',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.3,
+            color: Color(0xFF17231D),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.fromLTRB(
+            7,
+            9,
+            7,
+            10,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: const Color(0xFFE9EFEC),
+            ),
+          ),
+          child: buildAllServicesCompact(),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: <Color>[
+                Color(0xFF075C3A),
+                Color(0xFF159653),
+              ],
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x1C08783E),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              15,
+              13,
+              10,
+              13,
+            ),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 45,
+                  height: 45,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(
+                      alpha: 0.14,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.card_giftcard_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Invite friends to ServicePay',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'Share your referral code and grow your ServicePay network.',
+                        style: TextStyle(
+                          color: Color(0xFFD9EFE5),
+                          fontSize: 10.8,
+                          height: 1.3,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () {
+                      openScreen(
+                        const ReferralScreen(),
+                      );
+                    },
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget buildAllServicesCompact() {
+    final List<_DashboardService> combined = <_DashboardService>[
+      ...filtered(popularServices()),
+      ...filtered(moreServices()),
+    ];
+
+    final Map<String, _DashboardService> unique = <String, _DashboardService>{};
+
+    for (final service in combined) {
+      unique[service.title] = service;
+    }
+
+    final services = unique.values.toList();
+
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      itemCount: services.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        crossAxisSpacing: 7,
+        mainAxisSpacing: 8,
+        childAspectRatio: 0.80,
+      ),
+      itemBuilder: (
+        BuildContext context,
+        int index,
+      ) {
+        final _DashboardService service = services[index];
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: service.onTap,
+            borderRadius: BorderRadius.circular(17),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(
+                4,
+                9,
+                4,
+                6,
+              ),
+              decoration: BoxDecoration(
+                color: service.backgroundColor,
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(
+                  color: Colors.black.withValues(
+                    alpha: 0.025,
+                  ),
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: 0.72,
+                      ),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Icon(
+                      service.icon,
+                      color: service.iconColor,
+                      size: 23,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        service.title,
+                        maxLines: 2,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.3,
+                          height: 1.06,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF34463D),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget buildPopularServices() {
+    final List<_DashboardService> services = filtered(
+      popularServices(),
+    );
+
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const _SectionHeader(
+          title: 'Popular Services',
+        ),
+        const SizedBox(height: 13),
+        SizedBox(
+          height: 128,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: services.length,
+            padding: const EdgeInsets.only(
+              right: 3,
+            ),
+            separatorBuilder: (_, __) => const SizedBox(width: 11),
+            itemBuilder: (
+              BuildContext context,
+              int index,
+            ) {
+              return SizedBox(
+                width: 88,
+                child: _PopularServiceCard(
+                  service: services[index],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ===== SERVICEPAY MODERN HOME SERVICES =====
+
+  // ===== SERVICEPAY HOME BANNERS =====
+  Widget buildHomeBanners() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Column(
+            children: [
+              // Promo banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFEAF8EF),
+                      Color(0xFFF6FCF8),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFDDEFE4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Promo Deals',
+                            style: TextStyle(
+                              color: primaryGreen,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Enjoy amazing offers on your favorite ServicePay services.',
+                            style: TextStyle(
+                              color: Color(0xFF536159),
+                              fontSize: 12,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => _ServicePayAllServicesScreen(
+                                    services: <_DashboardService>[
+                                      ...popularServices(),
+                                      ...moreServices(),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: primaryGreen,
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: const Text(
+                                'View Deals',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 82,
+                      height: 82,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.card_giftcard_rounded,
+                        size: 48,
+                        color: primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Referral banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFEAF3FF),
+                      Color(0xFFF7FAFF),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFDCE9F8),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Refer & Earn',
+                            style: TextStyle(
+                              color: Color(0xFF1764B0),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Invite friends to ServicePay and enjoy referral rewards.',
+                            style: TextStyle(
+                              color: Color(0xFF536159),
+                              fontSize: 12,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ReferralScreen(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1764B0),
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: const Text(
+                                'Refer Now',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 82,
+                      height: 82,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.group_add_rounded,
+                        size: 47,
+                        color: Color(0xFF1764B0),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildModernHomeServices() {
+    final all = <_DashboardService>[
+      ...filtered(popularServices()),
+      ...filtered(moreServices()),
+    ];
+
+    final unique = <String, _DashboardService>{};
+    for (final service in all) {
+      unique.putIfAbsent(service.title.toLowerCase(), () => service);
+    }
+
+    final services = unique.values.toList();
+
+    _DashboardService? findService(List<String> names) {
+      for (final name in names) {
+        for (final service in services) {
+          if (service.title.toLowerCase().contains(name.toLowerCase())) {
+            return service;
+          }
+        }
+      }
+      return null;
+    }
+
+    final preferred = <_DashboardService?>[
+      findService(['Airtime']),
+      findService(['Data']),
+      findService(['Electricity']),
+      findService(['Cable']),
+      findService(['Delivery']),
+      findService(['NIN']),
+      findService(['Empowerment']),
+      findService(['Cards']),
+    ];
+
+    final selected = <_DashboardService>[];
+
+    for (final service in preferred) {
+      if (service != null &&
+          !selected.any(
+            (item) => item.title.toLowerCase() == service.title.toLowerCase(),
+          )) {
+        selected.add(service);
+      }
+    }
+
+    for (final service in services) {
+      if (selected.length >= 7) break;
+
+      if (!selected.any(
+        (item) => item.title.toLowerCase() == service.title.toLowerCase(),
+      )) {
+        selected.add(service);
+      }
+    }
+
+    if (selected.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(14, 17, 14, 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFFE7EEE9),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Services',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF16231C),
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _ServicePayAllServicesScreen(
+                            services: services,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 5,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'All Services',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: primaryGreen,
+                            ),
+                          ),
+                          SizedBox(width: 2),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 18,
+                            color: primaryGreen,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: selected.length + 1,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisExtent: 92,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 10,
+                ),
+                itemBuilder: (context, index) {
+                  if (index == selected.length) {
+                    return _modernHomeServiceItem(
+                      icon: Icons.grid_view_rounded,
+                      title: 'More',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => _ServicePayAllServicesScreen(
+                              services: services,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  }
+
+                  final service = selected[index];
+
+                  return _modernHomeServiceItem(
+                    icon: service.icon,
+                    title: service.title,
+                    onTap: service.onTap,
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modernHomeServiceItem({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Column(
+          children: [
+            Container(
+              width: 47,
+              height: 47,
+              decoration: BoxDecoration(
+                color: softGreen,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                icon,
+                size: 24,
+                color: primaryGreen,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 10.8,
+                  height: 1.08,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF536159),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildMoreServices() {
+    final List<_DashboardService> services = filtered(
+      moreServices(),
+    );
+
+    if (services.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const _SectionHeader(
+          title: 'More Services',
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 120,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: services.length,
+            padding: const EdgeInsets.only(
+              right: 3,
+            ),
+            separatorBuilder: (_, __) => const SizedBox(width: 11),
+            itemBuilder: (
+              BuildContext context,
+              int index,
+            ) {
+              final _DashboardService service = services[index];
+
+              return Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(19),
+                child: InkWell(
+                  onTap: service.onTap,
+                  borderRadius: BorderRadius.circular(19),
+                  child: Container(
+                    width: 145,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(19),
+                      border: Border.all(
+                        color: const Color(
+                          0xFFE7EAEF,
+                        ),
+                      ),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(
+                            0x0B101828,
+                          ),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Container(
+                          width: 43,
+                          height: 43,
+                          decoration: BoxDecoration(
+                            color: service.backgroundColor,
+                            borderRadius: BorderRadius.circular(
+                              14,
+                            ),
+                          ),
+                          child: Icon(
+                            service.icon,
+                            color: service.iconColor,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          service.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(
+                              0xFF1D2939,
+                            ),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildEmptySearch() {
+    if (searchQuery.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final bool hasPopular = filtered(
+      popularServices(),
+    ).isNotEmpty;
+
+    final bool hasMore = filtered(
+      moreServices(),
+    ).isNotEmpty;
+
+    if (hasPopular || hasMore) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFFE4E7EC),
+        ),
+      ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.search_off_rounded,
+            size: 44,
+            color: Color(0xFF98A2B3),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No service found for “$searchQuery”',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF475467),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPromoBanner() {
+    return Container(
+      height: 144,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(25),
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: <Color>[
+            Color(0xFF003B29),
+            Color(0xFF006A3C),
+            Color(0xFF088149),
+          ],
+        ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x33004E2C),
+            blurRadius: 22,
+            offset: Offset(0, 11),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              right: -35,
+              top: -48,
+              child: Container(
+                width: 190,
+                height: 190,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                      alpha: 0.07,
+                    ),
+                    width: 27,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 15,
+              bottom: 8,
+              child: Transform.rotate(
+                angle: -0.12,
+                child: Container(
+                  width: 73,
+                  height: 109,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        Color(0xFF17C86B),
+                        Color(0xFF006B3B),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(
+                        alpha: 0.40,
+                      ),
+                      width: 2,
+                    ),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(
+                          0x66000000,
+                        ),
+                        blurRadius: 16,
+                        offset: Offset(0, 9),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'S',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 39,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Positioned(
+              right: 94,
+              top: 18,
+              child: Icon(
+                Icons.bolt_rounded,
+                color: Color(0x66FFD54F),
+                size: 29,
+              ),
+            ),
+            const Positioned(
+              right: 112,
+              bottom: 21,
+              child: Icon(
+                Icons.monetization_on_rounded,
+                color: Color(0xFFFFC94B),
+                size: 28,
+              ),
+            ),
+            const Positioned(
+              right: 28,
+              top: 15,
+              child: Icon(
+                Icons.wifi_rounded,
+                color: Color(0x668EEA93),
+                size: 27,
+              ),
+            ),
+            const Positioned(
+              left: 21,
+              top: 20,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'One Platform,',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    'Many Solutions',
+                    style: TextStyle(
+                      color: Color(
+                        0xFF91EE96,
+                      ),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Fast. Secure. Reliable.',
+                    style: TextStyle(
+                      color: Color(
+                        0xFFD9F5E4,
+                      ),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Positioned(
+              right: 53,
+              bottom: 9,
+              child: Icon(
+                Icons.shield_rounded,
+                color: Color(0xFF9DE8B9),
+                size: 31,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9FB),
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: primaryGreen,
+          onRefresh: () {
+            return loadDashboard(
+              refreshing: true,
+            );
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              15,
+              14,
+              15,
+              30,
+            ),
+            children: <Widget>[
+              buildHeader(),
+              const SizedBox(height: 20),
+              if (isLoading)
+                const LinearProgressIndicator(
+                  color: primaryGreen,
+                  backgroundColor: softGreen,
+                  minHeight: 2,
+                ),
+              if (isLoading) const SizedBox(height: 10),
+              buildWalletCard(),
+              const SizedBox(height: 13),
+              buildModernHomeServices(),
+              buildHomeBanners(),
+              if (filtered(
+                popularServices(),
+              ).isNotEmpty)
+                const SizedBox(height: 18),
+              const SizedBox.shrink(),
+              buildEmptySearch(),
+              if (searchQuery.trim().isEmpty) const SizedBox(height: 18),
+              if (searchQuery.trim().isEmpty) const SizedBox.shrink(),
+              if (isRefreshing)
+                const Padding(
+                  padding: EdgeInsets.only(
+                    top: 20,
+                  ),
+                  child: Center(
+                    child: Text(
+                      'Refreshing dashboard...',
+                      style: TextStyle(
+                        color: Color(
+                          0xFF667085,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardService {
+  final String title;
+  final IconData icon;
+  final Color iconColor;
+  final Color backgroundColor;
+  final String keywords;
+  final VoidCallback onTap;
+
+  const _DashboardService({
+    required this.title,
+    required this.icon,
+    required this.iconColor,
+    required this.backgroundColor,
+    required this.keywords,
+    required this.onTap,
+  });
+}
+
+class _WalletAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _WalletAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: SizedBox(
+          height: 82,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 27,
+                color: const Color(0xFF08783E),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF26342D),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 4,
+        ),
+        child: Column(
+          children: <Widget>[
+            Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: _DashboardScreenState.softGreen,
+                borderRadius: BorderRadius.circular(
+                  14,
+                ),
+              ),
+              child: Icon(
+                icon,
+                color: _DashboardScreenState.primaryGreen,
+                size: 24,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF344054),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader({
+    required this.title,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 19,
+              color: Color(0xFF101828),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const Text(
+          'View All',
+          style: TextStyle(
+            color: _DashboardScreenState.primaryGreen,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(width: 4),
+        const Icon(
+          Icons.chevron_right_rounded,
+          color: _DashboardScreenState.primaryGreen,
+        ),
+      ],
+    );
+  }
+}
+
+class _PopularServiceCard extends StatelessWidget {
+  final _DashboardService service;
+
+  const _PopularServiceCard({
+    required this.service,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: service.onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 9,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(
+              20,
+            ),
+            border: Border.all(
+              color: const Color(
+                0xFFE7EAEF,
+              ),
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(
+                  0x0D101828,
+                ),
+                blurRadius: 13,
+                offset: Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: service.backgroundColor,
+                  borderRadius: BorderRadius.circular(
+                    15,
+                  ),
+                ),
+                child: Icon(
+                  service.icon,
+                  color: service.iconColor,
+                  size: 27,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                service.title,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(
+                    0xFF1D2939,
+                  ),
+                  fontSize: 11,
+                  height: 1.15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ===== SERVICEPAY ALL SERVICES SCREEN =====
+class _ServicePayAllServicesScreen extends StatefulWidget {
+  final List<_DashboardService> services;
+
+  const _ServicePayAllServicesScreen({
+    required this.services,
+  });
+
+  @override
+  State<_ServicePayAllServicesScreen> createState() =>
+      _ServicePayAllServicesScreenState();
+}
+
+class _ServicePayAllServicesScreenState
+    extends State<_ServicePayAllServicesScreen> {
+  final TextEditingController _controller = TextEditingController();
+  String query = '';
+
+  static const Color _green = Color(0xFF08783E);
+  static const Color _softGreen = Color(0xFFEAF7F0);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _categoryFor(String title) {
+    if (title == 'Partner API') {
+      return 'Business Services';
+    }
+
+    final t = title.toLowerCase();
+
+    if (t.contains('airtime') ||
+        t.contains('data') ||
+        t.contains('electricity') ||
+        t.contains('cable') ||
+        t.contains('exam')) {
+      return 'Bills & Utilities';
+    }
+
+    if (t.contains('nin') || t.contains('verification') || t.contains('kyc')) {
+      return 'Identity & Verification';
+    }
+
+    if (t.contains('delivery') ||
+        t.contains('rider') ||
+        t.contains('logistic')) {
+      return 'Delivery & Logistics';
+    }
+
+    if (t.contains('empower') ||
+        t.contains('grant') ||
+        t.contains('donation')) {
+      return 'Empowerment & Grants';
+    }
+
+    if (t.contains('business') || t.contains('merchant')) {
+      return 'Business Services';
+    }
+
+    if (t.contains('wallet') ||
+        t.contains('withdraw') ||
+        t.contains('transfer') ||
+        t.contains('cash') ||
+        t.contains('ajo') ||
+        t.contains('group')) {
+      return 'Financial Services';
+    }
+
+    if (t.contains('flight') || t.contains('travel') || t.contains('hotel')) {
+      return 'Travel';
+    }
+
+    return 'Other Services';
+  }
+
+  IconData _categoryIcon(String category) {
+    switch (category) {
+      case 'Bills & Utilities':
+        return Icons.receipt_long_rounded;
+      case 'Identity & Verification':
+        return Icons.verified_user_rounded;
+      case 'Delivery & Logistics':
+        return Icons.local_shipping_rounded;
+      case 'Empowerment & Grants':
+        return Icons.volunteer_activism_rounded;
+      case 'Business Services':
+        return Icons.business_center_rounded;
+      case 'Financial Services':
+        return Icons.account_balance_wallet_rounded;
+      case 'Travel':
+        return Icons.flight_takeoff_rounded;
+      default:
+        return Icons.apps_rounded;
+    }
+  }
+
+  List<_DashboardService> get _filtered {
+    final q = query.trim().toLowerCase();
+
+    if (q.isEmpty) {
+      return widget.services;
+    }
+
+    return widget.services
+        .where((service) => service.title.toLowerCase().contains(q))
+        .toList();
+  }
+
+  Map<String, List<_DashboardService>> get _groups {
+    final result = <String, List<_DashboardService>>{};
+
+    for (final service in _filtered) {
+      final category = _categoryFor(service.title);
+      result.putIfAbsent(category, () => <_DashboardService>[]);
+      result[category]!.add(service);
+    }
+
+    const order = <String>[
+      'Bills & Utilities',
+      'Financial Services',
+      'Identity & Verification',
+      'Delivery & Logistics',
+      'Business Services',
+      'Empowerment & Grants',
+      'Travel',
+      'Other Services',
+    ];
+
+    final sorted = <String, List<_DashboardService>>{};
+
+    for (final category in order) {
+      final items = result[category];
+      if (items != null && items.isNotEmpty) {
+        sorted[category] = items;
+      }
+    }
+
+    return sorted;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _groups;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAF9),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF14211B),
+        centerTitle: false,
+        title: const Text(
+          'All Services',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+              child: TextField(
+                controller: _controller,
+                onChanged: (value) {
+                  setState(() => query = value);
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search ServicePay services',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            _controller.clear();
+                            setState(() => query = '');
+                          },
+                        ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 15,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE4ECE7),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: _green,
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: groups.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No service found',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF66756D),
+                        ),
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
+                      children: [
+                        for (final entry in groups.entries) ...[
+                          _buildSection(
+                            entry.key,
+                            entry.value,
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSection(
+    String title,
+    List<_DashboardService> services,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _softGreen,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(
+                _categoryIcon(title),
+                size: 20,
+                color: _green,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF14211B),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
+          itemCount: services.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4,
+            mainAxisExtent: 94,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 12,
+          ),
+          itemBuilder: (context, index) {
+            final service = services[index];
+
+            return InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: service.onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 2,
+                  vertical: 4,
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _softGreen,
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          service.icon,
+                          size: 24,
+                          color: _green,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Expanded(
+                      child: Text(
+                        service.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 10.8,
+                          height: 1.08,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF536159),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// Partner API customer dashboard deployment trigger

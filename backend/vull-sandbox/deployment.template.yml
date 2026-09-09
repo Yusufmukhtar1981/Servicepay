@@ -1,0 +1,49 @@
+# Operator template only. Do not apply this to the existing ServicePay production deployment.
+# Create a separate Replit project/artifact dedicated to the VULL sandbox.
+replit:
+  deploymentTarget: reserved-vm
+  visibility: public
+  buildCommand: npm --prefix backend ci --omit=dev
+  runCommand: npm --prefix backend run run:vull-sandbox
+  publicPortEnvironmentVariable: PORT
+  healthCheck:
+    path: /
+    expectedStatus: 200
+    requires:
+      - sandbox-mongodb-ready
+      - webhook-worker-heartbeat-fresh
+  customDomain: sandbox-api.servicepay.ng
+
+runtime:
+  api:
+    command: npm --prefix backend run start:vull-sandbox
+    public: true
+  webhookWorker:
+    command: npm --prefix backend run worker:vull-sandbox
+    public: false
+  supervision:
+    command: npm --prefix backend run run:vull-sandbox
+    policy: exit-deployment-if-either-child-exits
+
+productionEnvironment:
+  plain:
+    VULL_ENV: sandbox
+    NODE_ENV: production
+    VULL_SANDBOX_MONGO_ALLOWED_HOSTS: <exact-sandbox-mongodb-hostname>
+    VULL_SANDBOX_MONGO_DATABASE: vull_servicepay_sandbox
+    VULL_PRODUCTION_MONGO_FINGERPRINTS: <sha256-production-host-slash-database>
+    VULL_SANDBOX_WORKER_POLL_INTERVAL_MS: "1000"
+    VULL_SANDBOX_INITIAL_BALANCE_MINOR: "10000000"
+  secrets:
+    VULL_SANDBOX_MONGODB_URI: <sandbox-only-mongodb-uri>
+    VULL_SANDBOX_AUTH_PEPPER: <sandbox-only-random-secret>
+    VULL_SANDBOX_WEBHOOK_SIGNING_SECRET: <sandbox-only-random-secret>
+  forbidden:
+    - MONGODB_URI
+    - DATABASE_URL
+    - MONGO_URL
+    - PRODUCTION_MONGODB_URI
+    - production-provider-credentials
+
+provisioningOnly:
+  VULL_SANDBOX_CREDENTIAL_OUTPUT_FILE: <safe-absolute-mode-0600-output-path>

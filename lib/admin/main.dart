@@ -35,12 +35,22 @@ class ServicepayAdminApp extends StatelessWidget {
       ),
       themeMode: ThemeMode.system,
       home: const AdminStartupSessionGate(),
+      routes: <String, WidgetBuilder>{
+        '/svp': (_) => const AdminStartupSessionGate(
+              initialDestinationLabel: 'SVP',
+            ),
+      },
     );
   }
 }
 
 class AdminStartupSessionGate extends StatelessWidget {
-  const AdminStartupSessionGate({super.key});
+  const AdminStartupSessionGate({
+    super.key,
+    this.initialDestinationLabel,
+  });
+
+  final String? initialDestinationLabel;
 
   Future<bool> _hasSession() async {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
@@ -58,7 +68,9 @@ class AdminStartupSessionGate extends StatelessWidget {
           );
         }
         return snapshot.data == true
-            ? const AdminMainNavigation()
+            ? AdminMainNavigation(
+                initialDestinationLabel: initialDestinationLabel,
+              )
             : const AdminLoginScreen();
       },
     );

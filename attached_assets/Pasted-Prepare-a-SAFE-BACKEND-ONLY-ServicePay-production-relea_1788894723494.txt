@@ -1,0 +1,104 @@
+Prepare a SAFE BACKEND-ONLY ServicePay production release now.
+
+Current verification:
+
+PINNED NODE VERSION: 20.20.0
+NODE VERSION CONFIGURED: PASS
+NPM CI USED: YES
+CLEAN DEPENDENCY INSTALL: PASS
+BACKEND BUILD: PASS
+BACKEND TESTS: PASS — 514/514
+
+INTERSTATE FIX INCLUDED: YES
+CALL FIX INCLUDED: YES
+
+The current staff-dashboard-release-final branch is NOT safe for production because:
+UNRELATED UNFINISHED CHANGES INCLUDED: YES
+SAFE RELEASE COMMIT IDENTIFIED: NO
+
+Do NOT deploy that broad branch.
+
+Create a new reviewed backend-only release branch based on the authoritative production main branch.
+
+Include ONLY:
+
+1. The verified Interstate Logistics backend fixes required for production.
+2. The verified ServicePay Call backend fixes required for production.
+3. The Render build reliability fix:
+   - pin Node.js 20.20.0
+   - remove conflicting Node runtime declarations
+   - use deterministic npm ci where appropriate
+4. Any strictly required backend dependency/config changes without which those three fixes cannot run.
+
+DO NOT include:
+- unfinished Staff Dashboard work
+- unrelated frontend changes
+- unrelated admin changes
+- experimental features
+- unrelated backend changes
+- VULL changes
+
+Carefully review the source commits:
+- Interstate source commit be205061
+- Call source commits 4b9502e0 and 9018f6c7
+
+Do NOT blindly cherry-pick mixed commits.
+
+Extract/cherry-pick only the exact required backend hunks/files after reviewing their diffs.
+
+Then:
+
+A. Show the complete diff between authoritative main and the new release branch.
+B. Classify every changed file as:
+   INTERSTATE
+   CALL
+   RENDER BUILD
+   STRICTLY REQUIRED DEPENDENCY
+C. If any changed file cannot be classified into one of those categories, remove it from the release.
+
+D. Run:
+   - clean npm ci
+   - backend build
+   - full backend test suite
+   - syntax checks
+   - git diff --check
+
+E. Check database/schema changes separately.
+
+Do NOT run destructive migrations.
+Do NOT modify production data.
+Do NOT deploy.
+Do NOT modify VULL.
+
+Create a clean release commit only after all checks pass.
+
+Report exactly:
+
+RELEASE BRANCH:
+RELEASE COMMIT:
+
+FILES CHANGED:
+INTERSTATE FILES:
+CALL FILES:
+RENDER BUILD FILES:
+STRICT DEPENDENCY FILES:
+UNRELATED FILES: NONE / list
+
+CLEAN NPM CI: PASS/FAIL
+BACKEND BUILD: PASS/FAIL
+BACKEND TESTS: PASS/FAIL + count
+SYNTAX CHECKS: PASS/FAIL
+GIT DIFF CHECK: PASS/FAIL
+
+DESTRUCTIVE DATABASE CHANGE REQUIRED: YES/NO
+PRODUCTION DATA MODIFIED: NO
+VULL MODIFIED: NO
+DEPLOYMENT PERFORMED: NO
+
+UNRELATED UNFINISHED CHANGES INCLUDED: YES/NO
+SAFE RELEASE COMMIT IDENTIFIED: YES/NO
+SAFE FOR MANUAL RENDER DEPLOY: YES/NO
+
+If SAFE FOR MANUAL RENDER DEPLOY is YES, STOP.
+Do not deploy automatically.
+I will perform the final Render deployment manually.

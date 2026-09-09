@@ -43,6 +43,26 @@ class LogisticsApi {
     return listOf(root['branches'] ?? map(root['data'])['branches']);
   }
 
+  Future<Map<String, dynamic>> setRouteActive(
+          String routeId, bool active) =>
+      request(
+        'PATCH',
+        '/admin/logistics/interstate/routes/${Uri.encodeComponent(routeId)}/${active ? 'activate' : 'deactivate'}',
+      );
+
+  Future<Map<String, dynamic>> archiveRoute(String routeId,
+          {required String reason}) =>
+      request(
+        'POST',
+        '/admin/logistics/interstate/routes/${Uri.encodeComponent(routeId)}/archive',
+        body: <String, dynamic>{'reason': reason.trim()},
+      );
+
+  Future<Map<String, dynamic>> restoreRoute(String routeId) => request(
+        'POST',
+        '/admin/logistics/interstate/routes/${Uri.encodeComponent(routeId)}/restore',
+      );
+
   Future<Map<String, dynamic>> request(
     String method,
     String path, {
@@ -123,6 +143,44 @@ class LogisticsApi {
   static List<Map<String, dynamic>> listOf(dynamic value) => value is List
       ? value.whereType<Map>().map((Map item) => map(item)).toList()
       : <Map<String, dynamic>>[];
+}
+
+String? validateInterstateRoutePayload(Map<String, dynamic> payload) {
+  for (final String field in <String>[
+    'name', 'originState', 'originBranchId', 'destinationState',
+    'destinationBranchId', 'standardDeliveryTime',
+  ]) {
+    if ('${payload[field] ?? ''}'.trim().isEmpty) {
+      return 'Complete all required route, state, and delivery fields.';
+    }
+  }
+  if (payload['originBranchId'] == payload['destinationBranchId']) {
+    return 'Pickup and destination branches must be different.';
+  }
+  for (final String field in <String>[
+    'baseFare', 'minimumWeightKg', 'maximumWeightKg',
+    'pricePerAdditionalKg', 'maximumDimensionCm', 'oversizeSurcharge',
+    'expressSurcharge', 'fragileItemSurcharge', 'pickupFee',
+    'doorDeliveryFee', 'branchCollectionFee', 'protectionPercent',
+    'protectionFlatFee',
+  ]) {
+    final dynamic raw = payload[field];
+    if (raw == null || '$raw'.trim().isEmpty) continue;
+    final double? value = raw is num ? raw.toDouble() : double.tryParse('$raw');
+    if (value == null || !value.isFinite || value < 0) {
+      return 'Pricing, weight, and size values must be valid non-negative numbers.';
+    }
+  }
+  final double minimum = (payload['minimumWeightKg'] as num?)?.toDouble() ?? 0;
+  final double maximum = (payload['maximumWeightKg'] as num?)?.toDouble() ?? 0;
+  if (maximum <= 0 || maximum < minimum) {
+    return 'Maximum weight must be greater than zero and at least the included weight.';
+  }
+  if (payload['expressEnabled'] == true &&
+      '${payload['expressDeliveryTime'] ?? ''}'.trim().isEmpty) {
+    return 'Estimated express delivery is required when express service is enabled.';
+  }
+  return null;
 }
 
 class LogisticsApiException implements Exception {

@@ -1,0 +1,341 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+class ReceiptScreen extends StatelessWidget {
+  final String serviceName;
+  final String amount;
+  final String status;
+  final String reference;
+  final String date;
+  final Map<String, String> details;
+
+  const ReceiptScreen({
+    super.key,
+    required this.serviceName,
+    required this.amount,
+    required this.status,
+    required this.reference,
+    required this.date,
+    required this.details,
+  });
+
+  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color softGreen = Color(0xFFEAF7F0);
+
+  @override
+  Widget build(BuildContext context) {
+    final bool successful = status.toUpperCase() == 'SUCCESSFUL' ||
+        status.toUpperCase() == 'SUCCESS';
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7F6),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Transaction Receipt',
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        iconTheme: const IconThemeData(
+          color: Colors.black87,
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 24,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    _buildLogo(),
+                    const SizedBox(height: 22),
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: successful ? softGreen : Colors.red.shade50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        successful
+                            ? Icons.check_circle_rounded
+                            : Icons.cancel_rounded,
+                        color: successful ? primaryGreen : Colors.red,
+                        size: 44,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      successful
+                          ? 'Transaction Successful'
+                          : 'Transaction $status',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: successful ? primaryGreen : Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      serviceName,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      '₦$amount',
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 10),
+                    ...details.entries.map(
+                      (entry) => _receiptRow(
+                        entry.key,
+                        entry.value,
+                      ),
+                    ),
+                    _receiptRow(
+                      'Reference',
+                      reference,
+                      copyable: true,
+                      context: context,
+                    ),
+                    _receiptRow(
+                      'Date & Time',
+                      date,
+                    ),
+                    _receiptRow(
+                      'Status',
+                      status,
+                      valueColor: successful ? primaryGreen : Colors.red,
+                    ),
+                    const SizedBox(height: 18),
+                    const Divider(),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Thank you for using ServicePay',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'One Platform, Many Solutions.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Receipt download will be connected next.',
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.download_rounded),
+                  label: const Text(
+                    'Download Receipt',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Receipt sharing will be connected next.',
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.share_rounded),
+                  label: const Text(
+                    'Share Receipt',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: primaryGreen,
+                    side: const BorderSide(
+                      color: primaryGreen,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogo() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: primaryGreen,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          alignment: Alignment.center,
+          child: const Text(
+            'S',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        const Text(
+          'ServicePay',
+          style: TextStyle(
+            fontSize: 23,
+            fontWeight: FontWeight.w900,
+            color: primaryGreen,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _receiptRow(
+    String title,
+    String value, {
+    bool copyable = false,
+    BuildContext? context,
+    Color? valueColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 9,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 4,
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 6,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Flexible(
+                  child: Text(
+                    value,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: valueColor ?? Colors.black87,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (copyable && context != null) ...[
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(
+                        ClipboardData(text: value),
+                      );
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Reference copied.',
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Icon(
+                      Icons.copy_rounded,
+                      size: 17,
+                      color: primaryGreen,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

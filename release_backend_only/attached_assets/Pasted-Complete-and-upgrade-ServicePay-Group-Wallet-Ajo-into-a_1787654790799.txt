@@ -1,0 +1,224 @@
+Complete and upgrade ServicePay Group Wallet / Ajo into a production-standard shared contribution group system.
+
+Current bug:
+When a Group Leader adds members, those members do not properly see the group in their own ServicePay account and cannot view the group information. Fix this end-to-end.
+
+Do not stop at planning. Inspect the existing Group Wallet/Ajo backend and Flutter customer implementation, preserve all working functionality, implement the missing membership synchronization and complete the feature.
+
+REQUIREMENTS
+
+1. GROUP MEMBERSHIP MODEL
+Each group must have:
+- groupId
+- groupName
+- description
+- contributionAmount
+- frequency: DAILY / WEEKLY / MONTHLY
+- leaderUserId
+- members[]
+- status: ACTIVE / PAUSED / COMPLETED / CANCELLED
+- totalCollected
+- createdAt
+- nextContributionDate where applicable
+
+Each member record must include:
+- userId
+- fullName
+- phone
+- role: LEADER or MEMBER
+- membershipStatus: INVITED / ACTIVE / LEFT / REMOVED
+- joinedAt
+- totalContributed
+- contributionCount
+- nextContributionStatus
+- lastContributionDate
+
+2. MEMBER VISIBILITY — CRITICAL FIX
+When the leader adds a ServicePay user to a group:
+- Persist the membership server-side.
+- The group must automatically appear in that member's own "Group Wallet / Ajo" screen after refresh/login.
+- Do not depend only on groups created by the logged-in user.
+- Fetch both:
+  a) groups created by the user
+  b) groups where the user is an ACTIVE member
+- Prevent duplicate memberships.
+
+3. "YOUR GROUPS" SCREEN
+Every logged-in customer should see:
+- Groups I Lead
+- Groups I Belong To
+
+For each group show:
+- Group name
+- Leader name
+- Contribution amount
+- Frequency
+- Total collected
+- Number of members
+- My total contribution
+- My current contribution status
+- Group status
+
+4. GROUP DETAILS SCREEN
+When any member opens a group, show:
+- Group name and description
+- Leader
+- Contribution amount
+- Frequency
+- Total collected
+- Group status
+- Next contribution schedule
+- Full member list
+- Each member's contribution status
+- My own contribution summary
+- Contribution history
+- Group activity/history
+
+5. ROLE-BASED PERMISSIONS
+LEADER can:
+- Add members
+- Remove members
+- Pause group
+- Resume group
+- Update allowed non-financial group details
+- View all contribution statuses
+- Close/cancel group only under safe conditions
+
+MEMBER can:
+- View group
+- View members
+- View contribution history
+- Make contribution
+- View own contribution status/history
+- Leave group if no protected restriction prevents it
+
+MEMBER must NOT be able to:
+- Add/remove members
+- Change contribution amount after protected activity starts
+- Change frequency
+- Close group
+- Perform leader-only actions
+
+6. CONTRIBUTION FLOW
+Add/confirm a proper contribution flow:
+- Member selects group
+- Shows contribution amount
+- Shows wallet balance
+- Requires transaction PIN using the existing ServicePay PIN system
+- Debit member wallet
+- Credit the group pooled ledger/balance
+- Record immutable transaction
+- Update member totalContributed
+- Update group totalCollected
+- Prevent duplicate/replayed contributions using idempotency/reference protection
+- Show successful contribution in normal ServicePay transaction history
+
+7. GROUP WALLET LEDGER
+Do not treat the pooled group balance as a fake UI number.
+Create/use a proper server-side group ledger with:
+- credits from member contributions
+- debits from approved group payouts if payout functionality already exists
+- running balance
+- transaction reference
+- actor
+- timestamp
+- audit trail
+
+8. MEMBER INVITATION
+If adding an existing ServicePay user:
+- search/resolve by phone or ServicePay identifier
+- add securely
+- show member in group
+- show group to member immediately
+
+If the user does not exist:
+- do not create a fake member account
+- return a clear "ServicePay account not found" message
+
+9. NOTIFICATIONS
+Notify members when:
+- added to a group
+- removed from a group
+- group paused/resumed
+- contribution is successful
+- contribution is due
+- group is completed/cancelled
+
+Notify leader when:
+- member contributes
+- member leaves
+- member payment is overdue if due tracking exists
+
+Use the existing ServicePay notification infrastructure.
+
+10. SECURITY
+- Authorization must be enforced in backend, not only Flutter UI.
+- A user must never access a group they do not lead or belong to.
+- Member cannot perform leader endpoints.
+- Protect financial endpoints with authentication, transaction PIN where required, idempotency and balance validation.
+- Never trust user-supplied totals or role values.
+- Calculate balances on the server.
+
+11. UI
+Improve the existing Group Wallet / Ajo UI without redesigning unrelated ServicePay screens.
+
+Keep the existing ServicePay premium green visual style.
+
+Add:
+- "Groups I Lead"
+- "Groups I Belong To"
+- member avatars/initials
+- contribution status chips
+- progress summary
+- clear leader badge
+- contribution button for members
+- manage button only for leader
+- refresh support
+- empty states
+
+12. BACKWARD COMPATIBILITY
+Existing groups such as "Adashi" must continue working.
+Migrate or safely normalize legacy group records if older records do not contain the new member fields.
+Do not delete existing group data.
+
+13. TESTS
+Add focused regression/integration tests for:
+- leader creates group
+- leader adds existing ServicePay member
+- added member sees group in own account
+- non-member cannot access group
+- member cannot use leader-only actions
+- leader can manage membership
+- duplicate member add rejected
+- member wallet contribution debits correctly
+- group balance/ledger credits correctly
+- insufficient wallet balance rejected
+- wrong PIN rejected
+- idempotent duplicate contribution rejected
+- group appears in both leader and member lists correctly
+- legacy group compatibility
+
+14. VALIDATION
+Run:
+- focused Group Wallet/Ajo backend tests
+- full backend test suite
+- Flutter/web analysis/build where available
+- customer web deployment
+- Android APK workflow
+
+15. PUBLISH
+Publish safely to GitHub main.
+Do not force-push.
+Do not overwrite unrelated ServicePay work.
+Do not change Marketplace, Empowerment, Amana, AI Support, reset PIN, KYC, Delivery, cards or other unrelated working features.
+
+At the end report:
+- files changed
+- backend endpoints added/changed
+- membership query fix
+- role/permission rules
+- contribution ledger behavior
+- tests passed
+- web deployment result
+- Android APK result
+- any remaining blocker

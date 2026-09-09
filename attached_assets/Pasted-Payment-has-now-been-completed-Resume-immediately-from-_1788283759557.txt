@@ -1,0 +1,86 @@
+Payment has now been completed.
+
+Resume immediately from the EXACT current checkpoint where you stopped.
+
+DO NOT restart the Branch Manager portal implementation.
+DO NOT discard or rewrite completed work.
+DO NOT create a separate replacement implementation.
+DO NOT stop at Suggested Next Tasks.
+
+The Branch Staff Management slice and its existing tests/checkpoint are already completed. Preserve them.
+
+Now continue and FINISH the remaining full Branch Manager portal scope from the previous instruction, including:
+
+- Premium Branch Dashboard
+- Staff Management
+- Officers Management
+- Riders Management
+- Delivery Management
+- Assign Rider
+- Assign/Reassign Delivery
+- Customers
+- Transactions
+- Finance / Branch Wallet
+- Withdrawals
+- KYC
+- Solar Applications
+- Marketplace Orders
+- Reports
+- Notifications
+- Targets & Goals
+- Working Quick Actions
+- Complete Logout/session protection
+- Mobile responsiveness
+- Clear/crisp dashboard text
+- Strict branch isolation and RBAC
+
+Use the EXISTING ServicePay backend models, routes, services and business logic wherever available.
+Do not create fake/demo data or placeholder-only screens.
+Do not break Head Office Admin or Customer frontend.
+
+Complete the remaining suggested work areas/tasks as ONE coordinated implementation.
+
+After implementation:
+
+1. Run all relevant Flutter tests.
+2. Run backend Branch/RBAC/isolation tests.
+3. Run Staff, Rider and Delivery tests.
+4. Test Customers, Transactions, Withdrawals, KYC, Solar and Marketplace.
+5. Run Flutter analysis.
+6. Build the production web release.
+7. Verify logout and protected-route behavior.
+8. Verify no cross-branch data leakage.
+9. Verify Head Office Admin regression.
+10. Verify Customer frontend regression.
+
+If anything fails, FIX IT and rerun the tests.
+
+When everything passes, commit the completed work, push normally without force-push, publish/deploy the COMPLETE Branch Manager portal to production, and verify the REAL production site.
+
+Do not stop after local checkpoint.
+Do not stop after tests.
+Do not ask me to manually start tasks #105–#107.
+Continue until the complete Branch Manager portal is deployed and production-verified.
+
+At the end give me ONE final report:
+
+Feature | Production Route/API | Test Result | Production Status
+
+And explicitly confirm:
+- Full Branch Manager portal deployed
+- Staff creation works
+- Officers work
+- Riders work
+- Assign Rider works
+- Deliveries work
+- Assign Delivery works
+- Customers work
+- Transactions work
+- Withdrawals work
+- KYC works
+- Solar works
+- Marketplace works
+- Logout works
+- Branch isolation works
+- Head Office Admin remains healthy
+- Customer frontend remains healthy

@@ -1,0 +1,918 @@
+SERVICEPAY — BUILD COMPLETE INTERSTATE LOGISTICS SYSTEM
+
+Build and deploy a complete production-ready “ServicePay Interstate Logistics” feature inside the existing ServicePay ecosystem.
+
+IMPORTANT:
+Do NOT replace or break the current Local Delivery feature.
+Instead create a higher-level “ServicePay Logistics” module with:
+
+1. Local Delivery
+2. Interstate Delivery
+
+Use the current ServicePay architecture, authentication, wallet, branches, staff, riders, admin roles, notifications and transaction system wherever possible.
+
+Do NOT use mock data in production.
+Do NOT hardcode fake pricing, tracking, drivers or shipment statuses.
+Reuse existing models/routes/services wherever appropriate and only extend the system where required.
+
+====================================================
+A. CUSTOMER — INTERSTATE DELIVERY
+====================================================
+
+Create a new customer feature:
+
+SERVICEPAY LOGISTICS
+→ Local Delivery
+→ Send Interstate Parcel
+→ Track Parcel
+→ My Shipments
+
+INTERSTATE PARCEL FORM:
+
+Sender information:
+- Sender name
+- Sender ServicePay ID/user
+- Sender phone
+- Pickup state
+- Pickup LGA
+- Pickup address
+- Pickup landmark
+- Pickup method:
+  * Rider Pickup
+  * Drop at ServicePay Branch/Service Center
+
+Receiver information:
+- Receiver full name
+- Receiver phone number
+- Destination state
+- Destination LGA
+- Full delivery address
+- Landmark
+- Delivery method:
+  * Door Delivery
+  * Collect from ServicePay Branch/Hub
+
+PARCEL INFORMATION:
+- Parcel/category:
+  * Documents
+  * Electronics
+  * Fashion
+  * Food/non-perishable
+  * Cosmetics
+  * Household items
+  * Spare parts
+  * Business goods
+  * Other
+
+- Parcel description
+- Quantity
+- Declared value
+- Weight in KG
+- Dimensions where available:
+  length / width / height
+- Parcel photos
+- Fragile: Yes/No
+- Special handling note
+
+Prohibited items acknowledgement:
+Customer must acknowledge that prohibited/illegal/dangerous goods cannot be shipped.
+
+Do not permit categories such as:
+- weapons
+- explosives
+- illegal drugs
+- dangerous chemicals
+- cash/currency
+- other prohibited items configured by Admin
+
+====================================================
+B. INTERSTATE ROUTES
+====================================================
+
+Admin must be able to configure transport routes.
+
+Create route model:
+
+Origin State
+Origin Hub/Branch
+Destination State
+Destination Hub/Branch
+Route Name
+Distance if known
+Base Fare
+Minimum Weight
+Maximum Weight
+Price Per Additional KG
+Express Surcharge
+Pickup Fee
+Door Delivery Fee
+Branch Collection Fee
+Insurance/Protection fee rule if enabled
+Expected Delivery Time
+Route Status:
+- ACTIVE
+- PAUSED
+- UNAVAILABLE
+
+Examples:
+Kano → Abuja
+Kano → Lagos
+Abuja → Kano
+Lagos → Abuja
+
+Do not hardcode these routes in frontend.
+
+Admin creates and controls them from Admin Dashboard.
+
+====================================================
+C. AUTOMATIC PRICING ENGINE
+====================================================
+
+Create backend-controlled pricing.
+
+Pricing should be calculated from:
+- origin
+- destination
+- weight
+- parcel size where supported
+- service type
+- pickup option
+- final delivery option
+- configured route price
+- optional protection/insurance
+- applicable fees
+
+Customer must see a full price breakdown before payment.
+
+Example:
+Interstate Transport Fee
+Pickup Fee
+Door Delivery Fee
+Protection Fee
+Total
+
+Backend must calculate the authoritative final total.
+Frontend must not be able to manipulate the price.
+
+====================================================
+D. SERVICE TYPES
+====================================================
+
+Support:
+
+STANDARD
+EXPRESS
+
+Only show Express where Admin has enabled it for that route.
+
+Each service type must display expected delivery timeframe.
+
+Example:
+Standard — 2–4 business days
+Express — 1–2 business days
+
+These values must come from route configuration.
+
+====================================================
+E. PAYMENT
+====================================================
+
+Use the existing ServicePay Wallet.
+
+Customer reviews shipment details → confirms → enters transaction PIN → wallet is debited.
+
+Implement:
+- insufficient balance handling
+- duplicate payment protection/idempotency
+- failed debit rollback
+- transaction record
+- shipment-payment linkage
+- receipt
+
+Do not create a separate fake wallet.
+
+Transaction description example:
+“Interstate Logistics — Kano to Abuja”
+
+====================================================
+F. TRACKING NUMBER
+====================================================
+
+After successful payment create a unique tracking ID.
+
+Example format:
+SPX-XXXXXXXXXX
+
+Do NOT rely only on sequential database IDs.
+
+Tracking number must be:
+- unique
+- searchable
+- public-safe
+- immutable
+
+Generate:
+- Tracking Number
+- QR Code where current stack supports it
+- Barcode where practical
+
+Customer can copy/share tracking number.
+
+====================================================
+G. SHIPMENT STATUS LIFECYCLE
+====================================================
+
+Create a controlled backend state machine.
+
+Statuses:
+
+DRAFT
+AWAITING_PAYMENT
+PAID
+AWAITING_PICKUP
+PICKUP_ASSIGNED
+PICKED_UP
+RECEIVED_AT_ORIGIN_HUB
+VERIFIED_AT_ORIGIN_HUB
+READY_FOR_INTERSTATE_DISPATCH
+IN_TRANSIT
+ARRIVED_AT_DESTINATION_HUB
+DESTINATION_HUB_VERIFIED
+OUT_FOR_DELIVERY
+READY_FOR_COLLECTION
+DELIVERY_ATTEMPTED
+DELIVERED
+FAILED_DELIVERY
+RETURN_INITIATED
+RETURN_IN_TRANSIT
+RETURNED
+CANCELLED
+
+Each status update must store:
+
+timestamp
+actor
+actor role
+branch/hub
+location text where available
+status
+note
+evidence/photo where appropriate
+
+Create Shipment Timeline visible to customer.
+
+====================================================
+H. ORIGIN BRANCH / HUB WORKFLOW
+====================================================
+
+Branch Manager dashboard must include:
+
+INTERSTATE LOGISTICS
+
+Tabs:
+- Awaiting Pickup
+- Incoming to Hub
+- Verification
+- Ready for Dispatch
+- In Transit
+- Exceptions
+- Completed
+
+Origin branch staff must be able to:
+
+Receive parcel
+Scan/search tracking number
+Verify parcel
+Confirm actual weight
+Add parcel photo
+Confirm packaging condition
+Flag prohibited/suspicious parcel
+Update verified weight
+Recalculate price if actual weight differs
+Request additional customer payment if required
+Mark Ready for Dispatch
+Assign transport trip/driver
+
+Every action must be audited.
+
+====================================================
+I. INTERSTATE DRIVER / TRANSPORT
+====================================================
+
+Create an Interstate Driver/Transport role or extend the existing logistics role safely.
+
+Driver/transport fields:
+
+Name
+Phone
+Vehicle Type
+Vehicle Registration Number
+Vehicle Capacity
+Driver ID
+Assigned Branch
+Status
+ACTIVE/INACTIVE
+
+Admin/Branch creates transport trips:
+
+Trip ID
+Origin hub
+Destination hub
+Driver
+Vehicle
+Departure date/time
+Expected arrival
+Shipments assigned
+Trip status
+
+Trip statuses:
+
+PLANNED
+LOADING
+DEPARTED
+IN_TRANSIT
+ARRIVED
+COMPLETED
+CANCELLED
+
+Driver should see only assigned trips/shipments.
+
+Driver must not see customer wallet data.
+
+====================================================
+J. DESTINATION HUB WORKFLOW
+====================================================
+
+Destination branch dashboard:
+
+- Expected Shipments
+- Arrived Shipments
+- Verification Queue
+- Door Delivery Queue
+- Branch Collection Queue
+- Delivery Exceptions
+
+Destination staff:
+
+confirm trip arrival
+scan tracking number
+confirm parcel received
+inspect condition
+upload evidence if damaged
+mark Destination Hub Verified
+
+Then:
+
+If Door Delivery:
+Assign a Rider.
+
+If Branch Collection:
+Send receiver collection notification.
+
+====================================================
+K. LAST-MILE RIDER
+====================================================
+
+Reuse existing Rider system where possible.
+
+Rider gets:
+- receiver name
+- receiver phone
+- destination address
+- parcel tracking number
+- delivery note
+
+Do not expose unnecessary sender/private information.
+
+Rider flow:
+Accept Assignment
+Picked From Hub
+Out For Delivery
+Arrived
+Enter Receiver OTP
+Delivered
+
+Receiver must receive OTP.
+
+DELIVERED must require:
+- valid OTP
+OR approved secure fallback by authorized Branch/Admin.
+
+Store:
+delivery timestamp
+rider
+receiver confirmation
+optional proof photo/signature where supported.
+
+====================================================
+L. RECEIVER OTP
+====================================================
+
+Generate secure one-time delivery OTP.
+
+Requirements:
+- short validity where appropriate
+- hashed or protected storage
+- attempt limits
+- resend controls
+- never expose OTP in logs
+
+Send using existing notification/SMS/email infrastructure where available.
+
+If external SMS provider is not configured, still implement backend OTP workflow and clearly report the missing delivery-provider dependency rather than pretending SMS was sent.
+
+====================================================
+M. TRACK PARCEL
+====================================================
+
+Create customer tracking page.
+
+Customer enters tracking ID.
+
+Show only public-safe tracking information:
+
+Tracking Number
+Origin
+Destination
+Current Status
+Latest Update
+Expected Delivery
+Timeline
+
+Do not expose:
+- receiver full private address
+- wallet information
+- driver personal details
+- internal admin notes
+
+Logged-in shipment owner may see fuller shipment information.
+
+====================================================
+N. CUSTOMER MY SHIPMENTS
+====================================================
+
+Tabs:
+All
+Active
+Delivered
+Cancelled
+Returned
+
+Each shipment card:
+
+Tracking ID
+Route
+Receiver
+Amount
+Status
+Created Date
+Expected Delivery
+Track button
+View Details
+Receipt
+
+====================================================
+O. ADMIN DASHBOARD
+====================================================
+
+Create full:
+
+Admin → Logistics → Interstate Logistics
+
+Include:
+
+Overview KPIs:
+Total Interstate Shipments
+Today Shipments
+Active Shipments
+In Transit
+Delivered
+Failed
+Returned
+Pending Pickup
+Pending Hub Verification
+Revenue/fees only if reliably available
+Total shipment value where appropriate
+
+Charts:
+Shipments by day
+Routes performance
+Status breakdown
+Top origin states
+Top destination states
+Service type
+Delivery performance
+
+Pages:
+Shipments
+Routes
+Hubs/Branches
+Transport Trips
+Drivers/Vehicles
+Pricing
+Exceptions
+Returns
+Reports
+Settings
+
+Search:
+tracking number
+sender
+receiver phone
+route
+branch
+status
+
+Filters:
+date
+origin
+destination
+status
+service type
+branch
+
+====================================================
+P. BRANCH DASHBOARD
+====================================================
+
+Branch Managers should see only shipments relevant to their branch unless elevated permission exists.
+
+Add:
+
+Logistics Overview
+Incoming Parcels
+Outgoing Parcels
+Pickup Assignments
+Interstate Dispatch
+Arrivals
+Last Mile
+Exceptions
+Reports
+
+Branch must not see unrelated branch shipments.
+
+====================================================
+Q. HEAD OFFICE CONTROL
+====================================================
+
+HEAD_OFFICE must have full nationwide visibility.
+
+Head Office can:
+- create/disable routes
+- configure pricing
+- manage hubs
+- create transport operators
+- view all shipments
+- resolve disputes
+- approve exceptional cancellations/returns
+- view financial reports
+- view route performance
+
+All sensitive actions require proper permissions and audit logs.
+
+====================================================
+R. CANCEL / REFUND RULES
+====================================================
+
+Implement controlled cancellations.
+
+Before parcel pickup:
+customer may request cancellation.
+
+After pickup:
+customer cannot automatically cancel.
+Branch/Admin review required.
+
+Refund must use existing wallet/transaction infrastructure.
+
+Never credit wallet merely from frontend state.
+
+Record:
+original payment transaction
+refund transaction
+refund reason
+actor
+timestamp
+
+====================================================
+S. RETURNS
+====================================================
+
+Implement Return-to-Sender flow.
+
+Reasons:
+Receiver unavailable
+Receiver rejected parcel
+Invalid address
+Delivery failed
+Damaged parcel
+Other approved reason
+
+Return must have its own tracking timeline tied to original shipment.
+
+====================================================
+T. DAMAGE / EXCEPTION MANAGEMENT
+====================================================
+
+Add exception types:
+
+DAMAGED
+MISSING
+DELAYED
+WRONG_ROUTE
+WEIGHT_MISMATCH
+ADDRESS_PROBLEM
+RECEIVER_UNAVAILABLE
+PROHIBITED_ITEM
+OTHER
+
+Branch/Admin can:
+open exception
+upload evidence
+add notes
+assign responsible staff
+resolve exception
+
+Customer only sees safe customer-facing status.
+
+====================================================
+U. NOTIFICATIONS
+====================================================
+
+Notify customer/receiver where existing notification channels support it:
+
+Shipment created
+Payment successful
+Pickup assigned
+Parcel picked up
+Received at origin hub
+In transit
+Arrived destination hub
+Out for delivery
+Ready for collection
+Delivered
+Delivery failed
+Return started
+
+Use push/in-app/email/SMS only where currently configured.
+
+Do not claim SMS/email succeeded unless provider response confirms it.
+
+====================================================
+V. DATABASE MODELS
+====================================================
+
+Inspect current architecture first.
+
+Reuse current User, Branch, Rider, Transaction, Wallet and Notification models.
+
+Create only necessary new entities, potentially:
+
+InterstateShipment
+LogisticsRoute
+LogisticsPricingRule
+TransportDriver
+TransportVehicle
+TransportTrip
+ShipmentStatusHistory
+ShipmentException
+ShipmentDeliveryOtp
+
+Follow existing Node/Express/Mongo conventions.
+
+====================================================
+W. API DESIGN
+====================================================
+
+Use current backend route structure.
+
+Possible endpoints:
+
+/api/logistics/interstate/quote
+/api/logistics/interstate/shipments
+/api/logistics/interstate/shipments/:id
+/api/logistics/interstate/track/:trackingNumber
+/api/logistics/interstate/:id/pay
+/api/logistics/interstate/:id/cancel
+
+Admin:
+/api/admin/logistics/interstate/...
+/api/admin/logistics/routes/...
+/api/admin/logistics/trips/...
+
+Branch:
+/api/branch/logistics/...
+
+Rider:
+/api/rider/logistics/...
+
+Do not duplicate routes where equivalent architecture already exists.
+
+====================================================
+X. SECURITY
+====================================================
+
+All mutation endpoints require authentication.
+
+Enforce role/ownership permissions server-side.
+
+Never expose:
+password
+passwordHash
+PIN
+PIN hash
+JWT
+OTP
+BVN/NIN
+API secrets
+provider credentials
+
+Add rate limits to public tracking where supported.
+
+Prevent IDOR:
+Customers cannot inspect another customer's private shipment simply by changing ID.
+
+Tracking number endpoint must return only public-safe fields.
+
+====================================================
+Y. AUDIT LOGS
+====================================================
+
+Integrate with the now-working ServicePay Audit Logs.
+
+Audit:
+
+shipment creation
+payment
+pricing changes
+weight changes
+branch receipt
+status changes
+trip assignment
+rider assignment
+delivery
+refund
+return
+route creation/update
+driver/vehicle changes
+admin overrides
+
+====================================================
+Z. UI / PREMIUM DESIGN
+====================================================
+
+Use existing ServicePay premium styling.
+
+Customer Logistics screen should feel like a premium modern logistics/fintech product.
+
+Include icons/illustrations for:
+Send Parcel
+Track Parcel
+My Shipments
+Local Delivery
+Interstate Delivery
+
+Responsive:
+Android
+mobile web
+desktop web
+
+Do not make the customer fill an unnecessarily long single page.
+
+Use a premium multi-step wizard:
+
+Step 1 — Route
+Step 2 — Sender & Receiver
+Step 3 — Parcel
+Step 4 — Delivery Options
+Step 5 — Price Review
+Step 6 — PIN & Payment
+Step 7 — Success + Tracking
+
+====================================================
+AA. DO NOT BREAK EXISTING DELIVERY
+====================================================
+
+Current Local Delivery must continue working.
+
+Existing rider assignments, wallet operations and Delivery APIs must remain compatible.
+
+Do not rename/delete existing production collections or fields unless migration is safe and backwards compatible.
+
+====================================================
+AB. TESTING
+====================================================
+
+Before completion test:
+
+Customer:
+- quote
+- create shipment
+- pay
+- wallet debit
+- tracking generation
+- tracking
+- my shipments
+
+Origin Branch:
+- receive
+- verify
+- weight
+- dispatch
+
+Transport:
+- assign shipment to trip
+- departure
+- arrival
+
+Destination:
+- receive
+- verify
+
+Rider:
+- assignment
+- out for delivery
+- OTP
+- delivered
+
+Admin:
+- create route
+- pricing
+- search
+- reports
+- status
+- permissions
+
+Security:
+- unauthorized customer blocked
+- wrong branch blocked
+- rider cannot access unrelated shipment
+- public tracker exposes only safe data
+
+Financial:
+- duplicate debit prevented
+- incorrect price manipulation rejected
+- refund tied to original transaction
+
+Run all existing project tests/builds and fix regressions introduced by this feature.
+
+====================================================
+AC. DEPLOYMENT
+====================================================
+
+Identify the authoritative repositories first.
+
+Deploy backend only after tests pass.
+Confirm api.servicepay.ng is live.
+
+Deploy customer/admin web after successful builds.
+
+If Rider/Branch dashboards share the same source, deploy through the existing correct pipeline.
+
+Do not modify unrelated infrastructure.
+
+====================================================
+AD. FINAL ACCEPTANCE
+====================================================
+
+Do not report success merely because code was written.
+
+Verify production flow:
+
+Customer:
+Kano → Abuja test shipment or another configured test route.
+
+Confirm:
+quote works
+wallet payment works
+tracking ID created
+origin branch sees shipment
+status updates appear
+destination workflow works
+OTP delivery confirmation works
+customer timeline updates
+
+Do not create fake financial transactions against real customer balances solely for testing.
+Use safe existing test/admin-controlled data where available.
+
+FINAL REPORT:
+- models created/reused
+- API routes
+- screens/pages
+- roles/permissions
+- pricing implementation
+- tracking implementation
+- OTP implementation
+- wallet/payment implementation
+- Branch workflow
+- Rider workflow
+- Admin workflow
+- test results
+- deployment commits
+- backend deployment status
+- frontend deployment status
+- production verification
+- any external dependency still required
+
+Build the entire ServicePay Interstate Logistics system end-to-end now.
+Do not stop at UI mockups or placeholders.

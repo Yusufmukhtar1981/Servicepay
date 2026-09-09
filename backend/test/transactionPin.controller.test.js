@@ -465,7 +465,11 @@ test("password-authenticated reset recovers a stale missing PIN", async () => {
 
 test("password change enforces strong policy and old login fails after a successful change", async () => {
   process.env.JWT_SECRET = process.env.JWT_SECRET || "transaction-pin-test-secret";
-  const user = await createUser();
+  const user = await createUser({ role: "BRANCH_MANAGER" });
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { mustChangePassword: true } }
+  );
   const weak = await callWithResponse(changePassword, {
     user,
     body: { currentPassword: "Password123!", newPassword: "weakpass", confirmPassword: "weakpass" },
@@ -476,6 +480,10 @@ test("password change enforces strong policy and old login fails after a success
     body: { currentPassword: "Password123!", newPassword: "Changed123!", confirmPassword: "Changed123!" },
   });
   assert.equal(changed.status, 200);
+  assert.equal(
+    (await User.findById(user._id)).mustChangePassword,
+    false
+  );
   const oldLogin = await callWithResponse(loginUser, {
     body: { email: user.email, password: "Password123!" }, headers: {}, ip: "127.0.0.1",
   });

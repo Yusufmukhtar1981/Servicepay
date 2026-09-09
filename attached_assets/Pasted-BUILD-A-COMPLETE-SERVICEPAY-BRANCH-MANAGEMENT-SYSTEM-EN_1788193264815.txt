@@ -1,0 +1,911 @@
+BUILD A COMPLETE SERVICEPAY BRANCH MANAGEMENT SYSTEM END-TO-END.
+
+GOAL:
+ServicePay must support multiple physical branches/offices. Each branch must have its own Branch Manager Dashboard and branch staff, while HEAD OFFICE retains central control and final approval over sensitive operations.
+
+This is a major production feature. Do not build UI only. Implement complete backend + frontend + database + RBAC + approvals + targets + reports + audit logs + testing.
+
+IMPORTANT ARCHITECTURE:
+HEAD OFFICE
+→ STATE / REGIONAL MANAGEMENT (future-compatible)
+→ SERVICEPAY BRANCH
+→ BRANCH MANAGER
+→ BRANCH STAFF / OFFICERS
+
+Reuse the existing ServicePay Staff/RBAC system wherever possible.
+Do not create a conflicting duplicate permission system.
+
+==================================================
+1. BRANCH CREATION & MANAGEMENT
+==================================================
+
+Create a Head Office page:
+Admin > Branch Management
+
+HEAD OFFICE must be able to:
+
+- Create branch
+- Edit branch
+- Activate/deactivate branch
+- Assign Branch Manager
+- Change Branch Manager
+- Add/remove branch staff
+- Assign branch permissions/modules
+- Assign branch targets
+- View complete branch performance
+- View branch financial/activity reports
+- View pending approvals
+- Suspend branch operations where necessary
+
+Branch fields should include:
+
+- Branch Name
+- Branch Code
+- State
+- LGA
+- Address
+- Phone
+- Email
+- Branch Manager
+- Status
+- Opening Date
+- Assigned Modules
+- Notes
+- Optional GPS/location fields for future use
+
+Each branch must have a unique branch ID/code.
+
+Example:
+SP-KANO-001
+SP-KANO-002
+
+==================================================
+2. BRANCH MANAGER ACCOUNT
+==================================================
+
+Branch Manager must have a dedicated dashboard.
+
+The Branch Manager should NOT be treated as normal Customer.
+
+The authenticated user must know:
+
+- staffId
+- branchId
+- role
+- jobTitle
+- permissions
+- assignedModules
+- branchStatus
+
+Branch Manager must ONLY see data belonging to the assigned branch, except where Head Office explicitly grants wider scope.
+
+==================================================
+3. BRANCH DASHBOARD DESIGN
+==================================================
+
+Build a premium professional Branch Dashboard.
+
+TOP SECTION:
+- ServicePay logo
+- Branch Name
+- Branch Code
+- Manager Name
+- Branch Status
+- Notifications
+- Refresh
+- Profile
+- Logout
+
+MAIN DASHBOARD CARDS:
+
+- Today’s Transactions
+- This Week Transactions
+- This Month Transactions
+- New Customers
+- Deliveries
+- Solar Applications
+- Solar Sales
+- Marketplace Orders
+- Phone Financing Applications
+- Empowerment Applications
+- Revenue
+- Pending Head Office Approvals
+- Branch Staff Count
+
+Cards must respect permissions.
+
+==================================================
+4. BRANCH TARGET SYSTEM
+==================================================
+
+Build a complete Branch Target Management system.
+
+HEAD OFFICE can assign targets:
+
+DAILY
+WEEKLY
+MONTHLY
+QUARTERLY
+YEARLY
+
+Target categories can include:
+
+- Delivery completed
+- Delivery revenue
+- Solar applications
+- Solar sales count
+- Solar sales amount
+- Marketplace orders
+- Marketplace sales value
+- Phone Financing applications
+- Phone Financing approvals
+- Phone Financing sales
+- Empowerment registrations
+- New Customer registrations
+- Transactions count
+- Transaction value
+- Revenue
+- Other future ServicePay modules
+
+Example:
+
+KANO ZOO ROAD BRANCH
+
+Monthly Delivery Target: 500
+Completed: 365
+Progress: 73%
+
+Solar Target: ₦15,000,000
+Actual: ₦9,200,000
+Progress: 61.3%
+
+New Customers Target: 1,000
+Actual: 870
+Progress: 87%
+
+Show:
+- Target
+- Actual
+- Remaining
+- Percentage
+- Status
+
+Statuses:
+ON TRACK
+BEHIND TARGET
+ACHIEVED
+EXCEEDED TARGET
+
+Add visual progress indicators.
+
+==================================================
+5. BRANCH REPORTING
+==================================================
+
+Branch Manager must see:
+
+- Today report
+- Yesterday report
+- Weekly report
+- Monthly report
+- Custom date report
+
+Report should include:
+
+- Total transactions
+- Transaction value
+- New customers
+- Deliveries
+- Delivery revenue
+- Solar applications
+- Solar approvals
+- Solar sales
+- Solar sales value
+- Marketplace orders
+- Marketplace value
+- Phone Financing applications
+- Phone Financing approvals
+- Empowerment applications
+- Branch revenue
+- Staff activity
+- Targets vs actual
+- Pending approvals
+- Rejected requests
+
+Allow filters by:
+- Date
+- Module
+- Staff
+- Status
+
+HEAD OFFICE must be able to view the same reports across:
+
+- One branch
+- Multiple branches
+- State
+- All branches
+
+==================================================
+6. HEAD OFFICE APPROVAL SYSTEM
+==================================================
+
+This is CRITICAL.
+
+Sensitive Branch actions must NOT be final immediately.
+
+Create a central approval workflow.
+
+Statuses:
+DRAFT
+SUBMITTED
+PENDING_HEAD_OFFICE
+APPROVED
+REJECTED
+CANCELLED
+COMPLETED
+
+Examples of actions requiring Head Office approval:
+
+- Manual funding
+- Sensitive wallet actions
+- High-value transaction adjustments
+- Customer account restrictions
+- Solar final approval
+- Phone Financing approval
+- Financing limit changes
+- Empowerment disbursement
+- Branch expense request
+- Staff permission escalation
+- Branch target changes initiated outside Head Office
+- Financial adjustments
+- Refunds where applicable
+
+Branch Manager submits request.
+
+HEAD OFFICE sees:
+Admin > Branch Approvals
+
+Head Office can:
+- View request
+- View supporting details
+- Approve
+- Reject
+- Request correction
+- Add internal note
+
+Every approval must record:
+
+- requestId
+- branchId
+- requesterStaffId
+- actionType
+- amount if applicable
+- status
+- createdAt
+- reviewedBy
+- reviewedAt
+- reviewNote
+
+==================================================
+7. DELIVERY BRANCH OPERATIONS
+==================================================
+
+Delivery is a major branch module.
+
+Branch Manager with Delivery permission should see:
+
+- New delivery orders assigned to branch
+- Pending pickup
+- Rider assigned
+- In transit
+- Delivered
+- Failed
+- Cancelled
+
+Branch Manager can:
+
+- Assign rider
+- Reassign rider
+- View rider status
+- View delivery timeline
+- Contact information where permitted
+- Monitor delivery performance
+
+HEAD OFFICE can:
+- View all branches
+- Reassign branch
+- Override assignment
+- Investigate delays
+
+Future-ready:
+Assign delivery automatically to nearest branch based on pickup area.
+
+Do NOT break existing rider system.
+
+==================================================
+8. SOLAR BRANCH OPERATIONS
+==================================================
+
+Branch with Solar permission can:
+
+- Register customer interest
+- Submit application
+- Perform local verification
+- Upload required documents
+- View status
+- Monitor repayments
+- View approved packages
+- Track branch solar target
+
+Final financing/sensitive approval must remain with HEAD OFFICE.
+
+Do not duplicate existing Solar Officer business logic unnecessarily.
+
+==================================================
+9. PHONE FINANCING BRANCH OPERATIONS
+==================================================
+
+Branch with Phone Financing permission can:
+
+- Register applicant
+- Collect application information
+- Verify customer
+- Upload required documents
+- Select device/product
+- Submit application
+- Track repayment status
+- View branch performance
+
+Final approval must remain with HEAD OFFICE.
+
+Branch Manager must not be able to self-approve financing unless explicitly authorized at Head Office level.
+
+==================================================
+10. MARKETPLACE BRANCH OPERATIONS
+==================================================
+
+Branch can:
+
+- Assist sellers
+- Register stores where allowed
+- Review local marketplace activity
+- View local orders
+- Support fulfillment
+- Monitor complaints
+- View branch marketplace target
+
+Sensitive financial actions remain under proper approval flow.
+
+==================================================
+11. EMPOWERMENT BRANCH OPERATIONS
+==================================================
+
+Branch can:
+
+- Assist beneficiary registration
+- Verify local beneficiaries
+- Submit documentation
+- Track applications
+- View branch application targets
+
+Disbursement/final beneficiary approval remains with HEAD OFFICE or authorized central role.
+
+==================================================
+12. CUSTOMER ONBOARDING
+==================================================
+
+Branch staff may register/onboard customers where permitted.
+
+Each customer onboarded through branch must store:
+
+- branchId
+- createdByStaffId
+- onboardingSource = BRANCH
+
+This allows Head Office to know which branch acquired the customer.
+
+Do not change normal self-registration flow.
+
+==================================================
+13. BRANCH STAFF MANAGEMENT
+==================================================
+
+Branch Manager can manage staff ONLY within the same branch if granted permission.
+
+Possible actions:
+
+- View branch staff
+- Assign daily work
+- View staff performance
+
+Branch Manager must NOT be able to:
+- create Super Admin
+- create Head Office Admin
+- give permissions beyond their own delegated permission ceiling
+- move staff to another branch
+unless explicitly authorized by Head Office.
+
+HEAD OFFICE retains ultimate authority.
+
+==================================================
+14. BRANCH PERMISSIONS / RBAC
+==================================================
+
+Use centralized permissions.
+
+Suggested permissions:
+
+branch.dashboard.view
+branch.targets.view
+branch.reports.view
+
+branch.staff.view
+branch.staff.manage
+
+branch.customers.view
+branch.customers.create
+
+branch.delivery.view
+branch.delivery.manage
+
+branch.solar.view
+branch.solar.manage
+
+branch.marketplace.view
+branch.marketplace.manage
+
+branch.phone.view
+branch.phone.manage
+
+branch.empowerment.view
+branch.empowerment.manage
+
+branch.approvals.view
+branch.approvals.submit
+
+branch.finance.view
+
+HEAD OFFICE permissions:
+
+branches.view
+branches.manage
+branches.targets.manage
+branches.approvals.view
+branches.approvals.manage
+branches.reports.view
+branches.staff.manage
+
+Reuse existing permission naming conventions if available.
+
+==================================================
+15. DATA ISOLATION
+==================================================
+
+This is CRITICAL.
+
+Branch A must NEVER see Branch B data unless user has explicit cross-branch permission.
+
+All backend queries must enforce branch scope.
+
+Do NOT rely on frontend filters.
+
+Example:
+
+Branch Manager:
+branchId = SP-KANO-001
+
+Backend should automatically restrict:
+
+customers
+deliveries
+applications
+staff
+reports
+orders
+approvals
+
+to SP-KANO-001.
+
+HEAD OFFICE can query multiple branches.
+
+==================================================
+16. BRANCH PERFORMANCE RANKING
+==================================================
+
+Create Head Office Branch Performance page.
+
+Show:
+
+- Rank
+- Branch
+- State
+- Manager
+- Target %
+- Revenue
+- Delivery performance
+- Solar performance
+- Customer growth
+- Marketplace performance
+- Overall score
+
+Allow:
+Daily
+Weekly
+Monthly
+Quarterly
+
+Use fair configurable scoring.
+
+Example:
+Delivery = 25%
+Solar = 25%
+Customer growth = 20%
+Marketplace = 15%
+Phone Financing = 15%
+
+Do not hardcode if it can be stored in settings.
+
+==================================================
+17. BRANCH STAFF PERFORMANCE
+==================================================
+
+Branch Manager should see performance of staff.
+
+Examples:
+
+- Customers onboarded
+- Deliveries handled
+- Applications processed
+- Solar leads
+- Marketplace support
+- Phone applications
+- Completed assignments
+
+HEAD OFFICE can also see staff performance across branches.
+
+==================================================
+18. BRANCH NOTIFICATIONS
+==================================================
+
+HEAD OFFICE can send notification to:
+
+- All branches
+- One branch
+- One state
+- Branch Managers only
+- Selected staff
+
+Branch Dashboard should display:
+
+- Announcements
+- Approval results
+- Target updates
+- Operational alerts
+
+==================================================
+19. BRANCH EXPENSE / REQUEST SYSTEM
+==================================================
+
+Add a simple Branch Request module.
+
+Branch Manager can submit:
+
+- Expense request
+- Equipment request
+- Operational request
+- Cash/funding request
+- Maintenance request
+- Other request
+
+HEAD OFFICE:
+Approve / Reject / Request correction.
+
+Do not directly move money unless it passes the correct financial workflow.
+
+==================================================
+20. AUDIT LOG
+==================================================
+
+Every sensitive branch action must be logged.
+
+Store:
+
+- branchId
+- staffId
+- staffName
+- role
+- action
+- module
+- targetId
+- beforeValue where appropriate
+- afterValue where appropriate
+- metadata
+- IP if available
+- timestamp
+
+HEAD OFFICE must have:
+Admin > Branch Audit Logs
+
+==================================================
+21. HEAD OFFICE COMMAND CENTER
+==================================================
+
+Create a consolidated Head Office view.
+
+Show:
+
+- Total branches
+- Active branches
+- Branches behind target
+- Branches that achieved target
+- Total branch revenue
+- Total deliveries
+- Total solar sales
+- Total marketplace orders
+- Total phone financing applications
+- Total new customers
+- Pending Head Office approvals
+
+Also show:
+Top 5 branches
+Lowest 5 branches
+Branches requiring attention
+
+==================================================
+22. DATABASE MODELS
+==================================================
+
+Create or extend models safely.
+
+Suggested models:
+
+Branch
+BranchTarget
+BranchApprovalRequest
+BranchReport
+BranchStaffAssignment
+BranchAuditLog
+BranchOperationalRequest
+
+Do not unnecessarily duplicate existing Staff/User/Transaction models.
+
+Use references where appropriate.
+
+==================================================
+23. SECURITY
+==================================================
+
+CRITICAL SECURITY RULES:
+
+- Never trust branchId from frontend without validating authenticated user access
+- Never trust frontend permissions
+- Never expose password hashes
+- Never expose PIN
+- Never expose API secrets
+- Branch Manager cannot escalate own permissions
+- Branch Manager cannot assign themselves to another branch
+- Branch staff cannot access Head Office APIs
+- Financial approval must be transactional/idempotent
+- Prevent double approvals
+- Prevent double credits
+- Prevent duplicate disbursement
+- Record audit trail for sensitive actions
+
+==================================================
+24. BACKWARD COMPATIBILITY
+==================================================
+
+Do NOT break:
+
+- Customer Dashboard
+- Admin Dashboard
+- Staff Dashboard
+- Rider Dashboard
+- Delivery
+- Marketplace
+- Solar
+- Empowerment
+- Phone Financing
+- Amana
+- Transactions
+- Wallet
+- Manual Funding
+- Existing auth
+- Existing production routes
+
+Inspect current project first and extend safely.
+
+==================================================
+25. MOBILE / RESPONSIVE DESIGN
+==================================================
+
+Branch Dashboard must work on:
+
+- Desktop
+- Tablet
+- Mobile browser
+
+Use a professional ServicePay look.
+
+Avoid clutter.
+
+Show important operational information first.
+
+==================================================
+26. TEST SCENARIOS
+==================================================
+
+Create and test:
+
+TEST A:
+Branch: Kano Branch 1
+Manager:
+Delivery + Solar only
+
+Expected:
+Only Delivery/Solar modules visible.
+
+TEST B:
+Branch: Kano Branch 2
+Manager:
+Marketplace + Empowerment
+
+Expected:
+No access to Branch 1 data.
+
+TEST C:
+Branch Manager submits Solar approval.
+
+Expected:
+Pending Head Office.
+Manager cannot approve own request.
+Head Office can approve.
+
+TEST D:
+Branch Manager tries to open another branch API directly.
+
+Expected:
+403 Forbidden.
+
+TEST E:
+Head Office views all branches.
+
+Expected:
+Complete consolidated reports.
+
+TEST F:
+Target:
+Delivery target = 100
+Actual = 75
+
+Expected:
+75% progress.
+
+TEST G:
+After target reaches 100:
+Status = ACHIEVED.
+
+TEST H:
+Actual = 120
+Target = 100
+
+Expected:
+120% and EXCEEDED TARGET.
+
+==================================================
+27. REPORT ACCURACY
+==================================================
+
+Reports must be calculated from real backend records.
+
+Do not use placeholder values.
+
+Prevent double-counting.
+
+Use correct status filters.
+
+Monthly data must use correct date range.
+
+==================================================
+28. FUTURE COMPATIBILITY
+==================================================
+
+Design system so later we can add:
+
+HEAD OFFICE
+→ REGIONAL MANAGER
+→ STATE MANAGER
+→ BRANCH MANAGER
+→ BRANCH STAFF
+
+Do not hardcode Kano only.
+
+The system must support all Nigerian states and future expansion outside Nigeria.
+
+==================================================
+29. IMPLEMENTATION RULES
+==================================================
+
+Do not stay in Plan mode.
+
+Do not only create project tasks.
+
+Do not stop after analysis.
+
+Modify the actual application files.
+
+Reuse existing architecture.
+
+Fix root causes.
+
+Do not create duplicate conflicting systems.
+
+Use the existing ServicePay backend/frontend conventions.
+
+==================================================
+30. FINAL QA
+==================================================
+
+Do not mark complete until:
+
+- Head Office can create a branch
+- Branch Manager can login
+- Branch Manager sees correct branch
+- Permissions work
+- Branch isolation works
+- Targets work
+- Reports work
+- Approval workflow works
+- Delivery module works
+- Solar module works
+- Marketplace module works
+- Phone Financing module works where currently available
+- Empowerment module works
+- Staff data is branch-scoped
+- Unauthorized access returns 403
+- Admin remains working
+- Existing Customer/Rider systems remain working
+- Build passes
+- No critical console errors
+- No critical failed APIs
+
+==================================================
+31. DEPLOYMENT
+==================================================
+
+Run:
+
+- backend validation/tests
+- frontend build
+- lint where available
+- production build
+
+Fix all errors before completion.
+
+Deploy/publish using the existing project workflow.
+
+If deployment fails:
+Inspect actual logs and fix the root cause.
+
+Do not repeatedly retry without diagnosis.
+
+==================================================
+32. FINAL COMPLETION REPORT
+==================================================
+
+At completion give me:
+
+1. Architecture implemented
+2. Files changed
+3. Models added/updated
+4. Backend routes added/updated
+5. Branch RBAC changes
+6. Branch isolation tests
+7. Approval workflow tests
+8. Target tests
+9. Reporting tests
+10. Build result
+11. Deployment result
+12. Remaining issues, if any
+
+START IMPLEMENTATION NOW.

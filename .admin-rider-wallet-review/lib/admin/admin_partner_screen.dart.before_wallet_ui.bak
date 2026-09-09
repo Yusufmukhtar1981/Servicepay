@@ -1,0 +1,440 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AdminPartnerScreen extends StatefulWidget {
+  const AdminPartnerScreen({super.key});
+
+  @override
+  State<AdminPartnerScreen> createState() => _AdminPartnerScreenState();
+}
+
+class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  bool isLoading = true;
+  String errorMessage = '';
+  List<dynamic> partners = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadPartners();
+  }
+
+  Future<String?> _getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
+  }
+
+  Future<void> loadPartners() async {
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = true;
+      errorMessage = '';
+    });
+
+    try {
+      final token = await _getToken();
+
+      if (token == null || token.isEmpty) {
+        throw Exception('Admin authentication token was not found.');
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/admin/partners'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final dynamic decoded =
+          response.body.isNotEmpty ? jsonDecode(response.body) : {};
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          decoded is Map && decoded['message'] != null
+              ? decoded['message'].toString()
+              : 'Unable to load partners. Server error ${response.statusCode}.',
+        );
+      }
+
+      List<dynamic> result = [];
+
+      if (decoded is List) {
+        result = decoded;
+      } else if (decoded is Map<String, dynamic>) {
+        if (decoded['partners'] is List) {
+          result = decoded['partners'] as List<dynamic>;
+        } else if (decoded['data'] is List) {
+          result = decoded['data'] as List<dynamic>;
+        } else if (decoded['data'] is Map &&
+            decoded['data']['partners'] is List) {
+          result = decoded['data']['partners'] as List<dynamic>;
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        partners = result;
+        isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  String _text(dynamic value, {String fallback = '—'}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _money(dynamic value) {
+    final number = double.tryParse(value?.toString() ?? '') ?? 0;
+    return '₦${number.toStringAsFixed(2)}';
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'ACTIVE':
+        return Colors.green;
+      case 'SUSPENDED':
+        return Colors.orange;
+      case 'REVOKED':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _summaryCard({
+    required String title,
+    required String value,
+    required IconData icon,
+  }) {
+    return Expanded(
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Colors.grey.shade200,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                color: const Color(0xFF08783E),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeCount = partners.where((item) {
+      final map = item is Map ? item : {};
+      return _text(map['status']).toUpperCase() == 'ACTIVE';
+    }).length;
+
+    final totalWallet = partners.fold<double>(
+      0,
+      (sum, item) {
+        final map = item is Map ? item : {};
+        return sum +
+            (double.tryParse(map['walletBalance']?.toString() ?? '') ?? 0);
+      },
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Partner Management'),
+        actions: [
+          IconButton(
+            onPressed: loadPartners,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: loadPartners,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Row(
+              children: [
+                _summaryCard(
+                  title: 'Total Partners',
+                  value: partners.length.toString(),
+                  icon: Icons.business_center_outlined,
+                ),
+                const SizedBox(width: 12),
+                _summaryCard(
+                  title: 'Active Partners',
+                  value: activeCount.toString(),
+                  icon: Icons.verified_outlined,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _summaryCard(
+                  title: 'Combined Wallet',
+                  value: _money(totalWallet),
+                  icon: Icons.account_balance_wallet_outlined,
+                ),
+                const SizedBox(width: 12),
+                _summaryCard(
+                  title: 'Management',
+                  value: 'HEAD OFFICE',
+                  icon: Icons.admin_panel_settings_outlined,
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Partners',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 60),
+                child: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (errorMessage.isNotEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 42,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: loadPartners,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Try Again'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (partners.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text(
+                      'No partners found.',
+                    ),
+                  ),
+                ),
+              )
+            else
+              ...partners.map((item) {
+                final partner = item is Map<String, dynamic>
+                    ? item
+                    : Map<String, dynamic>.from(item as Map);
+
+                final status = _text(
+                  partner['status'],
+                  fallback: 'UNKNOWN',
+                );
+
+                final permissions = partner['permissions'] is List
+                    ? List<dynamic>.from(
+                        partner['permissions'],
+                      )
+                    : <dynamic>[];
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: Colors.grey.shade200,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor: const Color(0xFFEAF7F0),
+                              child: Text(
+                                _text(
+                                  partner['businessName'],
+                                  fallback: 'P',
+                                )[0]
+                                    .toUpperCase(),
+                                style: const TextStyle(
+                                  color: Color(0xFF08783E),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _text(
+                                      partner['businessName'],
+                                      fallback: 'Unnamed Partner',
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _text(
+                                      partner['contactName'],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _statusColor(status)
+                                    .withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                status,
+                                style: TextStyle(
+                                  color: _statusColor(status),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Email: ${_text(partner['email'])}',
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Phone: ${_text(partner['phone'])}',
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Wallet: ${_money(partner['walletBalance'])}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: permissions.isEmpty
+                              ? [
+                                  const Chip(
+                                    label: Text(
+                                      'No permissions',
+                                    ),
+                                  ),
+                                ]
+                              : permissions
+                                  .map(
+                                    (permission) => Chip(
+                                      label: Text(
+                                        permission.toString(),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                        ),
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Partner management actions for ${_text(partner['businessName'])} will be connected next.',
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.settings_outlined,
+                            ),
+                            label: const Text('Manage Partner'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+}

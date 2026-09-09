@@ -1,0 +1,233 @@
+Proceed with FINAL ENVIRONMENT AND PRODUCTION VERIFICATION for the completed ServicePay Branch Management implementation.
+
+IMPORTANT:
+- DO NOT redesign Branch Management.
+- DO NOT rewrite already-passing Branch/RBAC/approval logic.
+- DO NOT create a new Branch task.
+- Only fix environment/deployment/runtime issues that are actually discovered.
+
+CURRENT ACCEPTED IMPLEMENTATION STATUS:
+- 63 cross-module backend tests passed
+- 17 branch/security tests passed
+- 7 approval lifecycle tests passed
+- 5 Solar money-safety tests passed
+- 26 Flutter tests passed
+- Flutter analysis passed
+- Flutter web release build passed
+- Preview loads successfully
+- Task #97 implementation is complete
+
+NOW COMPLETE THE FOLLOWING:
+
+1. IDENTIFY THE EXACT DATABASE ENVIRONMENT VARIABLE
+
+Inspect the backend source/configuration and Replit Secrets.
+
+Determine the exact variable expected by the application, for example:
+MONGODB_URI
+MONGO_URI
+DATABASE_URL
+or another existing variable name.
+
+Do not guess.
+
+Report the exact variable name used by the backend code.
+
+2. CHECK EXISTING REPLIT SECRETS
+
+If the correct MongoDB secret already exists:
+- use it through the existing environment
+- do not print its value
+- do not expose credentials
+- start the backend
+- verify MongoDB connection succeeds
+
+If the secret exists under a different legacy variable name:
+- safely map/read it through configuration if appropriate
+- do not duplicate or expose the secret unnecessarily
+
+If the MongoDB secret genuinely does NOT exist:
+STOP database startup attempts and tell me only:
+“Missing Secret: <EXACT_VARIABLE_NAME>”
+
+Do not invent a MongoDB URI.
+
+3. BACKEND STARTUP VERIFICATION
+
+Once MongoDB configuration is available:
+
+Start the backend using the actual production-compatible command.
+
+Verify:
+- MongoDB connected successfully
+- API starts without crash
+- authentication routes load
+- branch routes load
+- no schema/model startup errors
+- no duplicate index fatal errors
+- no unhandled promise rejection
+- no repeated restart loop
+
+4. SAFE DATABASE VERIFICATION
+
+Inspect required Branch-related models/indexes safely.
+
+Verify:
+- Branch
+- BranchTarget
+- BranchApprovalRequest
+- BranchOperationalRequest
+- BranchAuditLog
+- Staff/branch references
+- branchId indexes used by scoped modules
+
+IMPORTANT:
+- never drop collections
+- never delete production records
+- never reset MongoDB
+- never run destructive migrations
+- never seed fake financial data into production
+
+If an index is missing and can be safely created through the application’s normal model/index mechanism, do so.
+
+5. RENDER ACCESS
+
+Inspect the existing Render deployment task/configuration.
+
+If Task #32 / Render authorization is now resolved:
+proceed with deployment.
+
+If authorization is still blocked:
+do not create another duplicate task.
+Report:
+“Render deployment blocked by existing access/authorization issue.”
+
+6. DEPLOY BACKEND
+
+If Render access is available:
+- deploy the current backend
+- watch deployment logs
+- verify startup
+- verify MongoDB connection
+- verify health/API endpoint
+- fix only actual deployment errors
+
+Do not alter working business logic merely to force deployment.
+
+7. DEPLOY FRONTEND
+
+Deploy/publish the already-successful Flutter web release using the existing production workflow.
+
+Verify:
+- site loads
+- no blank screen
+- no infinite spinner
+- no fatal browser console errors
+- production API base URL is correct
+- authentication reaches the correct backend
+
+8. PRODUCTION SMOKE TEST — NON-DESTRUCTIVE
+
+Perform safe authenticated checks where credentials/access are available.
+
+Verify:
+
+ADMIN:
+- Admin login
+- Branch Management opens
+- Branch list loads
+- Reports page loads
+- Targets page loads
+- Branch Approvals page loads
+
+STAFF / BRANCH MANAGER:
+- login succeeds
+- authenticated branch context loads
+- correct branch name/code loads
+- dashboard loads
+- correct permission-based modules appear
+
+BRANCH SECURITY:
+- Branch A cannot access Branch B data
+- unauthorized cross-branch API returns 403
+- Head Office global access still works
+
+MODULES:
+- Delivery branch-scoped page loads
+- Solar branch-scoped page loads
+- Marketplace branch-scoped page loads
+- Phone Financing branch-scoped page loads
+- Empowerment branch-scoped page loads
+
+APPROVAL:
+- approval list loads
+- lifecycle/state mapping is correct
+- do NOT execute a destructive real-money approval solely for testing
+
+TARGETS/REPORTS:
+- real backend data loads
+- no placeholder values
+- no obvious double counting
+
+9. FINANCIAL SAFETY
+
+Do NOT:
+- credit/debit real wallets for smoke testing
+- trigger fake withdrawals
+- create fake disbursements
+- reset balances
+- approve real customer money movement purely as a test
+
+Use read-only or non-financial verification wherever possible.
+
+10. FINAL REGRESSION CHECK
+
+After deployment/runtime verification rerun only necessary safe checks:
+
+- backend syntax/startup
+- critical branch/security tests if environment permits
+- Flutter analysis
+- production frontend load
+- key API health/auth checks
+
+Do not unnecessarily modify code that already passed the full suite.
+
+11. FINAL STATUS
+
+If everything succeeds:
+mark the production verification complete.
+
+If MongoDB Secret or Render access is still missing:
+do NOT call it an application-code failure.
+
+Clearly distinguish:
+
+IMPLEMENTATION STATUS:
+COMPLETE
+
+LOCAL TEST STATUS:
+PASSED
+
+PRODUCTION DEPLOYMENT STATUS:
+BLOCKED or SUCCESSFUL
+
+EXTERNAL BLOCKER:
+<exact missing access/configuration>
+
+12. FINAL REPORT
+
+Give me ONLY this concise report:
+
+- Exact MongoDB environment variable expected
+- MongoDB Secret present: YES/NO
+- Backend startup: PASS/FAIL/BLOCKED
+- Database/index verification: PASS/FAIL/BLOCKED
+- Render access: AVAILABLE/BLOCKED
+- Backend deployment: PASS/FAIL/BLOCKED
+- Frontend deployment: PASS/FAIL/BLOCKED
+- Production smoke test: PASS/FAIL/BLOCKED
+- Branch security verification: PASS/FAIL/BLOCKED
+- Any actual runtime bug discovered
+- Final production readiness: READY / EXTERNALLY BLOCKED
+
+Proceed now.

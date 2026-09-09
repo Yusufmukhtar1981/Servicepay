@@ -1,0 +1,3312 @@
+
+==========================================================================================
+FILE: backend/models/user.model.js
+==========================================================================================
+   20:       type: String,
+   21:       unique: true,
+   22:       sparse: true,
+   23:       lowercase: true,
+   24:       trim: true,
+   25:     },
+   26: 
+   27:     password: {
+   28:       type: String,
+   29:       required: true,
+   30:       minlength: 6,
+   31:       select: false,
+   32:     },
+   33: 
+   34:     /*
+   35:      * Transaction PIN
+   36:      */
+   37:     transactionPin: {
+   38:       type: String,
+   39:       default: undefined,
+   40:       select: false,
+   41:     },
+   42: 
+   43:     transactionPinSet: {
+   44:       type: Boolean,
+   45:       default: false,
+   46:     },
+   47: 
+   48:     transactionPinUpdatedAt: {
+   49:       type: Date,
+   50:       default: null,
+   51:     },
+   52: 
+   53:     /*
+   54:      * Password reset
+   55:      */
+   56:     passwordResetToken: {
+   57:       type: String,
+   58:       select: false,
+   59:       default: undefined,
+   60:     },
+   61: 
+   62:     passwordResetExpires: {
+   63:       type: Date,
+   64:       select: false,
+   65:       default: undefined,
+   66:     },
+   67: 
+   68:     passwordChangedAt: {
+   69:       type: Date,
+   70:       default: undefined,
+   71:     },
+   72: 
+   73:     /*
+   74:      * Internal ServicePay staff
+   75:      */
+   76:     isStaff: {
+   77:       type: Boolean,
+   78:       default: false,
+   79:       index: true,
+   80:     },
+   81: 
+   82:     staffId: {
+   83:       type: String,
+   84:       trim: true,
+   85:       uppercase: true,
+   86:       unique: true,
+   87:       sparse: true,
+   88:       default: undefined,
+   89:     },
+   90: 
+   91:     staffRoleId: {
+   92:       type: mongoose.Schema.Types.ObjectId,
+   93:       ref: "Role",
+   94:       default: null,
+   95:       index: true,
+   96:     },
+   97: 
+   98:     department: {
+   99:       type: String,
+  100:       uppercase: true,
+  101:       trim: true,
+  102:       enum: [
+  103:         "ADMINISTRATION",
+------------------------------------------------------------------------------------------
+  117:       ref: "User",
+  118:       default: null,
+  119:     },
+  120: 
+  121:     lastStaffLoginAt: {
+  122:       type: Date,
+  123:       default: null,
+  124:     },
+  125: 
+  126:     mustChangePassword: {
+  127:       type: Boolean,
+  128:       default: false,
+  129:     },
+  130: 
+  131:     /*
+  132:      * Main ServicePay role
+  133:      */
+  134:     role: {
+  135:       type: String,
+  136:       enum: [
+  137:         "HEAD_OFFICE",
+  138:         "STAFF",
+  139:         "ZONAL_MANAGER",
+  140:         "STATE_MANAGER",
+  141:         "AGENT",
+  142:         "DELIVERY_RIDER",
+  143:         "CUSTOMER",
+  144:       ],
+  145:       default: "CUSTOMER",
+  146:       index: true,
+  147:     },
+  148: 
+  149:     zone: {
+  150:       type: String,
+  151:       default: null,
+  152:       trim: true,
+  153:     },
+  154: 
+  155:     state: {
+  156:       type: String,
+  157:       default: null,
+  158:       trim: true,
+  159:     },
+  160: 
+  161:     lga: {
+------------------------------------------------------------------------------------------
+  172: 
+  173:     stateManagerId: {
+  174:       type: mongoose.Schema.Types.ObjectId,
+  175:       ref: "User",
+  176:       default: null,
+  177:     },
+  178: 
+  179:     agentId: {
+  180:       type: mongoose.Schema.Types.ObjectId,
+  181:       ref: "User",
+  182:       default: null,
+  183:     },
+  184: 
+  185:     /*
+  186:      * =====================================================
+  187:      * DELIVERY RIDER / SERVICEPAY KEKE
+  188:      * =====================================================
+  189:      */
+  190: 
+  191:     riderId: {
+  192:       type: String,
+  193:       trim: true,
+  194:       uppercase: true,
+  195:       unique: true,
+  196:       sparse: true,
+  197:       default: undefined,
+  198:     },
+  199: 
+  200:     vehicleType: {
+  201:       type: String,
+  202:       uppercase: true,
+  203:       trim: true,
+  204:       enum: [
+  205:         "MOTORCYCLE",
+  206:         "TRICYCLE",
+  207:         "BICYCLE",
+  208:         "CAR",
+  209:         "VAN",
+  210:         "TRUCK",
+  211:         "OTHER",
+  212:         null,
+  213:       ],
+  214:       default: null,
+  215:     },
+  216: 
+------------------------------------------------------------------------------------------
+  472: 
+  473:     /*
+  474:      * Tracks the active Keke/delivery job.
+  475:      */
+  476:     riderCurrentJobId: {
+  477:       type: mongoose.Schema.Types.ObjectId,
+  478:       default: undefined,
+  479:       index: true,
+  480:     },
+  481: 
+  482:     /*
+  483:      * =====================================================
+  484:      * WALLET
+  485:      * =====================================================
+  486:      */
+  487:     walletBalance: {
+  488:       type: Number,
+  489:       default: 0,
+  490:       min: 0,
+  491:     },
+  492: 
+  493:     commissionBalance: {
+  494:       type: Number,
+  495:       default: 0,
+  496:       min: 0,
+  497:     },
+  498: 
+  499:     referralCode: {
+  500:       type: String,
+  501:       unique: true,
+  502:       sparse: true,
+  503:       trim: true,
+  504:     },
+  505: 
+  506:     referredBy: {
+  507:       type: mongoose.Schema.Types.ObjectId,
+  508:       ref: "User",
+  509:       default: undefined,
+  510:     },
+  511: 
+  512:     totalEarnings: {
+  513:       type: Number,
+  514:       default: 0,
+  515:       min: 0,
+  516:     },
+  517: 
+  518:     totalTransactions: {
+  519:       type: Number,
+  520:       default: 0,
+  521:       min: 0,
+  522:     },
+  523: 
+  524:     kycVerified: {
+  525:       type: Boolean,
+  526:       default: false,
+  527:     },
+  528: 
+  529:     /*
+  530:      * =====================================================
+  531:      * VIRTUAL ACCOUNT
+  532:      * =====================================================
+  533:      */
+  534:     virtualAccount: {
+  535:       provider: {
+  536:         type: String,
+  537:         default: undefined,
+  538:         trim: true,
+  539:       },
+  540: 
+  541:       accountNumber: {
+  542:         type: String,
+  543:         default: undefined,
+  544:         trim: true,
+  545:       },
+  546: 
+  547:       accountName: {
+------------------------------------------------------------------------------------------
+  657:   },
+  658:   {
+  659:     name: "virtualAccount.customerReference_1",
+  660:     unique: true,
+  661: 
+  662:     partialFilterExpression: {
+  663:       "virtualAccount.customerReference": {
+  664:         $type: "string",
+  665:         $gt: "",
+  666:       },
+  667:     },
+  668:   }
+  669: );
+  670: 
+  671: /*
+  672:  * Helps ServicePay find available verified riders.
+  673:  */
+  674: userSchema.index({
+  675:   role: 1,
+  676:   status: 1,
+  677:   riderVerificationStatus: 1,
+  678:   availabilityStatus: 1,
+  679: });
+  680: 
+  681: /*
+  682:  * =====================================================
+  683:  * NEAREST DRIVER INDEX
+  684:  * =====================================================
+  685:  *
+  686:  * MongoDB uses this 2dsphere index to find
+  687:  * the Keke/driver nearest to the customer's
+  688:  * pickup point.
+  689:  */
+  690: userSchema.index({
+  691:   riderCurrentLocation: "2dsphere",
+  692: });
+  693: 
+  694: /*
+  695:  * =====================================================
+  696:  * PRE-SAVE
+  697:  * =====================================================
+  698:  */
+  699: userSchema.pre(
+  700:   "save",
+  701:   async function () {
+  702:     /*
+  703:      * Hash login password.
+  704:      */
+  705:     if (this.isModified("password")) {
+  706:       this.password = await bcrypt.hash(
+  707:         this.password,
+  708:         12
+  709:       );
+  710:     }
+  711: 
+  712:     /*
+  713:      * Hash transaction PIN.
+  714:      */
+  715:     if (
+  716:       this.isModified("transactionPin") &&
+  717:       this.transactionPin
+  718:     ) {
+  719:       const plainPin = String(
+  720:         this.transactionPin
+  721:       ).trim();
+  722: 
+  723:       if (!/^\d{4}$/.test(plainPin)) {
+  724:         throw new Error(
+  725:           "Transaction PIN must contain exactly 4 digits."
+  726:         );
+  727:       }
+  728: 
+  729:       this.transactionPin =
+  730:         await bcrypt.hash(
+  731:           plainPin,
+  732:           12
+  733:         );
+  734: 
+  735:       this.transactionPinSet = true;
+  736: 
+  737:       this.transactionPinUpdatedAt =
+  738:         new Date();
+  739:     }
+  740: 
+  741:     /*
+  742:      * Automatically set rider joining date.
+  743:      */
+  744:     if (
+  745:       this.role === "DELIVERY_RIDER" &&
+  746:       !this.riderJoinedAt
+  747:     ) {
+  748:       this.riderJoinedAt = new Date();
+  749:     }
+  750: 
+  751:     /*
+  752:      * A non-rider must never remain online.
+  753:      */
+  754:     if (
+  755:       this.role !== "DELIVERY_RIDER"
+  756:     ) {
+  757:       this.availabilityStatus =
+  758:         "OFFLINE";
+  759: 
+  760:       this.riderCurrentJobId = null;
+  761:     }
+  762: 
+  763:     /*
+  764:      * Update rider online timestamp.
+  765:      */
+  766:     if (
+------------------------------------------------------------------------------------------
+  784:  * Compare login password.
+  785:  */
+  786: userSchema.methods.comparePassword =
+  787:   async function (enteredPassword) {
+  788:     if (!this.password) {
+  789:       return false;
+  790:     }
+  791: 
+  792:     return bcrypt.compare(
+  793:       String(enteredPassword),
+  794:       this.password
+  795:     );
+  796:   };
+  797: 
+  798: /*
+  799:  * Compare transaction PIN.
+  800:  */
+  801: userSchema.methods.compareTransactionPin =
+  802:   async function (enteredPin) {
+  803:     if (!this.transactionPin) {
+  804:       return false;
+  805:     }
+  806: 
+  807:     return bcrypt.compare(
+  808:       String(enteredPin),
+  809:       this.transactionPin
+  810:     );
+  811:   };
+  812: 
+  813: /*
+  814:  * Set or change transaction PIN.
+  815:  */
+  816: userSchema.methods.setTransactionPin =
+  817:   function (newPin) {
+  818:     const pin = String(
+  819:       newPin || ""
+  820:     ).trim();
+  821: 
+  822:     if (!/^\d{4}$/.test(pin)) {
+  823:       throw new Error(
+  824:         "Transaction PIN must contain exactly 4 digits."
+  825:       );
+  826:     }
+  827: 
+  828:     this.transactionPin = pin;
+  829: 
+  830:     this.transactionPinSet = true;
+  831: 
+  832:     this.transactionPinUpdatedAt =
+  833:       new Date();
+  834:   };
+  835: 
+  836: /*
+  837:  * Check if rider has a valid location.
+  838:  */
+  839: userSchema.methods.hasValidRiderLocation =
+  840:   function () {
+  841:     const location =
+  842:       this.riderCurrentLocation;
+  843: 
+  844:     if (!location) {
+  845:       return false;
+  846:     }
+  847: 
+  848:     if (location.type !== "Point") {
+  849:       return false;
+  850:     }
+  851: 
+  852:     if (
+  853:       !Array.isArray(
+  854:         location.coordinates
+  855:       ) ||
+  856:       location.coordinates.length !== 2
+  857:     ) {
+  858:       return false;
+  859:     }
+  860: 
+  861:     const longitude =
+------------------------------------------------------------------------------------------
+  868:         location.coordinates[1]
+  869:       );
+  870: 
+  871:     return (
+  872:       Number.isFinite(longitude) &&
+  873:       Number.isFinite(latitude) &&
+  874:       longitude >= -180 &&
+  875:       longitude <= 180 &&
+  876:       latitude >= -90 &&
+  877:       latitude <= 90
+  878:     );
+  879:   };
+  880: 
+  881: /*
+  882:  * Check whether rider can receive a normal
+  883:  * ServicePay delivery job.
+  884:  */
+  885: userSchema.methods.canReceiveDelivery =
+  886:   function () {
+  887:     return (
+  888:       this.role ===
+  889:         "DELIVERY_RIDER" &&
+  890:       this.status === "ACTIVE" &&
+  891:       this.riderVerificationStatus ===
+  892:         "VERIFIED" &&
+  893:       this.availabilityStatus ===
+  894:         "ONLINE"
+  895:     );
+  896:   };
+  897: 
+  898: /*
+  899:  * Check whether rider can receive a
+  900:  * ServicePay Keke ride request.
+  901:  */
+  902: userSchema.methods.canReceiveKekeRide =
+  903:   function () {
+  904:     return (
+  905:       this.role ===
+  906:         "DELIVERY_RIDER" &&
+  907:       this.status === "ACTIVE" &&
+  908:       this.riderVerificationStatus ===
+  909:         "VERIFIED" &&
+  910:       this.availabilityStatus ===
+  911:         "ONLINE" &&
+  912:       this.vehicleType ===
+  913:         "TRICYCLE" &&
+  914:       !this.riderCurrentJobId &&
+  915:       this.hasValidRiderLocation()
+  916:     );
+  917:   };
+  918: 
+  919: /*
+  920:  * Update rider live location.
+  921:  */
+  922: userSchema.methods.setRiderLocation =
+  923:   function ({
+  924:     latitude,
+  925:     longitude,
+  926:     address = null,
+  927:     accuracy = null,
+  928:     heading = null,
+  929:     speed = null,
+------------------------------------------------------------------------------------------
+
+==========================================================================================
+FILE: backend/models/transaction.model.js
+==========================================================================================
+    1: const mongoose = require("mongoose");
+    2: 
+    3: const transactionSchema =
+    4:   new mongoose.Schema(
+    5:     {
+    6:       reference: {
+    7:         type: String,
+    8:         required: true,
+    9:         unique: true,
+   10:         trim: true,
+   11:         index: true,
+   12:       },
+   13: 
+   14:       customerId: {
+   15:         type:
+   16:           mongoose.Schema.Types
+   17:             .ObjectId,
+   18:         ref: "User",
+   19:         required: true,
+   20:         index: true,
+   21:       },
+   22: 
+   23:       agentId: {
+   24:         type:
+   25:           mongoose.Schema.Types
+   26:             .ObjectId,
+   27:         ref: "User",
+   28:         default: null,
+   29:       },
+   30: 
+   31:       stateManagerId: {
+   32:         type:
+   33:           mongoose.Schema.Types
+   34:             .ObjectId,
+   35:         ref: "User",
+   36:         default: null,
+   37:       },
+   38: 
+   39:       zonalManagerId: {
+   40:         type:
+   41:           mongoose.Schema.Types
+   42:             .ObjectId,
+   43:         ref: "User",
+   44:         default: null,
+   45:       },
+   46: 
+   47:       serviceType: {
+   48:         type: String,
+   49:         enum: [
+   50:           "AIRTIME",
+   51:           "DATA",
+   52:           "CABLE",
+   53:           "ELECTRICITY",
+   54:           "EXAM_PIN",
+   55:           "WALLET_FUNDING",
+   56:           "TRANSFER",
+   57:           "BANK_TRANSFER",
+   58:           "DELIVERY",
+   59:           "ID_VERIFICATION",
+   60:           "AMANA",
+   61:         ],
+   62:         required: true,
+   63:         index: true,
+   64:       },
+   65: 
+   66:       provider: {
+   67:         type: String,
+   68:         trim: true,
+   69:         default: null,
+   70:       },
+   71: 
+   72:       phone: {
+   73:         type: String,
+   74:         trim: true,
+   75:         default: null,
+   76:       },
+   77: 
+   78:       amount: {
+   79:         type: Number,
+   80:         required: true,
+   81:         min: 0,
+   82:       },
+   83: 
+   84:       agentCommission: {
+------------------------------------------------------------------------------------------
+   87:         min: 0,
+   88:       },
+   89: 
+   90:       stateManagerCommission: {
+   91:         type: Number,
+   92:         default: 0,
+   93:         min: 0,
+   94:       },
+   95: 
+   96:       zonalManagerCommission: {
+   97:         type: Number,
+   98:         default: 0,
+   99:         min: 0,
+  100:       },
+  101: 
+  102:       servicepayProfit: {
+  103:         type: Number,
+  104:         default: 0,
+  105:         min: 0,
+  106:       },
+  107: 
+  108:       status: {
+  109:         type: String,
+  110:         enum: [
+  111:           "PENDING",
+  112:           "SUCCESSFUL",
+  113:           "FAILED",
+  114:           "REFUNDED",
+  115:         ],
+  116:         default: "PENDING",
+  117:         index: true,
+  118:       },
+  119: 
+  120:       providerResponse: {
+  121:         type:
+  122:           mongoose.Schema.Types.Mixed,
+  123:         default: null,
+  124:       },
+  125:     },
+  126:     {
+  127:       timestamps: true,
+  128:     }
+  129:   );
+  130: 
+  131: transactionSchema.index({
+  132:   customerId: 1,
+  133:   createdAt: -1,
+  134: });
+  135: 
+  136: transactionSchema.index({
+  137:   serviceType: 1,
+  138:   status: 1,
+  139:   createdAt: -1,
+  140: });
+  141: 
+  142: const Transaction =
+  143:   mongoose.model(
+  144:     "Transaction",
+  145:     transactionSchema
+  146:   );
+  147: 
+  148: module.exports = Transaction;
+------------------------------------------------------------------------------------------
+
+==========================================================================================
+FILE: backend/index.js
+==========================================================================================
+   41: );
+   42: 
+   43: const idVerificationRoutes = require(
+   44:   "./routes/idVerification.routes"
+   45: );
+   46: 
+   47: const deliveryRoutes = require(
+   48:   "./routes/delivery.routes"
+   49: );
+   50: 
+   51: const riderRoutes = require(
+   52:   "./routes/rider.routes"
+   53: );
+   54: 
+   55: /*
+   56:  * ServicePay Keke Ride
+   57:  */
+   58: const kekeRideRoutes = require(
+   59:   "./routes/kekeRide.routes"
+   60: );
+   61: 
+   62: /*
+   63:  * ServicePay Keke Fare
+   64:  */
+   65: const kekeFareSettingRoutes = require(
+   66:   "./routes/kekeFareSetting.routes"
+   67: );
+   68: 
+   69: const adminKekeFareSettingRoutes = require(
+   70:   "./routes/adminKekeFareSetting.routes"
+   71: );
+   72: 
+   73: const notificationRoutes = require(
+   74:   "./routes/notification.routes"
+   75: );
+   76: 
+   77: const adminRoutes = require(
+   78:   "./routes/admin.routes"
+   79: );
+   80: 
+   81: const walletRoutes = require(
+   82:   "./routes/wallet.routes"
+   83: );
+   84: 
+   85: const manualFundingRoutes = require(
+   86:   "./routes/manualfunding.routes"
+   87: );
+   88: 
+   89: const announcementRoutes = require(
+   90:   "./routes/announcement.routes"
+   91: );
+   92: 
+   93: const transactionRoutes = require(
+   94:   "./routes/transaction.routes"
+   95: );
+   96: 
+   97: const electricityRoutes = require(
+   98:   "./routes/electricity.routes"
+   99: );
+  100: 
+  101: const transactionPinRoutes = require(
+  102:   "./routes/transactionPin.routes"
+  103: );
+  104: 
+  105: const managementRoutes = require(
+  106:   "./routes/management.routes"
+  107: );
+  108: 
+  109: const productCommissionRoutes = require(
+  110:   "./routes/productCommission.routes"
+  111: );
+  112: 
+  113: const examPinRoutes = require(
+  114:   "./routes/examPin.routes"
+  115: );
+  116: 
+  117: const amanaRoutes = require(
+  118:   "./routes/amana.routes"
+  119: );
+  120: 
+  121: const adminAmanaRoutes = require(
+  122:   "./routes/adminAmana.routes"
+  123: );
+  124: 
+  125: /*
+  126:  * =====================================================
+  127:  * APP
+  128:  * =====================================================
+  129:  */
+  130: 
+  131: const app = express();
+  132: 
+  133: /*
+  134:  * =====================================================
+  135:  * DATABASE
+  136:  * =====================================================
+  137:  */
+  138: 
+  139: connectDB();
+  140: 
+  141: /*
+  142:  * =====================================================
+  143:  * SECURITY / MIDDLEWARE
+  144:  * =====================================================
+  145:  */
+  146: 
+  147: app.use(helmet());
+  148: app.use(cors());
+  149: 
+  150: /*
+  151:  * Keep original raw JSON payload.
+  152:  *
+  153:  * SecureWaveNG uses rawBody for
+  154:  * HMAC-SHA256 webhook signature verification.
+  155:  */
+  156: app.use(
+  157:   express.json({
+  158:     verify: (req, res, buffer) => {
+  159:       req.rawBody = buffer;
+  160:     },
+  161:   })
+  162: );
+  163: 
+  164: app.use(
+  165:   express.urlencoded({
+  166:     extended: true,
+  167:   })
+  168: );
+  169: 
+  170: /*
+  171:  * =====================================================
+  172:  * HEALTH CHECK
+  173:  * =====================================================
+  174:  */
+  175: 
+  176: app.get("/", (req, res) => {
+  177:   res.status(200).json({
+  178:     success: true,
+  179:     status: "OK",
+  180:     message:
+  181:       "Servicepay Backend is running",
+  182:   });
+  183: });
+  184: 
+  185: app.get(
+  186:   "/api/health",
+  187:   (req, res) => {
+  188:     res.status(200).json({
+  189:       success: true,
+  190:       status: "OK",
+  191:       service: "ServicePay API",
+  192:       timestamp:
+  193:         new Date().toISOString(),
+  194:     });
+  195:   }
+  196: );
+  197: 
+  198: /*
+  199:  * =====================================================
+  200:  * PAYMENT / VTU
+  201:  * =====================================================
+  202:  */
+  203: 
+  204: app.use(
+  205:   "/api/paystack",
+  206:   paystackRoutes
+  207: );
+  208: 
+  209: app.use(
+  210:   "/api/clubkonnect",
+  211:   clubkonnectRoutes
+  212: );
+  213: 
+  214: app.use(
+  215:   "/api/securewave",
+  216:   securewaveRoutes
+  217: );
+  218: 
+  219: /*
+  220:  * =====================================================
+  221:  * AUTH
+  222:  * =====================================================
+  223:  */
+  224: 
+  225: app.use(
+  226:   "/api/auth",
+  227:   authRoutes
+  228: );
+  229: 
+  230: /*
+  231:  * =====================================================
+  232:  * TRANSFERS
+  233:  * =====================================================
+  234:  */
+  235: 
+  236: app.use(
+  237:   "/api/transfer",
+  238:   transferRoutes
+  239: );
+  240: 
+  241: /*
+  242:  * =====================================================
+  243:  * SERVICEPAY AMANA
+  244:  * =====================================================
+  245:  */
+  246: 
+  247: app.use(
+  248:   "/api/amana",
+  249:   amanaRoutes
+  250: );
+  251: 
+  252: app.use(
+  253:   "/api/admin/amana",
+  254:   adminAmanaRoutes
+  255: );
+  256: 
+  257: /*
+  258:  * =====================================================
+  259:  * ID VERIFICATION
+  260:  * =====================================================
+  261:  */
+  262: 
+  263: app.use(
+  264:   "/api/id-verification",
+  265:   idVerificationRoutes
+  266: );
+  267: 
+  268: /*
+  269:  * =====================================================
+  270:  * DELIVERY
+  271:  * =====================================================
+  272:  */
+  273: 
+  274: app.use(
+  275:   "/api/delivery",
+  276:   deliveryRoutes
+  277: );
+  278: 
+  279: /*
+  280:  * =====================================================
+  281:  * RIDER
+  282:  * =====================================================
+  283:  */
+  284: 
+  285: app.use(
+  286:   "/api/riders",
+  287:   riderRoutes
+  288: );
+  289: 
+  290: /*
+  291:  * Keep old route for existing screens.
+  292:  */
+  293: app.use(
+  294:   "/api/rider",
+  295:   riderRoutes
+  296: );
+  297: 
+  298: /*
+  299:  * =====================================================
+  300:  * SERVICEPAY KEKE RIDE
+  301:  * =====================================================
+  302:  */
+  303: 
+  304: app.use(
+  305:   "/api/keke-rides",
+  306:   kekeRideRoutes
+  307: );
+  308: 
+  309: /*
+  310:  * =====================================================
+  311:  * SERVICEPAY KEKE FARE
+  312:  * =====================================================
+  313:  *
+  314:  * Customer / App:
+  315:  *
+  316:  * GET  /api/keke-fare
+  317:  * POST /api/keke-fare/estimate
+  318:  */
+  319: 
+  320: app.use(
+  321:   "/api/keke-fare",
+  322:   kekeFareSettingRoutes
+  323: );
+  324: 
+  325: /*
+  326:  * Head Office / Admin:
+  327:  *
+  328:  * GET    /api/admin/keke-fare
+  329:  * POST   /api/admin/keke-fare
+  330:  * DELETE /api/admin/keke-fare/:id
+  331:  */
+  332: 
+  333: app.use(
+  334:   "/api/admin/keke-fare",
+  335:   adminKekeFareSettingRoutes
+  336: );
+  337: 
+  338: /*
+  339:  * =====================================================
+  340:  * NOTIFICATIONS
+  341:  * =====================================================
+  342:  */
+  343: 
+  344: app.use(
+  345:   "/api/notifications",
+  346:   notificationRoutes
+  347: );
+  348: 
+  349: /*
+  350:  * =====================================================
+  351:  * ADMIN
+  352:  * =====================================================
+  353:  */
+  354: 
+  355: app.use(
+  356:   "/api/admin",
+  357:   adminRoutes
+  358: );
+  359: 
+  360: /*
+  361:  * =====================================================
+  362:  * WALLET
+  363:  * =====================================================
+  364:  */
+  365: 
+  366: app.use(
+  367:   "/api/wallet",
+  368:   walletRoutes
+  369: );
+  370: 
+  371: /*
+  372:  * =====================================================
+  373:  * MANUAL FUNDING
+  374:  * =====================================================
+  375:  */
+  376: 
+  377: app.use(
+  378:   "/api/manual-funding",
+  379:   manualFundingRoutes
+  380: );
+  381: 
+  382: /*
+  383:  * =====================================================
+  384:  * ANNOUNCEMENTS
+  385:  * =====================================================
+  386:  */
+  387: 
+  388: app.use(
+  389:   "/api/announcement",
+  390:   announcementRoutes
+  391: );
+  392: 
+  393: /*
+  394:  * =====================================================
+  395:  * TRANSACTIONS
+  396:  * =====================================================
+  397:  */
+  398: 
+  399: app.use(
+  400:   "/api/transactions",
+  401:   transactionRoutes
+  402: );
+  403: 
+  404: /*
+  405:  * =====================================================
+  406:  * ELECTRICITY
+  407:  * =====================================================
+  408:  */
+  409: 
+  410: app.use(
+  411:   "/api/electricity",
+  412:   electricityRoutes
+  413: );
+  414: 
+  415: /*
+  416:  * =====================================================
+  417:  * TRANSACTION PIN
+  418:  * =====================================================
+  419:  */
+  420: 
+  421: app.use(
+  422:   "/api/transaction-pin",
+  423:   transactionPinRoutes
+  424: );
+  425: 
+  426: /*
+  427:  * =====================================================
+  428:  * MANAGEMENT
+  429:  * =====================================================
+  430:  */
+  431: 
+  432: app.use(
+  433:   "/api/management",
+  434:   managementRoutes
+  435: );
+  436: 
+  437: /*
+  438:  * =====================================================
+  439:  * APP SETTINGS
+  440:  * =====================================================
+  441:  */
+  442: 
+  443: app.use(
+  444:   "/api/settings",
+  445:   appSettingsRoutes
+  446: );
+  447: 
+  448: /*
+  449:  * =====================================================
+  450:  * STAFF MANAGEMENT
+  451:  * =====================================================
+  452:  */
+  453: 
+  454: app.use(
+  455:   "/api/staff-management",
+  456:   staffManagementRoutes
+  457: );
+  458: 
+  459: /*
+  460:  * =====================================================
+  461:  * PRODUCT COMMISSIONS
+  462:  * =====================================================
+  463:  */
+  464: 
+  465: app.use(
+  466:   "/api/admin/product-commissions",
+  467:   productCommissionRoutes
+  468: );
+  469: 
+  470: /*
+  471:  * =====================================================
+  472:  * EXAM PIN
+  473:  * =====================================================
+  474:  */
+  475: 
+  476: app.use(
+  477:   "/api/exam-pin",
+  478:   examPinRoutes
+  479: );
+  480: 
+  481: /*
+  482:  * =====================================================
+  483:  * 404
+  484:  * =====================================================
+  485:  */
+  486: 
+  487: app.use(
+  488:   (req, res) => {
+  489:     res.status(404).json({
+  490:       success: false,
+  491:       message:
+  492:         `Route not found: ${req.method} ${req.originalUrl}`,
+  493:     });
+  494:   }
+  495: );
+  496: 
+  497: /*
+  498:  * =====================================================
+  499:  * GLOBAL ERROR HANDLER
+  500:  * =====================================================
+  501:  */
+  502: 
+  503: app.use(
+  504:   (
+  505:     error,
+  506:     req,
+  507:     res,
+  508:     next
+  509:   ) => {
+  510:     console.error(
+  511:       "Server error:",
+  512:       error
+  513:     );
+  514: 
+  515:     res
+  516:       .status(
+  517:         error.status || 500
+  518:       )
+  519:       .json({
+  520:         success: false,
+  521:         message:
+  522:           error.message ||
+  523:           "Internal server error.",
+  524:       });
+  525:   }
+  526: );
+  527: 
+  528: /*
+  529:  * =====================================================
+  530:  * SERVER
+  531:  * =====================================================
+  532:  */
+  533: 
+  534: const PORT =
+  535:   process.env.PORT || 3000;
+  536: 
+  537: app.listen(
+  538:   PORT,
+  539:   "0.0.0.0",
+  540:   () => {
+  541:     console.log(
+  542:       `🚀 ServicePay server running on port ${PORT}`
+  543:     );
+  544: 
+  545:     console.log(
+  546:       "🛺 ServicePay Keke enabled"
+  547:     );
+  548: 
+  549:     console.log(
+  550:       "📍 Rider live location enabled"
+  551:     );
+  552: 
+  553:     console.log(
+  554:       "🔎 Nearest Keke driver matching enabled"
+  555:     );
+  556: 
+  557:     console.log(
+  558:       "🚕 Keke Ride API: /api/keke-rides"
+  559:     );
+  560: 
+  561:     console.log(
+  562:       "💰 Keke Fare API: /api/keke-fare"
+  563:     );
+  564: 
+  565:     console.log(
+  566:       "⚙️ Admin Keke Fare API: /api/admin/keke-fare"
+  567:     );
+  568:   }
+  569: );
+  570: 
+  571: /*
+  572:  * =========================================================
+  573:  * SERVICEPAY DELIVERY LAUNCH MIGRATION
+  574:  * Activates all existing states LIVE once after MongoDB
+  575:  * connects. A database marker prevents it from running twice.
+  576:  * =========================================================
+  577:  */
+  578: require("./scripts/activateAllDeliveryStatesOnce")();
+  579: 
+  580: 
+  581: /*
+  582:  * One-time Rider commission backfill.
+  583:  * Idempotent through database migration marker.
+  584:  */
+  585: require("./scripts/backfillDeliveredRiderCommissionsOnce")();
+------------------------------------------------------------------------------------------
+
+==========================================================================================
+FILE: backend/controllers/manualfunding.controller.js
+==========================================================================================
+    1: const mongoose = require("mongoose");
+    2: 
+    3: const ManualFunding = require(
+    4:   "../models/manualfunding.model"
+    5: );
+    6: 
+    7: const User = require("../models/user.model");
+    8: 
+    9: const getUserId = (req) => {
+   10:   return req.user?._id || req.user?.id || req.userId;
+   11: };
+   12: 
+   13: const normalizeReference = (value) => {
+   14:   return String(value || "")
+   15:     .trim()
+   16:     .replace(/\s+/g, "")
+   17:     .toUpperCase();
+   18: };
+   19: 
+   20: exports.createManualFundingRequest = async (
+   21:   req,
+   22:   res
+   23: ) => {
+   24:   try {
+   25:     const userId = getUserId(req);
+   26: 
+   27:     const {
+   28:       amount,
+   29:       senderName,
+   30:       senderBank,
+   31:       paymentReference,
+   32:       note,
+   33:     } = req.body;
+   34: 
+   35:     if (!userId) {
+   36:       return res.status(401).json({
+   37:         success: false,
+   38:         message: "Authentication required.",
+   39:       });
+   40:     }
+   41: 
+   42:     const parsedAmount = Number(amount);
+   43: 
+   44:     if (
+   45:       !Number.isFinite(parsedAmount) ||
+   46:       parsedAmount < 100
+   47:     ) {
+   48:       return res.status(400).json({
+   49:         success: false,
+   50:         message:
+   51:           "Minimum manual funding amount is ₦100.",
+   52:       });
+   53:     }
+   54: 
+   55:     if (
+   56:       !senderName ||
+   57:       !String(senderName).trim()
+   58:     ) {
+   59:       return res.status(400).json({
+   60:         success: false,
+   61:         message: "Sender name is required.",
+   62:       });
+   63:     }
+   64: 
+   65:     if (
+   66:       !senderBank ||
+   67:       !String(senderBank).trim()
+   68:     ) {
+   69:       return res.status(400).json({
+   70:         success: false,
+   71:         message: "Sender bank is required.",
+   72:       });
+   73:     }
+   74: 
+   75:     const normalizedReference =
+   76:       normalizeReference(paymentReference);
+   77: 
+   78:     if (!normalizedReference) {
+   79:       return res.status(400).json({
+   80:         success: false,
+   81:         message: "Payment reference is required.",
+   82:       });
+   83:     }
+   84: 
+   85:     const existingRequest =
+   86:       await ManualFunding.findOne({
+   87:         user: userId,
+   88:         paymentReference: normalizedReference,
+   89:       });
+   90: 
+   91:     if (existingRequest) {
+   92:       return res.status(409).json({
+   93:         success: false,
+   94:         message:
+   95:           "A funding request with this payment reference already exists.",
+   96:       });
+   97:     }
+   98: 
+   99:     const request =
+  100:       await ManualFunding.create({
+  101:         user: userId,
+  102:         amount: parsedAmount,
+  103:         senderName: String(senderName).trim(),
+  104:         senderBank: String(senderBank).trim(),
+  105:         paymentReference: normalizedReference,
+  106:         note: String(note || "").trim(),
+  107:       });
+  108: 
+  109:     return res.status(201).json({
+  110:       success: true,
+  111:       message:
+  112:         "Manual funding request submitted successfully.",
+  113:       request,
+  114:     });
+  115:   } catch (error) {
+  116:     console.error(
+  117:       "Create manual funding request error:",
+  118:       error
+  119:     );
+  120: 
+  121:     if (error.code === 11000) {
+  122:       return res.status(409).json({
+  123:         success: false,
+  124:         message:
+  125:           "A funding request with this payment reference already exists.",
+  126:       });
+  127:     }
+  128: 
+  129:     return res.status(500).json({
+  130:       success: false,
+  131:       message:
+  132:         "Unable to submit manual funding request.",
+  133:     });
+  134:   }
+  135: };
+  136: 
+  137: exports.getMyManualFundingRequests = async (
+  138:   req,
+  139:   res
+  140: ) => {
+  141:   try {
+  142:     const userId = getUserId(req);
+  143: 
+  144:     if (!userId) {
+  145:       return res.status(401).json({
+  146:         success: false,
+  147:         message: "Authentication required.",
+  148:       });
+  149:     }
+  150: 
+  151:     const requests =
+  152:       await ManualFunding.find({
+  153:         user: userId,
+  154:       })
+  155:         .sort({
+  156:           createdAt: -1,
+  157:         })
+  158:         .lean();
+  159: 
+  160:     return res.status(200).json({
+  161:       success: true,
+  162:       requests,
+  163:     });
+  164:   } catch (error) {
+  165:     console.error(
+  166:       "Get customer funding requests error:",
+  167:       error
+  168:     );
+  169: 
+  170:     return res.status(500).json({
+  171:       success: false,
+  172:       message:
+  173:         "Unable to load manual funding requests.",
+  174:     });
+  175:   }
+  176: };
+  177: 
+  178: exports.getAllManualFundingRequests = async (
+  179:   req,
+  180:   res
+  181: ) => {
+  182:   try {
+  183:     const requestedStatus = String(
+  184:       req.query.status || ""
+  185:     ).toUpperCase();
+  186: 
+  187:     const filter = {};
+  188: 
+  189:     if (
+  190:       ["PENDING", "APPROVED", "REJECTED"].includes(
+  191:         requestedStatus
+  192:       )
+  193:     ) {
+  194:       filter.status = requestedStatus;
+  195:     }
+  196: 
+  197:     const requests =
+  198:       await ManualFunding.find(filter)
+  199:         .populate(
+  200:           "user",
+  201:           "fullName name phone email walletBalance role"
+  202:         )
+  203:         .populate(
+  204:           "reviewedBy",
+  205:           "fullName name email role"
+  206:         )
+  207:         .sort({
+  208:           createdAt: -1,
+  209:         })
+  210:         .lean();
+  211: 
+  212:     return res.status(200).json({
+  213:       success: true,
+  214:       requests,
+  215:     });
+  216:   } catch (error) {
+  217:     console.error(
+  218:       "Get all manual funding requests error:",
+  219:       error
+  220:     );
+  221: 
+  222:     return res.status(500).json({
+  223:       success: false,
+  224:       message:
+  225:         "Unable to load manual funding requests.",
+  226:     });
+  227:   }
+  228: };
+  229: 
+  230: exports.approveManualFundingRequest = async (
+  231:   req,
+  232:   res
+  233: ) => {
+  234:   const session = await mongoose.startSession();
+  235: 
+  236:   try {
+  237:     const adminId = getUserId(req);
+  238:     const requestId = req.params.id;
+  239:     const adminNote = String(
+  240:       req.body.adminNote || ""
+  241:     ).trim();
+  242: 
+  243:     if (
+  244:       !mongoose.Types.ObjectId.isValid(requestId)
+  245:     ) {
+  246:       return res.status(400).json({
+  247:         success: false,
+  248:         message: "Invalid funding request ID.",
+  249:       });
+  250:     }
+  251: 
+  252:     session.startTransaction();
+  253: 
+  254:     const fundingRequest =
+  255:       await ManualFunding.findOne({
+  256:         _id: requestId,
+  257:         status: "PENDING",
+  258:       }).session(session);
+  259: 
+  260:     if (!fundingRequest) {
+  261:       await session.abortTransaction();
+  262: 
+  263:       return res.status(404).json({
+  264:         success: false,
+  265:         message:
+  266:           "Pending funding request was not found.",
+  267:       });
+  268:     }
+  269: 
+  270:     const customer = await User.findById(
+  271:       fundingRequest.user
+  272:     ).session(session);
+  273: 
+  274:     if (!customer) {
+  275:       await session.abortTransaction();
+  276: 
+  277:       return res.status(404).json({
+  278:         success: false,
+  279:         message: "Customer account was not found.",
+  280:       });
+  281:     }
+  282: 
+  283:     const balanceBefore = Number(
+  284:       customer.walletBalance || 0
+  285:     );
+  286: 
+  287:     const balanceAfter =
+  288:       balanceBefore +
+  289:       Number(fundingRequest.amount);
+  290: 
+  291:     customer.walletBalance = balanceAfter;
+  292: 
+  293:     await customer.save({
+  294:       session,
+  295:     });
+  296: 
+  297:     fundingRequest.status = "APPROVED";
+  298:     fundingRequest.reviewedBy = adminId;
+  299:     fundingRequest.reviewedAt = new Date();
+  300:     fundingRequest.adminNote = adminNote;
+  301:     fundingRequest.balanceBefore = balanceBefore;
+  302:     fundingRequest.balanceAfter = balanceAfter;
+  303: 
+  304:     await fundingRequest.save({
+  305:       session,
+  306:     });
+  307: 
+  308:     await session.commitTransaction();
+  309: 
+  310:     return res.status(200).json({
+  311:       success: true,
+  312:       message:
+  313:         "Manual funding request approved successfully.",
+  314:       walletBalance: balanceAfter,
+  315:       request: fundingRequest,
+  316:     });
+  317:   } catch (error) {
+  318:     await session.abortTransaction();
+  319: 
+  320:     console.error(
+  321:       "Approve manual funding request error:",
+  322:       error
+  323:     );
+  324: 
+  325:     return res.status(500).json({
+  326:       success: false,
+  327:       message:
+  328:         "Unable to approve manual funding request.",
+  329:     });
+  330:   } finally {
+  331:     await session.endSession();
+  332:   }
+  333: };
+  334: 
+  335: exports.rejectManualFundingRequest = async (
+  336:   req,
+  337:   res
+  338: ) => {
+  339:   try {
+  340:     const adminId = getUserId(req);
+  341:     const requestId = req.params.id;
+  342:     const adminNote = String(
+  343:       req.body.adminNote || ""
+  344:     ).trim();
+  345: 
+  346:     if (
+  347:       !mongoose.Types.ObjectId.isValid(requestId)
+  348:     ) {
+  349:       return res.status(400).json({
+  350:         success: false,
+  351:         message: "Invalid funding request ID.",
+  352:       });
+  353:     }
+  354: 
+  355:     const fundingRequest =
+  356:       await ManualFunding.findOneAndUpdate(
+  357:         {
+  358:           _id: requestId,
+  359:           status: "PENDING",
+  360:         },
+  361:         {
+  362:           $set: {
+  363:             status: "REJECTED",
+  364:             reviewedBy: adminId,
+  365:             reviewedAt: new Date(),
+  366:             adminNote,
+  367:           },
+  368:         },
+  369:         {
+  370:           new: true,
+  371:           runValidators: true,
+  372:         }
+  373:       );
+  374: 
+  375:     if (!fundingRequest) {
+  376:       return res.status(404).json({
+  377:         success: false,
+  378:         message:
+  379:           "Pending funding request was not found.",
+  380:       });
+  381:     }
+  382: 
+  383:     return res.status(200).json({
+  384:       success: true,
+  385:       message:
+  386:         "Manual funding request rejected.",
+  387:       request: fundingRequest,
+  388:     });
+  389:   } catch (error) {
+  390:     console.error(
+  391:       "Reject manual funding request error:",
+  392:       error
+  393:     );
+  394: 
+  395:     return res.status(500).json({
+  396:       success: false,
+  397:       message:
+  398:         "Unable to reject manual funding request.",
+  399:     });
+  400:   }
+  401: };
+------------------------------------------------------------------------------------------
+
+==========================================================================================
+FILE: backend/routes/manualfunding.routes.js
+==========================================================================================
+    1: const express = require("express");
+    2: 
+    3: const router = express.Router();
+    4: 
+    5: const {
+    6:   createManualFundingRequest,
+    7:   getMyManualFundingRequests,
+    8:   getAllManualFundingRequests,
+    9:   approveManualFundingRequest,
+   10:   rejectManualFundingRequest,
+   11: } = require(
+   12:   "../controllers/manualfunding.controller"
+   13: );
+   14: 
+   15: const {
+   16:   protect,
+   17:   adminOnly,
+   18: } = require("../middleware/auth.middleware");
+   19: 
+   20: router.post(
+   21:   "/request",
+   22:   protect,
+   23:   createManualFundingRequest
+   24: );
+   25: 
+   26: router.get(
+   27:   "/my-requests",
+   28:   protect,
+   29:   getMyManualFundingRequests
+   30: );
+   31: 
+   32: router.get(
+   33:   "/admin/requests",
+   34:   protect,
+   35:   adminOnly("ADMIN", "HEAD_OFFICE"),
+   36:   getAllManualFundingRequests
+   37: );
+   38: 
+   39: router.patch(
+   40:   "/admin/requests/:id/approve",
+   41:   protect,
+   42:   adminOnly("ADMIN", "HEAD_OFFICE"),
+   43:   approveManualFundingRequest
+   44: );
+   45: 
+   46: router.patch(
+   47:   "/admin/requests/:id/reject",
+   48:   protect,
+   49:   adminOnly("ADMIN", "HEAD_OFFICE"),
+   50:   rejectManualFundingRequest
+   51: );
+   52: 
+   53: module.exports = router;
+------------------------------------------------------------------------------------------
+
+==========================================================================================
+FILE: lib/dashboard_screen.dart
+==========================================================================================
+    4: import 'package:http/http.dart' as http;
+    5: import 'package:shared_preferences/shared_preferences.dart';
+    6: 
+    7: import 'airtime_screen.dart';
+    8: import 'amana_screen.dart';
+    9: import 'bank_transfer_screen.dart';
+   10: import 'cable_screen.dart';
+   11: import 'data_screen.dart';
+   12: import 'electricity_screen.dart';
+   13: import 'exam_pin_screen.dart';
+   14: import 'flight_booking_screen.dart';
+   15: import 'id_verification_screen.dart';
+   16: import 'keke_order_screen.dart';
+   17: import 'logistics_screen.dart';
+   18: import 'notifications_screen.dart';
+   19: import 'transactions_screen.dart';
+   20: import 'transfer_screen.dart';
+   21: import 'wallet_screen.dart';
+   22: 
+   23: class DashboardScreen extends StatefulWidget {
+   24:   const DashboardScreen({super.key});
+   25: 
+   26:   @override
+   27:   State<DashboardScreen> createState() => _DashboardScreenState();
+   28: }
+   29: 
+   30: class _DashboardScreenState extends State<DashboardScreen> {
+   31:   static const String baseUrl = 'https://api.servicepay.ng/api';
+   32: 
+   33:   static const Color primaryGreen = Color(0xFF08783E);
+   34: 
+   35:   static const Color softGreen = Color(0xFFEAF7F0);
+   36: 
+   37:   final TextEditingController searchController = TextEditingController();
+   38: 
+   39:   String userName = 'Customer';
+   40:   double walletBalance = 0;
+   41: 
+   42:   int unreadNotifications = 1;
+   43: 
+   44:   bool isLoading = true;
+   45:   bool isRefreshing = false;
+   46:   bool hideBalance = false;
+   47: 
+   48:   String searchQuery = '';
+   49: 
+   50:   Map<String, bool> serviceAvailability = <String, bool>{
+   51:     'kekeNapep': true,
+   52:     'amana': true,
+   53:     'airtime': true,
+   54:     'data': true,
+   55:     'electricity': true,
+   56:     'cableTv': true,
+   57:     'examPin': true,
+   58:     'ninVerification': true,
+   59:     'delivery': true,
+   60:     'flightBooking': true,
+   61:     'walletFunding': true,
+   62:     'bankTransfer': true,
+   63:     'servicepayTransfer': true,
+   64:   };
+   65: 
+   66:   @override
+   67:   void initState() {
+   68:     super.initState();
+   69:     loadDashboard();
+   70:   }
+   71: 
+   72:   @override
+   73:   void dispose() {
+   74:     searchController.dispose();
+   75:     super.dispose();
+   76:   }
+   77: 
+   78:   Future<String?> getSavedAuthToken(
+   79:     SharedPreferences preferences,
+   80:   ) async {
+   81:     const List<String> tokenKeys = <String>[
+   82:       'auth_token',
+   83:       'token',
+   84:       'access_token',
+   85:       'accessToken',
+   86:       'jwt_token',
+   87:       'jwt',
+   88:     ];
+   89: 
+   90:     for (final String key in tokenKeys) {
+   91:       final String? value = preferences.getString(key);
+   92: 
+   93:       if (value == null || value.trim().isEmpty) {
+   94:         continue;
+   95:       }
+   96: 
+   97:       String token = value.trim();
+   98: 
+   99:       if (token.toLowerCase().startsWith('bearer ')) {
+  100:         token = token.substring(7).trim();
+  101:       }
+  102: 
+  103:       if (token.isNotEmpty) {
+  104:         return token;
+  105:       }
+  106:     }
+  107: 
+  108:     return null;
+  109:   }
+  110: 
+  111:   Future<void> loadDashboard({
+  112:     bool refreshing = false,
+  113:   }) async {
+  114:     if (mounted) {
+  115:       setState(() {
+  116:         if (refreshing) {
+  117:           isRefreshing = true;
+  118:         } else {
+  119:           isLoading = true;
+  120:         }
+  121:       });
+  122:     }
+  123: 
+  124:     try {
+  125:       final SharedPreferences preferences =
+  126:           await SharedPreferences.getInstance();
+  127: 
+  128:       final String savedName = preferences.getString('user_name') ??
+  129:           preferences.getString('full_name') ??
+  130:           preferences.getString('name') ??
+  131:           'Customer';
+  132: 
+  133:       final double savedBalance = preferences.getDouble('wallet_balance') ?? 0;
+  134: 
+  135:       if (mounted) {
+  136:         setState(() {
+  137:           userName = savedName.trim().isEmpty ? 'Customer' : savedName.trim();
+  138: 
+  139:           walletBalance = savedBalance;
+  140:         });
+  141:       }
+  142: 
+  143:       await _loadServiceAvailability();
+  144: 
+  145:       final String? token = await getSavedAuthToken(preferences);
+  146: 
+  147:       if (token == null || token.isEmpty) {
+  148:         return;
+  149:       }
+  150: 
+  151:       final http.Response response = await http.get(
+  152:         Uri.parse('$baseUrl/wallet'),
+  153:         headers: <String, String>{
+  154:           'Accept': 'application/json',
+  155:           'Authorization': 'Bearer $token',
+  156:         },
+  157:       ).timeout(
+  158:         const Duration(seconds: 30),
+  159:       );
+  160: 
+  161:       if (response.statusCode != 200) {
+  162:         return;
+  163:       }
+  164: 
+  165:       final dynamic decoded = jsonDecode(response.body);
+  166: 
+  167:       if (decoded is! Map) {
+  168:         return;
+  169:       }
+  170: 
+  171:       final Map<String, dynamic> data = Map<String, dynamic>.from(decoded);
+  172: 
+  173:       dynamic rawBalance = data['walletBalance'] ?? data['balance'];
+  174: 
+  175:       if (data['data'] is Map) {
+  176:         final Map<String, dynamic> nested = Map<String, dynamic>.from(
+  177:           data['data'] as Map,
+  178:         );
+  179: 
+  180:         rawBalance ??= nested['walletBalance'] ?? nested['balance'];
+  181:       }
+  182: 
+  183:       final double freshBalance = rawBalance is num
+  184:           ? rawBalance.toDouble()
+  185:           : double.tryParse(
+  186:                 rawBalance?.toString() ?? '',
+  187:               ) ??
+  188:               walletBalance;
+  189: 
+  190:       await preferences.setDouble(
+  191:         'wallet_balance',
+  192:         freshBalance,
+  193:       );
+  194: 
+  195:       if (mounted) {
+  196:         setState(() {
+  197:           walletBalance = freshBalance;
+  198:         });
+  199:       }
+  200:     } catch (_) {
+  201:       // Keep locally saved dashboard values.
+  202:     } finally {
+  203:       if (mounted) {
+  204:         setState(() {
+  205:           isLoading = false;
+  206:           isRefreshing = false;
+  207:         });
+  208:       }
+  209:     }
+  210:   }
+  211: 
+  212:   Future<void> _loadServiceAvailability() async {
+  213:     try {
+  214:       final http.Response response = await http.get(
+  215:         Uri.parse(
+  216:           '$baseUrl/settings/public',
+  217:         ),
+  218:         headers: const <String, String>{
+  219:           'Accept': 'application/json',
+  220:         },
+  221:       ).timeout(
+  222:         const Duration(seconds: 20),
+  223:       );
+  224: 
+  225:       if (response.statusCode != 200) {
+  226:         return;
+  227:       }
+  228: 
+  229:       final dynamic decoded = jsonDecode(response.body);
+  230: 
+  231:       if (decoded is! Map) {
+  232:         return;
+  233:       }
+  234: 
+  235:       dynamic settings = decoded['settings'];
+  236: 
+  237:       settings ??= decoded['data'] is Map ? decoded['data']['settings'] : null;
+  238: 
+  239:       if (settings is! Map) {
+  240:         return;
+  241:       }
+  242: 
+  243:       final dynamic rawServices = settings['services'];
+  244: 
+  245:       if (rawServices is! Map) {
+  246:         return;
+  247:       }
+  248: 
+  249:       final Map<String, bool> fresh = Map<String, bool>.from(
+  250:         serviceAvailability,
+  251:       );
+  252: 
+  253:       for (final String key in fresh.keys.toList()) {
+  254:         if (rawServices[key] is bool) {
+  255:           fresh[key] = rawServices[key] == true;
+  256:         }
+  257:       }
+  258: 
+  259:       if (mounted) {
+  260:         setState(() {
+  261:           serviceAvailability = fresh;
+  262:         });
+  263:       }
+  264:     } catch (_) {
+  265:       // Keep last/default visibility values.
+  266:     }
+  267:   }
+  268: 
+  269:   String? _serviceKeyForTitle(
+  270:     String title,
+  271:   ) {
+  272:     const Map<String, String> map = <String, String>{
+  273:       'Keke Napep': 'kekeNapep',
+  274:       'ServicePay Amana': 'amana',
+  275:       'Airtime': 'airtime',
+  276:       'Data': 'data',
+  277:       'Electricity': 'electricity',
+  278:       'Cable TV': 'cableTv',
+  279:       'Exam PIN': 'examPin',
+  280:       'NIN Verification': 'ninVerification',
+  281:       'Delivery': 'delivery',
+  282:       'Flight Booking': 'flightBooking',
+  283:       'Wallet Funding': 'walletFunding',
+  284:       'Bank Transfer': 'bankTransfer',
+  285:       'ServicePay Transfer': 'servicepayTransfer',
+  286:     };
+  287: 
+  288:     return map[title];
+  289:   }
+  290: 
+  291:   bool _isServiceVisible(
+  292:     String title,
+  293:   ) {
+  294:     final String? key = _serviceKeyForTitle(title);
+  295: 
+  296:     if (key == null) {
+  297:       return true;
+  298:     }
+  299: 
+  300:     return serviceAvailability[key] != false;
+  301:   }
+  302: 
+  303:   String firstName() {
+  304:     final String trimmed = userName.trim();
+  305: 
+  306:     if (trimmed.isEmpty) {
+  307:       return 'Customer';
+  308:     }
+  309: 
+  310:     return trimmed
+  311:         .split(
+  312:           RegExp(r'\s+'),
+  313:         )
+  314:         .first;
+  315:   }
+  316: 
+  317:   String formatMoney(double amount) {
+  318:     final String value = amount.toStringAsFixed(2);
+  319: 
+  320:     final List<String> parts = value.split('.');
+  321: 
+  322:     final String whole = parts.first;
+  323: 
+  324:     final StringBuffer formatted = StringBuffer();
+  325: 
+  326:     for (int index = 0; index < whole.length; index++) {
+  327:       final int remaining = whole.length - index;
+  328: 
+  329:       formatted.write(
+------------------------------------------------------------------------------------------
+  334:         formatted.write(',');
+  335:       }
+  336:     }
+  337: 
+  338:     return '₦${formatted.toString()}.${parts.last}';
+  339:   }
+  340: 
+  341:   void openScreen(Widget screen) {
+  342:     Navigator.of(context).push(
+  343:       MaterialPageRoute<void>(
+  344:         builder: (_) => screen,
+  345:       ),
+  346:     );
+  347:   }
+  348: 
+  349:   List<_DashboardService> popularServices() {
+  350:     return <_DashboardService>[
+  351:       _DashboardService(
+  352:         title: 'Keke Napep',
+  353:         icon: Icons.electric_rickshaw_rounded,
+  354:         iconColor: const Color(0xFFF59E0B),
+  355:         backgroundColor: const Color(0xFFFFF7DF),
+  356:         keywords:
+  357:             'keke napep ride transport tricycle taxi driver trip movement',
+  358:         onTap: () {
+  359:           openScreen(
+  360:             const KekeOrderScreen(),
+  361:           );
+  362:         },
+  363:       ),
+  364:       _DashboardService(
+  365:         title: 'ServicePay Amana',
+  366:         icon: Icons.volunteer_activism_rounded,
+  367:         iconColor: const Color(0xFF08783E),
+  368:         backgroundColor: const Color(0xFFEAF7F0),
+  369:         keywords: 'amana family support food school fees medical assistance',
+  370:         onTap: () {
+  371:           openScreen(
+  372:             const AmanaScreen(),
+  373:           );
+  374:         },
+  375:       ),
+  376:       _DashboardService(
+  377:         title: 'Airtime',
+  378:         icon: Icons.phone_android_rounded,
+  379:         iconColor: const Color(0xFF08783E),
+  380:         backgroundColor: const Color(0xFFEAF7F0),
+  381:         keywords: 'airtime recharge phone',
+  382:         onTap: () {
+  383:           openScreen(
+  384:             const AirtimeScreen(),
+  385:           );
+  386:         },
+  387:       ),
+  388:       _DashboardService(
+  389:         title: 'Data',
+  390:         icon: Icons.signal_cellular_alt_rounded,
+  391:         iconColor: const Color(0xFF08783E),
+  392:         backgroundColor: const Color(0xFFF0F7FF),
+  393:         keywords: 'data internet bundle',
+  394:         onTap: () {
+  395:           openScreen(
+  396:             const DataScreen(),
+  397:           );
+  398:         },
+  399:       ),
+  400:       _DashboardService(
+  401:         title: 'Electricity',
+  402:         icon: Icons.lightbulb_rounded,
+  403:         iconColor: const Color(0xFFF59E0B),
+  404:         backgroundColor: const Color(0xFFFFF7DF),
+  405:         keywords: 'electricity power light bill',
+  406:         onTap: () {
+  407:           openScreen(
+  408:             const ElectricityScreen(),
+  409:           );
+  410:         },
+  411:       ),
+  412:       _DashboardService(
+  413:         title: 'Cable TV',
+  414:         icon: Icons.live_tv_rounded,
+  415:         iconColor: const Color(0xFF08783E),
+  416:         backgroundColor: const Color(0xFFEAF7F0),
+  417:         keywords: 'cable tv dstv gotv startimes',
+  418:         onTap: () {
+  419:           openScreen(
+  420:             const CableScreen(),
+  421:           );
+  422:         },
+  423:       ),
+  424:       _DashboardService(
+  425:         title: 'Exam PIN',
+  426:         icon: Icons.workspace_premium_rounded,
+  427:         iconColor: const Color(0xFF08783E),
+  428:         backgroundColor: const Color(0xFFEAF7F0),
+  429:         keywords: 'exam pin waec neco jamb',
+  430:         onTap: () {
+  431:           openScreen(
+  432:             const ExamPinScreen(),
+  433:           );
+  434:         },
+  435:       ),
+  436:     ];
+  437:   }
+  438: 
+  439:   List<_DashboardService> moreServices() {
+  440:     return <_DashboardService>[
+  441:       _DashboardService(
+  442:         title: 'NIN Verification',
+  443:         icon: Icons.fingerprint_rounded,
+  444:         iconColor: const Color(0xFF08783E),
+  445:         backgroundColor: const Color(0xFFEAF7F0),
+  446:         keywords: 'nin verification identity',
+  447:         onTap: () {
+  448:           openScreen(
+  449:             const IdVerificationScreen(),
+  450:           );
+  451:         },
+  452:       ),
+  453:       _DashboardService(
+  454:         title: 'Delivery',
+  455:         icon: Icons.local_shipping_rounded,
+  456:         iconColor: const Color(0xFF08783E),
+  457:         backgroundColor: const Color(0xFFEAF7F0),
+  458:         keywords: 'delivery logistics courier',
+  459:         onTap: () {
+  460:           openScreen(
+  461:             const LogisticsScreen(),
+  462:           );
+  463:         },
+  464:       ),
+  465:       _DashboardService(
+  466:         title: 'Flight Booking',
+  467:         icon: Icons.flight_takeoff_rounded,
+  468:         iconColor: const Color(0xFF08783E),
+  469:         backgroundColor: const Color(0xFFEAF7F0),
+  470:         keywords: 'flight booking airline travel',
+  471:         onTap: () {
+  472:           openScreen(
+  473:             const FlightBookingScreen(),
+  474:           );
+  475:         },
+  476:       ),
+  477:       _DashboardService(
+  478:         title: 'Wallet Funding',
+  479:         icon: Icons.account_balance_wallet_rounded,
+  480:         iconColor: const Color(0xFF08783E),
+  481:         backgroundColor: const Color(0xFFEAF7F0),
+  482:         keywords: 'wallet funding fund wallet deposit',
+  483:         onTap: () {
+  484:           openScreen(
+  485:             const WalletScreen(),
+  486:           );
+  487:         },
+  488:       ),
+  489:       _DashboardService(
+  490:         title: 'Bank Transfer',
+  491:         icon: Icons.account_balance_rounded,
+  492:         iconColor: const Color(0xFF08783E),
+  493:         backgroundColor: const Color(0xFFEAF7F0),
+  494:         keywords: 'bank transfer send money',
+  495:         onTap: () {
+  496:           openScreen(
+  497:             const BankTransferScreen(),
+  498:           );
+  499:         },
+  500:       ),
+  501:       _DashboardService(
+  502:         title: 'ServicePay Transfer',
+  503:         icon: Icons.send_rounded,
+  504:         iconColor: const Color(0xFF08783E),
+  505:         backgroundColor: const Color(0xFFEAF7F0),
+  506:         keywords: 'servicepay transfer send money',
+  507:         onTap: () {
+  508:           openScreen(
+  509:             const TransferScreen(),
+  510:           );
+  511:         },
+  512:       ),
+  513:     ];
+  514:   }
+  515: 
+  516:   List<_DashboardService> filtered(
+  517:     List<_DashboardService> services,
+  518:   ) {
+  519:     final List<_DashboardService> visible = services
+  520:         .where(
+  521:           (_DashboardService service) => _isServiceVisible(
+  522:             service.title,
+  523:           ),
+  524:         )
+  525:         .toList();
+  526: 
+  527:     final String query = searchQuery.trim().toLowerCase();
+  528: 
+  529:     if (query.isEmpty) {
+  530:       return visible;
+  531:     }
+  532: 
+  533:     return visible.where(
+  534:       (_DashboardService service) {
+  535:         final String searchable =
+  536:             '${service.title} ${service.keywords}'.toLowerCase();
+  537: 
+  538:         return searchable.contains(
+  539:           query,
+  540:         );
+  541:       },
+  542:     ).toList();
+  543:   }
+  544: 
+  545:   Widget buildHeader() {
+  546:     return Column(
+  547:       children: <Widget>[
+  548:         Row(
+  549:           children: <Widget>[
+  550:             SizedBox(
+  551:               width: 165,
+  552:               height: 58,
+  553:               child: Image.asset(
+  554:                 'assets/image/servicepay_logo.png',
+  555:                 fit: BoxFit.contain,
+  556:                 alignment: Alignment.centerLeft,
+  557:                 filterQuality: FilterQuality.high,
+  558:                 errorBuilder: (
+  559:                   BuildContext context,
+  560:                   Object error,
+  561:                   StackTrace? stackTrace,
+  562:                 ) {
+  563:                   return const Align(
+  564:                     alignment: Alignment.centerLeft,
+  565:                     child: Text(
+  566:                       'ServicePay',
+  567:                       style: TextStyle(
+  568:                         color: Color(0xFF064E2F),
+  569:                         fontSize: 22,
+  570:                         fontWeight: FontWeight.w900,
+  571:                       ),
+  572:                     ),
+  573:                   );
+  574:                 },
+  575:               ),
+  576:             ),
+  577:             const Spacer(),
+  578:             Stack(
+  579:               clipBehavior: Clip.none,
+  580:               children: <Widget>[
+  581:                 IconButton(
+  582:                   onPressed: () {
+  583:                     openScreen(
+  584:                       const NotificationsScreen(),
+  585:                     );
+  586:                   },
+  587:                   style: IconButton.styleFrom(
+  588:                     backgroundColor: softGreen,
+  589:                     foregroundColor: primaryGreen,
+  590:                     minimumSize: const Size(
+  591:                       45,
+  592:                       45,
+  593:                     ),
+  594:                   ),
+  595:                   icon: const Icon(
+------------------------------------------------------------------------------------------
+  783:                         child: Padding(
+  784:                           padding: const EdgeInsets.all(4),
+  785:                           child: Icon(
+  786:                             hideBalance
+  787:                                 ? Icons.visibility_off_outlined
+  788:                                 : Icons.visibility_outlined,
+  789:                             color: Colors.white,
+  790:                             size: 22,
+  791:                           ),
+  792:                         ),
+  793:                       ),
+  794:                     ],
+  795:                   ),
+  796:                   const SizedBox(height: 15),
+  797:                   Text(
+  798:                     hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
+  799:                     maxLines: 1,
+  800:                     overflow: TextOverflow.ellipsis,
+  801:                     style: const TextStyle(
+  802:                       color: Colors.white,
+  803:                       fontSize: 30,
+  804:                       fontWeight: FontWeight.w900,
+  805:                       letterSpacing: -1.4,
+  806:                     ),
+  807:                   ),
+  808:                   const SizedBox(height: 15),
+  809:                   Container(
+  810:                     padding: const EdgeInsets.symmetric(
+  811:                       horizontal: 11,
+  812:                       vertical: 7,
+  813:                     ),
+  814:                     decoration: BoxDecoration(
+  815:                       color: Colors.white.withValues(
+  816:                         alpha: 0.10,
+  817:                       ),
+  818:                       borderRadius: BorderRadius.circular(30),
+  819:                       border: Border.all(
+  820:                         color: Colors.white.withValues(
+  821:                           alpha: 0.18,
+  822:                         ),
+  823:                       ),
+  824:                     ),
+  825:                     child: const Row(
+  826:                       mainAxisSize: MainAxisSize.min,
+  827:                       children: <Widget>[
+------------------------------------------------------------------------------------------
+  843:                     ),
+  844:                   ),
+  845:                   const SizedBox(height: 17),
+  846:                   Divider(
+  847:                     height: 1,
+  848:                     color: Colors.white.withValues(
+  849:                       alpha: 0.17,
+  850:                     ),
+  851:                   ),
+  852:                   const SizedBox(height: 17),
+  853:                   Row(
+  854:                     children: <Widget>[
+  855:                       Expanded(
+  856:                         child: _WalletAction(
+  857:                           icon: Icons.add_circle_outline,
+  858:                           label: 'Fund Wallet',
+  859:                           onTap: () {
+  860:                             openScreen(
+  861:                               const WalletScreen(),
+  862:                             );
+  863:                           },
+  864:                         ),
+  865:                       ),
+  866:                       _walletDivider(),
+  867:                       Expanded(
+  868:                         child: _WalletAction(
+  869:                           icon: Icons.account_balance_rounded,
+  870:                           label: 'Bank Transfer',
+  871:                           onTap: () {
+  872:                             openScreen(
+  873:                               const BankTransferScreen(),
+  874:                             );
+  875:                           },
+  876:                         ),
+  877:                       ),
+  878:                       _walletDivider(),
+  879:                       Expanded(
+  880:                         child: _WalletAction(
+  881:                           icon: Icons.send_rounded,
+  882:                           label: 'ServicePay Transfer',
+  883:                           onTap: () {
+  884:                             openScreen(
+  885:                               const TransferScreen(),
+  886:                             );
+  887:                           },
+  888:                         ),
+  889:                       ),
+  890:                     ],
+  891:                   ),
+  892:                 ],
+  893:               ),
+  894:             ),
+  895:           ],
+  896:         ),
+  897:       ),
+  898:     );
+  899:   }
+  900: 
+  901:   Widget _walletDivider() {
+  902:     return Container(
+  903:       width: 1,
+  904:       height: 38,
+  905:       margin: const EdgeInsets.symmetric(
+  906:         horizontal: 6,
+  907:       ),
+  908:       color: Colors.white.withValues(
+  909:         alpha: 0.16,
+  910:       ),
+  911:     );
+  912:   }
+  913: 
+  914:   Widget buildSearchBar() {
+  915:     return TextField(
+  916:       controller: searchController,
+  917:       onChanged: (String value) {
+  918:         setState(() {
+  919:           searchQuery = value;
+  920:         });
+  921:       },
+  922:       decoration: InputDecoration(
+  923:         hintText: 'Search services',
+  924:         hintStyle: const TextStyle(
+  925:           color: Color(0xFF98A2B3),
+  926:         ),
+  927:         prefixIcon: const Icon(
+  928:           Icons.search_rounded,
+  929:           color: primaryGreen,
+  930:         ),
+  931:         suffixIcon: searchQuery.isEmpty
+  932:             ? Container(
+  933:                 margin: const EdgeInsets.all(7),
+  934:                 decoration: BoxDecoration(
+  935:                   color: softGreen,
+  936:                   borderRadius: BorderRadius.circular(14),
+  937:                 ),
+  938:                 child: const Icon(
+  939:                   Icons.tune_rounded,
+  940:                   color: primaryGreen,
+  941:                 ),
+  942:               )
+  943:             : IconButton(
+  944:                 onPressed: () {
+  945:                   searchController.clear();
+  946: 
+  947:                   setState(() {
+  948:                     searchQuery = '';
+  949:                   });
+  950:                 },
+  951:                 icon: const Icon(
+  952:                   Icons.close_rounded,
+------------------------------------------------------------------------------------------
+  977:           vertical: 18,
+  978:         ),
+  979:       ),
+  980:     );
+  981:   }
+  982: 
+  983:   Widget buildQuickActions() {
+  984:     final List<Widget> items = <Widget>[];
+  985: 
+  986:     void addItem({
+  987:       required String feature,
+  988:       required IconData icon,
+  989:       required String label,
+  990:       required VoidCallback onTap,
+  991:     }) {
+  992:       if (serviceAvailability[feature] == false) {
+  993:         return;
+  994:       }
+  995: 
+  996:       if (items.isNotEmpty) {
+  997:         items.add(
+  998:           _quickDivider(),
+  999:         );
+ 1000:       }
+ 1001: 
+ 1002:       items.add(
+ 1003:         Expanded(
+ 1004:           child: _QuickAction(
+ 1005:             icon: icon,
+ 1006:             label: label,
+ 1007:             onTap: onTap,
+ 1008:           ),
+ 1009:         ),
+ 1010:       );
+ 1011:     }
+ 1012: 
+ 1013:     addItem(
+ 1014:       feature: 'walletFunding',
+ 1015:       icon: Icons.account_balance_wallet_rounded,
+ 1016:       label: 'Fund Wallet',
+ 1017:       onTap: () {
+ 1018:         openScreen(
+ 1019:           const WalletScreen(),
+ 1020:         );
+ 1021:       },
+ 1022:     );
+ 1023: 
+ 1024:     addItem(
+ 1025:       feature: 'bankTransfer',
+ 1026:       icon: Icons.account_balance_rounded,
+ 1027:       label: 'Bank Transfer',
+ 1028:       onTap: () {
+ 1029:         openScreen(
+ 1030:           const BankTransferScreen(),
+ 1031:         );
+ 1032:       },
+ 1033:     );
+ 1034: 
+ 1035:     // Transactions is not a service switch.
+ 1036:     if (items.isNotEmpty) {
+ 1037:       items.add(
+ 1038:         _quickDivider(),
+ 1039:       );
+ 1040:     }
+ 1041: 
+ 1042:     items.add(
+ 1043:       Expanded(
+ 1044:         child: _QuickAction(
+ 1045:           icon: Icons.receipt_long_rounded,
+ 1046:           label: 'Transactions',
+ 1047:           onTap: () {
+ 1048:             openScreen(
+ 1049:               const TransactionsScreen(),
+ 1050:             );
+ 1051:           },
+ 1052:         ),
+ 1053:       ),
+ 1054:     );
+ 1055: 
+ 1056:     if (serviceAvailability['ninVerification'] != false) {
+ 1057:       items.add(
+ 1058:         _quickDivider(),
+ 1059:       );
+ 1060: 
+ 1061:       items.add(
+ 1062:         Expanded(
+ 1063:           child: _QuickAction(
+ 1064:             icon: Icons.badge_rounded,
+ 1065:             label: 'Verify ID',
+ 1066:             onTap: () {
+ 1067:               openScreen(
+ 1068:                 const IdVerificationScreen(),
+ 1069:               );
+ 1070:             },
+ 1071:           ),
+ 1072:         ),
+ 1073:       );
+ 1074:     }
+ 1075: 
+ 1076:     return Container(
+ 1077:       padding: const EdgeInsets.symmetric(
+ 1078:         horizontal: 10,
+ 1079:         vertical: 17,
+ 1080:       ),
+ 1081:       decoration: BoxDecoration(
+ 1082:         color: Colors.white,
+ 1083:         borderRadius: BorderRadius.circular(23),
+ 1084:         border: Border.all(
+ 1085:           color: const Color(0xFFE7EAEF),
+------------------------------------------------------------------------------------------
+ 1094:       ),
+ 1095:       child: Row(
+ 1096:         children: items,
+ 1097:       ),
+ 1098:     );
+ 1099:   }
+ 1100: 
+ 1101:   Widget _quickDivider() {
+ 1102:     return Container(
+ 1103:       width: 1,
+ 1104:       height: 55,
+ 1105:       color: const Color(0xFFE4E7EC),
+ 1106:     );
+ 1107:   }
+ 1108: 
+ 1109:   Widget buildPopularServices() {
+ 1110:     final List<_DashboardService> services = filtered(
+ 1111:       popularServices(),
+ 1112:     );
+ 1113: 
+ 1114:     if (services.isEmpty) {
+ 1115:       return const SizedBox.shrink();
+ 1116:     }
+ 1117: 
+ 1118:     return Column(
+ 1119:       crossAxisAlignment: CrossAxisAlignment.start,
+ 1120:       children: <Widget>[
+ 1121:         const _SectionHeader(
+ 1122:           title: 'Popular Services',
+ 1123:         ),
+ 1124:         const SizedBox(height: 13),
+ 1125:         SizedBox(
+ 1126:           height: 128,
+ 1127:           child: ListView.separated(
+ 1128:             scrollDirection: Axis.horizontal,
+ 1129:             itemCount: services.length,
+ 1130:             padding: const EdgeInsets.only(
+ 1131:               right: 3,
+ 1132:             ),
+ 1133:             separatorBuilder: (_, __) => const SizedBox(width: 11),
+ 1134:             itemBuilder: (
+ 1135:               BuildContext context,
+ 1136:               int index,
+ 1137:             ) {
+ 1138:               return SizedBox(
+ 1139:                 width: 88,
+ 1140:                 child: _PopularServiceCard(
+ 1141:                   service: services[index],
+ 1142:                 ),
+ 1143:               );
+ 1144:             },
+ 1145:           ),
+ 1146:         ),
+ 1147:       ],
+ 1148:     );
+ 1149:   }
+ 1150: 
+ 1151:   Widget buildMoreServices() {
+ 1152:     final List<_DashboardService> services = filtered(
+ 1153:       moreServices(),
+ 1154:     );
+ 1155: 
+ 1156:     if (services.isEmpty) {
+ 1157:       return const SizedBox.shrink();
+ 1158:     }
+ 1159: 
+ 1160:     return Column(
+ 1161:       crossAxisAlignment: CrossAxisAlignment.start,
+ 1162:       children: <Widget>[
+ 1163:         const _SectionHeader(
+ 1164:           title: 'More Services',
+ 1165:         ),
+ 1166:         const SizedBox(height: 12),
+ 1167:         SizedBox(
+ 1168:           height: 120,
+ 1169:           child: ListView.separated(
+ 1170:             scrollDirection: Axis.horizontal,
+ 1171:             itemCount: services.length,
+ 1172:             padding: const EdgeInsets.only(
+ 1173:               right: 3,
+ 1174:             ),
+ 1175:             separatorBuilder: (_, __) => const SizedBox(width: 11),
+ 1176:             itemBuilder: (
+ 1177:               BuildContext context,
+ 1178:               int index,
+ 1179:             ) {
+ 1180:               final _DashboardService service = services[index];
+ 1181: 
+ 1182:               return Material(
+ 1183:                 color: Colors.white,
+ 1184:                 borderRadius: BorderRadius.circular(19),
+ 1185:                 child: InkWell(
+ 1186:                   onTap: service.onTap,
+ 1187:                   borderRadius: BorderRadius.circular(19),
+ 1188:                   child: Container(
+ 1189:                     width: 145,
+ 1190:                     padding: const EdgeInsets.symmetric(
+ 1191:                       horizontal: 12,
+ 1192:                       vertical: 12,
+ 1193:                     ),
+ 1194:                     decoration: BoxDecoration(
+ 1195:                       borderRadius: BorderRadius.circular(19),
+ 1196:                       border: Border.all(
+ 1197:                         color: const Color(
+ 1198:                           0xFFE7EAEF,
+ 1199:                         ),
+ 1200:                       ),
+ 1201:                       boxShadow: const <BoxShadow>[
+ 1202:                         BoxShadow(
+ 1203:                           color: Color(
+ 1204:                             0x0B101828,
+ 1205:                           ),
+ 1206:                           blurRadius: 12,
+ 1207:                           offset: Offset(0, 4),
+ 1208:                         ),
+ 1209:                       ],
+ 1210:                     ),
+ 1211:                     child: Column(
+ 1212:                       mainAxisAlignment: MainAxisAlignment.center,
+ 1213:                       children: <Widget>[
+ 1214:                         Container(
+ 1215:                           width: 43,
+ 1216:                           height: 43,
+ 1217:                           decoration: BoxDecoration(
+ 1218:                             color: service.backgroundColor,
+ 1219:                             borderRadius: BorderRadius.circular(
+ 1220:                               14,
+ 1221:                             ),
+ 1222:                           ),
+ 1223:                           child: Icon(
+ 1224:                             service.icon,
+ 1225:                             color: service.iconColor,
+ 1226:                             size: 24,
+ 1227:                           ),
+ 1228:                         ),
+ 1229:                         const SizedBox(height: 8),
+ 1230:                         Text(
+ 1231:                           service.title,
+ 1232:                           maxLines: 1,
+ 1233:                           overflow: TextOverflow.ellipsis,
+ 1234:                           textAlign: TextAlign.center,
+ 1235:                           style: const TextStyle(
+ 1236:                             color: Color(
+ 1237:                               0xFF1D2939,
+ 1238:                             ),
+ 1239:                             fontSize: 12,
+ 1240:                             fontWeight: FontWeight.w800,
+ 1241:                           ),
+ 1242:                         ),
+ 1243:                       ],
+ 1244:                     ),
+ 1245:                   ),
+ 1246:                 ),
+ 1247:               );
+ 1248:             },
+ 1249:           ),
+ 1250:         ),
+ 1251:       ],
+ 1252:     );
+ 1253:   }
+ 1254: 
+ 1255:   Widget buildEmptySearch() {
+ 1256:     if (searchQuery.trim().isEmpty) {
+ 1257:       return const SizedBox.shrink();
+ 1258:     }
+ 1259: 
+ 1260:     final bool hasPopular = filtered(
+ 1261:       popularServices(),
+ 1262:     ).isNotEmpty;
+ 1263: 
+ 1264:     final bool hasMore = filtered(
+ 1265:       moreServices(),
+ 1266:     ).isNotEmpty;
+ 1267: 
+ 1268:     if (hasPopular || hasMore) {
+ 1269:       return const SizedBox.shrink();
+ 1270:     }
+ 1271: 
+ 1272:     return Container(
+ 1273:       padding: const EdgeInsets.all(28),
+ 1274:       decoration: BoxDecoration(
+ 1275:         color: Colors.white,
+ 1276:         borderRadius: BorderRadius.circular(22),
+ 1277:         border: Border.all(
+ 1278:           color: const Color(0xFFE4E7EC),
+ 1279:         ),
+ 1280:       ),
+ 1281:       child: Column(
+ 1282:         children: <Widget>[
+ 1283:           const Icon(
+ 1284:             Icons.search_off_rounded,
+ 1285:             size: 44,
+ 1286:             color: Color(0xFF98A2B3),
+ 1287:           ),
+ 1288:           const SizedBox(height: 10),
+ 1289:           Text(
+ 1290:             'No service found for “$searchQuery”',
+ 1291:             textAlign: TextAlign.center,
+ 1292:             style: const TextStyle(
+ 1293:               color: Color(0xFF475467),
+ 1294:               fontWeight: FontWeight.w700,
+ 1295:             ),
+ 1296:           ),
+ 1297:         ],
+ 1298:       ),
+ 1299:     );
+ 1300:   }
+ 1301: 
+ 1302:   Widget buildPromoBanner() {
+ 1303:     return Container(
+ 1304:       height: 144,
+ 1305:       decoration: BoxDecoration(
+ 1306:         borderRadius: BorderRadius.circular(25),
+ 1307:         gradient: const LinearGradient(
+ 1308:           begin: Alignment.centerLeft,
+ 1309:           end: Alignment.centerRight,
+ 1310:           colors: <Color>[
+ 1311:             Color(0xFF003B29),
+ 1312:             Color(0xFF006A3C),
+ 1313:             Color(0xFF088149),
+ 1314:           ],
+ 1315:         ),
+ 1316:         boxShadow: const <BoxShadow>[
+ 1317:           BoxShadow(
+ 1318:             color: Color(0x33004E2C),
+ 1319:             blurRadius: 22,
+------------------------------------------------------------------------------------------
+ 1468:         ),
+ 1469:       ),
+ 1470:     );
+ 1471:   }
+ 1472: 
+ 1473:   @override
+ 1474:   Widget build(
+ 1475:     BuildContext context,
+ 1476:   ) {
+ 1477:     return Scaffold(
+ 1478:       backgroundColor: const Color(0xFFF7F9FB),
+ 1479:       body: SafeArea(
+ 1480:         child: RefreshIndicator(
+ 1481:           color: primaryGreen,
+ 1482:           onRefresh: () {
+ 1483:             return loadDashboard(
+ 1484:               refreshing: true,
+ 1485:             );
+ 1486:           },
+ 1487:           child: ListView(
+ 1488:             physics: const AlwaysScrollableScrollPhysics(),
+ 1489:             padding: const EdgeInsets.fromLTRB(
+ 1490:               15,
+ 1491:               14,
+ 1492:               15,
+ 1493:               30,
+ 1494:             ),
+ 1495:             children: <Widget>[
+ 1496:               buildHeader(),
+ 1497:               const SizedBox(height: 20),
+ 1498:               if (isLoading)
+ 1499:                 const LinearProgressIndicator(
+ 1500:                   color: primaryGreen,
+ 1501:                   backgroundColor: softGreen,
+ 1502:                   minHeight: 2,
+ 1503:                 ),
+ 1504:               if (isLoading) const SizedBox(height: 10),
+ 1505:               buildWalletCard(),
+ 1506:               const SizedBox(height: 13),
+ 1507:               buildSearchBar(),
+ 1508:               const SizedBox(height: 16),
+ 1509:               buildQuickActions(),
+ 1510:               const SizedBox(height: 18),
+ 1511:               buildPopularServices(),
+ 1512:               if (filtered(
+ 1513:                 popularServices(),
+ 1514:               ).isNotEmpty)
+ 1515:                 const SizedBox(height: 18),
+ 1516:               buildMoreServices(),
+ 1517:               buildEmptySearch(),
+ 1518:               if (searchQuery.trim().isEmpty) const SizedBox(height: 18),
+ 1519:               if (searchQuery.trim().isEmpty) buildPromoBanner(),
+ 1520:               if (isRefreshing)
+ 1521:                 const Padding(
+ 1522:                   padding: EdgeInsets.only(
+ 1523:                     top: 20,
+ 1524:                   ),
+ 1525:                   child: Center(
+ 1526:                     child: Text(
+ 1527:                       'Refreshing dashboard...',
+ 1528:                       style: TextStyle(
+ 1529:                         color: Color(
+ 1530:                           0xFF667085,
+ 1531:                         ),
+ 1532:                       ),
+ 1533:                     ),
+ 1534:                   ),
+ 1535:                 ),
+ 1536:             ],
+ 1537:           ),
+ 1538:         ),
+ 1539:       ),
+ 1540:     );
+ 1541:   }
+ 1542: }
+ 1543: 
+ 1544: class _DashboardService {
+ 1545:   final String title;
+ 1546:   final IconData icon;
+ 1547:   final Color iconColor;
+ 1548:   final Color backgroundColor;
+ 1549:   final String keywords;
+ 1550:   final VoidCallback onTap;
+ 1551: 
+ 1552:   const _DashboardService({
+ 1553:     required this.title,
+ 1554:     required this.icon,
+ 1555:     required this.iconColor,
+ 1556:     required this.backgroundColor,
+ 1557:     required this.keywords,
+ 1558:     required this.onTap,
+ 1559:   });
+ 1560: }
+ 1561: 
+ 1562: class _WalletAction extends StatelessWidget {
+ 1563:   final IconData icon;
+ 1564:   final String label;
+ 1565:   final VoidCallback onTap;
+ 1566: 
+ 1567:   const _WalletAction({
+ 1568:     required this.icon,
+ 1569:     required this.label,
+ 1570:     required this.onTap,
+ 1571:   });
+ 1572: 
+ 1573:   @override
+ 1574:   Widget build(
+ 1575:     BuildContext context,
+ 1576:   ) {
+ 1577:     return InkWell(
+ 1578:       onTap: onTap,
+ 1579:       borderRadius: BorderRadius.circular(14),
+ 1580:       child: Padding(
+ 1581:         padding: const EdgeInsets.symmetric(
+------------------------------------------------------------------------------------------
+ 1583:           horizontal: 2,
+ 1584:         ),
+ 1585:         child: Column(
+ 1586:           children: <Widget>[
+ 1587:             Container(
+ 1588:               width: 42,
+ 1589:               height: 42,
+ 1590:               decoration: BoxDecoration(
+ 1591:                 color: Colors.white,
+ 1592:                 borderRadius: BorderRadius.circular(
+ 1593:                   13,
+ 1594:                 ),
+ 1595:               ),
+ 1596:               child: Icon(
+ 1597:                 icon,
+ 1598:                 color: _DashboardScreenState.primaryGreen,
+ 1599:                 size: 22,
+ 1600:               ),
+ 1601:             ),
+ 1602:             const SizedBox(height: 7),
+ 1603:             Text(
+ 1604:               label,
+ 1605:               maxLines: 2,
+ 1606:               textAlign: TextAlign.center,
+ 1607:               overflow: TextOverflow.ellipsis,
+ 1608:               style: const TextStyle(
+ 1609:                 color: Colors.white,
+ 1610:                 fontSize: 11,
+ 1611:                 fontWeight: FontWeight.w700,
+ 1612:               ),
+ 1613:             ),
+ 1614:           ],
+ 1615:         ),
+ 1616:       ),
+ 1617:     );
+ 1618:   }
+ 1619: }
+ 1620: 
+ 1621: class _QuickAction extends StatelessWidget {
+ 1622:   final IconData icon;
+ 1623:   final String label;
+ 1624:   final VoidCallback onTap;
+ 1625: 
+ 1626:   const _QuickAction({
+ 1627:     required this.icon,
+------------------------------------------------------------------------------------------
+ 1634:     BuildContext context,
+ 1635:   ) {
+ 1636:     return InkWell(
+ 1637:       onTap: onTap,
+ 1638:       borderRadius: BorderRadius.circular(15),
+ 1639:       child: Padding(
+ 1640:         padding: const EdgeInsets.symmetric(
+ 1641:           horizontal: 4,
+ 1642:         ),
+ 1643:         child: Column(
+ 1644:           children: <Widget>[
+ 1645:             Container(
+ 1646:               width: 45,
+ 1647:               height: 45,
+ 1648:               decoration: BoxDecoration(
+ 1649:                 color: _DashboardScreenState.softGreen,
+ 1650:                 borderRadius: BorderRadius.circular(
+ 1651:                   14,
+ 1652:                 ),
+ 1653:               ),
+ 1654:               child: Icon(
+ 1655:                 icon,
+ 1656:                 color: _DashboardScreenState.primaryGreen,
+ 1657:                 size: 24,
+ 1658:               ),
+ 1659:             ),
+ 1660:             const SizedBox(height: 8),
+ 1661:             Text(
+ 1662:               label,
+ 1663:               maxLines: 2,
+ 1664:               textAlign: TextAlign.center,
+ 1665:               overflow: TextOverflow.ellipsis,
+ 1666:               style: const TextStyle(
+ 1667:                 color: Color(0xFF344054),
+ 1668:                 fontSize: 11,
+ 1669:                 fontWeight: FontWeight.w700,
+ 1670:               ),
+ 1671:             ),
+ 1672:           ],
+ 1673:         ),
+ 1674:       ),
+ 1675:     );
+ 1676:   }
+ 1677: }
+ 1678: 
+ 1679: class _SectionHeader extends StatelessWidget {
+ 1680:   final String title;
+ 1681: 
+ 1682:   const _SectionHeader({
+ 1683:     required this.title,
+ 1684:   });
+ 1685: 
+------------------------------------------------------------------------------------------
+ 1690:     return Row(
+ 1691:       children: <Widget>[
+ 1692:         Expanded(
+ 1693:           child: Text(
+ 1694:             title,
+ 1695:             style: const TextStyle(
+ 1696:               fontSize: 19,
+ 1697:               color: Color(0xFF101828),
+ 1698:               fontWeight: FontWeight.w900,
+ 1699:             ),
+ 1700:           ),
+ 1701:         ),
+ 1702:         const Text(
+ 1703:           'View All',
+ 1704:           style: TextStyle(
+ 1705:             color: _DashboardScreenState.primaryGreen,
+ 1706:             fontWeight: FontWeight.w800,
+ 1707:           ),
+ 1708:         ),
+ 1709:         const SizedBox(width: 4),
+ 1710:         const Icon(
+ 1711:           Icons.chevron_right_rounded,
+ 1712:           color: _DashboardScreenState.primaryGreen,
+ 1713:         ),
+ 1714:       ],
+ 1715:     );
+ 1716:   }
+ 1717: }
+ 1718: 
+ 1719: class _PopularServiceCard extends StatelessWidget {
+ 1720:   final _DashboardService service;
+ 1721: 
+ 1722:   const _PopularServiceCard({
+ 1723:     required this.service,
+ 1724:   });
+ 1725: 
+ 1726:   @override
+ 1727:   Widget build(
+ 1728:     BuildContext context,
+ 1729:   ) {
+ 1730:     return Material(
+ 1731:       color: Colors.white,
+ 1732:       borderRadius: BorderRadius.circular(20),
+ 1733:       child: InkWell(
+ 1734:         onTap: service.onTap,
+ 1735:         borderRadius: BorderRadius.circular(20),
+ 1736:         child: Container(
+ 1737:           padding: const EdgeInsets.symmetric(
+ 1738:             horizontal: 8,
+ 1739:             vertical: 9,
+ 1740:           ),
+ 1741:           decoration: BoxDecoration(
+ 1742:             borderRadius: BorderRadius.circular(
+ 1743:               20,
+ 1744:             ),
+ 1745:             border: Border.all(
+ 1746:               color: const Color(
+ 1747:                 0xFFE7EAEF,
+ 1748:               ),
+ 1749:             ),
+ 1750:             boxShadow: const <BoxShadow>[
+ 1751:               BoxShadow(
+ 1752:                 color: Color(
+ 1753:                   0x0D101828,
+ 1754:                 ),
+ 1755:                 blurRadius: 13,
+ 1756:                 offset: Offset(0, 5),
+ 1757:               ),
+ 1758:             ],
+ 1759:           ),
+ 1760:           child: Column(
+ 1761:             mainAxisAlignment: MainAxisAlignment.center,
+ 1762:             children: <Widget>[
+ 1763:               Container(
+ 1764:                 width: 44,
+ 1765:                 height: 44,
+ 1766:                 decoration: BoxDecoration(
+ 1767:                   color: service.backgroundColor,
+ 1768:                   borderRadius: BorderRadius.circular(
+ 1769:                     15,
+ 1770:                   ),
+ 1771:                 ),
+ 1772:                 child: Icon(
+ 1773:                   service.icon,
+ 1774:                   color: service.iconColor,
+ 1775:                   size: 27,
+ 1776:                 ),
+ 1777:               ),
+ 1778:               const SizedBox(height: 7),
+ 1779:               Text(
+ 1780:                 service.title,
+ 1781:                 maxLines: 2,
+ 1782:                 textAlign: TextAlign.center,
+ 1783:                 overflow: TextOverflow.ellipsis,
+ 1784:                 style: const TextStyle(
+ 1785:                   color: Color(
+ 1786:                     0xFF1D2939,
+ 1787:                   ),
+ 1788:                   fontSize: 11,
+ 1789:                   height: 1.15,
+ 1790:                   fontWeight: FontWeight.w700,
+ 1791:                 ),
+ 1792:               ),
+ 1793:             ],
+ 1794:           ),
+ 1795:         ),
+ 1796:       ),
+ 1797:     );
+ 1798:   }
+ 1799: }
+------------------------------------------------------------------------------------------
+
+==========================================================================================
+FILE: lib/main_navigation.dart
+==========================================================================================
+    1: import 'package:flutter/material.dart';
+    2: import 'package:shared_preferences/shared_preferences.dart';
+    3: 
+    4: import 'dashboard_screen.dart';
+    5: import 'keke_driver_screen.dart';
+    6: import 'profile_screen.dart';
+    7: import 'transactions_screen.dart';
+    8: import 'wallet_screen.dart';
+    9: 
+   10: class MainNavigation extends StatefulWidget {
+   11:   const MainNavigation({
+   12:     super.key,
+   13:   });
+   14: 
+   15:   @override
+   16:   State<MainNavigation> createState() => _MainNavigationState();
+   17: }
+   18: 
+   19: class _MainNavigationState extends State<MainNavigation> {
+   20:   static const Color primaryGreen = Color(0xFF08783E);
+   21: 
+   22:   int currentIndex = 0;
+   23: 
+   24:   bool isLoadingRole = false;
+   25: 
+   26:   String userRole = 'CUSTOMER';
+   27: 
+   28:   List<Widget> pages = <Widget>[];
+   29: 
+   30:   @override
+   31:   void initState() {
+   32:     super.initState();
+   33: 
+   34:     // Show customer dashboard immediately.
+   35:     // Role loading can continue in the background.
+   36:     pages = _buildPages('CUSTOMER');
+   37: 
+   38:     _loadUserRole();
+   39:   }
+   40: 
+   41:   Future<void> _loadUserRole() async {
+   42:     try {
+   43:       final SharedPreferences preferences =
+   44:           await SharedPreferences.getInstance();
+   45: 
+   46:       String role = preferences.getString(
+   47:             'user_role',
+   48:           ) ??
+   49:           preferences.getString(
+   50:             'role',
+   51:           ) ??
+   52:           'CUSTOMER';
+   53: 
+   54:       role = role.trim().toUpperCase();
+   55: 
+   56:       if (role.isEmpty) {
+   57:         role = 'CUSTOMER';
+   58:       }
+   59: 
+   60:       if (!mounted) {
+   61:         return;
+   62:       }
+   63: 
+------------------------------------------------------------------------------------------
+   87:         currentIndex = 0;
+   88: 
+   89:         isLoadingRole = false;
+   90:       });
+   91:     }
+   92:   }
+   93: 
+   94:   List<Widget> _buildPages(
+   95:     String role,
+   96:   ) {
+   97:     /*
+   98:      * =====================================================
+   99:      * DELIVERY RIDER
+  100:      * =====================================================
+  101:      *
+  102:      * Delivery riders use ServicePay Keke Driver
+  103:      * as their main/home screen.
+  104:      */
+  105:     if (role == 'DELIVERY_RIDER') {
+  106:       return const <Widget>[
+  107:         KekeDriverScreen(),
+  108:         TransactionsScreen(),
+  109:         WalletScreen(),
+  110:         ProfileScreen(),
+  111:       ];
+  112:     }
+  113: 
+  114:     /*
+  115:      * =====================================================
+  116:      * NORMAL SERVICEPAY USERS
+  117:      * =====================================================
+  118:      *
+  119:      * CUSTOMER
+  120:      * AGENT / AGGREGATOR
+  121:      * STATE_MANAGER
+  122:      * ZONAL_MANAGER
+  123:      * etc.
+  124:      */
+  125:     return const <Widget>[
+  126:       DashboardScreen(),
+  127:       TransactionsScreen(),
+  128:       WalletScreen(),
+  129:       ProfileScreen(),
+  130:     ];
+  131:   }
+  132: 
+  133:   String get firstNavigationLabel {
+  134:     if (userRole == 'DELIVERY_RIDER') {
+  135:       return 'Keke';
+  136:     }
+  137: 
+  138:     return 'Home';
+  139:   }
+  140: 
+  141:   IconData get firstNavigationIcon {
+  142:     if (userRole == 'DELIVERY_RIDER') {
+  143:       return Icons.electric_rickshaw_outlined;
+  144:     }
+  145: 
+  146:     return Icons.home_outlined;
+  147:   }
+  148: 
+  149:   IconData get firstNavigationActiveIcon {
+  150:     if (userRole == 'DELIVERY_RIDER') {
+  151:       return Icons.electric_rickshaw_rounded;
+  152:     }
+  153: 
+  154:     return Icons.home_rounded;
+  155:   }
+  156: 
+------------------------------------------------------------------------------------------
+  215:             ],
+  216:           ),
+  217:           child: Row(
+  218:             crossAxisAlignment: CrossAxisAlignment.stretch,
+  219:             children: <Widget>[
+  220:               buildNavigationItem(
+  221:                 index: 0,
+  222:                 icon: firstNavigationIcon,
+  223:                 activeIcon: firstNavigationActiveIcon,
+  224:                 label: firstNavigationLabel,
+  225:               ),
+  226:               buildNavigationItem(
+  227:                 index: 1,
+  228:                 icon: Icons.receipt_long_outlined,
+  229:                 activeIcon: Icons.receipt_long_rounded,
+  230:                 label: 'Transactions',
+  231:               ),
+  232:               buildNavigationItem(
+  233:                 index: 2,
+  234:                 icon: Icons.account_balance_wallet_outlined,
+  235:                 activeIcon: Icons.account_balance_wallet_rounded,
+  236:                 label: 'Wallet',
+  237:               ),
+  238:               buildNavigationItem(
+  239:                 index: 3,
+  240:                 icon: Icons.person_outline_rounded,
+  241:                 activeIcon: Icons.person_rounded,
+  242:                 label: 'Profile',
+  243:               ),
+  244:             ],
+  245:           ),
+  246:         ),
+  247:       ),
+  248:     );
+  249:   }
+  250: 
+  251:   Widget buildNavigationItem({
+  252:     required int index,
+  253:     required IconData icon,
+  254:     required IconData activeIcon,
+  255:     required String label,
+  256:   }) {
+  257:     final bool selected = currentIndex == index;
+  258: 
+  259:     return Expanded(
+------------------------------------------------------------------------------------------
+  315:                             ),
+  316:                       size: selected ? 19 : 21,
+  317:                     ),
+  318:                   ),
+  319:                   const SizedBox(
+  320:                     height: 3,
+  321:                   ),
+  322:                   SizedBox(
+  323:                     width: double.infinity,
+  324:                     child: Text(
+  325:                       label,
+  326:                       maxLines: 1,
+  327:                       textAlign: TextAlign.center,
+  328:                       overflow: TextOverflow.ellipsis,
+  329:                       style: TextStyle(
+  330:                         fontSize: label == 'Transactions' ? 9 : 10,
+  331:                         height: 1,
+  332:                         fontWeight:
+  333:                             selected ? FontWeight.w800 : FontWeight.w600,
+  334:                         color: selected
+  335:                             ? primaryGreen
+  336:                             : const Color(
+  337:                                 0xFF667085,
+  338:                               ),
+  339:                       ),
+  340:                     ),
+  341:                   ),
+  342:                 ],
+  343:               ),
+  344:             ),
+  345:           ),
+  346:         ),
+  347:       ),
+  348:     );
+  349:   }
+  350: }
+------------------------------------------------------------------------------------------

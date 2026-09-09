@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 
 const User = require("../models/user.model");
+const RiderWithdrawal = require("../models/riderWithdrawal.model");
+const RiderWalletLedger = require("../models/riderWalletLedger.model");
 
 /*
 |--------------------------------------------------------------------------
@@ -323,6 +325,40 @@ const getAdminRiders = async (
       1
     );
 
+    const riderIds = riders.map((rider) => rider._id);
+    const [withdrawalMetrics, adjustmentMetrics] = await Promise.all([
+      RiderWithdrawal.aggregate([
+        { $match: { riderId: { $in: riderIds } } },
+        { $group: {
+          _id: "$riderId",
+          pendingWithdrawal: { $sum: { $cond: [{ $in: ["$status", ["PENDING", "APPROVED", "PROCESSING"]] }, "$totalDebit", 0] } },
+          totalWithdrawn: { $sum: { $cond: [{ $eq: ["$status", "PAID"] }, "$amount", 0] } },
+        }},
+      ]),
+      RiderWalletLedger.aggregate([
+        { $match: { riderId: { $in: riderIds } } },
+        { $group: {
+          _id: "$riderId",
+          totalCredits: { $sum: { $cond: [{ $eq: ["$type", "ADMIN_CREDIT"] }, "$amount", 0] } },
+          totalDebits: { $sum: { $cond: [{ $eq: ["$type", "ADMIN_DEBIT"] }, "$amount", 0] } },
+        }},
+      ]),
+    ]);
+    const withdrawalByRider = new Map(withdrawalMetrics.map((item) => [String(item._id), item]));
+    const adjustmentByRider = new Map(adjustmentMetrics.map((item) => [String(item._id), item]));
+    riders.forEach((rider) => {
+      const withdrawals = withdrawalByRider.get(String(rider._id)) || {};
+      const adjustments = adjustmentByRider.get(String(rider._id)) || {};
+      rider.walletMetrics = {
+        totalEarned: Number(rider.totalRiderEarnings || 0),
+        availableBalance: Number(rider.pendingRiderSettlement || 0),
+        pendingWithdrawal: Number(withdrawals.pendingWithdrawal || 0),
+        totalWithdrawn: Number(withdrawals.totalWithdrawn || rider.settledRiderEarnings || 0),
+        totalCredits: Number(adjustments.totalCredits || 0),
+        totalDebits: Number(adjustments.totalDebits || 0),
+      };
+    });
+
     return res.status(200).json({
       success: true,
       message:
@@ -608,6 +644,36 @@ const getAdminRiderDetails = async (
           "Delivery rider was not found.",
       });
     }
+
+    const [withdrawalMetrics, adjustmentMetrics, recentTransactions] =
+      await Promise.all([
+        RiderWithdrawal.aggregate([
+          { $match: { riderId: rider._id } },
+          { $group: {
+            _id: null,
+            pendingWithdrawal: { $sum: { $cond: [{ $in: ["$status", ["PENDING", "APPROVED", "PROCESSING"]] }, "$totalDebit", 0] } },
+            totalWithdrawn: { $sum: { $cond: [{ $eq: ["$status", "PAID"] }, "$amount", 0] } },
+          }},
+        ]),
+        RiderWalletLedger.aggregate([
+          { $match: { riderId: rider._id } },
+          { $group: {
+            _id: null,
+            totalCredits: { $sum: { $cond: [{ $eq: ["$type", "ADMIN_CREDIT"] }, "$amount", 0] } },
+            totalDebits: { $sum: { $cond: [{ $eq: ["$type", "ADMIN_DEBIT"] }, "$amount", 0] } },
+          }},
+        ]),
+        RiderWalletLedger.find({ riderId: rider._id }).sort({ createdAt: -1 }).limit(10).lean(),
+      ]);
+    rider.walletMetrics = {
+      totalEarned: Number(rider.totalRiderEarnings || 0),
+      availableBalance: Number(rider.pendingRiderSettlement || 0),
+      pendingWithdrawal: Number(withdrawalMetrics[0]?.pendingWithdrawal || 0),
+      totalWithdrawn: Number(withdrawalMetrics[0]?.totalWithdrawn || rider.settledRiderEarnings || 0),
+      totalCredits: Number(adjustmentMetrics[0]?.totalCredits || 0),
+      totalDebits: Number(adjustmentMetrics[0]?.totalDebits || 0),
+    };
+    rider.lastTransactions = recentTransactions;
 
     return res.status(200).json({
       success: true,

@@ -230,6 +230,7 @@ const FULL_ACCESS_ROLE_NAMES = Object.freeze([
 ]);
 const ROLE_HIERARCHY = Object.freeze({
   HEAD_OFFICE: 100,
+  SVP: 90,
   SUB_ADMIN: 80,
   INTERNAL_AUDITOR: 70,
   FINANCE_MANAGER: 65,
@@ -269,6 +270,7 @@ const scopeForRole = (role, user = {}) => {
   return Object.freeze({ type: "SELF", userId: user._id || user.id || null });
 };
 const directRolePermissions = Object.freeze({
+  SVP: Object.freeze([]),
   BRANCH_MANAGER: Object.freeze([
     STAFF_PERMISSIONS.BRANCH_DASHBOARD_VIEW,
     STAFF_PERMISSIONS.BRANCH_TARGETS_VIEW,
@@ -315,6 +317,7 @@ const effectivePermissionsForUser = (user = {}) => {
     if (!role || typeof role !== "object" || role.status !== "ACTIVE") return [];
     return validateStaffPermissions(role.permissions || []).permissions;
   }
+  if (canonical === "SVP") return validateStaffPermissions(user.svpPermissions || []).permissions;
   if (canonical === "BRANCH_MANAGER") {
     const requested = Array.isArray(user.branchManagerPermissions)
       ? validateStaffPermissions(user.branchManagerPermissions).permissions

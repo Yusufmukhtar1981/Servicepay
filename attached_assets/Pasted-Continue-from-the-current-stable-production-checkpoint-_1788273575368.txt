@@ -1,0 +1,60 @@
+Continue from the current stable production checkpoint.
+
+IMPORTANT:
+Do NOT redesign the ServicePay Call page.
+Do NOT modify working Marketplace, Delivery, Admin, Mini Apps, Transport or Dashboard features.
+
+CURRENT LIVE ISSUE:
+ServicePay Call page opens correctly at the live customer frontend, but calling is disabled with this exact production message:
+
+"Calling is temporarily unavailable because TURN credentials could not be generated."
+
+This means the frontend route/UI is working, but production TURN credential generation is failing.
+
+Your task is to diagnose and fix ONLY the ServicePay Call WebRTC infrastructure path.
+
+1. Inspect the existing ServicePay Call frontend, backend routes, WebRTC signaling logic and TURN/STUN credential-generation code.
+2. Identify the exact production endpoint used to obtain TURN credentials.
+3. Verify that the endpoint is mounted and authenticated correctly in production.
+4. Check all required production environment variables/secrets for the TURN provider.
+5. Do NOT expose secret values in logs or chat.
+6. Determine whether the failure is:
+   - missing secret/environment variable
+   - invalid TURN credentials
+   - expired/static credentials
+   - incorrect provider URL
+   - backend route not mounted
+   - authentication/RBAC failure
+   - provider API failure
+   - frontend payload mismatch
+
+7. If the app uses time-limited TURN credentials, verify the signing/credential generation logic and expiration timestamp.
+8. Verify both STUN and TURN URLs returned to the frontend are valid WebRTC ICE server objects.
+9. Preserve end-to-end privacy behavior and do not record audio.
+
+Production validation must include:
+- TURN credential endpoint returns success for an authenticated ServicePay customer.
+- Credentials are not exposed in application logs.
+- Customer search still works.
+- Starting a ServicePay-to-ServicePay call reaches WebRTC signaling/ICE gathering instead of showing the TURN credential error.
+- ICE configuration includes working STUN/TURN entries.
+- A controlled call test between two authenticated test customers reaches ringing/connecting state.
+- If possible, verify one call through a network condition that requires TURN relay.
+- Recent call history remains working.
+- No new 404 or 500 errors.
+
+If a required TURN provider secret is missing from production, STOP and tell me only:
+1. the exact secret NAME required,
+2. where it must be added in Replit,
+3. whether I need to obtain it from the TURN provider.
+
+Do not invent credentials.
+Do not hard-code secrets.
+Do not report completion based only on local tests.
+
+FINAL SUCCESS means the live ServicePay Call page no longer shows:
+"TURN credentials could not be generated"
+and an authenticated test call can proceed to ringing/connecting.
+
+At the end report:
+Component | Endpoint/Config | Production result

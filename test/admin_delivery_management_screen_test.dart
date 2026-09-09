@@ -10,12 +10,19 @@ import 'package:servicepay_app/admin/admin_delivery_management_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
-  _FakeAdminDeliveryApi({this.failFirstRiderLoad = false});
+  _FakeAdminDeliveryApi({
+    this.failFirstRiderLoad = false,
+    this.emptyRiders = false,
+    this.assignmentError = '',
+  });
 
   final bool failFirstRiderLoad;
+  final bool emptyRiders;
+  final String assignmentError;
   int riderLoadCount = 0;
   int assignmentCount = 0;
   bool assigned = false;
+  final List<String> requestedStatuses = <String>[];
 
   final Map<String, dynamic> delivery = <String, dynamic>{
     '_id': 'delivery-1',
@@ -36,9 +43,18 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
 
   @override
   Future<List<Map<String, dynamic>>> getDeliveries({
-    String status = 'PENDING',
+    String status = 'ALL',
   }) async {
-    if (assigned && status == 'PENDING') return <Map<String, dynamic>>[];
+    requestedStatuses.add(status);
+    if (assigned) {
+      return <Map<String, dynamic>>[
+        <String, dynamic>{
+          ...delivery,
+          'status': 'ASSIGNED',
+          'assignedRiderId': rider,
+        },
+      ];
+    }
     return <Map<String, dynamic>>[delivery];
   }
 
@@ -51,6 +67,7 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
     if (failFirstRiderLoad && riderLoadCount == 1) {
       throw const AdminDeliveryApiException('Unable to load available riders.');
     }
+    if (emptyRiders) return <Map<String, dynamic>>[];
     return <Map<String, dynamic>>[rider];
   }
 
@@ -62,6 +79,10 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
     expect(deliveryId, 'delivery-1');
     expect(riderId, 'rider-1');
     assignmentCount += 1;
+    if (assignmentError.isNotEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      throw AdminDeliveryApiException(assignmentError, statusCode: 409);
+    }
     assigned = true;
     return <String, dynamic>{
       ...delivery,
@@ -146,6 +167,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(api.requestedStatuses, <String>['ALL']);
     expect(find.text('SP-DELIVERY-1'), findsOneWidget);
     await tester.tap(find.byKey(const Key('assign-rider-delivery-1')));
     await tester.pumpAndSettle();
@@ -158,7 +180,29 @@ void main() {
 
     expect(api.assignmentCount, 1);
     expect(find.text('Rider assigned successfully.'), findsOneWidget);
-    expect(find.text('No pending deliveries'), findsOneWidget);
+    expect(find.text('ASSIGNED'), findsOneWidget);
+  });
+
+  test('delivery list omits an ALL status query', () async {
+    final MockClient client = MockClient((http.Request request) async {
+      expect(
+        request.url.toString(),
+        'https://api.servicepay.ng/api/admin/deliveries?page=1&limit=100',
+      );
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{'deliveries': <Map<String, dynamic>>[]},
+        }),
+        200,
+      );
+    });
+
+    final AdminDeliveryApi api = AdminDeliveryApi(
+      client: client,
+      tokenLoader: () async => 'admin-token',
+    );
+    expect(await api.getDeliveries(), isEmpty);
   });
 
   testWidgets('failed rider loading can be retried inside the modal',
@@ -181,5 +225,56 @@ void main() {
     expect(api.riderLoadCount, 2);
     expect(find.text('Rider One'), findsOneWidget);
     expect(find.byKey(const Key('confirm-rider-assignment')), findsOneWidget);
+  });
+
+  testWidgets('empty rider results render a clear modal state',
+      (WidgetTester tester) async {
+    final _FakeAdminDeliveryApi api = _FakeAdminDeliveryApi(emptyRiders: true);
+    await tester.pumpWidget(
+      MaterialApp(home: AdminDeliveryManagementScreen(api: api)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assign-rider-delivery-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('No verified online riders are available right now.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('confirm-rider-assignment')),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('assignment error stays visible and permits one safe retry',
+      (WidgetTester tester) async {
+    final _FakeAdminDeliveryApi api = _FakeAdminDeliveryApi(
+      assignmentError: 'This delivery already has a rider assigned.',
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: AdminDeliveryManagementScreen(api: api)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assign-rider-delivery-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('available-rider-rider-1')));
+    await tester.pump();
+
+    final Finder confirm = find.byKey(const Key('confirm-rider-assignment'));
+    await tester.tap(confirm);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+
+    expect(api.assignmentCount, 1);
+    expect(
+      find.text('This delivery already has a rider assigned.'),
+      findsOneWidget,
+    );
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
   });
 }

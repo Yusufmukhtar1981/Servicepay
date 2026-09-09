@@ -1,0 +1,285 @@
+Continue from the current stable production checkpoint.
+
+IMPORTANT:
+Do NOT break or redesign working Customer, Admin, Marketplace, Delivery, Solar, Empowerment, Mini Apps, Transport, Wallet, Withdrawal or existing backend routes.
+
+Your task is ONLY to upgrade the BRANCH MANAGER DASHBOARD into a premium, production-quality fintech operations dashboard and add a complete Logout flow.
+
+GOAL:
+The Branch Manager dashboard must look and feel like a modern premium banking/fintech operations portal, not a basic staff page.
+
+A. PREMIUM BRANCH DASHBOARD DESIGN
+
+Redesign the Branch Manager dashboard while preserving all existing working functionality and permissions.
+
+Use:
+- clean premium fintech layout
+- responsive desktop/tablet/mobile design
+- modern cards
+- consistent spacing
+- professional typography
+- subtle shadows
+- smooth transitions/animations
+- clear icons
+- compact but information-rich layout
+- ServicePay branding
+- excellent readability
+- loading skeletons instead of blank screens
+- refresh action
+- last-updated indicator
+
+Do NOT use excessive empty white space.
+
+B. TOP HEADER
+
+Create a premium header containing:
+- ServicePay logo/branding
+- Branch name
+- Branch Manager name
+- Branch ID/code where available
+- Current role: Branch Manager
+- Notification icon with badge
+- Refresh button
+- Profile/avatar menu
+- Logout action
+
+C. EXECUTIVE BRANCH SUMMARY
+
+At the top of the dashboard show branch-scoped cards for:
+
+- Total Customers
+- Active Customers
+- Total Branch Staff
+- Active Riders
+- Total Transactions
+- Transaction Volume
+- Transaction Value
+- Branch Wallet / operational balance where permitted
+- Pending Transactions
+- Failed Transactions
+- Pending Withdrawals
+- Pending KYC
+- Pending Delivery Orders
+- Pending Solar Applications
+- Marketplace Orders
+- Today's Transactions
+- Today's Revenue / Commission where permitted
+
+Every metric MUST be scoped to the logged-in Branch Manager's branch.
+Never expose another branch's private data.
+
+D. CHARTS & ANALYTICS
+
+Add premium branch analytics:
+
+1. Transaction Performance chart
+   - daily
+   - weekly
+   - monthly
+
+2. Transaction Status chart
+   - successful
+   - pending
+   - failed
+
+3. Product Performance
+   - Airtime
+   - Data
+   - Electricity
+   - Delivery
+   - Marketplace
+   - Solar
+   - Withdrawal
+   - Transfers
+   - other live ServicePay products
+
+4. Customer Growth chart
+
+5. Branch Target / Performance
+   - target
+   - achieved
+   - percentage progress
+
+Use real branch-scoped production data only.
+Do not generate fake values.
+
+E. LIVE OPERATIONS
+
+Add a "Live Branch Operations" section containing:
+- recent transactions
+- recent customer activity
+- pending approvals
+- delivery activity
+- rider activity
+- withdrawal activity
+- KYC activity
+- Marketplace activity
+- Solar activity
+
+Each row should show:
+- customer/user
+- service
+- amount where relevant
+- status
+- date/time
+- reference
+- action/view button where permission allows
+
+F. QUICK ACTIONS
+
+Add a premium Quick Actions section for only actions the Branch Manager is authorized to perform.
+
+Examples where already supported:
+- View Customers
+- View Transactions
+- Branch Staff
+- Riders
+- Deliveries
+- Withdrawals
+- KYC Review
+- Marketplace Orders
+- Solar Applications
+- Reports
+- Notifications
+
+Do NOT grant new backend permissions just because a button exists.
+
+G. BRANCH INFORMATION
+
+Add a Branch Profile / Branch Overview section showing:
+- Branch name
+- Branch code
+- State
+- LGA
+- Address
+- Manager
+- Number of staff
+- Branch status
+- Created date where available
+
+H. LOGOUT — REQUIRED
+
+Implement a complete Logout function.
+
+Logout must:
+1. Be clearly visible in the profile menu and sidebar/navigation.
+2. Show a confirmation dialog:
+   "Are you sure you want to log out?"
+3. On confirmation:
+   - clear access token
+   - clear refresh token if used
+   - clear branch/session user data
+   - clear cached sensitive dashboard data
+4. Redirect to the correct Branch Manager login page.
+5. Browser Back must NOT reveal the authenticated dashboard after logout.
+6. Protected branch routes must redirect unauthenticated users to login.
+7. Session restoration must not automatically log the user back in after explicit logout.
+8. Logout must work on desktop and mobile.
+
+I. SIDEBAR / NAVIGATION
+
+Create a polished Branch Manager navigation containing only permitted modules.
+
+Suggested structure:
+- Dashboard
+- Customers
+- Transactions
+- Staff
+- Riders
+- Deliveries
+- Withdrawals
+- KYC
+- Marketplace
+- Solar
+- Reports
+- Notifications
+- Branch Profile
+- Settings
+- Logout
+
+Hide routes the Branch Manager is not authorized to access.
+
+J. SECURITY / DATA ISOLATION
+
+This is critical.
+
+Verify:
+- Branch Manager only sees their assigned branch.
+- No HEAD_OFFICE-wide data leaks.
+- No cross-branch customer/staff/rider access.
+- Backend remains the source of truth for permissions.
+- Frontend hiding alone is NOT considered authorization.
+- Existing RBAC must remain enforced.
+
+K. PERFORMANCE
+
+Dashboard must:
+- load progressively
+- avoid blocking all cards because one endpoint fails
+- show graceful per-widget error states
+- support retry
+- avoid expensive unbounded database queries
+- use bounded date ranges/pagination
+- avoid repeated duplicate API calls
+
+L. DO NOT BREAK EXISTING PRODUCTION
+
+Preserve:
+- current Admin dashboard
+- Customer frontend
+- Marketplace
+- Delivery
+- Withdrawal
+- Rider flows
+- Staff Management
+- Solar
+- Empowerment
+- existing branch authentication
+- all current production routes
+
+Do NOT force-push.
+Do NOT wholesale-replace shared controllers.
+
+M. VALIDATION
+
+Before publishing run:
+- Branch dashboard tests
+- Branch RBAC tests
+- Branch data-isolation tests
+- Logout/session tests
+- responsive UI tests
+- production web build
+- regression tests for existing Admin and Customer flows
+
+Then publish via normal fast-forward push.
+
+N. REAL PRODUCTION VERIFICATION
+
+Do not report completion from local tests only.
+
+Verify on the REAL production Branch Manager portal:
+
+- Branch Manager login works
+- Premium dashboard loads clearly
+- Metrics display real branch data
+- Charts load
+- recent activity loads
+- Quick Actions work
+- refresh works
+- no blurry/dim overlay remains
+- mobile layout works
+- Logout works
+- browser Back after logout cannot reopen protected dashboard
+- another branch's data cannot be accessed
+- no new 404 or 500 errors
+- Admin and Customer production remain healthy
+
+At the end provide:
+
+Feature | Production result | HTTP/UI status
+
+And explicitly confirm:
+1. Branch Dashboard premium redesign deployed
+2. Branch data isolation preserved
+3. Logout fully working
+4. No regression to Admin or Customer production

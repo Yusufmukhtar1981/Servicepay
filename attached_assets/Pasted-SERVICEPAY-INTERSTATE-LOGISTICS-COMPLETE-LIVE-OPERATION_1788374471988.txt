@@ -1,0 +1,135 @@
+SERVICEPAY INTERSTATE LOGISTICS — COMPLETE LIVE OPERATIONAL SETUP
+
+The production deployment is successful. Now complete the operational setup so Interstate Logistics can process its first real shipment.
+
+Do not rebuild the feature from scratch.
+
+1. ADMIN ROUTE & PRICING MANAGEMENT
+Create a fully functional Admin Interstate Logistics setup where HEAD_OFFICE can:
+- Create route
+- Edit route
+- Enable/disable route
+- Set origin state
+- Set origin branch
+- Set destination state
+- Set destination branch
+- Set base price
+- Set included weight
+- Set additional price per KG
+- Set maximum accepted weight
+- Set estimated delivery days
+- Set fragile-item surcharge
+- Set insurance option/rate
+- Set route notes
+- Set route status
+- Search/filter routes
+
+2. ROUTE AVAILABILITY
+Customer quote creation must only allow active configured routes.
+Never invent a price.
+If no route exists, show:
+“ServicePay Interstate Logistics is not yet available for this route.”
+
+3. ADMIN SEED/SETUP UX
+Add a clear empty-state CTA in Admin:
+“Create First Interstate Route”
+
+Do not insert fake production routes automatically.
+HEAD_OFFICE must create and approve real routes.
+
+4. BRANCH OPERATIONS
+Origin branch must be able to:
+- See incoming booked parcels
+- Confirm parcel received
+- Record actual weight
+- Upload/record parcel evidence
+- Request additional payment when actual weight exceeds quoted weight
+- Mark parcel ready for dispatch
+
+Destination branch must be able to:
+- See incoming trip
+- Confirm arrival
+- Confirm parcel received at branch
+- Assign final-mile rider
+- Complete audited delivery confirmation
+
+5. TRIP MANAGEMENT
+HEAD_OFFICE must be able to:
+- Create interstate trip
+- Select route
+- Assign driver
+- Assign vehicle
+- Add eligible shipments
+- Dispatch trip
+- Mark in transit
+- Mark arrived
+- Close trip
+- Handle exceptions/returns
+
+6. DRIVER & VEHICLE MANAGEMENT
+Create functional driver and vehicle CRUD:
+Driver:
+- Name
+- Phone
+- ID/reference
+- License number
+- Status
+
+Vehicle:
+- Plate number
+- Vehicle type
+- Capacity
+- Driver assignment
+- Status
+
+7. CUSTOMER EXPERIENCE
+Confirm customer flow is:
+Logistics
+→ Send Interstate Parcel
+→ origin/destination
+→ parcel information
+→ live backend quote
+→ sender/receiver details
+→ review
+→ transaction PIN
+→ wallet payment
+→ tracking number
+→ shipment timeline
+
+8. TRACKING
+Customer/public tracking must show:
+- Booking confirmed
+- Received at origin branch
+- Weight verified
+- Ready for dispatch
+- Dispatched
+- In transit
+- Arrived destination branch
+- Out for delivery
+- Delivered
+- Exception/return where applicable
+
+9. SAFETY
+Do not perform any real wallet debit while testing unless a designated safe test account is available.
+Do not create fake production shipments, trips, routes, drivers or vehicles.
+
+10. DEPLOY AND VERIFY
+Deploy:
+- backend
+- customer web
+- authoritative servicepay-admin
+
+Then verify live:
+- Admin route creation page opens
+- Branch logistics pages open
+- Customer Logistics hub opens
+- Send Interstate Parcel opens
+- Track Parcel opens
+- protected endpoints authenticate correctly
+- Local Delivery remains unchanged
+
+Final report must state:
+- exact production deployment status
+- routes created by system: MUST remain 0 unless explicitly created by HEAD_OFFICE
+- all operational pages available
+- any remaining Twilio-only limitation

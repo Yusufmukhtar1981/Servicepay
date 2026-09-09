@@ -103,6 +103,14 @@ const protect = async (req, res, next) => {
     );
 
     req.user = user;
+    // Executive APIs are purpose-built and scope-aware.  Do not allow an SVP
+    // to inherit access to the broad legacy admin surface.
+    if (user.role === "SVP" && /^\/api\/admin(?:\/|$)/.test(String(req.originalUrl || ""))) {
+      return res.status(403).json({
+        success: false,
+        message: "SVP access is available only through the dedicated SVP API.",
+      });
+    }
     // Temporary credentials may authenticate solely to establish the password.
     // This is intentionally enforced here, rather than only on branch routes,
     // so a manager cannot use another protected product endpoint to bypass it.

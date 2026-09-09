@@ -1,0 +1,103 @@
+Fix the missing beneficiary verification workflow in ServicePay Admin Empowerment.
+
+CURRENT LIVE BUG:
+- A customer successfully applied to an OPEN Empowerment program.
+- The application appears in Admin > Empowerment > Beneficiaries.
+- Admin can move the application from SUBMITTED to UNDER_REVIEW.
+- When admin tries to APPROVE it, the backend correctly rejects the action with:
+  "Verify the beneficiary before approval."
+- However, the ServicePay Admin UI currently has no working beneficiary verification/details action, so the beneficiary can never be verified and therefore can never be approved.
+
+IMPORTANT:
+- Work only in the existing ServicePay Admin Empowerment module.
+- Do not redesign unrelated admin pages.
+- Do not bypass or remove the backend verification requirement.
+- Do not fake verification client-side.
+- Use the existing ServicePay production API and existing admin authentication.
+
+IMPLEMENT:
+
+1. BENEFICIARY DETAILS
+Make each beneficiary/application row open a proper detail view.
+
+Show all available information returned by the API, including:
+- Full name
+- ServicePay account/user
+- Phone
+- Email
+- Program
+- State
+- LGA
+- Address
+- Gender
+- KYC/NIN/BVN reference if returned
+- Application status
+- Verification status
+- Created/applied date
+
+2. VERIFICATION ACTION
+For beneficiaries whose verification status is PENDING or not verified:
+- Add a clear "Verify Beneficiary" action.
+- Add "Reject Verification" if supported by the existing backend.
+
+Verification must call the real protected backend endpoint.
+Do not simply change local UI state.
+
+3. BACKEND CONTRACT AUDIT
+Inspect the existing Empowerment backend/API contract used by this admin app and locate the existing beneficiary verification endpoint.
+
+If the required endpoint already exists, use it.
+
+If the admin repository contains a backend copy but production API support is missing, do NOT create a disconnected fake endpoint. Clearly identify the missing production endpoint so it can be added to the main ServicePay backend.
+
+4. APPROVAL FLOW
+After successful verification:
+- refresh beneficiary details
+- show verification as VERIFIED
+- allow the normal application transition to APPROVED
+
+Required safe lifecycle:
+SUBMITTED -> UNDER_REVIEW -> VERIFIED -> APPROVED
+
+Verification status and application status must remain separate.
+
+5. FINANCIAL STATUS SAFETY
+In the manual admin application status selector, REMOVE or DISABLE direct manual selection of:
+- PAYMENT_PENDING
+- PAID
+- FAILED
+- REVERSED
+
+Those statuses must only be set by the real funding/disbursement backend workflow.
+
+Admin should only manually control appropriate review statuses such as:
+- SUBMITTED
+- UNDER_REVIEW
+- APPROVED
+- REJECTED
+
+Do not allow an admin to mark a beneficiary PAID without a real successful wallet-backed disbursement.
+
+6. ERROR HANDLING
+Show clear messages for:
+- beneficiary not verified
+- KYC requirement not met
+- unauthorized action
+- backend failure
+
+7. VALIDATION
+Inspect current files and API methods first.
+Implement directly.
+Run all checks available in this environment.
+Do not downgrade Flutter/Dart dependencies.
+
+At the end report:
+- exact files changed
+- beneficiary verification endpoint used
+- beneficiary details added
+- verification UI/action added
+- financial statuses removed from manual admin control
+- validation results
+- any production-backend change still genuinely required
+
+Do not stop after analysis. Implement the fix now.

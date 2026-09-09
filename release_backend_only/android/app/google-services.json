@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "353659744611",
+    "project_id": "servicepay-68b17",
+    "storage_bucket": "servicepay-68b17.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:353659744611:android:8ad1d6235be3e6524be356",
+        "android_client_info": {
+          "package_name": "com.example.servicepay_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAS0SvpTtgw6fvzACt_90g2XYQZ93ErHjk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

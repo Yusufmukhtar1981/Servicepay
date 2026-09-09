@@ -1,0 +1,234 @@
+COMPLETE THE SERVICEPAY PARTNER API FEATURE END-TO-END AS A PRODUCTION-GRADE DEVELOPER PORTAL.
+
+Do not only redesign the screen. Inspect the existing backend, Partner API models/routes/controllers, admin approval flow, customer Flutter/web Partner API screen, authentication, API-key generation, permissions, limits, transactions and existing legacy partner data. Preserve working behavior and backward compatibility.
+
+GOAL:
+An approved ServicePay Partner must have a secure, professional API dashboard where credentials are safely managed, approved services are visible, API usage can be understood, and credentials can be copied/regenerated/revoked safely.
+
+IMPLEMENT ALL OF THE FOLLOWING IN ONE TASK:
+
+1. API KEY DISPLAY SECURITY
+- Never show the full API key openly by default.
+- Display masked key by default, e.g.:
+  sp_live_••••••••••••••••••••••270d
+- Add an eye icon/button:
+  Show API Key / Hide API Key.
+- Full value may be revealed only after explicit user action.
+- Add a Copy button/icon beside the API key.
+- Copy must copy the exact credential and show a clear success toast/snackbar:
+  "API key copied securely."
+- Do not expose secret values in logs, analytics, crash output or error messages.
+
+2. API SECRET
+- If the existing system uses an API Secret, keep the API Secret separate from the public API Key.
+- Secret must NEVER remain permanently readable after generation.
+- Show the API Secret only once immediately after Generate Credentials or Regenerate Credentials.
+- Provide:
+  Copy API Key
+  Copy API Secret
+  Copy Both
+- Before closing the one-time credential dialog, warn:
+  "Save your API Secret now. For security, ServicePay will not display it again."
+- Store only the secure hash of the secret server-side if that is consistent with the existing architecture.
+- Never return apiSecretHash to the client.
+- Fix any old Mongo projection issue involving exclusion/inclusion of apiSecretHash.
+
+3. CREDENTIAL ACTIONS
+Add a professional "Credential Management" section with:
+- Copy API Key
+- Show / Hide API Key
+- Regenerate Credentials
+- Revoke API Access
+
+Regenerate Credentials:
+- Require a confirmation dialog.
+- Clearly warn that existing credentials will stop working.
+- Generate a new API key/secret securely.
+- Old credentials must become invalid immediately or according to the existing safe rotation architecture.
+- Record the action in an audit trail.
+
+Revoke API Access:
+- Require strong confirmation.
+- Revoke credentials without deleting the partner application/history.
+- Status should clearly show REVOKED.
+- Revoked credentials must fail API authentication.
+- Allow Head Office/Admin to restore/regenerate access if appropriate.
+
+4. APPROVED SERVICES / PERMISSIONS
+The current "No permissions assigned yet" state must become a real permission system.
+- Inspect the ServicePay services already suitable for Partner API access.
+- Create/complete server-side service permissions.
+- Admin must be able to assign approved API services to each partner.
+- Customer Partner API screen must display approved services clearly as chips/cards.
+
+Examples where already supported by existing backend:
+  Airtime
+  Data
+  Electricity
+  Cable TV
+  Exam PIN
+  NIN/ID Verification
+  ServicePay Transfer
+  other existing services only where safe and actually implemented.
+
+Do not fake endpoints or expose services without working backend support.
+
+5. ADMIN PARTNER API MANAGEMENT
+Complete the admin-side Partner management so Head Office can:
+- View partner application
+- Approve / Reject / Suspend partner
+- Assign/unassign API services
+- Set daily transaction limit
+- Set per-transaction limit if supported/appropriate
+- Enable/disable API access
+- Regenerate/revoke partner credentials
+- View API usage
+- View partner wallet/balance where relevant
+- View recent API transactions
+- View last API activity
+- View failed requests/security-relevant events where available
+
+Changes must persist in MongoDB and reflect immediately on the customer Partner API dashboard.
+
+6. PARTNER API DASHBOARD UI
+Upgrade the current ServicePay Partner API screen into a polished developer dashboard.
+
+Keep the ServicePay green branding but restructure it into sections:
+
+A. Partner Status
+- APPROVED / PENDING / REJECTED / SUSPENDED / REVOKED
+- Business/partner name
+- Partner ID
+- Approved date if available
+
+B. API Credentials
+- Environment badge: LIVE or TEST/SANDBOX only if sandbox truly exists
+- Masked API Key
+- Show/Hide
+- Copy
+- API Secret security note
+- Regenerate Credentials
+- Revoke Access
+
+C. Usage & Limits
+- Wallet / available balance where API transactions debit a partner wallet
+- Daily Limit
+- Daily Spent
+- Remaining Daily Limit
+- API status
+- Last API request date/time if available
+
+D. Approved Services
+- Actual assigned permissions
+- Empty state only if none are genuinely assigned:
+  "No API services have been enabled for your account yet. Contact ServicePay support or wait for Head Office approval."
+
+E. Developer Information
+- Base URL
+- Authentication method
+- Required headers
+- Request reference/idempotency requirement where applicable
+- Link/button to API Documentation screen if one exists or implement a basic in-app documentation screen backed by the actual supported endpoints.
+
+7. API AUTHENTICATION HARDENING
+Inspect the production Partner API middleware and ensure:
+- API key authentication is server-side
+- Secret validation is secure if secrets are used
+- Revoked/suspended partners are blocked
+- Unapproved partners are blocked
+- Service permissions are enforced server-side, not only in UI
+- Daily limits are enforced server-side
+- Per-transaction limits are enforced if configured
+- Idempotency protection exists for money-moving requests
+- Duplicate requests cannot double debit a wallet
+- Proper HTTP status codes and safe error messages are returned
+- No secrets are leaked in responses.
+
+8. PARTNER TRANSACTION RECORDS
+Every Partner API financial/service request must record enough information for audit:
+- partner
+- service
+- amount
+- reference
+- status
+- createdAt
+- completedAt where relevant
+- provider/external reference where safe
+- failure reason where safe
+- request idempotency key
+- balance effect where relevant
+
+Expose a "Recent API Activity" / "API Transactions" view to the partner.
+
+9. DOCUMENTATION
+Provide actual documentation derived from the implemented endpoints, not imaginary endpoints.
+At minimum document:
+- Base URL
+- Authentication headers
+- API key format
+- Secret handling if used
+- Idempotency header/field
+- Approved services rule
+- Standard success response
+- Standard error response
+- Rate/transaction limits
+- One real example request for every service that is actually enabled in the Partner API.
+
+10. SECURITY / DATA PROTECTION
+- Never send passwordHash, transactionPin hash, API secret hash, reset tokens or other protected fields to the frontend.
+- Do not store raw API secrets if the existing architecture supports hashing.
+- Do not expose credentials through query parameters.
+- Do not print credentials to logs.
+- Protect regenerate/revoke endpoints with authenticated ownership/admin authorization.
+- Preserve existing approved partner accounts and migrate legacy records safely.
+
+11. TESTING
+Add focused backend tests for:
+- approved partner authentication
+- invalid API key
+- invalid secret if applicable
+- revoked partner
+- suspended partner
+- unapproved partner
+- unauthorized service
+- allowed service
+- daily limit exceeded
+- duplicate/idempotent request
+- regenerate credentials invalidates old credentials
+- revoked credentials cannot transact
+- apiSecretHash/private fields never returned
+
+Add Flutter/widget or equivalent UI tests where the repo supports them for:
+- masked API key by default
+- show/hide
+- copy action
+- permissions rendering
+- approved/revoked state
+- regenerate confirmation
+- safe one-time secret presentation
+
+12. FINAL PRODUCTION VALIDATION
+Run all available backend tests.
+Run Flutter analyze/build using the repository's authoritative GitHub workflows if Flutter is unavailable locally.
+Publish backend/customer changes safely to the correct existing repositories/branches.
+Do NOT force-push.
+Do NOT overwrite unrelated work.
+Preserve legacy working Partner API records.
+
+Before declaring completion, report:
+- exact files changed
+- exact Partner API endpoints currently supported
+- authentication format
+- permissions model
+- credential lifecycle
+- test counts/results
+- customer web workflow status
+- Android APK workflow status
+- backend production deployment status
+- any remaining real blocker
+
+IMPORTANT:
+Do not stop at planning.
+Do not create only documentation.
+Do not leave TODOs for the core requested behavior.
+Implement the entire production-grade Partner API feature now.

@@ -1,0 +1,211 @@
+SERVICEPAY ADMIN CRITICAL REGRESSION FIX — FIX ALL BROKEN ADMIN PRODUCTS + RESTORE BRANCH MANAGEMENT
+
+Work directly in the existing ServicePay codebase. Do NOT redesign or remove any currently working feature. Diagnose and fix the actual root causes in frontend + backend, then deploy/test everything end-to-end.
+
+CURRENT PRODUCTION PROBLEMS:
+
+1. ADMIN TRANSACTIONS IS BROKEN
+Current UI:
+"Unable to load transactions"
+"Failed to load admin transactions"
+
+Requirements:
+- Trace the Admin Transactions frontend API request to the backend route/controller.
+- Fix endpoint mismatch, auth/role middleware, query parameters, response parsing, pagination or status-filter incompatibility.
+- HEAD_OFFICE/Admin must be able to retrieve ALL transactions.
+- Do not restrict results to only one transaction type.
+- Support existing filters safely:
+  all
+  successful/success/completed
+  pending/processing
+  failed
+  reversed/refunded
+- Normalize legacy status names instead of returning an error.
+- Missing/empty filters must default to ALL.
+- A bad optional filter must never crash the page.
+- Preserve search, pagination and transaction details.
+- Display an empty-state only when the database genuinely has no transactions.
+- Retry button must work.
+
+2. DELIVERY MANAGEMENT IS BROKEN
+Current UI:
+"Unable to load deliveries"
+"Invalid delivery status."
+
+Requirements:
+- Find exactly which delivery status is being sent from the Admin frontend.
+- Compare it with backend Delivery status validation/enums.
+- Remove frontend/backend status mismatch.
+- Default Delivery Management page must load ALL deliveries without requiring a status.
+- Normalize existing/legacy delivery statuses.
+- Support existing statuses such as:
+  pending
+  assigned
+  accepted
+  picked_up
+  in_transit
+  delivered/completed
+  cancelled
+  failed
+  refunded
+- If database records contain older equivalents, map them safely instead of failing the whole request.
+- Unknown optional status filters should not make the entire Delivery Management page unusable.
+- HEAD_OFFICE must see all deliveries.
+- Preserve rider assignment, delivery details, customer info, payment info and existing actions.
+- Retry must reload successfully.
+
+3. BRANCH MANAGER / BRANCH MANAGEMENT HAS DISAPPEARED
+Restore the COMPLETE Branch system in the Admin Dashboard.
+
+The Admin/HEAD_OFFICE navigation must contain a clearly visible:
+"Branch Management"
+or existing approved Branch menu item.
+
+Do NOT only add a dummy menu link.
+
+Restore/connect all existing Branch functionality, including:
+- Branch list
+- Create Branch
+- View Branch
+- Edit Branch
+- Activate/deactivate Branch
+- Create Branch Manager
+- Ability to create a new Branch Manager even when the person is not already Staff
+- Assign/change Branch Manager
+- Branch Manager login/access
+- Temporary password flow
+- Force password change when applicable
+- Branch staff management
+- Create/manage Branch staff
+- Riders/officers connected to Branch where already implemented
+- Assign Delivery from Branch where implemented
+- Branch operations
+- Branch targets
+- Daily/weekly/monthly reports
+- Transactions/reporting
+- HEAD_OFFICE approval controls
+- Logout on Branch dashboard
+- Existing permissions/security
+
+Fix RBAC/navigation so:
+- HEAD_OFFICE/SUPER_ADMIN/ADMIN roles that previously had Branch access can see Branch Management.
+- Branch Manager sees only authorized Branch features.
+- Do not weaken security or expose Head Office functions to Branch users.
+
+4. FULL ADMIN PRODUCT ROUTE AUDIT
+Because multiple products stopped opening, audit EVERY item currently shown on the Admin Dashboard/navigation.
+
+For EACH Admin product/menu:
+- verify route exists
+- verify frontend page exists
+- verify API call points to a real backend endpoint
+- verify HTTP method
+- verify auth token/header
+- verify RBAC permissions
+- verify expected query params
+- verify response shape
+- verify loading/error/empty states
+- verify page opens without blank screen
+
+Do not remove any product just because its route is broken.
+Repair its route/API integration.
+
+5. API RESPONSE COMPATIBILITY
+Add backward-compatible normalization where appropriate so frontend does not break when backend records use old values.
+
+For list endpoints return a consistent successful structure expected by the current frontend.
+
+Do not silently replace real data with fake/mock data.
+
+6. AUTHENTICATION / AUTHORIZATION
+Check whether recent permission changes caused these failures.
+
+HEAD_OFFICE must retain full authorized admin access.
+Do not solve problems by disabling authentication.
+Do not globally bypass RBAC.
+Fix permissions correctly.
+
+7. DATABASE SAFETY
+DO NOT:
+- delete transactions
+- delete deliveries
+- delete users
+- delete branches
+- delete managers
+- reset wallets
+- recreate production database
+- run destructive migrations
+
+Any migration/normalization must be backward compatible and preserve production data.
+
+8. UI
+Keep the current premium Admin Dashboard design.
+Do not redesign pages unnecessarily.
+Restore missing menus without destroying the existing layout.
+
+9. ERROR HANDLING
+Replace generic crashes with useful handling, but also fix the backend root cause.
+Log server errors internally with endpoint/status/error details without exposing secrets.
+
+10. REQUIRED END-TO-END TESTS
+
+TEST A — ADMIN TRANSACTIONS
+Login as HEAD_OFFICE/Admin
+→ open Transactions
+→ transactions load
+→ ALL filter works
+→ pending works
+→ successful/completed works
+→ failed works
+→ transaction details open
+→ no "Failed to load admin transactions"
+
+TEST B — DELIVERY
+HEAD_OFFICE
+→ Delivery Management
+→ page loads ALL deliveries
+→ no "Invalid delivery status"
+→ filters work
+→ existing delivery record opens
+→ existing actions remain usable
+
+TEST C — BRANCH
+HEAD_OFFICE
+→ Branch Management visible in navigation
+→ page opens
+→ existing Branches load
+→ create/view/edit Branch works
+→ create Branch Manager works
+→ Branch Manager can login through the existing intended login flow
+→ Branch dashboard opens
+→ logout works
+→ unauthorized roles cannot access Head Office controls
+
+TEST D — ADMIN ROUTE AUDIT
+Open every Admin navigation product one by one.
+No broken route, blank page, endless loader or avoidable API error may remain.
+
+11. DEPLOYMENT
+After fixing:
+- run frontend build/type checks
+- run backend checks/tests
+- fix any compile/runtime errors
+- deploy using the project's existing production deployment workflow
+- verify production API and Admin frontend after deployment
+
+IMPORTANT:
+Do not stop after identifying the problems.
+Do not return only an explanation.
+Implement the fixes completely.
+
+At the end give me a short report:
+1. Exact root cause of Transactions failure
+2. Exact root cause of Delivery "Invalid delivery status"
+3. Why Branch Management disappeared
+4. Files changed
+5. Endpoints changed/fixed
+6. Tests completed
+7. Deployment status
+8. Anything still failing
+
+START NOW and continue until all three production problems and the Admin route audit are completed.

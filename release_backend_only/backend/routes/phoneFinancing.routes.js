@@ -1,0 +1,30 @@
+const router = require("express").Router();
+const { protect, customerOnly, adminOnly, phoneFinancingOfficerOnly } = require("../middleware/auth.middleware");
+const { loadStaffRole, enforceActiveBranchScope, requireAssignedBranchModule } = require("../middleware/staffPermission.middleware");
+const c = require("../controllers/phoneFinancing.controller");
+const admin = adminOnly("HEAD_OFFICE","ADMIN","SUPER_ADMIN");
+router.get("/products",protect,c.listProducts); router.get("/products/:productId",protect,c.getProduct);
+router.post("/applications",protect,customerOnly,c.submit); router.get("/my-applications",protect,customerOnly,c.myApplications); router.get("/my-applications/:applicationId",protect,customerOnly,c.myApplication); router.post("/applications/:applicationId/deposit",protect,customerOnly,c.validatePaymentReplay,c.deposit);router.post("/applications/:applicationId/pay-deposit",protect,customerOnly,c.validatePaymentReplay,c.deposit);
+router.get("/my-finance",protect,customerOnly,c.myFinance); router.get("/finance/:financeId",protect,customerOnly,c.finance); router.get("/finance/:financeId/schedule",protect,customerOnly,c.schedule); router.get("/finance/:financeId/payments",protect,customerOnly,c.payments); router.post("/finance/:financeId/payments",protect,customerOnly,c.validatePaymentReplay,c.pay);router.post("/finance/:financeId/pay",protect,customerOnly,c.validatePaymentReplay,c.pay);
+// Legacy phone officers predate branch roles. Preserve their established
+// profile/assigned-workflow contract; branch checks apply only once a role
+// authoritatively grants BRANCH scope.
+const phoneBranch = (req, res, next) => {
+  if (!req.user?.branchId) return next();
+  return loadStaffRole(req, res, () => {
+    if (req.staffAccess?.scope?.type !== "BRANCH") return next();
+    return enforceActiveBranchScope(req, res, () =>
+      requireAssignedBranchModule("PHONE_FINANCING")(req, res, next)
+    );
+  });
+};
+router.get("/officer/applications",protect,phoneBranch,phoneFinancingOfficerOnly,c.officerApplications);
+router.get("/officer/me",protect,phoneBranch,phoneFinancingOfficerOnly,c.officerMe);
+router.get("/officer/applications/:applicationId",protect,phoneBranch,phoneFinancingOfficerOnly,c.officerApplications);
+router.post("/officer/applications/:applicationId/verification",protect,phoneBranch,phoneFinancingOfficerOnly,c.officerVerification);
+router.post("/officer/applications/:applicationId/follow-ups",protect,phoneBranch,phoneFinancingOfficerOnly,c.officerFollowUp);
+router.get("/admin/applications/:applicationId",protect,admin,c.adminApplication);
+router.post("/admin/applications/:applicationId/refund-deposit",protect,admin,c.validateRefundReplay,c.refundReservation);
+router.post("/admin/reservations/evaluate-expired",protect,admin,c.evaluateReservationExpiry);
+router.get("/admin/dashboard",protect,admin,c.dashboard);router.get("/admin/products",protect,admin,c.adminProducts);router.post("/admin/products",protect,admin,c.createProduct);router.patch("/admin/products/:productId",protect,admin,c.updateProduct);router.patch("/admin/products/:productId/activate",protect,admin,(req,res,next)=>{req.body.active=true;next();},c.setProductActive);router.patch("/admin/products/:productId/deactivate",protect,admin,(req,res,next)=>{req.body.active=false;next();},c.setProductActive);router.get("/admin/officers/count",protect,admin,c.adminOfficerCount);router.get("/admin/officers",protect,admin,c.adminListOfficers);router.post("/admin/officers",protect,admin,c.adminCreateOfficer);router.get("/admin/officers/:officerId",protect,admin,c.adminOfficer);router.patch("/admin/officers/:officerId",protect,admin,c.adminUpdateOfficer);router.patch("/admin/officers/:officerId/status",protect,admin,c.adminUpdateOfficerStatus);router.delete("/admin/officers/:officerId",protect,admin,c.adminDeleteOfficer);router.get("/admin/applications",protect,admin,c.adminApplications);router.patch("/admin/applications/:applicationId/status",protect,admin,c.transition);router.patch("/admin/applications/:applicationId/assign-officer",protect,admin,c.assignOfficer);router.post("/admin/applications/:applicationId/approve",protect,admin,c.approve);router.post("/admin/applications/:applicationId/assign-device",protect,admin,c.assign);router.post("/admin/applications/:applicationId/handover",protect,admin,c.handover);router.get("/admin/devices",protect,admin,c.devices);router.post("/admin/devices",protect,admin,c.createDevice);router.get("/admin/finance",protect,admin,c.adminFinance);router.get("/admin/overdue",protect,admin,(req,res,next)=>{req.query.status="OVERDUE";next();},c.adminFinance);router.post("/admin/overdue/evaluate",protect,admin,c.evaluateOverdue);router.post("/admin/finance/:financeId/provider-request",protect,admin,c.provider);
+module.exports=router;

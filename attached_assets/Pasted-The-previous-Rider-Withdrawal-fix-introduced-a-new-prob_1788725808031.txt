@@ -1,0 +1,123 @@
+The previous Rider Withdrawal fix introduced a new problem.
+
+CURRENT BEHAVIOR:
+The Rider Withdrawal page now displays:
+
+“Rider withdrawal is temporarily unavailable. Please try again later.”
+
+The entire withdrawal form is disabled.
+
+Please fix ONLY this ServicePay Rider Withdrawal feature-control problem.
+
+DO NOT modify VULL.
+DO NOT reset/delete/truncate any production data.
+DO NOT remove the withdrawal feature toggle.
+DO NOT deploy automatically.
+
+1. Find the exact database/app-setting used for Rider Withdrawal:
+   - setting key
+   - current value
+   - default value
+   - backend lookup
+   - admin toggle endpoint
+   - rider frontend lookup
+
+2. Check whether the newly-created Rider Withdrawal toggle defaults to false/disabled or whether the backend is incorrectly treating a missing setting as disabled.
+
+3. Add/verify the Admin control:
+
+Admin Dashboard
+→ Feature Controls / Fintech Controls
+→ Rider Withdrawal
+
+It must visibly show:
+
+RIDER WITHDRAWAL
+Status: ENABLED / DISABLED
+
+[ON/OFF toggle]
+
+4. When Admin switches it ON:
+   - persist ENABLED in the database
+   - backend must immediately recognize it
+   - Rider Withdrawal form must become active
+   - Rider must be able to submit a withdrawal
+
+5. When Admin switches it OFF:
+   - persist DISABLED
+   - backend must reject new withdrawals
+   - Rider page should display:
+     “Rider withdrawal is temporarily unavailable. Please try again later.”
+
+6. IMPORTANT:
+Do not use a frontend-only toggle.
+Backend and frontend must read the SAME persisted setting.
+
+7. If the setting does not exist yet in production, create it safely with:
+
+RIDER_WITHDRAWAL_ENABLED = true
+
+because Rider Withdrawal is an existing ServicePay feature.
+
+Do not change any Rider balance or existing withdrawal record.
+
+8. After enabling it, perform a complete end-to-end test:
+
+Admin toggle ON
+→ Rider refreshes page
+→ withdrawal form enabled
+→ enter amount
+→ select bank
+→ resolve account name
+→ enter PIN
+→ Request Withdrawal
+→ backend creates PENDING withdrawal
+→ Rider receives success response
+→ Pending Withdrawal updates
+→ Admin sees the request.
+
+9. Then test:
+
+Admin toggle OFF
+→ Rider refresh
+→ form disabled
+→ backend also blocks direct API withdrawal attempt.
+
+10. Turn Rider Withdrawal back ON after the test.
+
+Also verify the new Admin controls created previously are actually visible and functional:
+
+- Credit Rider Wallet
+- Debit Rider Wallet
+- Rider Withdrawal ON/OFF
+- Rider Withdrawal Management
+- Pending Withdrawals
+- Approve
+- Reject
+- Mark Processing
+- Mark Paid
+
+Do not merely implement backend routes.
+They MUST be accessible and visible from the ServicePay Admin Dashboard UI.
+
+At the end report exactly:
+
+CURRENT TOGGLE VALUE:
+TOGGLE DATABASE PERSISTENCE: PASS/FAIL
+ADMIN TOGGLE VISIBLE: PASS/FAIL
+ADMIN TOGGLE ON: PASS/FAIL
+ADMIN TOGGLE OFF: PASS/FAIL
+BACKEND ENFORCEMENT: PASS/FAIL
+RIDER FORM ENABLED AFTER ON: PASS/FAIL
+WITHDRAWAL PENDING REQUEST: PASS/FAIL
+ADMIN RECEIVES REQUEST: PASS/FAIL
+ADMIN CREDIT: PASS/FAIL
+ADMIN DEBIT: PASS/FAIL
+FINAL RIDER WITHDRAWAL STATUS: ENABLED/DISABLED
+PRODUCTION DATA PRESERVED: YES/NO
+SAFE TO DEPLOY: YES/NO
+
+IMPORTANT:
+Leave RIDER WITHDRAWAL ENABLED at the end.
+
+Do not deploy automatically.

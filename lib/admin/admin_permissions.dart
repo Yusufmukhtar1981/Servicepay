@@ -61,6 +61,9 @@ abstract final class AdminPermissions {
   static const fraudRiskRestrict = 'fraud_risk.restrict';
   static const reportsView = 'reports.view';
   static const reportsExport = 'reports.export';
+  static const svpManagementView = 'svp.management.view';
+  static const svpReportsView = 'svp.reports.view';
+  static const svpAuditView = 'svp.audit.view';
 
   // Canonical branch-management permissions supplied by the API.
   static const branchesView = 'branches.view';

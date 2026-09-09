@@ -4,7 +4,7 @@
       "android": {
         "default": {
           "projectId": "servicepay-68b17",
-          "appId": "1:353659744611:android:8ad1d6235be3e6524be356",
+          "appId": "1:353659744611:android:a8319c25243e3f9d4be356",
           "fileOutput": "android/app/google-services.json"
         }
       },
@@ -12,7 +12,7 @@
         "lib/firebase_options.dart": {
           "projectId": "servicepay-68b17",
           "configurations": {
-            "android": "1:353659744611:android:8ad1d6235be3e6524be356",
+            "android": "1:353659744611:android:a8319c25243e3f9d4be356",
             "ios": "1:353659744611:ios:a6627efc0c3488904be356",
             "macos": "1:353659744611:ios:a6627efc0c3488904be356",
             "web": "1:353659744611:web:ba783ed1179a36154be356",

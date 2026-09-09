@@ -1,0 +1,134 @@
+Fix the ServicePay Admin Dashboard production issues completely. Do not make cosmetic-only changes and do not stop after identifying the problem.
+
+CURRENT PRODUCTION PROBLEMS:
+
+1. Admin Dashboard is extremely slow. On first opening admin.servicepay.ng it can keep loading/spinning for up to 10 minutes before displaying the dashboard.
+
+2. Delivery Management → Assign Rider is broken.
+The frontend currently calls:
+GET /api/admin/deliveries/:deliveryId/available-riders
+
+Production returns:
+"Route not found: GET /api/admin/deliveries/:deliveryId/available-riders"
+
+Sometimes the UI first shows:
+"The ServicePay server took too long to respond. Please retry."
+
+3. Marketplace Product Moderation is broken.
+The frontend currently calls:
+GET /api/admin/marketplace/products?limit=100&status=PENDING
+
+Production returns:
+"Route not found: GET /api/admin/marketplace/products?limit=100&status=PENDING"
+
+Because of this, Marketplace incorrectly displays "No Marketplace products".
+
+TASK:
+
+Perform a full frontend + backend route audit for the Admin Dashboard, Delivery and Marketplace.
+
+A. DELIVERY
+- Find the actual existing backend rider/delivery models and routes.
+- Restore or implement the authenticated admin endpoint:
+  GET /api/admin/deliveries/:deliveryId/available-riders
+- It must return real eligible/active riders from the database.
+- Make sure the response format matches what the Admin frontend expects.
+- Restore/fix the endpoint used to actually assign the selected rider.
+- Verify authorization for HEAD_OFFICE/admin users.
+- Do not create duplicate delivery or rider models/routes if working ones already exist.
+- Make Assign Rider work end-to-end with real production data.
+
+B. MARKETPLACE
+- Find the existing Marketplace models/routes and reuse them.
+- Restore or implement:
+  GET /api/admin/marketplace/products
+- Support:
+  status=PENDING
+  status=ACTIVE
+  status=REJECTED
+  status=SUSPENDED
+  status=ALL
+  search
+  limit/pagination
+- Return existing real Marketplace products from the database.
+- Ensure approve, reject and suspend actions use valid backend endpoints.
+- Do not create a separate Marketplace system or duplicate collections.
+
+C. ADMIN DASHBOARD PERFORMANCE
+Audit every API request executed when admin.servicepay.ng first loads.
+
+Identify:
+- missing/404 endpoints
+- requests that never resolve
+- unnecessary sequential requests
+- duplicate API requests
+- aggressive retry loops
+- incorrect API base URLs
+- long timeout chains
+- endpoints doing unbounded MongoDB queries
+- endpoints returning unnecessarily huge payloads
+
+Fix all discovered problems.
+
+Requirements:
+- Independent dashboard cards/widgets should load in parallel using Promise.allSettled or equivalent.
+- One failed widget must NOT block the entire dashboard.
+- Remove infinite/aggressive retries.
+- Add sensible request timeouts and graceful error states.
+- Never wait several minutes before rendering the dashboard shell.
+- Render the dashboard immediately and load statistics asynchronously.
+- Optimize slow MongoDB queries and use countDocuments/aggregation/projection where appropriate instead of loading entire collections.
+- Add indexes only where justified by actual queried fields.
+- Do not replace real data with mock/fake data.
+- Do not remove existing ServicePay features to improve speed.
+
+D. ROUTE CONSISTENCY AUDIT
+Search the Admin frontend for every `/api/admin/...` request and compare each one against the backend Express routes.
+
+Fix every frontend/backend route mismatch found, not only the two shown above.
+
+Also verify that route mounting in the backend server/app entry file is correct and that route order does not cause valid endpoints to fall through to the global "Route not found" handler.
+
+E. PRODUCTION SAFETY
+Preserve:
+- existing users
+- wallet balances
+- transactions
+- riders
+- deliveries
+- Marketplace stores/products/orders
+- KYC
+- Solar
+- Branches/managers
+- all existing production data
+
+Do NOT reset/drop/migrate production data destructively.
+
+F. TEST BEFORE FINISHING
+Run backend/frontend build/tests and verify:
+
+1. Admin login works.
+2. Dashboard opens quickly and does not remain spinning.
+3. Dashboard still shows real production statistics.
+4. Delivery Management loads.
+5. Assign Rider opens and lists real eligible riders.
+6. A rider can be assigned successfully.
+7. Marketplace loads real products.
+8. Pending/Active/Rejected/Suspended filters work.
+9. Marketplace moderation actions work.
+10. Browser console/network has no route-not-found errors for these flows.
+11. Backend logs have no unhandled exceptions.
+12. Existing customer-facing Delivery and Marketplace functionality remains working.
+
+Deploy/publish both backend and Admin frontend if both require changes.
+
+After deployment, report:
+- root cause of the 10-minute Admin loading
+- exact broken/missing routes found
+- files changed
+- backend endpoints restored/changed
+- performance fixes made
+- build/test results
+- production deployment status
+
+Do not report completion until the deployed production Admin Dashboard, Delivery Assign Rider and Marketplace have been verified.

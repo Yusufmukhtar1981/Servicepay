@@ -1,0 +1,7070 @@
+{
+  "backend_root": "/workspaces/servicepay_app/backend",
+  "files_scanned": 177,
+  "categories": {
+    "App Settings": [
+      {
+        "file": "controllers/appSettings.controller.js",
+        "score": 2
+      },
+      {
+        "file": "index.js",
+        "score": 2
+      },
+      {
+        "file": "models/appSettings.model.js",
+        "score": 2
+      },
+      {
+        "file": "routes/appSettings.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/electricity.routes.js",
+        "score": 2
+      },
+      {
+        "file": "config/staffPermissions.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/airtimeToCash.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/deliveryCoverage.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kekeFareSetting.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kekeRide.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/staffManagement.controller.js",
+        "score": 1
+      },
+      {
+        "file": "models/kekeFareSetting.model.js",
+        "score": 1
+      },
+      {
+        "file": "routes/adminKekeFareSetting.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/airtimeToCash.routes.js",
+        "score": 1
+      },
+      {
+        "file": "scripts/seedStaffRoles.js",
+        "score": 1
+      }
+    ],
+    "Maintenance Mode": [
+      {
+        "file": "routes/electricity.routes.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/appSettings.controller.js",
+        "score": 2
+      },
+      {
+        "file": "models/appSettings.model.js",
+        "score": 2
+      }
+    ],
+    "Service Limits": [
+      {
+        "file": "services/kycTier.service.js",
+        "score": 7
+      },
+      {
+        "file": "controllers/kyc.controller.js",
+        "score": 5
+      },
+      {
+        "file": "controllers/appSettings.controller.js",
+        "score": 4
+      },
+      {
+        "file": "models/appSettings.model.js",
+        "score": 4
+      },
+      {
+        "file": "controllers/adminPartnerApplication.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/electricity.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/partner.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/partnerApplication.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/partnerBalance.controller.js",
+        "score": 2
+      },
+      {
+        "file": "models/kekeFareSetting.model.js",
+        "score": 2
+      },
+      {
+        "file": "models/partner.model.js",
+        "score": 2
+      },
+      {
+        "file": "routes/auth.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/electricity.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/kyc.routes.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/admin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminAmana.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminCustomer.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminKyc.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminMarketplace.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminPartnerWallet.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminRider.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/airtimeToCash.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/amana.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/bankTransfer.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/businessWallet.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/empowerment.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/examPin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/idVerification.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kekeRide.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/management.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/marketplace.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/partnerTransactions.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/rider.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/riderWithdrawal.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/servicepayFeatures.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/transaction.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/wallet.controller.js",
+        "score": 1
+      },
+      {
+        "file": "services/ledger.service.js",
+        "score": 1
+      }
+    ],
+    "Transaction Fees": [
+      {
+        "file": "controllers/idVerification.controller.js",
+        "score": 3
+      },
+      {
+        "file": "models/amanaOrder.model.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/adminAmana.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/amana.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/delivery.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/kekeRide.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/securewaveWebhook.controller.js",
+        "score": 2
+      },
+      {
+        "file": "models/delivery.model.js",
+        "score": 2
+      },
+      {
+        "file": "models/securewaveWebhook.model.js",
+        "score": 2
+      },
+      {
+        "file": "config/deliveryLaunch.config.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/admin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/amanaPayment.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/bankTransfer.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/examPin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kekeFareSetting.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/marketplace.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/riderDelivery.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/riderWithdrawal.controller.js",
+        "score": 1
+      },
+      {
+        "file": "middleware/partnerAuth.middleware.js",
+        "score": 1
+      },
+      {
+        "file": "models/bankTransfer.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/examPin.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/idVerification.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/kekeFareSetting.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/kekeRide.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/marketplaceOrder.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/riderWithdrawal.model.js",
+        "score": 1
+      },
+      {
+        "file": "routes/delivery.routes.js",
+        "score": 1
+      },
+      {
+        "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+        "score": 1
+      },
+      {
+        "file": "services/riderCommission.service.js",
+        "score": 1
+      }
+    ],
+    "Commission": [
+      {
+        "file": "controllers/adminCustomer.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/auth.controller.js",
+        "score": 2
+      },
+      {
+        "file": "config/deliveryLaunch.config.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/admin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/amanaPayment.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/clubkonnect.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/dataPricing.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/delivery.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/examPin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kekeFareSetting.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kekeRide.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/management.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/marketplace.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/productCommission.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/riderDelivery.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/riderWithdrawal.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/staffManagement.controller.js",
+        "score": 1
+      },
+      {
+        "file": "index.js",
+        "score": 1
+      },
+      {
+        "file": "models/commission.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/delivery.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/kekeFareSetting.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/kekeRide.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/productCommission.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/riderWithdrawal.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/transaction.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/user.model.js",
+        "score": 1
+      },
+      {
+        "file": "routes/management.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/productCommission.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/rider.routes.js",
+        "score": 1
+      },
+      {
+        "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+        "score": 1
+      },
+      {
+        "file": "scripts/createAdmin.js",
+        "score": 1
+      },
+      {
+        "file": "services/commission.service.js",
+        "score": 1
+      },
+      {
+        "file": "services/riderCommission.service.js",
+        "score": 1
+      },
+      {
+        "file": "templates/emailTemplates.js",
+        "score": 1
+      }
+    ],
+    "Legal / Policy": [
+      {
+        "file": "controllers/appSettings.controller.js",
+        "score": 4
+      },
+      {
+        "file": "models/appSettings.model.js",
+        "score": 4
+      },
+      {
+        "file": "config/staffPermissions.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/admin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminCustomer.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminKyc.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/auth.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/empowerment.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kyc.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kycDocument.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/staffManagement.controller.js",
+        "score": 1
+      },
+      {
+        "file": "index.js",
+        "score": 1
+      },
+      {
+        "file": "models/adminAuditLog.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/empowermentBeneficiary.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/kycProfile.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/user.model.js",
+        "score": 1
+      },
+      {
+        "file": "routes/adminKyc.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/kyc.routes.js",
+        "score": 1
+      },
+      {
+        "file": "scripts/seedStaffRoles.js",
+        "score": 1
+      },
+      {
+        "file": "services/email.service.js",
+        "score": 1
+      },
+      {
+        "file": "services/emailAutomation.service.js",
+        "score": 1
+      },
+      {
+        "file": "services/kycTier.service.js",
+        "score": 1
+      },
+      {
+        "file": "services/ledger.service.js",
+        "score": 1
+      },
+      {
+        "file": "templates/emailTemplates.js",
+        "score": 1
+      }
+    ],
+    "Feature Toggles": [
+      {
+        "file": "controllers/airtimeToCash.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/appSettings.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/bankTransfer.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/empowerment.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/marketplace.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/miniApp.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/servicepayFeatures.controller.js",
+        "score": 1
+      },
+      {
+        "file": "index.js",
+        "score": 1
+      },
+      {
+        "file": "models/appSettings.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/empowermentProgram.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/featurePayment.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/marketplace.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/miniApp.model.js",
+        "score": 1
+      },
+      {
+        "file": "routes/electricity.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/servicepayFeatures.routes.js",
+        "score": 1
+      },
+      {
+        "file": "services/email.service.js",
+        "score": 1
+      },
+      {
+        "file": "services/ledger.service.js",
+        "score": 1
+      }
+    ],
+    "Authentication": [
+      {
+        "file": "controllers/businessWallet.controller.js",
+        "score": 4
+      },
+      {
+        "file": "middleware/staffPermission.middleware.js",
+        "score": 4
+      },
+      {
+        "file": "routes/admin.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/adminAmana.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/adminCard.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/adminKekeFareSetting.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/adminKyc.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/adminPartner.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/adminPartnerApplication.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/announcement.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/appSettings.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/clubkonnect.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/manualfunding.routes.js",
+        "score": 4
+      },
+      {
+        "file": "routes/withdrawal.routes.js",
+        "score": 4
+      },
+      {
+        "file": "controllers/admin.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/adminCustomer.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/adminRoleUsers.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/adminWalletAdjustment.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/airtimeToCash.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/amana.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/appSettings.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/delivery.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/deliveryCoverage.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/kekeRide.controller.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/riderWithdrawal.controller.js",
+        "score": 3
+      },
+      {
+        "file": "middleware/auth.middleware.js",
+        "score": 3
+      },
+      {
+        "file": "models/user.model.js",
+        "score": 3
+      },
+      {
+        "file": "routes/productCommission.routes.js",
+        "score": 3
+      },
+      {
+        "file": "routes/staffManagement.routes.js",
+        "score": 3
+      },
+      {
+        "file": "scripts/createAdmin.js",
+        "score": 3
+      },
+      {
+        "file": "controllers/amanaPayment.controller.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/clubkonnect.controller.js",
+        "score": 2
+      },
+      {
+        "file": "models/commission.model.js",
+        "score": 2
+      },
+      {
+        "file": "routes/adminRoleUsers.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/airtimeToCash.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/businessWallet.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/delivery.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/electricity.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/kekeRide.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/notification.routes.js",
+        "score": 2
+      },
+      {
+        "file": "routes/rider.routes.js",
+        "score": 2
+      },
+      {
+        "file": "services/commission.service.js",
+        "score": 2
+      },
+      {
+        "file": "controllers/adminAmana.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminCard.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminKyc.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminMarketplace.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminPartnerApplication.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminPartnerWallet.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/adminRider.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/auth.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/bankTransfer.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/dataPricing.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/empowerment.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/examPin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/idVerification.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kekeFareSetting.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/kycDocument.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/management.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/manualfunding.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/notification.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/staffManagement.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/transaction.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/transactionPin.controller.js",
+        "score": 1
+      },
+      {
+        "file": "controllers/withdrawal.controller.js",
+        "score": 1
+      },
+      {
+        "file": "index.js",
+        "score": 1
+      },
+      {
+        "file": "middleware/transactionPin.middleware.js",
+        "score": 1
+      },
+      {
+        "file": "models/adminAuditLog.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/airtimeToCash.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/amanaOrder.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/appSettings.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/businessWalletWithdrawal.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/delivery.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/deliveryCoverage.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/manualfunding.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/riderWithdrawal.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/role.model.js",
+        "score": 1
+      },
+      {
+        "file": "models/withdrawalRequest.model.js",
+        "score": 1
+      },
+      {
+        "file": "routes/amana.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/auth.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/backend/routes/transfer.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/card.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/empowerment.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/examPin.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/idVerification.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/kekeFareSetting.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/kyc.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/management.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/marketplace.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/partner.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/partnerApplication.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/paystack.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/securewave.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/servicepayFeatures.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/sudo.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/transaction.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/transactionPin.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/transfer.routes.js",
+        "score": 1
+      },
+      {
+        "file": "routes/wallet.routes.js",
+        "score": 1
+      },
+      {
+        "file": "scripts/seedStaffRoles.js",
+        "score": 1
+      },
+      {
+        "file": "services/customerBroadcast.service.js",
+        "score": 1
+      },
+      {
+        "file": "services/emailAutomation.service.js",
+        "score": 1
+      },
+      {
+        "file": "services/ledger.service.js",
+        "score": 1
+      }
+    ]
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "route": "/dashboard",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/users",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/users",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/users/:id",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/users/:id/profile",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/users/:id/status",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/users/:id/role",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/users/:id/reset-transaction-pin",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/users/:id/password-reset",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/users/:id/transactions",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/users/:id/audit-logs",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/riders",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/riders",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/riders/:id",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/riders/:id",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/riders/:id/status",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/riders/:id/verification",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/audit-logs",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/transactions",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/deliveries",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/deliveries/:id/available-riders",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/deliveries/:id/assign-rider",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/deliveries/:id/unassign-rider",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/deliveries/:id/status",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/deliveries/:id/price",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/wallet-adjustment",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/marketplace/products",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/marketplace/products/:id/status",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/marketplace/products/:id/approve",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/marketplace/products/:id/reject",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/marketplace/products/:id/suspend",
+      "file": "routes/admin.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/adminAmana.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/assign",
+      "file": "routes/adminAmana.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/status",
+      "file": "routes/adminAmana.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/vendor",
+      "file": "routes/adminAmana.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/proof",
+      "file": "routes/adminAmana.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/:id",
+      "file": "routes/adminAmana.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/adminCard.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/:id",
+      "file": "routes/adminCard.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/approve",
+      "file": "routes/adminCard.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/reject",
+      "file": "routes/adminCard.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/status",
+      "file": "routes/adminCard.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/adminKekeFareSetting.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/",
+      "file": "routes/adminKekeFareSetting.routes.js"
+    },
+    {
+      "method": "DELETE",
+      "route": "/:id",
+      "file": "routes/adminKekeFareSetting.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/adminKyc.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/:kycId",
+      "file": "routes/adminKyc.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:kycId/status",
+      "file": "routes/adminKyc.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/adminPartner.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/",
+      "file": "routes/adminPartner.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/status",
+      "file": "routes/adminPartner.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/permissions",
+      "file": "routes/adminPartner.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/wallet",
+      "file": "routes/adminPartner.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/:id/wallet/transactions",
+      "file": "routes/adminPartner.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/regenerate-credentials",
+      "file": "routes/adminPartner.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/:id/regenerate-credentials",
+      "file": "routes/adminPartner.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/adminPartnerApplication.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/approve",
+      "file": "routes/adminPartnerApplication.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/reject",
+      "file": "routes/adminPartnerApplication.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/adminRoleUsers.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/:userId",
+      "file": "routes/adminRoleUsers.routes.js"
+    },
+    {
+      "method": "PUT",
+      "route": "/:userId/status",
+      "file": "routes/adminRoleUsers.routes.js"
+    },
+    {
+      "method": "DELETE",
+      "route": "/:userId",
+      "file": "routes/adminRoleUsers.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/settings",
+      "file": "routes/airtimeToCash.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/admin/requests",
+      "file": "routes/airtimeToCash.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/admin/:id/approve",
+      "file": "routes/airtimeToCash.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/admin/:id/reject",
+      "file": "routes/airtimeToCash.routes.js"
+    },
+    {
+      "method": "PUT",
+      "route": "/admin",
+      "file": "routes/announcement.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/public",
+      "file": "routes/appSettings.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/admin",
+      "file": "routes/appSettings.routes.js"
+    },
+    {
+      "method": "PUT",
+      "route": "/admin",
+      "file": "routes/appSettings.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/admin/withdrawals",
+      "file": "routes/businessWallet.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/withdrawals/:id/approve",
+      "file": "routes/businessWallet.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/withdrawals/:id/reject",
+      "file": "routes/businessWallet.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/withdrawals/:id/paid",
+      "file": "routes/businessWallet.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/admin/data-pricing/:network",
+      "file": "routes/clubkonnect.routes.js"
+    },
+    {
+      "method": "PUT",
+      "route": "/admin/data-pricing/:network/:planCode",
+      "file": "routes/clubkonnect.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/coverage/admin",
+      "file": "routes/delivery.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/coverage/admin/bulk/update",
+      "file": "routes/delivery.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/coverage/admin/:stateCode",
+      "file": "routes/delivery.routes.js"
+    },
+    {
+      "method": "PUT",
+      "route": "/fee/:id",
+      "file": "routes/delivery.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/kekeFareSetting.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/estimate",
+      "file": "routes/kekeFareSetting.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/status",
+      "file": "routes/kyc.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/submit",
+      "file": "routes/kyc.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/document/upload",
+      "file": "routes/kyc.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/role-commissions",
+      "file": "routes/management.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/admin/requests",
+      "file": "routes/manualfunding.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/requests/:id/approve",
+      "file": "routes/manualfunding.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/requests/:id/reject",
+      "file": "routes/manualfunding.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/",
+      "file": "routes/productCommission.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/",
+      "file": "routes/productCommission.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id",
+      "file": "routes/productCommission.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/:id/status",
+      "file": "routes/productCommission.routes.js"
+    },
+    {
+      "method": "DELETE",
+      "route": "/:id",
+      "file": "routes/productCommission.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/admin/withdrawals",
+      "file": "routes/rider.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/withdrawals/:id/approve",
+      "file": "routes/rider.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/withdrawals/:id/reject",
+      "file": "routes/rider.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/withdrawals/:id/processing",
+      "file": "routes/rider.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/withdrawals/:id/paid",
+      "file": "routes/rider.routes.js"
+    },
+    {
+      "method": "PATCH",
+      "route": "/admin/withdrawals/:id/failed",
+      "file": "routes/rider.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/commission-summary",
+      "file": "routes/rider.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/payment-links",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/payment-links",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/money-requests",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/money-requests",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/business-wallet",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/business-wallet",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/agents",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/groups",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/groups",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/money-requests/:id/pay",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/money-requests/:id/decline",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/payment-links/:code",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/payment-links/:code/pay",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/groups/:id/members",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/groups/:id/contribute",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/groups/:id/contributions",
+      "file": "routes/servicepayFeatures.routes.js"
+    },
+    {
+      "method": "GET",
+      "route": "/admin",
+      "file": "routes/withdrawal.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/admin/:id/approve",
+      "file": "routes/withdrawal.routes.js"
+    },
+    {
+      "method": "POST",
+      "route": "/admin/:id/reject",
+      "file": "routes/withdrawal.routes.js"
+    }
+  ],
+  "auth_files": [
+    "config/staffPermissions.js",
+    "controllers/admin.controller.js",
+    "controllers/adminCustomer.controller.js",
+    "controllers/adminPartnerApplication.controller.js",
+    "controllers/adminRoleUsers.controller.js",
+    "controllers/adminWalletAdjustment.controller.js",
+    "controllers/airtimeToCash.controller.js",
+    "controllers/amana.controller.js",
+    "controllers/amanaPayment.controller.js",
+    "controllers/appSettings.controller.js",
+    "controllers/auth.controller.js",
+    "controllers/bankTransfer.controller.js",
+    "controllers/businessWallet.controller.js",
+    "controllers/clubkonnect.controller.js",
+    "controllers/delivery.controller.js",
+    "controllers/deliveryCoverage.controller.js",
+    "controllers/empowerment.controller.js",
+    "controllers/idVerification.controller.js",
+    "controllers/kekeRide.controller.js",
+    "controllers/kycDocument.controller.js",
+    "controllers/management.controller.js",
+    "controllers/partner.controller.js",
+    "controllers/partnerApplication.controller.js",
+    "controllers/partnerBalance.controller.js",
+    "controllers/riderWithdrawal.controller.js",
+    "controllers/staffManagement.controller.js",
+    "controllers/transaction.controller.js",
+    "controllers/transactionPin.controller.js",
+    "index.js",
+    "middleware/auth.middleware.js",
+    "middleware/partnerAuth.middleware.js",
+    "middleware/staffPermission.middleware.js",
+    "middleware/transactionPin.middleware.js",
+    "models/commission.model.js",
+    "models/partner.model.js",
+    "models/role.model.js",
+    "models/user.model.js",
+    "routes/admin.routes.js",
+    "routes/adminAmana.routes.js",
+    "routes/adminCard.routes.js",
+    "routes/adminKekeFareSetting.routes.js",
+    "routes/adminKyc.routes.js",
+    "routes/adminPartner.routes.js",
+    "routes/adminPartnerApplication.routes.js",
+    "routes/adminRoleUsers.routes.js",
+    "routes/airtimeToCash.routes.js",
+    "routes/amana.routes.js",
+    "routes/announcement.routes.js",
+    "routes/appSettings.routes.js",
+    "routes/auth.routes.js",
+    "routes/backend/routes/transfer.routes.js",
+    "routes/businessWallet.routes.js",
+    "routes/card.routes.js",
+    "routes/clubkonnect.routes.js",
+    "routes/delivery.routes.js",
+    "routes/electricity.routes.js",
+    "routes/empowerment.routes.js",
+    "routes/examPin.routes.js",
+    "routes/idVerification.routes.js",
+    "routes/kekeFareSetting.routes.js",
+    "routes/kekeRide.routes.js",
+    "routes/kyc.routes.js",
+    "routes/management.routes.js",
+    "routes/manualfunding.routes.js",
+    "routes/marketplace.routes.js",
+    "routes/notification.routes.js",
+    "routes/partner.routes.js",
+    "routes/partnerApplication.routes.js",
+    "routes/paystack.routes.js",
+    "routes/productCommission.routes.js",
+    "routes/rider.routes.js",
+    "routes/securewave.routes.js",
+    "routes/servicepayFeatures.routes.js",
+    "routes/staffManagement.routes.js",
+    "routes/sudo.routes.js",
+    "routes/transaction.routes.js",
+    "routes/transactionPin.routes.js",
+    "routes/transfer.routes.js",
+    "routes/wallet.routes.js",
+    "routes/withdrawal.routes.js",
+    "scripts/createAdmin.js",
+    "scripts/seedStaffRoles.js",
+    "services/commission.service.js",
+    "services/customerBroadcast.service.js",
+    "services/ledger.service.js"
+  ],
+  "settings_infrastructure": [
+    "config/db.js",
+    "config/deliveryLaunch.config.js",
+    "config/staffPermissions.js",
+    "controllers/appSettings.controller.js",
+    "controllers/kekeFareSetting.controller.js",
+    "models/appSettings.model.js",
+    "models/kekeFareSetting.model.js",
+    "routes/adminKekeFareSetting.routes.js",
+    "routes/appSettings.routes.js",
+    "routes/kekeFareSetting.routes.js"
+  ],
+  "field_hits": [
+    {
+      "file": "config/deliveryLaunch.config.js",
+      "line": 2,
+      "text": "DELIVERY_FEE: 1500,"
+    },
+    {
+      "file": "config/deliveryLaunch.config.js",
+      "line": 3,
+      "text": "RIDER_COMMISSION_PERCENT: 40,"
+    },
+    {
+      "file": "config/deliveryLaunch.config.js",
+      "line": 4,
+      "text": "RIDER_COMMISSION_AMOUNT: 600,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 12,
+      "text": "creditRiderCommissionIfEligible,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 14,
+      "text": "\"../services/riderCommission.service\""
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 34,
+      "text": "const COMMISSION_TYPES = ["
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 124,
+      "text": "const normalizeCommissionType = ("
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 231,
+      "text": "creditedDeliveryCommissions,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 321,
+      "text": ".limit(5)"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 339,
+      "text": ".limit(5)"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 415,
+      "text": "riderCommissionStatus:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 420,
+      "text": "riderCommissionStatus:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 422,
+      "text": "riderCommissionCredited:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 435,
+      "text": "\"$deliveryFee\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 443,
+      "text": "totalRiderCommission: {"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 447,
+      "text": "\"$riderCommissionAmount\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 491,
+      "text": "const totalRiderCommission ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 493,
+      "text": "?.totalRiderCommission ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 576,
+      "text": "creditedCommissions:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 577,
+      "text": "creditedDeliveryCommissions,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 585,
+      "text": "totalRiderCommission,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 640,
+      "text": "const limit ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 642,
+      "text": "req.query.limit,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 649,
+      "text": "limit;"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 774,
+      "text": ".limit(500)"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 854,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 867,
+      "text": "limit"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 885,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 945,
+      "text": "const limit ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 947,
+      "text": "req.query.limit,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 954,
+      "text": "limit;"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1062,
+      "text": ".limit(500)"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1171,
+      "text": "pendingCommissionDeliveries,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1172,
+      "text": "creditedCommissionDeliveries,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1173,
+      "text": "settledCommissionDeliveries,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1225,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1290,
+      "text": "riderCommissionStatus:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1295,
+      "text": "riderCommissionStatus:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1300,
+      "text": "riderCommissionStatus:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1313,
+      "text": "\"$deliveryFee\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1333,
+      "text": "\"$deliveryFee\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1344,
+      "text": "totalRiderCommission: {"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1348,
+      "text": "\"$riderCommissionAmount\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1377,
+      "text": "limit"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1391,
+      "text": "const totalRiderCommission ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1393,
+      "text": "?.totalRiderCommission ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1448,
+      "text": "pendingCommissions:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1449,
+      "text": "pendingCommissionDeliveries,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1451,
+      "text": "creditedCommissions:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1452,
+      "text": "creditedCommissionDeliveries,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1454,
+      "text": "settledCommissions:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1455,
+      "text": "settledCommissionDeliveries,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1461,
+      "text": "totalRiderCommission,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 1470,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2326,
+      "text": ".riderCommissionCredited !=="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2329,
+      "text": "delivery.riderCommissionStatus ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2345,
+      "text": ".riderCommissionCredited !=="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2348,
+      "text": "delivery.riderCommissionStatus ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2355,
+      "text": "let commissionResult = {"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2366,
+      "text": "commissionResult ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2367,
+      "text": "await creditRiderCommissionIfEligible("
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2432,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2437,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2441,
+      "text": ")} Rider commission was credited automatically.`;"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2459,
+      "text": "commission: {"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2461,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2465,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2469,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2473,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2516,
+      "text": "| UPDATE DELIVERY PRICE AND RIDER COMMISSION"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2547,
+      "text": "const deliveryFee ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2550,
+      "text": ".deliveryFee ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2556,
+      "text": "deliveryFee ==="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2592,
+      "text": "const commissionType ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2593,
+      "text": "normalizeCommissionType("
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2595,
+      "text": ".riderCommissionType ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2597,
+      "text": ".commissionType ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2602,
+      "text": "!COMMISSION_TYPES"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2604,
+      "text": "commissionType"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2612,
+      "text": "\"Commission type must be PERCENTAGE or FIXED.\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2613,
+      "text": "allowedCommissionTypes:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2614,
+      "text": "COMMISSION_TYPES,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2618,
+      "text": "const commissionValue ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2621,
+      "text": ".riderCommissionValue ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2623,
+      "text": ".commissionValue ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2628,
+      "text": "commissionValue ==="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2636,
+      "text": "\"Enter a valid Rider commission value.\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2641,
+      "text": "commissionType ==="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2643,
+      "text": "commissionValue >"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2651,
+      "text": "\"Percentage commission cannot exceed 100%.\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2656,
+      "text": "commissionType ==="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2658,
+      "text": "commissionValue >"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2659,
+      "text": "deliveryFee"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2666,
+      "text": "\"Fixed Rider commission cannot exceed the delivery price.\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2687,
+      "text": ".riderCommissionCredited ==="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2692,
+      "text": ".deliveryFee ||"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2695,
+      "text": "deliveryFee ||"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2697,
+      "text": ".riderCommissionType !=="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2698,
+      "text": "commissionType ||"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2701,
+      "text": ".riderCommissionValue ||"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2704,
+      "text": "commissionValue"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2712,
+      "text": "\"The delivery price or commission cannot be changed after Rider commission has been credited.\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2716,
+      "text": "const previousDeliveryFee ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2719,
+      "text": ".deliveryFee ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2727,
+      "text": "const previousCommissionType ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2729,
+      "text": ".riderCommissionType;"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2731,
+      "text": "const previousCommissionValue ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2734,
+      "text": ".riderCommissionValue ??"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2738,
+      "text": "delivery.deliveryFee ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2739,
+      "text": "deliveryFee;"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2744,
+      "text": "delivery.riderCommissionType ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2745,
+      "text": "commissionType;"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2747,
+      "text": "delivery.riderCommissionValue ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2748,
+      "text": "commissionValue;"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2799,
+      "text": ".calculateCommission();"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2803,
+      "text": ".riderCommissionCredited !=="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2806,
+      "text": "delivery.riderCommissionStatus ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2812,
+      "text": "const commissionResult ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2813,
+      "text": "await creditRiderCommissionIfEligible("
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2872,
+      "text": "\"Delivery price and Rider commission updated successfully.\";"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2875,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2880,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2892,
+      "text": "\"Payment confirmed. Rider commission will be credited automatically after delivery is completed.\";"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2905,
+      "text": "previousDeliveryFee,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2907,
+      "text": "currentDeliveryFee:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2908,
+      "text": "deliveryFee,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2915,
+      "text": "previousCommissionType,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2917,
+      "text": "currentCommissionType:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2918,
+      "text": "commissionType,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2920,
+      "text": "previousCommissionValue,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2922,
+      "text": "currentCommissionValue:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2923,
+      "text": "commissionValue,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2925,
+      "text": "riderCommissionAmount:"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2927,
+      "text": ".riderCommissionAmount,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2933,
+      "text": "commission: {"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2935,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2939,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2943,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2947,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2970,
+      "text": "\"Invalid delivery price or commission information.\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 2981,
+      "text": "\"Failed to update delivery price and commission.\","
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 3006,
+      "text": "const limit ="
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 3008,
+      "text": "req.query.limit,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 3015,
+      "text": "limit;"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 3186,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 3251,
+      "text": "limit"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 3296,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/admin.controller.js",
+      "line": 3781,
+      "text": "commissionBalance:"
+    },
+    {
+      "file": "controllers/adminAmana.controller.js",
+      "line": 24,
+      "text": "\"SCHOOL_FEES\","
+    },
+    {
+      "file": "controllers/adminAmana.controller.js",
+      "line": 52,
+      "text": "* ?limit=20"
+    },
+    {
+      "file": "controllers/adminAmana.controller.js",
+      "line": 70,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/adminAmana.controller.js",
+      "line": 73,
+      "text": "req.query.limit,"
+    },
+    {
+      "file": "controllers/adminAmana.controller.js",
+      "line": 82,
+      "text": "(page - 1) * limit;"
+    },
+    {
+      "file": "controllers/adminAmana.controller.js",
+      "line": 209,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/adminAmana.controller.js",
+      "line": 283,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/adminAmana.controller.js",
+      "line": 289,
+      "text": "total / limit"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 303,
+      "text": "customer.commissionBalance ="
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 305,
+      "text": "customer.commissionBalance ||"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 386,
+      "text": ".limit(10)"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1441,
+      "text": "const limit ="
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1443,
+      "text": "req.query.limit,"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1449,
+      "text": "(page - 1) * limit;"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1564,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1664,
+      "text": "limit"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1694,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1754,
+      "text": "const limit ="
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1756,
+      "text": "req.query.limit,"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1762,
+      "text": "(page - 1) * limit;"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1889,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1901,
+      "text": "totalLogs / limit"
+    },
+    {
+      "file": "controllers/adminCustomer.controller.js",
+      "line": 1916,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/adminKyc.controller.js",
+      "line": 30,
+      "text": "limit = 50,"
+    },
+    {
+      "file": "controllers/adminKyc.controller.js",
+      "line": 57,
+      "text": "const safeLimit = Math.min("
+    },
+    {
+      "file": "controllers/adminKyc.controller.js",
+      "line": 59,
+      "text": "Math.max(1, Number(limit) || 50)"
+    },
+    {
+      "file": "controllers/adminKyc.controller.js",
+      "line": 69,
+      "text": ".skip((safePage - 1) * safeLimit)"
+    },
+    {
+      "file": "controllers/adminKyc.controller.js",
+      "line": 70,
+      "text": ".limit(safeLimit),"
+    },
+    {
+      "file": "controllers/adminKyc.controller.js",
+      "line": 78,
+      "text": "limit: safeLimit,"
+    },
+    {
+      "file": "controllers/adminMarketplace.controller.js",
+      "line": 21,
+      "text": "limit = 50,"
+    },
+    {
+      "file": "controllers/adminMarketplace.controller.js",
+      "line": 49,
+      "text": "const safeLimit = Math.min("
+    },
+    {
+      "file": "controllers/adminMarketplace.controller.js",
+      "line": 50,
+      "text": "Math.max(Number(limit) || 50, 1),"
+    },
+    {
+      "file": "controllers/adminMarketplace.controller.js",
+      "line": 59,
+      "text": ".skip((safePage - 1) * safeLimit)"
+    },
+    {
+      "file": "controllers/adminMarketplace.controller.js",
+      "line": 60,
+      "text": ".limit(safeLimit)"
+    },
+    {
+      "file": "controllers/adminMarketplace.controller.js",
+      "line": 71,
+      "text": "limit: safeLimit,"
+    },
+    {
+      "file": "controllers/adminMarketplace.controller.js",
+      "line": 74,
+      "text": "Math.ceil(total / safeLimit),"
+    },
+    {
+      "file": "controllers/adminPartnerApplication.controller.js",
+      "line": 132,
+      "text": "dailyLimit: 1000000,"
+    },
+    {
+      "file": "controllers/adminPartnerApplication.controller.js",
+      "line": 179,
+      "text": "dailyLimit:"
+    },
+    {
+      "file": "controllers/adminPartnerApplication.controller.js",
+      "line": 180,
+      "text": "partner.dailyLimit,"
+    },
+    {
+      "file": "controllers/adminPartnerWallet.controller.js",
+      "line": 258,
+      "text": ".limit(200)"
+    },
+    {
+      "file": "controllers/adminRider.controller.js",
+      "line": 130,
+      "text": "| limit"
+    },
+    {
+      "file": "controllers/adminRider.controller.js",
+      "line": 150,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/adminRider.controller.js",
+      "line": 152,
+      "text": "Number.parseInt(req.query.limit, 10) || 20,"
+    },
+    {
+      "file": "controllers/adminRider.controller.js",
+      "line": 158,
+      "text": "const skip = (page - 1) * limit;"
+    },
+    {
+      "file": "controllers/adminRider.controller.js",
+      "line": 278,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/adminRider.controller.js",
+      "line": 321,
+      "text": "limit"
+    },
+    {
+      "file": "controllers/adminRider.controller.js",
+      "line": 341,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/airtimeToCash.controller.js",
+      "line": 9,
+      "text": "enabled: Boolean(process.env.ATC_MTN_RECEIVING_PHONE),"
+    },
+    {
+      "file": "controllers/airtimeToCash.controller.js",
+      "line": 17,
+      "text": "enabled: Boolean(process.env.ATC_AIRTEL_RECEIVING_PHONE),"
+    },
+    {
+      "file": "controllers/airtimeToCash.controller.js",
+      "line": 25,
+      "text": "enabled: Boolean(process.env.ATC_GLO_RECEIVING_PHONE),"
+    },
+    {
+      "file": "controllers/airtimeToCash.controller.js",
+      "line": 33,
+      "text": "enabled: Boolean(process.env.ATC_9MOBILE_RECEIVING_PHONE),"
+    },
+    {
+      "file": "controllers/airtimeToCash.controller.js",
+      "line": 104,
+      "text": "if (!setting || setting.enabled !== true) {"
+    },
+    {
+      "file": "controllers/airtimeToCash.controller.js",
+      "line": 181,
+      "text": ".limit(100);"
+    },
+    {
+      "file": "controllers/airtimeToCash.controller.js",
+      "line": 224,
+      "text": ".limit(300);"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 12,
+      "text": "\"SCHOOL_FEES\","
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 261,
+      "text": "* For the first version, the service fee"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 262,
+      "text": "* and delivery fee remain zero."
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 267,
+      "text": "const serviceFee = 0;"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 268,
+      "text": "const deliveryFee = 0;"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 273,
+      "text": "serviceFee +"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 274,
+      "text": "deliveryFee"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 391,
+      "text": "serviceFee,"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 393,
+      "text": "deliveryFee,"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 460,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 463,
+      "text": "req.query.limit,"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 471,
+      "text": "const skip = (page - 1) * limit;"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 500,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 517,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/amana.controller.js",
+      "line": 522,
+      "text": "Math.ceil(total / limit),"
+    },
+    {
+      "file": "controllers/amanaPayment.controller.js",
+      "line": 313,
+      "text": "agentCommission: 0,"
+    },
+    {
+      "file": "controllers/amanaPayment.controller.js",
+      "line": 315,
+      "text": "stateManagerCommission: 0,"
+    },
+    {
+      "file": "controllers/amanaPayment.controller.js",
+      "line": 317,
+      "text": "zonalManagerCommission: 0,"
+    },
+    {
+      "file": "controllers/amanaPayment.controller.js",
+      "line": 320,
+      "text": "* For now, the service fee is"
+    },
+    {
+      "file": "controllers/amanaPayment.controller.js",
+      "line": 325,
+      "text": "order.serviceFee"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 323,
+      "text": "unverifiedCustomerDailyLimit:"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 326,
+      "text": "?.unverifiedCustomerDailyLimit ||"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 341,
+      "text": "transactionLimits:"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 342,
+      "text": "settings.transactionLimits,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 380,
+      "text": "transactionLimits:"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 381,
+      "text": "settings.transactionLimits,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 512,
+      "text": "const limits ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 513,
+      "text": "body.transactionLimits || {};"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 657,
+      "text": "settings.services.airtimeEnabled ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 660,
+      "text": "settings.services.dataEnabled ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 664,
+      "text": ".electricityEnabled ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 668,
+      "text": ".ninVerificationEnabled ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 729,
+      "text": "| PLATFORM / MAINTENANCE"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 733,
+      "text": "settings.platform.maintenanceMode ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 735,
+      "text": "platform.maintenanceMode,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 737,
+      "text": ".maintenanceMode"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 740,
+      "text": "settings.platform.maintenanceTitle ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 742,
+      "text": "platform.maintenanceTitle,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 744,
+      "text": ".maintenanceTitle"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 746,
+      "text": "\"ServicePay Maintenance\";"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 749,
+      "text": ".maintenanceMessage ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 751,
+      "text": "platform.maintenanceMessage,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 753,
+      "text": ".maintenanceMessage"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 846,
+      "text": "const unverifiedDailyLimit ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 848,
+      "text": "kyc.unverifiedCustomerDailyLimit,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 851,
+      "text": ".unverifiedCustomerDailyLimit ||"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 873,
+      "text": "unverifiedDailyLimit === null ||"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 879,
+      "text": "\"Enter valid KYC transaction limits.\","
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 896,
+      "text": ".unverifiedCustomerDailyLimit ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 897,
+      "text": "unverifiedDailyLimit;"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 913,
+      "text": ".registrationEnabled ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 915,
+      "text": "registration.registrationEnabled,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 917,
+      "text": ".registrationEnabled"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 991,
+      "text": "| TRANSACTION LIMITS"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 995,
+      "text": "const limitFields = ["
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1000,
+      "text": "\"dailyServicepayTransferLimit\","
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1003,
+      "text": "\"dailyBankTransferLimit\","
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1009,
+      "text": "\"dailyCustomerTransactionLimit\","
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1013,
+      "text": "const field of limitFields"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1016,
+      "text": "limits[field],"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1018,
+      "text": "settings.transactionLimits["
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1032,
+      "text": "settings.transactionLimits["
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1038,
+      "text": "settings.transactionLimits"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1040,
+      "text": "settings.transactionLimits"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1051,
+      "text": "settings.transactionLimits"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1053,
+      "text": "settings.transactionLimits"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1064,
+      "text": "settings.transactionLimits"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1066,
+      "text": "settings.transactionLimits"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1152,
+      "text": "settings.support.privacyPolicyUrl ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1154,
+      "text": "support.privacyPolicyUrl,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1156,
+      "text": ".privacyPolicyUrl"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1160,
+      "text": ".termsAndConditionsUrl ="
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1162,
+      "text": "support.termsAndConditionsUrl,"
+    },
+    {
+      "file": "controllers/appSettings.controller.js",
+      "line": 1164,
+      "text": ".termsAndConditionsUrl"
+    },
+    {
+      "file": "controllers/auth.controller.js",
+      "line": 63,
+      "text": "commissionBalance: Number("
+    },
+    {
+      "file": "controllers/auth.controller.js",
+      "line": 64,
+      "text": "user.commissionBalance || 0"
+    },
+    {
+      "file": "controllers/auth.controller.js",
+      "line": 356,
+      "text": "commissionBalance: 0,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 77,
+      "text": "const isTransferEnabled = () =>"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 79,
+      "text": "process.env.SQUAD_TRANSFER_ENABLED || \"\""
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 115,
+      "text": "const transferFee = Math.max("
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 118,
+      "text": "process.env.SQUAD_TRANSFER_FEE"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 129,
+      "text": "transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 429,
+      "text": "transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 498,
+      "text": "transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 534,
+      "text": "transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 650,
+      "text": "transferFee:"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 651,
+      "text": "record.transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 740,
+      "text": "transferFee:"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 741,
+      "text": "record.transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 807,
+      "text": "transferFee:"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 808,
+      "text": "record.transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 938,
+      "text": "if (!isTransferEnabled()) {"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1103,
+      "text": "config.transferFee +"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1122,
+      "text": "transferFee:"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1123,
+      "text": "config.transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1200,
+      "text": "transferFee:"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1201,
+      "text": "config.transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1237,
+      "text": "transferFee:"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1238,
+      "text": "config.transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1437,
+      "text": "transferFee:"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1438,
+      "text": "record.transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1536,
+      "text": "transferFee:"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1537,
+      "text": "refreshed.transferFee,"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1593,
+      "text": ".limit(50)"
+    },
+    {
+      "file": "controllers/bankTransfer.controller.js",
+      "line": 1678,
+      "text": "return crypto.timingSafeEqual("
+    },
+    {
+      "file": "controllers/businessWallet.controller.js",
+      "line": 86,
+      "text": ".limit(30)"
+    },
+    {
+      "file": "controllers/businessWallet.controller.js",
+      "line": 96,
+      "text": ".limit(20)"
+    },
+    {
+      "file": "controllers/businessWallet.controller.js",
+      "line": 942,
+      "text": ".limit(50)"
+    },
+    {
+      "file": "controllers/businessWallet.controller.js",
+      "line": 1008,
+      "text": ".limit(200)"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 13,
+      "text": "const { distributeCommission } = require(\"../services/commission.service\");"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 928,
+      "text": "// AIRTIME_COMMISSION_DISTRIBUTION"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 930,
+      "text": "const commissionResult = await distributeCommission({"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 935,
+      "text": "description: \"Airtime purchase commission\","
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 944,
+      "text": "console.log(\"AIRTIME COMMISSION RESULT:\", commissionResult);"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 945,
+      "text": "} catch (commissionError) {"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 947,
+      "text": "* Commission failure must never stop a successful"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 950,
+      "text": "console.error(\"AIRTIME COMMISSION ERROR:\", commissionError);"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 1245,
+      "text": "// DATA_COMMISSION_DISTRIBUTION"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 1247,
+      "text": "const commissionResult = await distributeCommission({"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 1252,
+      "text": "description: \"Data purchase commission\","
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 1262,
+      "text": "console.log(\"DATA COMMISSION RESULT:\", commissionResult);"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 1263,
+      "text": "} catch (commissionError) {"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 1265,
+      "text": "* Commission failure must never stop a successful"
+    },
+    {
+      "file": "controllers/clubkonnect.controller.js",
+      "line": 1268,
+      "text": "console.error(\"DATA COMMISSION ERROR:\", commissionError);"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 79,
+      "text": "const deliveryFee = 1500;"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 93,
+      "text": "$gte: deliveryFee,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 98,
+      "text": "walletBalance: -deliveryFee,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 144,
+      "text": "deliveryFee,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 232,
+      "text": "deliveryFee:"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 291,
+      "text": "deliveryFee,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 293,
+      "text": "agentCommission: 0,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 294,
+      "text": "stateManagerCommission: 0,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 295,
+      "text": "zonalManagerCommission: 0,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 318,
+      "text": "deliveryFee:"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 507,
+      "text": "\"trackingNumber packageName pickupAddress deliveryAddress status paymentStatus deliveryFee createdAt updatedAt deliveredAt\""
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 535,
+      "text": "// Customer ya biya delivery fee daga wallet"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 536,
+      "text": "exports.payDeliveryFee = async (req, res) => {"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 563,
+      "text": "deliveryFee: {"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 603,
+      "text": "\"This delivery fee has already been paid.\","
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 631,
+      "text": "existingDelivery.deliveryFee || 0"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 637,
+      "text": "\"The delivery fee has not been provided yet.\","
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 648,
+      "text": "const deliveryFee = Number("
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 649,
+      "text": "delivery.deliveryFee"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 658,
+      "text": "$gte: deliveryFee,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 663,
+      "text": "walletBalance: -deliveryFee,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 731,
+      "text": "amount: deliveryFee,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 732,
+      "text": "agentCommission: 0,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 733,
+      "text": "stateManagerCommission: 0,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 734,
+      "text": "zonalManagerCommission: 0,"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 757,
+      "text": "\"Delivery fee paid successfully.\","
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 769,
+      "text": "\"Pay delivery fee error:\","
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 968,
+      "text": "exports.setDeliveryFee = async ("
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 973,
+      "text": "const deliveryFee = 1500;"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 976,
+      "text": "Number.isNaN(deliveryFee) ||"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 977,
+      "text": "deliveryFee <= 0"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 982,
+      "text": "\"Please enter a valid delivery fee greater than zero.\","
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 1021,
+      "text": "existingDelivery.deliveryFee ="
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 1022,
+      "text": "deliveryFee;"
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 1029,
+      "text": "\"Delivery fee updated successfully.\","
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 1034,
+      "text": "\"Set delivery fee error:\","
+    },
+    {
+      "file": "controllers/delivery.controller.js",
+      "line": 1041,
+      "text": "\"Unable to update delivery fee.\","
+    },
+    {
+      "file": "controllers/electricity.controller.js",
+      "line": 462,
+      "text": "limits: {"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 110,
+      "text": "publicApplicationEnabled,"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 111,
+      "text": "publicTransparencyEnabled,"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 162,
+      "text": "publicApplicationEnabled:"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 163,
+      "text": "publicApplicationEnabled === true,"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 164,
+      "text": "publicTransparencyEnabled:"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 165,
+      "text": "publicTransparencyEnabled === true,"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 514,
+      "text": "if (!program.publicApplicationEnabled) {"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 518,
+      "text": "\"Public applications are not enabled for this program.\","
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 680,
+      "text": "publicApplicationEnabled: true,"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1393,
+      "text": ".limit(10)"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1402,
+      "text": ".limit(10)"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1483,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1484,
+      "text": "Number(req.query?.limit || 50),"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1495,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1507,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1515,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1607,
+      "text": "limit"
+    },
+    {
+      "file": "controllers/empowerment.controller.js",
+      "line": 1610,
+      "text": "activity.slice(0, limit),"
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 9,
+      "text": "distributeCommission,"
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 10,
+      "text": "} = require(\"../services/commission.service\");"
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1053,
+      "text": "const commissionResult ="
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1054,
+      "text": "await distributeCommission({"
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1063,
+      "text": "\"Exam PIN purchase commission\","
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1078,
+      "text": "\"EXAM PIN COMMISSION RESULT:\","
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1079,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1081,
+      "text": "} catch (commissionError) {"
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1083,
+      "text": "\"EXAM PIN COMMISSION ERROR:\","
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1084,
+      "text": "commissionError"
+    },
+    {
+      "file": "controllers/examPin.controller.js",
+      "line": 1222,
+      "text": ".limit(50)"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 14,
+      "text": "const verificationFees = {"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 268,
+      "text": "verificationFees[normalizedSlipType] || 250;"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 441,
+      "text": ".limit(50);"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 499,
+      "text": "const BVN_VERIFICATION_FEE = 200;"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 697,
+      "text": "BVN_VERIFICATION_FEE"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 723,
+      "text": "amountCharged: BVN_VERIFICATION_FEE,"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 789,
+      "text": "previousBalance - BVN_VERIFICATION_FEE;"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 804,
+      "text": "amount: BVN_VERIFICATION_FEE,"
+    },
+    {
+      "file": "controllers/idVerification.controller.js",
+      "line": 866,
+      "text": ".limit(50);"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 49,
+      "text": "waitingFeePerMinute: 20,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 51,
+      "text": "servicePayCommissionPercent: 10,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 183,
+      "text": "const waitingFeePerMinute ="
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 187,
+      "text": "setting.waitingFeePerMinute"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 191,
+      "text": "const commissionPercent ="
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 198,
+      "text": ".servicePayCommissionPercent"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 209,
+      "text": "waitingFeePerMinute;"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 229,
+      "text": "const servicePayCommission ="
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 231,
+      "text": "(commissionPercent / 100);"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 235,
+      "text": "servicePayCommission;"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 270,
+      "text": "waitingFeePerMinute:"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 272,
+      "text": "waitingFeePerMinute"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 285,
+      "text": "servicePayCommissionPercent:"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 286,
+      "text": "commissionPercent,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 288,
+      "text": "servicePayCommission:"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 290,
+      "text": "servicePayCommission"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 347,
+      "text": "waitingFeePerMinute:"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 349,
+      "text": ".waitingFeePerMinute,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 351,
+      "text": "servicePayCommissionPercent:"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 353,
+      "text": ".servicePayCommissionPercent,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 358,
+      "text": ".servicePayCommissionPercent,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 562,
+      "text": "* \"waitingFeePerMinute\": 20,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 563,
+      "text": "* \"servicePayCommissionPercent\": 10,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 652,
+      "text": "const waitingFeePerMinute ="
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 655,
+      "text": "?.waitingFeePerMinute,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 659,
+      "text": "const commissionPercent ="
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 662,
+      "text": "?.servicePayCommissionPercent,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 684,
+      "text": "waitingFeePerMinute <"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 699,
+      "text": "commissionPercent < 0 ||"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 700,
+      "text": "commissionPercent >"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 710,
+      "text": "\"ServicePay commission must be between 0 and 100 percent.\","
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 759,
+      "text": "waitingFeePerMinute,"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 761,
+      "text": "servicePayCommissionPercent:"
+    },
+    {
+      "file": "controllers/kekeFareSetting.controller.js",
+      "line": 762,
+      "text": "commissionPercent,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 679,
+      "text": "serviceFee:"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 686,
+      "text": "* Commission snapshot."
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 692,
+      "text": "servicePayCommissionPercent:"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 694,
+      "text": ".servicePayCommissionPercent,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 696,
+      "text": "servicePayCommission:"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 698,
+      "text": ".servicePayCommission,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 827,
+      "text": "waitingFeePerMinute:"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 829,
+      "text": ".waitingFeePerMinute,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 831,
+      "text": "servicePayCommissionPercent:"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 833,
+      "text": ".servicePayCommissionPercent,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 838,
+      "text": ".servicePayCommissionPercent,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 861,
+      "text": "servicePayCommission:"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 863,
+      "text": ".servicePayCommission,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1419,
+      "text": "servicePayCommission:"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1420,
+      "text": "ride.servicePayCommission,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1762,
+      "text": "* FINAL COMMISSION VALUES"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1778,
+      "text": "const commissionPercent ="
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1785,
+      "text": ".servicePayCommissionPercent ||"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1791,
+      "text": "let servicePayCommission ="
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1793,
+      "text": "ride.servicePayCommission ||"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1805,
+      "text": "* created before commission fields existed."
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1808,
+      "text": "servicePayCommission <="
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1810,
+      "text": "commissionPercent >"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1813,
+      "text": "servicePayCommission ="
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1817,
+      "text": "commissionPercent /"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1830,
+      "text": "servicePayCommission"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1834,
+      "text": "ride.servicePayCommission ="
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1835,
+      "text": "servicePayCommission;"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1917,
+      "text": "* We still record the fare and commission,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1922,
+      "text": "* Later we can build a commission debt /"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1967,
+      "text": "servicePayCommissionPercent:"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1969,
+      "text": ".servicePayCommissionPercent,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 1971,
+      "text": "servicePayCommission,"
+    },
+    {
+      "file": "controllers/kekeRide.controller.js",
+      "line": 2353,
+      "text": ".limit(50)"
+    },
+    {
+      "file": "controllers/kyc.controller.js",
+      "line": 20,
+      "text": "const SERVICEPAY_KYC_LIMITS = {"
+    },
+    {
+      "file": "controllers/kyc.controller.js",
+      "line": 26,
+      "text": "process.env.KYC_TIER1_DAILY_LIMIT || 200000"
+    },
+    {
+      "file": "controllers/kyc.controller.js",
+      "line": 34,
+      "text": "process.env.KYC_TIER2_DAILY_LIMIT || 1000000"
+    },
+    {
+      "file": "controllers/kyc.controller.js",
+      "line": 42,
+      "text": "process.env.KYC_TIER3_DAILY_LIMIT || 5000000"
+    },
+    {
+      "file": "controllers/kyc.controller.js",
+      "line": 105,
+      "text": "servicepayLimits:"
+    },
+    {
+      "file": "controllers/kyc.controller.js",
+      "line": 106,
+      "text": "SERVICEPAY_KYC_LIMITS["
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 3,
+      "text": "const Commission = require(\"../models/commission.model\");"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 783,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 784,
+      "text": "Math.max(Number.parseInt(req.query.limit, 10) || 20, 1),"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 814,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 856,
+      "text": "const skip = (page - 1) * limit;"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 870,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 934,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 936,
+      "text": "totalPages: Math.ceil(total / limit),"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 987,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 989,
+      "text": "Number.parseInt(req.query.limit, 10) || 50,"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1062,
+      "text": "const skip = (page - 1) * limit;"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1079,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1142,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1145,
+      "text": "Math.ceil(total / limit),"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1164,
+      "text": "exports.getRoleCommissions = async (req, res) => {"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1189,
+      "text": "\"You are not permitted to view commissions.\","
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1198,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1200,
+      "text": "Number.parseInt(req.query.limit, 10) || 50,"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1221,
+      "text": "const skip = (page - 1) * limit;"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1224,
+      "text": "commissions,"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1230,
+      "text": "Commission.find(query)"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1237,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1240,
+      "text": "Commission.countDocuments(query),"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1242,
+      "text": "Commission.aggregate(["
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1254,
+      "text": "$sum: \"$commissionAmount\","
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1260,
+      "text": "Commission.aggregate(["
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1272,
+      "text": "$sum: \"$commissionAmount\","
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1278,
+      "text": "Commission.aggregate(["
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1290,
+      "text": "$sum: \"$commissionAmount\","
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1329,
+      "text": "commissions,"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1332,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1335,
+      "text": "Math.ceil(total / limit),"
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1342,
+      "text": "\"GET ROLE COMMISSIONS ERROR:\","
+    },
+    {
+      "file": "controllers/management.controller.js",
+      "line": 1349,
+      "text": "\"Server error while loading role commissions.\","
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 13,
+      "text": "limit = 30,"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 34,
+      "text": "const safeLimit = Math.min(Number(limit) || 30, 100);"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 40,
+      "text": "featured: -1,"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 43,
+      "text": ".skip((safePage - 1) * safeLimit)"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 44,
+      "text": ".limit(safeLimit)"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 55,
+      "text": "limit: safeLimit,"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 471,
+      "text": "const deliveryFee = 0;"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 476,
+      "text": "deliveryFee"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 631,
+      "text": "deliveryFee,"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1043,
+      "text": "const marketplaceCommissionRate = Number("
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1044,
+      "text": "process.env.MARKETPLACE_COMMISSION_PERCENT || 0"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1047,
+      "text": "const safeCommissionRate ="
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1048,
+      "text": "Number.isFinite(marketplaceCommissionRate) &&"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1049,
+      "text": "marketplaceCommissionRate >= 0 &&"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1050,
+      "text": "marketplaceCommissionRate <= 100"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1051,
+      "text": "? marketplaceCommissionRate"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1054,
+      "text": "const commission ="
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1056,
+      "text": "(orderAmount * safeCommissionRate / 100) * 100"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1060,
+      "text": "Math.round((orderAmount - commission) * 100) / 100;"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1094,
+      "text": "order.marketplaceCommissionAmount = commission;"
+    },
+    {
+      "file": "controllers/marketplace.controller.js",
+      "line": 1095,
+      "text": "order.marketplaceCommissionPercent = safeCommissionRate;"
+    },
+    {
+      "file": "controllers/miniApp.controller.js",
+      "line": 12,
+      "text": "featured: true,"
+    },
+    {
+      "file": "controllers/miniApp.controller.js",
+      "line": 24,
+      "text": "featured: true,"
+    },
+    {
+      "file": "controllers/miniApp.controller.js",
+      "line": 36,
+      "text": "featured: true,"
+    },
+    {
+      "file": "controllers/miniApp.controller.js",
+      "line": 48,
+      "text": "featured: false,"
+    },
+    {
+      "file": "controllers/miniApp.controller.js",
+      "line": 60,
+      "text": "featured: false,"
+    },
+    {
+      "file": "controllers/miniApp.controller.js",
+      "line": 72,
+      "text": "featured: false,"
+    },
+    {
+      "file": "controllers/miniApp.controller.js",
+      "line": 84,
+      "text": "featured: true,"
+    },
+    {
+      "file": "controllers/miniApp.controller.js",
+      "line": 96,
+      "text": "featured: false,"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 38,
+      "text": "dailyLimit,"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 95,
+      "text": "dailyLimit:"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 96,
+      "text": "Number(dailyLimit) > 0"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 97,
+      "text": "? Number(dailyLimit)"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 124,
+      "text": "dailyLimit:"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 125,
+      "text": "partner.dailyLimit,"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 243,
+      "text": "dailyLimit:"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 244,
+      "text": "req.partner.dailyLimit,"
+    },
+    {
+      "file": "controllers/partner.controller.js",
+      "line": 310,
+      "text": "dailyLimit: Number(partner.dailyLimit || 0),"
+    },
+    {
+      "file": "controllers/partnerApplication.controller.js",
+      "line": 121,
+      "text": "'businessName status apiKey walletBalance dailyLimit permissions'"
+    },
+    {
+      "file": "controllers/partnerBalance.controller.js",
+      "line": 19,
+      "text": "\"businessName status walletBalance dailyLimit permissions\""
+    },
+    {
+      "file": "controllers/partnerBalance.controller.js",
+      "line": 48,
+      "text": "dailyLimit: Number(partner.dailyLimit || 0),"
+    },
+    {
+      "file": "controllers/partnerTransactions.controller.js",
+      "line": 24,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/partnerTransactions.controller.js",
+      "line": 25,
+      "text": "Math.max(Number(req.query.limit || 50), 1),"
+    },
+    {
+      "file": "controllers/partnerTransactions.controller.js",
+      "line": 46,
+      "text": ".skip((page - 1) * limit)"
+    },
+    {
+      "file": "controllers/partnerTransactions.controller.js",
+      "line": 47,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/partnerTransactions.controller.js",
+      "line": 56,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/partnerTransactions.controller.js",
+      "line": 58,
+      "text": "pages: Math.ceil(total / limit),"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 1,
+      "text": "const ProductCommission = require("
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 2,
+      "text": "\"../models/productCommission.model\""
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 23,
+      "text": "exports.getProductCommissions = async ("
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 73,
+      "text": "await ProductCommission.find(query)"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 86,
+      "text": "\"getProductCommissions error:\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 93,
+      "text": "\"Server error while fetching product commissions.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 98,
+      "text": "exports.upsertProductCommission = async ("
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 107,
+      "text": "headOfficeCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 108,
+      "text": "agentCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 109,
+      "text": "stateCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 110,
+      "text": "zonalCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 147,
+      "text": "const normalizedHeadOfficeCommission ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 148,
+      "text": "normalizeAmount(headOfficeCommission);"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 150,
+      "text": "const normalizedAgentCommission ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 151,
+      "text": "normalizeAmount(agentCommission);"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 153,
+      "text": "const normalizedStateCommission ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 154,
+      "text": "normalizeAmount(stateCommission);"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 156,
+      "text": "const normalizedZonalCommission ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 157,
+      "text": "normalizeAmount(zonalCommission);"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 160,
+      "text": "normalizedHeadOfficeCommission === null ||"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 161,
+      "text": "normalizedAgentCommission === null ||"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 162,
+      "text": "normalizedStateCommission === null ||"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 163,
+      "text": "normalizedZonalCommission === null"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 168,
+      "text": "\"Commission amounts must be valid numbers and cannot be negative.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 176,
+      "text": "await ProductCommission.findOneAndUpdate("
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 188,
+      "text": "agentCommission:"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 189,
+      "text": "normalizedAgentCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 191,
+      "text": "stateCommission:"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 192,
+      "text": "normalizedStateCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 194,
+      "text": "zonalCommission:"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 195,
+      "text": "normalizedZonalCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 220,
+      "text": "\"Product commission saved successfully.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 225,
+      "text": "\"upsertProductCommission error:\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 233,
+      "text": "\"A commission setting already exists for this product.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 240,
+      "text": "\"Server error while saving product commission.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 246,
+      "text": "exports.updateProductCommission = async (req, res) => {"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 254,
+      "text": "headOfficeCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 255,
+      "text": "agentCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 256,
+      "text": "stateCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 257,
+      "text": "zonalCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 291,
+      "text": "const normalizedHeadOfficeCommission ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 292,
+      "text": "normalizeAmount(headOfficeCommission);"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 294,
+      "text": "const normalizedAgentCommission ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 295,
+      "text": "normalizeAmount(agentCommission);"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 297,
+      "text": "const normalizedStateCommission ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 298,
+      "text": "normalizeAmount(stateCommission);"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 300,
+      "text": "const normalizedZonalCommission ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 301,
+      "text": "normalizeAmount(zonalCommission);"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 304,
+      "text": "normalizedHeadOfficeCommission === null ||"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 305,
+      "text": "normalizedAgentCommission === null ||"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 306,
+      "text": "normalizedStateCommission === null ||"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 307,
+      "text": "normalizedZonalCommission === null"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 312,
+      "text": "\"Commission amounts must be valid numbers and cannot be negative.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 317,
+      "text": "await ProductCommission.findByIdAndUpdate("
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 325,
+      "text": "headOfficeCommission:"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 326,
+      "text": "normalizedHeadOfficeCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 328,
+      "text": "agentCommission:"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 329,
+      "text": "normalizedAgentCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 331,
+      "text": "stateCommission:"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 332,
+      "text": "normalizedStateCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 334,
+      "text": "zonalCommission:"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 335,
+      "text": "normalizedZonalCommission,"
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 357,
+      "text": "message: \"Product commission not found.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 364,
+      "text": "\"Product commission updated successfully.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 369,
+      "text": "\"updateProductCommission error:\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 376,
+      "text": "\"Server error while updating product commission.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 381,
+      "text": "exports.updateProductCommissionStatus ="
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 398,
+      "text": "await ProductCommission.findByIdAndUpdate("
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 419,
+      "text": "\"Product commission not found.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 426,
+      "text": "\"Product commission status updated successfully.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 431,
+      "text": "\"updateProductCommissionStatus error:\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 438,
+      "text": "\"Server error while updating product commission status.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 443,
+      "text": "exports.deleteProductCommission = async ("
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 451,
+      "text": "await ProductCommission.findByIdAndDelete("
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 459,
+      "text": "\"Product commission not found.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 466,
+      "text": "\"Product commission deleted successfully.\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 470,
+      "text": "\"deleteProductCommission error:\","
+    },
+    {
+      "file": "controllers/productCommission.controller.js",
+      "line": 477,
+      "text": "\"Server error while deleting product commission.\","
+    },
+    {
+      "file": "controllers/rider.controller.js",
+      "line": 795,
+      "text": ".limit(10);"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 7,
+      "text": "creditRiderCommissionIfEligible,"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 9,
+      "text": "\"../services/riderCommission.service\""
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 864,
+      "text": "let commissionResult = {"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 887,
+      "text": "commissionResult ="
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 888,
+      "text": "await creditRiderCommissionIfEligible("
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 910,
+      "text": "commissionResult.credited"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 914,
+      "text": "commissionResult.amount"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 921,
+      "text": "commissionResult.reason ==="
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 925,
+      "text": "\"Delivery completed successfully. Your commission will be credited automatically after payment is confirmed.\";"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 929,
+      "text": "commissionResult.reason ==="
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 930,
+      "text": "\"DELIVERY_FEE_NOT_SET\""
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 933,
+      "text": "\"Delivery completed successfully. Your commission is pending because the delivery fee has not been set.\";"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 944,
+      "text": "commission: {"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 946,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 950,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 954,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/riderDelivery.controller.js",
+      "line": 958,
+      "text": "commissionResult"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 36,
+      "text": "const WITHDRAWAL_FEE = Math.max("
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 39,
+      "text": ".RIDER_WITHDRAWAL_FEE ||"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 216,
+      "text": "\"Your rider account must be verified before you can withdraw commission.\","
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 315,
+      "text": "fee:"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 317,
+      "text": "withdrawal.fee"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 501,
+      "text": "| GET RIDER COMMISSION SUMMARY"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 504,
+      "text": "| GET /api/rider/commission-summary"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 508,
+      "text": "exports.getCommissionSummary ="
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 613,
+      "text": ".limit(5),"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 616,
+      "text": "const availableCommission ="
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 631,
+      "text": "\"Rider commission summary loaded successfully.\","
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 652,
+      "text": "totalCommissionEarned:"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 658,
+      "text": "availableCommission,"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 703,
+      "text": "withdrawalFee:"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 704,
+      "text": "WITHDRAWAL_FEE,"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 714,
+      "text": "totalCommissionEarned:"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 720,
+      "text": "availableCommission,"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 737,
+      "text": "\"Get Rider commission summary error:\","
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 744,
+      "text": "\"Unable to load Rider commission summary.\","
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 787,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 790,
+      "text": "req.query.limit || 20"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 835,
+      "text": "limit;"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 848,
+      "text": ".limit(limit),"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 868,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 873,
+      "text": "total / limit"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1064,
+      "text": "\"ServicePay Rider commission withdrawal\";"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1167,
+      "text": "const fee ="
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1169,
+      "text": "WITHDRAWAL_FEE"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1174,
+      "text": "amount + fee"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1202,
+      "text": "\"Only Delivery Riders can request commission withdrawal.\""
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1351,
+      "text": "\"Insufficient available Rider commission.\""
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1358,
+      "text": "availableCommission:"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1364,
+      "text": "fee,"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1386,
+      "text": "fee,"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1432,
+      "text": "\"Rider commission withdrawal request submitted successfully.\","
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1440,
+      "text": "availableCommission:"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1452,
+      "text": "availableCommission:"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1514,
+      "text": "const limit = Math.min("
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1517,
+      "text": "req.query.limit || 20"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1601,
+      "text": "limit;"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1641,
+      "text": ".limit(limit)"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1698,
+      "text": "limit,"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 1703,
+      "text": "total / limit"
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 2024,
+      "text": "\"Rider withdrawal rejected and the locked commission was returned successfully.\","
+    },
+    {
+      "file": "controllers/riderWithdrawal.controller.js",
+      "line": 2576,
+      "text": "\"Rider withdrawal marked as failed and the locked commission was returned.\","
+    },
+    {
+      "file": "controllers/securewaveWebhook.controller.js",
+      "line": 41,
+      "text": "return crypto.timingSafeEqual("
+    },
+    {
+      "file": "controllers/securewaveWebhook.controller.js",
+      "line": 276,
+      "text": "const fees = normalizeMoney("
+    },
+    {
+      "file": "controllers/securewaveWebhook.controller.js",
+      "line": 278,
+      "text": "\"fees\","
+    },
+    {
+      "file": "controllers/securewaveWebhook.controller.js",
+      "line": 279,
+      "text": "\"fee\","
+    },
+    {
+      "file": "controllers/securewaveWebhook.controller.js",
+      "line": 335,
+      "text": "fees,"
+    },
+    {
+      "file": "controllers/securewaveWebhook.controller.js",
+      "line": 521,
+      "text": "webhookEvent.fees = data.fees;"
+    },
+    {
+      "file": "controllers/securewaveWebhook.controller.js",
+      "line": 563,
+      "text": "fees: data.fees,"
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 250,
+      "text": ".limit(200);"
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 315,
+      "text": "* SECURE FEATURE MONEY MOVEMENT"
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 321,
+      "text": "const FeaturePayment = require("
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 322,
+      "text": "\"../models/featurePayment.model\""
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 504,
+      "text": "await FeaturePayment.findOne({"
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 559,
+      "text": "await FeaturePayment.create("
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 564,
+      "text": "featureType:"
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 776,
+      "text": "await FeaturePayment.findOne({"
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 831,
+      "text": "await FeaturePayment.create("
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 836,
+      "text": "featureType:"
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 1133,
+      "text": "await FeaturePayment.create("
+    },
+    {
+      "file": "controllers/servicepayFeatures.controller.js",
+      "line": 1138,
+      "text": "featureType:"
+    },
+    {
+      "file": "controllers/staffManagement.controller.js",
+      "line": 393,
+      "text": "commissionBalance: 0,"
+    },
+    {
+      "file": "controllers/transaction.controller.js",
+      "line": 16,
+      "text": "limit = 100,"
+    },
+    {
+      "file": "controllers/transaction.controller.js",
+      "line": 26,
+      "text": "const limitNumber = Math.min("
+    },
+    {
+      "file": "controllers/transaction.controller.js",
+      "line": 27,
+      "text": "Math.max(parseInt(limit, 10) || 100, 1),"
+    },
+    {
+      "file": "controllers/transaction.controller.js",
+      "line": 55,
+      "text": "limitNumber"
+    },
+    {
+      "file": "controllers/transaction.controller.js",
+      "line": 57,
+      "text": ".limit(limitNumber)"
+    },
+    {
+      "file": "controllers/transaction.controller.js",
+      "line": 71,
+      "text": "limit: limitNumber,"
+    },
+    {
+      "file": "controllers/transaction.controller.js",
+      "line": 76,
+      "text": "limit: limitNumber,"
+    },
+    {
+      "file": "controllers/wallet.controller.js",
+      "line": 38,
+      "text": ".limit(20)"
+    },
+    {
+      "file": "index.js",
+      "line": 85,
+      "text": "const servicepayFeaturesRoutes = require(\"./routes/servicepayFeatures.routes\");"
+    },
+    {
+      "file": "index.js",
+      "line": 210,
+      "text": "const productCommissionRoutes = require("
+    },
+    {
+      "file": "index.js",
+      "line": 211,
+      "text": "\"./routes/productCommission.routes\""
+    },
+    {
+      "file": "index.js",
+      "line": 215,
+      "text": "\"/api/admin/product-commissions\","
+    },
+    {
+      "file": "index.js",
+      "line": 216,
+      "text": "productCommissionRoutes"
+    },
+    {
+      "file": "index.js",
+      "line": 236,
+      "text": "app.use(\"/api/servicepay-features\", servicepayFeaturesRoutes);"
+    },
+    {
+      "file": "middleware/partnerAuth.middleware.js",
+      "line": 60,
+      "text": "!crypto.timingSafeEqual("
+    },
+    {
+      "file": "models/amanaOrder.model.js",
+      "line": 35,
+      "text": "\"SCHOOL_FEES\","
+    },
+    {
+      "file": "models/amanaOrder.model.js",
+      "line": 51,
+      "text": "* School Fees Payment"
+    },
+    {
+      "file": "models/amanaOrder.model.js",
+      "line": 188,
+      "text": "serviceFee: {"
+    },
+    {
+      "file": "models/amanaOrder.model.js",
+      "line": 194,
+      "text": "deliveryFee: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 8,
+      "text": "| Tsoffin fields masu \u201cEnabled\u201d an bar su domin existing controller"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 21,
+      "text": "airtimeEnabled: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 26,
+      "text": "dataEnabled: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 31,
+      "text": "electricityEnabled: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 36,
+      "text": "ninVerificationEnabled: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 158,
+      "text": "| platform.maintenanceMode tsohon controller ne yake amfani da shi."
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 165,
+      "text": "maintenanceMode: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 170,
+      "text": "maintenanceTitle: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 174,
+      "text": "\"ServicePay Maintenance\","
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 177,
+      "text": "maintenanceMessage: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 244,
+      "text": "unverifiedCustomerDailyLimit: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 277,
+      "text": "registrationEnabled: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 324,
+      "text": "| TRANSACTION LIMITS"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 328,
+      "text": "const transactionLimitsSchema ="
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 355,
+      "text": "dailyServicepayTransferLimit: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 373,
+      "text": "dailyBankTransferLimit: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 409,
+      "text": "dailyCustomerTransactionLimit: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 485,
+      "text": "privacyPolicyUrl: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 491,
+      "text": "termsAndConditionsUrl: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 649,
+      "text": "transactionLimits: {"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 650,
+      "text": "type: transactionLimitsSchema,"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 714,
+      "text": "\"services.airtimeEnabled\""
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 718,
+      "text": "this.services.airtimeEnabled;"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 724,
+      "text": "this.services.airtimeEnabled ="
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 730,
+      "text": "\"services.dataEnabled\""
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 734,
+      "text": "this.services.dataEnabled;"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 740,
+      "text": "this.services.dataEnabled ="
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 746,
+      "text": "\"services.electricityEnabled\""
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 751,
+      "text": ".electricityEnabled;"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 758,
+      "text": ".electricityEnabled ="
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 764,
+      "text": "\"services.ninVerificationEnabled\""
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 769,
+      "text": ".ninVerificationEnabled;"
+    },
+    {
+      "file": "models/appSettings.model.js",
+      "line": 776,
+      "text": ".ninVerificationEnabled ="
+    },
+    {
+      "file": "models/bankTransfer.model.js",
+      "line": 88,
+      "text": "transferFee: {"
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 3,
+      "text": "const commissionSchema = new mongoose.Schema("
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 71,
+      "text": "commissionRate: {"
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 78,
+      "text": "commissionAmount: {"
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 128,
+      "text": "* Hana a ba mutum \u0257aya commission iri \u0257aya sau biyu"
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 131,
+      "text": "commissionSchema.index("
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 142,
+      "text": "commissionSchema.index({"
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 148,
+      "text": "commissionSchema.index({"
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 154,
+      "text": "\"Commission\","
+    },
+    {
+      "file": "models/commission.model.js",
+      "line": 155,
+      "text": "commissionSchema"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 104,
+      "text": "deliveryFee: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 132,
+      "text": "* Commission can be calculated as:"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 135,
+      "text": "* deliveryFee \u00d7 riderCommissionValue / 100"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 138,
+      "text": "* riderCommissionValue"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 140,
+      "text": "riderCommissionType: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 149,
+      "text": "riderCommissionValue: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 158,
+      "text": "riderCommissionAmount: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 170,
+      "text": "commissionCalculatedAt: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 175,
+      "text": "riderCommissionStatus: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 190,
+      "text": "riderCommissionCredited: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 196,
+      "text": "riderCommissionCreditedAt: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 201,
+      "text": "riderCommissionSettledAt: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 206,
+      "text": "riderCommissionSettledBy: {"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 360,
+      "text": "* Pending and credited commission lookup."
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 364,
+      "text": "riderCommissionStatus: 1,"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 372,
+      "text": "riderCommissionStatus: 1,"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 373,
+      "text": "riderCommissionCredited: 1,"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 378,
+      "text": "* Calculate and lock Rider commission and"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 381,
+      "text": "deliverySchema.methods.calculateCommission ="
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 383,
+      "text": "const deliveryFee = Number("
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 384,
+      "text": "this.deliveryFee || 0"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 387,
+      "text": "const commissionValue = Number("
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 388,
+      "text": "this.riderCommissionValue || 0"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 391,
+      "text": "let riderCommissionAmount = 0;"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 394,
+      "text": "this.riderCommissionType ==="
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 397,
+      "text": "riderCommissionAmount ="
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 398,
+      "text": "commissionValue;"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 400,
+      "text": "riderCommissionAmount = deliveryFee * 0.40;"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 404,
+      "text": "* Rider commission must not exceed"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 405,
+      "text": "* the total delivery fee."
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 407,
+      "text": "riderCommissionAmount = Math.min("
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 408,
+      "text": "riderCommissionAmount,"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 409,
+      "text": "deliveryFee"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 412,
+      "text": "riderCommissionAmount = Math.max("
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 413,
+      "text": "riderCommissionAmount,"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 417,
+      "text": "this.riderCommissionAmount ="
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 419,
+      "text": "riderCommissionAmount.toFixed(2)"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 425,
+      "text": "deliveryFee -"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 426,
+      "text": "this.riderCommissionAmount"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 430,
+      "text": "this.commissionCalculatedAt ="
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 434,
+      "text": "deliveryFee,"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 436,
+      "text": "riderCommissionAmount:"
+    },
+    {
+      "file": "models/delivery.model.js",
+      "line": 437,
+      "text": "this.riderCommissionAmount,"
+    },
+    {
+      "file": "models/empowermentProgram.model.js",
+      "line": 122,
+      "text": "publicApplicationEnabled: {"
+    },
+    {
+      "file": "models/empowermentProgram.model.js",
+      "line": 127,
+      "text": "publicTransparencyEnabled: {"
+    },
+    {
+      "file": "models/featurePayment.model.js",
+      "line": 3,
+      "text": "const featurePaymentSchema = new mongoose.Schema("
+    },
+    {
+      "file": "models/featurePayment.model.js",
+      "line": 19,
+      "text": "featureType: {"
+    },
+    {
+      "file": "models/featurePayment.model.js",
+      "line": 82,
+      "text": "\"FeaturePayment\","
+    },
+    {
+      "file": "models/featurePayment.model.js",
+      "line": 83,
+      "text": "featurePaymentSchema"
+    },
+    {
+      "file": "models/kekeFareSetting.model.js",
+      "line": 56,
+      "text": "waitingFeePerMinute: {"
+    },
+    {
+      "file": "models/kekeFareSetting.model.js",
+      "line": 64,
+      "text": "* SERVICEPAY COMMISSION"
+    },
+    {
+      "file": "models/kekeFareSetting.model.js",
+      "line": 68,
+      "text": "servicePayCommissionPercent: {"
+    },
+    {
+      "file": "models/kekeFareSetting.model.js",
+      "line": 77,
+      "text": "* LIMITS / STATUS"
+    },
+    {
+      "file": "models/kekeRide.model.js",
+      "line": 351,
+      "text": "* ServicePay commission instead of"
+    },
+    {
+      "file": "models/kekeRide.model.js",
+      "line": 352,
+      "text": "* a separate fixed service fee."
+    },
+    {
+      "file": "models/kekeRide.model.js",
+      "line": 354,
+      "text": "serviceFee: {"
+    },
+    {
+      "file": "models/kekeRide.model.js",
+      "line": 368,
+      "text": "* SERVICEPAY COMMISSION SNAPSHOT"
+    },
+    {
+      "file": "models/kekeRide.model.js",
+      "line": 375,
+      "text": "* commission later, an existing ride"
+    },
+    {
+      "file": "models/kekeRide.model.js",
+      "line": 379,
+      "text": "servicePayCommissionPercent: {"
+    },
+    {
+      "file": "models/kekeRide.model.js",
+      "line": 386,
+      "text": "servicePayCommission: {"
+    },
+    {
+      "file": "models/marketplace.model.js",
+      "line": 74,
+      "text": "featured: {"
+    },
+    {
+      "file": "models/marketplaceOrder.model.js",
+      "line": 121,
+      "text": "deliveryFee: {"
+    },
+    {
+      "file": "models/miniApp.model.js",
+      "line": 48,
+      "text": "featured: {"
+    },
+    {
+      "file": "models/partner.model.js",
+      "line": 61,
+      "text": "dailyLimit: {"
+    },
+    {
+      "file": "models/productCommission.model.js",
+      "line": 3,
+      "text": "const productCommissionSchema = new mongoose.Schema("
+    },
+    {
+      "file": "models/productCommission.model.js",
+      "line": 27,
+      "text": "headOfficeCommission: {"
+    },
+    {
+      "file": "models/productCommission.model.js",
+      "line": 34,
+      "text": "agentCommission: {"
+    },
+    {
+      "file": "models/productCommission.model.js",
+      "line": 40,
+      "text": "stateCommission: {"
+    },
+    {
+      "file": "models/productCommission.model.js",
+      "line": 46,
+      "text": "zonalCommission: {"
+    },
+    {
+      "file": "models/productCommission.model.js",
+      "line": 75,
+      "text": "productCommissionSchema.index("
+    },
+    {
+      "file": "models/productCommission.model.js",
+      "line": 86,
+      "text": "\"ProductCommission\","
+    },
+    {
+      "file": "models/productCommission.model.js",
+      "line": 87,
+      "text": "productCommissionSchema"
+    },
+    {
+      "file": "models/riderWithdrawal.model.js",
+      "line": 8,
+      "text": "| This model stores every Rider commission-withdrawal request."
+    },
+    {
+      "file": "models/riderWithdrawal.model.js",
+      "line": 60,
+      "text": "fee: {"
+    },
+    {
+      "file": "models/riderWithdrawal.model.js",
+      "line": 107,
+      "text": "\"ServicePay Rider commission withdrawal\","
+    },
+    {
+      "file": "models/riderWithdrawal.model.js",
+      "line": 308,
+      "text": "fee:"
+    },
+    {
+      "file": "models/riderWithdrawal.model.js",
+      "line": 309,
+      "text": "Number(this.fee || 0),"
+    },
+    {
+      "file": "models/securewaveWebhook.model.js",
+      "line": 51,
+      "text": "fees: {"
+    },
+    {
+      "file": "models/transaction.model.js",
+      "line": 84,
+      "text": "agentCommission: {"
+    },
+    {
+      "file": "models/transaction.model.js",
+      "line": 90,
+      "text": "stateManagerCommission: {"
+    },
+    {
+      "file": "models/transaction.model.js",
+      "line": 96,
+      "text": "zonalManagerCommission: {"
+    },
+    {
+      "file": "models/user.model.js",
+      "line": 535,
+      "text": "commissionBalance: {"
+    },
+    {
+      "file": "routes/auth.routes.js",
+      "line": 25,
+      "text": "limits: {"
+    },
+    {
+      "file": "routes/delivery.routes.js",
+      "line": 10,
+      "text": "payDeliveryFee,"
+    },
+    {
+      "file": "routes/delivery.routes.js",
+      "line": 13,
+      "text": "setDeliveryFee,"
+    },
+    {
+      "file": "routes/delivery.routes.js",
+      "line": 107,
+      "text": "payDeliveryFee"
+    },
+    {
+      "file": "routes/delivery.routes.js",
+      "line": 138,
+      "text": "\"/fee/:id\","
+    },
+    {
+      "file": "routes/delivery.routes.js",
+      "line": 140,
+      "text": "setDeliveryFee"
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 18,
+      "text": "* Check whether Electricity is enabled"
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 21,
+      "text": "const electricityEnabled = async ("
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 33,
+      "text": "* Keep the service enabled when settings"
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 41,
+      "text": "settings.platform?.maintenanceMode ==="
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 46,
+      "text": "code: \"MAINTENANCE_MODE\","
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 48,
+      "text": "\"ServicePay is temporarily under maintenance. Please try again later.\","
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 54,
+      "text": "?.electricityEnabled === false"
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 82,
+      "text": "* meter types and payment limits."
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 97,
+      "text": "electricityEnabled,"
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 110,
+      "text": "electricityEnabled,"
+    },
+    {
+      "file": "routes/electricity.routes.js",
+      "line": 117,
+      "text": "* service is disabled or in maintenance."
+    },
+    {
+      "file": "routes/kyc.routes.js",
+      "line": 8,
+      "text": "limits: {"
+    },
+    {
+      "file": "routes/management.routes.js",
+      "line": 16,
+      "text": "getRoleCommissions,"
+    },
+    {
+      "file": "routes/management.routes.js",
+      "line": 65,
+      "text": "\"/role-commissions\","
+    },
+    {
+      "file": "routes/management.routes.js",
+      "line": 66,
+      "text": "getRoleCommissions"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 10,
+      "text": "getProductCommissions,"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 11,
+      "text": "upsertProductCommission,"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 12,
+      "text": "updateProductCommission,"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 13,
+      "text": "updateProductCommissionStatus,"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 14,
+      "text": "deleteProductCommission,"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 16,
+      "text": "\"../controllers/productCommission.controller\""
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 32,
+      "text": "\"Only Head Office can manage product commissions.\","
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 44,
+      "text": "getProductCommissions"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 49,
+      "text": "upsertProductCommission"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 54,
+      "text": "updateProductCommission"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 59,
+      "text": "updateProductCommissionStatus"
+    },
+    {
+      "file": "routes/productCommission.routes.js",
+      "line": 64,
+      "text": "deleteProductCommission"
+    },
+    {
+      "file": "routes/rider.routes.js",
+      "line": 154,
+      "text": "\"/commission-summary\","
+    },
+    {
+      "file": "routes/rider.routes.js",
+      "line": 156,
+      "text": "riderWithdrawalController.getCommissionSummary"
+    },
+    {
+      "file": "routes/servicepayFeatures.routes.js",
+      "line": 8,
+      "text": "\"../controllers/servicepayFeatures.controller\""
+    },
+    {
+      "file": "routes/servicepayFeatures.routes.js",
+      "line": 63,
+      "text": "* Secure transactional feature routes."
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 8,
+      "text": "creditRiderCommissionIfEligible,"
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 10,
+      "text": "\"../services/riderCommission.service\""
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 14,
+      "text": "\"rider-delivered-commission-backfill-2026-08-09-v1\";"
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 16,
+      "text": "async function backfillDeliveredRiderCommissionsOnce() {"
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 30,
+      "text": "\"\u2705 Rider commission backfill already completed.\""
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 56,
+      "text": "riderCommissionCredited: {"
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 60,
+      "text": "deliveryFee: {"
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 78,
+      "text": "await creditRiderCommissionIfEligible({"
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 124,
+      "text": "\"BACKFILL_DELIVERED_RIDER_COMMISSIONS\","
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 143,
+      "text": "\" RIDER COMMISSION BACKFILL\""
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 152,
+      "text": "`Commission credited: ${credited}`"
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 178,
+      "text": "\"\u274c Rider commission backfill failed:\","
+    },
+    {
+      "file": "scripts/backfillDeliveredRiderCommissionsOnce.js",
+      "line": 188,
+      "text": "backfillDeliveredRiderCommissionsOnce;"
+    },
+    {
+      "file": "scripts/createAdmin.js",
+      "line": 47,
+      "text": "commissionBalance: 0,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 3,
+      "text": "const Commission = require(\"../models/commission.model\");"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 4,
+      "text": "const ProductCommission = require("
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 5,
+      "text": "\"../models/productCommission.model\""
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 139,
+      "text": "const getProductCommissionSetting ="
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 162,
+      "text": "return ProductCommission.findOne({"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 171,
+      "text": "const buildCommissionRecord = ({"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 182,
+      "text": "commissionAmount,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 204,
+      "text": "* Commission Model, amma ba ma amfani"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 207,
+      "text": "commissionRate: 0,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 209,
+      "text": "commissionAmount,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 214,
+      "text": "`${beneficiaryRole} commission for ${productName}`,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 225,
+      "text": "commissionType: \"FIXED_AMOUNT\","
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 230,
+      "text": "const saveCommissionRecord = async (record) => {"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 233,
+      "text": "* Commission.create() yana bari unique index ya tabbatar"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 234,
+      "text": "* cewa transaction \u0257aya ba zai ba mutum commission sau biyu ba."
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 236,
+      "text": "const savedCommission = await Commission.create(record);"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 239,
+      "text": "const commissionAmount = roundMoney(record.commissionAmount);"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 243,
+      "text": "commissionAmount > 0 &&"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 250,
+      "text": "walletBalance: commissionAmount,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 251,
+      "text": "commissionBalance: commissionAmount,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 262,
+      "text": "* Idan beneficiary bai samu ba, mu cire commission record"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 265,
+      "text": "await Commission.deleteOne({"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 266,
+      "text": "_id: savedCommission._id,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 270,
+      "text": "\"Commission beneficiary account was not found.\""
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 275,
+      "text": "return savedCommission;"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 283,
+      "text": "const existingCommission = await Commission.findOne({"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 289,
+      "text": "if (existingCommission) {"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 290,
+      "text": "return existingCommission;"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 298,
+      "text": "const distributeCommission = async ({"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 325,
+      "text": "\"Commission is only created for successful transactions.\","
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 326,
+      "text": "commissions: [],"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 341,
+      "text": "await getProductCommissionSetting({"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 353,
+      "text": "\"No active commission setting was found for this product.\","
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 354,
+      "text": "commissions: [],"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 379,
+      "text": "commissions: [],"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 384,
+      "text": "setting.agentCommission"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 388,
+      "text": "setting.stateCommission"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 392,
+      "text": "setting.zonalCommission"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 395,
+      "text": "const configuredCommissionTotal ="
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 403,
+      "text": "* Kariyar kada commissions su fi"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 407,
+      "text": "configuredCommissionTotal >"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 411,
+      "text": "`Configured commissions \u20a6${configuredCommissionTotal} exceed net profit \u20a6${calculatedNetProfit}.`"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 430,
+      "text": "commissionAmount:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 447,
+      "text": "commissionAmount:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 464,
+      "text": "commissionAmount:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 480,
+      "text": "* net profit minus commissions da"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 495,
+      "text": "commissionAmount:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 499,
+      "text": "const savedCommissions = [];"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 505,
+      "text": "allocation.commissionAmount <= 0"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 511,
+      "text": "buildCommissionRecord({"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 538,
+      "text": "commissionAmount:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 539,
+      "text": "allocation.commissionAmount,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 546,
+      "text": "configuredAgentCommission:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 549,
+      "text": "configuredStateCommission:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 552,
+      "text": "configuredZonalCommission:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 555,
+      "text": "productCommissionSettingId:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 561,
+      "text": "await saveCommissionRecord("
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 565,
+      "text": "savedCommissions.push(saved);"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 570,
+      "text": "savedCommissions.reduce("
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 574,
+      "text": "item.commissionAmount || 0"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 600,
+      "text": "configuredCommissions: {"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 609,
+      "text": "commissions:"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 610,
+      "text": "savedCommissions,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 614,
+      "text": "const reverseTransactionCommissions ="
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 630,
+      "text": "await Commission.updateMany("
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 663,
+      "text": "distributeCommission,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 664,
+      "text": "reverseTransactionCommissions,"
+    },
+    {
+      "file": "services/commission.service.js",
+      "line": 665,
+      "text": "getProductCommissionSetting,"
+    },
+    {
+      "file": "services/email.service.js",
+      "line": 15,
+      "text": "const emailEnabled = () =>"
+    },
+    {
+      "file": "services/email.service.js",
+      "line": 19,
+      "text": "if (!emailEnabled()) {"
+    },
+    {
+      "file": "services/email.service.js",
+      "line": 271,
+      "text": "if (!emailEnabled()) {"
+    },
+    {
+      "file": "services/email.service.js",
+      "line": 285,
+      "text": "emailEnabled,"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 4,
+      "text": "const TIER_LIMITS = {"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 10,
+      "text": "process.env.KYC_TIER1_DAILY_LIMIT || 200000"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 19,
+      "text": "process.env.KYC_TIER2_DAILY_LIMIT || 1000000"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 28,
+      "text": "process.env.KYC_TIER3_DAILY_LIMIT || 5000000"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 62,
+      "text": "* requested higher transaction limit before approval."
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 87,
+      "text": "const limit ="
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 88,
+      "text": "TIER_LIMITS[result.tier] ||"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 89,
+      "text": "TIER_LIMITS.TIER_1;"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 94,
+      "text": "perTransactionLimit: limit.perTransaction,"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 95,
+      "text": "dailyLimit: limit.daily,"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 99,
+      "text": "const checkDebitLimit = async ({"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 117,
+      "text": "perTransactionLimit,"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 118,
+      "text": "dailyLimit,"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 121,
+      "text": "if (numericAmount > perTransactionLimit) {"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 123,
+      "text": "`${tier.replace(\"_\", \" \")} transaction limit exceeded. ` +"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 124,
+      "text": "`Maximum per transaction is \u20a6${perTransactionLimit.toLocaleString(\"en-NG\")}.`"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 127,
+      "text": "error.code = \"KYC_PER_TRANSACTION_LIMIT\";"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 173,
+      "text": "dailyLimit"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 177,
+      "text": "dailyLimit - spentToday"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 181,
+      "text": "`${tier.replace(\"_\", \" \")} daily transaction limit exceeded. ` +"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 185,
+      "text": "error.code = \"KYC_DAILY_LIMIT\";"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 195,
+      "text": "perTransactionLimit,"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 196,
+      "text": "dailyLimit,"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 199,
+      "text": "dailyLimit -"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 206,
+      "text": "TIER_LIMITS,"
+    },
+    {
+      "file": "services/kycTier.service.js",
+      "line": 210,
+      "text": "checkDebitLimit,"
+    },
+    {
+      "file": "services/ledger.service.js",
+      "line": 234,
+      "text": "* SERVICEPAY_KYC_LIMIT_GUARD_V1"
+    },
+    {
+      "file": "services/ledger.service.js",
+      "line": 239,
+      "text": "* KYC_LIMIT_ENFORCEMENT_ENABLED=true"
+    },
+    {
+      "file": "services/ledger.service.js",
+      "line": 241,
+      "text": "const kycLimitEnforcementEnabled ="
+    },
+    {
+      "file": "services/ledger.service.js",
+      "line": 243,
+      "text": "process.env.KYC_LIMIT_ENFORCEMENT_ENABLED || \"false\""
+    },
+    {
+      "file": "services/ledger.service.js",
+      "line": 248,
+      "text": "if (kycLimitEnforcementEnabled) {"
+    },
+    {
+      "file": "services/ledger.service.js",
+      "line": 250,
+      "text": "checkDebitLimit,"
+    },
+    {
+      "file": "services/ledger.service.js",
+      "line": 253,
+      "text": "await checkDebitLimit({"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 8,
+      "text": "| CREDIT RIDER COMMISSION"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 11,
+      "text": "| Commission is credited only when:"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 14,
+      "text": "| 2. Delivery has a valid delivery fee"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 16,
+      "text": "| 4. Commission has not been credited before"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 22,
+      "text": "const creditRiderCommissionIfEligible ="
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 85,
+      "text": ".riderCommissionCredited ==="
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 93,
+      "text": ".riderCommissionAmount ||"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 107,
+      "text": "const deliveryFee = Number("
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 108,
+      "text": "delivery.deliveryFee || 0"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 113,
+      "text": "deliveryFee"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 115,
+      "text": "deliveryFee <= 0"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 118,
+      "text": "\"DELIVERY_FEE_NOT_SET\";"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 123,
+      "text": "* Calculate and lock commission"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 127,
+      "text": "delivery.calculateCommission();"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 129,
+      "text": "const commissionAmount ="
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 132,
+      "text": ".riderCommissionAmount ||"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 145,
+      "text": "commissionAmount"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 147,
+      "text": "commissionAmount < 0"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 150,
+      "text": "\"INVALID_COMMISSION\";"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 163,
+      "text": "riderCommissionCredited: {"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 172,
+      "text": "riderCommissionAmount:"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 173,
+      "text": "commissionAmount,"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 177,
+      "text": "commissionCalculatedAt:"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 179,
+      "text": ".commissionCalculatedAt ||"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 182,
+      "text": "riderCommissionCredited:"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 185,
+      "text": "riderCommissionCreditedAt:"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 188,
+      "text": "riderCommissionStatus:"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 217,
+      "text": "commissionAmount,"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 220,
+      "text": "commissionAmount,"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 238,
+      "text": "commissionAmount,"
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 241,
+      "text": "\"COMMISSION_CREDITED\","
+    },
+    {
+      "file": "services/riderCommission.service.js",
+      "line": 253,
+      "text": "creditRiderCommissionIfEligible,"
+    }
+  ],
+  "mount_hits": [
+    {
+      "file": "index.js",
+      "line": 207,
+      "text": "app.use(\"/api/settings\", appSettingsRoutes);"
+    },
+    {
+      "file": "index.js",
+      "line": 219,
+      "text": "app.use('/api/admin/cards', adminCardRoutes);"
+    },
+    {
+      "file": "index.js",
+      "line": 232,
+      "text": "app.use(\"/api/admin/partners\", adminPartnerRoutes);"
+    },
+    {
+      "file": "index.js",
+      "line": 233,
+      "text": "app.use(\"/api/admin/partner-applications\", adminPartnerApplicationRoutes);"
+    },
+    {
+      "file": "index.js",
+      "line": 237,
+      "text": "app.use(\"/api/business-wallet\", businessWalletRoutes);"
+    },
+    {
+      "file": "index.js",
+      "line": 241,
+      "text": "app.use(\"/api/admin/kyc\", adminKycRoutes);"
+    },
+    {
+      "file": "index.js",
+      "line": 242,
+      "text": "app.use(\"/api/kyc\", kycRoutes);"
+    },
+    {
+      "file": "index.js",
+      "line": 244,
+      "text": "app.use(\"/api/admin/role-users\", adminRoleUsersRoutes);"
+    }
+  ]
+}

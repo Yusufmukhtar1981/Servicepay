@@ -1,0 +1,74 @@
+Implement the ServicePay Admin KYC manual review workflow end-to-end in this servicepay-admin project, using the existing production ServicePay API and existing bearer-token/admin authentication. Do not create mock data or fake endpoints.
+
+Requirements:
+
+1. Upgrade the Admin KYC screen so Head Office can search customers by:
+   - Full name
+   - Phone number
+   - Email
+   - Exact NIN
+   - Exact BVN
+
+2. Use the production endpoint:
+   GET /api/admin/kyc?search=<value>
+   or the currently implemented equivalent endpoint in this codebase/backend. Inspect the existing API contract first and use the real route already available.
+
+3. Search results must show:
+   - Customer full name
+   - Phone
+   - Email
+   - KYC status
+   - Submitted NIN
+   - Submitted BVN
+   - Tier if available
+   - Verification method
+   - Verified by
+   - Verified date/time
+
+4. Clicking a customer should open a full KYC detail modal/page showing all available submitted KYC information and documents.
+
+5. Add a clear Head Office action:
+   “Manual Verify / Approve”
+
+6. Head Office must be able to manually verify a customer even when optional KYC documents or provider-side automatic verification requirements are incomplete, as long as submitted NIN and BVN are valid 11-digit numeric values.
+
+7. Manual approval must call the real protected backend route already implemented for admin KYC override, using the backend’s expected payload such as:
+   status: VERIFIED
+   manualOverride: true
+   Do not invent a new API if the production backend already contains this route.
+
+8. On successful manual verification:
+   - Refresh from server
+   - Show KYC status as VERIFIED
+   - Show verification method as MANUAL_ADMIN_OVERRIDE
+   - Show verifiedBy / verifiedAt when returned
+   - Do not fake local success if the server rejects the action
+
+9. Preserve HEAD_OFFICE-only authorization. Do not allow normal staff or customers to perform manual KYC verification.
+
+10. Keep compatibility with ServicePay Empowerment:
+   once a customer is manually KYC VERIFIED in the backend, the existing Empowerment beneficiary verification flow must recognize the same persisted verified KYC state.
+
+11. Improve UX:
+   - Search box at top of Admin KYC
+   - Search button/icon
+   - Loading state
+   - “No customer found” state
+   - Clear error messages
+   - Refresh after approval
+   - Mobile/web responsive layout
+   - Keep existing ServicePay green styling
+
+12. Do not change unrelated admin features.
+13. Do not create a second KYC system.
+14. Reuse existing models/services/routes wherever possible.
+15. Inspect current code before editing and preserve existing working functionality.
+
+After implementation:
+- review all changed files,
+- run every available static/test check in this environment,
+- report exactly which files changed,
+- report the exact API endpoint used for search,
+- report the exact API endpoint used for manual verification,
+- confirm that successful manual verification persists on the server,
+- and leave the task ready for commit/push.

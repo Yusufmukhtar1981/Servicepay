@@ -1,0 +1,38 @@
+Continue from the current checkpoint. DO NOT rewrite, redesign, or revert any of the reviewed fixes.
+
+The fixes are already completed and tested locally:
+- Backend commit: 5d52eb3
+- Admin commit: b00a627
+- Backend Delivery/Marketplace/dashboard/checkout/assignment tests: 41 passed
+- Focused route/dashboard contracts: 15 passed
+- Admin Executive Flutter tests: 8 passed
+- Exact Admin production web build: passed
+
+The ONLY remaining problem is that production has not received these commits.
+
+Current production failures:
+1. Delivery available-riders endpoint returns 404 Route not found.
+2. Marketplace products endpoint returns 404 Route not found.
+
+Your task now:
+1. Diagnose the Git/GitHub authentication and repository push problem.
+2. Verify the correct GitHub remote, branch and repository for BOTH backend and admin.
+3. Use the available GitHub/Replit integration or another safe authenticated method to push the existing reviewed commits.
+4. Do NOT create duplicate commits unless absolutely necessary.
+5. Do NOT modify working production features.
+6. After pushing, verify that the remote branch heads actually contain commits 5d52eb3 and b00a627 or their exact equivalent if a controlled cherry-pick is required.
+7. Trigger/wait for the normal production deployments.
+8. Verify the deployed backend is running the new revision.
+9. Test the REAL production endpoints again, especially:
+   - dashboard
+   - Delivery available-riders
+   - Marketplace products
+10. Verify the Admin production deployment as well.
+11. Confirm the Admin Dashboard loads clearly without the previous blurry/dim rendering issue and Marketplace works correctly.
+12. Run final production smoke tests for customer frontend, admin, Delivery and Marketplace.
+
+IMPORTANT:
+Do not tell me the task is complete merely because local tests pass.
+SUCCESS means the fixes are actually PUSHED, DEPLOYED and VERIFIED ON PRODUCTION.
+
+If GitHub/Replit authentication still blocks mutation, do not change application code trying to work around it. Clearly identify the exact authentication/permission blocker and give me the single smallest manual action I need to perform in Replit/GitHub to unblock the push.

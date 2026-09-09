@@ -1,0 +1,15 @@
+const router = require("express").Router();
+const c = require("../controllers/interstateLogistics.controller");
+const { protect } = require("../middleware/auth.middleware");
+const { loadStaffRole, requirePermission } = require("../middleware/staffPermission.middleware");
+router.use(protect, loadStaffRole);
+router.get("/shipments", requirePermission("branch.delivery.view"), c.listBranch);
+router.patch("/shipments/:id/status", requirePermission("branch.delivery.manage"), c.branchStatus);
+router.post("/shipments/:id/assign-rider", requirePermission("branch.delivery.manage"), c.assignRider);
+router.patch("/shipments/:id/confirm-delivery-fallback", requirePermission("branch.delivery.manage"), c.confirmDeliveryFallback);
+router.post("/shipments/:id/confirm-delivery-fallback", requirePermission("branch.delivery.manage"), c.confirmDeliveryFallback);
+const action = (status) => (req, res, next) => { req.body.status = status; next(); };
+router.patch("/shipments/:id/receive", requirePermission("branch.delivery.manage"), action("RECEIVED_AT_ORIGIN_HUB"), c.branchStatus);
+router.patch("/shipments/:id/verify", requirePermission("branch.delivery.manage"), action("VERIFIED_AT_ORIGIN_HUB"), c.branchStatus);
+router.patch("/shipments/:id/ready-for-dispatch", requirePermission("branch.delivery.manage"), action("READY_FOR_INTERSTATE_DISPATCH"), c.branchStatus);
+module.exports = router;

@@ -1,0 +1,113 @@
+COMPLETE TASK #28 AS A PRODUCTION-GRADE PARTNER API TRANSACTION RECONCILIATION SYSTEM.
+
+The Partner API core is already implemented and tested. Do not redesign or rewrite working Partner API authentication, permissions, credential management, wallet checks, limits, idempotency, Airtime or Data flows unnecessarily.
+
+GOAL:
+No Partner API Airtime/Data transaction may be incorrectly left as FAILED or SUCCESSFUL when the upstream provider outcome is unknown.
+
+Implement safe handling for provider timeout, network failure, malformed response, delayed response, and indeterminate provider status.
+
+REQUIREMENTS:
+
+1. Introduce/use an explicit transaction state for uncertain provider outcomes:
+   PENDING / PROCESSING / UNKNOWN / REQUERY_REQUIRED
+   Use the naming that best fits the existing transaction architecture.
+
+2. Never immediately mark a provider-timeout transaction FAILED if the provider may have received the request.
+
+3. Preserve:
+   - partner ID
+   - service
+   - amount
+   - phone/data beneficiary
+   - internal transaction reference
+   - partner reference/idempotency key
+   - provider reference if known
+   - provider name
+   - wallet debit state
+   - request timestamps
+   - last requery timestamp
+   - retry/requery count
+
+4. Add controlled requery/reconciliation logic using the actual Airtime/Data provider capabilities already present in this codebase.
+   Do NOT invent unsupported provider endpoints.
+
+5. If the provider confirms SUCCESS:
+   - finalize transaction once
+   - do not debit partner twice
+   - retain successful wallet debit
+   - record provider reference
+   - update Partner API activity/history
+   - notify/log safely
+
+6. If provider confirms FAILED:
+   - mark failed
+   - safely reverse/refund the partner wallet exactly once if wallet was already debited
+   - create auditable reversal ledger/transaction records
+   - prevent duplicate refunds
+
+7. If result remains uncertain:
+   - keep transaction pending/requery-required
+   - do not duplicate purchase
+   - do not automatically refund until final failure is known unless existing provider rules prove request was never accepted.
+
+8. Add Head Office/Admin reconciliation controls where appropriate:
+   - view unresolved Partner API transactions
+   - requery
+   - inspect transaction/provider references
+   - manually resolve only with explicit audited controls if the architecture already supports this safely.
+
+9. Partner-facing API response:
+   For uncertain requests, return a safe non-success finality response such as:
+   status: PENDING
+   reference: <ServicePay reference>
+   message: "Transaction is being confirmed."
+   Do not tell partner to resubmit the same purchase.
+   Explain that the same reference/idempotency key should be queried/reused according to implemented API design.
+
+10. Add/reuse a Partner API transaction-status/requery endpoint if one is required and consistent with the current architecture.
+    Document the actual endpoint.
+
+11. Idempotency is mandatory:
+    Repeating the same partner request or reference must never cause a second Airtime/Data purchase or second debit.
+
+12. Add regression tests for at least:
+    - normal successful provider response
+    - confirmed provider failure
+    - provider timeout -> pending
+    - pending -> later successful
+    - pending -> later failed -> one refund
+    - repeated requery
+    - repeated original API request
+    - no duplicate debit
+    - no duplicate provider purchase
+    - no duplicate refund
+    - revoked/suspended partner cannot exploit requery
+    - transaction status cannot be accessed by another partner.
+
+13. Preserve existing security:
+    - never expose provider secrets
+    - never expose apiSecretHash
+    - partner can only access own transactions
+    - Head Office actions are authorized and audited.
+
+14. Run:
+    - focused Partner API tests
+    - full backend suite
+    - Flutter analyze on affected Partner API screens if changed
+    - customer web workflow
+    - Android APK workflow where applicable.
+
+15. Publish safely to GitHub main without force-push and without overwriting unrelated changes.
+
+DO NOT STOP AT A PLAN.
+IMPLEMENT, TEST, PUBLISH, AND REPORT:
+- files changed
+- final transaction states
+- actual reconciliation/requery behavior
+- actual supported status/requery endpoints
+- refund protection
+- test results
+- GitHub commit
+- web/APK workflow result
+- any real remaining blocker.

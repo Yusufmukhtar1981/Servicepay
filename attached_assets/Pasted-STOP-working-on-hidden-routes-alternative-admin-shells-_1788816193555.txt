@@ -1,0 +1,226 @@
+STOP working on hidden routes, alternative admin shells, demo navigation, or test-only Executive Management pages.
+
+CURRENT FACT:
+I am using the REAL existing ServicePay Head Office Dashboard, and I STILL cannot see Executive Management or Create SVP.
+
+I need a DIRECT visible integration into the exact Head Office Dashboard that already exists.
+
+WORK ONLY IN MAIN SERVICEPAY.
+DO NOT TOUCH servicepay-admin.
+DO NOT TOUCH VULL.
+DO NOT RESET OR DELETE PRODUCTION DATA.
+DO NOT DEPLOY AUTOMATICALLY.
+
+==================================================
+1. FIND THE EXACT HEAD OFFICE SCREEN I CURRENTLY USE
+==================================================
+
+Run the existing ServicePay application.
+
+Identify the exact widget/page/component rendered after a HEAD_OFFICE user logs in.
+
+Do NOT build a new Admin Dashboard.
+
+Use the exact existing Head Office Dashboard that currently contains the ServicePay Admin operational features.
+
+Find its real source file and navigation structure.
+
+Report the exact source file/component before making the integration.
+
+==================================================
+2. PUT EXECUTIVE MANAGEMENT DIRECTLY ON THE DASHBOARD
+==================================================
+
+Add a highly visible card/button DIRECTLY near the top of the existing Head Office Dashboard.
+
+Text:
+
+EXECUTIVE MANAGEMENT
+
+Subtitle:
+
+Manage SVPs, executive reports, permissions and performance
+
+Button:
+
+OPEN EXECUTIVE MANAGEMENT
+
+Use a professional executive icon.
+
+This card MUST be visible immediately after Head Office login without scrolling through hidden navigation.
+
+Do NOT depend only on sidebar/horizontal menu visibility.
+
+==================================================
+3. ALSO ADD IT TO THE EXISTING NAVIGATION
+==================================================
+
+Add:
+
+Executive Management
+
+to the same navigation list used by the current Head Office Dashboard.
+
+It must not be a separate unused navigation component.
+
+Inside Executive Management show:
+
+SVP Management
+SVP Reports
+SVP Audit Logs
+
+==================================================
+4. CREATE SVP MUST BE DIRECTLY ACCESSIBLE
+==================================================
+
+On the Executive Management landing page, place a large visible primary button:
+
++ CREATE SVP
+
+Also add a secondary shortcut directly on the Head Office Dashboard:
+
++ CREATE SVP
+
+Clicking it must open the real Create SVP form.
+
+==================================================
+5. CREATE SVP FORM
+==================================================
+
+Use the real backend/database.
+
+Fields:
+
+Full Name
+Email
+Phone Number
+Executive ID
+SVP Title
+Department
+Scope Type
+Region
+State
+Assigned Branches
+Assigned Products
+Permissions
+Temporary Password
+Status
+
+Support multiple SVPs.
+
+On success:
+
+“SVP account created successfully.”
+
+Then show the new account in SVP Management.
+
+==================================================
+6. DO NOT USE MOCK DATA
+==================================================
+
+No mocked APIs.
+
+No demo-only dashboard.
+
+No fake SVP account.
+
+No isolated test shell.
+
+Use the real ServicePay authentication and real backend.
+
+==================================================
+7. VISUAL TEST IS MANDATORY
+==================================================
+
+Start the actual app preview.
+
+Login/render as HEAD_OFFICE.
+
+Capture/inspect the actual rendered Head Office Dashboard.
+
+You may only mark PASS if the rendered screen visibly contains BOTH:
+
+EXECUTIVE MANAGEMENT
+
+and
+
++ CREATE SVP
+
+If they are not physically visible on the rendered screen, continue fixing.
+
+==================================================
+8. VERIFY CLICK FLOW
+==================================================
+
+Test this exact visible flow:
+
+HEAD OFFICE DASHBOARD
+→ EXECUTIVE MANAGEMENT
+→ SVP MANAGEMENT
+→ + CREATE SVP
+→ Create form
+
+Also test the direct dashboard shortcut:
+
+HEAD OFFICE DASHBOARD
+→ + CREATE SVP
+→ Create form
+
+==================================================
+9. ROLE VISIBILITY
+==================================================
+
+Determine the actual role returned for the current Head Office account.
+
+Make the visible card available to the legitimate existing Head Office full-access roles:
+
+HEAD_OFFICE
+HEAD_OFFICE_ADMIN
+SUPER_ADMIN
+ADMIN
+
+Do not hide Executive Management because a newly-added permission has not yet been seeded.
+
+Head Office must automatically have access.
+
+==================================================
+10. PRESERVE EVERYTHING ELSE
+==================================================
+
+Do not remove or break any existing ServicePay Head Office feature.
+
+Do not redesign the whole dashboard.
+
+Only integrate Executive Management cleanly.
+
+==================================================
+11. FINAL REPORT
+==================================================
+
+Report exactly:
+
+REAL HEAD OFFICE SOURCE FILE:
+REAL HEAD OFFICE ROLE VALUE:
+REAL HEAD OFFICE DASHBOARD IDENTIFIED: YES/NO
+
+EXECUTIVE MANAGEMENT CARD PHYSICALLY VISIBLE: PASS/FAIL
+CREATE SVP SHORTCUT PHYSICALLY VISIBLE: PASS/FAIL
+EXECUTIVE MANAGEMENT NAV ITEM PHYSICALLY VISIBLE: PASS/FAIL
+
+EXECUTIVE MANAGEMENT PAGE: PASS/FAIL
+SVP MANAGEMENT PAGE: PASS/FAIL
+CREATE SVP FORM: PASS/FAIL
+REAL BACKEND CONNECTED: PASS/FAIL
+MULTIPLE SVP SUPPORT: PASS/FAIL
+
+ACTUAL HEAD OFFICE PREVIEW VISUALLY VERIFIED: YES/NO
+
+EXISTING SERVICEPAY FEATURES PRESERVED: YES/NO
+PRODUCTION DATA PRESERVED: YES/NO
+SERVICEPAY-ADMIN MODIFIED: NO
+VULL MODIFIED: NO
+
+READY FOR USER TO OPEN PREVIEW AND SEE EXECUTIVE MANAGEMENT: YES/NO
+
+DO NOT DEPLOY.
+Stop only when READY FOR USER TO OPEN PREVIEW AND SEE EXECUTIVE MANAGEMENT is YES.

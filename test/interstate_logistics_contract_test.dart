@@ -63,4 +63,63 @@ void main() {
         3.5);
     expect(InterstateLogisticsContracts.adjustmentDue(shipment), 400);
   });
+
+  test('active configured routes are selected by directed state pair', () {
+    final List<Map<String, dynamic>> routes = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'id': 'kano-abuja',
+        'originState': 'KANO',
+        'destinationState': 'ABUJA'
+      },
+      <String, dynamic>{
+        'id': 'kano-lagos',
+        'originState': 'KANO',
+        'destinationState': 'LAGOS'
+      },
+      <String, dynamic>{
+        'id': 'abuja-kano',
+        'originState': 'ABUJA',
+        'destinationState': 'KANO'
+      },
+      <String, dynamic>{
+        'id': 'kano-kano-other-branch',
+        'originState': 'KANO',
+        'destinationState': 'KANO'
+      },
+    ];
+
+    expect(InterstateLogisticsContracts.pickupStates(routes),
+        <String>['ABUJA', 'KANO']);
+    expect(InterstateLogisticsContracts.destinationStates(routes),
+        <String>['ABUJA', 'KANO', 'LAGOS']);
+    expect(
+        InterstateLogisticsContracts.routesForStatePair(routes, 'Kano', 'Abuja')
+            .single['id'],
+        'kano-abuja');
+    expect(
+        InterstateLogisticsContracts.routesForStatePair(routes, 'KANO', 'KANO')
+            .single['id'],
+        'kano-kano-other-branch');
+    expect(
+        InterstateLogisticsContracts.routesForStatePair(
+            routes, 'LAGOS', 'ABUJA'),
+        isEmpty);
+  });
+
+  test('disabled logistics is not reported as a route loading failure', () {
+    expect(
+      InterstateLogisticsContracts.routeLoadError(
+        statusCode: 503,
+        code: 'FEATURE_DISABLED',
+      ),
+      'Interstate Logistics is temporarily unavailable. Please try again later.',
+    );
+    expect(
+      InterstateLogisticsContracts.routeLoadError(
+        statusCode: 502,
+        code: 'UPSTREAM_ERROR',
+      ),
+      'We could not load configured routes (502). Please retry.',
+    );
+  });
 }

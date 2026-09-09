@@ -1,0 +1,22 @@
+Please prepare this Flutter Android project for a Google Play production AAB release and generate a downloadable .aab file.
+Requirements:
+Inspect the existing Android configuration first. Do not break current working features.
+The current project may still use com.example.servicepay_app; replace it with a production package ID suitable for ServicePay only if it is safe with the existing Firebase configuration. If Firebase google-services.json is tied to the old package ID, explain and update the Firebase-compatible Android configuration correctly rather than breaking Firebase.
+Configure a proper release signing setup. Do not use debug signing for the Play Store release. Create or configure an upload keystore securely. Do not commit passwords, private keys, keystore files, or secrets into public source control.
+Ensure versionCode and versionName are valid for the first Google Play release.
+Keep Java/Kotlin compatibility at Java 17 where required by the project.
+Run flutter clean, flutter pub get, and any required launcher-icon generation.
+Run Flutter/Gradle validation and fix any build errors.
+Build the production bundle using flutter build appbundle --release.
+Verify the final file exists at build/app/outputs/bundle/release/app-release.aab.
+Confirm that the AAB is release-signed and not debug-signed.
+Do not change backend APIs, customer functionality, Rider functionality, wallet logic, Firebase behavior, or existing UI unless a change is strictly required for Android release compatibility.
+When finished, give me a short report containing:
+final package/application ID
+version name and version code
+signing method used
+exact AAB path
+whether the AAB is ready for Google Play Console
+any remaining Google Play/Firebase action I must perform manually
+Most importantly, make the resulting app-release.aab available for me to download from Replit.
+Work through the project autonomously and fix all release-build issues until a valid Google Play AAB is successfully produced. Do not stop after only giving instructions; perform the changes and build the AAB.

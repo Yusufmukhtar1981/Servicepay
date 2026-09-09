@@ -1,0 +1,10 @@
+---
+name: ServicePay executive administration
+description: Canonical location and security boundary for Executive Management and SVP capabilities.
+---
+
+Executive Management and SVP functionality must be built inside the main ServicePay Admin experience and its main backend. Do not add or mirror this functionality in the separate ServicePay Admin project. The existing Admin Dashboard must remain the post-login default. Executive Management is an approved separate module with a prominent dashboard entry, visible Create SVP action, and a clear session-preserving return to the Admin Dashboard. Completion requires authenticated visual verification in the real Admin entrypoint at desktop and mobile widths using a normal visible-form login; injected tokens or temporary browser sessions alone are insufficient.
+
+**Why:** The project direction explicitly consolidated Head Office and executive operations into the main ServicePay application to avoid split authority, duplicate behavior, and deployment ambiguity. A prior implementation passed automated checks while the real Head Office navigation still exposed no usable Executive Management entry.
+
+**How to apply:** Extend the main Admin dashboard body, navigation, authentication, APIs, permissions, reporting, and audit systems. Treat Head Office as the highest authority, isolate SVPs behind dedicated scoped endpoints, and leave the separate Admin project untouched. Keep Executive Management visible from the default Dashboard, but never replace that Dashboard with it. The module must offer Create SVP and Back to Admin Dashboard without clearing authentication. Before reporting completion, keep a real Admin preview service running, authenticate through its visible login form, inspect the returned role, and visually traverse dashboard entry, Executive Management, create visibility, and return behavior at desktop and mobile widths without mutating production data.

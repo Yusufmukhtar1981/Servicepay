@@ -1,0 +1,476 @@
+const EmpowermentOrganization = require(
+  "../models/empowermentOrganization.model"
+);
+
+const EmpowermentProgram = require(
+  "../models/empowermentProgram.model"
+);
+
+const EmpowermentBeneficiary = require(
+  "../models/empowermentBeneficiary.model"
+);
+
+const createOrganization = async (req, res) => {
+  try {
+    const {
+      name,
+      organizationType,
+      contactName,
+      phone,
+      email,
+      state,
+      lga,
+    } = req.body || {};
+
+    if (!name || !organizationType) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Organization name and organization type are required.",
+      });
+    }
+
+    const organization =
+      await EmpowermentOrganization.create({
+        name,
+        organizationType,
+        contactName: contactName || "",
+        phone: phone || "",
+        email: email || "",
+        state: state || "",
+        lga: lga || "",
+        createdBy: req.user?._id || null,
+      });
+
+    return res.status(201).json({
+      success: true,
+      message: "Empowerment organization created.",
+      organization,
+    });
+  } catch (error) {
+    console.error(
+      "CREATE EMPOWERMENT ORGANIZATION ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to create organization.",
+    });
+  }
+};
+
+const createProgram = async (req, res) => {
+  try {
+    const {
+      organizationId,
+      name,
+      description,
+      programType,
+      targetGroup,
+      state,
+      lga,
+      ward,
+      amountPerBeneficiary,
+      targetBeneficiaries,
+      startDate,
+      endDate,
+      publicApplicationEnabled,
+      publicTransparencyEnabled,
+    } = req.body || {};
+
+    if (
+      !organizationId ||
+      !name ||
+      !amountPerBeneficiary ||
+      !targetBeneficiaries
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Organization, program name, amount and beneficiary target are required.",
+      });
+    }
+
+    const organization =
+      await EmpowermentOrganization.findById(
+        organizationId
+      );
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found.",
+      });
+    }
+
+    const amount =
+      Number(amountPerBeneficiary);
+
+    const target =
+      Number(targetBeneficiaries);
+
+    const program =
+      await EmpowermentProgram.create({
+        organization: organization._id,
+        name,
+        description: description || "",
+        programType:
+          programType || "CASH_GRANT",
+        targetGroup:
+          targetGroup || "GENERAL",
+        state: state || "",
+        lga: lga || "",
+        ward: ward || "",
+        amountPerBeneficiary: amount,
+        targetBeneficiaries: target,
+        totalBudget: amount * target,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        publicApplicationEnabled:
+          publicApplicationEnabled === true,
+        publicTransparencyEnabled:
+          publicTransparencyEnabled === true,
+        createdBy: req.user?._id || null,
+      });
+
+    return res.status(201).json({
+      success: true,
+      message: "Empowerment program created.",
+      program,
+    });
+  } catch (error) {
+    console.error(
+      "CREATE EMPOWERMENT PROGRAM ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to create program.",
+    });
+  }
+};
+
+const addBeneficiary = async (req, res) => {
+  try {
+    const {
+      programId,
+      fullName,
+      phone,
+      email,
+      state,
+      lga,
+      ward,
+      userId,
+    } = req.body || {};
+
+    if (!programId || !fullName || !phone) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Program, full name and phone are required.",
+      });
+    }
+
+    const program =
+      await EmpowermentProgram.findById(
+        programId
+      );
+
+    if (!program) {
+      return res.status(404).json({
+        success: false,
+        message: "Program not found.",
+      });
+    }
+
+    const beneficiary =
+      await EmpowermentBeneficiary.create({
+        program: program._id,
+        user: userId || null,
+        fullName,
+        phone,
+        email: email || "",
+        state: state || "",
+        lga: lga || "",
+        ward: ward || "",
+        amount:
+          program.amountPerBeneficiary || 0,
+      });
+
+    return res.status(201).json({
+      success: true,
+      message: "Beneficiary added.",
+      beneficiary,
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This beneficiary already exists in the program.",
+      });
+    }
+
+    console.error(
+      "ADD EMPOWERMENT BENEFICIARY ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to add beneficiary.",
+    });
+  }
+};
+
+const listPrograms = async (req, res) => {
+  try {
+    const programs =
+      await EmpowermentProgram.find()
+        .populate("organization")
+        .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: programs.length,
+      programs,
+    });
+  } catch (error) {
+    console.error(
+      "LIST EMPOWERMENT PROGRAMS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load programs.",
+    });
+  }
+};
+
+const listBeneficiaries = async (req, res) => {
+  try {
+    const { programId } = req.params;
+
+    const beneficiaries =
+      await EmpowermentBeneficiary.find({
+        program: programId,
+      }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: beneficiaries.length,
+      beneficiaries,
+    });
+  } catch (error) {
+    console.error(
+      "LIST EMPOWERMENT BENEFICIARIES ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load beneficiaries.",
+    });
+  }
+};
+
+
+const updateOrganizationStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const status = String(req.body?.status || "").toUpperCase();
+
+    const allowed = [
+      "PENDING",
+      "ACTIVE",
+      "SUSPENDED",
+      "REJECTED",
+    ];
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid organization status.",
+      });
+    }
+
+    const organization =
+      await EmpowermentOrganization.findById(id);
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found.",
+      });
+    }
+
+    organization.status = status;
+    await organization.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Organization status updated to ${status}.`,
+      organization,
+    });
+  } catch (error) {
+    console.error(
+      "UPDATE EMPOWERMENT ORGANIZATION STATUS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to update organization status.",
+    });
+  }
+};
+
+const updateProgramStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const status = String(req.body?.status || "").toUpperCase();
+
+    const allowed = [
+      "DRAFT",
+      "OPEN",
+      "UNDER_REVIEW",
+      "APPROVED",
+      "DISBURSING",
+      "COMPLETED",
+      "SUSPENDED",
+      "CANCELLED",
+    ];
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid program status.",
+      });
+    }
+
+    const program =
+      await EmpowermentProgram.findById(id);
+
+    if (!program) {
+      return res.status(404).json({
+        success: false,
+        message: "Program not found.",
+      });
+    }
+
+    program.status = status;
+    await program.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Program status updated to ${status}.`,
+      program,
+    });
+  } catch (error) {
+    console.error(
+      "UPDATE EMPOWERMENT PROGRAM STATUS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to update program status.",
+    });
+  }
+};
+
+const updateBeneficiaryStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const status = String(
+      req.body?.status || ""
+    ).toUpperCase();
+
+    const rejectionReason = String(
+      req.body?.rejectionReason || ""
+    ).trim();
+
+    const allowed = [
+      "SUBMITTED",
+      "UNDER_REVIEW",
+      "APPROVED",
+      "REJECTED",
+      "PAYMENT_PENDING",
+      "PAID",
+      "FAILED",
+      "REVERSED",
+    ];
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid beneficiary status.",
+      });
+    }
+
+    if (
+      status === "REJECTED" &&
+      !rejectionReason
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Rejection reason is required.",
+      });
+    }
+
+    const beneficiary =
+      await EmpowermentBeneficiary.findById(id);
+
+    if (!beneficiary) {
+      return res.status(404).json({
+        success: false,
+        message: "Beneficiary not found.",
+      });
+    }
+
+    beneficiary.applicationStatus = status;
+
+    if (status === "REJECTED") {
+      beneficiary.rejectionReason =
+        rejectionReason;
+    } else {
+      beneficiary.rejectionReason = "";
+    }
+
+    await beneficiary.save();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        `Beneficiary status updated to ${status}.`,
+      beneficiary,
+    });
+  } catch (error) {
+    console.error(
+      "UPDATE EMPOWERMENT BENEFICIARY STATUS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to update beneficiary status.",
+    });
+  }
+};
+
+module.exports = {
+  createOrganization,
+  createProgram,
+  addBeneficiary,
+  listPrograms,
+  listBeneficiaries,
+  updateOrganizationStatus,
+  updateProgramStatus,
+  updateBeneficiaryStatus,
+};

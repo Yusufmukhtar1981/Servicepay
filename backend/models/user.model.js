@@ -1,5 +1,14 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const svpScopeSchema = new mongoose.Schema({
+  type: { type: String, enum: ["GLOBAL", "REGION", "STATE", "BRANCHES", "DEPARTMENT", "PRODUCTS", "CUSTOM"], required: true },
+  region: { type: String, trim: true, default: null },
+  state: { type: String, trim: true, default: null },
+  branchIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Branch" }],
+  department: { type: String, trim: true, default: null },
+  products: [{ type: String, trim: true, uppercase: true }],
+  filters: { type: mongoose.Schema.Types.Mixed, default: null },
+}, { _id: false });
 
 const userSchema = new mongoose.Schema(
   {
@@ -186,6 +195,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: [
         "HEAD_OFFICE",
+        "HEAD_OFFICE_ADMIN",
+        "SUPER_ADMIN",
+        "ADMIN",
+        "SVP",
         "STAFF",
         "BRANCH_MANAGER",
         "ZONAL_MANAGER",
@@ -769,6 +782,7 @@ const userSchema = new mongoose.Schema(
         "ACTIVE",
         "SUSPENDED",
         "BLOCKED",
+          "DISABLED",
       ],
       default: "ACTIVE",
       index: true,
@@ -1178,6 +1192,13 @@ userSchema.methods.setRiderLocation =
 // SERVICEPAY_SECURE_ONBOARDING_FIELDS
 // Optional fields: existing users remain fully compatible.
 userSchema.add({
+  // SVP is deliberately a first-class internal identity, not a configurable
+  // staff role.  This prevents a role edit from accidentally widening an
+  // executive's authority.
+  executiveId: { type: String, trim: true, uppercase: true, unique: true, sparse: true, index: true },
+  executiveTitle: { type: String, trim: true, maxlength: 120, default: "" },
+  svpPermissions: { type: [{ type: String, trim: true }], default: [] },
+  svpScope: { type: svpScopeSchema, default: undefined },
   // A Business Partner is an authenticated User with a separate operational
   // profile.  This intentionally does not overlap with the legacy API Partner
   // model, which represents an integration client.

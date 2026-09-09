@@ -1,0 +1,740 @@
+import 'package:flutter/material.dart';
+
+class CardsScreen extends StatefulWidget {
+  const CardsScreen({super.key});
+
+  @override
+  State<CardsScreen> createState() => _CardsScreenState();
+}
+
+class _CardsScreenState extends State<CardsScreen> {
+  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color softGreen = Color(0xFFEAF7F0);
+  static const Color background = Color(0xFFF7F9F8);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF17211B),
+        title: const Text(
+          'ServicePay Cards',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 30),
+          children: <Widget>[
+            const Text(
+              'Your Cards',
+              style: TextStyle(
+                fontSize: 25,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF17211B),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Manage your ServicePay virtual and physical cards.',
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.45,
+                color: Color(0xFF66736C),
+              ),
+            ),
+            const SizedBox(height: 22),
+            _buildVirtualCard(),
+            const SizedBox(height: 22),
+            _buildSectionTitle(
+              icon: Icons.credit_card_rounded,
+              title: 'Virtual Card',
+            ),
+            const SizedBox(height: 12),
+            _buildOptionCard(
+              icon: Icons.flash_on_rounded,
+              title: 'Create Virtual Card',
+              subtitle:
+                  'Create a digital ServicePay card for supported online payments.',
+              buttonText: 'Get Virtual Card',
+              onTap: () {
+                _showComingSoon(
+                  'Virtual Card',
+                  'Virtual card issuance will become available after the secure card issuing provider is connected.',
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            _buildSectionTitle(
+              icon: Icons.style_rounded,
+              title: 'Physical Card',
+            ),
+            const SizedBox(height: 12),
+            _buildOptionCard(
+              icon: Icons.local_shipping_outlined,
+              title: 'Request Physical Card',
+              subtitle:
+                  'Request your ServicePay ATM card and track production and delivery.',
+              buttonText: 'Request Card',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PhysicalCardRequestScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            _buildSecurityCard(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVirtualCard() {
+    return Container(
+      height: 210,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            Color(0xFF08783E),
+            Color(0xFF0A9250),
+            Color(0xFF075F34),
+          ],
+        ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x2908783E),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: <Widget>[
+          Positioned(
+            right: -42,
+            top: -48,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 30,
+            bottom: -70,
+            child: Container(
+              width: 150,
+              height: 150,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'S',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 22,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'ServicePay',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 11,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'VIRTUAL',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                const Text(
+                  '••••  ••••  ••••  ••••',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: <Widget>[
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            'CARD STATUS',
+                            style: TextStyle(
+                              color: Color(0xFFCDE9D8),
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Not Issued',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'SERVICEPAY',
+                        style: TextStyle(
+                          color: primaryGreen,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle({
+    required IconData icon,
+    required String title,
+  }) {
+    return Row(
+      children: <Widget>[
+        Container(
+          width: 39,
+          height: 39,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: softGreen,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icon,
+            color: primaryGreen,
+            size: 21,
+          ),
+        ),
+        const SizedBox(width: 11),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF17211B),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOptionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String buttonText,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFFE6ECE8),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            width: 50,
+            height: 50,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: softGreen,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              icon,
+              color: primaryGreen,
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF17211B),
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: Color(0xFF68766E),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                SizedBox(
+                  height: 42,
+                  child: ElevatedButton(
+                    onPressed: onTap,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                    ),
+                    child: Text(
+                      buttonText,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSecurityCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F8F3),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            Icons.shield_outlined,
+            color: primaryGreen,
+            size: 27,
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Card Security',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                    color: Color(0xFF17211B),
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'Card details will only be generated by an approved card issuing provider. ServicePay will not display fabricated card numbers, expiry dates or CVV.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.45,
+                    color: Color(0xFF5D6C63),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showComingSoon(
+    String title,
+    String message,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 30),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(28),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 48,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCE3DF),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 22),
+              Container(
+                width: 65,
+                height: 65,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: softGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.credit_card_rounded,
+                  color: primaryGreen,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 9),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  height: 1.5,
+                  color: Color(0xFF66736C),
+                ),
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: const Text(
+                    'Okay',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class PhysicalCardRequestScreen extends StatefulWidget {
+  const PhysicalCardRequestScreen({super.key});
+
+  @override
+  State<PhysicalCardRequestScreen> createState() =>
+      _PhysicalCardRequestScreenState();
+}
+
+class _PhysicalCardRequestScreenState extends State<PhysicalCardRequestScreen> {
+  static const Color primaryGreen = Color(0xFF08783E);
+
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController addressController = TextEditingController();
+  final TextEditingController stateController = TextEditingController();
+  final TextEditingController lgaController = TextEditingController();
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    phoneController.dispose();
+    addressController.dispose();
+    stateController.dispose();
+    lgaController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9F8),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF17211B),
+        title: const Text(
+          'Physical Card Request',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: <Widget>[
+          Container(
+            padding: const EdgeInsets.all(17),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF7F0),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: primaryGreen,
+                ),
+                SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    'Enter the delivery details for your ServicePay physical card. Submission to the backend will be enabled in the next stage.',
+                    style: TextStyle(
+                      height: 1.45,
+                      color: Color(0xFF425047),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          _field(
+            controller: nameController,
+            label: 'Full Name',
+            icon: Icons.person_outline_rounded,
+          ),
+          const SizedBox(height: 14),
+          _field(
+            controller: phoneController,
+            label: 'Phone Number',
+            icon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: 14),
+          _field(
+            controller: addressController,
+            label: 'Delivery Address',
+            icon: Icons.location_on_outlined,
+            maxLines: 3,
+          ),
+          const SizedBox(height: 14),
+          _field(
+            controller: stateController,
+            label: 'State',
+            icon: Icons.map_outlined,
+          ),
+          const SizedBox(height: 14),
+          _field(
+            controller: lgaController,
+            label: 'LGA',
+            icon: Icons.location_city_outlined,
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: _previewRequest,
+              icon: const Icon(Icons.credit_card_rounded),
+              label: const Text(
+                'Continue',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryGreen,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(
+          icon,
+          color: primaryGreen,
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: Color(0xFFE3E9E5),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: Color(0xFFE3E9E5),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: primaryGreen,
+            width: 1.5,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _previewRequest() {
+    if (nameController.text.trim().isEmpty ||
+        phoneController.text.trim().isEmpty ||
+        addressController.text.trim().isEmpty ||
+        stateController.text.trim().isEmpty ||
+        lgaController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please complete all card delivery information.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          title: const Text(
+            'Card Request Ready',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          content: const Text(
+            'Your information has been captured. In the next stage we will connect this request to the ServicePay backend and Admin Card Management.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Okay'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}

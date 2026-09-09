@@ -1,0 +1,437 @@
+Upgrade the existing ServicePay Head Office Admin Dashboard into a premium, production-grade FINTECH EXECUTIVE COMMAND CENTER.
+
+IMPORTANT:
+- DO NOT remove, hide, replace, or downgrade any existing dashboard feature, report, module, navigation item, permission, API integration, or functionality.
+- Keep everything currently working.
+- This is an ADDITIVE dashboard upgrade.
+- Use REAL production database/API data only.
+- Never display fake/demo/random numbers.
+- If a metric is unavailable, show "Not available" rather than 0 unless the real value is actually zero.
+- Preserve all existing Head Office permissions and security.
+- Do not break Branch Management or any existing admin module.
+
+====================================================
+1. EXECUTIVE KPI OVERVIEW
+====================================================
+
+At the top of the Head Office dashboard create premium KPI cards for:
+
+1. Total Customers
+2. Active Customers
+3. Total Agents / Aggregators
+4. Total Managers
+5. Total Customer Wallet Balance
+6. Total Transaction Volume
+7. Total Transaction Value
+8. Successful Transactions
+9. Pending Transactions
+10. Failed Transactions
+11. Pending Withdrawals
+12. Pending KYC Reviews
+13. Pending Solar Applications
+14. Active Riders
+15. Total Branch Managers
+16. Total Branches
+
+Where useful, each KPI should also show:
+- Today
+- Yesterday comparison
+- 7-day change
+- 30-day change
+- percentage increase/decrease
+- small sparkline/trend
+- ↑ or ↓ trend indicator
+
+Clicking a KPI must open or link to the corresponding detailed module/report.
+
+====================================================
+2. TRANSACTION ANALYTICS CHARTS
+====================================================
+
+Add a large premium "Transaction Performance" analytics section.
+
+Include:
+- Transaction count chart
+- Transaction value chart
+- Successful transactions
+- Pending transactions
+- Failed transactions
+- Revenue/fees where supported by real data
+
+Filters:
+- Today
+- 7 Days
+- 30 Days
+- Custom Date Range
+
+Use responsive line/bar/area charts.
+
+Charts must use REAL backend aggregates.
+
+Allow hover/tap tooltips showing:
+- Date/time
+- Transaction count
+- Transaction value
+- Success
+- Pending
+- Failed
+
+====================================================
+3. PRODUCT PERFORMANCE
+====================================================
+
+Create a Product Performance chart/report for ALL ServicePay products currently available in the system.
+
+Do not hardcode only a few products.
+
+Discover existing products/modules and include all applicable transaction-producing services, including current services such as:
+
+- ServicePay Transfer
+- Withdrawal
+- Airtime
+- Data
+- Electricity
+- Cable TV
+- Exam PIN
+- NIN / ID Verification
+- Delivery
+- Marketplace
+- ServicePay Solar
+- Empowerment
+- ServicePay Amana
+- QR Pay
+- Partner API transactions
+- Phone Financing where implemented
+- Any other live product/module found in the codebase/database
+
+For every supported product show where data exists:
+- Number of transactions
+- Total transaction value
+- Successful
+- Pending
+- Failed
+- percentage share of overall transactions
+
+Do not delete a product from this dashboard merely because its current value is zero.
+
+====================================================
+4. LIVE OPERATIONS OVERVIEW
+====================================================
+
+Keep and significantly expand Live Operations Overview.
+
+Display every applicable ServicePay product/service.
+
+Each product tile should show real operational data.
+
+Clicking the tile should open its existing admin module.
+
+Show status where applicable:
+- Operational
+- Degraded
+- Unavailable
+- Maintenance
+
+Do NOT determine service health merely because transaction count is zero.
+
+====================================================
+5. SYSTEM HEALTH
+====================================================
+
+Keep System Health and make it more useful.
+
+Show only health signals that can actually be verified safely, such as:
+- API/backend
+- Database
+- Authentication
+- Wallet service
+- Transfer service
+- Withdrawal service
+- Airtime/Data provider integration
+- Delivery service
+- Marketplace
+- Solar
+- Notification/email services
+- other integrations that already have safe health checks
+
+Statuses:
+GREEN = Operational
+AMBER = Degraded
+RED = Down
+GREY = Not checked / Unknown
+
+Never expose:
+- API keys
+- tokens
+- secrets
+- passwords
+- credentials
+- sensitive environment variables.
+
+====================================================
+6. RECENT ACTIVITY
+====================================================
+
+Keep Recent Activity.
+
+Make it a useful real-time admin activity feed.
+
+Where supported show:
+- transaction created/completed/failed
+- withdrawal request
+- KYC submission/approval
+- new customer
+- new branch
+- branch manager created
+- rider activity
+- solar application
+- marketplace activity
+- important admin actions
+
+Show:
+- activity
+- actor/user where permitted
+- module
+- status
+- timestamp
+
+Add "View All".
+
+====================================================
+7. ATTENTION REQUIRED
+====================================================
+
+Create/retain an Attention Required panel for actionable pending items:
+
+- Pending withdrawals
+- Pending KYC
+- Pending delivery assignments
+- Pending solar applications
+- Failed/requiring-review transactions
+- unresolved operational issues
+- other genuine actionable queues
+
+Each item must have a button taking Admin directly to the relevant module.
+
+====================================================
+8. QUICK ADMIN ACTIONS
+====================================================
+
+Keep/add Quick Admin Actions.
+
+Include permission-aware shortcuts such as:
+- Create Branch
+- Create Branch Manager
+- Create/Manage Staff
+- Manual Funding
+- Send Notification
+- Review KYC
+- Review Withdrawals
+- Assign Rider
+- Manage Solar
+- Manage Marketplace
+- Fintech Control Center
+- Reconciliation / Requery
+
+Only show actions the logged-in admin is authorized to perform.
+
+====================================================
+9. TARGET & PERFORMANCE
+====================================================
+
+Add a premium Targets & Performance section.
+
+Support configurable operational targets such as:
+- Daily transaction target
+- Monthly transaction target
+- Customer growth target
+- Transaction value target
+- Active customer target
+
+Show progress bars/rings and percentage achieved.
+
+Do not hardcode fake targets.
+If targets have not been configured, provide a Head Office-only configuration flow.
+
+====================================================
+10. FINANCIAL / TRANSACTION REPORTING
+====================================================
+
+Create a comprehensive reporting area accessible from the dashboard.
+
+Include where supported by existing data:
+- Today transaction value
+- Daily/weekly/monthly transaction value
+- transaction count
+- transaction success rate
+- failure rate
+- pending rate
+- wallet balances
+- withdrawal totals
+- product breakdown
+- branch breakdown
+- agent/manager breakdown where applicable
+
+Add date filters.
+
+If safe and practical with the existing architecture, support report export (CSV/PDF) without weakening authorization.
+
+====================================================
+11. BRANCH PERFORMANCE
+====================================================
+
+Since ServicePay now has Branch Management, add a Branch Performance section.
+
+Show:
+- Total Branches
+- Active Branches
+- Total Branch Managers
+- Customers by branch where the data model supports attribution
+- Transactions by branch
+- Transaction value by branch
+- Top-performing branches
+
+Branch isolation must remain enforced.
+
+Head Office can see organization-wide data.
+Branch Managers must only see data permitted for their own branch.
+
+====================================================
+12. PREMIUM UI/UX
+====================================================
+
+Make this dashboard look like a serious modern fintech operations platform.
+
+Requirements:
+- clean professional layout
+- responsive desktop/tablet/mobile design
+- clear visual hierarchy
+- premium KPI cards
+- professional charts
+- subtle animations
+- skeleton loading
+- refresh control
+- last-updated timestamp
+- useful empty states
+- useful error states
+- no giant unnecessary cards
+- no excessive blank space
+- no overlapping components
+- no broken horizontal scrolling
+
+Keep ServicePay branding.
+
+The dashboard should feel closer to an enterprise fintech/banking operations command center, not a basic admin template.
+
+====================================================
+13. DATA ACCURACY — CRITICAL
+====================================================
+
+Audit every dashboard number.
+
+For every KPI:
+- identify its backend source
+- use server-side aggregation where appropriate
+- prevent double counting
+- exclude deleted/test records where appropriate
+- distinguish transaction COUNT from transaction VALUE
+- distinguish pending/failed/success correctly
+- format Nigerian Naira correctly
+- handle large values safely
+
+The displayed Total Customer Wallet Balance must be the real sum of eligible customer wallet balances.
+
+Do not calculate sensitive organization-wide metrics by downloading all records to the browser.
+
+====================================================
+14. PERFORMANCE
+====================================================
+
+Do not make 20+ uncontrolled API requests every time the dashboard loads.
+
+Prefer optimized dashboard analytics endpoints/server-side aggregation.
+
+Use parallel fetching where safe.
+Cache only where appropriate.
+Refresh intelligently.
+
+The dashboard must remain fast even when ServicePay grows to hundreds of thousands or millions of transactions.
+
+====================================================
+15. SECURITY
+====================================================
+
+All organization-wide analytics endpoints must require Head Office/Admin authorization.
+
+Do NOT rely on frontend hiding.
+
+Branch Manager endpoints must enforce branchId server-side.
+
+Do not expose PII unnecessarily in analytics responses.
+
+Preserve audit logging for sensitive administrative actions.
+
+====================================================
+16. DO NOT REGRESS EXISTING FEATURES
+====================================================
+
+Before deployment verify that existing:
+- Branch Management
+- Customers
+- Managers
+- Staff
+- Riders
+- KYC
+- Withdrawals
+- Delivery
+- Marketplace
+- Solar
+- Wallet
+- Notifications
+- Fintech Control Center
+- transaction modules
+and all other existing modules still work.
+
+Do not remove anything currently shown on the Head Office dashboard merely to make the design cleaner.
+
+If the screen becomes large, organize it into logical sections while retaining all information.
+
+====================================================
+17. PRODUCTION VERIFICATION
+====================================================
+
+After implementation:
+
+1. Run frontend build/tests.
+2. Run backend tests/checks.
+3. Fix all build/runtime errors.
+4. Deploy safely.
+5. Verify production authentication.
+6. Verify dashboard loads.
+7. Verify KPI values come from production data.
+8. Verify chart date filters.
+9. Verify Product Performance.
+10. Verify Live Operations Overview.
+11. Verify Recent Activity.
+12. Verify Quick Admin Actions.
+13. Verify Branch Performance.
+14. Verify Create Branch remains accessible.
+15. Verify Head Office permissions.
+16. Verify Branch Manager cannot access organization-wide Head Office analytics.
+17. Verify mobile responsiveness.
+
+Do not stop after only designing the UI.
+
+Complete frontend + backend + database aggregation/API integration + permissions + production verification.
+
+At completion report:
+- files changed
+- APIs/endpoints added or changed
+- KPI data sources
+- charts implemented
+- tests performed
+- production deployment status
+- anything genuinely unavailable because the underlying data does not exist.
+
+Goal:
+When Head Office opens the ServicePay Admin Dashboard, it should immediately provide a comprehensive, premium, accurate view of ServicePay's customers, wallets, transactions, products, branches, operations, pending work, system health, performance, targets and recent activity WITHOUT removing any existing report or functionality.

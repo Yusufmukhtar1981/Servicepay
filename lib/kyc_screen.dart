@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -670,8 +669,7 @@ class _KycScreenState extends State<KycScreen> {
               ),
             ),
           if (submitted)
-            Text(
-                '${verified ? 'Verified' : 'Submitted'} •••• $last4',
+            Text('${verified ? 'Verified' : 'Submitted'} •••• $last4',
                 style: TextStyle(color: color, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(
@@ -680,6 +678,26 @@ class _KycScreenState extends State<KycScreen> {
                 : 'ServicePay will review this identity reference manually after submission.',
             style: TextStyle(color: color, height: 1.3),
           ),
+          if (!submitted) ...<Widget>[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _isLocked || _verificationStates[type] == 'Verifying'
+                  ? null
+                  : () => _verifyIdentity(type),
+              icon: _verificationStates[type] == 'Verifying'
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.verified_user_outlined),
+              label: Text(
+                _verificationStates[type] == 'Verifying'
+                    ? 'Verifying $type'
+                    : 'Verify $type',
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -903,7 +921,7 @@ class _KycScreenState extends State<KycScreen> {
                             ]),
                         _stepCard(
                             2,
-                            'Identity Details',
+                            'Identity Verification',
                             'Enter your 11-digit NIN and BVN. ServicePay will review both details manually after you submit.',
                             <Widget>[
                               _identityTile(

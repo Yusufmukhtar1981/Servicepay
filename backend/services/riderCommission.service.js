@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const User = require("../models/user.model");
 const Delivery = require("../models/delivery.model");
+const RiderWalletLedger = require("../models/riderWalletLedger.model");
 
 /*
 |--------------------------------------------------------------------------
@@ -231,6 +232,18 @@ const creditRiderCommissionIfEligible =
               "Assigned Delivery Rider was not found."
             );
           }
+
+          await RiderWalletLedger.create([{
+            riderId: updatedRider._id,
+            type: "DELIVERY_EARNING",
+            direction: "CREDIT",
+            amount: commissionAmount,
+            oldBalance: Number((Number(updatedRider.pendingRiderSettlement) - commissionAmount).toFixed(2)),
+            newBalance: Number(Number(updatedRider.pendingRiderSettlement).toFixed(2)),
+            reference: `RIDER-DELIVERY-${delivery._id}-EARNING`,
+            deliveryId: delivery._id,
+            reason: "Delivery commission earned",
+          }], { session });
 
           result = {
             credited: true,

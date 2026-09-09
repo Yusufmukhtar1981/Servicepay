@@ -1,0 +1,85 @@
+IMPORTANT UPDATE:
+
+We have now identified the actual LIVE ServicePay Render backend.
+
+Correct live Render service:
+- Service name: Servicepay
+- Production domain: api.servicepay.ng
+- GitHub repository: Yusufmukhtar1981/Servicepay
+- Branch currently configured: main
+- Current live commit shown by Render: 4bd6391
+- MONGODB_URI EXISTS in this correct Render service.
+
+The previous service named "servicepay-backend" is NOT the production service we should deploy to.
+
+Do NOT deploy anything yet.
+Do NOT modify production data.
+Do NOT change or expose MONGODB_URI.
+Do NOT touch VULL.
+
+Please reassess the reviewed ServicePay backend-only release specifically for the REAL production service at api.servicepay.ng.
+
+1. Verify the release branch and latest reviewed release commit still contain:
+   - Interstate fix
+   - Call fix
+   - socket.io dependency fix
+   - MongoDB startup validation
+   - Node/Render compatibility fixes
+   - no unrelated unfinished changes
+
+2. Compare the reviewed release commit against the CURRENT LIVE commit 4bd6391.
+
+3. Determine whether deploying the reviewed release to the correct Servicepay Render service would preserve all existing production functionality.
+
+4. Verify Render requirements assuming:
+   Root Directory: backend
+   Build Command: npm ci
+   Runtime Mongo variable: MONGODB_URI
+
+5. Run the targeted verification again:
+   - clean npm ci
+   - backend startup validation
+   - socket.io require
+   - Interstate tests
+   - Call tests
+   - Auth tests
+   - syntax checks
+   - git diff safety check
+
+6. Do NOT push to main.
+7. Do NOT trigger Render.
+8. Do NOT modify Render environment variables.
+9. Do NOT modify production database.
+
+At the end report exactly:
+
+CORRECT LIVE SERVICE IDENTIFIED: YES/NO
+LIVE DOMAIN: api.servicepay.ng
+CURRENT LIVE COMMIT: 4bd6391
+
+RELEASE BRANCH:
+RELEASE COMMIT:
+
+INTERSTATE FIX INCLUDED: YES/NO
+CALL FIX INCLUDED: YES/NO
+SOCKET.IO FIX INCLUDED: YES/NO
+MONGODB STARTUP VALIDATION INCLUDED: YES/NO
+UNRELATED CHANGES INCLUDED: YES/NO
+
+CLEAN NPM CI: PASS/FAIL
+BACKEND STARTUP VALIDATION: PASS/FAIL
+SOCKET.IO REQUIRE: PASS/FAIL
+INTERSTATE TESTS: PASS/FAIL
+CALL TESTS: PASS/FAIL
+AUTH TESTS: PASS/FAIL
+SYNTAX CHECKS: PASS/FAIL
+GIT DIFF SAFETY: PASS/FAIL
+
+DESTRUCTIVE DATABASE CHANGE REQUIRED: YES/NO
+PRODUCTION DATA MODIFIED: NO
+DEPLOYMENT PERFORMED: NO
+VULL MODIFIED: NO
+
+SAFE TO DEPLOY TO THE REAL SERVICEPAY SERVICE: YES/NO
+
+If SAFE TO DEPLOY is YES, STOP. Do not deploy. I will perform the final manual deployment myself.

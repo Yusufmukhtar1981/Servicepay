@@ -1,0 +1,286 @@
+STOP ALL NEW FEATURE DEVELOPMENT TEMPORARILY.
+
+We are experiencing a recurring production problem:
+many changes report PASS in code/tests/preview, but the actual live ServicePay used by the user does not consistently show or run those changes.
+
+Do a COMPLETE SERVICEPAY PRODUCTION RECONCILIATION AND RELEASE AUDIT.
+
+This is NOT a feature-building task.
+
+IMPORTANT:
+- Work ONLY on ServicePay.
+- DO NOT touch VULL.
+- DO NOT delete/reset/truncate production data.
+- DO NOT perform destructive migrations.
+- DO NOT deploy automatically.
+- DO NOT add new features during this task.
+- Do not report PASS based only on unit tests or preview.
+
+==================================================
+1. ESTABLISH ONE SOURCE OF TRUTH
+==================================================
+
+Identify every ServicePay project/repository currently involved:
+
+- main Servicepay
+- servicepay-admin
+- customer frontend
+- Head Office/Admin frontend
+- backend/API
+- any Flutter web build
+- any GitHub Pages deployment
+- any Replit deployment
+
+For EACH one report:
+
+PROJECT NAME
+PURPOSE
+REPOSITORY
+CURRENT BRANCH
+CURRENT COMMIT
+DEPLOYMENT PROVIDER
+LIVE DOMAIN
+BUILD COMMAND
+OUTPUT DIRECTORY
+ACTIVE/LEGACY
+
+Then identify exactly which projects are currently serving:
+
+servicepay.ng
+admin.servicepay.ng
+api.servicepay.ng
+
+No assumptions.
+
+==================================================
+2. DEFINE THE CANONICAL ARCHITECTURE
+==================================================
+
+The intended architecture going forward is:
+
+MAIN SERVICEPAY PROJECT
+  ├── Customer Frontend
+  ├── Head Office/Admin
+  └── shared/relevant application code
+
+SERVICEPAY BACKEND/API
+  └── real production APIs/database
+
+Executive Management/SVP development belongs to the canonical main ServicePay Admin architecture, not an abandoned parallel admin UI.
+
+Mark legacy/unused deployment paths clearly.
+
+DO NOT delete legacy systems yet.
+
+==================================================
+3. COMPARE WORKSPACE VS LIVE PRODUCTION
+==================================================
+
+For every live component compare:
+
+CURRENT WORKSPACE VERSION
+CURRENT LIVE DEPLOYED VERSION
+
+Identify:
+- commits ahead/behind
+- uncommitted changes
+- stale builds
+- wrong deployment targets
+- wrong branches
+- wrong output directories
+- old GitHub Pages builds
+- stale Replit deployments
+- environment/config divergence
+
+Build a clear reconciliation table.
+
+==================================================
+4. VERIFY THE ACTUAL LIVE HEAD OFFICE
+==================================================
+
+Use the REAL normal Head Office login flow.
+
+Identify the exact source file/component currently serving the live Head Office dashboard.
+
+Confirm which build currently contains:
+
+- existing Main Head Office Dashboard
+- Executive Management navigation
+- Executive Management separate module
+- Create SVP
+- SVP Management
+
+Do not use injected tokens.
+Do not use mock APIs.
+Do not count a developer-only preview as production verification.
+
+==================================================
+5. VERIFY LIVE BACKEND/API ROUTES
+==================================================
+
+Test real production endpoints needed by current ServicePay functionality.
+
+Especially verify:
+
+authentication
+users/customers
+transactions
+wallets
+withdrawals
+riders
+branches
+staff
+feature controls
+delivery
+marketplace
+solar
+empowerment
+phone finance
+KYC
+Executive Management/SVP
+
+For each critical route record:
+
+HTTP status
+authentication result
+backend version
+whether route exists in live production
+
+Do not change financial records during these checks.
+
+==================================================
+6. VERIFY RECENT FIXES AGAINST LIVE
+==================================================
+
+Create a checklist of recent work that was reported PASS but may not be live.
+
+At minimum verify:
+
+- Rider Withdrawal
+- Rider Withdrawal enable/disable control
+- Rider Credit
+- Rider Debit
+- Admin wallet controls
+- Executive Management
+- SVP Management
+- Create SVP
+- SVP login/routing
+- Main Head Office Dashboard preserved
+
+For each report:
+
+CODE EXISTS: YES/NO
+PREVIEW WORKS: YES/NO
+LIVE BUILD CONTAINS IT: YES/NO
+LIVE UI ACCESSIBLE: YES/NO
+LIVE API READY: YES/NO
+
+Do NOT alter production balances for testing.
+
+==================================================
+7. RELEASE PIPELINE
+==================================================
+
+Create one documented release path for each canonical component.
+
+Example:
+
+Backend:
+workspace → tests → build → deploy → health check → production API verification
+
+Admin:
+workspace → tests → release build → deploy correct artifact → live login verification
+
+Customer:
+workspace → build → deployment → smoke test
+
+Prevent the situation where a change is built in one project while another project serves production.
+
+==================================================
+8. ADD VERSION VISIBILITY
+==================================================
+
+Implement a safe non-sensitive build/version identifier in the Admin and API if one does not already exist.
+
+Admin should be able to expose something like:
+
+Build: 2026.xx.xx
+Commit: abc1234
+
+Backend health/version endpoint should expose the deployed application version/commit only, without secrets.
+
+This allows us to immediately confirm whether the live site is running the latest build.
+
+Do NOT expose API keys, secrets, DB URLs, tokens, or credentials.
+
+==================================================
+9. PRODUCTION ACCEPTANCE RULE
+==================================================
+
+From now on, no task may be reported as fully complete merely because:
+
+- code exists
+- unit tests pass
+- build passes
+- Agent preview passes
+
+A production-facing task should be labeled separately:
+
+IMPLEMENTATION: PASS
+PREVIEW: PASS
+DEPLOYED: YES/NO
+LIVE VERIFIED: PASS/FAIL/NOT DEPLOYED
+
+If it is not deployed, explicitly say NOT DEPLOYED.
+
+If it is deployed but not verified through the real user flow, explicitly say LIVE VERIFICATION PENDING.
+
+==================================================
+10. DO NOT DEPLOY YET
+==================================================
+
+Complete diagnosis and reconciliation preparation only.
+
+Do not push, publish, deploy, migrate, or modify production automatically.
+
+==================================================
+FINAL REPORT
+==================================================
+
+At the end report exactly:
+
+SERVICEPAY CANONICAL FRONTEND PROJECT:
+SERVICEPAY CANONICAL ADMIN PROJECT:
+SERVICEPAY CANONICAL BACKEND PROJECT:
+
+servicepay.ng SERVED BY:
+admin.servicepay.ng SERVED BY:
+api.servicepay.ng SERVED BY:
+
+WORKSPACE/LIVE VERSION MATCH: YES/NO
+STALE PRODUCTION BUILD FOUND: YES/NO
+MULTIPLE CONFLICTING DEPLOYMENT PATHS FOUND: YES/NO
+
+RIDER WITHDRAWAL LIVE: PASS/FAIL/NOT DEPLOYED
+RIDER CREDIT/DEBIT LIVE: PASS/FAIL/NOT DEPLOYED
+FEATURE CONTROLS LIVE: PASS/FAIL/NOT DEPLOYED
+EXECUTIVE MANAGEMENT LIVE: PASS/FAIL/NOT DEPLOYED
+CREATE SVP LIVE: PASS/FAIL/NOT DEPLOYED
+SVP BACKEND LIVE: PASS/FAIL/NOT DEPLOYED
+
+MAIN HEAD OFFICE DASHBOARD PRESERVED: YES/NO
+
+VERSION IDENTIFICATION AVAILABLE: YES/NO
+CANONICAL RELEASE PIPELINE DEFINED: YES/NO
+
+PRODUCTION DATA MODIFIED: NO
+VULL MODIFIED: NO
+
+ROOT CAUSE OF RECENT “PASS BUT NOT WORKING” ISSUES:
+
+RECOMMENDED RECONCILIATION ACTIONS:
+
+SAFE TO BEGIN CONTROLLED RECONCILIATION/RELEASE: YES/NO
+
+Do not deploy.
+Stop and wait for my approval.

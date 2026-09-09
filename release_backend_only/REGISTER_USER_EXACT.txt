@@ -1,0 +1,221 @@
+exports.registerUser = async (
+  req,
+  res
+) => {
+
+  // SERVICEPAY_SECURE_REGISTRATION_POLICY
+  // Applied only when creating a NEW account.
+  // Existing customers are unaffected.
+  {
+    const passwordCheck = validateStrongPassword(req.body.password);
+
+    if (!passwordCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        message: passwordCheck.message,
+        code: 'WEAK_PASSWORD',
+      });
+    }
+
+    if (req.body.transactionPin !== undefined &&
+        req.body.transactionPin !== null &&
+        String(req.body.transactionPin).trim() !== '') {
+
+      const pinCheck = validateTransactionPin(req.body.transactionPin);
+
+      if (!pinCheck.valid) {
+        return res.status(400).json({
+          success: false,
+          message: pinCheck.message,
+          code: 'INVALID_TRANSACTION_PIN',
+        });
+      }
+    }
+
+    if (req.body.acceptTerms !== true) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must accept the Terms and Privacy Policy.',
+        code: 'TERMS_REQUIRED',
+      });
+    }
+  }
+
+
+  try {
+    const {
+      fullName,
+      phone,
+      email,
+      password,
+      zone,
+      state,
+      lga,
+      zonalManagerId,
+      stateManagerId,
+      agentId,
+    } = req.body;
+
+    const cleanFullName = String(
+      fullName || ""
+    ).trim();
+
+    const cleanPhone = String(
+      phone || ""
+    ).trim();
+
+    const cleanEmail = String(
+      email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const cleanPassword = String(
+      password || ""
+    );
+
+    if (
+      !cleanFullName ||
+      !cleanPhone ||
+      !cleanPassword
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Full name, phone number and password are required.",
+      });
+    }
+
+    if (cleanPhone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Enter a valid phone number.",
+      });
+    }
+
+    if (cleanPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must contain at least 6 characters.",
+      });
+    }
+
+    const duplicateConditions = [
+      {
+        phone: cleanPhone,
+      },
+    ];
+
+    if (cleanEmail) {
+      duplicateConditions.push({
+        email: cleanEmail,
+      });
+    }
+
+    const existingUser =
+      await User.findOne({
+        $or: duplicateConditions,
+      });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "An account already exists with this phone number or email.",
+      });
+    }
+
+    const user = await User.create({
+      fullName: cleanFullName,
+      phone: cleanPhone,
+      email:
+        cleanEmail || undefined,
+      password: cleanPassword,
+
+      /*
+       * Only CUSTOMER accounts can register
+       * through the public ServicePay app.
+       */
+      role: "CUSTOMER",
+      status: "ACTIVE",
+      walletBalance: 0,
+      commissionBalance: 0,
+      totalEarnings: 0,
+      totalTransactions: 0,
+      transactionPinSet: false,
+
+      zone:
+        String(zone || "").trim() ||
+        undefined,
+
+      state:
+        String(state || "").trim() ||
+        undefined,
+
+      lga:
+        String(lga || "").trim() ||
+        undefined,
+
+      zonalManagerId:
+        zonalManagerId || undefined,
+
+      stateManagerId:
+        stateManagerId || undefined,
+
+      agentId:
+        agentId || undefined,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "Account created successfully.",
+      token: generateToken(user._id),
+      user: formatUser(user),
+    });
+  } catch (error) {
+    console.error(
+      "Register error:",
+      error
+    );
+
+    if (error?.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "An account already exists with this phone number or email.",
+      });
+    }
+
+    if (
+      error?.name ===
+      "ValidationError"
+    ) {
+      const validationMessage =
+        Object.values(
+          error.errors || {}
+        )
+          .map(
+            (item) =>
+              item.message
+          )
+          .join(", ");
+
+      return res.status(400).json({
+        success: false,
+        message:
+          validationMessage ||
+          "Invalid registration information.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to create account.",
+      error: error.message,
+    });
+  }
+};

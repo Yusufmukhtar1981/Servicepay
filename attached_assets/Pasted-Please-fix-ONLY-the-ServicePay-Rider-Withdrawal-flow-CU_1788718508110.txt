@@ -1,0 +1,115 @@
+Please fix ONLY the ServicePay Rider Withdrawal flow.
+
+CURRENT PRODUCTION PROBLEM:
+When a Rider submits a withdrawal request, the UI stays on:
+
+“Submitting…”
+
+and eventually shows:
+
+“The server took too long to respond.”
+
+The Rider has:
+- valid available earnings
+- selected bank successfully
+- account number resolved successfully
+- verified account name displayed
+- transaction PIN entered
+- previous withdrawals already visible in Withdrawal History
+
+So diagnose the backend/API processing path, not just the UI.
+
+IMPORTANT:
+Do NOT modify VULL.
+Do NOT reset/delete/truncate production data.
+Do NOT make destructive database changes.
+Do NOT mark a withdrawal successful unless the backend transaction actually succeeds.
+
+TASKS:
+
+1. Trace the exact Rider withdrawal frontend request:
+   - endpoint
+   - HTTP method
+   - request body
+   - authentication token
+   - timeout configuration
+
+2. Trace the backend Rider withdrawal endpoint end-to-end.
+
+3. Identify exactly where it hangs or exceeds timeout:
+   - transaction PIN verification
+   - Rider/wallet lookup
+   - balance validation
+   - bank/account validation
+   - database transaction
+   - withdrawal record creation
+   - external transfer/provider call
+   - notification/email
+   - any await/promise that never resolves
+
+4. Add safe structured logging around every withdrawal stage so the exact failing step is visible.
+
+5. Ensure every async external/provider call has a bounded timeout and proper try/catch.
+
+6. IMPORTANT ARCHITECTURE:
+If Rider withdrawal is designed as a REQUEST for Head Office/Admin approval, then:
+   - do NOT wait for an external bank transfer during submission
+   - validate Rider + PIN + available balance
+   - create the withdrawal record immediately with status PENDING
+   - reserve/deduct funds safely according to the existing wallet design
+   - return HTTP 200/201 immediately
+   - let Admin process/approve payment separately
+
+7. If withdrawals are intentionally automatic:
+   - diagnose the transfer provider timeout
+   - use an idempotent transaction reference
+   - never double debit on retry
+   - distinguish PENDING, SUCCESS and FAILED correctly
+   - do not leave the UI spinning indefinitely
+
+8. Add idempotency protection so repeatedly tapping Request Withdrawal cannot create duplicate withdrawals or duplicate debits.
+
+9. Prevent requesting more than the Rider’s withdrawable balance.
+
+10. Ensure the transaction PIN comparison uses the Rider’s actual configured transaction PIN and returns a clear 4xx error for an incorrect PIN instead of hanging.
+
+11. Fix frontend behavior:
+   - disable button only while the request is genuinely in progress
+   - use a sensible API timeout
+   - restore button after failure
+   - show the real backend error
+   - on success show:
+     “Withdrawal request submitted successfully”
+   - refresh balance and Withdrawal History automatically
+
+12. Check production logs for the withdrawal attempt around the current time and identify the exact root cause.
+
+13. Test using a safe test Rider with a small amount.
+
+Required tests:
+- valid withdrawal
+- wrong PIN
+- amount greater than balance
+- duplicate/repeated tap
+- provider timeout if applicable
+- successful PENDING request
+- history refresh
+- balance consistency
+- no double debit
+
+At the end report exactly:
+
+ROOT CAUSE:
+BACKEND FIX:
+FRONTEND FIX:
+WITHDRAWAL REQUEST CREATION: PASS/FAIL
+PIN VALIDATION: PASS/FAIL
+BALANCE VALIDATION: PASS/FAIL
+IDEMPOTENCY: PASS/FAIL
+TIMEOUT HANDLING: PASS/FAIL
+HISTORY REFRESH: PASS/FAIL
+DOUBLE-DEBIT PROTECTION: PASS/FAIL
+PRODUCTION DATA PRESERVED: YES/NO
+SAFE TO DEPLOY: YES/NO
+
+Do not deploy automatically. Stop after testing and let me review the report first.

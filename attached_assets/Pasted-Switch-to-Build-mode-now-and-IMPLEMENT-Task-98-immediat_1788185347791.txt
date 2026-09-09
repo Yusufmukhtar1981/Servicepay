@@ -1,0 +1,46 @@
+Switch to Build mode now and IMPLEMENT Task #98 immediately.
+
+Do not stay in Plan mode.
+Do not create another task.
+Do not only inspect or describe the work.
+
+Task #98 is the active implementation task for the Complete ServicePay Staff Dashboard.
+
+If Task #91 contains shared RBAC work, reuse and complete whatever is required from Task #91 inside this implementation so Task #98 is not blocked.
+
+Proceed now with actual code changes.
+
+Required outcome:
+
+1. Fix Staff login and session persistence.
+2. Fix staff authentication so Staff is not treated as Customer or incorrectly blocked as non-Admin.
+3. Complete centralized frontend + backend RBAC.
+4. Admin Staff Management must successfully create, edit, activate/deactivate, reset password, and assign/update staff permissions.
+5. Saved permissions must persist correctly in database.
+6. Staff Dashboard must dynamically display only modules/cards/menu items allowed by assigned permissions.
+7. Authorized pages and actions must work successfully.
+8. Unauthorized frontend routes must be blocked.
+9. Unauthorized backend API calls must return 403.
+10. Fix all broken Staff Dashboard API routes, token handling, permission mapping, loading states, endless spinners, 401/403/404/500 errors.
+11. Test Support Staff, KYC Officer, Finance Staff and Operations Staff permission scenarios.
+12. Ensure ADMIN/SUPER_ADMIN still retain full access.
+13. Preserve Customer, Rider, Solar Officer, Business Partner and all other working ServicePay features.
+14. Run build/tests and fix all errors.
+15. Deploy/publish using the existing workflow after successful verification.
+
+IMPORTANT:
+Do not report this task as complete while no application files have changed.
+
+Start modifying the actual backend and frontend files now.
+
+Do not wait for another confirmation unless there is a genuinely destructive action requiring approval.
+
+At completion show:
+- files changed
+- root causes fixed
+- RBAC changes
+- Staff login result
+- permission tests
+- build result
+- deployment result
+- remaining issues, if any

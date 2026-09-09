@@ -47,6 +47,7 @@ const servicePayTransferAttemptSchema = new mongoose.Schema(
 );
 
 servicePayTransferAttemptSchema.index({ sender: 1, idempotencyKey: 1 }, { unique: true });
+servicePayTransferAttemptSchema.index({ status: 1, createdAt: 1, leaseExpiresAt: 1 });
 
 module.exports = mongoose.model(
   "ServicePayTransferAttempt",

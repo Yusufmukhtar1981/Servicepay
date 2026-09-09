@@ -1,0 +1,889 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AdminPartnerScreen extends StatefulWidget {
+  const AdminPartnerScreen({super.key});
+
+  @override
+  State<AdminPartnerScreen> createState() => _AdminPartnerScreenState();
+}
+
+class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  final TextEditingController _searchController = TextEditingController();
+
+  bool isLoading = true;
+  String errorMessage = '';
+
+  List<Map<String, dynamic>> partners = <Map<String, dynamic>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    loadPartners();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<String> _token() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+  }
+
+  Map<String, String> _headers(String token) {
+    return <String, String>{
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+  }
+
+  Future<void> loadPartners() async {
+    if (mounted) {
+      setState(() {
+        isLoading = true;
+        errorMessage = '';
+      });
+    }
+
+    try {
+      final token = await _token();
+
+      if (token.isEmpty) {
+        throw Exception('Admin session not found. Please login again.');
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/admin/partners'),
+        headers: _headers(token),
+      );
+
+      final dynamic decoded = response.body.trim().isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map<String, dynamic>
+            ? (decoded['message'] ?? 'Unable to load partners.')
+            : 'Unable to load partners.';
+
+        throw Exception(message.toString());
+      }
+
+      List<dynamic> raw = <dynamic>[];
+
+      if (decoded is List) {
+        raw = decoded;
+      } else if (decoded is Map<String, dynamic>) {
+        final dynamic possible =
+            decoded['partners'] ?? decoded['data'] ?? decoded['items'];
+
+        if (possible is List) {
+          raw = possible;
+        } else if (possible is Map<String, dynamic> &&
+            possible['partners'] is List) {
+          raw = possible['partners'] as List;
+        }
+      }
+
+      final result = raw
+          .whereType<Map>()
+          .map(
+            (item) => Map<String, dynamic>.from(item),
+          )
+          .toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        partners = result;
+        isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        errorMessage = error.toString().replaceFirst('Exception: ', '');
+        isLoading = false;
+      });
+    }
+  }
+
+  String _text(dynamic value, [String fallback = '-']) {
+    final valueText = value?.toString().trim() ?? '';
+
+    return valueText.isEmpty ? fallback : valueText;
+  }
+
+  double _number(dynamic value) {
+    if (value is num) return value.toDouble();
+
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _money(dynamic value) {
+    final amount = _number(value);
+
+    final fixed = amount.toStringAsFixed(2);
+    final parts = fixed.split('.');
+
+    final chars = parts.first.split('').reversed.toList();
+
+    final chunks = <String>[];
+
+    for (int i = 0; i < chars.length; i += 3) {
+      final end = (i + 3 < chars.length) ? i + 3 : chars.length;
+
+      chunks.add(chars.sublist(i, end).join());
+    }
+
+    final formatted = chunks
+        .map((chunk) => chunk.split('').reversed.join())
+        .toList()
+        .reversed
+        .join(',');
+
+    return '₦$formatted.${parts.last}';
+  }
+
+  String _partnerName(Map<String, dynamic> partner) {
+    return _text(
+      partner['businessName'] ?? partner['name'] ?? partner['contactName'],
+      'Unnamed Partner',
+    );
+  }
+
+  String _partnerId(Map<String, dynamic> partner) {
+    return _text(
+      partner['_id'] ?? partner['id'],
+      '',
+    );
+  }
+
+  String _status(Map<String, dynamic> partner) {
+    return _text(
+      partner['status'],
+      'UNKNOWN',
+    ).toUpperCase();
+  }
+
+  List<String> _permissions(Map<String, dynamic> partner) {
+    final value = partner['permissions'];
+
+    if (value is List) {
+      return value
+          .map((item) => item.toString())
+          .where((item) => item.trim().isNotEmpty)
+          .toList();
+    }
+
+    return <String>[];
+  }
+
+  List<Map<String, dynamic>> get filteredPartners {
+    final query = _searchController.text.trim().toLowerCase();
+
+    if (query.isEmpty) {
+      return partners;
+    }
+
+    return partners.where((partner) {
+      final haystack = <String>[
+        _partnerName(partner),
+        _text(partner['contactName']),
+        _text(partner['email']),
+        _text(partner['phone']),
+        _text(partner['status']),
+      ].join(' ').toLowerCase();
+
+      return haystack.contains(query);
+    }).toList();
+  }
+
+  Future<void> _walletAction(
+    Map<String, dynamic> partner,
+    String action,
+  ) async {
+    final id = _partnerId(partner);
+
+    if (id.isEmpty) {
+      _showMessage('Partner ID is missing.');
+      return;
+    }
+
+    final amountController = TextEditingController();
+    final narrationController = TextEditingController();
+
+    final result = await showDialog<Map<String, String>?>(
+      context: context,
+      builder: (dialogContext) {
+        final isCredit = action == 'CREDIT';
+
+        return AlertDialog(
+          title: Text(
+            isCredit ? 'Credit Partner Wallet' : 'Debit Partner Wallet',
+          ),
+          content: SizedBox(
+            width: 430,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _partnerName(partner),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Amount',
+                    prefixText: '₦ ',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: narrationController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText:
+                        isCredit ? 'Reason for credit' : 'Reason for debit',
+                    hintText: 'Enter a clear audit narration',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  <String, String>{
+                    'amount': amountController.text.trim(),
+                    'narration': narrationController.text.trim(),
+                  },
+                );
+              },
+              child: Text(isCredit ? 'Credit Wallet' : 'Debit Wallet'),
+            ),
+          ],
+        );
+      },
+    );
+
+    amountController.dispose();
+    narrationController.dispose();
+
+    if (result == null) return;
+
+    final amount = double.tryParse(result['amount'] ?? '');
+
+    if (amount == null || amount <= 0) {
+      _showMessage('Enter a valid amount.');
+      return;
+    }
+
+    if ((result['narration'] ?? '').trim().isEmpty) {
+      _showMessage('Narration is required for audit purposes.');
+      return;
+    }
+
+    try {
+      _showBlockingLoader();
+
+      final token = await _token();
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/admin/partners/$id/wallet'),
+        headers: _headers(token),
+        body: jsonEncode(
+          <String, dynamic>{
+            'type': action,
+            'action': action,
+            'amount': amount,
+            'narration': result['narration'],
+          },
+        ),
+      );
+
+      final dynamic decoded = response.body.trim().isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body);
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map<String, dynamic>
+            ? (decoded['message'] ?? 'Wallet adjustment failed.')
+            : 'Wallet adjustment failed.';
+
+        throw Exception(message.toString());
+      }
+
+      _showMessage(
+        action == 'CREDIT'
+            ? 'Partner wallet credited successfully.'
+            : 'Partner wallet debited successfully.',
+        success: true,
+      );
+
+      await loadPartners();
+    } catch (error) {
+      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      _showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    }
+  }
+
+  Future<void> _showWalletHistory(
+    Map<String, dynamic> partner,
+  ) async {
+    final id = _partnerId(partner);
+
+    if (id.isEmpty) {
+      _showMessage('Partner ID is missing.');
+      return;
+    }
+
+    try {
+      _showBlockingLoader();
+
+      final token = await _token();
+
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/admin/partners/$id/wallet/transactions',
+        ),
+        headers: _headers(token),
+      );
+
+      final dynamic decoded = response.body.trim().isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body);
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map<String, dynamic>
+            ? (decoded['message'] ?? 'Unable to load wallet history.')
+            : 'Unable to load wallet history.';
+
+        throw Exception(message.toString());
+      }
+
+      List<dynamic> raw = <dynamic>[];
+
+      if (decoded is List) {
+        raw = decoded;
+      } else if (decoded is Map<String, dynamic>) {
+        final possible =
+            decoded['transactions'] ?? decoded['history'] ?? decoded['data'];
+
+        if (possible is List) {
+          raw = possible;
+        }
+      }
+
+      final history = raw
+          .whereType<Map>()
+          .map(
+            (item) => Map<String, dynamic>.from(item),
+          )
+          .toList();
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return Dialog(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 760,
+                maxHeight: 650,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.history_rounded),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '${_partnerName(partner)} — Wallet History',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: history.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No wallet adjustments found.',
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: history.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final item = history[index];
+
+                                final type = _text(
+                                  item['type'] ?? item['action'],
+                                  'ADJUSTMENT',
+                                ).toUpperCase();
+
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    child: Icon(
+                                      type == 'CREDIT'
+                                          ? Icons.add_rounded
+                                          : Icons.remove_rounded,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    '$type • ${_money(item['amount'])}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    [
+                                      _text(
+                                        item['narration'] ?? item['reason'],
+                                        'No narration',
+                                      ),
+                                      'Before: ${_money(item['walletBefore'])}',
+                                      'After: ${_money(item['walletAfter'])}',
+                                      if (_text(
+                                        item['reference'],
+                                        '',
+                                      ).isNotEmpty)
+                                        'Ref: ${_text(item['reference'])}',
+                                    ].join('\n'),
+                                  ),
+                                  isThreeLine: true,
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } catch (error) {
+      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      _showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    }
+  }
+
+  void _showBlockingLoader() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showMessage(
+    String message, {
+    bool success = false,
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
+  }
+
+  Widget _summaryCard({
+    required String title,
+    required String value,
+    required IconData icon,
+  }) {
+    return Expanded(
+      child: Card(
+        elevation: 0,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                child: Icon(icon),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(title),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _partnerCard(Map<String, dynamic> partner) {
+    final permissions = _permissions(partner);
+    final status = _status(partner);
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const CircleAvatar(
+                  radius: 25,
+                  child: Icon(
+                    Icons.handshake_rounded,
+                    size: 27,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _partnerName(partner),
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _text(
+                          partner['contactName'],
+                          'No contact name',
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${_text(partner['email'])} • ${_text(partner['phone'])}',
+                      ),
+                    ],
+                  ),
+                ),
+                Chip(
+                  label: Text(status),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 22,
+              runSpacing: 10,
+              children: [
+                _info(
+                  'Wallet',
+                  _money(
+                    partner['walletBalance'] ?? partner['balance'],
+                  ),
+                ),
+                _info(
+                  'Daily Limit',
+                  _money(partner['dailyLimit']),
+                ),
+                _info(
+                  'Daily Spent',
+                  _money(partner['dailySpent']),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Permissions',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            permissions.isEmpty
+                ? const Text('No permissions assigned')
+                : Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: permissions
+                        .map(
+                          (permission) => Chip(
+                            label: Text(permission),
+                          ),
+                        )
+                        .toList(),
+                  ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => _walletAction(partner, 'CREDIT'),
+                  icon: const Icon(Icons.add_card_rounded),
+                  label: const Text('Credit Wallet'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _walletAction(partner, 'DEBIT'),
+                  icon: const Icon(
+                    Icons.remove_circle_outline_rounded,
+                  ),
+                  label: const Text('Debit Wallet'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _showWalletHistory(partner),
+                  icon: const Icon(Icons.history_rounded),
+                  label: const Text('Wallet History'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _info(String label, String value) {
+    return SizedBox(
+      width: 150,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeCount = partners
+        .where(
+          (partner) => _status(partner) == 'ACTIVE',
+        )
+        .length;
+
+    final totalWallet = partners.fold<double>(
+      0,
+      (sum, partner) =>
+          sum +
+          _number(
+            partner['walletBalance'] ?? partner['balance'],
+          ),
+    );
+
+    final visiblePartners = filteredPartners;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Partner Management'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: isLoading ? null : loadPartners,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: loadPartners,
+          child: ListView(
+            padding: const EdgeInsets.all(18),
+            children: [
+              Text(
+                'ServicePay Partner API',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Manage API partners, permissions and partner wallet balances.',
+              ),
+              const SizedBox(height: 18),
+              if (!isLoading && errorMessage.isEmpty)
+                Row(
+                  children: [
+                    _summaryCard(
+                      title: 'Total Partners',
+                      value: partners.length.toString(),
+                      icon: Icons.handshake_outlined,
+                    ),
+                    const SizedBox(width: 12),
+                    _summaryCard(
+                      title: 'Active Partners',
+                      value: activeCount.toString(),
+                      icon: Icons.verified_outlined,
+                    ),
+                    const SizedBox(width: 12),
+                    _summaryCard(
+                      title: 'Partner Wallets',
+                      value: _money(totalWallet),
+                      icon: Icons.account_balance_wallet_outlined,
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Search business, contact, email or phone',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 18),
+              if (isLoading)
+                const Padding(
+                  padding: EdgeInsets.only(top: 60),
+                  child: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (errorMessage.isNotEmpty)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          size: 42,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          errorMessage,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 14),
+                        FilledButton.icon(
+                          onPressed: loadPartners,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Try Again'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (visiblePartners.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 60),
+                  child: Center(
+                    child: Text('No partners found.'),
+                  ),
+                )
+              else
+                ...visiblePartners.map(_partnerCard),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

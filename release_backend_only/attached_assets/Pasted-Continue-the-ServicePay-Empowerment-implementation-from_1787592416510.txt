@@ -1,0 +1,104 @@
+Continue the ServicePay Empowerment implementation from the current working state.
+
+IMPORTANT:
+First inspect the existing backend code, models, routes, controllers, wallet implementation, transaction model, Empowerment models/routes, and the recently completed beneficiary verification/application approval flow. Do NOT rewrite working functionality and do NOT invent endpoint/model names before inspecting the repository.
+
+CURRENT CONFIRMED STATE:
+- Empowerment organizations/programs already exist.
+- Beneficiaries can apply.
+- Head Office can verify beneficiaries.
+- Beneficiary verification can become VERIFIED.
+- Head Office can change an application from UNDER_REVIEW to APPROVED.
+- This working flow must remain intact.
+
+TASK:
+Implement the production-safe Empowerment DISBURSEMENT flow end-to-end in the backend.
+
+REQUIREMENTS:
+
+1. Only an APPROVED beneficiary whose verification status is VERIFIED can receive an Empowerment disbursement.
+
+2. A disbursement must belong to the correct:
+   - organization
+   - empowerment program
+   - beneficiary/application
+   - ServicePay user/customer
+
+3. Before payment, validate:
+   - program exists
+   - program is eligible/active for disbursement
+   - beneficiary/application exists
+   - application status is APPROVED
+   - verification status is VERIFIED
+   - amount is valid and greater than zero
+   - beneficiary has a valid ServicePay wallet/account
+   - program has sufficient remaining budget where the current data model supports budgets
+
+4. Credit the beneficiary's REAL ServicePay wallet using the existing wallet implementation. Do not create a second fake wallet/balance system.
+
+5. Create a permanent transaction/disbursement record containing as much of the following as fits the existing models:
+   - unique reference
+   - organization ID
+   - program ID
+   - application/beneficiary ID
+   - user/customer ID
+   - amount
+   - status
+   - wallet balance before
+   - wallet balance after
+   - initiated by/admin ID
+   - created/processed timestamp
+   - narration such as "ServicePay Empowerment Disbursement"
+
+6. Prevent duplicate payment.
+The same approved beneficiary/application must not accidentally receive the same program disbursement twice.
+Implement database-level/idempotency protection appropriate to the existing schema.
+
+7. Make the wallet credit and disbursement/transaction creation atomic using the existing MongoDB/Mongoose architecture where possible.
+If any critical step fails, do not leave a beneficiary credited without a successful disbursement record.
+
+8. Add Head Office/admin API endpoints required to:
+   - disburse to one approved beneficiary
+   - fetch program disbursement history
+   - return total disbursed, successful count, failed/pending count where appropriate
+   - return remaining program budget where supported
+
+9. If there is already bulk-disbursement architecture in the repository, complete/reuse it safely rather than creating a conflicting implementation.
+If not, add a safe bulk endpoint for selected APPROVED + VERIFIED beneficiaries, but process each beneficiary idempotently and return per-beneficiary results.
+
+10. Security:
+   - use the existing authentication middleware
+   - restrict disbursement to the appropriate Head Office/admin role
+   - never trust amount/user IDs blindly from the client
+   - validate ownership/relationship between organization, program, application and beneficiary
+   - do not expose secrets or sensitive KYC data
+
+11. Audit:
+Record who initiated each disbursement and enough information for Head Office to audit it later.
+
+12. Tests:
+Add/update backend tests covering at minimum:
+   - successful disbursement
+   - rejection of unverified beneficiary
+   - rejection of non-approved application
+   - insufficient budget
+   - duplicate disbursement prevention
+   - wallet credited correctly
+   - transaction/disbursement record created correctly
+   - unauthorized role rejected
+
+13. Run the relevant tests and fix failures caused by this implementation.
+
+14. Do NOT change unrelated ServicePay features.
+Do NOT break KYC, transfers, wallet funding, delivery, airtime/data, or existing Empowerment verification/application approval.
+
+15. After implementation:
+   - show exactly which files were changed
+   - show the final API endpoints
+   - show test results
+   - commit the changes with a clear commit message
+   - sync/rebase safely with origin/main if necessary
+   - push to origin/main WITHOUT force-pushing
+   - report the final commit hash and whether push succeeded.
+
+Do not stop at documentation or a plan. Inspect the actual repository and implement the working backend code.

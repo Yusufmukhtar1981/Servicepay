@@ -1464,6 +1464,14 @@ exports.contributeToGroup = async (
       ""
     ).trim();
 
+    // PIN admission maintains its own security state, so it must complete
+    // outside the money transaction to avoid write conflicts with its attempt
+    // reservation. The payer is reloaded in that transaction before debiting.
+    await verifyCanonicalTransactionPin(
+      payerId,
+      req.body?.transactionPin ?? req.body?.pin
+    );
+
     await session.withTransaction(async () => {
       if (!mongoose.isValidObjectId(req.params.id)) {
         const error = new Error("Active group not found.");
@@ -1523,13 +1531,12 @@ exports.contributeToGroup = async (
       }
 
       const payer = await loadPayerForPin(payerId, session);
-      await verifyCanonicalTransactionPin(
-        payer._id,
-        req.body?.transactionPin ?? req.body?.pin,
-        { session }
-      );
-
-      const debited = await debitWallet({ userId: payerId, amount, session });
+      if (!payer) {
+        const error = new Error("Payer account not found.");
+        error.statusCode = 404;
+        throw error;
+      }
+      const debited = await debitWallet({ userId: payer._id, amount, session });
       const reference = paymentReference("AJO");
       const contribution = await GroupContribution.create(
         [{

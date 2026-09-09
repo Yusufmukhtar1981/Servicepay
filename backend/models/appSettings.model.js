@@ -628,9 +628,24 @@ const fintechControlSettingsSchema =
         complaintsPolicyUrl: { type: String, trim: true, maxlength: 1000, default: "" },
         dataProtectionPolicyUrl: { type: String, trim: true, maxlength: 1000, default: "" },
       },
+      featureToggles: {
+        type: Map,
+        of: Boolean,
+        default: () => ({}),
+      },
     },
     { _id: false }
   );
+
+const riderWithdrawalControlSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: true },
+    updatedAt: { type: Date, default: Date.now },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    updatedByName: { type: String, trim: true, default: "" },
+  },
+  { _id: false }
+);
 
 /*
 |--------------------------------------------------------------------------
@@ -722,6 +737,11 @@ const appSettingsSchema =
 
       fintechControl: {
         type: fintechControlSettingsSchema,
+        default: () => ({}),
+      },
+
+      riderWithdrawalControl: {
+        type: riderWithdrawalControlSchema,
         default: () => ({}),
       },
 

@@ -1,0 +1,14 @@
+- [Mongoose 9 middleware](mongoose-9-middleware.md) — Callback-style model middleware must be converted before transaction safeguards can run.
+- [Attachment commits](attachment-commits.md) — Verify HEAD before amending; attachment handling may create a commit between turns.
+- [GitHub connector publishing](github-connector-publishing.md) — Local GitHub HTTPS may lack auth; publish via the connector only after file-level remote safety checks.
+- [Marketplace funds](marketplace-funds.md) — Marketplace checkout holds customer funds; never credit sellers without an approved settlement path.
+- [Partner reconciliation states](partner-reconciliation-states.md) — Only explicit provider uncertainty may be manually reconciled; in-flight purchases must stay immutable.
+- [Financing inventory reservations](financing-inventory-reservations.md) — Reserve a real device atomically before accepting a financing deposit.
+- [Sparse unique inventory links](sparse-unique-inventory-links.md) — Optional unique device associations must be absent, not null, before assignment.
+- [Business Partner identity](business-partner-identity.md) — Distributor logins and API-client Partners are separate security and financial domains.
+- [Business Partner UI capabilities](business-partner-ui-capabilities.md) — Officer controls follow approved service capabilities, not the legacy management catalog key alone.
+- [Flutter Replit preview caching](flutter-replit-preview-caching.md) — Never mix cached release assets with a debug server; show HTML UI before Flutter and clear preview-only caches.
+- [Flutter package cache persistence](flutter-package-cache-persistence.md) — Use a workspace-local PUB_CACHE so workflow builds do not lose packages between processes.
+- [Bank transfer settlement safety](bank-transfer-settlement-safety.md) — Do not expose customer requery until ambiguous outcomes and concurrent settlement are safe.
+- [PIN admission and payment retries](pin-admission-payment-retries.md) — Complete PIN admission before wallet transactions; ambiguous responses must preserve the payment request key.
+- [Notification lifecycle independence](notification-lifecycle-independence.md) — In-app financial activity must not depend on email availability; new filters must continue matching legacy records.

@@ -1,0 +1,162 @@
+Continue from the completed Interstate Logistics and ServicePay Call implementation.
+
+DO NOT rewrite the fixes.
+DO NOT create another implementation.
+The current code implementation already passed review/tests.
+
+The remaining problem is LIVE RELEASE IDENTIFICATION AND VERIFICATION.
+
+We have repeatedly experienced ServicePay changes passing in the Replit workspace/preview but not appearing on the real servicepay.ng Customer Dashboard.
+
+Your first job is therefore to identify the EXACT live production architecture before deploying anything.
+
+==================================================
+1. IDENTIFY REAL LIVE CUSTOMER FRONTEND
+==================================================
+
+Determine exactly what currently serves:
+
+https://servicepay.ng
+
+Identify:
+
+- repository
+- branch
+- commit
+- hosting provider
+- build artifact
+- deployment workflow
+- API base URL embedded in the live frontend
+
+Compare the live production frontend with the current main Servicepay workspace.
+
+Report whether they match.
+
+==================================================
+2. IDENTIFY REAL LIVE BACKEND
+==================================================
+
+Determine exactly what currently serves:
+
+https://api.servicepay.ng
+
+Identify:
+
+- hosting provider
+- Render service if applicable
+- repository
+- branch
+- currently deployed commit/revision
+- production environment configuration relevant to these features
+
+Do NOT guess.
+
+Use available deployment/configuration evidence to establish the authoritative production backend.
+
+==================================================
+3. IDENTIFY DEPLOYMENT CONFLICTS
+==================================================
+
+Check whether ServicePay currently has multiple conflicting release paths such as:
+
+- Replit Publishing
+- GitHub Pages
+- Render
+- Cloudflare
+- old servicepay-admin repository
+- stale static builds
+
+Establish ONE authoritative mapping:
+
+CUSTOMER FRONTEND ->
+HEAD OFFICE ADMIN ->
+BACKEND API ->
+
+Do not change DNS yet.
+
+Do not delete legacy deployments.
+
+==================================================
+4. COMPARE FIXES AGAINST LIVE PRODUCTION
+==================================================
+
+Confirm whether the newly implemented:
+
+A. Interstate Logistics fixes
+B. ServicePay Call microphone fixes
+
+exist in the source/build currently serving production.
+
+If they are NOT live, state exactly which component requires deployment.
+
+Do not report a feature FAIL merely because it has not yet been deployed.
+
+Use these statuses instead:
+
+IMPLEMENTED
+NOT DEPLOYED
+DEPLOYED
+LIVE VERIFIED
+ACTUAL DEFECT
+
+==================================================
+5. PRE-DEPLOYMENT SAFETY
+==================================================
+
+Before any deployment confirm:
+
+- no destructive DB migration
+- no database reset
+- no wallet balance modification
+- no customer deletion
+- no transaction deletion
+- existing ServicePay features preserved
+- VULL untouched
+- legacy servicepay-admin untouched unless only inspected to identify routing
+
+Take/read production record counts where safely available so we can verify preservation afterward.
+
+==================================================
+6. DO NOT DEPLOY YET
+==================================================
+
+Stop BEFORE deployment.
+
+I want to approve the final production deployment manually.
+
+At the end report exactly:
+
+SERVICEPAY LIVE CUSTOMER FRONTEND HOST:
+LIVE FRONTEND REPOSITORY:
+LIVE FRONTEND BRANCH:
+LIVE FRONTEND COMMIT:
+
+SERVICEPAY LIVE API HOST:
+LIVE API REPOSITORY:
+LIVE API BRANCH:
+LIVE API COMMIT/REVISION:
+
+CUSTOMER FRONTEND API BASE URL:
+
+WORKSPACE/LIVE FRONTEND MATCH: YES/NO
+WORKSPACE/LIVE BACKEND MATCH: YES/NO
+STALE PRODUCTION BUILD FOUND: YES/NO
+MULTIPLE CONFLICTING DEPLOYMENT PATHS: YES/NO
+
+INTERSTATE FIX IMPLEMENTED: YES/NO
+INTERSTATE FIX CURRENTLY LIVE: YES/NO
+
+CALL FIX IMPLEMENTED: YES/NO
+CALL FIX CURRENTLY LIVE: YES/NO
+
+DATABASE DESTRUCTIVE CHANGES REQUIRED: YES/NO
+PRODUCTION DATA PRESERVED: YES/NO
+VULL MODIFIED: NO
+
+EXACT COMPONENTS THAT REQUIRE DEPLOYMENT:
+[write them here]
+
+SAFE TO BEGIN CONTROLLED DEPLOYMENT: YES/NO
+
+Do not deploy.
+Wait for my approval.

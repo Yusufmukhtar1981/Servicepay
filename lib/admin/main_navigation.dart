@@ -22,11 +22,36 @@ import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_session_service.dart';
 import 'login_screen.dart';
+import 'executive_management_screen.dart';
+import 'admin_feature_controls_screen.dart';
+import 'svp_management_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
-  const AdminMainNavigation({super.key, this.sessionService});
+  const AdminMainNavigation({
+    super.key,
+    this.sessionService,
+    this.initialDestinationLabel,
+  });
 
   final AdminSessionService? sessionService;
+  final String? initialDestinationLabel;
+
+  static List<String> visibleDestinationLabels(AdminAccess access) {
+    return _AdminMainNavigationState.destinations
+        .where((_AdminDestination item) =>
+            (item.label != 'Executive Management' ||
+                (const {
+                      'HEAD_OFFICE',
+                      'HEAD_OFFICE_ADMIN',
+                      'SUPER_ADMIN',
+                      'ADMIN'
+                    }.contains(access.role) &&
+                    access.isFullAccess)) &&
+            access.hasAny(item.permissions) &&
+            (item.label != 'Control' || access.role == 'HEAD_OFFICE'))
+        .map((_AdminDestination item) => item.label)
+        .toList();
+  }
 
   @override
   State<AdminMainNavigation> createState() => _AdminMainNavigationState();
@@ -38,6 +63,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
   AdminAccess? access;
   String? refreshError;
   late final AdminSessionService sessionService;
+  final GlobalKey<ExecutiveManagementScreenState> executiveManagementKey =
+      GlobalKey<ExecutiveManagementScreenState>();
 
   static const List<_AdminDestination> destinations = <_AdminDestination>[
     _AdminDestination(
@@ -47,7 +74,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         <String>[AdminPermissions.dashboardView],
         AdminDashboardScreen()),
     _AdminDestination(
-        'Branches',
+        'Executive Management',
+        Icons.insights_outlined,
+        Icons.insights,
+        <String>[AdminPermissions.staffView],
+        ExecutiveManagementScreen()),
+    _AdminDestination('SVP', Icons.badge_outlined, Icons.badge,
+        <String>[AdminPermissions.svpManagementView], SvpManagementScreen()),
+    _AdminDestination(
+        'Branch Management',
         Icons.account_tree_outlined,
         Icons.account_tree,
         <String>[
@@ -95,6 +130,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         <String>[AdminPermissions.dashboardView],
         AdminControlCenterScreen()),
     _AdminDestination(
+        'Feature Controls',
+        Icons.toggle_on_outlined,
+        Icons.toggle_on,
+        <String>[AdminPermissions.settingsView],
+        AdminFeatureControlsScreen()),
+    _AdminDestination(
         'Withdrawals',
         Icons.payments_outlined,
         Icons.payments_rounded,
@@ -116,7 +157,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         'Logistics',
         Icons.local_shipping_outlined,
         Icons.local_shipping_rounded,
-        <String>[AdminPermissions.logisticsView, AdminPermissions.logisticsManage],
+        <String>[
+          AdminPermissions.logisticsView,
+          AdminPermissions.logisticsManage
+        ],
         AdminLogisticsScreen()),
     _AdminDestination(
         'Marketplace',
@@ -154,6 +198,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         AdminRolesPermissionsScreen()),
   ];
 
+  static List<String> _visibleDestinationLabels(AdminAccess access) {
+    return AdminMainNavigation.visibleDestinationLabels(access);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -179,7 +227,22 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
     setState(() => refreshError = null);
     try {
       final AdminAccess value = await sessionService.refresh();
-      if (mounted) setState(() => access = value);
+      if (mounted) {
+        final visibleLabels =
+            AdminMainNavigation.visibleDestinationLabels(value);
+        final allowed = destinations
+            .where(
+                (_AdminDestination item) => visibleLabels.contains(item.label))
+            .toList();
+        final requestedIndex = widget.initialDestinationLabel == null
+            ? -1
+            : allowed.indexWhere((_AdminDestination item) =>
+                item.label == widget.initialDestinationLabel);
+        setState(() {
+          access = value;
+          if (requestedIndex >= 0) currentIndex = requestedIndex;
+        });
+      }
     } on AdminSessionExpiredException {
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -213,10 +276,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
     if (access == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final List<String> labels = _visibleDestinationLabels(access!);
     final List<_AdminDestination> allowed = destinations
-        .where((_AdminDestination item) =>
-            access!.hasAny(item.permissions) &&
-            (item.label != 'Control' || access!.role == 'HEAD_OFFICE'))
+        .where((_AdminDestination item) => labels.contains(item.label))
         .toList();
     if (allowed.isEmpty) {
       return const Scaffold(
@@ -225,43 +287,153 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
       );
     }
     if (currentIndex >= allowed.length) currentIndex = 0;
+    final int executiveIndex = allowed.indexWhere(
+        (_AdminDestination item) => item.label == 'Executive Management');
+    final int dashboardIndex = allowed
+        .indexWhere((_AdminDestination item) => item.label == 'Dashboard');
+    void openAdminDashboard() {
+      if (dashboardIndex < 0) return;
+      setState(() => currentIndex = dashboardIndex);
+    }
+
+    void openExecutiveManagement({bool createSvp = false}) {
+      if (executiveIndex < 0) return;
+      setState(() => currentIndex = executiveIndex);
+      if (createSvp) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          executiveManagementKey.currentState?.openCreate();
+        });
+      }
+    }
+
+    final wide = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
-      body: IndexedStack(
-        index: currentIndex,
-        children: allowed.map((_AdminDestination item) => item.page).toList(),
+      body: Row(
+        children: [
+          if (wide)
+            _DesktopAdminNavigation(
+              destinations: allowed,
+              currentIndex: currentIndex,
+              onSelect: (index) => setState(() => currentIndex = index),
+            ),
+          Expanded(
+            child: IndexedStack(
+              index: currentIndex,
+              children: allowed.map((_AdminDestination item) {
+                if (item.label == 'Dashboard') {
+                  return AdminDashboardScreen(
+                    showExecutiveManagement: executiveIndex >= 0,
+                    onOpenExecutiveManagement: openExecutiveManagement,
+                    onCreateSvp: () => openExecutiveManagement(createSvp: true),
+                  );
+                }
+                if (item.label == 'Executive Management') {
+                  return ExecutiveManagementScreen(
+                    key: executiveManagementKey,
+                    onBackToAdminDashboard: openAdminDashboard,
+                  );
+                }
+                return item.page;
+              }).toList(),
+            ),
+          ),
+        ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF0F766E),
-        unselectedItemColor: const Color(0xFF94A3B8),
-        backgroundColor: Colors.white,
-        elevation: 12,
-        selectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 11,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 11,
-        ),
-        onTap: (int index) {
-          setState(() {
-            currentIndex = index;
-          });
-        },
-        items: allowed
-            .map(
-              (_AdminDestination item) => BottomNavigationBarItem(
-                icon: Icon(item.icon),
-                activeIcon: Icon(item.activeIcon),
-                label: item.label,
-              ),
-            )
-            .toList(),
-      ),
+      bottomNavigationBar: wide
+          ? null
+          : _MobileAdminNavigation(
+              destinations: allowed,
+              currentIndex: currentIndex,
+              onSelect: (index) => setState(() => currentIndex = index),
+            ),
     );
   }
+}
+
+class _DesktopAdminNavigation extends StatelessWidget {
+  const _DesktopAdminNavigation({
+    required this.destinations,
+    required this.currentIndex,
+    required this.onSelect,
+  });
+
+  final List<_AdminDestination> destinations;
+  final int currentIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFFE6F0ED),
+        child: SizedBox(
+          width: 248,
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+              child: Column(
+                children: List.generate(destinations.length, (index) {
+                  final item = destinations[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: ListTile(
+                      selected: currentIndex == index,
+                      selectedTileColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      leading: Icon(
+                          currentIndex == index ? item.activeIcon : item.icon),
+                      title: Text(item.label,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w700)),
+                      onTap: () => onSelect(index),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _MobileAdminNavigation extends StatelessWidget {
+  const _MobileAdminNavigation({
+    required this.destinations,
+    required this.currentIndex,
+    required this.onSelect,
+  });
+
+  final List<_AdminDestination> destinations;
+  final int currentIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.white,
+        elevation: 10,
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            child: Row(
+              children: List.generate(destinations.length, (index) {
+                final item = destinations[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    selected: currentIndex == index,
+                    avatar: Icon(
+                        currentIndex == index ? item.activeIcon : item.icon,
+                        size: 18),
+                    label: Text(item.label),
+                    onSelected: (_) => onSelect(index),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+      );
 }
 
 class _AdminDestination {

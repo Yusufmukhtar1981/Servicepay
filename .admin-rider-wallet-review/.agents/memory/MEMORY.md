@@ -1,0 +1,1 @@
+- [GitHub workflow publishing](github-workflow-publishing.md) — The connector publishes normal files but blocks `.github/workflows` content paths with HTTP 403.

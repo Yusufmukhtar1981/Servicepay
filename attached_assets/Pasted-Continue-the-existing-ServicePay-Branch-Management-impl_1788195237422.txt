@@ -1,0 +1,278 @@
+Continue the existing ServicePay Branch Management implementation and finish ALL remaining blockers.
+
+DO NOT create another task.
+DO NOT restart the Branch Management implementation.
+DO NOT rewrite already-working code.
+Continue from the current implementation and complete the remaining work.
+
+The current verification already shows:
+- Flutter analysis: no issues
+- Flutter targeted tests: 30 passed
+- Backend targeted tests: 11 passed
+- Flutter web release build: successful
+- Runtime preview: successful
+- Git diff validation: clean
+
+Preserve all of these passing results.
+
+NOW COMPLETE THE REMAINING ITEMS:
+
+1. COMPLETE CROSS-MODULE BRANCH STAMPING
+
+Integrate branchId and authenticated branch scope directly into the EXISTING native workflows/controllers for:
+
+- Delivery
+- Solar
+- Marketplace
+- Phone Financing
+- Empowerment
+- Customer onboarding
+- Branch-originated operational records
+
+Do NOT implement branch isolation only at reporting/dashboard level.
+
+When an authenticated Branch Manager/Branch Staff creates an eligible record:
+- derive branchId from authenticated staff context
+- stamp branchId server-side
+- stamp createdByStaffId where appropriate
+- never trust arbitrary branchId supplied by frontend
+
+HEAD OFFICE-created/global records must continue working correctly.
+
+2. COMPLETE BACKEND BRANCH ISOLATION
+
+Audit the native controllers/routes for:
+- Solar
+- Marketplace
+- Phone Financing
+- Empowerment
+- Delivery
+- branch customers/staff
+
+Branch-scoped authenticated users must only retrieve/update records belonging to their authorized branch.
+
+Branch A must never access Branch B records.
+
+Enforce this in backend queries, not frontend filtering.
+
+Unauthorized cross-branch access must return 403.
+
+HEAD OFFICE/SUPER_ADMIN must retain authorized cross-branch/global visibility.
+
+3. FINISH HEAD OFFICE APPROVAL INTEGRATION SAFELY
+
+Connect BranchApprovalRequest to the EXISTING safe business workflows.
+
+IMPORTANT:
+Do not create a generic balance mutation endpoint.
+
+For each financial/sensitive approval type:
+- validate current status
+- validate requester branch
+- prevent self-approval
+- prevent duplicate approval
+- use existing native ServicePay business/settlement function
+- preserve wallet validation
+- preserve transaction records
+- preserve idempotency
+- preserve audit logging
+
+Approval should transition:
+
+PENDING_HEAD_OFFICE
+→ APPROVED
+→ COMPLETED
+
+ONLY after the underlying native operation succeeds.
+
+If underlying operation fails:
+- do not falsely mark COMPLETED
+- do not double-credit/debit
+- preserve retry-safe state
+- record failure safely
+
+4. DO NOT DIRECTLY MUTATE BALANCES FROM BRANCH APPROVAL CODE
+
+Reuse existing trusted financial flows.
+
+This applies especially to:
+- Manual Funding
+- Wallet adjustments
+- Refunds
+- Empowerment disbursement
+- Solar financial approvals
+- Phone Financing financial approvals
+- any future branch financial request
+
+5. COMPLETE BRANCH MODULE ATTRIBUTION
+
+Ensure reports/targets derive real branch performance from correctly attributed records.
+
+Examples:
+
+Delivery:
+branchId must follow assigned/operating branch.
+
+Solar:
+branch application/sale must be attributable to branch that originated/handled it.
+
+Marketplace:
+branch-assisted seller/order activity must be attributable where applicable without breaking normal online Marketplace orders.
+
+Phone Financing:
+branch-originated application must retain branch attribution throughout its lifecycle.
+
+Empowerment:
+branch-assisted registration/application must retain branch attribution.
+
+Customer:
+branch-created customer:
+branchId
+createdByStaffId
+onboardingSource = BRANCH
+
+Normal online/self-service customers must remain unaffected.
+
+6. HTTP-LEVEL INTEGRATION TESTS
+
+Add broader backend integration tests.
+
+Test at minimum:
+
+A. Branch A manager requests Branch A data
+Expected: 200
+
+B. Branch A manager requests Branch B record directly
+Expected: 403
+
+C. Branch B manager requests Branch A record
+Expected: 403
+
+D. Head Office requests Branch A + Branch B
+Expected: authorized success
+
+E. Branch Manager attempts self-approval
+Expected: blocked
+
+F. Same approval submitted/processed twice
+Expected: no duplicate financial effect
+
+G. Suspended branch tries protected operation
+Expected: blocked
+
+H. Staff removed from branch uses old session
+Expected: session/access invalidated as designed
+
+I. Branch-created customer
+Expected:
+correct branchId + createdByStaffId + onboardingSource
+
+J. Branch-originated Solar/Marketplace/Phone/Empowerment records
+Expected:
+correct server-side branch attribution.
+
+7. MONGODB / ENVIRONMENT
+
+Do NOT hardcode MongoDB credentials.
+
+Inspect existing project configuration and Secrets/environment variables.
+
+If the required MongoDB connection already exists in the project environment, use it safely for runtime verification.
+
+If it genuinely does not exist, do not fabricate credentials and do not damage production configuration.
+
+Continue every test that can safely run without it and clearly identify the exact missing environment variable only if genuinely unavailable.
+
+8. PRODUCTION / RENDER ACCESS
+
+Inspect the existing deployment configuration/workflow.
+
+If deployment access is available, perform deployment and authenticated production smoke tests.
+
+If an existing pending Render-access task is the only blocker, do not create duplicate tasks.
+
+Continue implementation/testing independently and leave only the genuinely external deployment-access blocker unresolved.
+
+9. PRODUCTION SMOKE TEST AFTER DEPLOYMENT
+
+Verify:
+
+- Admin login
+- Staff login
+- Branch Manager login
+- Branch Dashboard
+- Branch creation
+- Manager assignment
+- Staff assignment
+- Targets
+- Reports
+- Head Office approvals
+- Delivery branch scope
+- Solar branch scope
+- Marketplace branch scope
+- Phone Financing branch scope
+- Empowerment branch scope
+- Customer onboarding attribution
+- Branch A cannot access Branch B
+- Head Office can access authorized global data
+
+10. REGRESSION SAFETY
+
+Re-run:
+
+- Flutter analysis
+- Flutter targeted tests
+- Backend tests
+- Branch HTTP integration tests
+- Flutter web release build
+
+Do not break:
+Customer
+Admin
+Staff
+Rider
+Delivery
+Solar
+Marketplace
+Empowerment
+Phone Financing
+Wallet
+Transactions
+Manual Funding
+existing authentication.
+
+11. COMPLETION RULE
+
+Do NOT mark Branch Management complete merely because dashboard/reporting works.
+
+Mark it complete only when:
+- native cross-module branch stamping works
+- backend branch isolation works
+- financial approval integration is safely connected where supported
+- integration tests pass
+- production deployment/smoke verification succeeds if deployment access is available
+
+If an EXTERNAL credential/access issue is the only remaining blocker, clearly separate:
+A. application implementation status
+B. external deployment/access blocker
+
+Do not call application code incomplete merely because an external credential is unavailable if all code/tests that can be performed have passed.
+
+12. FINAL REPORT
+
+Return:
+- additional files changed
+- native controllers integrated
+- branch stamping results
+- cross-branch isolation test results
+- financial approval integrations completed
+- idempotency tests
+- HTTP integration test count/results
+- Flutter test results
+- backend test results
+- build result
+- deployment result
+- production smoke-test result
+- exact remaining blocker, if any
+
+Continue implementation NOW from the current codebase.

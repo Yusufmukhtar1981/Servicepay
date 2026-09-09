@@ -16,7 +16,7 @@ class AdminDeliveryApiException implements Exception {
 
 abstract class AdminDeliveryApiClient {
   Future<List<Map<String, dynamic>>> getDeliveries({
-    String status = 'PENDING',
+    String status = 'ALL',
   });
 
   Future<List<Map<String, dynamic>>> getAvailableRiders(String deliveryId);
@@ -151,16 +151,20 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
 
   @override
   Future<List<Map<String, dynamic>>> getDeliveries({
-    String status = 'PENDING',
+    String status = 'ALL',
   }) async {
+    final String normalizedStatus = status.trim().toUpperCase();
+    final Map<String, String> query = <String, String>{
+      'page': '1',
+      'limit': '100',
+    };
+    if (normalizedStatus.isNotEmpty && normalizedStatus != 'ALL') {
+      query['status'] = normalizedStatus;
+    }
     final Map<String, dynamic> root = await _request(
       'GET',
       '/deliveries',
-      query: <String, String>{
-        'page': '1',
-        'limit': '100',
-        'status': status,
-      },
+      query: query,
     );
     final Map<String, dynamic> data = mapFrom(root['data']);
     return listFrom(data['deliveries'] ?? root['deliveries']);

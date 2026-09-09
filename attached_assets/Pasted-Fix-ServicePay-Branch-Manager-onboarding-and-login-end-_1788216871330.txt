@@ -1,0 +1,249 @@
+Fix ServicePay Branch Manager onboarding and login end-to-end.
+
+CURRENT PROBLEM:
+Branch Management exists, but creating a branch currently depends too much on existing Staff records. I need to be able to create a completely new Branch Manager directly from Branch Management, even if that person has never existed as Staff before.
+
+GOAL:
+Admin/Head Office must be able to create a Branch and create a new Branch Manager account in the same workflow.
+
+IMPLEMENT:
+
+1. CREATE BRANCH FLOW
+
+Admin > Branch Management > Create Branch
+
+Form must include:
+- Branch Name
+- Branch Code
+- State
+- LGA
+- Address
+- Phone
+- Email
+- Opening Date
+- Status
+- Assigned Modules
+- Targets
+- Notes
+
+Then add:
+
+BRANCH MANAGER OPTION:
+A. Create New Branch Manager
+B. Assign Existing Staff
+
+2. CREATE NEW BRANCH MANAGER
+
+If Admin selects “Create New Branch Manager”, show:
+
+- Full Name
+- Email
+- Phone
+- Temporary Password
+- Job Title = Branch Manager
+- Status
+- Assigned Modules/Permissions
+
+The person does NOT need to already exist in Staff Management.
+
+Backend must create a secure authenticated account with:
+
+role = BRANCH_MANAGER
+branchId = newly created branch
+status = ACTIVE
+appropriate permissions
+
+Do not create the manager as a normal CUSTOMER.
+
+3. LOGIN DETAILS
+
+After successful creation, show a secure success screen:
+
+Branch Created Successfully
+
+Branch:
+<Branch Name>
+
+Branch Manager:
+<Manager Name>
+
+Login Username:
+<email or phone>
+
+Temporary Password:
+<only show if system securely supports one-time display>
+
+Require password change on first login if supported.
+
+Never display password hashes.
+
+4. BRANCH MANAGER LOGIN
+
+Branch Manager must be able to login using the normal ServicePay authentication endpoint/page.
+
+After login:
+
+If role = BRANCH_MANAGER:
+redirect automatically to Branch Manager Dashboard.
+
+Do NOT send Branch Manager to:
+- Customer Dashboard
+- Rider Dashboard
+- normal Staff Dashboard
+- full Admin Dashboard
+
+5. BRANCH MANAGER DASHBOARD
+
+The dashboard must show:
+
+- Branch Name
+- Branch Code
+- Manager Name
+- Today performance
+- Weekly performance
+- Monthly performance
+- Target progress
+- Pending Head Office approvals
+- Branch Staff
+- Delivery
+- Solar
+- Marketplace
+- Phone Financing
+- Empowerment
+- Reports
+
+Only show modules assigned by Head Office.
+
+6. BRANCH ISOLATION
+
+Branch Manager must only see:
+- their branch
+- their branch customers
+- their branch staff
+- their branch applications
+- their branch deliveries
+- their branch reports
+
+Direct access to another branch must return 403.
+
+7. HEAD OFFICE APPROVAL
+
+Branch Manager can submit eligible actions, but sensitive actions remain:
+
+PENDING_HEAD_OFFICE
+
+Branch Manager must never approve their own sensitive request.
+
+8. EXISTING STAFF OPTION
+
+Keep the ability to assign an existing Staff member as Branch Manager.
+
+But this must be OPTIONAL.
+
+Admin must be able to create a totally new manager directly from Branch Management.
+
+9. MANAGER ACCOUNT MANAGEMENT
+
+Head Office must be able to:
+- reset Branch Manager password
+- activate/deactivate
+- change manager
+- suspend manager
+- update permissions
+- move manager only through authorized Head Office flow
+
+10. UNIQUE ACCOUNT VALIDATION
+
+Prevent duplicate:
+- email
+- phone
+- branch manager assignment conflicts
+
+Return clear validation errors.
+
+11. SECURITY
+
+- Hash passwords securely
+- Do not expose password hashes
+- Do not let Branch Manager escalate their own permissions
+- Do not trust branchId from frontend
+- derive branch scope from authenticated account
+- invalidate old sessions when manager is removed/reassigned
+
+12. PRODUCTION VERIFICATION
+
+Test end-to-end:
+
+TEST A:
+Create branch + completely new manager.
+
+Expected:
+Branch created.
+Manager account created.
+Manager receives/has login credentials.
+
+TEST B:
+Manager logs in.
+
+Expected:
+Redirect to Branch Manager Dashboard.
+
+TEST C:
+Manager attempts another branch URL/API.
+
+Expected:
+403.
+
+TEST D:
+Admin changes manager.
+
+Expected:
+Old manager loses branch access.
+New manager gains branch access.
+
+TEST E:
+Existing Staff assigned as manager.
+
+Expected:
+Works without duplicate account.
+
+13. UI REQUIREMENT
+
+Do not consider complete until I can physically do this from Admin Dashboard:
+
+Branch Management
+→ Create Branch
+→ Create New Branch Manager
+→ Save
+→ Login with new manager account
+→ See Branch Manager Dashboard
+
+14. DO NOT BREAK
+
+Do not break:
+Admin
+Staff
+Customer
+Rider
+Solar
+Marketplace
+Empowerment
+Phone Financing
+Wallet
+Payments
+Branch backend isolation
+
+15. FINAL REPORT
+
+Return:
+- root cause
+- frontend files changed
+- backend files changed
+- manager account model/role changes
+- branch creation API result
+- branch manager login result
+- redirect result
+- permission/isolation test result
+- production verification result
+
+Proceed now.

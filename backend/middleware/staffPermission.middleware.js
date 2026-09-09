@@ -74,6 +74,15 @@ const loadStaffRole = async (req, res, next) => {
 
       return next();
     }
+    if (role === "SVP" && req.user.isStaff === true) {
+      req.staffAccess = {
+        isHeadOffice: false, roleName: "SVP", sourceRole: rawRole,
+        department: req.user.department || "ADMINISTRATION",
+        permissions: normalizePermissionList(req.user.svpPermissions || []),
+        scope: req.user.svpScope || { type: "CUSTOM" }, hierarchyLevel: 90,
+      };
+      return next();
+    }
 
     if (directRolePermissions[role]) {
       const rolePermissions = role === "BRANCH_MANAGER" &&

@@ -1,14 +1,30 @@
 - [Mongoose 9 middleware](mongoose-9-middleware.md) — Callback-style model middleware must be converted before transaction safeguards can run.
 - [Attachment commits](attachment-commits.md) — Verify HEAD before amending; attachment handling may create a commit between turns.
 - [GitHub connector publishing](github-connector-publishing.md) — Local GitHub HTTPS may lack auth; publish via the connector only after file-level remote safety checks.
+- [GitHub workflow write scope](github-workflow-write-scope.md) — Repository content access may still reject commits that modify Actions workflows.
 - [Marketplace funds](marketplace-funds.md) — Marketplace checkout holds customer funds; never credit sellers without an approved settlement path.
 - [Partner reconciliation states](partner-reconciliation-states.md) — Only explicit provider uncertainty may be manually reconciled; in-flight purchases must stay immutable.
 - [Financing inventory reservations](financing-inventory-reservations.md) — Reserve a real device atomically before accepting a financing deposit.
 - [Sparse unique inventory links](sparse-unique-inventory-links.md) — Optional unique device associations must be absent, not null, before assignment.
 - [Business Partner identity](business-partner-identity.md) — Distributor logins and API-client Partners are separate security and financial domains.
 - [Business Partner UI capabilities](business-partner-ui-capabilities.md) — Officer controls follow approved service capabilities, not the legacy management catalog key alone.
-- [Flutter Replit preview caching](flutter-replit-preview-caching.md) — Never mix cached release assets with a debug server; show HTML UI before Flutter and clear preview-only caches.
+- [Flutter web cache isolation](flutter-replit-preview-caching.md) — Non-PWA releases must unregister legacy workers and clear Flutter caches before loading fresh assets.
 - [Flutter package cache persistence](flutter-package-cache-persistence.md) — Use a workspace-local PUB_CACHE so workflow builds do not lose packages between processes.
+- [Flutter build directory portability](flutter-build-directory-portability.md) — Never commit build as an absolute /tmp symlink; clean publish builders cannot follow it.
 - [Bank transfer settlement safety](bank-transfer-settlement-safety.md) — Do not expose customer requery until ambiguous outcomes and concurrent settlement are safe.
 - [PIN admission and payment retries](pin-admission-payment-retries.md) — Complete PIN admission before wallet transactions; ambiguous responses must preserve the payment request key.
+- [Transfer alert references](transfer-alert-references.md) — Treat client transfer references as untrusted PII; operations alerts must use secret-keyed correlation references.
 - [Notification lifecycle independence](notification-lifecycle-independence.md) — In-app financial activity must not depend on email availability; new filters must continue matching legacy records.
+- [Render Node runtime precedence](render-node-runtime-precedence.md) — Service-level NODE_VERSION overrides repository runtime pins; verify effective build logs before changing lockfiles.
+- [Render backend release source](render-backend-release-source.md) — Customer main and the live Render API may track different branches; prove the API handler changed after each backend release.
+- [Android build resource pressure](android-build-resource-pressure.md) — Run release APK builds without concurrent Flutter workflows; container restarts can interrupt Gradle.
+- [Voice call lifecycle atomicity](voice-call-lifecycle-atomicity.md) — Accepted state, busy leases, and client terminal cleanup must move together.
+- [Split frontend dependencies](split-frontend-dependencies.md) — Customer code must not import Admin-only files because production builds come from separate repositories.
+- [Linked worktree recovery](linked-worktree-recovery.md) — Replit checkpoint cleanup can leave a worktree directory intact while its Git metadata disappears.
+- [Twilio TURN account entitlement](twilio-turn-account-entitlement.md) — Twilio Network Traversal token generation is unavailable on Trial accounts even when SID and auth token secrets exist.
+- [Control Center reporting integrity](control-center-reporting-integrity.md) — Operational status buckets must be exhaustive; lifecycle financial views are non-additive.
+- [Admin production repository](admin-production-repository.md) — The admin custom domain is deployed from the hyphenated repository; verify the live bundle, not a similarly named repo.
+- [ServicePay executive administration](servicepay-executive-administration.md) — Executive and SVP capabilities belong in the main ServicePay Admin; keep the separate Admin project untouched.
+- [Interstate route activation](interstate-route-activation.md) — Never seed logistics routes automatically; Head Office must configure real branch-bound pricing before customer quotes activate.
+- [Interstate quote integrity](interstate-quote-integrity.md) — Bind every price-affecting parcel field to one canonical quote, stored shipment, and later recalculation.
+- [GitHub Pages clean URLs](github-pages-clean-urls.md) — Use a root .html artifact for an exact slashless URL; directory indexes redirect to a trailing slash.

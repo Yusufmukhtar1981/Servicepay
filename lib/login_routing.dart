@@ -9,6 +9,7 @@ import 'business_partner/business_partner_dashboard_screen.dart';
 import 'admin/main_navigation.dart';
 import 'branch_manager/branch_manager_dashboard_screen.dart';
 import 'forced_password_change_screen.dart';
+import 'admin/svp_command_center_screen.dart';
 
 String normalizeLoginRole(dynamic value) {
   return value
@@ -57,8 +58,14 @@ Widget authenticatedHomeForRole(String role) {
       return const PhoneFinancingOfficerDashboardScreen();
     case 'BUSINESS_PARTNER':
       return const BusinessPartnerDashboardScreen();
+    case 'HEAD_OFFICE':
+    case 'HEAD_OFFICE_ADMIN':
+    case 'SUPER_ADMIN':
+    case 'ADMIN':
     case 'STAFF':
       return const AdminMainNavigation();
+    case 'SVP':
+      return const SvpCommandCenterScreen();
     case 'BRANCH_MANAGER':
       return const BranchManagerDashboardScreen();
     default:

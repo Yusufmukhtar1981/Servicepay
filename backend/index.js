@@ -17,6 +17,8 @@ const fintechControlMiddleware = require("./middleware/fintechControl.middleware
 
 require("dotenv").config();
 
+const { getBuildInfo } = require("./utils/buildInfo");
+
 const connectDB = require("./config/db");
 const {
   startEmailAutomation,
@@ -25,6 +27,9 @@ const {
   verifyEmailConnection,
 } = require("./services/email.service");
 const { resumePendingCampaigns } = require("./services/communicationCampaign.service");
+const {
+  startServicePayTransferMonitor,
+} = require("./services/servicePayTransferMonitor.service");
 const {
   logFirebaseConfigurationStatus,
 } = require("./services/riderDeliveryAlert.service");
@@ -142,6 +147,7 @@ const branchInterstateLogisticsRoutes = require("./routes/branchInterstateLogist
 const riderInterstateLogisticsRoutes = require("./routes/riderInterstateLogistics.routes");
 const transportLogisticsRoutes = require("./routes/transportLogistics.routes");
 const privacyRequestRoutes = require("./routes/privacyRequest.routes");
+const svpRoutes = require("./routes/svp.routes");
 
 app.use(helmet());
 app.use(cors());
@@ -165,14 +171,26 @@ app.use(
   })
 );
 
-app.get("/", (req, res) => {
+const buildInfo = getBuildInfo();
+
+function sendServiceHealth(req, res) {
   res.status(200).json({
     success: true,
     status: "OK",
     message:
       "Servicepay Backend is running",
+    release: buildInfo.release,
+    commit: buildInfo.commit,
   });
-});
+}
+
+function sendServiceVersion(req, res) {
+  res.status(200).json(buildInfo);
+}
+
+app.get("/", sendServiceHealth);
+app.get("/version", sendServiceVersion);
+app.get("/api/version", sendServiceVersion);
 
 
 /*
@@ -325,6 +343,7 @@ app.use("/api/admin/kyc", adminKycRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/staff-management", staffManagementRoutes);
 app.use("/api/admin/role-users", adminRoleUsersRoutes);
+app.use("/api/svp", svpRoutes);
 
 app.use("/api/mini-apps", miniAppRoutes);
 app.use("/api/sudo", sudoRoutes);
@@ -394,6 +413,7 @@ server.listen(PORT, "0.0.0.0", () => {
       );
 
       await startEmailAutomation();
+      startServicePayTransferMonitor();
     })
     .catch((error) => {
       console.error(
