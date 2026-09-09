@@ -548,6 +548,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   void _handleConnectionState(String raw) {
     final state = raw.toUpperCase();
+    if (shouldIgnoreConnectionStateDuringTeardown(
+        state, _intentionalTeardown)) {
+      return;
+    }
     if (state == 'CONNECTED' || state == 'COMPLETED') {
       _disconnectTimer?.cancel();
       _coordinator?.connection('CONNECTED');

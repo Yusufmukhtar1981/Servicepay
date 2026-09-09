@@ -201,6 +201,18 @@ bool shouldNotifyTerminal({
 bool shouldTerminateServerOnNegotiationFailure(bool accepted, String callId) =>
     accepted && callId.trim().isNotEmpty;
 
+bool shouldIgnoreConnectionStateDuringTeardown(
+        String state, bool intentionalTeardown) =>
+    intentionalTeardown &&
+    const <String>{'DISCONNECTED', 'FAILED', 'CLOSED'}
+        .contains(state.trim().toUpperCase());
+
+bool shouldResumeIncomingCallSession({
+  required bool callCreated,
+  required bool remoteTerminal,
+}) =>
+    callCreated && !remoteTerminal;
+
 class CallRecord {
   const CallRecord({
     required this.callId,
