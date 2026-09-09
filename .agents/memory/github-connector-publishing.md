@@ -20,3 +20,9 @@ Fine-grained token access to repository contents does not necessarily authorize 
 **Why:** Workflow-file writes require separate workflow authorization, while an existing workflow can still run normally after an application-only commit.
 
 **How to apply:** Probe ordinary ref writes first. If only a workflow-file push is rejected, preserve the existing remote workflow and publish validated application files separately unless changing the workflow is essential.
+
+GitHub push protection scans every unpublished commit being introduced, including historical test fixtures. If it blocks an older commit and history rewriting is prohibited, stop and require an explicit repository-side allowance before retrying.
+
+**Why:** Editing the fixture in a new commit does not remove the flagged value from history, while rebasing or filtering the branch would violate the non-rewrite constraint.
+
+**How to apply:** Confirm the reported location is historical, do not use force-push or secret-scanning bypass APIs, and retry the same non-force push only after the repository owner explicitly allows the detected fixture.
