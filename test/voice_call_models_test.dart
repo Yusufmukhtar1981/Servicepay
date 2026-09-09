@@ -143,6 +143,40 @@ void main() {
     expect(shouldTerminateServerOnNegotiationFailure(true, 'call-1'), isTrue);
   });
 
+  test('intentional teardown ignores late peer failure callbacks', () {
+    for (final state in ['disconnected', 'FAILED', 'closed']) {
+      expect(shouldIgnoreConnectionStateDuringTeardown(state, true), isTrue);
+      expect(shouldIgnoreConnectionStateDuringTeardown(state, false), isFalse);
+    }
+    expect(shouldIgnoreConnectionStateDuringTeardown('CONNECTED', true),
+        isFalse);
+  });
+
+  test('incoming microphone retry restores one terminal notification', () {
+    expect(
+        shouldResumeIncomingCallSession(
+            callCreated: true, remoteTerminal: false),
+        isTrue);
+    expect(
+        shouldNotifyTerminal(
+            remoteTerminal: false,
+            intentionalTeardown: false,
+            terminalSent: false,
+            callCreated: true),
+        isTrue);
+    expect(
+        shouldNotifyTerminal(
+            remoteTerminal: false,
+            intentionalTeardown: false,
+            terminalSent: true,
+            callCreated: true),
+        isFalse);
+    expect(
+        shouldResumeIncomingCallSession(
+            callCreated: true, remoteTerminal: true),
+        isFalse);
+  });
+
   test('microphone failures have accurate user-facing classifications', () {
     expect(const MicrophoneAccessFailure(MicrophoneAccessResult.granted).result,
         MicrophoneAccessResult.granted);

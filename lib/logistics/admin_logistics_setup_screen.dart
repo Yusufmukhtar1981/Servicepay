@@ -38,7 +38,8 @@ class _AdminLogisticsSetupScreenState extends State<AdminLogisticsSetupScreen> {
   Future<List<Map<String, dynamic>>> _load() async {
     if (widget.resource == 'routes') {
       final results = await Future.wait(<Future<List<Map<String, dynamic>>>>[
-        _api.list('admin', 'routes'),
+        _api.list('admin', 'routes',
+            query: const <String, String>{'includeArchived': 'true'}),
         _api.listBranches(),
       ]);
       _branches = results[1];
@@ -161,6 +162,7 @@ class _AdminLogisticsSetupScreenState extends State<AdminLogisticsSetupScreen> {
         logisticsText(LogisticsApi.map(row['originBranchId'])['name'], ''),
         logisticsText(LogisticsApi.map(row['destinationBranchId'])['name'], ''),
         logisticsText(row['status'], ''),
+        row['isArchived'] == true ? 'archived' : '',
       ].join(' ').toLowerCase();
       return text.contains(_search.toLowerCase());
     }).toList();
@@ -205,11 +207,23 @@ class _AdminLogisticsSetupScreenState extends State<AdminLogisticsSetupScreen> {
                         '${logisticsText(destination['name'], logisticsText(row['destinationState']))}\n'
                         '₦${logisticsText(row['baseFare'], '0')} base · '
                         '${logisticsText(row['minimumWeightKg'], '0')}–${logisticsText(row['maximumWeightKg'])} kg · '
-                        '${logisticsText(row['status'])}'),
-                    trailing: IconButton(
-                      tooltip: 'Edit route',
-                      icon: const Icon(Icons.edit_outlined),
-                      onPressed: () => _edit(context, row),
+                        '${row['isArchived'] == true ? 'ARCHIVED' : logisticsText(row['status'])} · '
+                        '${logisticsText(row['standardDeliveryTime'], 'Delivery time not set')}'),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (action) =>
+                          _routeAction(context, row, action),
+                      itemBuilder: (_) => <PopupMenuEntry<String>>[
+                        if (row['isArchived'] != true)
+                          const PopupMenuItem(value: 'edit', child: Text('Edit route')),
+                        if (row['isArchived'] != true && row['status'] != 'ACTIVE')
+                          const PopupMenuItem(value: 'activate', child: Text('Activate route')),
+                        if (row['isArchived'] != true && row['status'] == 'ACTIVE')
+                          const PopupMenuItem(value: 'deactivate', child: Text('Deactivate route')),
+                        if (row['isArchived'] != true)
+                          const PopupMenuItem(value: 'archive', child: Text('Archive route safely')),
+                        if (row['isArchived'] == true)
+                          const PopupMenuItem(value: 'restore', child: Text('Restore as inactive')),
+                      ],
                     ),
                   ),
                 );
@@ -306,6 +320,73 @@ class _AdminLogisticsSetupScreenState extends State<AdminLogisticsSetupScreen> {
     }
   }
 
+  Future<void> _routeAction(BuildContext context,
+      Map<String, dynamic> row, String action) async {
+    if (action == 'edit') {
+      await _edit(context, row);
+      return;
+    }
+    final String id = logisticsText(row['_id'] ?? row['id'], '');
+    if (id.isEmpty || !mounted) return;
+    String reason = '';
+    final TextEditingController reasonController = TextEditingController();
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(switch (action) {
+          'activate' => 'Activate this route?',
+          'deactivate' => 'Deactivate this route?',
+          'archive' => 'Archive this route safely?',
+          _ => 'Restore this route?',
+        }),
+        content: action == 'archive'
+            ? TextField(
+                controller: reasonController,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Archive reason',
+                  helperText: 'Archiving preserves route and shipment history.',
+                ),
+              )
+            : Text(action == 'activate'
+                ? 'Only active routes are visible to customers.'
+                : action == 'deactivate'
+                    ? 'Customers will no longer see this route.'
+                    : 'The route will be restored as inactive.'),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () {
+                reason = reasonController.text.trim();
+                if (action == 'archive' && reason.length < 5) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(content: Text('Provide a short reason before archiving.')));
+                  return;
+                }
+                Navigator.pop(dialogContext, true);
+              },
+              child: Text(action == 'archive' ? 'Archive' : 'Confirm')),
+        ],
+      ),
+    );
+    reasonController.dispose();
+    if (confirmed != true || !mounted) return;
+    try {
+      if (action == 'activate' || action == 'deactivate') {
+        await _api.setRouteActive(id, action == 'activate');
+      } else if (action == 'archive') {
+        await _api.archiveRoute(id, reason: reason);
+      } else if (action == 'restore') {
+        await _api.restoreRoute(id);
+      }
+      _reload();
+    } on LogisticsApiException catch (error) {
+      _error(context, error.message);
+    }
+  }
+
   void _error(BuildContext context, String message) {
     if (context.mounted) {
       ScaffoldMessenger.of(context)
@@ -361,7 +442,8 @@ class _RouteFormState extends State<_RouteForm> {
     c = <String, TextEditingController>{
       for (final key in <String>[
         'name', 'baseFare', 'minimumWeightKg', 'maximumWeightKg',
-        'pricePerAdditionalKg', 'expressSurcharge', 'pickupFee',
+        'pricePerAdditionalKg', 'maximumDimensionCm', 'oversizeSurcharge',
+        'expressSurcharge', 'pickupFee',
         'doorDeliveryFee', 'branchCollectionFee', 'protectionPercent',
         'protectionFlatFee', 'fragileItemSurcharge',
         'standardDeliveryTime', 'expressDeliveryTime', 'notes'
@@ -434,6 +516,11 @@ class _RouteFormState extends State<_RouteForm> {
               _text('minimumWeightKg', 'Included weight (kg)', number: true),
               _text('maximumWeightKg', 'Maximum accepted weight (kg)', number: true),
               _text('pricePerAdditionalKg', 'Additional price per kg (₦)', number: true),
+              _text('maximumDimensionCm',
+                  'Oversize threshold: longest side (cm, optional)',
+                  number: true),
+              _text('oversizeSurcharge', 'Oversize surcharge (₦, optional)',
+                  number: true),
               SwitchListTile(title: const Text('Express service'), value: express, onChanged: (value) => setState(() => express = value)),
               _text('expressSurcharge', 'Express surcharge (₦)', number: true),
               _text('fragileItemSurcharge', 'Fragile-item surcharge (₦)', number: true),
@@ -451,6 +538,7 @@ class _RouteFormState extends State<_RouteForm> {
                 decoration: const InputDecoration(labelText: 'Route status', border: OutlineInputBorder()),
                 items: const <DropdownMenuItem<String>>[
                   DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
+                  DropdownMenuItem(value: 'INACTIVE', child: Text('Inactive')),
                   DropdownMenuItem(value: 'PAUSED', child: Text('Paused')),
                   DropdownMenuItem(value: 'UNAVAILABLE', child: Text('Unavailable')),
                 ],
@@ -468,7 +556,7 @@ class _RouteFormState extends State<_RouteForm> {
               : () {
                   final originBranch = widget.branches.firstWhere((b) => logisticsText(b['_id'] ?? b['id'], '') == origin);
                   final destinationBranch = widget.branches.firstWhere((b) => logisticsText(b['_id'] ?? b['id'], '') == destination);
-                  Navigator.pop(context, <String, dynamic>{
+                  final payload = <String, dynamic>{
                     'name': c['name']!.text.trim(),
                     'originState': logisticsText(originBranch['state'], '').toUpperCase(),
                     'originBranchId': origin,
@@ -478,6 +566,8 @@ class _RouteFormState extends State<_RouteForm> {
                     'minimumWeightKg': _number('minimumWeightKg'),
                     'maximumWeightKg': _number('maximumWeightKg'),
                     'pricePerAdditionalKg': _number('pricePerAdditionalKg'),
+                    'maximumDimensionCm': _number('maximumDimensionCm'),
+                    'oversizeSurcharge': _number('oversizeSurcharge'),
                     'expressEnabled': express,
                     'expressSurcharge': _number('expressSurcharge'),
                     'fragileItemSurcharge': _number('fragileItemSurcharge'),
@@ -491,7 +581,15 @@ class _RouteFormState extends State<_RouteForm> {
                     'expressDeliveryTime': c['expressDeliveryTime']!.text.trim(),
                     'notes': c['notes']!.text.trim(),
                     'status': status,
-                  });
+                  };
+                  final String? validation =
+                      validateInterstateRoutePayload(payload);
+                  if (validation != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(validation)));
+                    return;
+                  }
+                  Navigator.pop(context, payload);
                 },
           child: Text(widget.row == null ? 'Create route' : 'Save changes'),
         ),

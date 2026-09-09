@@ -347,6 +347,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       _startGuard.release();
       return;
     }
+    if (shouldResumeIncomingCallSession(
+        callCreated: _callId.isNotEmpty, remoteTerminal: _remoteEnd)) {
+      _intentionalTeardown = false;
+      _terminalSent = false;
+    }
     try {
       try {
         _localStream = await navigator.mediaDevices
