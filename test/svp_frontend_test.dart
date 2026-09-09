@@ -89,8 +89,8 @@ void main() {
       (tester) async {
     var returnedToDashboard = false;
     final api = SvpApiService(
-      client: MockClient((request) async => http.Response(
-          jsonEncode({'success': true, 'data': []}), 200)),
+      client: MockClient((request) async =>
+          http.Response(jsonEncode({'success': true, 'data': []}), 200)),
     );
 
     await tester.pumpWidget(MaterialApp(
@@ -107,8 +107,7 @@ void main() {
     await tester.pump();
 
     expect(returnedToDashboard, isTrue);
-    expect(
-        (await SharedPreferences.getInstance()).getString('auth_token'),
+    expect((await SharedPreferences.getInstance()).getString('auth_token'),
         'test-token');
   });
 
@@ -134,7 +133,8 @@ void main() {
     expect(staffLabels, isNot(contains('Executive Management')));
   });
 
-  test('SVP Admin destination reuses the existing management permission and page',
+  test(
+      'SVP Admin destination reuses the existing management permission and page',
       () {
     final labels = AdminMainNavigation.visibleDestinationLabels(
       AdminAccess(role: 'STAFF', permissions: const {

@@ -3,6 +3,7 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 import argparse
 
@@ -48,8 +49,9 @@ class AdminPreviewHandler(SimpleHTTPRequestHandler):
         self.wfile.write(payload)
 
     def _serve_web(self) -> None:
-        requested = (self.build_root / self.path.lstrip("/")).resolve()
-        if self.path != "/" and (
+        request_path = urlsplit(self.path).path
+        requested = (self.build_root / request_path.lstrip("/")).resolve()
+        if request_path != "/" and (
             self.build_root.resolve() not in requested.parents
             or not requested.exists()
         ):

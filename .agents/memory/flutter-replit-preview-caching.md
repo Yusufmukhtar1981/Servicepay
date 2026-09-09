@@ -7,4 +7,4 @@ Flutter web deployments that replace release assets in place must not rely only 
 
 **Why:** A previously installed worker can continue serving an older engine shell with newer application assets, producing intermittent washed-out or otherwise inconsistent rendering across browsers.
 
-**How to apply:** For non-PWA Admin deployments, build with PWA caching disabled and keep explicit legacy worker/cache cleanup in the web bootstrap. Verify the generated release bootstrap, not only the source template.
+**How to apply:** For non-PWA Admin deployments, build with PWA caching disabled and keep explicit legacy worker/cache cleanup in the web bootstrap. Verify the generated release bootstrap, not only the source template. SPA fallback servers must strip query strings before checking whether cache-busted assets exist; otherwise valid JavaScript requests can be replaced with `index.html` and fail MIME validation.

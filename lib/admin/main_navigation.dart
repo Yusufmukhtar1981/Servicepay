@@ -79,12 +79,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.insights,
         <String>[AdminPermissions.staffView],
         ExecutiveManagementScreen()),
-    _AdminDestination(
-        'SVP',
-        Icons.badge_outlined,
-        Icons.badge,
-        <String>[AdminPermissions.svpManagementView],
-        SvpManagementScreen()),
+    _AdminDestination('SVP', Icons.badge_outlined, Icons.badge,
+        <String>[AdminPermissions.svpManagementView], SvpManagementScreen()),
     _AdminDestination(
         'Branch Management',
         Icons.account_tree_outlined,
@@ -235,13 +231,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         final visibleLabels =
             AdminMainNavigation.visibleDestinationLabels(value);
         final allowed = destinations
-            .where((_AdminDestination item) => visibleLabels.contains(item.label))
+            .where(
+                (_AdminDestination item) => visibleLabels.contains(item.label))
             .toList();
         final requestedIndex = widget.initialDestinationLabel == null
             ? -1
-            : allowed.indexWhere(
-                (_AdminDestination item) =>
-                    item.label == widget.initialDestinationLabel);
+            : allowed.indexWhere((_AdminDestination item) =>
+                item.label == widget.initialDestinationLabel);
         setState(() {
           access = value;
           if (requestedIndex >= 0) currentIndex = requestedIndex;
