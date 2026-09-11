@@ -400,36 +400,48 @@ app.set("io", attachCallSignaling(server));
 
 console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 
-server.listen(PORT, "0.0.0.0", () => {
+server.on("error", (error) => {
+  console.error(
+    `Fatal server startup error: ${error.message}`
+  );
+  process.exit(1);
+});
+
+async function startServer() {
+  // connectDB includes the OrganizationMember migration. Do not bind a
+  // health/listening socket until all startup data safety work has completed.
+  await connectDB();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(PORT, "0.0.0.0", resolve);
+  });
   console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
   logFirebaseConfigurationStatus();
 
-  connectDB()
-    .then(async () => {
-      const emailStatus =
-        await verifyEmailConnection();
-      await resumePendingCampaigns();
-
+  // Noncritical provider and campaign initialization must never hold API
+  // readiness hostage after the required database migration has completed.
+  void (async () => {
+    try {
+      const emailStatus = await verifyEmailConnection();
       console.log(
         emailStatus.success
           ? `[EMAIL] Provider configured: ${emailStatus.provider}`
           : `[EMAIL] Provider unavailable: ${emailStatus.reason}`
       );
-
+    } catch (error) {
+      console.error(`[EMAIL] Provider verification failed: ${error.message}`);
+    }
+    try {
+      await resumePendingCampaigns();
       await startEmailAutomation();
-      startServicePayTransferMonitor();
-    })
-    .catch((error) => {
-      console.error(
-        `Fatal startup error: ${error.message}`
-      );
-      server.close(() => process.exit(1));
-    });
-});
+    } catch (error) {
+      console.error(`[EMAIL] Automation startup failed: ${error.message}`);
+    }
+  })();
+  startServicePayTransferMonitor();
+}
 
-server.on("error", (error) => {
-  console.error(
-    `Fatal server startup error: ${error.message}`
-  );
+startServer().catch((error) => {
+  console.error(`Fatal startup error: ${error.message}`);
   process.exit(1);
 });

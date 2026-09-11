@@ -41,14 +41,29 @@ organizationSchema.index({ status: 1, createdAt: -1 });
 
 const memberSchema = new Schema({
   organization: oid("Organization", true), user: oid("User", true),
-  membershipNumber: { type: String, default: null, index: true },
+  // Numbers are assigned only when membership becomes ACTIVE.  In particular,
+  // do not materialize null here: the partial unique index below must ignore
+  // pending members.
+  membershipNumber: { type: String },
   year: { type: Number, default: null }, applicationData: { type: Schema.Types.Mixed, default: {} },
   branch: oid("OrganizationBranch"), category: { type: String, default: "" },
   status: { type: String, enum: ["PENDING", "ACTIVE", "REJECTED", "SUSPENDED", "EXPIRED"], default: "PENDING", index: true },
   approvedAt: Date, approvedBy: oid("User"), joinedAt: Date, registrationPaidAt: Date, readyForApproval: { type: Boolean, default: false },
 }, timestamps);
+// Membership indexes are reconciled explicitly during startup migration. This
+// prevents Mongoose's model initialization from racing that operation.
+memberSchema.set("autoIndex", false);
 memberSchema.index({ organization: 1, user: 1 }, { unique: true });
-memberSchema.index({ organization: 1, membershipNumber: 1 }, { unique: true, sparse: true });
+memberSchema.index(
+  { organization: 1, membershipNumber: 1 },
+  {
+    name: "organization_membership_number_unique",
+    unique: true,
+    partialFilterExpression: {
+      membershipNumber: { $type: "string", $gt: "" },
+    },
+  }
+);
 
 const roleSchema = new Schema({
   organization: oid("Organization", true), user: oid("User", true), role: { type: String, enum: ["OWNER", "ADMIN", "TREASURER", "SECRETARY", "MEMBERSHIP_OFFICER", "AUDITOR", "BRANCH_ADMIN"], required: true }, permissions: { type: [String], enum: ["members.view", "members.create", "members.approve", "members.edit", "members.suspend", "payments.view", "payments.export", "fees.create", "fees.edit", "wallet.view", "wallet.withdraw", "reports.view", "reports.export", "messages.send", "staff.manage", "branches.manage", "settings.manage", "audit.view", "cards.manage"], default: [] },

@@ -85,6 +85,15 @@ async function requireOrganizationAccess(req, organizationId, permission, requir
 }
 const canOperateMember = (member, fee) => member?.status === "ACTIVE" || (member?.status === "PENDING" && fee?.type === "REGISTRATION");
 const membershipNumber = (code, year, sequence) => `${code}/${year}/${String(sequence).padStart(5, "0")}`;
+const duplicateKeyMessage = (error, fallback = "This organization membership request conflicts with an existing record.") => {
+  if (error?.code !== 11000) return null;
+  return Object.assign(new Error(fallback), { status: 409, code: "DUPLICATE_RESOURCE" });
+};
+const publicError = (error, duplicateFallback) =>
+  duplicateKeyMessage(error, duplicateFallback) ||
+  Object.assign(new Error(error?.status ? error.message : "Unable to complete organization request."), {
+    status: error?.status || error?.statusCode || 500,
+  });
 async function audit(req, organization, action, entityType, entityId, metadata = {}, session) {
   const row = { organization: organization._id, actor: req.user?._id, action, entityType, entityId, metadata, ip: req.ip };
   await OrganizationAuditLog.create([row], session ? { session } : undefined);
@@ -115,7 +124,9 @@ async function makeOrganization(req) {
       await audit(req, organization, "ORGANIZATION_CREATED", "Organization", organization._id, {}, session);
     });
     return organization;
-  } finally { await session.endSession(); }
+  } finally {
+    await session.endSession();
+  }
 }
 async function approveMember(req, member) {
   const session = await mongoose.startSession();
@@ -124,8 +135,19 @@ async function approveMember(req, member) {
     await session.withTransaction(async () => {
       const org = await Organization.findById(member.organization).session(session);
       if (!org || org.status !== "VERIFIED") throw Object.assign(new Error("Organization is not verified."), { status: 409 });
-      const current = await OrganizationMember.findOne({ _id: member._id, status: "PENDING" }).session(session);
+      const current = await OrganizationMember.findOne({ _id: member._id }).session(session);
       if (!current) throw Object.assign(new Error("Membership application is no longer pending."), { status: 409 });
+      const validActive = current.status === "ACTIVE" && typeof current.membershipNumber === "string" && current.membershipNumber.trim();
+      if (validActive) {
+        await models.OrganizationMembershipCard.findOneAndUpdate(
+          { member: current._id },
+          { $setOnInsert: { organization: org._id, member: current._id, cardNumber: `${org.code}-${current.membershipNumber.replace(/\//g, "-")}`, active: true } },
+          { upsert: true, new: true, session }
+        );
+        result = current;
+        return;
+      }
+      if (current.status !== "PENDING") throw Object.assign(new Error("Membership application is no longer pending."), { status: 409 });
       const registration = await models.OrganizationFee.findOne({ organization: org._id, type: "REGISTRATION", active: true }).session(session);
       if (org.registrationFee > 0 && (!current.registrationPaidAt || !registration)) throw Object.assign(new Error("Registration fee must be paid before activation."), { status: 409 });
       const year = new Date().getFullYear();
@@ -137,7 +159,9 @@ async function approveMember(req, member) {
       await audit(req, org, "MEMBERSHIP_APPROVED", "OrganizationMember", current._id, { membershipNumber: current.membershipNumber }, session);
     });
     return result;
-  } finally { await session.endSession(); }
+  } finally {
+    await session.endSession();
+  }
 }
 async function pay(req, assignment, member, amount, key) {
   amount = normalizeMoney(amount);
@@ -175,6 +199,27 @@ async function pay(req, assignment, member, amount, key) {
       }
     });
     return { payment, duplicate: false };
-  } finally { await session.endSession(); }
+  } finally {
+    await session.endSession();
+  }
 }
-module.exports = { access, requireOrganizationAccess, resolveOrganizationRole, roleAllows, ORGANIZATION_ROLE_CAPABILITIES, ORGANIZATION_PERMISSIONS, platform, actorId, clean, normalizeMoney, audit, makeOrganization, approveMember, pay, canOperateMember, membershipNumber };
+module.exports = {
+  access,
+  requireOrganizationAccess,
+  resolveOrganizationRole,
+  roleAllows,
+  ORGANIZATION_ROLE_CAPABILITIES,
+  ORGANIZATION_PERMISSIONS,
+  platform,
+  actorId,
+  clean,
+  normalizeMoney,
+  audit,
+  makeOrganization,
+  approveMember,
+  pay,
+  canOperateMember,
+  membershipNumber,
+  duplicateKeyMessage,
+  publicError,
+};
