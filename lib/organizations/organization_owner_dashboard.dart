@@ -83,7 +83,7 @@ class _OrganizationOwnerDashboardState
           page: page,
         ),
         'Fees & Dues' => await _feesEnvelope(id, page),
-        'Wallet' => await widget.api.walletDetails(id),
+        'Wallet' => await _treasuryEnvelope(id, page),
         'Branches' => await widget.api.branches(id, page: page),
         'Staff & Roles' => await widget.api.staffList(id, page: page),
         'Messages' => await widget.api.announcements(id, page: page),
@@ -128,6 +128,27 @@ class _OrganizationOwnerDashboardState
       'assignments': result[1]['assignments'] ?? const [],
       'summary': result[1]['summary'] ?? const {},
       'assignmentPagination': result[1]['pagination'],
+    };
+  }
+
+  Future<Map<String, dynamic>> _treasuryEnvelope(String id, int page) async {
+    final result = await Future.wait([
+      widget.api.walletDetails(id),
+      widget.api.settlementAccounts(id),
+      widget.api.withdrawals(id, status: statuses['Wallet'] ?? '', page: page),
+    ]);
+    final treasury = _map(result[0]['data']);
+    final accounts = _map(result[1]['data']);
+    final withdrawals = _map(result[2]['data']);
+    return {
+      ...treasury,
+      'settlementAccounts':
+          accounts['settlementAccounts'] ??
+          result[1]['settlementAccounts'] ??
+          const [],
+      'withdrawals':
+          withdrawals['withdrawals'] ?? result[2]['withdrawals'] ?? const [],
+      'withdrawalPagination': result[2]['pagination'],
     };
   }
 
@@ -192,6 +213,32 @@ class _OrganizationOwnerDashboardState
         await widget.api.publishAnnouncement(id, body);
       } else if (section == 'Settings') {
         await widget.api.patchSettings(id, body);
+      } else if (section == 'Wallet') {
+        if (action == 'addAccount') {
+          final resolved = await widget.api.resolveSettlementAccount(id, body);
+          final resolvedData = _map(resolved['data']);
+          final accountName =
+              resolvedData['accountName'] ?? resolved['accountName'];
+          if ('$accountName'.trim().isEmpty || accountName == null) {
+            throw Exception('The bank account could not be resolved.');
+          }
+          await widget.api.addSettlementAccount(id, {
+            ...body,
+            'accountName': accountName,
+          });
+        } else if (action == 'withdraw') {
+          await widget.api.createWithdrawal(id, body);
+        } else if (action == 'approveWithdrawal') {
+          await widget.api.approveWithdrawal(id, '${body['withdrawalId']}');
+        } else if (action == 'rejectWithdrawal') {
+          await widget.api.rejectWithdrawal(
+            id,
+            '${body['withdrawalId']}',
+            reason: '${body['reason'] ?? ''}',
+          );
+        } else {
+          throw Exception('This wallet action is not supported.');
+        }
       } else {
         throw Exception('This action is not supported for $section.');
       }
@@ -218,13 +265,17 @@ class _OrganizationOwnerDashboardState
           ? await widget.api.memberDetail(id, recordId)
           : section == 'Applications'
           ? await widget.api.applicationDetail(id, recordId)
-          : await widget.api.cardDetail(id, recordId);
+          : section == 'Cards'
+          ? await widget.api.cardDetail(id, recordId)
+          : await widget.api.withdrawalDetail(id, recordId);
       if (!mounted) return;
       final record = section == 'Members'
           ? _map(value['member'])
           : section == 'Applications'
           ? _map(value['application'])
-          : _map(value['card']);
+          : section == 'Cards'
+          ? _map(value['card'])
+          : _map(value['withdrawal'] ?? value['data']);
       await showDialog<void>(
         context: context,
         builder: (c) => AlertDialog(
@@ -594,6 +645,16 @@ Widget _dashboardPager(DashboardInput i, Map<String, dynamic> source) {
 }
 
 String _text(dynamic value) => value == null ? '—' : '$value';
+String _withdrawalStatusLabel(dynamic value) {
+  final status = '${value ?? 'UNKNOWN'}'.toUpperCase();
+  return switch (status) {
+    'APPROVED' => 'APPROVED — awaiting treasury dispatch',
+    'CONFIGURATION_REQUIRED' =>
+      'CONFIGURATION REQUIRED — payout not dispatched',
+    _ => status,
+  };
+}
+
 Map<String, dynamic> _map(dynamic value) =>
     value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
 String _branchAdminsLabel(dynamic value) {
@@ -1125,6 +1186,189 @@ Future<Map<String, dynamic>?> _feeForm(
   description.dispose();
   amount.dispose();
   dueDate.dispose();
+  return result;
+}
+
+Future<Map<String, dynamic>?> _settlementAccountForm(
+  BuildContext context,
+) async {
+  final bankCode = TextEditingController();
+  final number = TextEditingController();
+  final key = GlobalKey<FormState>();
+  final result = await showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Add settlement account'),
+      content: Form(
+        key: key,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: bankCode,
+              decoration: const InputDecoration(labelText: 'Bank code'),
+              validator: (v) =>
+                  v!.trim().isEmpty ? 'Bank code is required' : null,
+            ),
+            TextFormField(
+              controller: number,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Account number'),
+              validator: (v) =>
+                  v!.trim().length < 6 ? 'Enter a valid account number' : null,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(c),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (key.currentState!.validate()) {
+              Navigator.pop(c, {
+                'bankCode': bankCode.text.trim(),
+                'accountNumber': number.text.trim(),
+              });
+            }
+          },
+          child: const Text('Submit'),
+        ),
+      ],
+    ),
+  );
+  bankCode.dispose();
+  number.dispose();
+  return result;
+}
+
+Future<Map<String, dynamic>?> _organizationWithdrawalForm(
+  BuildContext context,
+  List<Map<String, dynamic>> accounts,
+) async {
+  final approved = accounts
+      .where((a) => '${a['status']}'.toUpperCase() == 'VERIFIED')
+      .toList();
+  var accountId = '${approved.first['_id'] ?? approved.first['id'] ?? ''}';
+  final amount = TextEditingController();
+  final purpose = TextEditingController();
+  final pin = TextEditingController();
+  final key = GlobalKey<FormState>();
+  final result = await showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (c) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Withdraw organization funds'),
+        content: Form(
+          key: key,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: accountId,
+                  decoration: const InputDecoration(
+                    labelText: 'Approved settlement account',
+                  ),
+                  items: [
+                    for (final account in approved)
+                      DropdownMenuItem(
+                        value: '${account['_id'] ?? account['id']}',
+                        child: SizedBox(
+                          width: 190,
+                          child: Text(
+                            '${_text(account['bankName'] ?? account['bank'])} • ${_text(account['accountName'])}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
+                  onChanged: (v) => setState(() => accountId = v ?? accountId),
+                ),
+                TextFormField(
+                  controller: amount,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Amount'),
+                  validator: (v) => num.tryParse(v!.trim()) == null
+                      ? 'Enter a valid amount'
+                      : null,
+                ),
+                TextFormField(
+                  controller: purpose,
+                  decoration: const InputDecoration(
+                    labelText: 'Purpose / narration',
+                  ),
+                  validator: (v) =>
+                      v!.trim().isEmpty ? 'Purpose is required' : null,
+                ),
+                TextFormField(
+                  controller: pin,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Transaction PIN',
+                  ),
+                  validator: (v) =>
+                      v!.trim().isEmpty ? 'PIN is required' : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (key.currentState!.validate()) {
+                final confirmed = await showDialog<bool>(
+                  context: c,
+                  builder: (confirmContext) => AlertDialog(
+                    title: const Text('Confirm withdrawal'),
+                    content: Text(
+                      'Amount: ${amount.text.trim()}\n'
+                      'Destination: ${_text(approved.firstWhere((a) => '${a['_id'] ?? a['id']}' == accountId)['bankName'] ?? approved.firstWhere((a) => '${a['_id'] ?? a['id']}' == accountId)['bank'])}\n'
+                      'Account: ••••${_text(approved.firstWhere((a) => '${a['_id'] ?? a['id']}' == accountId)['accountNumberMasked'] ?? approved.firstWhere((a) => '${a['_id'] ?? a['id']}' == accountId)['last4'])}\n'
+                      'Purpose: ${purpose.text.trim()}\n\n'
+                      'The applicable fee and total debit will be calculated by the treasury service.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(confirmContext, false),
+                        child: const Text('Back'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(confirmContext, true),
+                        child: const Text('Confirm'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed != true) return;
+                if (!c.mounted) return;
+                Navigator.pop(c, {
+                  'settlementAccountId': accountId,
+                  'amount': num.parse(amount.text.trim()),
+                  'narration': purpose.text.trim(),
+                  'transactionPin': pin.text.trim(),
+                });
+              }
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    ),
+  );
+  amount.dispose();
+  purpose.dispose();
+  pin.dispose();
   return result;
 }
 
@@ -1773,28 +2017,144 @@ class OwnerWalletSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) {
-    final wallet = _map(input.data['wallet']);
+    final wallet = {...input.data, ..._map(input.data['wallet'])};
     final ledger = _list(input.data, 'ledger');
+    final accounts = _list(input.data, 'settlementAccounts');
+    final withdrawals = _list(input.data, 'withdrawals');
+    final summary = _map(input.data['summary']);
     return _dashboardShell(
       'Wallet',
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Balance: ${_text(wallet['balance'])}',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final entry in {
+                'Available':
+                    wallet['availableBalance'] ?? summary['availableBalance'],
+                'Ledger': wallet['ledgerBalance'] ?? summary['ledgerBalance'],
+                'Held': wallet['heldBalance'] ?? summary['heldBalance'],
+                'Pending':
+                    wallet['pendingWithdrawals'] ??
+                    summary['pendingWithdrawals'],
+                'Money in': wallet['totalMoneyIn'] ?? summary['totalMoneyIn'],
+                'Money out':
+                    wallet['totalWithdrawn'] ?? summary['totalWithdrawn'],
+                'Fees': wallet['totalFees'] ?? summary['totalFees'],
+              }.entries)
+                if (entry.value != null)
+                  Chip(label: Text('${entry.key}: ${entry.value}')),
+            ],
           ),
-          Text('Status: ${_text(wallet['status'])}'),
-          Text('Ledger totals: ${_text(input.data['totals'])}'),
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.lock_outline),
-              title: Text('Withdrawals disabled'),
-              subtitle: Text(
-                'Bank settlement is not enabled for organizations.',
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: () async {
+                  final values = await _settlementAccountForm(context);
+                  if (values != null) await input.action('addAccount', values);
+                },
+                icon: const Icon(Icons.account_balance_outlined),
+                label: const Text('Add bank account'),
               ),
-            ),
+              FilledButton.icon(
+                onPressed:
+                    accounts.any(
+                      (a) => '${a['status'] ?? ''}'.toUpperCase() == 'VERIFIED',
+                    )
+                    ? () async {
+                        final values = await _organizationWithdrawalForm(
+                          context,
+                          accounts,
+                        );
+                        if (values != null) {
+                          await input.action('withdraw', values);
+                        }
+                      }
+                    : null,
+                icon: const Icon(Icons.call_made),
+                label: const Text('Withdraw funds'),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
+          const Text(
+            'Settlement accounts',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          ...(accounts.isEmpty
+              ? [_empty('No settlement accounts submitted.')]
+              : accounts.map(
+                  (account) => Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.account_balance),
+                      title: Text(
+                        '${_text(account['bankName'])} • ${_text(account['accountName'])}',
+                      ),
+                      subtitle: Text(
+                        'Account ending ${_text(account['accountNumberLast4'] ?? account['last4'])} • ${_text(account['status'])}',
+                      ),
+                      trailing: account['primary'] == true
+                          ? const Chip(label: Text('Primary'))
+                          : null,
+                    ),
+                  ),
+                )),
+          const SizedBox(height: 12),
+          const Text(
+            'Withdrawal history',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          ...(withdrawals.isEmpty
+              ? [_empty('No organization withdrawals yet.')]
+              : withdrawals.map(
+                  (withdrawal) => Card(
+                    child: ListTile(
+                      onTap: () => input.detail(withdrawal),
+                      title: Text(
+                        '${_text(withdrawal['reference'])} • ${_text(withdrawal['amount'])}',
+                      ),
+                      subtitle: Text(
+                        '${_withdrawalStatusLabel(withdrawal['status'])} • ${_text(withdrawal['narration'])}\n${_text(withdrawal['createdAt'])}',
+                      ),
+                      isThreeLine: true,
+                      trailing:
+                          '${withdrawal['status']}'.toUpperCase() ==
+                              'PENDING_APPROVAL'
+                          ? PopupMenuButton<String>(
+                              onSelected: (action) async {
+                                if (action == 'approve') {
+                                  await input.action('approveWithdrawal', {
+                                    'withdrawalId':
+                                        withdrawal['_id'] ?? withdrawal['id'],
+                                  });
+                                } else {
+                                  await input.action('rejectWithdrawal', {
+                                    'withdrawalId':
+                                        withdrawal['_id'] ?? withdrawal['id'],
+                                    'reason':
+                                        'Rejected by organization approver',
+                                  });
+                                }
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: 'approve',
+                                  child: Text('Approve'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'reject',
+                                  child: Text('Reject'),
+                                ),
+                              ],
+                            )
+                          : null,
+                    ),
+                  ),
+                )),
           ...ledger.map(
             (entry) => ListTile(
               title: Text(_text(entry['type'])),
