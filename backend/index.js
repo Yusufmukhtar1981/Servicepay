@@ -140,6 +140,8 @@ const phoneFinancingRoutes = require("./routes/phoneFinancing.routes");
 const businessPartnerRoutes = require("./routes/businessPartner.routes");
 const adminAssignmentsRoutes = require("./routes/adminAssignments.routes");
 const branchRoutes = require("./routes/branch.routes");
+const organizationsRoutes = require("./routes/organizations.routes");
+const adminOrganizationsRoutes = require("./routes/adminOrganizations.routes");
 const interstateLogisticsRoutes = require("./routes/interstateLogistics.routes");
 const adminInterstateLogisticsRoutes = require("./routes/adminInterstateLogistics.routes");
 const adminLogisticsRoutes = require("./routes/adminLogisticsRoutes.routes");
@@ -353,6 +355,8 @@ app.use("/api/phone-financing", phoneFinancingRoutes);
 app.use("/api/business-partner", businessPartnerRoutes);
 app.use("/api/admin/assignments", adminAssignmentsRoutes);
 app.use("/api/branches", branchRoutes);
+app.use("/api/organizations", organizationsRoutes);
+app.use("/api/admin/organizations", adminOrganizationsRoutes);
 /* Interstate logistics is additive; legacy /api/delivery remains untouched. */
 app.use("/api/logistics/interstate", interstateLogisticsRoutes);
 app.use("/api/admin/logistics/interstate", adminInterstateLogisticsRoutes);
