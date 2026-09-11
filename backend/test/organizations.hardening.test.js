@@ -49,6 +49,16 @@ test("owner discovery and admin search remain safe", () => {
   assert.equal(listSource.includes(".limit(200)"), true);
 });
 
+test("member approval identity and card lookup are scoped to the caller", () => {
+  const membersSource = organizationsController.members.toString();
+  const cardSource = organizationsController.myCard.toString();
+  assert.equal(membersSource.includes('populate("user"'), true);
+  assert.equal(membersSource.includes("fullName"), true);
+  assert.equal(cardSource.includes("user: req.user._id"), true);
+  assert.equal(cardSource.includes("member: membership._id"), true);
+  assert.equal(cardSource.includes('findOne({ organization: req.params.id, active: true })'), false);
+});
+
 test("payment admission contains server-side claim and pending registration guard", () => {
   const source = service.pay.toString();
   assert.match(source, /findOneAndUpdate/);
