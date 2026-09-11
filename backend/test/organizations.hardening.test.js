@@ -39,6 +39,16 @@ test("public-safe projection excludes contact, documents, and members", () => {
   assert.match(source, /status: "VERIFIED"/);
 });
 
+test("owner discovery and admin search remain safe", () => {
+  const mineSource = organizationsController.mine.toString();
+  const listSource = organizationsController.adminList.toString();
+  assert.match(mineSource, /canManage: true/);
+  assert.match(mineSource, /allowedToManage: true/);
+  assert.match(listSource, /replace/);
+  assert.equal(listSource.includes(".slice(0, 100)"), true);
+  assert.equal(listSource.includes(".limit(200)"), true);
+});
+
 test("payment admission contains server-side claim and pending registration guard", () => {
   const source = service.pay.toString();
   assert.match(source, /findOneAndUpdate/);
