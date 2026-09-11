@@ -17,7 +17,7 @@ const normalizeMoney = (value) => {
     );
   }
   const minorUnits = Math.round(Number(raw) * 100);
-  if (!Number.isSafeInteger(minorUnits) || minorUnits <= 0 || minorUnits > 100000000000) {
+  if (!Number.isSafeInteger(minorUnits) || minorUnits < 0 || minorUnits > 100000000000) {
     throw Object.assign(new Error("Amount is outside the supported NGN range."), {
       status: 400,
     });

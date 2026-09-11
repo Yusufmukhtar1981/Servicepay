@@ -5,6 +5,11 @@ const service = require("../services/organizations.service");
 const organizationsController = require("../controllers/organizations.controller");
 const permissionRegistry = require("../config/permissionRegistry");
 const adminOrganizationsRouter = require("../routes/adminOrganizations.routes");
+const organizationsRouter = require("../routes/organizations.routes");
+
+const routeContracts = organizationsRouter.stack
+  .filter((layer) => layer.route)
+  .flatMap((layer) => Object.keys(layer.route.methods).map((method) => `${method.toUpperCase()} ${layer.route.path}`));
 
 test("organization models expose canonical lifecycle states", () => {
   const statuses = models.Organization.schema.path("status").enumValues;
@@ -89,4 +94,51 @@ test("dashboard branch scope filters members and restricts wallet", () => {
   assert.deepEqual(unscoped.memberFilter, { organization: "org" });
   assert.equal(unscoped.memberIds, undefined);
   assert.equal(unscoped.walletRestricted, false);
+});
+
+test("owner dashboard exposes the canonical Flutter contracts", () => {
+  for (const path of ["/:organizationId/dashboard", "/:organizationId/members/search", "/:organizationId/applications", "/:organizationId/payment-history", "/:organizationId/fees", "/:organizationId/wallet/details", "/:organizationId/branches", "/:organizationId/staff/list", "/:organizationId/announcements", "/:organizationId/cards", "/:organizationId/reports", "/:organizationId/audit", "/:organizationId/settings"]) {
+    assert.ok(routeContracts.some((route) => route.endsWith(` ${path}`)), `missing GET ${path}`);
+  }
+  for (const exportName of ["dashboardCanonical", "memberList", "applicationList", "paymentHistory", "feeList", "walletDetails", "branchList", "staffList", "announcementList", "cardList", "report", "auditList", "settingsGet"]) {
+    assert.equal(typeof organizationsController[exportName], "function", `missing controller ${exportName}`);
+  }
+  const source = organizationsController.dashboardCanonical.toString();
+  for (const key of ["summary", "recentMembers", "recentPayments", "membershipGrowth", "revenueTrend"]) assert.match(source, new RegExp(key));
+});
+
+test("mutating dashboard contracts are present and use scoped controller access", () => {
+  for (const route of [
+    "POST /:organizationId/applications/:applicationId/approve",
+    "POST /:organizationId/applications/:applicationId/reject",
+    "PATCH /:organizationId/members/:memberId/status",
+    "PATCH /:organizationId/fees/:feeId",
+    "POST /:organizationId/fees",
+    "POST /:organizationId/fee-assignments",
+    "PATCH /:organizationId/branches/:branchId",
+    "POST /:organizationId/branches",
+    "PATCH /:organizationId/staff/:staffId",
+    "POST /:organizationId/staff",
+    "POST /:organizationId/announcements",
+    "PATCH /:organizationId/settings",
+  ]) assert.ok(routeContracts.includes(route), `missing ${route}`);
+  for (const name of ["memberStatus", "approveMember", "rejectApplication", "feeUpdate", "branchUpdate", "staffUpdate", "settingsPatch"]) {
+    assert.match(organizationsController[name].toString(), /runAccess|requireOrg/);
+  }
+});
+
+test("dashboard response contracts use truthful list keys and pagination", () => {
+  assert.match(organizationsController.memberList.toString(), /members, pagination/);
+  assert.match(organizationsController.paymentHistory.toString(), /payments, summary:/);
+  assert.match(organizationsController.dashboardCanonical.toString(), /recentPayments/);
+  assert.match(organizationsController.walletDetails.toString(), /withdrawals: \{ available: false/);
+});
+
+test("member payment filtering and messaging contracts are exposed", () => {
+  assert.ok(routeContracts.includes("GET /:organizationId/payment-history"));
+  assert.ok(routeContracts.includes("POST /:organizationId/members/:memberId/message"));
+  assert.equal(typeof organizationsController.messageMember, "function");
+  assert.match(organizationsController.paymentHistory.toString(), /Invalid member id/);
+  assert.match(organizationsController.messageMember.toString(), /messages.send|runAccess/);
+  assert.match(organizationsController.messageMember.toString(), /channelAvailability/);
 });
