@@ -5,9 +5,20 @@ const { Organization } = require("../models/organizations.models");
 const c = require("../controllers/organizations.controller");
 const router = express.Router();
 router.use(protect);
+const normalizeAdminRole = (value) => String(value || "")
+  .trim()
+  .toUpperCase()
+  .replace(/[^A-Z0-9]+/g, "_")
+  .replace(/^_+|_+$/g, "");
+const isFullAccessOrganizationAdminRole = (value) => [
+  "SUPER_ADMIN",
+  "SERVICEPAY_SUPER_ADMIN",
+  "ADMIN",
+  "HEAD_OFFICE",
+  "HEAD_OFFICE_ADMIN",
+].includes(normalizeAdminRole(value));
 const gate = (...permissions) => (req, res, next) => {
-  const role = String(req.user?.role || "").toUpperCase();
-  if (["SUPER_ADMIN", "ADMIN", "HEAD_OFFICE"].includes(role)) return next();
+  if (isFullAccessOrganizationAdminRole(req.user?.role)) return next();
   return loadStaffRole(req, res, () => requireAnyPermission(...permissions)(req, res, next));
 };
 const statusGate = async (req, res, next) => {
@@ -42,3 +53,5 @@ router.get("/:id/wallet", gate("organizations.view"), c.adminWallet);
 router.patch("/:id/status", statusGate, c.platformStatus);
 router.patch("/:id/wallet", gate("organizations.wallet.manage"), c.adminWallet);
 module.exports = router;
+module.exports.isFullAccessOrganizationAdminRole =
+  isFullAccessOrganizationAdminRole;

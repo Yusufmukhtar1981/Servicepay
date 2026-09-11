@@ -3,11 +3,32 @@ const assert = require("node:assert/strict");
 const models = require("../models/organizations.models");
 const service = require("../services/organizations.service");
 const organizationsController = require("../controllers/organizations.controller");
+const permissionRegistry = require("../config/permissionRegistry");
+const adminOrganizationsRouter = require("../routes/adminOrganizations.routes");
 
 test("organization models expose canonical lifecycle states", () => {
   const statuses = models.Organization.schema.path("status").enumValues;
   assert.deepEqual(statuses, ["DRAFT", "PENDING_VERIFICATION", "VERIFIED", "REJECTED", "SUSPENDED"]);
   assert.deepEqual(models.OrganizationMember.schema.path("status").enumValues, ["PENDING", "ACTIVE", "REJECTED", "SUSPENDED", "EXPIRED"]);
+});
+
+test("ServicePay super admin keeps full Organizations access", () => {
+  assert.equal(
+    permissionRegistry.canonicalRoleName("SERVICEPAY_SUPER_ADMIN"),
+    "HEAD_OFFICE"
+  );
+  assert.deepEqual(
+    permissionRegistry.effectivePermissionsForUser({
+      role: "SERVICEPAY_SUPER_ADMIN",
+    }),
+    ["*"]
+  );
+  assert.equal(
+    adminOrganizationsRouter.isFullAccessOrganizationAdminRole(
+      "servicepay-super-admin"
+    ),
+    true
+  );
 });
 
 test("public-safe projection excludes contact, documents, and members", () => {

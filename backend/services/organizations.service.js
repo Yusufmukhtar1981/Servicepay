@@ -27,7 +27,13 @@ const normalizeMoney = (value) => {
 const slugify = (v) => clean(v, 160).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 100);
 const makeCode = () => `ORG${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 const actorId = (req) => String(req.user?._id || "");
-const platform = (req) => ["SUPER_ADMIN", "ADMIN", "HEAD_OFFICE"].includes(String(req.user?.role || "").toUpperCase());
+const platform = (req) => [
+  "SUPER_ADMIN",
+  "SERVICEPAY_SUPER_ADMIN",
+  "ADMIN",
+  "HEAD_OFFICE",
+  "HEAD_OFFICE_ADMIN",
+].includes(String(req.user?.role || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_"));
 const ORGANIZATION_PERMISSIONS = Object.freeze(["members.view", "members.create", "members.approve", "members.edit", "members.suspend", "payments.view", "payments.export", "fees.create", "fees.edit", "wallet.view", "wallet.withdraw", "reports.view", "reports.export", "messages.send", "staff.manage", "branches.manage", "settings.manage", "audit.view", "cards.manage"]);
 const ORGANIZATION_ROLE_CAPABILITIES = Object.freeze({
   OWNER: ORGANIZATION_PERMISSIONS,

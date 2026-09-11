@@ -220,6 +220,7 @@ const validateStaffPermissions = (
 const ROLE_ALIASES = Object.freeze({
   ADMIN: "HEAD_OFFICE",
   SUPER_ADMIN: "HEAD_OFFICE",
+  SERVICEPAY_SUPER_ADMIN: "HEAD_OFFICE",
   HEAD_OFFICE_ADMIN: "HEAD_OFFICE",
   SUPPORT_AGENT: "SUPPORT_STAFF",
   CUSTOMER_SUPPORT: "SUPPORT_STAFF",
@@ -233,7 +234,8 @@ const canonicalRoleName = (value) => {
   return ROLE_ALIASES[normalized] || normalized;
 };
 const FULL_ACCESS_ROLE_NAMES = Object.freeze([
-  "HEAD_OFFICE", "ADMIN", "SUPER_ADMIN", "HEAD_OFFICE_ADMIN",
+  "HEAD_OFFICE", "ADMIN", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN",
+  "HEAD_OFFICE_ADMIN",
 ]);
 const ROLE_HIERARCHY = Object.freeze({
   HEAD_OFFICE: 100,
