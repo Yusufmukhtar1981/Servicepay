@@ -21,6 +21,12 @@ const gate = (...permissions) => (req, res, next) => {
   if (isFullAccessOrganizationAdminRole(req.user?.role)) return next();
   return loadStaffRole(req, res, () => requireAnyPermission(...permissions)(req, res, next));
 };
+const criticalGate = (...permissions) => (req, res, next) => {
+  const raw = String(req.user?.role || "").toUpperCase();
+  if (raw === "SUPER_ADMIN") return next();
+  if (["ADMIN", "HEAD_OFFICE", "HEAD_OFFICE_ADMIN"].includes(raw)) return res.status(403).json({ success: false, message: "An explicitly assigned treasury staff permission is required." });
+  return loadStaffRole(req, res, () => requireAnyPermission(...permissions)(req, res, next));
+};
 const statusGate = async (req, res, next) => {
   const target = String(req.body?.status || "").toUpperCase();
   const organization = await Organization.findById(req.params.id).select("status").lean();
@@ -44,6 +50,16 @@ const statusGate = async (req, res, next) => {
   )(req, res, next);
 };
 router.get("/summary", gate("organizations.view"), c.adminSummary);
+router.get("/withdrawals/summary", gate("organizations.withdrawals.view"), c.adminWithdrawalsSummary);
+router.get("/withdrawals", gate("organizations.withdrawals.view"), c.adminWithdrawals);
+router.get("/withdrawals/:id", gate("organizations.withdrawals.view"), c.adminWithdrawalDetail);
+router.post("/withdrawals/:id/approve", criticalGate("organizations.withdrawals.review"), (req, res, next) => { req.body.action = "APPROVE"; return c.adminReviewWithdrawal(req, res, next); });
+router.post("/withdrawals/:id/reject", criticalGate("organizations.withdrawals.review"), (req, res, next) => { req.body.action = "REJECT"; return c.adminReviewWithdrawal(req, res, next); });
+router.get("/settlement-accounts", gate("organizations.settlement_accounts.view"), c.adminSettlementAccounts);
+router.post("/settlement-accounts/:id/approve", criticalGate("organizations.settlement_accounts.review"), (req, res, next) => { req.body.status = "VERIFIED"; return c.adminReviewSettlementAccount(req, res, next); });
+router.post("/settlement-accounts/:id/reject", criticalGate("organizations.settlement_accounts.review"), (req, res, next) => { req.body.status = "REJECTED"; return c.adminReviewSettlementAccount(req, res, next); });
+router.get("/treasury-config", criticalGate("organizations.treasury.manage"), c.adminTreasuryConfig);
+router.patch("/treasury-config", criticalGate("organizations.treasury.manage"), c.adminTreasuryConfig);
 router.get("/", gate("organizations.view"), c.adminList);
 router.get("/:id", gate("organizations.view"), c.adminDetail);
 router.get("/:id/members", gate("organizations.members.view"), c.adminMembers);
@@ -52,6 +68,8 @@ router.get("/:id/audit", gate("organizations.audit.view"), c.adminAudit);
 router.get("/:id/wallet", gate("organizations.view"), c.adminWallet);
 router.patch("/:id/status", statusGate, c.platformStatus);
 router.patch("/:id/wallet", gate("organizations.wallet.manage"), c.adminWallet);
+router.get("/:id/treasury-config", criticalGate("organizations.treasury.manage"), c.adminTreasuryConfig);
+router.patch("/:id/treasury-config", criticalGate("organizations.treasury.manage"), c.adminTreasuryConfig);
 module.exports = router;
 module.exports.isFullAccessOrganizationAdminRole =
   isFullAccessOrganizationAdminRole;

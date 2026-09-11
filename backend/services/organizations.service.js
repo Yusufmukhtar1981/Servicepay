@@ -34,11 +34,11 @@ const platform = (req) => [
   "HEAD_OFFICE",
   "HEAD_OFFICE_ADMIN",
 ].includes(String(req.user?.role || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_"));
-const ORGANIZATION_PERMISSIONS = Object.freeze(["members.view", "members.create", "members.approve", "members.edit", "members.suspend", "payments.view", "payments.export", "fees.create", "fees.edit", "wallet.view", "wallet.withdraw", "reports.view", "reports.export", "messages.send", "staff.manage", "branches.manage", "settings.manage", "audit.view", "cards.manage"]);
+const ORGANIZATION_PERMISSIONS = Object.freeze(["members.view", "members.create", "members.approve", "members.edit", "members.suspend", "payments.view", "payments.export", "fees.create", "fees.edit", "wallet.view", "wallet.withdraw", "treasury.approve", "treasury.accounts", "reports.view", "reports.export", "messages.send", "staff.manage", "branches.manage", "settings.manage", "audit.view", "cards.manage"]);
 const ORGANIZATION_ROLE_CAPABILITIES = Object.freeze({
   OWNER: ORGANIZATION_PERMISSIONS,
   ADMIN: ORGANIZATION_PERMISSIONS.filter((p) => !["wallet.withdraw", "settings.manage"].includes(p)),
-  TREASURER: ["payments.view", "payments.export", "fees.create", "fees.edit", "wallet.view", "reports.view", "reports.export"],
+  TREASURER: ["payments.view", "payments.export", "fees.create", "fees.edit", "wallet.view", "wallet.withdraw", "treasury.approve", "treasury.accounts", "reports.view", "reports.export"],
   SECRETARY: ["members.view", "members.edit", "messages.send", "reports.view"],
   MEMBERSHIP_OFFICER: ["members.view", "members.create", "members.approve", "members.edit", "members.suspend", "cards.manage"],
   AUDITOR: ["payments.view", "payments.export", "reports.view", "reports.export", "audit.view"],

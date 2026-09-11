@@ -142,6 +142,8 @@ const adminAssignmentsRoutes = require("./routes/adminAssignments.routes");
 const branchRoutes = require("./routes/branch.routes");
 const organizationsRoutes = require("./routes/organizations.routes");
 const adminOrganizationsRoutes = require("./routes/adminOrganizations.routes");
+const organizationTreasuryMigration = require("./services/organizationTreasuryMigration.service");
+const organizationTreasuryWebhookRoutes = require("./routes/organizationTreasuryWebhook.routes");
 const interstateLogisticsRoutes = require("./routes/interstateLogistics.routes");
 const adminInterstateLogisticsRoutes = require("./routes/adminInterstateLogistics.routes");
 const adminLogisticsRoutes = require("./routes/adminLogisticsRoutes.routes");
@@ -203,6 +205,7 @@ app.get("/api/version", sendServiceVersion);
  * Public/auth/admin/webhook exclusions are handled inside the middleware.
  */
 app.use(fintechControlMiddleware);
+app.use("/api/organizations/treasury-webhooks", organizationTreasuryWebhookRoutes);
 
 app.use(
   "/api/paystack",
@@ -408,9 +411,9 @@ server.on("error", (error) => {
 });
 
 async function startServer() {
-  // connectDB includes the OrganizationMember migration. Do not bind a
-  // health/listening socket until all startup data safety work has completed.
+  // Do not bind until required startup data safety work is complete.
   await connectDB();
+  await organizationTreasuryMigration.backfill();
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(PORT, "0.0.0.0", resolve);
