@@ -71,6 +71,12 @@ class OrganizationsApi {
 
   Future<Map<String, dynamic>> apply(String id, Map<String, dynamic> fields) =>
       _request('POST', '/${Uri.encodeComponent(id)}/apply', body: fields);
+
+  Future<Map<String, dynamic>> create(Map<String, dynamic> payload) =>
+      _request('POST', '', body: payload);
+
+  Future<Map<String, dynamic>> submit(String id) =>
+      _request('POST', '/${Uri.encodeComponent(id)}/submit');
   Future<List<OrganizationPayment>> payments(String id) async {
     final data = await _request('GET', '/${Uri.encodeComponent(id)}/payments');
     final raw = data['payments'] ?? data['data'];
