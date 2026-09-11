@@ -167,4 +167,20 @@ void main() {
     expect(AdminPermissions.reportsView, 'reports.view');
     expect(AdminPermissions.reportsExport, 'reports.export');
   });
+
+  test('organization administration permissions remain independently scoped',
+      () {
+    const AdminAccess reviewer = AdminAccess(
+      role: 'STAFF',
+      permissions: <String>{
+        AdminPermissions.organizationsView,
+        AdminPermissions.organizationsReview,
+      },
+    );
+
+    expect(reviewer.has(AdminPermissions.organizationsView), isTrue);
+    expect(reviewer.has(AdminPermissions.organizationsReview), isTrue);
+    expect(reviewer.has(AdminPermissions.organizationsStatusManage), isFalse);
+    expect(reviewer.has(AdminPermissions.organizationsWalletManage), isFalse);
+  });
 }

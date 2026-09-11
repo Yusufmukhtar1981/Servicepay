@@ -55,6 +55,7 @@ import 'marketplace/marketplace_my_orders_screen.dart';
 import 'trust/trust_dashboard_entry.dart';
 import 'trust/trust_search_screen.dart';
 import 'voice_call_screen.dart';
+import 'organizations/organizations_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -1406,6 +1407,16 @@ class _DashboardScreenState extends State<DashboardScreen>
           openScreen(
             const MarketplaceScreen(),
           );
+        },
+      ),
+      _DashboardService(
+        title: 'Organizations',
+        icon: Icons.groups_rounded,
+        iconColor: const Color(0xFF0F766E),
+        backgroundColor: const Color(0xFFF0FDFA),
+        keywords: 'organizations communities membership dues',
+        onTap: () {
+          openScreen(const OrganizationsScreen());
         },
       ),
       _DashboardService(

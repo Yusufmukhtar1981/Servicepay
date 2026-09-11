@@ -25,6 +25,7 @@ import 'login_screen.dart';
 import 'executive_management_screen.dart';
 import 'admin_feature_controls_screen.dart';
 import 'svp_management_screen.dart';
+import 'admin_organizations_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -91,6 +92,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
           AdminPermissions.branchesApprovalsView,
         ],
         AdminBranchManagementScreen()),
+    _AdminDestination(
+        'Organizations',
+        Icons.business_outlined,
+        Icons.business,
+        <String>[AdminPermissions.organizationsView],
+        AdminOrganizationsScreen()),
     _AdminDestination(
         'Funding',
         Icons.account_balance_wallet_outlined,

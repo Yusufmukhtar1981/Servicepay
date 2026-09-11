@@ -1,0 +1,40 @@
+const express = require("express");
+const { protect, customerOnly, adminOnly } = require("../middleware/auth.middleware");
+const c = require("../controllers/organizations.controller");
+const router = express.Router();
+
+// These endpoints intentionally do not expose member PII or unpublished records.
+router.get("/public/search", c.publicSearch);
+router.get("/public/:slug", c.publicView);
+router.get("/public/cards/:cardNumber", c.verifyCard);
+
+router.use(protect);
+router.post("/", c.create);
+router.get("/mine", c.mine);
+router.get("/explore", c.explore);
+router.get("/", c.mine);
+router.post("/:organizationId/submit", c.submit);
+router.patch("/:id/platform-status", adminOnly("SUPER_ADMIN", "ADMIN"), c.platformStatus);
+router.post("/:organizationId/apply", customerOnly, c.apply);
+router.get("/:organizationId/members", c.members);
+router.get("/:organizationId/staff", c.staff);
+router.post("/:organizationId/staff", c.addStaff);
+router.delete("/:organizationId/staff/:staffId", c.removeStaff);
+router.get("/:id", c.getCustomerOrganization);
+router.get("/:id/dues", customerOnly, c.dues);
+router.get("/:id/payments", customerOnly, c.payments);
+router.get("/:id/card", customerOnly, c.myCard);
+router.post("/:id/payments", customerOnly, c.pay);
+router.post("/:id/annual-payment", customerOnly, c.pay);
+router.post("/:organizationId/members/:memberId/approve", c.approveMember);
+router.post("/:organizationId/branches", c.createBranch);
+router.post("/:organizationId/custom-fields", c.createField);
+router.post("/:organizationId/fees", c.createFee);
+router.post("/:organizationId/fee-assignments", c.assignFee);
+router.post("/:organizationId/fee-assignments/:assignmentId/pay", customerOnly, c.pay);
+router.get("/:organizationId/wallet", c.wallet);
+router.get("/:organizationId/dashboard", c.dashboard);
+router.post("/:organizationId/withdrawals", c.withdraw);
+router.post("/:organizationId/announcements", c.announcements);
+router.post("/:organizationId/cards", c.card);
+module.exports = router;

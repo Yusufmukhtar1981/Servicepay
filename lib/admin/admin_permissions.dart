@@ -93,6 +93,15 @@ abstract final class AdminPermissions {
   static const branchApprovalsSubmit = 'branch.approvals.submit';
   static const branchReportsView = 'branch.reports.view';
   static const branchFinanceView = 'branch.finance.view';
+
+  // Head Office organization administration permissions.
+  static const organizationsView = 'organizations.view';
+  static const organizationsReview = 'organizations.review';
+  static const organizationsStatusManage = 'organizations.status.manage';
+  static const organizationsWalletManage = 'organizations.wallet.manage';
+  static const organizationsMembersView = 'organizations.members.view';
+  static const organizationsPaymentsView = 'organizations.payments.view';
+  static const organizationsAuditView = 'organizations.audit.view';
 }
 
 class AdminAccess {
