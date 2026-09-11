@@ -93,73 +93,82 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                   ? _ErrorState(message: error!, retry: _load)
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
-                       children: [
-                         Container(
-                           padding: const EdgeInsets.all(22),
-                           decoration: BoxDecoration(
-                             color: const Color(0xFF0B6B3A),
-                             borderRadius: BorderRadius.circular(26),
-                           ),
-                           child: Column(
-                             crossAxisAlignment: CrossAxisAlignment.start,
-                             children: [
-                               const Icon(Icons.account_balance_rounded,
-                                   color: Color(0xFFB9E5C9), size: 30),
-                               const SizedBox(height: 16),
-                               const Text('Membership, made trustworthy.',
-                                   style: TextStyle(color: Colors.white,
-                                       fontSize: 25, fontWeight: FontWeight.w900)),
-                               const SizedBox(height: 8),
-                               const Text(
-                                 'Keep your organizations, membership cards, dues and payments in one secure place.',
-                                 style: TextStyle(color: Color(0xFFD9F2E1),
-                                     height: 1.4, fontSize: 15),
-                               ),
-                               const SizedBox(height: 18),
-                               FilledButton.icon(
-                                 onPressed: _create,
-                                 style: FilledButton.styleFrom(
-                                   backgroundColor: Colors.white,
-                                   foregroundColor: const Color(0xFF0B6B3A),
-                                   minimumSize: const Size(0, 48),
-                                 ),
-                                 icon: const Icon(Icons.add_rounded),
-                                 label: const Text('Create Organization'),
-                               ),
-                             ],
-                           ),
-                         ),
-                         const SizedBox(height: 22),
-                           const Text('Your organizations',
+                      children: [
+                          Container(
+                            padding: const EdgeInsets.all(22),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0B6B3A),
+                              borderRadius: BorderRadius.circular(26),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.account_balance_rounded,
+                                    color: Color(0xFFB9E5C9), size: 30),
+                                const SizedBox(height: 16),
+                                const Text('Membership, made trustworthy.',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 25,
+                                        fontWeight: FontWeight.w900)),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Keep your organizations, membership cards, dues and payments in one secure place.',
+                                  style: TextStyle(
+                                      color: Color(0xFFD9F2E1),
+                                      height: 1.4,
+                                      fontSize: 15),
+                                ),
+                                const SizedBox(height: 18),
+                                FilledButton.icon(
+                                  onPressed: _create,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: const Color(0xFF0B6B3A),
+                                    minimumSize: const Size(0, 48),
+                                  ),
+                                  icon: const Icon(Icons.add_rounded),
+                                  label: const Text('Create Organization'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          const Text('Your organizations',
                               style: TextStyle(
                                   fontWeight: FontWeight.w900, fontSize: 21)),
                           const SizedBox(height: 4),
-                           Text(
-                               'A clear view of the communities you belong to and manage.',
+                          Text(
+                              'A clear view of the communities you belong to and manage.',
                               style: TextStyle(color: Colors.grey.shade600)),
                           const SizedBox(height: 14),
-                           if (mine.isEmpty) const _EmptyOrganization(),
+                          if (mine.isEmpty) const _EmptyOrganization(),
                           for (final org in mine)
                             _OrganizationTile(
                                 org: org, onTap: () => _open(org)),
-                           const SizedBox(height: 22),
-                           const Text('Quick access',
-                               style: TextStyle(fontWeight: FontWeight.w900, fontSize: 19)),
-                           const SizedBox(height: 10),
-                           _ActionGrid(
-                             onCreate: _create,
-                             onExplore: () => FocusScope.of(context).requestFocus(searchFocus),
-                             onMine: () => _message(mine.isEmpty
-                                 ? 'You have no organizations yet.'
-                                 : '${mine.length} organization${mine.length == 1 ? '' : 's'} in your account.'),
-                             onPending: () => _message('No pending applications to review.'),
-                             onCards: () => _message('Join an organization to access membership cards.'),
-                             onPayments: () => _message('Choose an organization to view dues and payments.'),
-                           ),
-                           const SizedBox(height: 24),
+                          const SizedBox(height: 22),
+                          const Text('Quick access',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w900, fontSize: 19)),
+                          const SizedBox(height: 10),
+                          _ActionGrid(
+                            onCreate: _create,
+                            onExplore: () => FocusScope.of(context)
+                                .requestFocus(searchFocus),
+                            onMine: () => _message(mine.isEmpty
+                                ? 'You have no organizations yet.'
+                                : '${mine.length} organization${mine.length == 1 ? '' : 's'} in your account.'),
+                            onPending: () =>
+                                _message('No pending applications to review.'),
+                            onCards: () => _message(
+                                'Join an organization to access membership cards.'),
+                            onPayments: () => _message(
+                                'Choose an organization to view dues and payments.'),
+                          ),
+                          const SizedBox(height: 24),
                           TextField(
                             controller: search,
-                             focusNode: searchFocus,
+                            focusNode: searchFocus,
                             onChanged: _search,
                             decoration: InputDecoration(
                               hintText: 'Explore organizations',
@@ -181,7 +190,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                             ),
                           ),
                           const SizedBox(height: 18),
-                           const Text('Join / explore organizations',
+                          const Text('Join / explore organizations',
                               style: TextStyle(
                                   fontWeight: FontWeight.w900, fontSize: 19)),
                           const SizedBox(height: 8),
@@ -209,7 +218,8 @@ class _EmptyOrganization extends StatelessWidget {
           border: Border.all(color: const Color(0xFFD8E9DE)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.groups_2_outlined, color: Color(0xFF08783E), size: 32),
+          const Icon(Icons.groups_2_outlined,
+              color: Color(0xFF08783E), size: 32),
           const SizedBox(height: 12),
           const Text('Create or join an organization',
               style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
@@ -222,82 +232,164 @@ class _EmptyOrganization extends StatelessWidget {
 }
 
 class _ActionGrid extends StatelessWidget {
-  const _ActionGrid({required this.onCreate, required this.onExplore,
-      required this.onMine, required this.onPending, required this.onCards, required this.onPayments});
-  final VoidCallback onCreate, onExplore, onMine, onPending, onCards, onPayments;
+  const _ActionGrid(
+      {required this.onCreate,
+      required this.onExplore,
+      required this.onMine,
+      required this.onPending,
+      required this.onCards,
+      required this.onPayments});
+  final VoidCallback onCreate,
+      onExplore,
+      onMine,
+      onPending,
+      onCards,
+      onPayments;
   @override
   Widget build(BuildContext context) => Wrap(
-        spacing: 10, runSpacing: 10,
+        spacing: 10,
+        runSpacing: 10,
         children: [
-          _Action(label: 'Create Organization', icon: Icons.add_business_outlined, onTap: onCreate),
-          _Action(label: 'Join / Explore Organizations', icon: Icons.travel_explore_rounded, onTap: onExplore),
-          _Action(label: 'My Organizations', icon: Icons.groups_outlined, onTap: onMine),
-          _Action(label: 'Pending Applications', icon: Icons.pending_actions_rounded, onTap: onPending),
-          _Action(label: 'Membership Cards', icon: Icons.badge_outlined, onTap: onCards),
-          _Action(label: 'Payments & Dues', icon: Icons.payments_outlined, onTap: onPayments),
+          _Action(
+              label: 'Create Organization',
+              icon: Icons.add_business_outlined,
+              onTap: onCreate),
+          _Action(
+              label: 'Join / Explore Organizations',
+              icon: Icons.travel_explore_rounded,
+              onTap: onExplore),
+          _Action(
+              label: 'My Organizations',
+              icon: Icons.groups_outlined,
+              onTap: onMine),
+          _Action(
+              label: 'Pending Applications',
+              icon: Icons.pending_actions_rounded,
+              onTap: onPending),
+          _Action(
+              label: 'Membership Cards',
+              icon: Icons.badge_outlined,
+              onTap: onCards),
+          _Action(
+              label: 'Payments & Dues',
+              icon: Icons.payments_outlined,
+              onTap: onPayments),
         ],
       );
 }
 
 class _Action extends StatelessWidget {
   const _Action({required this.label, required this.icon, required this.onTap});
-  final String label; final IconData icon; final VoidCallback onTap;
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(16),
-    child: Container(
-      width: (MediaQuery.sizeOf(context).width - 42) / 2,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE0EBE4))),
-      child: Row(children: [Icon(icon, color: const Color(0xFF08783E), size: 21),
-        const SizedBox(width: 9), Expanded(child: Text(label,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)))]),
-    ),
-  );
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: (MediaQuery.sizeOf(context).width - 42) / 2,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE0EBE4))),
+          child: Row(children: [
+            Icon(icon, color: const Color(0xFF08783E), size: 21),
+            const SizedBox(width: 9),
+            Expanded(
+                child: Text(label,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13)))
+          ]),
+        ),
+      );
 }
 
 class CreateOrganizationScreen extends StatefulWidget {
-  const CreateOrganizationScreen({super.key, required this.api, required this.onSubmitted});
+  const CreateOrganizationScreen(
+      {super.key, required this.api, required this.onSubmitted});
   final OrganizationsApi api;
   final Future<void> Function() onSubmitted;
   @override
-  State<CreateOrganizationScreen> createState() => _CreateOrganizationScreenState();
+  State<CreateOrganizationScreen> createState() =>
+      _CreateOrganizationScreenState();
 }
 
 class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   final form = GlobalKey<FormState>();
   final values = <String, dynamic>{};
   final fields = <String, TextEditingController>{
-    'name': TextEditingController(), 'description': TextEditingController(),
-    'registrationNumber': TextEditingController(), 'officialEmail': TextEditingController(),
-    'officialPhone': TextEditingController(), 'contactName': TextEditingController(),
-    'contactEmail': TextEditingController(), 'contactPhone': TextEditingController(),
-    'state': TextEditingController(), 'lga': TextEditingController(),
-    'address': TextEditingController(), 'annualFee': TextEditingController(),
-    'registrationFee': TextEditingController(text: '0'), 'logoUrl': TextEditingController(),
+    'name': TextEditingController(),
+    'description': TextEditingController(),
+    'registrationNumber': TextEditingController(),
+    'officialEmail': TextEditingController(),
+    'officialPhone': TextEditingController(),
+    'contactName': TextEditingController(),
+    'contactEmail': TextEditingController(),
+    'contactPhone': TextEditingController(),
+    'state': TextEditingController(),
+    'lga': TextEditingController(),
+    'address': TextEditingController(),
+    'annualFee': TextEditingController(),
+    'registrationFee': TextEditingController(text: '0'),
+    'logoUrl': TextEditingController(),
   };
-  int step = 0; bool submitting = false;
-  final types = const ['ASSOCIATION', 'COOPERATIVE', 'NGO', 'COMPANY', 'FOUNDATION', 'CLUB', 'OTHER'];
+  int step = 0;
+  bool submitting = false;
+  String? draftId;
+  final types = const [
+    'ASSOCIATION',
+    'COOPERATIVE',
+    'NGO',
+    'COMPANY',
+    'FOUNDATION',
+    'CLUB',
+    'OTHER'
+  ];
   @override
-  void dispose() { for (final c in fields.values) c.dispose(); super.dispose(); }
+  void dispose() {
+    for (final c in fields.values) c.dispose();
+    super.dispose();
+  }
+
   String get type => values['type'] as String? ?? types.first;
 
   Future<void> _submit() async {
     if (!(form.currentState?.validate() ?? false)) return;
     setState(() => submitting = true);
+    if (draftId != null) {
+      try {
+        await widget.api.submit(draftId!);
+        await widget.onSubmitted();
+        if (!mounted) return;
+        await _showSubmitted();
+        if (mounted) Navigator.pop(context);
+      } catch (e) {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                  'Draft saved. Submit again when ready: ${e.toString().replaceFirst('Exception: ', '')}')));
+      } finally {
+        if (mounted) setState(() => submitting = false);
+      }
+      return;
+    }
     final payload = <String, dynamic>{
-      'name': fields['name']!.text.trim(), 'type': type,
+      'name': fields['name']!.text.trim(),
+      'type': type,
       'description': fields['description']!.text.trim(),
       'registrationNumber': fields['registrationNumber']!.text.trim(),
-      'contact': {'name': fields['contactName']!.text.trim(),
+      'contact': {
+        'name': fields['contactName']!.text.trim(),
         'email': fields['contactEmail']!.text.trim(),
         'phone': fields['contactPhone']!.text.trim(),
         'address': fields['address']!.text.trim(),
         'officialEmail': fields['officialEmail']!.text.trim(),
-        'officialPhone': fields['officialPhone']!.text.trim()},
-      'state': fields['state']!.text.trim(), 'lga': fields['lga']!.text.trim(),
+        'officialPhone': fields['officialPhone']!.text.trim()
+      },
+      'state': fields['state']!.text.trim(),
+      'lga': fields['lga']!.text.trim(),
       'renewalCycle': values['renewalCycle'] ?? 'ANNUAL',
       'membershipMode': values['membershipMode'] ?? 'MANUAL',
     };
@@ -309,8 +401,10 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     if (logo.isNotEmpty) {
       final mime = _logoMime(logo);
       if (mime == null) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Logo URL must end in .png, .jpg, .jpeg, or .webp.')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content:
+                  Text('Logo URL must end in .png, .jpg, .jpeg, or .webp.')));
         setState(() => submitting = false);
         return;
       }
@@ -318,24 +412,42 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     }
     try {
       final result = await widget.api.create(payload);
-      final raw = result['organization'] is Map ? result['organization'] : result;
+      final raw =
+          result['organization'] is Map ? result['organization'] : result;
       final id = raw is Map ? '${raw['id'] ?? raw['_id'] ?? ''}' : '';
-      if (id.isEmpty) throw Exception('Organization was created without an identifier.');
-      await widget.api.submit(id);
+      if (id.isEmpty)
+        throw Exception('Organization was created without an identifier.');
+      draftId = id;
       await widget.onSubmitted();
+      await widget.api.submit(id);
       if (!mounted) return;
-      await showDialog<void>(context: context, builder: (_) => AlertDialog(
-        icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF08783E), size: 42),
-        title: const Text('Organization submitted'),
-        content: const Text('Organization submitted successfully and is pending ServicePay verification.'),
-        actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
-      ));
+      await _showSubmitted();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
-    } finally { if (mounted) setState(() => submitting = false); }
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(draftId == null
+                ? e.toString().replaceFirst('Exception: ', '')
+                : 'Draft saved. Submit again when ready: ${e.toString().replaceFirst('Exception: ', '')}')));
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
   }
+
+  Future<void> _showSubmitted() => showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+            icon: const Icon(Icons.check_circle_rounded,
+                color: Color(0xFF08783E), size: 42),
+            title: const Text('Organization submitted'),
+            content: const Text(
+                'Organization submitted successfully and is pending ServicePay verification.'),
+            actions: [
+              FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Done'))
+            ],
+          ));
 
   num _money(String value) => num.tryParse(value.trim()) ?? 0;
   String? _logoMime(String value) {
@@ -347,112 +459,222 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     return null;
   }
 
-  Widget _input(String key, String label, {bool required = false, TextInputType? keyboard}) =>
-      Padding(padding: const EdgeInsets.only(bottom: 14), child: TextFormField(
-        controller: fields[key], keyboardType: keyboard,
-        decoration: InputDecoration(labelText: label, filled: true, fillColor: Colors.white),
-        validator: (v) {
-          if (required && (v == null || v.trim().isEmpty)) return 'Required';
-          if (key == 'officialEmail' && v != null && v.trim().isNotEmpty &&
-              !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim())) return 'Enter a valid email';
-          if (key == 'annualFee' || key == 'registrationFee') {
-            if (v != null && v.trim().isNotEmpty) {
-              final parsed = num.tryParse(v.trim());
-              if (parsed == null || parsed < 0 || !RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(v.trim())) {
-                return 'Enter a non-negative amount with up to 2 decimals';
+  Widget _input(String key, String label,
+          {bool required = false, TextInputType? keyboard}) =>
+      Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: TextFormField(
+            controller: fields[key],
+            keyboardType: keyboard,
+            decoration: InputDecoration(
+                labelText: label, filled: true, fillColor: Colors.white),
+            validator: (v) {
+              if (required && (v == null || v.trim().isEmpty))
+                return 'Required';
+              if (key == 'officialEmail' &&
+                  v != null &&
+                  v.trim().isNotEmpty &&
+                  !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim()))
+                return 'Enter a valid email';
+              if (key == 'annualFee' || key == 'registrationFee') {
+                if (v != null && v.trim().isNotEmpty) {
+                  final parsed = num.tryParse(v.trim());
+                  if (parsed == null ||
+                      parsed < 0 ||
+                      !RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(v.trim())) {
+                    return 'Enter a non-negative amount with up to 2 decimals';
+                  }
+                }
               }
-            }
-          }
-          if (key == 'logoUrl' && v != null && v.trim().isNotEmpty && _logoMime(v.trim()) == null) {
-            return 'Use a HTTPS URL ending in .png, .jpg, .jpeg, or .webp';
-          }
-          return null;
-        },
-      ));
+              if (key == 'logoUrl' &&
+                  v != null &&
+                  v.trim().isNotEmpty &&
+                  _logoMime(v.trim()) == null) {
+                return 'Use a HTTPS URL ending in .png, .jpg, .jpeg, or .webp';
+              }
+              return null;
+            },
+          ));
 
   Widget _stepBody() {
-    if (step == 0) return Column(children: [
-      _input('name', 'Organization name', required: true),
-      DropdownButtonFormField<String>(value: type, decoration: const InputDecoration(labelText: 'Organization type'),
-        items: types.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-        onChanged: (v) => setState(() => values['type'] = v)),
-      const SizedBox(height: 14), _input('description', 'Description', required: true),
-      _input('logoUrl', 'Logo URL (optional HTTPS)'),
-    ]);
-    if (step == 1) return Column(children: [
-      _input('address', 'Official address', required: true),
-      _input('state', 'State', required: true), _input('lga', 'Local government area', required: true),
-      _input('officialPhone', 'Official phone', required: true, keyboard: TextInputType.phone),
-      _input('officialEmail', 'Official email', required: true, keyboard: TextInputType.emailAddress),
-      _input('contactName', 'Contact person name', required: true),
-      _input('contactPhone', 'Contact person phone', required: true, keyboard: TextInputType.phone),
-      _input('contactEmail', 'Contact person email', required: true, keyboard: TextInputType.emailAddress),
-    ]);
-    if (step == 2) return Column(children: [
-      _input('annualFee', 'Annual membership fee', required: true, keyboard: TextInputType.number),
-      _input('registrationFee', 'Registration fee', required: true, keyboard: TextInputType.number),
-      DropdownButtonFormField<String>(value: values['renewalCycle'] ?? 'ANNUAL',
-        decoration: const InputDecoration(labelText: 'Renewal cycle'),
-        items: const ['ANNUAL', 'MONTHLY', 'NONE'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-        onChanged: (v) => setState(() => values['renewalCycle'] = v)),
-      const SizedBox(height: 14),
-      DropdownButtonFormField<String>(value: values['membershipMode'] ?? 'MANUAL',
-        decoration: const InputDecoration(labelText: 'Membership approval'),
-        items: const ['MANUAL', 'AUTO'].map((e) => DropdownMenuItem(value: e, child: Text(e == 'AUTO' ? 'Automatic approval' : 'Review applications'))).toList(),
-        onChanged: (v) => setState(() => values['membershipMode'] = v)),
-    ]);
-    if (step == 3) return Column(children: [
-      _input('registrationNumber', 'Registration / CAC number (optional)'),
-      Container(width: double.infinity, padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(color: const Color(0xFFEAF7F0), borderRadius: BorderRadius.circular(14)),
-        child: const Text('Secure documents are not requested in this onboarding flow. ServicePay will verify your organization through its secure review process.',
-          style: TextStyle(color: Color(0xFF145C38), height: 1.4))),
-    ]);
+    if (step == 0)
+      return Column(children: [
+        _input('name', 'Organization name', required: true),
+        DropdownButtonFormField<String>(
+            value: type,
+            decoration: const InputDecoration(labelText: 'Organization type'),
+            items: types
+                .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                .toList(),
+            onChanged: (v) => setState(() => values['type'] = v)),
+        const SizedBox(height: 14),
+        _input('description', 'Description', required: true),
+        _input('logoUrl', 'Logo URL (optional HTTPS)'),
+      ]);
+    if (step == 1)
+      return Column(children: [
+        _input('address', 'Official address', required: true),
+        _input('state', 'State', required: true),
+        _input('lga', 'Local government area', required: true),
+        _input('officialPhone', 'Official phone',
+            required: true, keyboard: TextInputType.phone),
+        _input('officialEmail', 'Official email',
+            required: true, keyboard: TextInputType.emailAddress),
+        _input('contactName', 'Contact person name', required: true),
+        _input('contactPhone', 'Contact person phone',
+            required: true, keyboard: TextInputType.phone),
+        _input('contactEmail', 'Contact person email',
+            required: true, keyboard: TextInputType.emailAddress),
+      ]);
+    if (step == 2)
+      return Column(children: [
+        _input('annualFee', 'Annual membership fee',
+            required: true, keyboard: TextInputType.number),
+        _input('registrationFee', 'Registration fee',
+            required: true, keyboard: TextInputType.number),
+        DropdownButtonFormField<String>(
+            value: values['renewalCycle'] ?? 'ANNUAL',
+            decoration: const InputDecoration(labelText: 'Renewal cycle'),
+            items: const ['ANNUAL', 'MONTHLY', 'NONE']
+                .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                .toList(),
+            onChanged: (v) => setState(() => values['renewalCycle'] = v)),
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+            value: values['membershipMode'] ?? 'MANUAL',
+            decoration: const InputDecoration(labelText: 'Membership approval'),
+            items: const ['MANUAL', 'AUTO']
+                .map((e) => DropdownMenuItem(
+                    value: e,
+                    child: Text(e == 'AUTO'
+                        ? 'Automatic approval'
+                        : 'Review applications')))
+                .toList(),
+            onChanged: (v) => setState(() => values['membershipMode'] = v)),
+      ]);
+    if (step == 3)
+      return Column(children: [
+        _input('registrationNumber', 'Registration / CAC number (optional)'),
+        Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+                color: const Color(0xFFEAF7F0),
+                borderRadius: BorderRadius.circular(14)),
+            child: const Text(
+                'Secure documents are not requested in this onboarding flow. ServicePay will verify your organization through its secure review process.',
+                style: TextStyle(color: Color(0xFF145C38), height: 1.4))),
+      ]);
     return _Review(values: values, fields: fields, type: type);
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF5F8F6),
-    appBar: AppBar(title: const Text('Create organization'), backgroundColor: Colors.white),
-    body: Form(key: form, child: ListView(padding: const EdgeInsets.all(20), children: [
-      Text('Step ${step + 1} of 5', style: const TextStyle(color: Color(0xFF08783E), fontWeight: FontWeight.w800)),
-      const SizedBox(height: 8), LinearProgressIndicator(value: (step + 1) / 5, color: const Color(0xFF08783E)),
-      const SizedBox(height: 26),
-      Text(['Basic Information', 'Location / Contact', 'Membership Setup', 'Verification', 'Review & Submit'][step],
-        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 6), Text(['Tell us who this organization is.', 'Add official details members can trust.',
-        'Set the dues and approval approach.', 'Registration is optional; documents are not requested.',
-        'Check everything before sending for verification.'][step],
-        style: const TextStyle(color: Colors.black54)),
-      const SizedBox(height: 22), _stepBody(), const SizedBox(height: 20),
-      Row(children: [
-        if (step > 0) Expanded(child: OutlinedButton(onPressed: submitting ? null : () => setState(() => step--), child: const Text('Back'))),
-        if (step > 0) const SizedBox(width: 12),
-        Expanded(child: FilledButton(onPressed: submitting ? null : () {
-          if (step < 4) { if (form.currentState?.validate() ?? false) setState(() => step++); } else { _submit(); }
-        }, child: submitting ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-            : Text(step == 4 ? 'Submit for verification' : 'Continue'))),
-      ]),
-    ])),
-  );
+        backgroundColor: const Color(0xFFF5F8F6),
+        appBar: AppBar(
+            title: const Text('Create organization'),
+            backgroundColor: Colors.white),
+        body: Form(
+            key: form,
+            child: ListView(padding: const EdgeInsets.all(20), children: [
+              Text('Step ${step + 1} of 5',
+                  style: const TextStyle(
+                      color: Color(0xFF08783E), fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                  value: (step + 1) / 5, color: const Color(0xFF08783E)),
+              const SizedBox(height: 26),
+              Text(
+                  [
+                    'Basic Information',
+                    'Location / Contact',
+                    'Membership Setup',
+                    'Verification',
+                    'Review & Submit'
+                  ][step],
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 6),
+              Text(
+                  [
+                    'Tell us who this organization is.',
+                    'Add official details members can trust.',
+                    'Set the dues and approval approach.',
+                    'Registration is optional; documents are not requested.',
+                    'Check everything before sending for verification.'
+                  ][step],
+                  style: const TextStyle(color: Colors.black54)),
+              const SizedBox(height: 22),
+              _stepBody(),
+              const SizedBox(height: 20),
+              Row(children: [
+                if (step > 0)
+                  Expanded(
+                      child: OutlinedButton(
+                          onPressed:
+                              submitting ? null : () => setState(() => step--),
+                          child: const Text('Back'))),
+                if (step > 0) const SizedBox(width: 12),
+                Expanded(
+                    child: FilledButton(
+                        onPressed: submitting
+                            ? null
+                            : () {
+                                if (step < 4) {
+                                  if (form.currentState?.validate() ?? false)
+                                    setState(() => step++);
+                                } else {
+                                  _submit();
+                                }
+                              },
+                        child: submitting
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : Text(step == 4
+                                ? 'Submit for verification'
+                                : 'Continue'))),
+              ]),
+            ])),
+      );
 }
 
 class _Review extends StatelessWidget {
-  const _Review({required this.values, required this.fields, required this.type});
-  final Map<String, dynamic> values; final Map<String, TextEditingController> fields; final String type;
+  const _Review(
+      {required this.values, required this.fields, required this.type});
+  final Map<String, dynamic> values;
+  final Map<String, TextEditingController> fields;
+  final String type;
   @override
-  Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(16),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _line('Organization', fields['name']!.text), _line('Type', type),
-      _line('Contact', fields['officialEmail']!.text), _line('Location', '${fields['state']!.text}, ${fields['lga']!.text}'),
-      _line('Annual fee', fields['annualFee']!.text), _line('Registration fee', fields['registrationFee']!.text),
-      const SizedBox(height: 12), const Text('No documents are requested. Your organization will be reviewed securely by ServicePay.',
-        style: TextStyle(color: Colors.black54, height: 1.4)),
-    ])));
-  Widget _line(String label, String value) => Padding(padding: const EdgeInsets.only(bottom: 12),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 110, child: Text(label, style: const TextStyle(color: Colors.black54))),
-      Expanded(child: Text(value.isEmpty ? 'Not provided' : value, style: const TextStyle(fontWeight: FontWeight.w700)))]));
+  Widget build(BuildContext context) => Card(
+      child: Padding(
+          padding: const EdgeInsets.all(16),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _line('Organization', fields['name']!.text),
+            _line('Type', type),
+            _line('Contact', fields['officialEmail']!.text),
+            _line(
+                'Location', '${fields['state']!.text}, ${fields['lga']!.text}'),
+            _line('Annual fee', fields['annualFee']!.text),
+            _line('Registration fee', fields['registrationFee']!.text),
+            const SizedBox(height: 12),
+            const Text(
+                'No documents are requested. Your organization will be reviewed securely by ServicePay.',
+                style: TextStyle(color: Colors.black54, height: 1.4)),
+          ])));
+  Widget _line(String label, String value) => Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+            width: 110,
+            child: Text(label, style: const TextStyle(color: Colors.black54))),
+        Expanded(
+            child: Text(value.isEmpty ? 'Not provided' : value,
+                style: const TextStyle(fontWeight: FontWeight.w700)))
+      ]));
 }
 
 class OrganizationProfileScreen extends StatefulWidget {
@@ -695,62 +917,121 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
       );
 }
 
-class OrganizationMemberScreen extends StatelessWidget {
+class OrganizationMemberScreen extends StatefulWidget {
   const OrganizationMemberScreen(
       {super.key, required this.organization, required this.api});
   final Organization organization;
   final OrganizationsApi api;
   @override
+  State<OrganizationMemberScreen> createState() =>
+      _OrganizationMemberScreenState();
+}
+
+class _OrganizationMemberScreenState extends State<OrganizationMemberScreen> {
+  late Future<Map<String, dynamic>> card;
+  @override
+  void initState() {
+    super.initState();
+    card = widget.api.card(widget.organization.id);
+  }
+
+  @override
   Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(title: const Text('Membership card')),
-      body: ListView(padding: const EdgeInsets.all(20), children: [
-        Card(
-            color: const Color(0xFF08783E),
-            child: Padding(
-                padding: const EdgeInsets.all(22),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('SERVICEPAY MEMBERSHIP',
-                          style: TextStyle(
-                              color: Colors.white70,
-                              letterSpacing: 1.2,
-                              fontSize: 12)),
-                      const SizedBox(height: 30),
-                      Text(organization.name,
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: card,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            final unavailable = snapshot.error is OrganizationApiException &&
+                (snapshot.error as OrganizationApiException).statusCode == 404;
+            return Center(
+                child: Padding(
+                    padding: const EdgeInsets.all(28),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(
+                          unavailable
+                              ? Icons.badge_outlined
+                              : Icons.error_outline,
+                          size: 48,
+                          color: Colors.black38),
+                      const SizedBox(height: 12),
+                      Text(
+                          unavailable
+                              ? 'Membership card unavailable'
+                              : 'Unable to load membership card',
                           style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900)),
+                              fontSize: 18, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 8),
                       Text(
-                          organization.verified
-                              ? 'Verified member • ${organization.joinStatus ?? 'ACTIVE'}'
-                              : 'Member',
-                          style: const TextStyle(color: Colors.white)),
-                      const SizedBox(height: 24),
-                      Container(
-                          padding: const EdgeInsets.all(10),
-                          color: Colors.white,
-                          child: Text(
-                              organization.verificationUrl.isNotEmpty
-                                  ? organization.verificationUrl
-                                  : 'Verification code: ${organization.membershipNumber.isEmpty ? organization.id : organization.membershipNumber}',
+                          unavailable
+                              ? 'A server-issued card is not available for this membership yet.'
+                              : '${snapshot.error}'
+                                  .replaceFirst('Exception: ', ''),
+                          textAlign: TextAlign.center),
+                      if (!unavailable) ...[
+                        const SizedBox(height: 14),
+                        OutlinedButton(
+                            onPressed: () => setState(() =>
+                                card = widget.api.card(widget.organization.id)),
+                            child: const Text('Try again')),
+                      ],
+                    ])));
+          }
+          final response = snapshot.data ?? const <String, dynamic>{};
+          final raw =
+              response['card'] is Map ? response['card'] : response['data'];
+          if (raw is! Map || raw.isEmpty) {
+            return const Center(child: Text('Membership card unavailable.'));
+          }
+          final serverCard = Map<String, dynamic>.from(raw);
+          return ListView(padding: const EdgeInsets.all(20), children: [
+            Card(
+                color: const Color(0xFF08783E),
+                child: Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('SERVICEPAY MEMBERSHIP',
+                              style: TextStyle(
+                                  color: Colors.white70,
+                                  letterSpacing: 1.2,
+                                  fontSize: 12)),
+                          const SizedBox(height: 30),
+                          Text(
+                              '${serverCard['organizationName'] ?? 'Membership card'}',
                               style: const TextStyle(
-                                  fontFamily: 'monospace', fontSize: 11))),
-                    ]))),
-        if (organization.membershipNumber.isNotEmpty)
-          Text('Membership number: ${organization.membershipNumber}',
-              style: const TextStyle(fontWeight: FontWeight.w800)),
-        const Text('Public verification details (not a QR code).',
-            style: TextStyle(color: Colors.black54)),
-        if (organization.expiryDate != null)
-          Text(
-              'Expiry: ${organization.expiryDate!.day}/${organization.expiryDate!.month}/${organization.expiryDate!.year}'),
-        const Text(
-            'Show this card when your organization requests membership verification. Private contact and wallet data are never displayed.',
-            style: TextStyle(color: Colors.black54, height: 1.4)),
-      ]));
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 8),
+                          Text('${serverCard['status'] ?? 'Issued'}',
+                              style: const TextStyle(color: Colors.white)),
+                          const SizedBox(height: 24),
+                          Container(
+                              padding: const EdgeInsets.all(10),
+                              color: Colors.white,
+                              child: Text(
+                                  '${serverCard['verificationUrl'] ?? serverCard['cardNumber'] ?? serverCard['membershipNumber'] ?? 'Card details issued by ServicePay'}',
+                                  style: const TextStyle(
+                                      fontFamily: 'monospace', fontSize: 11))),
+                        ]))),
+            if (serverCard['membershipNumber'] != null)
+              Text('Membership number: ${serverCard['membershipNumber']}',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            const Text('Public verification details (not a QR code).',
+                style: TextStyle(color: Colors.black54)),
+            if (serverCard['expiryDate'] != null)
+              Text('Expiry: ${serverCard['expiryDate']}'),
+            const Text(
+                'Show this card when your organization requests membership verification. Private contact and wallet data are never displayed.',
+                style: TextStyle(color: Colors.black54, height: 1.4)),
+          ]);
+        },
+      ));
 }
 
 class OrganizationOwnerDashboard extends StatefulWidget {
@@ -766,47 +1047,185 @@ class OrganizationOwnerDashboard extends StatefulWidget {
 class _OrganizationOwnerDashboardState
     extends State<OrganizationOwnerDashboard> {
   Map<String, dynamic>? data;
+  List<Map<String, dynamic>> members = [];
+  String? error;
+  bool approving = false;
+  String selected = 'Overview';
+  static const sections = [
+    'Overview',
+    'Members',
+    'Applications',
+    'Payments',
+    'Fees & Dues',
+    'Wallet',
+    'Branches',
+    'Staff & Roles',
+    'Messages',
+    'ID Cards',
+    'Reports',
+    'Audit Logs',
+    'Settings'
+  ];
   @override
   void initState() {
     super.initState();
-    widget.api.dashboard(widget.organization.id).then((value) {
-      if (mounted) setState(() => data = value);
+    Future.wait([
+      widget.api.dashboard(widget.organization.id),
+      widget.api.members(widget.organization.id)
+    ]).then((values) {
+      if (mounted)
+        setState(() {
+          data = values[0] as Map<String, dynamic>;
+          members = values[1] as List<Map<String, dynamic>>;
+        });
+    }).catchError((e) {
+      if (mounted)
+        setState(() => error = e.toString().replaceFirst('Exception: ', ''));
     });
+  }
+
+  Future<void> _approve(String id) async {
+    setState(() => approving = true);
+    try {
+      await widget.api
+          .approveMember(organizationId: widget.organization.id, memberId: id);
+      if (mounted) {
+        setState(() {
+          members = members
+              .map((m) =>
+                  (m['id']?.toString() == id || m['_id']?.toString() == id)
+                      ? {...m, 'status': 'ACTIVE'}
+                      : m)
+              .toList();
+        });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Member approved.')));
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    } finally {
+      if (mounted) setState(() => approving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Organization dashboard')),
-        body: data == null
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  const Text('Your organization overview',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
-                  for (final key in const [
-                    'members',
-                    'dues',
-                    'announcements',
-                    'branches',
-                    'staff'
-                  ])
-                    if (data![key] != null)
-                      Card(
-                        child: ListTile(
-                          title: Text(key[0].toUpperCase() + key.substring(1)),
-                          subtitle: Text('${data![key]}'),
-                        ),
-                      ),
-                  const ListTile(
-                      leading: Icon(Icons.lock_outline),
-                      title: Text('Withdrawals disabled'),
-                      subtitle: Text(
-                          'Organization funds cannot be withdrawn from the customer app.')),
-                ],
-              ),
+        body: error != null
+            ? Center(
+                child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(error!, textAlign: TextAlign.center)))
+            : data == null
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      const Text('Your organization overview',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w900, fontSize: 20)),
+                      Wrap(spacing: 6, runSpacing: 6, children: [
+                        for (final section in sections)
+                          ChoiceChip(
+                              label: Text(section),
+                              selected: selected == section,
+                              onSelected: (_) =>
+                                  setState(() => selected = section)),
+                      ]),
+                      const SizedBox(height: 18),
+                      ..._sectionContent(),
+                      const ListTile(
+                          leading: Icon(Icons.lock_outline),
+                          title: Text('Withdrawals disabled'),
+                          subtitle: Text(
+                              'Organization funds cannot be withdrawn from the customer app.')),
+                    ],
+                  ),
       );
+
+  List<(String, dynamic)> _summary(Map<String, dynamic> response) {
+    final raw =
+        response['summary'] is Map ? response['summary'] as Map : const {};
+    final revenue = raw['revenue'] is Map ? raw['revenue'] as Map : const {};
+    dynamic value(String key, [String? fallback]) =>
+        raw[key] ??
+        response[key] ??
+        (fallback == null ? null : raw[fallback] ?? response[fallback]) ??
+        0;
+    return [
+      ('Total members', value('total', 'totalMembers')),
+      ('Active members', value('active', 'activeMembers')),
+      ('Pending members', value('pending', 'pendingMembers')),
+      ('Registration revenue', revenue['registration'] ?? 0),
+      ('Annual revenue', revenue['annual'] ?? 0),
+      (
+        'Total collections',
+        revenue['total'] ?? response['totalCollections'] ?? 0
+      ),
+      ('Outstanding dues', value('outstandingDues')),
+      ('Wallet balance', value('walletBalance')),
+    ];
+  }
+
+  List<Widget> _sectionContent() {
+    if (selected == 'Overview') {
+      return _summary(data!)
+          .map((item) => Card(
+                  child: ListTile(
+                leading: const Icon(Icons.insights_outlined,
+                    color: Color(0xFF08783E)),
+                title: Text(item.$1),
+                trailing: Text('${item.$2}',
+                    style: const TextStyle(fontWeight: FontWeight.w900)),
+              )))
+          .toList();
+    }
+    if (selected == 'Members' || selected == 'Applications') {
+      final pending = selected == 'Applications';
+      final list = members.where((m) =>
+          '${m['status'] ?? ''}'.toUpperCase() ==
+          (pending ? 'PENDING' : 'ACTIVE'));
+      return [
+        Text(selected,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
+        if (!list.isNotEmpty)
+          Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(pending
+                  ? 'No pending applications.'
+                  : 'No active member records available.')),
+        for (final member in list) _memberTile(member),
+      ];
+    }
+    final note = selected == 'Payments' || selected == 'Fees & Dues'
+        ? 'Summary values are available in Overview. Detailed owner operations are not exposed by the current customer API.'
+        : 'This owner section is not available through the current customer API yet.';
+    return [
+      Text(selected,
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
+      const SizedBox(height: 10),
+      Text(note, style: const TextStyle(color: Colors.black54, height: 1.4))
+    ];
+  }
+
+  Widget _memberTile(Map<String, dynamic> member) {
+    final id = '${member['id'] ?? member['_id'] ?? ''}';
+    final status = '${member['status'] ?? 'UNKNOWN'}'.toUpperCase();
+    final name =
+        '${member['name'] ?? member['fullName'] ?? member['user'] ?? 'Member'}';
+    return Card(
+        child: ListTile(
+      title: Text(name),
+      subtitle: Text(status.replaceAll('_', ' ')),
+      trailing: status == 'PENDING' && id.isNotEmpty
+          ? TextButton(
+              onPressed: approving ? null : () => _approve(id),
+              child: const Text('Approve'))
+          : null,
+    ));
+  }
 }
 
 class OrganizationPaymentsScreen extends StatefulWidget {

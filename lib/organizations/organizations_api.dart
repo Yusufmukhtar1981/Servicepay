@@ -65,9 +65,22 @@ class OrganizationsApi {
   Future<Map<String, dynamic>> membership(String id) async =>
       _request('GET', '/${Uri.encodeComponent(id)}/membership');
   Future<Map<String, dynamic>> card(String id) async =>
-      _request('GET', '/${Uri.encodeComponent(id)}/membership-card');
+      _request('GET', '/${Uri.encodeComponent(id)}/card');
   Future<Map<String, dynamic>> dashboard(String id) async =>
       _request('GET', '/${Uri.encodeComponent(id)}/dashboard');
+  Future<List<Map<String, dynamic>>> members(String id) async {
+    final data = await _request('GET', '/${Uri.encodeComponent(id)}/members');
+    final raw = data['members'] ?? data['data'] ?? const [];
+    return (raw is List ? raw : const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> approveMember(
+          {required String organizationId, required String memberId}) =>
+      _request('POST',
+          '/${Uri.encodeComponent(organizationId)}/members/${Uri.encodeComponent(memberId)}/approve');
 
   Future<Map<String, dynamic>> apply(String id, Map<String, dynamic> fields) =>
       _request('POST', '/${Uri.encodeComponent(id)}/apply', body: fields);
@@ -160,8 +173,10 @@ class OrganizationsApi {
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
         data['success'] == false) {
-      throw Exception(data['message']?.toString() ??
-          'Organization request failed. Please try again.');
+      throw OrganizationApiException(
+          response.statusCode,
+          data['message']?.toString() ??
+              'Organization request failed. Please try again.');
     }
     return data;
   }
@@ -169,3 +184,11 @@ class OrganizationsApi {
 
 /// Backwards-compatible short name for screens and integrations.
 typedef OrganizationApi = OrganizationsApi;
+
+class OrganizationApiException implements Exception {
+  const OrganizationApiException(this.statusCode, this.message);
+  final int statusCode;
+  final String message;
+  @override
+  String toString() => message;
+}
