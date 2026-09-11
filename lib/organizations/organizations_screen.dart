@@ -1213,12 +1213,36 @@ class _OrganizationOwnerDashboardState
   Widget _memberTile(Map<String, dynamic> member) {
     final id = '${member['id'] ?? member['_id'] ?? ''}';
     final status = '${member['status'] ?? 'UNKNOWN'}'.toUpperCase();
-    final name =
-        '${member['name'] ?? member['fullName'] ?? member['user'] ?? 'Member'}';
+    final user = member['user'] is Map
+        ? Map<String, dynamic>.from(member['user'] as Map)
+        : const <String, dynamic>{};
+    String text(dynamic value) => value?.toString().trim() ?? '';
+    final nestedFullName = text(user['fullName']).isNotEmpty
+        ? text(user['fullName'])
+        : text(user['name']).isNotEmpty
+            ? text(user['name'])
+            : [text(user['firstName']), text(user['lastName'])]
+                .where((part) => part.isNotEmpty)
+                .join(' ');
+    final name = [
+      text(member['name']),
+      text(member['fullName']),
+      nestedFullName,
+    ].firstWhere((value) => value.isNotEmpty, orElse: () => 'Member');
+    final email = text(user['email']).isNotEmpty
+        ? text(user['email'])
+        : text(member['email']);
+    final phone = text(user['phone']).isNotEmpty
+        ? text(user['phone'])
+        : text(member['phone']);
+    final contact =
+        [email, phone].where((value) => value.isNotEmpty).join(' • ');
     return Card(
         child: ListTile(
       title: Text(name),
-      subtitle: Text(status.replaceAll('_', ' ')),
+      subtitle: Text([status.replaceAll('_', ' '), contact]
+          .where((value) => value.isNotEmpty)
+          .join(' • ')),
       trailing: status == 'PENDING' && id.isNotEmpty
           ? TextButton(
               onPressed: approving ? null : () => _approve(id),
