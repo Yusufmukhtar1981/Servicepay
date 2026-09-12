@@ -11,6 +11,7 @@ const adminPartnerRoutes = require("./routes/adminPartner.routes");
 const cardRoutes = require('./routes/card.routes');
 const managementRoutes = require('./routes/management.routes');
 const appSettingsRoutes = require("./routes/appSettings.routes");
+const featureControlRoutes = require("./routes/featureControl.routes");
 const cors = require("cors");
 const helmet = require("helmet");
 const fintechControlMiddleware = require("./middleware/fintechControl.middleware");
@@ -308,6 +309,7 @@ app.use(
 // ServicePay Fintech Control Enforcement
 app.use('/api/marketplace', marketplaceRoutes);
 app.use("/api/settings", appSettingsRoutes);
+app.use("/api/feature-control", featureControlRoutes);
 app.use('/api/cards', cardRoutes);
 
 const productCommissionRoutes = require(

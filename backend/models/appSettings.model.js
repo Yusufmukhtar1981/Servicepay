@@ -633,6 +633,24 @@ const fintechControlSettingsSchema =
         of: Boolean,
         default: () => ({}),
       },
+      featureRegistry: {
+        type: Map,
+        of: new mongoose.Schema({
+          enabled: { type: Boolean, default: true },
+          visible: { type: Boolean, default: true },
+          maintenanceMode: { type: Boolean, default: false },
+          maintenanceTitle: { type: String, trim: true, maxlength: 200, default: "" },
+          maintenanceMessage: { type: String, trim: true, maxlength: 1000, default: "" },
+          expectedReturnAt: { type: Date, default: null },
+          scope: { type: String, enum: ["GLOBAL"], default: "GLOBAL" },
+          scheduledEnabledAt: { type: Date, default: null },
+          scheduledDisabledAt: { type: Date, default: null },
+          minimumAppVersion: { type: String, trim: true, default: "" },
+          updatedAt: { type: Date, default: null },
+          updatedBy: { type: String, trim: true, default: "" },
+        }, { _id: false }),
+        default: () => ({}),
+      },
     },
     { _id: false }
   );
@@ -906,17 +924,23 @@ appSettingsSchema.pre(
 
 appSettingsSchema.statics
   .getGlobalSettings =
-  async function () {
-    let settings =
-      await this.findOne({
+  async function (options = {}) {
+    let query = this.findOne({
         key: "GLOBAL_SETTINGS",
       });
+    if (options.session) query = query.session(options.session);
+    let settings = await query;
 
     if (!settings) {
-      settings =
-        await this.create({
+      const document = {
           key: "GLOBAL_SETTINGS",
-        });
+      };
+      if (options.session) {
+        const created = await this.create([document], { session: options.session });
+        settings = created[0];
+      } else {
+        settings = await this.create(document);
+      }
     }
 
     return settings;

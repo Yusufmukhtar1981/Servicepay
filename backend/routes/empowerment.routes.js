@@ -10,6 +10,9 @@ const {
   requireAssignedBranchModule,
 } = require("../middleware/staffPermission.middleware");
 const { STAFF_PERMISSIONS: P } = require("../config/staffPermissions");
+const {
+  requireFeatureEnabled,
+} = require("../middleware/fintechControl.middleware");
 
 const {
   createOrganization,
@@ -240,18 +243,21 @@ router.get(
 router.post(
   "/programs/:programId/disbursements",
   manageAccess,
+  requireFeatureEnabled("programSponsor"),
   disburseProgram
 );
 
 router.post(
   "/programs/:programId/bulk-disbursement",
   manageAccess,
+  requireFeatureEnabled("programSponsor"),
   bulkDisburseProgram
 );
 
 router.post(
   "/programs/:programId/beneficiaries/:beneficiaryId/pay",
   manageAccess,
+  requireFeatureEnabled("programSponsor"),
   disburseBeneficiary
 );
 
@@ -259,6 +265,7 @@ router.post(
 router.post(
   "/programs/:programId/beneficiaries/:beneficiaryId/disbursement",
   manageAccess,
+  requireFeatureEnabled("programSponsor"),
   disburseBeneficiary
 );
 router.post(

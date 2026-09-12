@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const AppSettings = require("../models/appSettings.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 
@@ -71,6 +72,7 @@ function current(settings) {
       ...plainMap(raw.featureToggles),
       ...services,
     },
+    featureRegistry: plainMap(raw.featureRegistry),
   };
 }
 
@@ -78,10 +80,17 @@ function actor(req) {
   return req.user?._id || req.user?.id || req.userId || null;
 }
 
-async function writeAudit(req, previousData, newData, reason) {
+function hasDurableActor(req) {
   const actorId = actor(req);
-  if (!actorId) return;
-  await AdminAuditLog.create({
+  return Boolean(actorId && mongoose.Types.ObjectId.isValid(actorId));
+}
+
+async function writeAudit(req, previousData, newData, reason, session) {
+  const actorId = actor(req);
+  if (!hasDurableActor(req)) {
+    throw new Error("A durable actor identity is required for fintech-control audit records.");
+  }
+  await AdminAuditLog.create([{
     actorId,
     actorRole: String(req.user?.role || "HEAD_OFFICE").toUpperCase(),
     actorName: req.user?.fullName || req.user?.name || "",
@@ -96,7 +105,7 @@ async function writeAudit(req, previousData, newData, reason) {
     requestMethod: req.method,
     requestPath: req.originalUrl,
     status: "SUCCESSFUL",
-  });
+  }], { session });
 }
 
 exports.getFintechControlSettings = async (req, res) => {
@@ -110,6 +119,7 @@ exports.getFintechControlSettings = async (req, res) => {
 };
 
 exports.updateFintechControlSettings = async (req, res) => {
+  let session;
   try {
     const reason = String(req.body?.reason || "").trim();
     if (reason.length < 10) {
@@ -118,7 +128,16 @@ exports.updateFintechControlSettings = async (req, res) => {
         message: "A specific audit reason of at least 10 characters is required.",
       });
     }
-    const settings = await AppSettings.getGlobalSettings();
+    if (!hasDurableActor(req)) {
+      return res.status(401).json({
+        success: false,
+        code: "DURABLE_ACTOR_REQUIRED",
+        message: "A durable authenticated actor is required for fintech-control changes.",
+      });
+    }
+    session = await mongoose.startSession();
+    await session.startTransaction();
+    const settings = await AppSettings.getGlobalSettings({ session });
     const previous = current(settings);
     const body = object(req.body?.fintechControl || req.body);
     const maintenance = object(body.maintenance);
@@ -177,6 +196,7 @@ exports.updateFintechControlSettings = async (req, res) => {
       transactionFees: next.transactionFees,
       legalPolicies: next.legalPolicies,
       featureToggles: opaqueToggles,
+      featureRegistry: next.featureRegistry,
     });
     settings.set("platform.maintenanceMode", next.maintenance.enabled);
     settings.set("platform.maintenanceMessage", next.maintenance.message);
@@ -187,13 +207,18 @@ exports.updateFintechControlSettings = async (req, res) => {
     settings.lastUpdatedBy = actor(req) || settings.lastUpdatedBy;
     settings.lastUpdatedByName = req.user?.fullName || req.user?.name || "";
     settings.lastUpdateReason = reason.slice(0, 500);
-    await settings.save();
-
+    await settings.save({ session });
     const saved = current(settings);
-    await writeAudit(req, previous, saved, settings.lastUpdateReason);
+    await writeAudit(req, previous, saved, settings.lastUpdateReason, session);
+    await session.commitTransaction();
     return res.json({ success: true, message: "Fintech Control settings saved.", data: saved });
   } catch (error) {
     console.error("Fintech Control PUT error:", error);
     return res.status(500).json({ success: false, message: "Unable to save Fintech Control settings." });
+  } finally {
+    if (session) {
+      if (session.inTransaction()) await session.abortTransaction();
+      await session.endSession();
+    }
   }
 };

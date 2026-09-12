@@ -1,4 +1,7 @@
 const AppSettings = require("../models/appSettings.model");
+const {
+  featureBindingsForRequest,
+} = require("../config/featureRouteRegistry");
 
 /*
  * ServicePay Fintech Control Enforcement
@@ -82,20 +85,32 @@ function isMutation(req) {
 }
 
 function isBypassPath(req) {
-  const path = String(req.originalUrl || req.url || "").toLowerCase();
+  const raw = String(req?.originalUrl || req?.url || "");
+  const pathname = raw.split("?")[0].split("#")[0].toLowerCase();
+  const segments = pathname.split("/").filter(Boolean);
+  const hasSegment = (segment) => segments.includes(segment);
+  const hasPrefix = (prefix) =>
+    pathname === prefix || pathname.startsWith(`${prefix}/`);
 
-  const bypass = [
-    "/admin",
-    "/auth",
-    "/health",
-    "/webhook",
-    "/callback",
+  // Query strings and fragments are deliberately discarded.  Segment and
+  // boundary matching prevents /not-admin, /administer, and similar paths
+  // from inheriting management/provider bypass behavior.
+  if (["admin", "auth", "health", "webhook", "callback"].some(hasSegment)) {
+    return true;
+  }
+
+  return [
     "/app-settings/public",
+    "/settings/customer/features",
+    "/settings/features",
+    "/settings/feature-control/config",
     "/app-settings/admin/fintech-control",
     "/settings/admin/fintech-control",
-  ];
-
-  return bypass.some((item) => path.includes(item));
+    "/settings/admin/feature-control",
+    "/feature-control/admin",
+    "/feature-control/config",
+    "/feature-control/public",
+  ].some(hasPrefix);
 }
 
 function getTierLimits(control, tier) {
@@ -186,40 +201,96 @@ function getFeeMap(control) {
 }
 
 async function loadFintechControl() {
-  const settings = await AppSettings
-    .findOne({})
-    .sort({ updatedAt: -1 })
-    .lean();
+  const settings = await AppSettings.getGlobalSettings();
+  const source = settings?.toObject ? settings.toObject() : settings;
 
   return {
-    ...(settings?.fintechControl || {}),
-    featureToggles: settings?.services || {},
+    ...(source?.fintechControl || {}),
+    featureToggles: {
+      ...(source?.services || {}),
+      ...(source?.fintechControl?.featureToggles || {}),
+    },
+    featureRegistry: source?.fintechControl?.featureRegistry || {},
+  };
+}
+
+function featureState(control, key, now = new Date()) {
+  const registry = control?.featureRegistry || {};
+  const saved = registry instanceof Map
+    ? (registry.get(key) || registry.get(String(key).toUpperCase()))
+    : (registry[key] || registry[String(key).toUpperCase()]);
+  const state = saved && typeof saved === "object" ? saved : {};
+  let enabled = state.enabled !== false;
+  const events = [
+    state.scheduledEnabledAt && { at: new Date(state.scheduledEnabledAt), enabled: true },
+    state.scheduledDisabledAt && { at: new Date(state.scheduledDisabledAt), enabled: false },
+  ].filter((event) => event && !Number.isNaN(event.at.getTime()))
+    .sort((a, b) => a.at - b.at);
+  for (const event of events) {
+    if (event.at <= now) enabled = event.enabled;
+  }
+  return {
+    enabled,
+    registryEnabled: state.enabled !== undefined,
+    visible: state.visible !== false,
+    maintenanceMode: state.maintenanceMode === true,
+    maintenanceTitle: String(state.maintenanceTitle || ""),
+    expectedReturnAt: state.expectedReturnAt || null,
+    maintenanceMessage: String(
+      state.maintenanceMessage || "This ServicePay feature is temporarily unavailable."
+    ),
   };
 }
 
 function disabledService(req, control) {
-  const path = String(req.originalUrl || req.url || "").toLowerCase();
   const toggles = control?.featureToggles || {};
-  const map = [
-    ["/logistics/interstate", "delivery"],
-    ["/airtime", "airtime"],
-    ["/data", "data"],
-    ["/electricity", "electricity"],
-    ["/cable", "cableTv"],
-    ["/exam", "examPin"],
-    ["/transfer/bank", "bankTransfer"],
-    ["/transfer/servicepay", "servicepayTransfer"],
-    ["/wallet/fund", "walletFunding"],
-    ["/delivery", "delivery"],
-    ["/amana", "amana"],
-    ["/notifications", "notifications"],
-  ];
-  for (const [fragment, key] of map) {
-    if (path.includes(fragment) && boolValue(toggles[key], true) === false) {
-      return key;
+  for (const key of featureBindingsForRequest(req)) {
+    const state = featureState(control, key);
+    if ((!state.registryEnabled && boolValue(toggles[key], true) === false) || !state.visible ||
+        !state.enabled || state.maintenanceMode) {
+      return {
+        key,
+        maintenance: state.maintenanceMode,
+        maintenanceTitle: state.maintenanceTitle,
+        expectedReturnAt: state.expectedReturnAt,
+        message: state.maintenanceMessage,
+      };
     }
   }
   return null;
+}
+
+// Route modules that need a more explicit guard can compose this middleware,
+// while the global fintech middleware below protects existing production
+// routes.  It deliberately returns the same public error contract.
+function requireFeatureEnabled(key) {
+  return async (req, res, next) => {
+    let control = req.fintechControl;
+    try {
+      // The app-level middleware normally populates this once.  Loading here
+      // as a fallback keeps the helper safe and reusable in isolated routers
+      // and tests without introducing a second settings implementation.
+      if (!control) {
+        control = await loadFintechControl();
+        req.fintechControl = control;
+      }
+    } catch (error) {
+      console.error("Feature control enforcement error:", error.message);
+      return next();
+    }
+    const state = featureState(control || {}, key);
+    if (!state.visible || !state.enabled || state.maintenanceMode) {
+      return res.status(503).json({
+        success: false,
+        code: state.maintenanceMode ? "FEATURE_MAINTENANCE" : "FEATURE_DISABLED",
+        feature: key,
+        title: state.maintenanceTitle || undefined,
+        message: state.maintenanceMessage,
+        expectedReturnAt: state.expectedReturnAt || null,
+      });
+    }
+    return next();
+  };
 }
 
 async function fintechControlMiddleware(req, res, next) {
@@ -282,6 +353,7 @@ async function fintechControlMiddleware(req, res, next) {
       "HEAD_OFFICE",
       "ADMIN",
       "SUPER_ADMIN",
+      "SERVICEPAY_SUPER_ADMIN",
       "STAFF",
     ];
 
@@ -321,9 +393,11 @@ async function fintechControlMiddleware(req, res, next) {
       if (service) {
         return res.status(503).json({
           success: false,
-          code: "FEATURE_DISABLED",
-          service,
-          message: "This ServicePay feature is temporarily unavailable.",
+          code: service.maintenance ? "FEATURE_MAINTENANCE" : "FEATURE_DISABLED",
+          service: service.key,
+          title: service.maintenanceTitle || undefined,
+          message: service.message,
+          expectedReturnAt: service.expectedReturnAt || null,
         });
       }
     }
@@ -391,3 +465,6 @@ async function fintechControlMiddleware(req, res, next) {
 module.exports = fintechControlMiddleware;
 module.exports.loadFintechControl = loadFintechControl;
 module.exports.getFeeMap = getFeeMap;
+module.exports.isBypassPath = isBypassPath;
+module.exports.featureState = featureState;
+module.exports.requireFeatureEnabled = requireFeatureEnabled;
