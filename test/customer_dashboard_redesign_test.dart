@@ -67,6 +67,32 @@ void main() {
     );
   });
 
+  testWidgets('keeps all wallet quick actions in one equal row on mobile',
+      (WidgetTester tester) async {
+    for (final Size size in <Size>[
+      const Size(360, 800),
+      const Size(390, 844),
+    ]) {
+      await tester.binding.setSurfaceSize(size);
+      await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final Finder transfer =
+          find.byKey(const Key('dashboard-transfer-action'));
+      final Finder withdraw =
+          find.byKey(const Key('dashboard-withdraw-action'));
+      final Finder qrPay = find.byKey(const Key('dashboard-qr-pay-action'));
+
+      expect(tester.getCenter(transfer).dy, tester.getCenter(withdraw).dy);
+      expect(tester.getCenter(withdraw).dy, tester.getCenter(qrPay).dy);
+      expect(tester.getSize(transfer).width, tester.getSize(withdraw).width);
+      expect(tester.getSize(withdraw).width, tester.getSize(qrPay).width);
+      expect(tester.takeException(), isNull);
+    }
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
   testWidgets('renders real recent activity and unread notifications',
       (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 760));

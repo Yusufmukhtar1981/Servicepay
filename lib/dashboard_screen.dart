@@ -1886,13 +1886,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFFF8FFFA), Color(0xFFE5F7EC)],
+          colors: <Color>[primaryGreen, Color(0xFF055C30)],
         ),
         borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: const Color(0xFFCFE9D8)),
+        border: Border.all(color: const Color(0xFF2A925B)),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x1608783E),
+            color: Color(0x33065F32),
             blurRadius: 22,
             offset: Offset(0, 10),
           ),
@@ -1912,15 +1912,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                   height: 92,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: primaryGreen.withValues(alpha: 0.08),
+                    color: Colors.white.withValues(alpha: 0.10),
                     border: Border.all(
-                      color: primaryGreen.withValues(alpha: 0.12),
+                      color: Colors.white.withValues(alpha: 0.13),
                       width: 9,
                     ),
                   ),
                   child: const Icon(
                     Icons.shield_rounded,
-                    color: primaryGreen,
+                    color: Color(0xAFFFFFFF),
                     size: 39,
                   ),
                 ),
@@ -1941,7 +1941,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Color(0xFF51645A),
+                              color: Colors.white,
                               fontSize: 12.5,
                               fontWeight: FontWeight.w800,
                             ),
@@ -1964,7 +1964,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   hideBalance
                                       ? Icons.visibility_off_outlined
                                       : Icons.visibility_outlined,
-                                  color: primaryGreen,
+                                  color: Colors.white,
                                   size: 18,
                                 ),
                               ),
@@ -1982,7 +1982,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         Icons.account_balance_wallet_outlined,
                         size: 20,
                       ),
-                      color: primaryGreen,
+                      color: Colors.white,
                       visualDensity: VisualDensity.compact,
                     ),
                   ),
@@ -1994,7 +1994,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xFF102A1B),
+                  color: Colors.white,
                   fontSize: 29,
                   height: 1.05,
                   letterSpacing: -1.2,
@@ -2014,19 +2014,25 @@ class _DashboardScreenState extends State<DashboardScreen>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: primaryGreen.withValues(alpha: 0.09),
+                      color: Colors.white.withValues(alpha: 0.13),
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Icon(Icons.verified_user_outlined,
-                            size: 14, color: primaryGreen),
+                        Icon(
+                          Icons.verified_user_outlined,
+                          size: 14,
+                          color: Colors.white,
+                        ),
                         SizedBox(width: 4),
                         Text(
                           'Secured & Protected',
                           style: TextStyle(
-                            color: primaryGreen,
+                            color: Colors.white,
                             fontSize: 9.8,
                             fontWeight: FontWeight.w800,
                           ),
@@ -2074,8 +2080,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     required VoidCallback onTap,
   }) {
     return Material(
-      color: filled ? primaryGreen : Colors.white.withValues(alpha: 0.76),
-      borderRadius: BorderRadius.circular(18),
+      color: filled ? Colors.white : Colors.white.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: Colors.white.withValues(alpha: filled ? 1 : 0.38),
+        ),
+      ),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
@@ -2084,12 +2095,16 @@ class _DashboardScreenState extends State<DashboardScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(icon, size: 15, color: filled ? Colors.white : primaryGreen),
+              Icon(
+                icon,
+                size: 15,
+                color: filled ? primaryGreen : Colors.white,
+              ),
               const SizedBox(width: 3),
               Text(
                 label,
                 style: TextStyle(
-                  color: filled ? Colors.white : primaryGreen,
+                  color: filled ? primaryGreen : Colors.white,
                   fontSize: 10.5,
                   fontWeight: FontWeight.w800,
                 ),
@@ -2116,66 +2131,38 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ],
       ),
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          final List<Widget> actions = <Widget>[
-            _premiumWalletAction(
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: _premiumWalletAction(
               icon: Icons.swap_horiz_rounded,
               label: 'Transfer',
               detail: 'Send funds',
               key: const Key('dashboard-transfer-action'),
               onTap: () => openScreen(const TransferScreen()),
             ),
-            _premiumWalletAction(
+          ),
+          _premiumActionDivider(),
+          Expanded(
+            child: _premiumWalletAction(
               icon: Icons.south_west_rounded,
               label: 'Withdraw',
               detail: 'Cash out',
               key: const Key('dashboard-withdraw-action'),
               onTap: () => openScreen(const WithdrawalScreen()),
             ),
-            _premiumWalletAction(
+          ),
+          _premiumActionDivider(),
+          Expanded(
+            child: _premiumWalletAction(
               icon: Icons.qr_code_scanner_rounded,
               label: 'QR Pay',
               detail: 'Scan & pay',
               key: const Key('dashboard-qr-pay-action'),
               onTap: () => openScreen(const QrPayScreen()),
             ),
-          ];
-
-          Widget actionPair(int first, int second) {
-            return Row(
-              children: <Widget>[
-                Expanded(child: actions[first]),
-                _premiumActionDivider(),
-                Expanded(child: actions[second]),
-              ],
-            );
-          }
-
-          if (constraints.maxWidth < 380) {
-            return Column(
-              children: <Widget>[
-                actionPair(0, 1),
-                const Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: Color(0xFFE5EEE8),
-                ),
-                actions[2],
-              ],
-            );
-          }
-
-          return Row(
-            children: <Widget>[
-              Expanded(child: actions[0]),
-              _premiumActionDivider(),
-              Expanded(child: actions[1]),
-              _premiumActionDivider(),
-              Expanded(child: actions[2]),
-            ],
-          );
-        },
+          ),
+        ],
       ),
     );
   }
