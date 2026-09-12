@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'organization_models.dart';
 import 'organizations_api.dart';
 import 'organization_owner_dashboard.dart';
+import '../servicepay_theme.dart';
 
 class OrganizationsScreen extends StatefulWidget {
   const OrganizationsScreen({super.key, this.api});
@@ -84,14 +85,14 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF5F8F6),
+    backgroundColor: ServicePayColors.canvas,
     appBar: AppBar(
       title: const Text(
         'Organizations',
         style: TextStyle(fontWeight: FontWeight.w900),
       ),
-      backgroundColor: Colors.white,
-      foregroundColor: const Color(0xFF15201B),
+      backgroundColor: ServicePayColors.brand,
+      foregroundColor: Colors.white,
       elevation: 0,
     ),
     body: RefreshIndicator(
@@ -160,7 +161,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   'A clear view of the communities you belong to and manage.',
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(color: ServicePayColors.muted),
                 ),
                 const SizedBox(height: 14),
                 if (mine.isEmpty) const _EmptyOrganization(),
@@ -932,11 +933,11 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF7F9F8),
+    backgroundColor: ServicePayColors.canvas,
     appBar: AppBar(
       title: const Text('Organization profile'),
-      backgroundColor: Colors.white,
-      foregroundColor: const Color(0xFF15201B),
+      backgroundColor: ServicePayColors.brand,
+      foregroundColor: Colors.white,
       elevation: 0,
     ),
     body: ListView(

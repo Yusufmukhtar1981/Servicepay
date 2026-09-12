@@ -11,8 +11,10 @@ abstract final class ServicePayColors {
   static const brandSoft = Color(0xFFEAF7F0);
   static const canvas = Color(0xFFF6FAF7);
   static const ink = Color(0xFF15352A);
-  static const muted = Color(0xFF60736A);
-  static const border = Color(0xFFDCE9E1);
+  static const muted = Color(0xFF4B6257);
+  static const border = Color(0xFFB9CEC1);
+  static const disabled = Color(0xFF718078);
+  static const disabledSurface = Color(0xFFE7EDE9);
   static const success = Color(0xFF15803D);
   static const danger = Color(0xFFB42318);
   static const warning = Color(0xFFB54708);
@@ -31,6 +33,8 @@ abstract final class ServicePayTheme {
       onSecondary: Colors.white,
       surface: Colors.white,
       onSurface: ServicePayColors.ink,
+      surfaceContainerHighest: const Color(0xFFE7F0EA),
+      onSurfaceVariant: ServicePayColors.muted,
       error: ServicePayColors.danger,
       onError: Colors.white,
     );
@@ -90,7 +94,13 @@ abstract final class ServicePayTheme {
           height: 1.4,
         ),
         labelLarge: TextStyle(
+          color: ServicePayColors.ink,
           fontSize: 14,
+          fontWeight: FontWeight.w700,
+        ),
+        labelMedium: TextStyle(
+          color: ServicePayColors.muted,
+          fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -120,7 +130,13 @@ abstract final class ServicePayTheme {
         ),
         labelStyle: const TextStyle(color: ServicePayColors.muted),
         floatingLabelStyle: const TextStyle(color: ServicePayColors.brand),
-        hintStyle: const TextStyle(color: Color(0xFF8A9A92)),
+        hintStyle: const TextStyle(color: ServicePayColors.muted),
+        prefixIconColor: ServicePayColors.muted,
+        suffixIconColor: ServicePayColors.muted,
+        errorStyle: const TextStyle(
+          color: ServicePayColors.danger,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -129,6 +145,10 @@ abstract final class ServicePayTheme {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          foregroundColor: Colors.white,
+          backgroundColor: ServicePayColors.brand,
+          disabledForegroundColor: ServicePayColors.disabled,
+          disabledBackgroundColor: ServicePayColors.disabledSurface,
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -138,6 +158,10 @@ abstract final class ServicePayTheme {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          foregroundColor: Colors.white,
+          backgroundColor: ServicePayColors.brand,
+          disabledForegroundColor: ServicePayColors.disabled,
+          disabledBackgroundColor: ServicePayColors.disabledSurface,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -145,6 +169,8 @@ abstract final class ServicePayTheme {
           minimumSize: const Size(64, 48),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           side: const BorderSide(color: ServicePayColors.brand),
+          foregroundColor: ServicePayColors.brandDeep,
+          disabledForegroundColor: ServicePayColors.disabled,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
@@ -155,6 +181,8 @@ abstract final class ServicePayTheme {
           minimumSize: const Size(48, 44),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          foregroundColor: ServicePayColors.brandDeep,
+          disabledForegroundColor: ServicePayColors.disabled,
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
@@ -174,6 +202,7 @@ abstract final class ServicePayTheme {
           fontWeight: FontWeight.w700,
         ),
         secondaryLabelStyle: const TextStyle(color: Colors.white),
+        disabledColor: ServicePayColors.disabledSurface,
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
       ),
       dividerTheme: const DividerThemeData(
@@ -199,6 +228,11 @@ abstract final class ServicePayTheme {
           fontSize: 20,
           fontWeight: FontWeight.w800,
         ),
+        contentTextStyle: TextStyle(
+          color: ServicePayColors.ink,
+          fontSize: 15,
+          height: 1.45,
+        ),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: Colors.white,
@@ -209,9 +243,18 @@ abstract final class ServicePayTheme {
         backgroundColor: Colors.white,
         indicatorColor: ServicePayColors.brandSoft,
         labelTextStyle: WidgetStatePropertyAll(
-          TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          TextStyle(
+            color: ServicePayColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        iconTheme: const WidgetStatePropertyAll(
+          IconThemeData(color: ServicePayColors.muted),
         ),
       ),
+      iconTheme: const IconThemeData(color: ServicePayColors.muted),
+      disabledColor: ServicePayColors.disabled,
     );
   }
 }

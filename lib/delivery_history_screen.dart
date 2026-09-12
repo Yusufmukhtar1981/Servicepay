@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'servicepay_theme.dart';
 
 class DeliveryHistoryScreen extends StatefulWidget {
   const DeliveryHistoryScreen({super.key});
@@ -418,8 +419,9 @@ class _DeliveryHistoryScreenState
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor:
-            isError ? Colors.red : Colors.green,
+        backgroundColor: isError
+            ? ServicePayColors.danger
+            : ServicePayColors.success,
       ),
     );
   }
@@ -1099,6 +1101,7 @@ class _DeliveryHistoryScreenState
         title: const Text(
           'Delivery History',
           style: TextStyle(
+            color: ServicePayColors.ink,
             fontWeight:
                 FontWeight.w700,
           ),
@@ -1106,7 +1109,10 @@ class _DeliveryHistoryScreenState
         centerTitle: true,
         backgroundColor: Colors.white,
         foregroundColor:
-            const Color(0xFF111827),
+            ServicePayColors.ink,
+        iconTheme: const IconThemeData(
+          color: ServicePayColors.ink,
+        ),
         elevation: 0,
         actions: [
           IconButton(

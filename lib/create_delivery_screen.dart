@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'servicepay_theme.dart';
 
 class CreateDeliveryScreen extends StatefulWidget {
   const CreateDeliveryScreen({
@@ -17,9 +18,9 @@ class CreateDeliveryScreen extends StatefulWidget {
 class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryBlue = Color(0xFF1565C0);
+  static const Color primaryBlue = ServicePayColors.brandDeep;
 
-  static const Color primaryGreen = Color(0xFF159447);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -603,8 +604,8 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                   const SizedBox(
                     height: 14,
                   ),
-                   const Text(
-                     'Delivery Fee: ₦1,500',
+                  const Text(
+                    'Delivery Fee: ₦1,500',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: primaryBlue,
@@ -1089,7 +1090,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Create Delivery Request',
@@ -1098,10 +1099,8 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(
-          0xFF111827,
-        ),
+        backgroundColor: ServicePayColors.brand,
+        foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: SafeArea(

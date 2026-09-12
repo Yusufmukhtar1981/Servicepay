@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'servicepay_theme.dart';
 
 class TrackDeliveryScreen extends StatefulWidget {
   const TrackDeliveryScreen({super.key});
@@ -37,7 +38,7 @@ class _TrackDeliveryScreenState
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.red,
+        backgroundColor: ServicePayColors.danger,
       ),
     );
   }
@@ -352,12 +353,16 @@ class _TrackDeliveryScreenState
         title: const Text(
           'Track Delivery',
           style: TextStyle(
+            color: ServicePayColors.ink,
             fontWeight: FontWeight.w700,
           ),
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF111827),
+        iconTheme: const IconThemeData(
+          color: ServicePayColors.ink,
+        ),
         elevation: 0,
       ),
       body: SafeArea(

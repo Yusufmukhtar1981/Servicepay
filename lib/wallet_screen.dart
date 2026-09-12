@@ -10,6 +10,7 @@ import 'qr_pay_screen.dart';
 import 'transfer_screen.dart';
 import 'transactions_screen.dart';
 import 'withdrawal_screen.dart';
+import 'servicepay_theme.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -802,16 +803,20 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F7FA),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.ink,
+        iconTheme: const IconThemeData(
+          color: ServicePayColors.ink,
+        ),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         titleSpacing: 20,
         title: const Text(
           'Wallet',
           style: TextStyle(
-            color: Color(0xFF0F172A),
+            color: ServicePayColors.ink,
             fontSize: 24,
             fontWeight: FontWeight.w800,
           ),

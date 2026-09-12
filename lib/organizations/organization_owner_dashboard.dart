@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../servicepay_theme.dart';
 
 import 'organization_models.dart';
 import 'organizations_api.dart';
@@ -468,7 +469,7 @@ class _OrganizationOwnerDashboardState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xfff4f7f5),
+    backgroundColor: ServicePayColors.canvas,
     appBar: AppBar(
       title: Text(widget.organization.name),
       actions: [
@@ -518,7 +519,7 @@ class _OrganizationOwnerDashboardState
                       icon: Icon(_dashboardIcon(name)),
                       selectedIcon: Icon(
                         _dashboardIcon(name),
-                        color: const Color(0xff08783e),
+                        color: ServicePayColors.brand,
                       ),
                       label: Text(name),
                     ),

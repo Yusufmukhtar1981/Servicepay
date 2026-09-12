@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'forgot_password_screen.dart';
 import 'login_routing.dart';
 import 'register_screen.dart';
+import 'servicepay_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
@@ -21,7 +22,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryColor = Color(0xFF0F766E);
+  static const Color primaryColor = ServicePayColors.brand;
 
   final TextEditingController emailController = TextEditingController();
 
@@ -615,9 +616,7 @@ class _LoginScreenState extends State<LoginScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(
-        0xFFF4F7F9,
-      ),
+      backgroundColor: ServicePayColors.canvas,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -636,7 +635,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   border: Border.all(
                     color: const Color(
-                      0xFFE2E8F0,
+                      0xFFB9CEC1,
                     ),
                   ),
                   boxShadow: [
@@ -676,7 +675,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             fontSize: 23,
                             fontWeight: FontWeight.w800,
                             color: Color(
-                              0xFF172033,
+                              0xFF15352A,
                             ),
                           ),
                         ),
@@ -689,7 +688,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: TextStyle(
                             fontSize: 14,
                             height: 1.45,
-                            color: Colors.grey.shade600,
+                            color: ServicePayColors.muted,
                           ),
                         ),
                         const SizedBox(
@@ -760,7 +759,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: const Text(
                               'Forgot Password?',
                               style: TextStyle(
-                                color: primaryColor,
+                                color: ServicePayColors.brandDeep,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -811,7 +810,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             Expanded(
                               child: Divider(
-                                color: Colors.grey.shade300,
+                                color: ServicePayColors.border,
                               ),
                             ),
                             Padding(
@@ -821,7 +820,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: Text(
                                 'or',
                                 style: TextStyle(
-                                  color: Colors.grey.shade500,
+                                  color: ServicePayColors.muted,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -841,9 +840,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: OutlinedButton.icon(
                             onPressed: isLoading ? null : openRegisterScreen,
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: primaryColor,
+                              foregroundColor: ServicePayColors.brandDeep,
                               side: const BorderSide(
-                                color: primaryColor,
+                                color: ServicePayColors.brand,
                                 width: 1.4,
                               ),
                               shape: RoundedRectangleBorder(
@@ -872,9 +871,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             13,
                           ),
                           decoration: BoxDecoration(
-                            color: primaryColor.withValues(
-                              alpha: 0.07,
-                            ),
+                            color: ServicePayColors.brandSoft,
                             borderRadius: BorderRadius.circular(
                               13,
                             ),
@@ -897,7 +894,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     fontSize: 12,
                                     height: 1.45,
                                     color: Color(
-                                      0xFF334155,
+                                      0xFF15352A,
                                     ),
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -914,7 +911,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade600,
+                            color: ServicePayColors.muted,
                             fontWeight: FontWeight.w700,
                           ),
                         ),

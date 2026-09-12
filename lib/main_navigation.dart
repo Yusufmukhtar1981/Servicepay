@@ -7,6 +7,7 @@ import 'profile_screen.dart';
 import 'qr_pay_screen.dart';
 import 'transactions_screen.dart';
 import 'wallet_screen.dart';
+import 'servicepay_theme.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({
@@ -19,7 +20,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation>
     with SingleTickerProviderStateMixin {
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   int currentIndex = 0;
 
@@ -210,9 +211,7 @@ class _MainNavigationState extends State<MainNavigation>
               22,
             ),
             border: Border.all(
-              color: const Color(
-                0xFFE7EAEF,
-              ),
+              color: ServicePayColors.border,
             ),
             boxShadow: const <BoxShadow>[
               BoxShadow(
@@ -423,11 +422,7 @@ class _MainNavigationState extends State<MainNavigation>
                     alignment: Alignment.center,
                     child: Icon(
                       selected ? activeIcon : icon,
-                      color: selected
-                          ? Colors.white
-                          : const Color(
-                              0xFF667085,
-                            ),
+                      color: selected ? Colors.white : ServicePayColors.muted,
                       size: selected ? 19 : 21,
                     ),
                   ),
@@ -446,11 +441,7 @@ class _MainNavigationState extends State<MainNavigation>
                         height: 1,
                         fontWeight:
                             selected ? FontWeight.w800 : FontWeight.w600,
-                        color: selected
-                            ? primaryGreen
-                            : const Color(
-                                0xFF667085,
-                              ),
+                        color: selected ? primaryGreen : ServicePayColors.muted,
                       ),
                     ),
                   ),

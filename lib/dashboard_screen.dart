@@ -56,6 +56,7 @@ import 'trust/trust_dashboard_entry.dart';
 import 'trust/trust_search_screen.dart';
 import 'voice_call_screen.dart';
 import 'organizations/organizations_screen.dart';
+import 'servicepay_theme.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -4878,13 +4879,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         : status == 'FAILED'
             ? const Color(0xFFB42318)
             : status == 'STATUS UNAVAILABLE'
-                ? const Color(0xFF667085)
+                ? ServicePayColors.muted
                 : const Color(0xFFB54708);
     final Color directionColor = direction == 'CREDIT'
         ? primaryGreen
         : direction == 'DEBIT'
             ? const Color(0xFF344054)
-            : const Color(0xFF667085);
+            : ServicePayColors.muted;
     final String amountLabel = amount == null
         ? 'Amount unavailable'
         : '${direction == 'CREDIT' ? '+' : direction == 'DEBIT' ? '-' : ''}₦${amount.toStringAsFixed(2)}';
@@ -5048,7 +5049,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         child: Text(
                           'Refreshing dashboard…',
                           style: TextStyle(
-                            color: Color(0xFF667085),
+                            color: ServicePayColors.muted,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
@@ -5601,11 +5602,13 @@ class _ServicePayAllServicesScreenState
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF14211B),
+        foregroundColor: ServicePayColors.ink,
+        iconTheme: const IconThemeData(color: ServicePayColors.ink),
         centerTitle: false,
         title: const Text(
           'All Services',
           style: TextStyle(
+            color: ServicePayColors.ink,
             fontSize: 20,
             fontWeight: FontWeight.w800,
           ),
