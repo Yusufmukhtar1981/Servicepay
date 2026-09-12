@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'reset_transaction_pin_screen.dart';
 import 'transaction_pin_screen.dart';
+import 'services/customer_feature_config_service.dart';
 
 class WithdrawalScreen extends StatefulWidget {
   const WithdrawalScreen({
@@ -473,7 +474,10 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return CustomerFeatureGate(
+      featureKey: 'WITHDRAWAL',
+      client: widget.client,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Withdrawal'),
       ),
@@ -724,6 +728,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
               ),
           ],
         ),
+      ),
       ),
     );
   }

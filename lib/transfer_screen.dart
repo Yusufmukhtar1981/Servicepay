@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'servicepay_transfer_helper.dart';
+import 'services/customer_feature_config_service.dart';
 
 bool retainServicePayTransferRequestKey({
   required int statusCode,
@@ -987,7 +988,10 @@ class _TransferScreenState extends State<TransferScreen> {
   Widget build(
     BuildContext context,
   ) {
-    return Scaffold(
+    return CustomerFeatureGate(
+      featureKey: 'SERVICEPAY_TRANSFER',
+      client: widget.client,
+      child: Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text(
@@ -1268,6 +1272,7 @@ class _TransferScreenState extends State<TransferScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

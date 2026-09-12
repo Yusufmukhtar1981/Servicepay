@@ -11,6 +11,7 @@ import 'transfer_screen.dart';
 import 'transactions_screen.dart';
 import 'withdrawal_screen.dart';
 import 'servicepay_theme.dart';
+import 'services/customer_feature_config_service.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -802,7 +803,9 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return CustomerFeatureGate(
+      featureKey: 'WALLET',
+      child: Scaffold(
       backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         backgroundColor: ServicePayColors.canvas,
@@ -907,6 +910,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 },
               ),
             ),
+      ),
     );
   }
 

@@ -57,6 +57,7 @@ import 'trust/trust_search_screen.dart';
 import 'voice_call_screen.dart';
 import 'organizations/organizations_screen.dart';
 import 'servicepay_theme.dart';
+import 'services/customer_feature_config_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -71,7 +72,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final ImagePicker _profileImagePicker = ImagePicker();
   late final AnimationController _motionController;
   late final AnimationController _refreshController;
@@ -105,6 +106,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<Map<String, dynamic>> recentTransactions = <Map<String, dynamic>>[];
   List<_DashboardServiceStatus> activeServiceStatuses =
       <_DashboardServiceStatus>[];
+  CustomerFeatureConfiguration featureConfiguration =
+      CustomerFeatureConfigurationService.defaults();
 
   Map<String, bool> serviceAvailability = <String, bool>{
     'kekeNapep': true,
@@ -124,6 +127,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ownsClient = widget.client == null;
     _client = widget.client ?? http.Client();
     _motionController = AnimationController(
@@ -140,6 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _motionController.dispose();
     _refreshController.dispose();
     searchController.dispose();
@@ -147,6 +152,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       _client.close();
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _loadServiceAvailability();
+    }
   }
 
   Future<String?> getSavedAuthToken(
@@ -903,80 +915,133 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _loadServiceAvailability() async {
     try {
-      final http.Response response = await _client.get(
-        Uri.parse(
-          '$baseUrl/settings/public',
-        ),
-        headers: const <String, String>{
-          'Accept': 'application/json',
-        },
-      ).timeout(
-        const Duration(seconds: 20),
-      );
+      final CustomerFeatureConfiguration loaded =
+          await CustomerFeatureConfigurationService(client: _client).load();
+      final Map<String, bool> fresh = <String, bool>{
+        for (final MapEntry<String, CustomerFeatureConfig> entry
+            in loaded.features.entries)
+          entry.key: entry.value.effectiveEnabled,
+      };
+      final Map<String, bool> legacyAvailability = <String, bool>{
+        for (final MapEntry<String, bool> entry in serviceAvailability.entries)
+          entry.key: _featureForKey(entry.key).effectiveEnabled,
+      };
+      legacyAvailability.addAll(fresh);
 
-      if (response.statusCode != 200) {
+      if (!mounted) {
         return;
       }
 
-      final dynamic decoded = jsonDecode(response.body);
-
-      if (decoded is! Map) {
-        return;
-      }
-
-      dynamic settings = decoded['settings'];
-
-      settings ??= decoded['data'] is Map ? decoded['data']['settings'] : null;
-
-      if (settings is! Map) {
-        return;
-      }
-
-      final dynamic rawServices = settings['services'];
-
-      if (rawServices is! Map) {
-        return;
-      }
-
-      final Map<String, bool> fresh = Map<String, bool>.from(
-        serviceAvailability,
-      );
-
-      for (final String key in fresh.keys.toList()) {
-        if (rawServices[key] is bool) {
-          fresh[key] = rawServices[key] == true;
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          serviceAvailability = fresh;
-        });
-      }
+      setState(() {
+        featureConfiguration = loaded;
+        serviceAvailability = legacyAvailability;
+      });
     } catch (_) {
-      // Keep last/default visibility values.
+      // CustomerFeatureConfigurationService already retains the last known
+      // safe state. Keep the old service map as a second safety net.
     }
+  }
+
+  CustomerFeatureConfig _featureForKey(String key) {
+    return featureConfiguration.forKey(
+      CustomerFeatureConfigurationService.normalizeKey(key),
+    );
+  }
+
+  CustomerFeatureConfig _featureForTitle(String title) {
+    return _featureForKey(_canonicalFeatureKeyForTitle(title));
+  }
+
+  String _canonicalFeatureKeyForTitle(String title) {
+    const Map<String, String> map = <String, String>{
+      'Keke Napep': 'KEKE_NAPEP',
+      'Keke NAPEP': 'KEKE_NAPEP',
+      'Transport': 'TRANSPORT',
+      'ServicePay Amana': 'AMANA',
+      'Airtime': 'AIRTIME',
+      'Data': 'DATA',
+      'Electricity': 'ELECTRICITY',
+      'Cable TV': 'CABLE_TV',
+      'Exam PIN': 'EXAM_PIN',
+      'NIN Verification': 'NIN_VERIFICATION',
+      'Delivery': 'DELIVERY',
+      'Flight Booking': 'FLIGHT_BOOKING',
+      'Withdrawal': 'WITHDRAWAL',
+      'Bank Transfer': 'BANK_TRANSFER',
+      'Wallet': 'WALLET',
+      'Wallet Funding': 'WALLET_FUNDING',
+      'ServicePay Transfer': 'SERVICEPAY_TRANSFER',
+      'ServicePay Solar': 'SOLAR',
+      'Solar': 'SOLAR',
+      'Empowerment': 'EMPOWERMENT',
+      'Marketplace': 'MARKETPLACE',
+      'Organizations': 'ORGANIZATIONS',
+      'Organization Withdrawals': 'ORGANIZATION_WITHDRAWALS',
+      'Phone Financing': 'PHONE_FINANCING',
+      'ServicePay Call': 'SERVICEPAY_CALL',
+      'Cards': 'CARDS',
+      'Mini Apps': 'MINI_APPS',
+      'QR Pay': 'QR_PAY',
+      'Pay-by-Link': 'PAY_BY_LINK',
+      'Request Money': 'REQUEST_MONEY',
+      'AI Support': 'AI_SUPPORT',
+      'Referral': 'REFERRAL',
+      'Notifications': 'NOTIFICATIONS',
+      'Group Wallet / Ajo': 'GROUP_WALLET',
+      'Program Sponsor': 'PROGRAM_SPONSOR',
+      'Airtime to Cash': 'AIRTIME_TO_CASH',
+      'Partner API': 'PARTNER_API',
+      'Agent Locator': 'AGENT_LOCATOR',
+    };
+    return map[title] ?? title;
+  }
+
+  bool _isFeatureBlocked(String title) => _featureForTitle(title).isBlocked;
+
+  VoidCallback _guardFeatureTap(String title, VoidCallback onTap) {
+    return () {
+      final CustomerFeatureConfig feature = _featureForTitle(title);
+      if (feature.isBlocked) {
+        _handleServiceTap(
+          _DashboardService(
+            title: title,
+            icon: Icons.block_rounded,
+            iconColor: primaryGreen,
+            backgroundColor: softGreen,
+            keywords: '',
+            onTap: onTap,
+          ),
+        );
+        return;
+      }
+      onTap();
+    };
+  }
+
+  void _handleServiceTap(_DashboardService service) {
+    final CustomerFeatureConfig feature = _featureForTitle(service.title);
+    if (feature.isBlocked) {
+      final String message =
+          feature.maintenanceMode && feature.message.trim().isNotEmpty
+              ? feature.message.trim()
+              : 'Temporarily unavailable';
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      return;
+    }
+    service.onTap();
   }
 
   String? _serviceKeyForTitle(
     String title,
   ) {
-    const Map<String, String> map = <String, String>{
-      'Keke Napep': 'kekeNapep',
-      'ServicePay Amana': 'amana',
-      'Airtime': 'airtime',
-      'Data': 'data',
-      'Electricity': 'electricity',
-      'Cable TV': 'cableTv',
-      'Exam PIN': 'examPin',
-      'NIN Verification': 'ninVerification',
-      'Delivery': 'delivery',
-      'Flight Booking': 'flightBooking',
-      'Withdrawal': 'bankTransfer',
-      'ServicePay Transfer': 'servicepayTransfer',
-    };
-
-    return map[title];
+    return _canonicalFeatureKeyForTitle(title);
   }
 
   bool _isServiceVisible(
@@ -988,7 +1053,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       return true;
     }
 
-    return serviceAvailability[key] != false;
+    return _featureForKey(key).visible;
   }
 
   String firstName() {
@@ -1447,13 +1512,24 @@ class _DashboardScreenState extends State<DashboardScreen>
         )
         .toList();
 
+    // Keep disabled-but-visible services discoverable, but route their tap
+    // through the customer gate so no protected flow can be opened.
+    final List<_DashboardService> guarded = visible
+        .map(
+          (_DashboardService service) => service.copyWith(
+            onTap: () => _handleServiceTap(service),
+            unavailable: _isFeatureBlocked(service.title),
+          ),
+        )
+        .toList();
+
     final String query = searchQuery.trim().toLowerCase();
 
     if (query.isEmpty) {
-      return visible;
+      return guarded;
     }
 
-    return visible.where(
+    return guarded.where(
       (_DashboardService service) {
         final String searchable =
             '${service.title} ${service.keywords}'.toLowerCase();
@@ -1966,13 +2042,19 @@ class _DashboardScreenState extends State<DashboardScreen>
                         label: 'Add Money',
                         icon: Icons.add_rounded,
                         filled: true,
-                        onTap: () => openScreen(const WalletScreen()),
+                        onTap: _guardFeatureTap(
+                          'Wallet',
+                          () => openScreen(const WalletScreen()),
+                        ),
                       ),
                       _balanceActionButton(
                         label: 'Send Money',
                         icon: Icons.send_rounded,
                         filled: false,
-                        onTap: () => openScreen(const TransferScreen()),
+                        onTap: _guardFeatureTap(
+                          'ServicePay Transfer',
+                          () => openScreen(const TransferScreen()),
+                        ),
                       ),
                     ],
                   ),
@@ -2515,6 +2597,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                if (service.unavailable)
+                  const Text(
+                    'Temporarily unavailable',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Color(0xFFB45309),
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -2969,7 +3062,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       required String label,
       required VoidCallback onTap,
     }) {
-      if (serviceAvailability[feature] == false) {
+      final CustomerFeatureConfig state = _featureForKey(feature);
+      if (!state.visible) {
         return;
       }
 
@@ -2985,7 +3079,22 @@ class _DashboardScreenState extends State<DashboardScreen>
           child: _QuickAction(
             icon: icon,
             label: label,
-            onTap: onTap,
+            onTap: () {
+              if (state.isBlocked) {
+                _handleServiceTap(
+                  _DashboardService(
+                    title: label,
+                    icon: icon,
+                    iconColor: primaryGreen,
+                    backgroundColor: softGreen,
+                    keywords: '',
+                    onTap: onTap,
+                  ),
+                );
+                return;
+              }
+              onTap();
+            },
           ),
         ),
       );
@@ -3055,7 +3164,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
 
-    if (serviceAvailability['ninVerification'] != false) {
+    if (_featureForKey('NIN_VERIFICATION').visible) {
       items.add(
         _quickDivider(),
       );
@@ -3905,19 +4014,33 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                   const SizedBox(height: 6),
                   Expanded(
-                    child: Center(
-                      child: Text(
-                        service.title,
-                        maxLines: 2,
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 10.3,
-                          height: 1.06,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF34463D),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Text(
+                          service.title,
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10.3,
+                            height: 1.06,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF34463D),
+                          ),
                         ),
-                      ),
+                        if (service.unavailable)
+                          const Text(
+                            'Temporarily unavailable',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Color(0xFFB45309),
+                              fontSize: 7.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -4032,8 +4155,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 MaterialPageRoute(
                                   builder: (_) => _ServicePayAllServicesScreen(
                                     services: <_DashboardService>[
-                                      ...popularServices(),
-                                      ...moreServices(),
+                                      ...filtered(popularServices()),
+                                      ...filtered(moreServices()),
                                     ],
                                   ),
                                 ),
@@ -5210,6 +5333,7 @@ class _DashboardService {
   final Color backgroundColor;
   final String keywords;
   final VoidCallback onTap;
+  final bool unavailable;
 
   const _DashboardService({
     required this.title,
@@ -5219,7 +5343,30 @@ class _DashboardService {
     required this.backgroundColor,
     required this.keywords,
     required this.onTap,
+    this.unavailable = false,
   });
+
+  _DashboardService copyWith({
+    String? title,
+    String? subtitle,
+    IconData? icon,
+    Color? iconColor,
+    Color? backgroundColor,
+    String? keywords,
+    VoidCallback? onTap,
+    bool? unavailable,
+  }) {
+    return _DashboardService(
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      icon: icon ?? this.icon,
+      iconColor: iconColor ?? this.iconColor,
+      backgroundColor: backgroundColor ?? this.backgroundColor,
+      keywords: keywords ?? this.keywords,
+      onTap: onTap ?? this.onTap,
+      unavailable: unavailable ?? this.unavailable,
+    );
+  }
 }
 
 class _WalletAction extends StatelessWidget {
@@ -5442,6 +5589,17 @@ class _PopularServiceCard extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              if (service.unavailable)
+                const Text(
+                  'Temporarily unavailable',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Color(0xFFB45309),
+                    fontSize: 7.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
             ],
           ),
         ),
@@ -5765,17 +5923,33 @@ class _ServicePayAllServicesScreenState
                     ),
                     const SizedBox(height: 7),
                     Expanded(
-                      child: Text(
-                        service.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 10.8,
-                          height: 1.08,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF536159),
-                        ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Text(
+                            service.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 10.8,
+                              height: 1.08,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF536159),
+                            ),
+                          ),
+                          if (service.unavailable)
+                            const Text(
+                              'Temporarily unavailable',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Color(0xFFB45309),
+                                fontSize: 7.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],

@@ -34,13 +34,31 @@ void main() {
     );
     var returnFailed = false;
     var posts = 0;
-    var gets = 0;
+    var featureGets = 0;
+    var recoveryGets = 0;
     final client = MockClient((request) async {
       if (request.method == 'POST') {
         posts += 1;
         throw StateError('recovery must not POST');
       }
-      gets += 1;
+      if (request.url.path == '/api/settings/customer/features') {
+        featureGets += 1;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'features': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'key': 'SERVICEPAY_TRANSFER',
+                'enabled': true,
+                'effectiveEnabled': true,
+                'visible': true,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      recoveryGets += 1;
+      expect(request.method, 'GET');
       expect(request.url.path,
           '/api/transfer/servicepay/status/SPC-normal-restored');
       if (returnFailed) {
@@ -68,7 +86,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(gets, 3);
+    expect(featureGets, 1);
+    expect(recoveryGets, 3);
     expect(posts, 0);
     expect(find.text('CHECK STATUS'), findsOneWidget);
     final phone = tester.widget<TextFormField>(
@@ -89,7 +108,8 @@ void main() {
     await tester.pump();
 
     expect(posts, 0);
-    expect(gets, 4);
+    expect(featureGets, 1);
+    expect(recoveryGets, 4);
     expect(find.text('Transfer Money'), findsOneWidget);
     expect(
       tester
