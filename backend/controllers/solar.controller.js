@@ -18,7 +18,7 @@ const { verifyTransactionPin } = require("../services/transactionPin.service");
 const {
   createSolarOfficerCommission,
 } = require("../services/solarOfficerCommission.service");
-const { createCommissionForEvent } = require("../services/businessPartnerCommission.service");
+const { createCommissionForEvent, reverseCommissionsForApplication } = require("../services/businessPartnerCommission.service");
 const BusinessPartnerProfile = require("../models/businessPartnerProfile.model");
 
 const money = (value) => {
@@ -388,6 +388,15 @@ exports.transitionApplication = async (req,res) => {
         if (!cancelled) throw problem("Application is already cancelled or cannot be cancelled.",409);
         if (cancelled.stockReservation?.packageId && cancelled.stockReservation?.releasedAt?.getTime()===now.getTime()) {
           await SolarPackage.updateOne({_id:cancelled.stockReservation.packageId},{$inc:{stock:1}},{session});
+        }
+        if (cancelled.businessPartner) {
+          await reverseCommissionsForApplication({
+            applicationId: cancelled._id,
+            eventKey: `solar-cancelled:${cancelled._id}`,
+            createdBy: id(req),
+            reason: text(req.body?.note) || "Solar application cancelled",
+            session,
+          });
         }
         await audit(req,"SOLAR_APPLICATION_STATUS_UPDATED",req.body?.note||"Cancelled Solar application",null,{status:"CANCELLED",applicationId:String(cancelled._id)},session);
       });

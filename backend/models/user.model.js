@@ -187,6 +187,17 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Partner-provisioned customers remain unavailable until the customer
+    // completes the existing password-reset/activation flow.
+    activationPending: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    activationRequestedAt: {
+      type: Date,
+      default: null,
+    },
 
     /*
      * Main ServicePay role
@@ -780,6 +791,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: [
         "ACTIVE",
+        "PENDING",
         "SUSPENDED",
         "BLOCKED",
           "DISABLED",
@@ -1211,6 +1223,38 @@ userSchema.add({
   businessPartnerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "BusinessPartnerProfile",
+    default: null,
+    index: true,
+  },
+  // Business Partner customer network ownership. These fields are optional so
+  // legacy customers remain valid and can be safely backfilled from their
+  // existing partner-owned applications.
+  officerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+    index: true,
+  },
+  acquiredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+    index: true,
+  },
+  acquisitionChannel: {
+    type: String,
+    enum: ["", "DIRECT", "BUSINESS_PARTNER", "BUSINESS_PARTNER_OFFICER"],
+    default: "",
+    index: true,
+  },
+  createdByPartner: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  createdByUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
     default: null,
     index: true,
   },

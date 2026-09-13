@@ -196,7 +196,8 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const { sendEmail } = require("../services/email.service");
+const emailService = require("../services/email.service");
+const { requestPhoneActivation, verifyPhoneActivation } = require("../services/businessPartnerActivation.service");
 
 const { validateStrongPassword, validateTransactionPin } = require('../utils/passwordPolicy');
 
@@ -886,6 +887,19 @@ exports.loginUser = async (
       .trim()
       .toUpperCase();
 
+    if (user.activationPending === true || userStatus === "PENDING") {
+      await recordLoginSecurityEvent(req, {
+        user,
+        identifier: cleanLoginValue,
+        outcome: "FAILED",
+      });
+      return res.status(403).json({
+        success: false,
+        code: "ACTIVATION_REQUIRED",
+        message: "Account activation is required before login.",
+      });
+    }
+
     if (
       userStatus !== "ACTIVE"
     ) {
@@ -1507,9 +1521,9 @@ exports.forgotPassword = async (req, res) => {
       .toLowerCase();
 
     if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email address is required.",
+      return res.status(200).json({
+        success: true,
+        message: genericMessage,
       });
     }
 
@@ -1524,6 +1538,18 @@ exports.forgotPassword = async (req, res) => {
         success: true,
         message: genericMessage,
       });
+    }
+
+    // Partner-provisioned activation links are rate-limited independently of
+    // ordinary password recovery. The generic response preserves account
+    // enumeration resistance and no second token is issued during the
+    // cooldown.
+    if (
+      user.activationPending === true &&
+      user.passwordResetExpires &&
+      Number(user.passwordResetExpires) > Date.now() - 60 * 1000
+    ) {
+      return res.status(200).json({ success: true, message: genericMessage });
     }
 
     const resetToken = crypto
@@ -1636,7 +1662,7 @@ exports.forgotPassword = async (req, res) => {
     `;
 
     try {
-      await sendEmail({
+      await emailService.sendEmail({
         to: user.email,
         subject,
         text,
@@ -1655,10 +1681,9 @@ exports.forgotPassword = async (req, res) => {
         emailError
       );
 
-      return res.status(500).json({
-        success: false,
-        message:
-          "Unable to send the password reset email. Please try again later.",
+      return res.status(200).json({
+        success: true,
+        message: genericMessage,
       });
     }
 
@@ -1672,13 +1697,53 @@ exports.forgotPassword = async (req, res) => {
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to process the password reset request.",
+    return res.status(200).json({
+      success: true,
+      message: genericMessage,
     });
   }
 };
+
+exports.requestCustomerActivation = async (req, res) => {
+  try {
+    if (await authenticatedPartnerAttempt(req)) {
+      return res.status(403).json({ success: false, message: "Business Partners cannot activate customer accounts." });
+    }
+    const result = await requestPhoneActivation({ phone: req.body?.phone, requestSource: req.ip || req.headers?.["x-forwarded-for"] || "unknown" });
+    return res.status(200).json({ success: true, message: "If a pending account exists, an activation code has been sent." });
+  } catch (error) {
+    console.error("Customer activation request error:", error);
+    return res.status(200).json({ success: true, message: "If a pending account exists, an activation code has been sent." });
+  }
+};
+
+exports.verifyCustomerActivation = async (req, res) => {
+  try {
+    if (await authenticatedPartnerAttempt(req)) {
+      return res.status(403).json({ success: false, message: "Business Partners cannot activate customer accounts." });
+    }
+    const result = await verifyPhoneActivation({
+      phone: req.body?.phone, otp: req.body?.otp,
+      newPassword: req.body?.newPassword || req.body?.password,
+      confirmPassword: req.body?.confirmPassword || req.body?.passwordConfirmation,
+    });
+    return res.status(200).json({ success: true, activated: result.activated, message: "Customer account activated successfully." });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+  }
+};
+
+async function authenticatedPartnerAttempt(req) {
+  const header = String(req.headers?.authorization || "");
+  if (!header.startsWith("Bearer ")) return false;
+  try {
+    const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET);
+    const actor = await User.findById(payload.id).select("role");
+    return String(actor?.role || "").toUpperCase() === "BUSINESS_PARTNER";
+  } catch (_) {
+    return false;
+  }
+}
 
 /**
  * Reset password with a valid one-time token.
@@ -1795,6 +1860,11 @@ exports.resetPassword = async (req, res) => {
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     user.passwordChangedAt = new Date();
+    if (user.activationPending === true) {
+      user.activationPending = false;
+      user.status = "ACTIVE";
+      user.mustChangePassword = false;
+    }
 
     await user.save({
       validateBeforeSave: false,

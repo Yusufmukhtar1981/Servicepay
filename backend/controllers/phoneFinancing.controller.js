@@ -14,7 +14,7 @@ const AdminAuditLog = require("../models/adminAuditLog.model");
 const { postDebit, postCredit } = require("../services/ledger.service");
 const { verifyTransactionPin } = require("../services/transactionPin.service");
 const { requestProviderAction } = require("../services/phoneProvider.service");
-const { createCommissionForEvent } = require("../services/businessPartnerCommission.service");
+const { createCommissionForEvent, reverseCommissionsForApplication } = require("../services/businessPartnerCommission.service");
 const BusinessPartnerProfile = require("../models/businessPartnerProfile.model");
 
 const money = n => Number.isFinite(Number(n)) ? Math.round((Number(n) + Number.EPSILON) * 100) / 100 : null;
@@ -135,7 +135,38 @@ exports.updateProduct = async (req,res) => { try {const allowed=["sku","name","b
 exports.setProductActive = async (req,res) => { try { const product=await Product.findByIdAndUpdate(req.params.productId,{$set:{active:req.body?.active === true}},{new:true});if(!product)throw error("Phone product not found.",404);await audit(req,"PHONE_PRODUCT_UPDATED",product.active?"Activated phone product":"Deactivated phone product",{productId:String(product._id),active:product.active});res.json({success:true,product}); }catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
 exports.adminApplications = async (req,res) => {const q=text(req.query.q,100),filter={};if(req.query.status)filter.status=text(req.query.status,40).toUpperCase();let applications=await Application.find(filter).populate("customer","fullName phone email").populate("assignedOfficer","fullName phone email role").populate("product","name sku").populate("device").sort({createdAt:-1});if(q){const re=new RegExp(q,"i");applications=applications.filter(a=>re.test(a.reference)||re.test(a.customer?.fullName||"")||re.test(a.customer?.phone||"")||re.test(a.customer?.email||"")||re.test(a.device?.imei1||"")||re.test(a.device?.serialNumber||""));}res.json({success:true,applications});};
 exports.adminApplication = async(req,res)=>{const application=await Application.findById(req.params.applicationId).populate("customer","fullName phone email").populate("assignedOfficer","fullName phone email role").populate("product").populate("device");if(!application)return res.status(404).json({success:false,message:"Phone application not found."});const finance=await Finance.findOne({application:application._id}).lean();res.json({success:true,application,finance,providerEvents:finance?await ProviderEvent.find({finance:finance._id}).sort({createdAt:-1}):[]});};
-exports.transition = async (req,res) => { try {const app=await Application.findById(req.params.applicationId);const status=text(req.body.status,40).toUpperCase();if(!app)throw error("Phone application not found.",404);if(!transitions[app.status]?.includes(status))throw error(`Cannot transition phone application from ${app.status} to ${status}.`,409);history(app,status,uid(req),req.body.note);await app.save();if(status==="MORE_INFORMATION_REQUIRED")await Notification.create([{userId:app.customer,title:"More information required for phone financing",message:"Please provide the additional information requested to continue your phone-financing application.",type:"PHONE",referenceId:app._id,referenceType:"PhoneApplicationMoreInformation"}]);await audit(req,"PHONE_APPLICATION_STATUS_UPDATED",req.body.note,{applicationId:String(app._id),status});res.json({success:true,application:app});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});} };
+exports.transition = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const status = text(req.body.status, 40).toUpperCase();
+    let app;
+    await session.withTransaction(async () => {
+      app = await Application.findById(req.params.applicationId).session(session);
+      if (!app) throw error("Phone application not found.", 404);
+      if (!transitions[app.status]?.includes(status)) throw error(`Cannot transition phone application from ${app.status} to ${status}.`, 409);
+      history(app, status, uid(req), req.body.note);
+      await app.save({ session });
+      if (["CANCELLED", "REJECTED", "REFUNDED"].includes(status) && app.businessPartner) {
+        await reverseCommissionsForApplication({
+          applicationId: app._id,
+          eventKey: `phone-${status.toLowerCase()}:${app._id}`,
+          createdBy: uid(req),
+          reason: req.body.note || `Phone application ${status.toLowerCase()}`,
+          session,
+        });
+      }
+      if (status === "MORE_INFORMATION_REQUIRED") {
+        await Notification.create([{ userId: app.customer, title: "More information required for phone financing", message: "Please provide the additional information requested to continue your application.", type: "PHONE", referenceId: app._id, referenceType: "PhoneApplicationMoreInformation" }], { session });
+      }
+      await audit(req, "PHONE_APPLICATION_STATUS_UPDATED", req.body.note, { applicationId: String(app._id), status }, session);
+    });
+    res.json({ success: true, application: app });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ success: false, message: e.message });
+  } finally {
+    await session.endSession();
+  }
+};
 exports.adminListOfficers = async (req, res) => {
   const filter = { role: "PHONE_FINANCING_OFFICER", isStaff: true };
   if (req.query.status && text(req.query.status, 20).toUpperCase() !== "ALL") filter.status = text(req.query.status, 20).toUpperCase();
@@ -415,5 +446,54 @@ exports.evaluateOverdue=async(req,res)=>{const now=new Date(), contracts=await F
 exports.provider=async(req,res)=>{const s=await mongoose.startSession();try{let event,idempotent=false;await s.withTransaction(async()=>{const f=await Finance.findById(req.params.financeId).session(s);if(!f)throw error("Phone finance not found.",404);const action=text(req.body.action,20).toUpperCase(),provider=text(req.body.provider||"NONE").toUpperCase();if(!["RESTRICT","RESTORE"].includes(action))throw error("Action must be RESTRICT or RESTORE.",400);const idem=key(req);if(!idem)throw error("Idempotency-Key is required.",400);event=await ProviderEvent.findOne({idempotencyKey:idem}).session(s);if(event){if(String(event.finance)!==String(f._id)||String(event.device)!==String(f.device)||event.action!==action||event.provider!==provider||String(event.requestedBy)!==String(uid(req)))throw error("Idempotency key is bound to another provider request.");idempotent=true;return;}const device=await Device.findById(f.device).session(s);const adapter=await requestProviderAction({action,provider,device});event=(await ProviderEvent.create([{reference:ref("SPF-PHONE"),finance:f._id,device:f.device,action,provider:adapter.provider,idempotencyKey:idem,outcome:"REQUEST_RECORDED",request:{requestedProvider:provider},response:{...adapter.response,integrationStatus:"INTEGRATION_REQUIRED"},requestedBy:uid(req)}],{session:s}))[0];await audit(req,action==="RESTRICT"?"PHONE_RESTRICTION_REQUESTED":"PHONE_RESTORE_REQUESTED","Provider request recorded; integration required",{financeId:String(f._id),eventId:String(event._id)},s);});res.status(idempotent?200:201).json({success:true,event,idempotent,providerEnforcement:"DISABLED"});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{s.endSession();}};
 exports.dashboard=async(req,res)=>{const [products,availableStock,pendingReview,awaitingDeposit,activeFinanced,overdue,completed,deposits,repayments,outstanding,requestRecorded]=await Promise.all([Product.countDocuments(),Product.aggregate([{$group:{_id:null,total:{$sum:"$stock"}}}]),Application.countDocuments({status:{$in:["SUBMITTED","UNDER_REVIEW","MORE_INFORMATION_REQUIRED"]}}),Application.countDocuments({status:"AWAITING_DEPOSIT"}),Finance.countDocuments({status:"ACTIVE"}),Finance.countDocuments({status:"OVERDUE"}),Finance.countDocuments({status:"COMPLETED"}),Payment.aggregate([{$match:{type:"DEPOSIT"}},{$group:{_id:null,total:{$sum:"$amount"}}}]),Payment.aggregate([{$match:{type:"INSTALLMENT"}},{$group:{_id:null,total:{$sum:"$amount"}}}]),Finance.aggregate([{$group:{_id:null,total:{$sum:"$outstandingBalance"}}}]),ProviderEvent.countDocuments({outcome:"REQUEST_RECORDED"})]);res.json({success:true,metrics:{products,availableStock:availableStock[0]?.total||0,pendingReview,awaitingDeposit,activeFinanced,overdue,restrictedOrRequestRecorded:requestRecorded,completed,depositsCollected:deposits[0]?.total||0,repaymentsCollected:repayments[0]?.total||0,outstandingPortfolio:outstanding[0]?.total||0}});};
 exports.adminFinance=async(req,res)=>{const q=text(req.query.q,100),filter={};if(req.query.status)filter.status=text(req.query.status,30).toUpperCase();let finance=await Finance.find(filter).populate("customer","fullName phone email").populate("device").sort({createdAt:-1});if(q){const re=new RegExp(q,"i");finance=finance.filter(f=>re.test(f.reference)||re.test(f.customer?.fullName||"")||re.test(f.customer?.phone||"")||re.test(f.customer?.email||"")||re.test(f.device?.imei1||"")||re.test(f.device?.imei2||"")||re.test(f.device?.serialNumber||""));}const ids=finance.map(f=>f._id),events=await ProviderEvent.find({finance:{$in:ids}}).sort({createdAt:-1}).lean(),byFinance=new Map();for(const event of events){const k=String(event.finance);if(!byFinance.has(k))byFinance.set(k,[]);byFinance.get(k).push(event);}res.json({success:true,finance:finance.map(f=>({...f.toObject(),providerEvents:byFinance.get(String(f._id))||[]}))});};
-exports.refundReservation=async(req,res)=>{const session=await mongoose.startSession();try{let output;await session.withTransaction(async()=>{const idem=key(req);if(!idem)throw error("Idempotency-Key is required.",400);const existing=await Payment.findOne({idempotencyKey:idem}).session(session);if(existing){const app=await Application.findById(req.params.applicationId).session(session);if(existing.type!=="REFUND"||String(existing.application)!==String(app?._id)||String(existing.customer)!==String(app?.customer)||money(existing.amount)!==money(app?.depositPaid))throw error("Idempotency key is bound to another operation.");output={payment:existing,idempotent:true};return;}const app=await Application.findById(req.params.applicationId).session(session);if(!app)throw error("Phone application not found.",404);if(app.status!=="DEPOSIT_PAID"||!app.device)throw error("Only an unassigned paid reservation can be refunded.");const device=await Device.findOne({_id:app.device,status:"RESERVED",reservedForApplication:app._id}).session(session);if(!device)throw error("Paid reservation is no longer refundable.");const original=await Payment.findOne({application:app._id,type:"DEPOSIT"}).session(session);if(!original||money(original.amount)!==money(app.depositPaid))throw error("Original deposit evidence is invalid.");const amount=money(original.amount);const customer=await User.findByIdAndUpdate(app.customer,{$inc:{walletBalance:amount}},{new:true,session});const closing=money(customer.walletBalance),opening=money(closing-amount);const transaction=(await Transaction.create([{reference:ref("SPF-PAY"),customerId:app.customer,branchId:app.branchId||null,serviceType:"PHONE_FINANCING_REFUND",provider:"SERVICEPAY_PHONE_FINANCING",amount,status:"SUCCESSFUL",providerResponse:{applicationId:String(app._id),originalPaymentId:String(original._id),idempotencyKey:idem}}],{session}))[0];const ledger=await postCredit({userId:app.customer,amount,openingBalance:opening,closingBalance:closing,service:"PHONE_FINANCING_REFUND",reference:transaction.reference,idempotencyKey:`phone:${idem}`,transactionId:transaction._id,narration:"Phone financing deposit refund",metadata:{applicationId:String(app._id),originalPaymentId:String(original._id)},session});if(ledger.duplicate)throw error("Duplicate refund ledger state requires support review.");const payment=(await Payment.create([{reference:ref("SPF-PAY"),application:app._id,customer:app.customer,branchId:app.branchId||null,type:"REFUND",amount,idempotencyKey:idem,transaction:transaction._id,ledgerEntry:ledger.entry._id,originalPayment:original._id,allocation:{originalDepositAmount:amount}}],{session}))[0];device.status="AVAILABLE";device.customer=null;device.application=null;device.reservedForApplication=null;device.reservedForCustomer=null;device.reservedAt=null;device.reservationExpiresAt=null;device.statusHistory.push({status:"AVAILABLE",changedBy:uid(req),note:"Deposit refunded; reservation released",changedAt:new Date()});await device.save({session});await Product.updateOne({_id:app.product},{$inc:{stock:1}},{session});app.depositPaid=0;app.outstandingBalance=app.totalPayable;app.refundedAt=new Date();app.refundPayment=payment._id;history(app,"REFUNDED",uid(req),req.body.reason||"Deposit refunded and reservation released");await app.save({session});await Notification.create([{userId:app.customer,title:"Phone deposit refunded",message:"Your phone-financing deposit has been returned to your wallet.",type:"PHONE",referenceId:app._id,referenceType:"PhoneApplicationRefund"}],{session});await audit(req,"PHONE_DEPOSIT_REFUNDED",req.body.reason||"Refunded unfulfilled phone reservation",{applicationId:String(app._id),paymentId:String(payment._id),amount},session);output={payment,application:app,idempotent:false};});res.status(output.idempotent?200:201).json({success:true,...output});}catch(e){res.status(e.statusCode||500).json({success:false,message:e.message});}finally{session.endSession();}};
+exports.refundReservation = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    let output;
+    await session.withTransaction(async () => {
+      const idem = key(req);
+      if (!idem) throw error("Idempotency-Key is required.", 400);
+      const existing = await Payment.findOne({ idempotencyKey: idem }).session(session);
+      if (existing) {
+        const app = await Application.findById(req.params.applicationId).session(session);
+        if (existing.type !== "REFUND" || String(existing.application) !== String(app?._id) ||
+            String(existing.customer) !== String(app?.customer) || money(existing.amount) !== money(app?.depositPaid)) {
+          throw error("Idempotency key is bound to another operation.");
+        }
+        output = { payment: existing, idempotent: true };
+        return;
+      }
+      const app = await Application.findById(req.params.applicationId).session(session);
+      if (!app) throw error("Phone application not found.", 404);
+      if (app.status !== "DEPOSIT_PAID" || !app.device) throw error("Only an unassigned paid reservation can be refunded.");
+      const device = await Device.findOne({ _id: app.device, status: "RESERVED", reservedForApplication: app._id }).session(session);
+      if (!device) throw error("Paid reservation is no longer refundable.");
+      const original = await Payment.findOne({ application: app._id, type: "DEPOSIT" }).session(session);
+      if (!original || money(original.amount) !== money(app.depositPaid)) throw error("Original deposit evidence is invalid.");
+      const amount = money(original.amount);
+      const customer = await User.findByIdAndUpdate(app.customer, { $inc: { walletBalance: amount } }, { new: true, session });
+      const closing = money(customer.walletBalance), opening = money(closing - amount);
+      const transaction = (await Transaction.create([{ reference: ref("SPF-PAY"), customerId: app.customer, branchId: app.branchId || null, serviceType: "PHONE_FINANCING_REFUND", provider: "SERVICEPAY_PHONE_FINANCING", amount, status: "SUCCESSFUL", providerResponse: { applicationId: String(app._id), originalPaymentId: String(original._id), idempotencyKey: idem } }], { session }))[0];
+      const ledger = await postCredit({ userId: app.customer, amount, openingBalance: opening, closingBalance: closing, service: "PHONE_FINANCING_REFUND", reference: transaction.reference, idempotencyKey: `phone:${idem}`, transactionId: transaction._id, narration: "Phone financing deposit refund", metadata: { applicationId: String(app._id), originalPaymentId: String(original._id) }, session });
+      if (ledger.duplicate) throw error("Duplicate refund ledger state requires support review.");
+      const payment = (await Payment.create([{ reference: ref("SPF-PAY"), application: app._id, customer: app.customer, branchId: app.branchId || null, type: "REFUND", amount, idempotencyKey: idem, transaction: transaction._id, ledgerEntry: ledger.entry._id, originalPayment: original._id, allocation: { originalDepositAmount: amount } }], { session }))[0];
+      device.status = "AVAILABLE"; device.customer = null; device.application = null; device.reservedForApplication = null; device.reservedForCustomer = null; device.reservedAt = null; device.reservationExpiresAt = null;
+      device.statusHistory.push({ status: "AVAILABLE", changedBy: uid(req), note: "Deposit refunded; reservation released", changedAt: new Date() });
+      await device.save({ session });
+      await Product.updateOne({ _id: app.product }, { $inc: { stock: 1 } }, { session });
+      app.depositPaid = 0; app.outstandingBalance = app.totalPayable; app.refundedAt = new Date(); app.refundPayment = payment._id;
+      history(app, "REFUNDED", uid(req), req.body.reason || "Deposit refunded and reservation released");
+      if (app.businessPartner) await reverseCommissionsForApplication({ applicationId: app._id, eventKey: `phone-refunded:${app._id}`, createdBy: uid(req), reason: req.body.reason || "Phone deposit refunded", session });
+      await app.save({ session });
+      await Notification.create([{ userId: app.customer, title: "Phone deposit refunded", message: "Your phone-financing deposit has been returned to your wallet.", type: "PHONE", referenceId: app._id, referenceType: "PhoneApplicationRefund" }], { session });
+      await audit(req, "PHONE_DEPOSIT_REFUNDED", req.body.reason || "Refunded unfulfilled phone reservation", { applicationId: String(app._id), paymentId: String(payment._id), amount }, session);
+      output = { payment, application: app, idempotent: false };
+    });
+    res.status(output.idempotent ? 200 : 201).json({ success: true, ...output });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ success: false, message: e.message });
+  } finally {
+    session.endSession();
+  }
+};
 exports.evaluateReservationExpiry=async(req,res)=>{const now=new Date();const devices=await Device.find({status:"RESERVED",reservationExpiresAt:{$lte:now}}).populate("reservedForApplication");const paid=[];for(const device of devices){const app=device.reservedForApplication;if(app?.depositPaid>0){paid.push({deviceId:device._id,applicationId:app._id,customerId:app.customer,reservationExpiresAt:device.reservationExpiresAt,amount:app.depositPaid});if(!app.reservationRecoveryRequiredAt){app.reservationRecoveryRequiredAt=now;app.statusHistory.push({status:app.status,changedBy:uid(req),note:"Expired paid reservation requires admin refund resolution",changedAt:now});await app.save();await Notification.create({userId:app.customer,title:"Phone reservation requires attention",message:"Your paid phone reservation requires administrative resolution; no funds or device were released automatically.",type:"PHONE",referenceId:app._id,referenceType:"PhoneReservationExpiry"});await audit(req,"PHONE_RESERVATION_EXPIRY_RECORDED","Expired paid reservation flagged for refund resolution",{applicationId:String(app._id),deviceId:String(device._id)});}}}res.json({success:true,evaluated:devices.length,expiredPaidReservations:paid});};

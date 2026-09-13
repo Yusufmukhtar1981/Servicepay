@@ -72,6 +72,17 @@ test("Business Partner admin routes require matching permissions", async () => {
       "/admin/partners/:partnerId/applications/:applicationId/assign",
       P.BUSINESS_PARTNERS_ASSIGN,
     ],
+    ["GET", "/admin/partners/:partnerId/officers", P.BUSINESS_PARTNERS_OFFICERS_VIEW],
+    ["GET", "/admin/partners/:partnerId/transactions", P.BUSINESS_PARTNERS_TRANSACTIONS_VIEW],
+    ["GET", "/admin/partners/:partnerId/transaction-volume", P.BUSINESS_PARTNERS_TRANSACTIONS_VIEW],
+    ["GET", "/admin/partners/:partnerId/commissions", P.BUSINESS_PARTNERS_COMMISSIONS_VIEW],
+    ["GET", "/admin/partners/:partnerId/targets", P.BUSINESS_PARTNERS_TARGETS_VIEW],
+    ["GET", "/admin/partners/:partnerId/bonuses", P.BUSINESS_PARTNERS_BONUSES_VIEW],
+    ["GET", "/admin/partners/:partnerId/liabilities", P.BUSINESS_PARTNERS_LIABILITIES_VIEW],
+    ["GET", "/admin/partners/:partnerId/audit", P.BUSINESS_PARTNERS_AUDIT_VIEW],
+    ["POST", "/admin/partners/:partnerId/targets", P.BUSINESS_PARTNERS_UPDATE],
+    ["PATCH", "/admin/commission-rules/:ruleId", P.BUSINESS_PARTNERS_UPDATE],
+    ["PATCH", "/admin/bonus-rules/:ruleId", P.BUSINESS_PARTNERS_UPDATE],
   ];
 
   for (const [method, path, permission] of cases) {

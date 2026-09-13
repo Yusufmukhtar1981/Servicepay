@@ -12,6 +12,8 @@ const {
   resetPassword,
   updateRiderAvailability,
   updateProfilePhoto,
+  requestCustomerActivation,
+  verifyCustomerActivation,
 } = require("../controllers/auth.controller");
 
 const {
@@ -70,6 +72,16 @@ router.post(
 router.post(
   "/reset-password",
   resetPassword
+);
+
+router.post(
+  "/customer-activation/request",
+  requestCustomerActivation
+);
+
+router.post(
+  "/customer-activation/verify",
+  verifyCustomerActivation
 );
 
 router.post(
