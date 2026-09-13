@@ -35,6 +35,19 @@ class _BusinessPartnerDashboardScreenState
   String _officerFilter = '';
   String _dateFrom = '';
   String _dateTo = '';
+  String _customerSearch = '';
+  String _customerStatus = 'ALL';
+  String _customerKyc = 'ALL';
+  int _customerPage = 0;
+  int _customerPages = 1;
+  int _transactionPage = 0;
+  int _transactionPages = 1;
+  String _transactionSearch = '';
+  String _transactionStatus = 'ALL';
+  int _commissionPage = 0;
+  int _commissionPages = 1;
+  String _commissionTypeFilter = 'ALL';
+  final Set<String> _extraLoading = <String>{};
   final Set<String> _unavailable = <String>{};
   final Map<String, Map<String, dynamic>> _responses =
       <String, Map<String, dynamic>>{};
@@ -52,6 +65,28 @@ class _BusinessPartnerDashboardScreenState
     _Section('Reports', Icons.bar_chart_rounded),
     _Section('Notifications', Icons.notifications_none_rounded),
     _Section('Profile', Icons.person_outline_rounded),
+    _Section('Customer Transactions', Icons.receipt_long_outlined),
+    _Section('Commission Wallet', Icons.account_balance_wallet_outlined),
+    _Section('Targets & Bonuses', Icons.flag_outlined),
+  ];
+
+  static const List<int> _navigationOrder = <int>[
+    -1,
+    0,
+    2,
+    12,
+    1,
+    13,
+    14,
+    9,
+    3,
+    4,
+    5,
+    6,
+    8,
+    7,
+    10,
+    11
   ];
 
   @override
@@ -73,7 +108,7 @@ class _BusinessPartnerDashboardScreenState
         <String, Future<Map<String, dynamic>>>{
       'Dashboard': _api.dashboard(filters: filters),
       'Officer Management': _api.officers(filters: filters),
-      'Customers': _api.customers(filters: filters),
+      'Customers': _api.customers(filters: _customerFilters),
       'Applications': _api.applications(filters: filters),
       'Repayments': _api.repayments(filters: filters),
       'Commission': _api.commission(filters: filters),
@@ -82,6 +117,7 @@ class _BusinessPartnerDashboardScreenState
       'Notifications': _api.notifications(filters: filters),
       'Activity': _api.activity(filters: filters),
       'Profile': _api.profile(),
+      'Targets': _api.targets(filters: filters),
     };
     final Map<String, Map<String, dynamic>> received =
         <String, Map<String, dynamic>>{};
@@ -112,16 +148,104 @@ class _BusinessPartnerDashboardScreenState
       _unavailable
         ..clear()
         ..addAll(denied);
+      final Map<String, dynamic> customerPagination =
+          _map(received['Customers']?['pagination']);
+      _customerPages =
+          (_number(customerPagination['pages']).toInt()).clamp(1, 1000000);
       _loading = false;
     });
   }
 
+  Future<void> _loadExtra(String title) async {
+    if (_extraLoading.contains(title)) return;
+    setState(() => _extraLoading.add(title));
+    try {
+      final Map<String, dynamic> response = title == 'Customer Transactions'
+          ? await _api.transactions(filters: _transactionFilters)
+          : await _api.commissionWallet(filters: _commissionFilters());
+      if (!mounted) return;
+      setState(() {
+        _responses[title] = response;
+        final Map<String, dynamic> pagination = _map(response['pagination']);
+        final int pages =
+            (_number(pagination['pages']).toInt()).clamp(1, 1000000);
+        if (title == 'Customer Transactions') {
+          _transactionPages = pages;
+        } else {
+          _commissionPages = pages;
+        }
+      });
+    } on BusinessPartnerApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _responses[title] = <String, dynamic>{
+            '_unavailable': error.message,
+          });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _responses[title] = <String, dynamic>{
+            '_unavailable': 'This service is currently unavailable.',
+          });
+    } finally {
+      if (mounted) setState(() => _extraLoading.remove(title));
+    }
+  }
+
+  Future<void> _reloadCustomers({bool resetPage = false}) async {
+    if (resetPage) _customerPage = 0;
+    try {
+      final Map<String, dynamic> response =
+          await _api.customers(filters: _customerFilters);
+      if (!mounted) return;
+      setState(() {
+        _responses['Customers'] = response;
+        final Map<String, dynamic> pagination = _map(response['pagination']);
+        _customerPages =
+            (_number(pagination['pages']).toInt()).clamp(1, 1000000);
+      });
+    } on BusinessPartnerApiException catch (error) {
+      if (mounted) _notice(error.message, error: true);
+    } catch (_) {
+      if (mounted) _notice('Unable to load customers right now.', error: true);
+    }
+  }
+
   Map<String, String> get _filters => <String, String>{
         if (_filter != 'ALL') 'status': _filter,
-        if (_serviceFilter != 'ALL') 'service': _serviceFilter,
+        if (_serviceFilter != 'ALL') 'serviceType': _serviceFilter,
         if (_officerFilter.isNotEmpty) 'officerId': _officerFilter,
         if (_dateFrom.isNotEmpty) 'dateFrom': _dateFrom,
         if (_dateTo.isNotEmpty) 'dateTo': _dateTo,
+      };
+
+  Map<String, String> get _customerFilters => <String, String>{
+        if (_customerSearch.trim().isNotEmpty) 'q': _customerSearch.trim(),
+        if (_customerStatus != 'ALL') 'status': _customerStatus,
+        if (_customerKyc != 'ALL')
+          'kyc': _customerKyc == 'VERIFIED' ? 'true' : 'false',
+        if (_officerFilter.isNotEmpty) 'officerId': _officerFilter,
+        if (_dateFrom.isNotEmpty) 'dateFrom': _dateFrom,
+        if (_dateTo.isNotEmpty) 'dateTo': _dateTo,
+        'page': '${_customerPage + 1}',
+        'limit': '8',
+      };
+
+  Map<String, String> get _transactionFilters => <String, String>{
+        if (_transactionSearch.trim().isNotEmpty)
+          'q': _transactionSearch.trim(),
+        if (_transactionStatus != 'ALL') 'status': _transactionStatus,
+        if (_serviceFilter != 'ALL') 'serviceType': _serviceFilter,
+        if (_officerFilter.isNotEmpty) 'officerId': _officerFilter,
+        if (_dateFrom.isNotEmpty) 'dateFrom': _dateFrom,
+        if (_dateTo.isNotEmpty) 'dateTo': _dateTo,
+        'page': '${_transactionPage + 1}',
+        'limit': '10',
+      };
+
+  Map<String, String> _commissionFilters() => <String, String>{
+        if (_dateFrom.isNotEmpty) 'dateFrom': _dateFrom,
+        if (_dateTo.isNotEmpty) 'dateTo': _dateTo,
+        'page': '${_commissionPage + 1}',
+        'limit': '25',
       };
 
   Map<String, dynamic> _map(dynamic value) {
@@ -307,7 +431,7 @@ class _BusinessPartnerDashboardScreenState
             if (wide) const SizedBox(width: 30),
             Expanded(
               child: Text(
-                _sections[_section].title,
+                _displaySectionTitle(_section),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -371,9 +495,13 @@ class _BusinessPartnerDashboardScreenState
             ),
             Expanded(
               child: ListView.builder(
-                itemCount: _sections.length,
-                itemBuilder: (BuildContext context, int index) =>
-                    _navItem(index, dark: true),
+                itemCount: _navigationOrder.length,
+                itemBuilder: (BuildContext context, int index) {
+                  final int sectionIndex = _navigationOrder[index];
+                  return sectionIndex < 0
+                      ? _createCustomerNavItem(dark: true)
+                      : _navItem(sectionIndex, dark: true);
+                },
               ),
             ),
             _securityNote(),
@@ -466,9 +594,13 @@ class _BusinessPartnerDashboardScreenState
                 ),
                 Expanded(
                   child: ListView.builder(
-                    itemCount: _sections.length,
-                    itemBuilder: (BuildContext context, int index) =>
-                        _navItem(index, dark: true),
+                    itemCount: _navigationOrder.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final int sectionIndex = _navigationOrder[index];
+                      return sectionIndex < 0
+                          ? _createCustomerNavItem(dark: true)
+                          : _navItem(sectionIndex, dark: true);
+                    },
                   ),
                 ),
               ],
@@ -493,6 +625,10 @@ class _BusinessPartnerDashboardScreenState
           borderRadius: BorderRadius.circular(12),
           onTap: () {
             setState(() => _section = index);
+            if (item.title == 'Customer Transactions' ||
+                item.title == 'Commission Wallet') {
+              _loadExtra(item.title);
+            }
             if (MediaQuery.sizeOf(context).width < 960) Navigator.pop(context);
           },
           child: Padding(
@@ -527,10 +663,54 @@ class _BusinessPartnerDashboardScreenState
     );
   }
 
+  Widget _createCustomerNavItem({required bool dark}) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              if (MediaQuery.sizeOf(context).width < 960) {
+                Navigator.pop(context);
+              }
+              _showCreateCustomer();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: <Widget>[
+                  Icon(Icons.person_add_alt_1,
+                      size: 18,
+                      color: dark ? const Color(0xFF7CE1AA) : _greenDark),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text('Create Customer',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: dark ? Colors.white : _greenDark,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800)),
+                  ),
+                  Icon(Icons.add_rounded,
+                      size: 16, color: dark ? const Color(0xFF7CE1AA) : _green),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+  String _displaySectionTitle(int index) =>
+      index == 2 ? 'My Customers' : _sections[index].title;
+
   Widget _content() {
     final String title = _sections[_section].title;
     final Map<String, dynamic> response =
         _responses[title] ?? <String, dynamic>{};
+    if (title == 'Customer Transactions') return _transactionsPage();
+    if (title == 'Commission Wallet') return _commissionWalletPage();
+    if (title == 'Targets & Bonuses') return _targetsPage();
     if (response.containsKey('_unavailable')) {
       return _page(<Widget>[
         _pageHeading(title, 'A clear view of your partner workspace.'),
@@ -548,6 +728,7 @@ class _BusinessPartnerDashboardScreenState
     }
     if (_section == 8) return _performance();
     if (_section == 11) return _profile();
+    if (title == 'Customers') return _customersPage();
     return _records(title);
   }
 
@@ -558,10 +739,8 @@ class _BusinessPartnerDashboardScreenState
     return _page(<Widget>[
       _welcome(name),
       const SizedBox(height: 19),
-      _sectionLabel('YOUR PORTFOLIO'),
+      _sectionLabel('Portfolio snapshot'),
       const SizedBox(height: 10),
-      _summaryGrid(),
-      const SizedBox(height: 19),
       _quickActions(),
       const SizedBox(height: 19),
       LayoutBuilder(
@@ -589,8 +768,294 @@ class _BusinessPartnerDashboardScreenState
         },
       ),
       const SizedBox(height: 19),
+      _sectionLabel('OPERATING SNAPSHOT'),
+      const SizedBox(height: 10),
+      _summaryGrid(),
+      const SizedBox(height: 19),
       _portfolioCard(),
+      const SizedBox(height: 19),
+      _sectionLabel('PORTFOLIO DETAIL'),
+      const SizedBox(height: 10),
+      _dashboardHighlights(),
     ]);
+  }
+
+  List<Map<String, dynamic>> _dashboardRows(List<String> keys) {
+    final Map<String, dynamic> dashboard = _nested('Dashboard', 'dashboard');
+    for (final String key in keys) {
+      final List<Map<String, dynamic>> rows = _list(dashboard[key]);
+      if (rows.isNotEmpty) return rows;
+    }
+    return <Map<String, dynamic>>[];
+  }
+
+  Widget _dashboardHighlights() {
+    final List<Map<String, dynamic>> customers =
+        _dashboardRows(<String>['recentCustomers', 'customers']);
+    final List<Map<String, dynamic>> transactions =
+        _dashboardRows(<String>['recentTransactions', 'transactions']);
+    final List<Map<String, dynamic>> officers =
+        _dashboardRows(<String>['topPerformingOfficers']);
+    final Map<String, dynamic> dashboard = _nested('Dashboard', 'dashboard');
+    final List<Map<String, dynamic>> transactionSeries =
+        _list(dashboard['transactionChart']);
+    final List<Map<String, dynamic>> commissionSeries =
+        _list(dashboard['commissionChart']);
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool wide = constraints.maxWidth >= 760;
+        final List<Widget> cards = <Widget>[
+          _dashboardListCard(
+            title: 'Recent customers',
+            icon: Icons.people_alt_outlined,
+            rows: customers,
+            empty: 'Newly acquired customers will appear here.',
+            builder: (Map<String, dynamic> row) => _dashboardRow(
+              icon: Icons.person_outline_rounded,
+              title: _text(row['fullName'] ?? row['name'], 'Customer'),
+              subtitle: _date(row['joinedAt'] ?? row['createdAt']),
+              trailing: _statusPill(_status(
+                row['status'],
+              )),
+            ),
+          ),
+          _dashboardListCard(
+            title: 'Recent transactions',
+            icon: Icons.receipt_long_outlined,
+            rows: transactions,
+            empty: 'Eligible customer transactions will appear here.',
+            builder: (Map<String, dynamic> row) => _dashboardRow(
+              icon: Icons.receipt_long_outlined,
+              title: _text(row['reference'] ?? row['transactionReference'],
+                  'Transaction'),
+              subtitle:
+                  '${_text(row['service'] ?? row['serviceType'], 'Service')} · ${_money(row['amount'])}',
+              trailing: _statusPill(_status(row['status'])),
+            ),
+          ),
+          _dashboardListCard(
+            title: 'Top performing officers',
+            icon: Icons.stars_outlined,
+            rows: officers,
+            empty: 'Officer performance will appear as work is completed.',
+            builder: (Map<String, dynamic> row) => _dashboardRow(
+              icon: Icons.badge_outlined,
+              title: _text(row['fullName'] ?? row['name'], 'Officer'),
+              subtitle:
+                  '${_text(row['transactions'] ?? row['transactionCount'], '0')} transactions · ${_money(row['commission'])}',
+              trailing: Text(
+                _text(row['performance'] ?? row['score'], '—'),
+                style: const TextStyle(
+                    color: _greenDark,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+          _seriesCard('Transaction performance', transactionSeries,
+              Icons.trending_up_rounded),
+          _seriesCard('Commission earnings', commissionSeries,
+              Icons.account_balance_wallet_outlined),
+          _targetProgressCard(dashboard),
+        ];
+        if (!wide) {
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: cards
+                  .map((Widget card) => Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: card,
+                      ))
+                  .toList());
+        }
+        return Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: cards
+              .map((Widget card) =>
+                  SizedBox(width: (constraints.maxWidth - 14) / 2, child: card))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _dashboardListCard({
+    required String title,
+    required IconData icon,
+    required List<Map<String, dynamic>> rows,
+    required String empty,
+    required Widget Function(Map<String, dynamic>) builder,
+  }) =>
+      _surfaceCard(
+        title: title,
+        subtitle: 'Latest updates in your network',
+        icon: icon,
+        child: rows.isEmpty
+            ? _empty(empty)
+            : Column(children: rows.take(4).map(builder).toList()),
+      );
+
+  Widget _dashboardRow({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    Widget? trailing,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: <Widget>[
+            Icon(icon, color: _greenDark, size: 18),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: _ink,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: _muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            if (trailing != null) trailing,
+          ],
+        ),
+      );
+
+  Widget _seriesCard(
+      String title, List<Map<String, dynamic>> rows, IconData icon) {
+    final List<num> values = rows
+        .map((Map<String, dynamic> row) => _number(
+            row['value'] ?? row['amount'] ?? row['total'] ?? row['count']))
+        .toList();
+    final num max = values.fold<num>(0, (num a, num b) => a > b ? a : b);
+    return _surfaceCard(
+      title: title,
+      subtitle: rows.isEmpty ? 'Awaiting server activity' : 'Recent period',
+      icon: icon,
+      child: rows.isEmpty
+          ? _empty('Chart data will appear after activity is recorded.')
+          : SizedBox(
+              height: 116,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: List<Widget>.generate(rows.length, (int index) {
+                  final double factor = max <= 0
+                      ? 0
+                      : (values[index].toDouble() / max.toDouble())
+                          .clamp(0.05, 1.0);
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: <Widget>[
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.bottomCenter,
+                              child: FractionallySizedBox(
+                                heightFactor: factor,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: _green,
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                              _text(rows[index]['label'] ?? rows[index]['name'],
+                                  '${index + 1}'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: _muted,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+    );
+  }
+
+  Widget _targetProgressCard(Map<String, dynamic> dashboard) {
+    final List<Map<String, dynamic>> configuredTargets =
+        _list((_responses['Targets'] ?? <String, dynamic>{})['targets']);
+    final Map<String, dynamic> configured = configuredTargets.isEmpty
+        ? <String, dynamic>{}
+        : configuredTargets.first;
+    final String metric = _text(configured['metric'], '').toUpperCase();
+    final dynamic configuredCurrent = metric == 'ACTIVE_CUSTOMERS'
+        ? dashboard['activeCustomers']
+        : metric == 'TRANSACTION_COUNT'
+            ? dashboard['transactionsThisMonth']
+            : metric == 'TRANSACTION_VALUE'
+                ? dashboard['transactionValueThisMonth']
+                : null;
+    final Map<String, dynamic> target =
+        _map(dashboard['target'] ?? dashboard['targetProgress']);
+    final num current = _number(target['current'] ??
+        configuredCurrent ??
+        dashboard['targetCurrent'] ??
+        0);
+    final num goal = _number(target['target'] ??
+        target['goal'] ??
+        configured['target'] ??
+        dashboard['monthlyTarget'] ??
+        dashboard['target'] ??
+        0);
+    final double progress =
+        goal <= 0 ? 0 : (current.toDouble() / goal.toDouble()).clamp(0, 1);
+    return _surfaceCard(
+      title: 'Monthly target progress',
+      subtitle: goal <= 0 ? 'No target configured' : 'Current month',
+      icon: Icons.flag_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(goal <= 0
+                    ? 'Target details will appear here.'
+                    : '${_money(current)} of ${_money(goal)}'),
+              ),
+              Text('${(progress * 100).round()}%',
+                  style: const TextStyle(
+                      color: _greenDark, fontWeight: FontWeight.w900)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 10,
+                backgroundColor: const Color(0xFFEAF1ED),
+                valueColor: const AlwaysStoppedAnimation<Color>(_green)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _welcome(String name) => Container(
@@ -658,12 +1123,13 @@ class _BusinessPartnerDashboardScreenState
       );
 
   List<_Metric> _metrics() {
+    final Map<String, dynamic> dashboard = _nested('Dashboard', 'dashboard');
     final List<Map<String, dynamic>> solar = _applications('solar');
     final List<Map<String, dynamic>> phone = _applications('phone');
-    final Map<String, dynamic> officers = _map(
+    final Map<String, dynamic> officerGroups = _map(
         (_responses['Officer Management'] ?? <String, dynamic>{})['officers']);
-    final int officerCount =
-        _list(officers['solar']).length + _list(officers['phone']).length;
+    final int officerCount = _list(officerGroups['solar']).length +
+        _list(officerGroups['phone']).length;
     final int customerCount =
         _list((_responses['Customers'] ?? <String, dynamic>{})['customers'])
             .length;
@@ -690,21 +1156,79 @@ class _BusinessPartnerDashboardScreenState
     final int total = solar.length + phone.length;
     final String performance =
         total == 0 ? '—' : '${((completed / total) * 100).round()}%';
+    num dashboardNumber(List<String> keys, [num fallback = 0]) {
+      for (final String key in keys) {
+        if (dashboard.containsKey(key) && dashboard[key] != null) {
+          return _number(dashboard[key]);
+        }
+      }
+      return fallback;
+    }
+
+    final num customers = dashboardNumber(
+        <String>['totalCustomers', 'activeCustomers', 'customers'],
+        customerCount);
+    final num activeCustomers = dashboardNumber(
+        <String>['activeCustomers', 'totalCustomers'], customerCount);
+    final num officers =
+        dashboardNumber(<String>['totalOfficers', 'officers'], officerCount);
+    final num activeOfficers =
+        dashboardNumber(<String>['activeOfficers'], officers);
+    final num transactionsToday = dashboardNumber(
+        <String>['transactionsToday', 'todayTransactions'], total);
+    final num transactionsMonth = dashboardNumber(
+        <String>['transactionsThisMonth', 'monthlyTransactions'], total);
+    final num valueToday = dashboardNumber(
+        <String>['transactionValueToday', 'salesValueToday'], totalSales);
+    final num valueMonth = dashboardNumber(
+        <String>['transactionValueThisMonth', 'salesValueThisMonth'],
+        totalSales);
+    final num commissionToday =
+        dashboardNumber(<String>['commissionToday'], commissionBalance);
+    final num commissionMonth =
+        dashboardNumber(<String>['commissionThisMonth'], commissionBalance);
+    final num availableCommission = dashboardNumber(
+        <String>['availableCommission', 'commissionBalance'],
+        commissionBalance);
+    final num pendingCommission =
+        dashboardNumber(<String>['pendingCommission'], 0);
+    final num lifetimeCommission =
+        dashboardNumber(<String>['lifetimeCommission'], commissionBalance);
     return <_Metric>[
-      _Metric('Total Officers', '$officerCount', Icons.badge_outlined,
+      _Metric('Total Customers', '${customers.toInt()}',
+          Icons.people_alt_outlined, const Color(0xFFEAF4FF)),
+      _Metric('Active Customers', '${activeCustomers.toInt()}',
+          Icons.person_pin_circle_outlined, const Color(0xFFE8F7EF)),
+      _Metric('Total Officers', '${officers.toInt()}', Icons.badge_outlined,
           const Color(0xFFE8F7EF)),
-      _Metric('Customers', '$customerCount', Icons.people_alt_outlined,
-          const Color(0xFFEAF4FF)),
+      _Metric('Active Officers', '${activeOfficers.toInt()}',
+          Icons.verified_user_outlined, const Color(0xFFF1ECFF)),
+      _Metric('Transactions today', '${transactionsToday.toInt()}',
+          Icons.receipt_long_outlined, const Color(0xFFFFF5DE)),
+      _Metric('Transactions this month', '${transactionsMonth.toInt()}',
+          Icons.calendar_month_outlined, const Color(0xFFF1ECFF)),
+      _Metric('Transaction value today', _money(valueToday),
+          Icons.trending_up_rounded, const Color(0xFFE8F7EF)),
+      _Metric('Transaction value this month', _money(valueMonth),
+          Icons.assessment_outlined, const Color(0xFFEAF4FF)),
+      _Metric('Commission today', _money(commissionToday),
+          Icons.payments_outlined, const Color(0xFFFFF5DE)),
+      _Metric('Commission this month', _money(commissionMonth),
+          Icons.date_range_outlined, const Color(0xFFE8F7EF)),
+      _Metric('Available commission', _money(availableCommission),
+          Icons.account_balance_wallet_outlined, const Color(0xFFEAF4FF)),
+      _Metric('Pending commission', _money(pendingCommission),
+          Icons.hourglass_top_outlined, const Color(0xFFFFEFEB)),
+      _Metric('Lifetime commission', _money(lifetimeCommission),
+          Icons.stars_outlined, const Color(0xFFF1ECFF)),
+      _Metric('Target progress', _targetMetricValue(dashboard),
+          Icons.flag_outlined, const Color(0xFFEAF7F0)),
       _Metric('Solar Applications', '${solar.length}', Icons.wb_sunny_outlined,
           const Color(0xFFFFF5DE)),
       _Metric('Phone Applications', '${phone.length}',
           Icons.smartphone_outlined, const Color(0xFFF1ECFF)),
-      _Metric('Total Sales', _money(totalSales), Icons.trending_up_rounded,
-          const Color(0xFFE8F7EF)),
       _Metric('Outstanding Repayments', _money(outstanding),
           Icons.payments_outlined, const Color(0xFFFFEFEB)),
-      _Metric('Commission Balance', _money(commissionBalance),
-          Icons.account_balance_wallet_outlined, const Color(0xFFEAF4FF)),
       _Metric('Performance', performance, Icons.insights_outlined,
           const Color(0xFFF1ECFF)),
     ];
@@ -787,10 +1311,17 @@ class _BusinessPartnerDashboardScreenState
             final double width =
                 (constraints.maxWidth - gap * (columns - 1)) / columns;
             final List<_QuickAction> actions = <_QuickAction>[
-              _QuickAction('Applications', Icons.description_outlined, 5),
-              _QuickAction('Officer Management', Icons.badge_outlined, 1),
-              _QuickAction('Repayments', Icons.payments_outlined, 6),
-              _QuickAction('Reports', Icons.bar_chart_rounded, 9),
+              const _QuickAction('Create Customer', Icons.person_add_alt_1, -1),
+              const _QuickAction('Create Officer', Icons.badge_outlined, 1),
+              const _QuickAction('My Customers', Icons.people_alt_outlined, 2),
+              const _QuickAction(
+                  'View Transactions', Icons.receipt_long_outlined, 12),
+              const _QuickAction('Commission Wallet',
+                  Icons.account_balance_wallet_outlined, 13),
+              const _QuickAction('Targets & Bonuses', Icons.flag_outlined, 14),
+              const _QuickAction('Reports', Icons.bar_chart_rounded, 9),
+              const _QuickAction('Applications', Icons.description_outlined, 5),
+              const _QuickAction('Repayments', Icons.payments_outlined, 6),
             ];
             return Wrap(
               spacing: gap,
@@ -809,7 +1340,16 @@ class _BusinessPartnerDashboardScreenState
         borderRadius: BorderRadius.circular(13),
         child: InkWell(
           borderRadius: BorderRadius.circular(13),
-          onTap: () => setState(() => _section = action.section),
+          onTap: () {
+            if (action.section < 0) {
+              _showCreateCustomer();
+              return;
+            }
+            setState(() => _section = action.section);
+            if (action.section == 12 || action.section == 13) {
+              _loadExtra(_sections[action.section].title);
+            }
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
             child: Row(
@@ -832,6 +1372,27 @@ class _BusinessPartnerDashboardScreenState
           ),
         ),
       );
+
+  String _targetMetricValue(Map<String, dynamic> dashboard) {
+    final List<Map<String, dynamic>> configuredTargets =
+        _list((_responses['Targets'] ?? <String, dynamic>{})['targets']);
+    final Map<String, dynamic> configured = configuredTargets.isEmpty
+        ? <String, dynamic>{}
+        : configuredTargets.first;
+    final Map<String, dynamic> target =
+        _map(dashboard['target'] ?? dashboard['targetProgress']);
+    final num current = _number(target['current'] ??
+        dashboard['targetCurrent'] ??
+        configured['current'] ??
+        0);
+    final num goal = _number(target['target'] ??
+        target['goal'] ??
+        configured['target'] ??
+        dashboard['monthlyTarget'] ??
+        0);
+    if (goal <= 0) return '—';
+    return '${((current.toDouble() / goal.toDouble()).clamp(0, 1) * 100).round()}%';
+  }
 
   Widget _recentApplications() {
     final List<Map<String, dynamic>> rows = _allApplications()
@@ -1217,6 +1778,434 @@ class _BusinessPartnerDashboardScreenState
     ]);
   }
 
+  Widget _customersPage() {
+    final List<Map<String, dynamic>> all =
+        _list((_responses['Customers'] ?? <String, dynamic>{})['customers']);
+    final int pages = _customerPages;
+    final int page = _customerPage.clamp(0, pages - 1);
+    final List<Map<String, dynamic>> rows = all;
+    return _page(<Widget>[
+      _pageHeading(
+          'My Customers', 'Customers securely connected to your network.',
+          action: FilledButton.icon(
+            key: const Key('business-partner-create-customer'),
+            onPressed: _showCreateCustomer,
+            icon: const Icon(Icons.person_add_alt_1, size: 16),
+            label: const Text('Create customer'),
+          )),
+      const SizedBox(height: 14),
+      _surfaceCard(
+        title: 'Customer directory',
+        subtitle:
+            '${_number((_responses['Customers'] ?? <String, dynamic>{})['pagination']?['total']).toInt()} customers in this view',
+        icon: Icons.people_alt_outlined,
+        child: Column(
+          children: <Widget>[
+            TextField(
+              key: const Key('business-partner-customer-search'),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded),
+                labelText: 'Search by name, phone or account ID',
+              ),
+              onChanged: (String value) {
+                _customerSearch = value;
+                _reloadCustomers(resetPage: true);
+              },
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                _smallFilter(
+                  label: 'Status',
+                  value: _customerStatus,
+                  values: const <String>['ALL', 'ACTIVE', 'SUSPENDED'],
+                  onChanged: (String value) {
+                    _customerStatus = value;
+                    _reloadCustomers(resetPage: true);
+                  },
+                ),
+                _smallFilter(
+                  label: 'KYC',
+                  value: _customerKyc,
+                  values: const <String>[
+                    'ALL',
+                    'VERIFIED',
+                    'PENDING',
+                    'REJECTED'
+                  ],
+                  onChanged: (String value) {
+                    _customerKyc = value;
+                    _reloadCustomers(resetPage: true);
+                  },
+                ),
+                OutlinedButton.icon(
+                  onPressed: _filterDialog,
+                  icon: const Icon(Icons.tune_rounded, size: 16),
+                  label: const Text('Date / officer'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (rows.isEmpty)
+              _empty('No customers match these filters.')
+            else
+              Column(
+                children: rows.map((Map<String, dynamic> row) {
+                  final Widget card = _customerCard(row);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => _showCustomerDetail(row),
+                      child: card,
+                    ),
+                  );
+                }).toList(),
+              ),
+            if (pages > 1) ...<Widget>[
+              const Divider(height: 22),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Text('Page ${page + 1} of $pages',
+                      style: const TextStyle(
+                          color: _muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                  Row(
+                    children: <Widget>[
+                      IconButton(
+                        tooltip: 'Previous page',
+                        onPressed: page == 0
+                            ? null
+                            : () {
+                                setState(() => _customerPage--);
+                                _reloadCustomers();
+                              },
+                        icon: const Icon(Icons.chevron_left_rounded),
+                      ),
+                      IconButton(
+                        tooltip: 'Next page',
+                        onPressed: page >= pages - 1
+                            ? null
+                            : () {
+                                setState(() => _customerPage++);
+                                _reloadCustomers();
+                              },
+                        icon: const Icon(Icons.chevron_right_rounded),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _smallFilter({
+    required String label,
+    required String value,
+    required List<String> values,
+    required ValueChanged<String> onChanged,
+  }) =>
+      DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isDense: true,
+          isExpanded: true,
+          borderRadius: BorderRadius.circular(12),
+          items: values
+              .map((String item) => DropdownMenuItem<String>(
+                  value: item,
+                  child: Text('$label: $item',
+                      maxLines: 1, overflow: TextOverflow.ellipsis)))
+              .toList(),
+          onChanged: (String? next) {
+            if (next != null) onChanged(next);
+          },
+        ),
+      );
+
+  Widget _transactionsPage() {
+    final Map<String, dynamic> source =
+        _responses['Customer Transactions'] ?? <String, dynamic>{};
+    if (_extraLoading.contains('Customer Transactions') && source.isEmpty) {
+      return const Center(child: CircularProgressIndicator(color: _green));
+    }
+    if (source.containsKey('_unavailable')) {
+      return _page(<Widget>[
+        _pageHeading('Customer Transactions',
+            'Transactions are limited to your authorized customer network.'),
+        const SizedBox(height: 16),
+        _empty(_text(source['_unavailable'],
+            'Customer transactions are not available right now.')),
+      ]);
+    }
+    final List<Map<String, dynamic>> all =
+        _list(source['transactions'] ?? source['data'] ?? source['items']);
+    final Map<String, dynamic> pagination = _map(source['pagination']);
+    final int pages = _transactionPages;
+    final int page = _transactionPage.clamp(0, pages - 1);
+    final List<Map<String, dynamic>> rows = all;
+    return _page(<Widget>[
+      _pageHeading('Customer Transactions',
+          'Scoped transaction activity and commission visibility.'),
+      const SizedBox(height: 14),
+      _surfaceCard(
+        title: 'Transaction history',
+        subtitle:
+            '${_number(pagination['total']).toInt()} transactions in this view',
+        icon: Icons.receipt_long_outlined,
+        child: Column(
+          children: <Widget>[
+            TextField(
+              key: const Key('business-partner-transaction-search'),
+              decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  labelText: 'Search reference, customer or service'),
+              onChanged: (String value) {
+                _transactionSearch = value;
+                _transactionPage = 0;
+                _loadExtra('Customer Transactions');
+              },
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _smallFilter(
+                label: 'Status',
+                value: _transactionStatus,
+                values: const <String>[
+                  'ALL',
+                  'PENDING',
+                  'SUCCESSFUL',
+                  'FAILED'
+                ],
+                onChanged: (String value) {
+                  _transactionStatus = value;
+                  _transactionPage = 0;
+                  _loadExtra('Customer Transactions');
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (rows.isEmpty)
+              _empty('No customer transactions match these filters.')
+            else
+              Column(
+                children: rows
+                    .map((Map<String, dynamic> row) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () => _showTransactionDetail(row),
+                            child: _transactionCard(row),
+                          ),
+                        ))
+                    .toList(),
+              ),
+            if (pages > 1) ...<Widget>[
+              const Divider(height: 22),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Text('Page ${page + 1} of $pages',
+                      style: const TextStyle(
+                          color: _muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                  Row(children: <Widget>[
+                    IconButton(
+                        onPressed: page == 0
+                            ? null
+                            : () {
+                                setState(() => _transactionPage--);
+                                _loadExtra('Customer Transactions');
+                              },
+                        icon: const Icon(Icons.chevron_left_rounded)),
+                    IconButton(
+                        onPressed: page >= pages - 1
+                            ? null
+                            : () {
+                                setState(() => _transactionPage++);
+                                _loadExtra('Customer Transactions');
+                              },
+                        icon: const Icon(Icons.chevron_right_rounded)),
+                  ]),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _transactionCard(Map<String, dynamic> row) => _recordCard(
+        icon: Icons.receipt_long_outlined,
+        title: _text(row['reference'] ?? row['transactionReference'],
+            'Customer transaction'),
+        subtitle: _text(row['service'] ?? row['serviceType'], 'Service'),
+        details: <_Detail>[
+          _Detail(
+              'Customer',
+              _text(row['customerName'] ?? _map(row['customer'])['fullName'],
+                  'Customer')),
+          _Detail('Amount', _money(row['amount'])),
+          _Detail('Date', _date(row['createdAt'] ?? row['date'])),
+          _Detail('Partner commission',
+              _money(row['partnerCommission'] ?? row['commissionAmount'])),
+        ],
+        trailing: _statusPill(_status(row['status'])),
+      );
+
+  Widget _commissionWalletPage() {
+    final Map<String, dynamic> source =
+        _responses['Commission Wallet'] ?? <String, dynamic>{};
+    if (_extraLoading.contains('Commission Wallet') && source.isEmpty) {
+      return const Center(child: CircularProgressIndicator(color: _green));
+    }
+    if (source.containsKey('_unavailable')) {
+      return _page(<Widget>[
+        _pageHeading(
+            'Commission Wallet', 'Read-only earnings and settlement history.'),
+        const SizedBox(height: 16),
+        _empty(_text(source['_unavailable'],
+            'Commission wallet is not available right now.')),
+      ]);
+    }
+    final Map<String, dynamic> wallet =
+        _map(source['wallet'] ?? source['summary'] ?? source['data']);
+    final List<Map<String, dynamic>> history = _list(source['ledger']);
+    final List<Map<String, dynamic>> visibleHistory = history
+        .where((Map<String, dynamic> row) =>
+            _commissionTypeFilter == 'ALL' ||
+            _commissionType(row) == _commissionTypeFilter)
+        .toList();
+    final Map<String, dynamic> pagination = _map(source['pagination']);
+    final int pages = _commissionPages;
+    final int page = _commissionPage.clamp(0, pages - 1);
+    String walletValue(List<String> keys) {
+      for (final String key in keys) {
+        if (wallet.containsKey(key)) return _money(wallet[key]);
+      }
+      return _money(0);
+    }
+
+    return _page(<Widget>[
+      _pageHeading(
+          'Commission Wallet', 'Read-only earnings and settlement history.'),
+      const SizedBox(height: 16),
+      LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final double width =
+              constraints.maxWidth < 500 ? (constraints.maxWidth - 10) / 2 : 0;
+          final List<_Metric> cards = <_Metric>[
+            _Metric(
+                'Available commission',
+                walletValue(
+                    <String>['available', 'availableCommission', 'balance']),
+                Icons.account_balance_wallet_outlined,
+                const Color(0xFFE8F7EF)),
+            _Metric(
+                'Pending commission',
+                walletValue(<String>['pending', 'pendingCommission']),
+                Icons.hourglass_top_outlined,
+                const Color(0xFFFFF5DE)),
+            _Metric(
+                'Paid commission',
+                walletValue(<String>['paid', 'paidCommission']),
+                Icons.check_circle_outline,
+                const Color(0xFFEAF4FF)),
+            _Metric(
+                'Lifetime earnings',
+                walletValue(
+                    <String>['lifetime', 'lifetimeCommission', 'total']),
+                Icons.stars_outlined,
+                const Color(0xFFF1ECFF)),
+          ];
+          return Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: cards
+                .map(((_Metric card) => SizedBox(
+                    width: width == 0 ? (constraints.maxWidth - 30) / 4 : width,
+                    child: _metricCard(card))))
+                .toList(),
+          );
+        },
+      ),
+      const SizedBox(height: 16),
+      _surfaceCard(
+        title: 'Commission history',
+        subtitle:
+            '${_number(pagination['total']).toInt()} ledger entries supplied by ServicePay',
+        icon: Icons.history_rounded,
+        child: Column(
+          children: <Widget>[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _smallFilter(
+                label: 'Bonus type',
+                value: _commissionTypeFilter,
+                values: const <String>[
+                  'ALL',
+                  'PERFORMANCE_BONUS',
+                  'CAMPAIGN_BONUS',
+                ],
+                onChanged: (String value) =>
+                    setState(() => _commissionTypeFilter = value),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (visibleHistory.isEmpty)
+              _empty(_commissionTypeFilter == 'ALL'
+                  ? 'Commission entries will appear as eligible transactions settle.'
+                  : 'No $_commissionTypeFilter entries in this ledger page.')
+            else
+              ...visibleHistory.map(_commissionCard),
+            if (pages > 1) ...<Widget>[
+              const Divider(height: 22),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Text('Page ${page + 1} of $pages',
+                      style: const TextStyle(
+                          color: _muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                  Row(children: <Widget>[
+                    IconButton(
+                        onPressed: page == 0
+                            ? null
+                            : () {
+                                setState(() => _commissionPage--);
+                                _loadExtra('Commission Wallet');
+                              },
+                        icon: const Icon(Icons.chevron_left_rounded)),
+                    IconButton(
+                        onPressed: page >= pages - 1
+                            ? null
+                            : () {
+                                setState(() => _commissionPage++);
+                                _loadExtra('Commission Wallet');
+                              },
+                        icon: const Icon(Icons.chevron_right_rounded)),
+                  ]),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    ]);
+  }
+
   String _sectionSubtitle(String title) {
     const Map<String, String> subtitles = <String, String>{
       'Officer Management': 'People supporting your partner portfolio',
@@ -1398,11 +2387,22 @@ class _BusinessPartnerDashboardScreenState
         trailing: _statusPill('Recorded'),
       );
 
+  String _commissionType(Map<String, dynamic> row) {
+    final String value = _text(
+      row['commissionType'] ?? row['eventKey'] ?? row['sourceType'],
+      'COMMISSION',
+    ).toUpperCase();
+    if (value == 'PERFORMANCE_BONUS') return 'PERFORMANCE_BONUS';
+    if (value == 'CAMPAIGN_BONUS') return 'CAMPAIGN_BONUS';
+    return value;
+  }
+
   Widget _commissionCard(Map<String, dynamic> row) => _recordCard(
         icon: Icons.account_balance_wallet_outlined,
-        title: 'Commission entry',
+        title: _commissionType(row),
         subtitle: _status(row['status']),
         details: <_Detail>[
+          _Detail('Type', _commissionType(row)),
           _Detail('Amount', _money(row['amount'])),
           _Detail('Recorded', _date(row['createdAt'])),
         ],
@@ -1566,6 +2566,51 @@ class _BusinessPartnerDashboardScreenState
     );
   }
 
+  Widget _targetsPage() {
+    final Map<String, dynamic> response =
+        _responses['Targets'] ?? <String, dynamic>{};
+    final List<Map<String, dynamic>> targets = _list(response['targets']);
+    final Map<String, dynamic> dashboard = _nested('Dashboard', 'dashboard');
+    return _page(<Widget>[
+      _pageHeading('Targets & Bonuses',
+          'Track the goals and incentives configured for your workspace.'),
+      const SizedBox(height: 16),
+      _targetProgressCard(dashboard),
+      const SizedBox(height: 16),
+      if (targets.isEmpty)
+        _empty('Configured targets and bonuses will appear here.')
+      else
+        ...targets.map((Map<String, dynamic> target) {
+          final String metric =
+              _text(target['metric'] ?? target['name'], 'Target')
+                  .replaceAll('_', ' ');
+          final String status = _status(target['status']);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _surfaceCard(
+              title: metric,
+              subtitle: _text(target['period'] ?? target['description'],
+                  'Configured incentive'),
+              icon: Icons.flag_outlined,
+              trailing: _statusPill(status),
+              child: Wrap(
+                spacing: 28,
+                runSpacing: 12,
+                children: <Widget>[
+                  _detail(_Detail(
+                      'Target', _text(target['target'] ?? target['goal']))),
+                  _detail(_Detail('Current',
+                      _text(target['current'] ?? target['progress']))),
+                  _detail(_Detail(
+                      'Bonus', _money(target['bonus'] ?? target['reward']))),
+                ],
+              ),
+            ),
+          );
+        }),
+    ]);
+  }
+
   Widget _performance() {
     final Map<String, dynamic> data = _nested('Performance', 'performance');
     final List<Widget> cards = _reportCards(data);
@@ -1578,6 +2623,10 @@ class _BusinessPartnerDashboardScreenState
           subtitle: 'Applications and outstanding balances',
           icon: Icons.insights_outlined,
           child: _performanceBars(data)),
+      const SizedBox(height: 16),
+      _targetProgressCard(_nested('Dashboard', 'dashboard')),
+      const SizedBox(height: 16),
+      _officerPerformanceCard(),
       const SizedBox(height: 16),
       if (cards.isEmpty)
         _empty('Performance insights will appear as activity is recorded.')
@@ -1596,6 +2645,48 @@ class _BusinessPartnerDashboardScreenState
           ),
         ),
     ]);
+  }
+
+  Widget _officerPerformanceCard() {
+    final Map<String, dynamic> officerResponse =
+        _responses['Officer Management'] ?? <String, dynamic>{};
+    final Map<String, dynamic> groups = _map(officerResponse['officers']);
+    final List<Map<String, dynamic>> officers = <Map<String, dynamic>>[
+      ..._list(groups['solar']),
+      ..._list(groups['phone']),
+    ];
+    if (officers.isEmpty) {
+      return _surfaceCard(
+        title: 'Officer performance',
+        subtitle: 'Compare activity across your officers',
+        icon: Icons.badge_outlined,
+        child: _empty('Officer performance will appear here.'),
+      );
+    }
+    officers.sort((Map<String, dynamic> a, Map<String, dynamic> b) =>
+        _number(_map(b['metrics'])['completedWork'])
+            .compareTo(_number(_map(a['metrics'])['completedWork'])));
+    return _surfaceCard(
+      title: 'Officer performance',
+      subtitle: 'Compare activity across your officers',
+      icon: Icons.badge_outlined,
+      child: Column(
+        children: officers.take(6).map((Map<String, dynamic> row) {
+          final Map<String, dynamic> metrics = _map(row['metrics']);
+          return _dashboardRow(
+            icon: Icons.badge_outlined,
+            title: _text(row['fullName'], 'Officer'),
+            subtitle:
+                '${_text(metrics['assignedCustomers'], '0')} customers · ${_text(metrics['completedWork'], '0')} completed',
+            trailing: Text(_money(metrics['commissionTotal']),
+                style: const TextStyle(
+                    color: _greenDark,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900)),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   Widget _performanceBars(Map<String, dynamic> data) {
@@ -1793,6 +2884,9 @@ class _BusinessPartnerDashboardScreenState
               constraints: const BoxConstraints(maxWidth: 1220),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
+                // Keep the compact dashboard cards discoverable to semantics
+                // and widget tests even when the first viewport is short.
+                cacheExtent: 6000,
                 padding: EdgeInsets.fromLTRB(
                     constraints.maxWidth < 600 ? 14 : 27,
                     constraints.maxWidth < 600 ? 16 : 25,
@@ -2009,6 +3103,291 @@ class _BusinessPartnerDashboardScreenState
       }
     }
     note.dispose();
+  }
+
+  Future<void> _showCreateCustomer() async {
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    final TextEditingController name = TextEditingController();
+    final TextEditingController phone = TextEditingController();
+    final TextEditingController email = TextEditingController();
+    final List<Map<String, dynamic>> officers = <Map<String, dynamic>>[
+      ..._list(_map((_responses['Officer Management'] ??
+              <String, dynamic>{})['officers'])['solar'])
+          .map((Map<String, dynamic> row) =>
+              <String, dynamic>{...row, '_type': 'SOLAR'}),
+      ..._list(_map((_responses['Officer Management'] ??
+              <String, dynamic>{})['officers'])['phone'])
+          .map((Map<String, dynamic> row) =>
+              <String, dynamic>{...row, '_type': 'PHONE'}),
+    ];
+    String? officerId;
+    bool saving = false;
+    final bool? created = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialog) => AlertDialog(
+          title: const Text('Create ServicePay customer'),
+          content: SizedBox(
+            width: 430,
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                          'The customer activates with an OTP or password recovery sent to their own verified contact. No credential is created or shown here.',
+                          style: TextStyle(color: _muted, fontSize: 11)),
+                    ),
+                    const SizedBox(height: 12),
+                    _dialogField(name, 'Full name'),
+                    _dialogField(phone, 'Phone number',
+                        keyboard: TextInputType.phone),
+                    _dialogField(email, 'Email',
+                        keyboard: TextInputType.emailAddress),
+                    if (officers.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: officerId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                            labelText: 'Acquisition officer (optional)'),
+                        items: officers
+                            .map((Map<String, dynamic> row) =>
+                                DropdownMenuItem<String>(
+                                  value: _id(row),
+                                  child: Text(
+                                    '${_text(row['fullName'], 'Officer')} · ${_text(row['_type'], '')}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ))
+                            .where((DropdownMenuItem<String> item) =>
+                                item.value?.isNotEmpty ?? false)
+                            .toList(),
+                        onChanged: (String? value) =>
+                            setDialog(() => officerId = value),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed:
+                    saving ? null : () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel')),
+            FilledButton(
+              key: const Key('business-partner-save-customer'),
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!(formKey.currentState?.validate() ?? false)) return;
+                      setDialog(() => saving = true);
+                      try {
+                        await _api.createCustomer(
+                          fullName: name.text,
+                          phone: phone.text,
+                          email: email.text,
+                          officerId: officerId,
+                        );
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, true);
+                        }
+                      } on BusinessPartnerApiException catch (error) {
+                        setDialog(() => saving = false);
+                        if (dialogContext.mounted) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
+                                  content: Text(error.message),
+                                  backgroundColor: Colors.red.shade700));
+                        }
+                      } catch (_) {
+                        setDialog(() => saving = false);
+                        if (dialogContext.mounted) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'Unable to create this customer right now.'),
+                                  backgroundColor: Colors.red));
+                        }
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Create customer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (created == true && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Customer created'),
+          content: const Text(
+              'The customer must activate via OTP or password recovery sent to their own verified contact. No credential was created or shown in this workspace.'),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done')),
+          ],
+        ),
+      );
+      await _load();
+    }
+    // showDialog resolves when Navigator.pop is called, before the route's
+    // closing transition has finished. Keep the form controllers alive until
+    // that transition is complete.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    name.dispose();
+    phone.dispose();
+    email.dispose();
+  }
+
+  Widget _dialogField(
+    TextEditingController controller,
+    String label, {
+    TextInputType? keyboard,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: TextFormField(
+          controller: controller,
+          keyboardType: keyboard,
+          validator: (String? value) {
+            if (value == null || value.trim().isEmpty) return 'Required';
+            return null;
+          },
+          decoration: InputDecoration(labelText: label),
+        ),
+      );
+
+  Future<void> _showCustomerDetail(Map<String, dynamic> customer) async {
+    final String id = _id(customer);
+    Map<String, dynamic> detail = customer;
+    if (id.isNotEmpty) {
+      try {
+        final Map<String, dynamic> response = await _api.getCustomer(id: id);
+        detail = _map(response['customer'] ?? response['data'])
+          ..addAll(<String, dynamic>{
+            if (_map(response['customer'] ?? response['data']).isEmpty)
+              ...customer
+          });
+      } on BusinessPartnerApiException catch (error) {
+        _notice(error.message, error: true);
+      } catch (_) {
+        _notice('Unable to load customer details.', error: true);
+      }
+    }
+    if (!mounted) return;
+    final Map<String, dynamic> kyc = _map(detail['kyc']);
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(_text(detail['fullName'], 'Customer')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _detail(const _Detail('ServicePay account',
+                  'Available in your authorized workspace')),
+              _detail(_Detail('Phone', _text(detail['phone'], 'Protected'))),
+              _detail(_Detail('Email', _text(detail['email'], 'Protected'))),
+              _detail(_Detail('Status', _status(detail['status']))),
+              _detail(_Detail(
+                  'KYC',
+                  _status(kyc['status'] ??
+                      kyc['ninStatus'] ??
+                      detail['kycStatus']))),
+              _detail(_Detail('Wallet balance',
+                  _money(detail['walletBalance'] ?? detail['balance']))),
+              const SizedBox(height: 5),
+              const Text(
+                  'Wallet actions, PIN/password changes, impersonation and full KYC identifiers are not available to Business Partners.',
+                  style: TextStyle(color: _muted, fontSize: 11, height: 1.35)),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showTransactionDetail(Map<String, dynamic> transaction) async {
+    final String reference = _text(
+        transaction['reference'] ?? transaction['transactionReference'], '');
+    final String transactionId = _id(transaction);
+    Map<String, dynamic> detail = transaction;
+    if (transactionId.isNotEmpty) {
+      try {
+        final Map<String, dynamic> response =
+            await _api.getTransaction(id: transactionId);
+        final Map<String, dynamic> loaded =
+            _map(response['transaction'] ?? response['data']);
+        if (loaded.isNotEmpty) detail = loaded;
+      } on BusinessPartnerApiException catch (error) {
+        _notice(error.message, error: true);
+      } catch (_) {
+        _notice('Unable to load transaction details.', error: true);
+      }
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Transaction details'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _detail(_Detail('Reference', reference)),
+              _detail(_Detail(
+                  'Customer',
+                  _text(
+                      detail['customerName'] ??
+                          _map(detail['customer'])['fullName'],
+                      'Customer'))),
+              _detail(_Detail(
+                  'Service',
+                  _text(
+                      detail['service'] ?? detail['serviceType'], 'Service'))),
+              _detail(_Detail('Amount', _money(detail['amount']))),
+              _detail(_Detail('Status', _status(detail['status']))),
+              _detail(_Detail('Date', _date(detail['createdAt']))),
+              _detail(_Detail(
+                  'Partner commission',
+                  _money(detail['partnerCommission'] ??
+                      detail['commissionAmount']))),
+              const SizedBox(height: 5),
+              const Text(
+                  'Provider credentials and unnecessary payment data are not displayed.',
+                  style: TextStyle(color: _muted, fontSize: 11)),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close')),
+        ],
+      ),
+    );
   }
 
   void _notice(String message, {bool error = false}) {

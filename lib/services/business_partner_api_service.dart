@@ -86,6 +86,92 @@ class BusinessPartnerApiService {
   Future<Map<String, dynamic>> customers({Map<String, String>? filters}) =>
       get('/customers', query: filters);
 
+  /// Registers a customer in the authenticated partner's network.
+  ///
+  /// The partner scope and acting user are derived by the server from the
+  /// authenticated session. An optional owned officer id records acquisition
+  /// attribution; the server remains responsible for validating that scope.
+  Future<Map<String, dynamic>> createCustomer({
+    required String fullName,
+    required String phone,
+    required String email,
+    String? officerId,
+  }) =>
+      post('/customers', <String, dynamic>{
+        'fullName': fullName.trim(),
+        'phone': phone.trim(),
+        'email': email.trim(),
+        if (officerId != null && officerId.trim().isNotEmpty)
+          'officerId': officerId.trim(),
+      });
+
+  /// Loads one customer in the authenticated partner's scope.
+  Future<Map<String, dynamic>> customer({
+    required String id,
+  }) =>
+      get('/customers/${Uri.encodeComponent(id)}');
+
+  /// Alias used by detail screens without exposing a second route contract.
+  Future<Map<String, dynamic>> getCustomer({
+    required String id,
+  }) =>
+      customer(id: id);
+
+  /// Loads transactions for one customer.  The server remains responsible for
+  /// object-level partner ownership checks and sensitive-field projection.
+  Future<Map<String, dynamic>> customerTransactions({
+    required String customerId,
+    Map<String, String>? filters,
+  }) =>
+      get('/customers/${Uri.encodeComponent(customerId)}/transactions',
+          query: filters);
+
+  /// Lists transactions visible to this partner, with optional pagination and
+  /// status/service/date/search filters.
+  Future<Map<String, dynamic>> transactions({
+    Map<String, String>? filters,
+  }) =>
+      get('/transactions', query: filters);
+
+  /// Loads one transaction by its server-side transaction id.  The detail
+  /// route does not accept the human-readable reference.
+  ///
+  /// [reference] remains a source-compatible alias for older callers; it is
+  /// still sent as the route identifier and is not used as a search query.
+  Future<Map<String, dynamic>> transaction({
+    String? id,
+    String? reference,
+  }) {
+    final String identifier = (id ?? reference ?? '').trim();
+    if (identifier.isEmpty) {
+      return Future<Map<String, dynamic>>.error(
+        const BusinessPartnerApiException('A transaction id is required.'),
+      );
+    }
+    return get('/transactions/${Uri.encodeComponent(identifier)}');
+  }
+
+  Future<Map<String, dynamic>> getTransaction({
+    String? id,
+    String? reference,
+  }) =>
+      transaction(id: id, reference: reference);
+
+  /// Commission wallet is read-only for Business Partners.  No wallet
+  /// mutation or withdrawal method is intentionally exposed by this client.
+  Future<Map<String, dynamic>> commissionWallet({
+    Map<String, String>? filters,
+  }) =>
+      get('/commission-wallet', query: filters);
+
+  Future<Map<String, dynamic>> commissionHistory({
+    Map<String, String>? filters,
+  }) =>
+      get('/commission-history', query: filters);
+
+  Future<Map<String, dynamic>> targets({Map<String, String>? filters}) =>
+      get('/targets', query: filters);
+
   /// The applications response has the server-scoped `solar` and `phone`
   /// collections; the dashboard presents each collection independently.
   Future<Map<String, dynamic>> applications({Map<String, String>? filters}) =>

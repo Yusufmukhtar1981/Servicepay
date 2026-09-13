@@ -19,6 +19,21 @@ class _DashboardApi extends BusinessPartnerApiService {
           'activeCustomers': 264,
           'salesValue': 8750000,
           'pendingApplications': 12,
+          'transactionChart': <Map<String, dynamic>>[
+            <String, dynamic>{'label': 'W1', 'value': 4},
+            <String, dynamic>{'label': 'W2', 'value': 9},
+          ],
+          'commissionChart': <Map<String, dynamic>>[
+            <String, dynamic>{'label': 'W1', 'value': 1200},
+            <String, dynamic>{'label': 'W2', 'value': 2400},
+          ],
+          'topPerformingOfficers': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'fullName': 'Amina Bello',
+              'transactions': 8,
+              'commission': 15000,
+            },
+          ],
         },
       };
 
@@ -45,6 +60,18 @@ class _DashboardApi extends BusinessPartnerApiService {
   Future<Map<String, dynamic>> customers(
           {Map<String, String>? filters}) async =>
       <String, dynamic>{'customers': <Map<String, dynamic>>[]};
+
+  @override
+  Future<Map<String, dynamic>> createCustomer({
+    required String fullName,
+    required String phone,
+    required String email,
+    String? officerId,
+  }) async =>
+      <String, dynamic>{
+        'success': true,
+        'customer': <String, dynamic>{'id': 'customer-1', 'fullName': fullName},
+      };
 
   @override
   Future<Map<String, dynamic>> applications(
@@ -79,6 +106,38 @@ class _DashboardApi extends BusinessPartnerApiService {
   Future<Map<String, dynamic>> commission(
           {Map<String, String>? filters}) async =>
       <String, dynamic>{'commissions': <Map<String, dynamic>>[]};
+
+  @override
+  Future<Map<String, dynamic>> commissionWallet(
+          {Map<String, String>? filters}) async =>
+      <String, dynamic>{
+        'wallet': <String, dynamic>{
+          'available': 12500,
+          'pending': 3000,
+          'paid': 9000,
+          'lifetime': 24500,
+        },
+        'ledger': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'commissionType': 'PERFORMANCE_BONUS',
+            'amount': 1200,
+            'status': 'PAID',
+            'createdAt': '2026-01-01T00:00:00Z',
+          },
+          <String, dynamic>{
+            'commissionType': 'CAMPAIGN_BONUS',
+            'amount': 800,
+            'status': 'PENDING',
+            'createdAt': '2026-01-02T00:00:00Z',
+          },
+        ],
+        'pagination': <String, dynamic>{
+          'page': 1,
+          'limit': 25,
+          'total': 2,
+          'pages': 1
+        },
+      };
 
   @override
   Future<Map<String, dynamic>> performance(
@@ -279,5 +338,96 @@ void main() {
     expect(preferences.getString('business_partner_id'), isNull);
     expect(
         tester.state<NavigatorState>(find.byType(Navigator)).canPop(), isFalse);
+  });
+
+  testWidgets('keeps create-customer quick action usable at 360 and 390 pixels',
+      (WidgetTester tester) async {
+    for (final Size size in <Size>[
+      const Size(360, 800),
+      const Size(390, 844),
+    ]) {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(_screen());
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      await tester.scrollUntilVisible(find.text('Create Customer'), 400,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      final Finder action = find.text('Create Customer');
+      expect(action, findsOneWidget);
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(find.text('Create ServicePay customer'), findsOneWidget);
+      expect(find.textContaining('OTP or password recovery'), findsOneWidget);
+      expect(find.text('Temporary password'), findsNothing);
+      expect(find.text('Confirm password'), findsNothing);
+      expect(find.textContaining('must change'), findsNothing);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    }
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+
+  testWidgets('onboarding confirms customer-owned activation after creation',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_screen());
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Create Customer'), 400,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Create Customer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Temporary password'), findsNothing);
+    expect(find.text('Confirm password'), findsNothing);
+    final Finder fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'Ada Lovelace');
+    await tester.enterText(fields.at(1), '08012345678');
+    await tester.enterText(fields.at(2), 'ada@example.com');
+    await tester.tap(find.byKey(const Key('business-partner-save-customer')));
+    await tester.pumpAndSettle();
+
+    expect(
+        find.textContaining(
+            'must activate via OTP or password recovery sent to their own verified contact'),
+        findsOneWidget);
+    expect(find.textContaining('password:'), findsNothing);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('wallet labels and filters earned bonus ledger types',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_screen());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open menu'));
+    await tester.pumpAndSettle();
+    final Finder walletAction = find.text('Commission Wallet').last;
+    await tester.ensureVisible(walletAction);
+    await tester.tap(walletAction);
+    await tester.pumpAndSettle();
+
+    expect(find.text('PERFORMANCE_BONUS'), findsWidgets);
+    expect(find.text('CAMPAIGN_BONUS'), findsWidgets);
+    await tester.tap(find.text('Bonus type: ALL'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bonus type: PERFORMANCE_BONUS'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('PERFORMANCE_BONUS'), findsWidgets);
+    expect(find.text('CAMPAIGN_BONUS'), findsNothing);
   });
 }
