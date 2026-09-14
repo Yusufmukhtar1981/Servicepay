@@ -6,6 +6,16 @@
   <meta name="description" content="Request deletion of your ServicePay account or specific personal data.">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="canonical" href="https://servicepay.ng/delete-account">
+  <meta property="og:title" content="Delete Your ServicePay Account">
+  <meta property="og:description" content="Use the official ServicePay page to request account deletion or a personal data request.">
+  <meta property="og:url" content="https://servicepay.ng/delete-account">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://servicepay.ng/assets/assets/image/servicepay_logo.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Delete Your ServicePay Account">
+  <meta name="twitter:description" content="Use the official ServicePay page to request account deletion or a personal data request.">
+  <meta name="twitter:image" content="https://servicepay.ng/assets/assets/image/servicepay_logo.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"ServicePay","item":"https://servicepay.ng/"},{"@type":"ListItem","position":2,"name":"Delete account","item":"https://servicepay.ng/delete-account"}]}</script>
   <title>Delete Your ServicePay Account</title>
   <style>
     :root{--green:#08783e;--dark:#055c30;--ink:#26352d;--muted:#5d6b63;--bg:#f8faf9;--white:#fff;--line:#dfe9e3;--red:#b42318;--redbg:#fff2f0}
@@ -61,11 +71,11 @@
       <section class="card wide">
         <h2>What happens next</h2>
         <ol class="steps"><li>We create a unique reference ID and send confirmation to the email address you provide.</li><li>ServicePay Support verifies the request and may contact you through your registered details. We will never ask for your password, PIN or OTP.</li><li>Approved account deletion disables account access and removes or anonymizes eligible personal information.</li><li>We retain information required for legal, regulatory, financial, fraud-prevention, security, dispute-resolution and audit purposes. Transaction, wallet, payment, KYC and other evidence is not automatically deleted.</li></ol>
-        <p class="contact">Questions? Contact <a href="mailto:support@servicepay.ng">support@servicepay.ng</a>, <a href="mailto:admin@servicepay.ng">admin@servicepay.ng</a> or <a href="tel:+2349136151515">+2349136151515</a>. Read the <a href="/privacy-policy">Privacy Policy</a>.</p>
+        <p class="contact">Questions? Contact <a href="mailto:admin@servicepay.ng">admin@servicepay.ng</a>, or use the secondary public address <a href="mailto:support@servicepay.ng">support@servicepay.ng</a> or <a href="tel:+2349136151515">+2349136151515</a>. Read the <a href="/privacy-policy">Privacy Policy</a>.</p>
       </section>
     </div>
   </div></main>
-  <footer>© 2026 ServicePay. All rights reserved.</footer>
+  <footer>© 2026 ServicePay. All rights reserved. · <a href="/news/">News</a> · <a href="/contact/">Contact</a></footer>
   <script>
     const endpoint = (kind) => kind === 'deletion' ? 'https://api.servicepay.ng/api/privacy/account-deletion-requests' : 'https://api.servicepay.ng/api/privacy/data-requests';
     for (const form of document.querySelectorAll('form[data-form]')) {

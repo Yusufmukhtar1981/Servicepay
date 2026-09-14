@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /account
+Disallow: /account/
+Disallow: /auth
+Disallow: /auth/
+Disallow: /api
+Disallow: /api/
+Sitemap: https://servicepay.ng/sitemap.xml
