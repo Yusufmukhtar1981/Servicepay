@@ -2,9 +2,25 @@ const Announcement = require(
   "../models/announcement.model"
 );
 
+const legacySafeAnnouncement = (announcement) => ({
+  title: String(announcement?.title || ""),
+  message: String(announcement?.message || ""),
+  isActive: announcement?.isActive === true,
+});
+
 const getAnnouncement = async (req, res) => {
   try {
-    const announcement = await Announcement.findOne()
+    const now = new Date();
+    const announcement = await Announcement.findOne({
+      legacyEligible: { $ne: false },
+      isActive: true,
+      audience: { $in: ["ALL", null] },
+      $and: [
+        { $or: [{ startAt: null }, { startAt: { $lte: now } }, { startAt: { $exists: false } }] },
+        { $or: [{ endAt: null }, { endAt: { $gt: now } }, { endAt: { $exists: false } }] },
+      ],
+    })
+      .select("title message isActive")
       .sort({
         updatedAt: -1,
       })
@@ -14,11 +30,7 @@ const getAnnouncement = async (req, res) => {
       return res.status(200).json({
         success: true,
         data: {
-          announcement: {
-            title: "",
-            message: "",
-            isActive: false,
-          },
+          announcement: legacySafeAnnouncement(null),
         },
       });
     }
@@ -26,7 +38,7 @@ const getAnnouncement = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        announcement,
+        announcement: legacySafeAnnouncement(announcement),
       },
     });
   } catch (error) {
@@ -48,13 +60,9 @@ const updateAnnouncement = async (
   res
 ) => {
   try {
-    const title = String(
-      req.body.title || ""
-    ).trim();
+    const title = String(req.body.title || "").trim();
 
-    const message = String(
-      req.body.message || ""
-    ).trim();
+    const message = String(req.body.message || "").trim();
 
     const isActive =
       req.body.isActive === true ||
@@ -92,10 +100,12 @@ const updateAnnouncement = async (
       });
     }
 
-    let announcement =
-      await Announcement.findOne().sort({
-        updatedAt: -1,
-      });
+    let announcement = await Announcement.findOne({
+      $or: [
+        { legacyEligible: { $ne: false }, audience: { $exists: false } },
+        { legacyEligible: { $ne: false }, audience: "ALL", startAt: null, endAt: null },
+      ],
+    }).sort({ updatedAt: -1 });
 
     if (!announcement) {
       announcement = new Announcement();
@@ -104,6 +114,9 @@ const updateAnnouncement = async (
     announcement.title = title;
     announcement.message = message;
     announcement.isActive = isActive;
+    announcement.legacyEligible = true;
+    // The singular API deliberately cannot create or mutate targeting,
+    // scheduling, CTA, image, style, or metrics fields.
     announcement.updatedBy =
       req.user?._id || null;
 
@@ -115,7 +128,7 @@ const updateAnnouncement = async (
         ? "Announcement published successfully."
         : "Announcement disabled successfully.",
       data: {
-        announcement,
+        announcement: legacySafeAnnouncement(announcement),
       },
     });
   } catch (error) {

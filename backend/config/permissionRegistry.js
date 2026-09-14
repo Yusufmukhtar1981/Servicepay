@@ -118,6 +118,12 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("NOTIFICATIONS_CREATE", "notifications.create", "COMMUNICATIONS", "Create notifications", "Create targeted customer notifications.", "PRIVILEGED"),
   permission("NOTIFICATIONS_SEND", "notifications.send", "COMMUNICATIONS", "Send broadcasts", "Send notification or email broadcasts.", "CRITICAL"),
   permission("COMMUNICATIONS_VIEW", "communications.view", "COMMUNICATIONS", "View communications", "Open the Admin communications workspace."),
+  permission("ANNOUNCEMENTS_VIEW", "announcements.view", "COMMUNICATIONS", "View announcements", "View in-app announcements and delivery metrics."),
+  permission("ANNOUNCEMENTS_SUMMARY", "announcements.summary", "COMMUNICATIONS", "View announcement summary", "View aggregate in-app announcement metrics."),
+  permission("ANNOUNCEMENTS_CREATE", "announcements.create", "COMMUNICATIONS", "Create announcements", "Create in-app announcements.", "PRIVILEGED"),
+  permission("ANNOUNCEMENTS_UPDATE", "announcements.update", "COMMUNICATIONS", "Update announcements", "Edit in-app announcement content and targeting.", "PRIVILEGED"),
+  permission("ANNOUNCEMENTS_ACTIVATE", "announcements.activate", "COMMUNICATIONS", "Activate announcements", "Activate or deactivate scheduled in-app announcements.", "PRIVILEGED"),
+  permission("ANNOUNCEMENTS_DELETE", "announcements.delete", "COMMUNICATIONS", "Delete announcements", "Delete in-app announcements and their interaction state.", "CRITICAL"),
   permission("EMAIL_CAMPAIGN_CREATE", "email_campaign.create", "COMMUNICATIONS", "Create email campaigns", "Create and edit customer email drafts.", "PRIVILEGED"),
   permission("EMAIL_CAMPAIGN_SEND", "email_campaign.send", "COMMUNICATIONS", "Send email campaigns", "Send test email and confirmed customer email campaigns.", "CRITICAL"),
   permission("EMAIL_CAMPAIGN_HISTORY_VIEW", "email_campaign.history_view", "COMMUNICATIONS", "View email campaign history", "View customer email campaign status and safe delivery results."),
@@ -174,6 +180,12 @@ const permissionByKey = new Map(
 const permissionByValue = new Set(STAFF_PERMISSION_VALUES);
 
 const STAFF_PERMISSION_ALIASES = Object.freeze({
+  "announcement.view": STAFF_PERMISSIONS.ANNOUNCEMENTS_VIEW,
+  "announcement.summary": STAFF_PERMISSIONS.ANNOUNCEMENTS_SUMMARY,
+  "announcement.create": STAFF_PERMISSIONS.ANNOUNCEMENTS_CREATE,
+  "announcement.update": STAFF_PERMISSIONS.ANNOUNCEMENTS_UPDATE,
+  "announcement.activate": STAFF_PERMISSIONS.ANNOUNCEMENTS_ACTIVATE,
+  "announcement.delete": STAFF_PERMISSIONS.ANNOUNCEMENTS_DELETE,
   "role.view": STAFF_PERMISSIONS.ROLES_VIEW,
   "role.create": STAFF_PERMISSIONS.ROLES_CREATE,
   "role.update": STAFF_PERMISSIONS.ROLES_UPDATE,

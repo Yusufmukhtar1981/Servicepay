@@ -96,6 +96,9 @@ const manualFundingRoutes = require(
 const announcementRoutes = require(
   "./routes/announcement.routes"
 );
+const announcementsRoutes = require(
+  "./routes/announcements.routes"
+);
 
 const transactionRoutes = require(
   "./routes/transaction.routes"
@@ -285,6 +288,10 @@ app.use(
 app.use(
   "/api/announcement",
   announcementRoutes
+);
+app.use(
+  "/api/announcements",
+  announcementsRoutes
 );
 
 app.use(

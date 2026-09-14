@@ -49,6 +49,9 @@ const protect = async (req, res, next) => {
       token,
       process.env.JWT_SECRET
     );
+    req.authTokenIssuedAt =
+      decoded.jti ||
+      (decoded.iat ? String(decoded.iat) : null);
 
     const userId =
       decoded.id ||
