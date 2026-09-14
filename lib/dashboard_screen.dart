@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -58,6 +59,8 @@ import 'voice_call_screen.dart';
 import 'organizations/organizations_screen.dart';
 import 'servicepay_theme.dart';
 import 'services/customer_feature_config_service.dart';
+import 'services/announcement_service.dart';
+import 'widgets/announcement_widgets.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -108,6 +111,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       <_DashboardServiceStatus>[];
   CustomerFeatureConfiguration featureConfiguration =
       CustomerFeatureConfigurationService.defaults();
+  List<ServicePayAnnouncement> announcements = <ServicePayAnnouncement>[];
+  AnnouncementService? _announcementService;
 
   Map<String, bool> serviceAvailability = <String, bool>{
     'kekeNapep': true,
@@ -255,6 +260,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         _loadActiveServiceStatuses(token),
       ]);
       receivedFreshWalletBalance = results.first == true;
+      // Announcements are deliberately non-blocking: dashboard data remains
+      // usable if the campaign service is slow or unavailable.
+      unawaited(_loadAnnouncements(token));
     } catch (_) {
       // Keep locally saved dashboard values.
     } finally {
@@ -267,6 +275,23 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return receivedFreshWalletBalance;
+  }
+
+  Future<void> _loadAnnouncements(String token) async {
+    final AnnouncementService service = AnnouncementService(
+      client: _client,
+      token: token,
+      baseUrl: baseUrl,
+    );
+    _announcementService = service;
+    try {
+      final List<ServicePayAnnouncement> loaded = await service.fetchActive();
+      if (mounted) {
+        setState(() => announcements = loaded);
+      }
+    } catch (_) {
+      // Campaign delivery must never interrupt dashboard usage.
+    }
   }
 
   Future<bool> _loadWalletBalance(
@@ -5130,6 +5155,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 18),
                   buildTopQuickTools(),
                   const SizedBox(height: 16),
+                  if (_announcementService != null && announcements.isNotEmpty)
+                    AnnouncementSurface(
+                      announcements: announcements,
+                      service: _announcementService!,
+                    ),
                   if (isLoading)
                     const LinearProgressIndicator(
                       color: primaryGreen,
