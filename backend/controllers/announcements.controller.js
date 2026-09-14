@@ -31,9 +31,8 @@ const REFUND_MARKER_MAX_DEPTH = 12;
 const MAX_CAMPAIGN_KOBO = Number.MAX_SAFE_INTEGER;
 const MAX_CAMPAIGN_AMOUNT = MAX_CAMPAIGN_KOBO / 100;
 
-// Keep the customer and admin paths on one bounded predicate. The same
-// function body is executed by MongoDB for aggregation/find queries and by
-// Node only as a defensive check after a customer query.
+// Keep the customer and admin paths on one bounded predicate. Both paths
+// apply this bounded helper in Node after a tier-compatible Mongo query.
 const refundMarkerBody = function refundMarkerBody(value, key, depth, maxDepth) {
   key = key || "";
   depth = depth || 0;
@@ -54,7 +53,6 @@ const refundMarkerBody = function refundMarkerBody(value, key, depth, maxDepth) 
   }
   return false;
 };
-const REFUND_MARKER_FUNCTION = refundMarkerBody.toString();
 
 const asUpper = (value) => String(value || "").trim().toUpperCase();
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
@@ -309,21 +307,9 @@ const campaignPeriod = (announcement) => ({
   end: announcement.eligibilityEndAt || announcement.endAt || null,
 });
 
-const trustedTransactionExpression = () => ({
+const trustedTransactionAmountExpression = () => ({
   $expr: {
     $and: [
-      {
-        $eq: [
-          {
-            $function: {
-              body: REFUND_MARKER_FUNCTION,
-              args: ["$providerResponse", "", 0, REFUND_MARKER_MAX_DEPTH],
-              lang: "js",
-            },
-          },
-          false,
-        ],
-      },
       {
         $cond: [
           { $isNumber: "$amount" },
@@ -352,7 +338,7 @@ const trustedEligibleTransactionTypes = (announcement) => [
     .filter((type) => ELIGIBLE_TRANSACTION_TYPES.includes(type) && !EXCLUDED_TRANSACTION_TYPES.has(type))),
 ];
 
-const trackingTransactionMatch = (announcement, customerId) => {
+const trackingTransactionMatch = (announcement, customerId, excludedTransactionIds = []) => {
   const period = campaignPeriod(announcement);
   const match = {
     ...(customerId === undefined ? {} : { customerId }),
@@ -362,9 +348,10 @@ const trackingTransactionMatch = (announcement, customerId) => {
       { $or: [{ reversalTransactionId: null }, { reversalTransactionId: { $exists: false } }] },
       { $or: [{ reversedTransactionId: null }, { reversedTransactionId: { $exists: false } }] },
       { $or: [{ reversalReference: "" }, { reversalReference: null }, { reversalReference: { $exists: false } }] },
-      trustedTransactionExpression(),
+      trustedTransactionAmountExpression(),
     ],
   };
+  if (excludedTransactionIds.length) match._id = { $nin: excludedTransactionIds };
   if (period.start) match.createdAt = { ...(match.createdAt || {}), $gte: period.start };
   if (period.end) match.createdAt = { ...(match.createdAt || {}), $lt: period.end };
   return match;
@@ -788,8 +775,18 @@ const participantRows = async (announcement, query = {}) => {
       { email: { $regex: safeSearch, $options: "i" } },
     ];
   }
+  // Atlas tiers without server-side JavaScript still need the same bounded,
+  // recursive provider marker semantics as customer progress. Read only the
+  // candidate IDs and provider payloads, then keep all aggregation work
+  // (grouping, filtering, sorting, and pagination) in MongoDB.
+  const candidateTransactions = await Transaction.find(trackingTransactionMatch(announcement))
+    .select("_id providerResponse")
+    .lean();
+  const excludedTransactionIds = candidateTransactions
+    .filter((transaction) => containsRefundOrReversalMarker(transaction.providerResponse))
+    .map((transaction) => transaction._id);
   const pipeline = [
-    { $match: trackingTransactionMatch(announcement) },
+    { $match: trackingTransactionMatch(announcement, undefined, excludedTransactionIds) },
     {
       $set: {
         // Decimal128 plus $round implements exact half-even kobo rounding.

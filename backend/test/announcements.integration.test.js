@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
@@ -759,6 +760,11 @@ test("campaign allowlist accepts genuine model types and rejects excluded intern
 });
 
 test("campaign progress excludes unsuccessful, reversed, refunded, and pre-period transactions", async () => {
+  const controllerSource = fs.readFileSync(
+    require.resolve("../controllers/announcements.controller"),
+    "utf8",
+  );
+  assert.doesNotMatch(controllerSource, /\$function/);
   const customer = await makeUser();
   const start = new Date(Date.now() - 60 * 60 * 1000);
   const created = await api({
