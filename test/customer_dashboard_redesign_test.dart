@@ -6,9 +6,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:servicepay_app/dashboard_screen.dart';
 import 'package:servicepay_app/main_navigation.dart';
+import 'package:servicepay_app/services/announcement_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  ServicePayAnnouncement announcement({
+    required String id,
+    required String style,
+    required String visibility,
+  }) =>
+      ServicePayAnnouncement(
+        id: id,
+        title: id,
+        message: 'Campaign',
+        type: 'INFO',
+        displayStyle: style,
+        priority: 0,
+        visibility: visibility,
+        mandatory: visibility == 'MANDATORY',
+      );
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{
@@ -16,6 +33,38 @@ void main() {
       'user_role': 'CUSTOMER',
       'wallet_balance': 24500.0,
     });
+  });
+
+  test('retains a popup-completed mandatory BOTH banner after refresh', () {
+    final ServicePayAnnouncement item = announcement(
+      id: 'mandatory-both',
+      style: 'BOTH',
+      visibility: 'MANDATORY',
+    );
+    final List<ServicePayAnnouncement> merged = mergeAnnouncementSessionState(
+      loaded: const <ServicePayAnnouncement>[],
+      current: <ServicePayAnnouncement>[item],
+      popupCompletedBanners: <String, ServicePayAnnouncement>{item.id: item},
+      hiddenBannerIds: const <String>{},
+    );
+
+    expect(merged.map((value) => value.id), <String>['mandatory-both']);
+  });
+
+  test('does not restore a dismissed EVERY_LOGIN banner after refresh', () {
+    final ServicePayAnnouncement item = announcement(
+      id: 'dismissed-banner',
+      style: 'BANNER',
+      visibility: 'EVERY_LOGIN',
+    );
+    final List<ServicePayAnnouncement> merged = mergeAnnouncementSessionState(
+      loaded: <ServicePayAnnouncement>[item],
+      current: <ServicePayAnnouncement>[item],
+      popupCompletedBanners: const <String, ServicePayAnnouncement>{},
+      hiddenBannerIds: <String>{item.id},
+    );
+
+    expect(merged, isEmpty);
   });
 
   testWidgets('shows the premium customer dashboard essentials',

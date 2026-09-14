@@ -62,6 +62,33 @@ import 'services/customer_feature_config_service.dart';
 import 'services/announcement_service.dart';
 import 'widgets/announcement_widgets.dart';
 
+List<ServicePayAnnouncement> mergeAnnouncementSessionState({
+  required List<ServicePayAnnouncement> loaded,
+  required List<ServicePayAnnouncement> current,
+  required Map<String, ServicePayAnnouncement> popupCompletedBanners,
+  required Set<String> hiddenBannerIds,
+}) {
+  final List<ServicePayAnnouncement> visibleLoaded =
+      loaded.where((item) => !hiddenBannerIds.contains(item.id)).toList();
+  final Set<String> loadedIds = visibleLoaded.map((item) => item.id).toSet();
+  final Map<String, ServicePayAnnouncement> retained =
+      <String, ServicePayAnnouncement>{
+    for (final item in current)
+      if (item.isBanner &&
+          item.visibility == 'every_login' &&
+          !hiddenBannerIds.contains(item.id) &&
+          !loadedIds.contains(item.id))
+        item.id: item,
+    for (final item in popupCompletedBanners.values)
+      if (!hiddenBannerIds.contains(item.id) && !loadedIds.contains(item.id))
+        item.id: item,
+  };
+  return <ServicePayAnnouncement>[
+    ...visibleLoaded,
+    ...retained.values,
+  ];
+}
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
@@ -113,6 +140,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       CustomerFeatureConfigurationService.defaults();
   List<ServicePayAnnouncement> announcements = <ServicePayAnnouncement>[];
   AnnouncementService? _announcementService;
+  final Map<String, ServicePayAnnouncement> _sessionPopupCompletedBanners =
+      <String, ServicePayAnnouncement>{};
+  final Set<String> _sessionHiddenBannerIds = <String>{};
 
   Map<String, bool> serviceAvailability = <String, bool>{
     'kekeNapep': true,
@@ -287,7 +317,17 @@ class _DashboardScreenState extends State<DashboardScreen>
     try {
       final List<ServicePayAnnouncement> loaded = await service.fetchActive();
       if (mounted) {
-        setState(() => announcements = loaded);
+        setState(() {
+          // The backend intentionally returns EVERY_LOGIN announcements once
+          // per login token. Popup-completed BOTH banners are also retained
+          // independently, unless the customer explicitly removed the banner.
+          announcements = mergeAnnouncementSessionState(
+            loaded: loaded,
+            current: announcements,
+            popupCompletedBanners: _sessionPopupCompletedBanners,
+            hiddenBannerIds: _sessionHiddenBannerIds,
+          );
+        });
       }
     } catch (_) {
       // Campaign delivery must never interrupt dashboard usage.
@@ -5159,6 +5199,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                     AnnouncementSurface(
                       announcements: announcements,
                       service: _announcementService!,
+                      onPopupCompleted: (item) {
+                        _sessionPopupCompletedBanners[item.id] = item;
+                      },
+                      onBannerRemoved: (item) {
+                        setState(() {
+                          _sessionHiddenBannerIds.add(item.id);
+                          _sessionPopupCompletedBanners.remove(item.id);
+                          announcements = announcements
+                              .where((value) => value.id != item.id)
+                              .toList();
+                        });
+                      },
                     ),
                   if (isLoading)
                     const LinearProgressIndicator(

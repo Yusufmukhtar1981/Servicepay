@@ -683,10 +683,14 @@ class AnnouncementSurface extends StatefulWidget {
     super.key,
     required this.announcements,
     required this.service,
+    this.onPopupCompleted,
+    this.onBannerRemoved,
   });
 
   final List<ServicePayAnnouncement> announcements;
   final AnnouncementService service;
+  final ValueChanged<ServicePayAnnouncement>? onPopupCompleted;
+  final ValueChanged<ServicePayAnnouncement>? onBannerRemoved;
 
   @override
   State<AnnouncementSurface> createState() => _AnnouncementSurfaceState();
@@ -696,7 +700,14 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
   late List<ServicePayAnnouncement> _items = widget.announcements;
   String? _activePopupId;
   final Set<String> _completedPopupIds = <String>{};
+  final Set<String> _reportedPopupCompletionIds = <String>{};
   final Set<String> _viewedIds = <String>{};
+
+  void _reportPopupCompleted(ServicePayAnnouncement item) {
+    if (item.isBanner && _reportedPopupCompletionIds.add(item.id)) {
+      widget.onPopupCompleted?.call(item);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -740,16 +751,23 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
         barrierDismissible: popup.canDismiss,
         builder: (_) => AnnouncementPopup(
           announcement: popup,
-          onDismiss: () => _dismiss(popup),
-          onAcknowledge: () => unawaited(_acknowledge(popup)),
-          onAction: () => unawaited(_action(popup)),
+          onDismiss: () => _dismissPopup(popup),
+          onAcknowledge: () => unawaited(_acknowledgePopup(popup)),
+          onAction: () => unawaited(_action(popup, fromPopup: true)),
         ),
       ).then((_) {
-        if (!mounted || _activePopupId != popup.id) return;
-        _activePopupId = null;
-        if (popup.canDismiss && _items.any((item) => item.id == popup.id)) {
-          _removeLocal(popup);
-          unawaited(widget.service.dismiss(popup.id));
+        if (!mounted) return;
+        if (_activePopupId == popup.id) {
+          _activePopupId = null;
+        }
+        // A barrier dismissal completes only the popup surface. A BOTH
+        // announcement must remain available to its dashboard banner.
+        if (popup.canDismiss && _completedPopupIds.add(popup.id)) {
+          _reportPopupCompleted(popup);
+          if (!popup.isBanner) {
+            _removeLocal(popup);
+            unawaited(widget.service.dismiss(popup.id));
+          }
         }
         _schedulePopup();
       });
@@ -774,17 +792,28 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
     _schedulePopup();
   }
 
-  void _dismiss(ServicePayAnnouncement item) {
+  void _dismissPopup(ServicePayAnnouncement item) {
     _completedPopupIds.add(item.id);
+    _reportPopupCompleted(item);
     if (_activePopupId == item.id) {
-      _activePopupId = null;
       Navigator.of(context).pop();
     }
+    // "Got it" acknowledges the popup presentation only. Persisting a
+    // campaign dismissal here would also suppress the banner for BOTH.
+    if (!item.isBanner) {
+      _removeLocal(item);
+      unawaited(widget.service.dismiss(item.id));
+    }
+  }
+
+  void _dismissBanner(ServicePayAnnouncement item) {
+    _completedPopupIds.add(item.id);
+    widget.onBannerRemoved?.call(item);
     _remove(item);
     unawaited(widget.service.dismiss(item.id));
   }
 
-  Future<void> _acknowledge(ServicePayAnnouncement item) async {
+  Future<void> _acknowledgePopup(ServicePayAnnouncement item) async {
     final bool recorded = await widget.service.acknowledge(item.id);
     if (!mounted) return;
     if (!recorded) {
@@ -798,14 +827,37 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
       return;
     }
     _completedPopupIds.add(item.id);
+    _reportPopupCompleted(item);
     if (_activePopupId == item.id) {
-      _activePopupId = null;
       Navigator.of(context).pop();
     }
+    if (!item.isBanner) {
+      _removeLocal(item);
+    }
+  }
+
+  Future<void> _acknowledgeBanner(ServicePayAnnouncement item) async {
+    final bool recorded = await widget.service.acknowledge(item.id);
+    if (!mounted) return;
+    if (!recorded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Acknowledgment could not be recorded. Please try again.',
+          ),
+        ),
+      );
+      return;
+    }
+    _completedPopupIds.add(item.id);
+    widget.onBannerRemoved?.call(item);
     _remove(item);
   }
 
-  Future<void> _action(ServicePayAnnouncement item) async {
+  Future<void> _action(
+    ServicePayAnnouncement item, {
+    bool fromPopup = false,
+  }) async {
     // The CTA is not launched until the interaction has been sent. A failed
     // analytics request must still not strand the customer.
     try {
@@ -814,11 +866,16 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
       // Navigation remains safe and available when telemetry is unavailable.
     }
     if (!mounted) return;
-    if (item.isPopup && !item.mandatory && Navigator.of(context).canPop()) {
+    if (fromPopup &&
+        item.isPopup &&
+        !item.mandatory &&
+        Navigator.of(context).canPop()) {
       _completedPopupIds.add(item.id);
-      _activePopupId = null;
+      _reportPopupCompleted(item);
       Navigator.of(context).pop();
-      _remove(item);
+      if (!item.isBanner) {
+        _removeLocal(item);
+      }
     }
     await launchAnnouncementAction(context, item);
   }
@@ -838,8 +895,8 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
           : <Widget>[
               AnnouncementPromotionCarousel(
                 announcements: banners,
-                onDismiss: _dismiss,
-                onAcknowledge: (item) => unawaited(_acknowledge(item)),
+                onDismiss: _dismissBanner,
+                onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
                 onAction: (item) => unawaited(_action(item)),
               ),
             ],

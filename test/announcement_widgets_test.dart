@@ -281,6 +281,126 @@ void main() {
     expect(find.text('Higher priority'), findsNothing);
   });
 
+  testWidgets('BOTH popup dismissal keeps its banner visible', (tester) async {
+    final paths = <String>[];
+    final completed = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AnnouncementSurface(
+          announcements: [
+            item(
+              id: 'both-promo',
+              title: 'Smartphone reward promo',
+              style: 'BOTH',
+            ),
+          ],
+          service: AnnouncementService(
+            client: MockClient((request) async {
+              paths.add(request.url.path);
+              return http.Response('{}', 204);
+            }),
+            baseUrl: 'https://example.test/api',
+            token: 'token',
+          ),
+          onPopupCompleted: (value) => completed.add(value.id),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.text('Got it'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Smartphone reward promo'), findsOneWidget);
+    expect(completed, <String>['both-promo']);
+    expect(paths, isNot(contains('/api/announcements/both-promo/dismiss')));
+  });
+
+  testWidgets('BOTH popup acknowledgment keeps its banner visible',
+      (tester) async {
+    final paths = <String>[];
+    final completed = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AnnouncementSurface(
+          announcements: [
+            item(
+              id: 'mandatory-both',
+              title: 'Required account update',
+              style: 'BOTH',
+              visibility: 'MANDATORY',
+              mandatory: true,
+            ),
+          ],
+          service: AnnouncementService(
+            client: MockClient((request) async {
+              paths.add(request.url.path);
+              return http.Response('{}', 204);
+            }),
+            baseUrl: 'https://example.test/api',
+            token: 'token',
+          ),
+          onPopupCompleted: (value) => completed.add(value.id),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.text('Acknowledge').last);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Required account update'), findsOneWidget);
+    expect(completed, <String>['mandatory-both']);
+    expect(
+      paths,
+      contains('/api/announcements/mandatory-both/acknowledge'),
+    );
+  });
+
+  testWidgets('explicit banner dismissal is reported to the parent',
+      (tester) async {
+    final removed = <String>[];
+    final paths = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AnnouncementSurface(
+          announcements: [
+            item(
+              id: 'every-login-banner',
+              style: 'BANNER',
+              visibility: 'EVERY_LOGIN',
+            ),
+          ],
+          service: AnnouncementService(
+            client: MockClient((request) async {
+              paths.add(request.url.path);
+              return http.Response('{}', 204);
+            }),
+            baseUrl: 'https://example.test/api',
+            token: 'token',
+          ),
+          onBannerRemoved: (value) => removed.add(value.id),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.byTooltip('Dismiss announcement'));
+    await tester.pump();
+
+    expect(removed, <String>['every-login-banner']);
+    expect(
+      paths,
+      contains('/api/announcements/every-login-banner/dismiss'),
+    );
+    expect(find.text('Service update'), findsNothing);
+  });
+
   testWidgets('CTA records click and rejects unsafe in-app action',
       (tester) async {
     final paths = <String>[];
