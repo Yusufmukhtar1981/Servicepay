@@ -60,6 +60,7 @@ import 'organizations/organizations_screen.dart';
 import 'servicepay_theme.dart';
 import 'services/customer_feature_config_service.dart';
 import 'services/announcement_service.dart';
+import 'services/reward_progress_service.dart';
 import 'widgets/announcement_widgets.dart';
 
 List<ServicePayAnnouncement> mergeAnnouncementSessionState({
@@ -140,6 +141,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       CustomerFeatureConfigurationService.defaults();
   List<ServicePayAnnouncement> announcements = <ServicePayAnnouncement>[];
   AnnouncementService? _announcementService;
+  RewardProgressService? _rewardProgressService;
   final Map<String, ServicePayAnnouncement> _sessionPopupCompletedBanners =
       <String, ServicePayAnnouncement>{};
   final Set<String> _sessionHiddenBannerIds = <String>{};
@@ -314,6 +316,11 @@ class _DashboardScreenState extends State<DashboardScreen>
       baseUrl: baseUrl,
     );
     _announcementService = service;
+    _rewardProgressService = RewardProgressService(
+      client: _client,
+      token: token,
+      baseUrl: baseUrl,
+    );
     try {
       final List<ServicePayAnnouncement> loaded = await service.fetchActive();
       if (mounted) {
@@ -5199,6 +5206,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     AnnouncementSurface(
                       announcements: announcements,
                       service: _announcementService!,
+                      rewardProgressService: _rewardProgressService,
                       onPopupCompleted: (item) {
                         _sessionPopupCompletedBanners[item.id] = item;
                       },

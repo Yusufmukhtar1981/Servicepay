@@ -32,6 +32,12 @@ void main() {
       'startAt': '2027-01-01T00:00:00Z',
       'endAt': '2027-02-01T00:00:00Z',
       'createdAt': '2026-12-20T12:00:00Z',
+       'campaignTrackingEnabled': true,
+       'requirements': {
+         'qualifyingTransactionCount': 100,
+         'qualifyingTransactionValue': 250000,
+       },
+       'rewardDescription': 'Smart Android Phone',
       'cta': {'label': 'Review', 'url': 'https://servicepay.ng/review'},
     });
     expect(item.isPopup, isTrue);
@@ -42,6 +48,9 @@ void main() {
     expect(item.startsAt, isNotNull);
     expect(item.endsAt, isNotNull);
     expect(item.createdAt, DateTime.parse('2026-12-20T12:00:00Z'));
+    expect(item.campaignTrackingEnabled, isTrue);
+    expect(item.requirements?['qualifyingTransactionCount'], 100);
+    expect(item.rewardDescription, 'Smart Android Phone');
   });
 
   test('posts each interaction to the planned endpoint', () async {

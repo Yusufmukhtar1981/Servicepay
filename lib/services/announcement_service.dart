@@ -21,6 +21,9 @@ class ServicePayAnnouncement {
     this.acknowledged = false,
     this.dismissed = false,
     this.clicked = false,
+    this.campaignTrackingEnabled = false,
+    this.requirements,
+    this.rewardDescription,
   });
 
   final String id;
@@ -40,6 +43,9 @@ class ServicePayAnnouncement {
   final bool acknowledged;
   final bool dismissed;
   final bool clicked;
+  final bool campaignTrackingEnabled;
+  final Map<String, dynamic>? requirements;
+  final String? rewardDescription;
 
   bool get isPopup => displayStyle == 'POPUP' || displayStyle == 'BOTH';
   bool get isBanner => displayStyle == 'BANNER' || displayStyle == 'BOTH';
@@ -53,6 +59,21 @@ class ServicePayAnnouncement {
     DateTime? date(dynamic value) =>
         value == null ? null : DateTime.tryParse(value.toString());
     final dynamic rawCta = json['cta'];
+    final dynamic rawRequirements =
+        json['requirements'] ?? json['campaignRequirements'];
+    final Map<String, dynamic>? parsedRequirements = rawRequirements is Map
+        ? Map<String, dynamic>.from(rawRequirements)
+        : (json['qualifyingTransactionCount'] != null ||
+                json['qualifyingTransactionValue'] != null
+            ? <String, dynamic>{
+                if (json['qualifyingTransactionCount'] != null)
+                  'qualifyingTransactionCount':
+                      json['qualifyingTransactionCount'],
+                if (json['qualifyingTransactionValue'] != null)
+                  'qualifyingTransactionValue':
+                      json['qualifyingTransactionValue'],
+              }
+            : null);
     final dynamic interaction =
         json['interaction'] ?? json['userInteraction'] ?? json['interactions'];
     final Map<String, dynamic> interactionMap =
@@ -90,6 +111,10 @@ class ServicePayAnnouncement {
       acknowledged: flag('acknowledged'),
       dismissed: flag('dismissed'),
       clicked: flag('clicked'),
+      campaignTrackingEnabled: json['campaignTrackingEnabled'] == true ||
+          json['campaignTracking'] == true,
+      requirements: parsedRequirements,
+      rewardDescription: json['rewardDescription']?.toString(),
     );
   }
 }

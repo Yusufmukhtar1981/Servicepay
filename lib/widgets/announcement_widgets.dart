@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../servicepay_theme.dart';
 import '../services/announcement_service.dart';
+import '../services/reward_progress_service.dart';
 
 class AnnouncementBanner extends StatelessWidget {
   const AnnouncementBanner({
@@ -90,6 +91,223 @@ class AnnouncementBanner extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class RewardProgressCard extends StatelessWidget {
+  const RewardProgressCard({
+    super.key,
+    required this.announcement,
+    this.progress,
+    this.loading = false,
+    this.error,
+  });
+
+  final ServicePayAnnouncement announcement;
+  final RewardProgress? progress;
+  final bool loading;
+  final String? error;
+
+  String _money(double value) {
+    final String fixed = value.toStringAsFixed(2);
+    final List<String> parts = fixed.split('.');
+    final String whole = parts.first;
+    final StringBuffer formatted = StringBuffer();
+    for (int i = 0; i < whole.length; i++) {
+      final int remaining = whole.length - i;
+      formatted.write(whole[i]);
+      if (remaining > 1 && remaining % 3 == 1) formatted.write(',');
+    }
+    return '₦${formatted.toString()}.${parts.last}';
+  }
+
+  double _ratio(double current, double required) {
+    if (required <= 0) return 0;
+    return (current / required).clamp(0.0, 1.0).toDouble();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final RewardProgress? value = progress;
+    return Container(
+      margin: const EdgeInsets.only(top: 12, bottom: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: ServicePayColors.brand.withValues(alpha: .2)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x120A3B27),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              const Icon(Icons.card_giftcard_rounded,
+                  color: ServicePayColors.brand, size: 23),
+              const Text(
+                'Smartphone Reward Progress',
+                style: TextStyle(
+                  color: Color(0xFF17382B),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            announcement.rewardDescription?.trim().isNotEmpty == true
+                ? announcement.rewardDescription!
+                : 'Reward campaign',
+            style: const TextStyle(
+              color: ServicePayColors.muted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (loading && value == null)
+            const Row(
+              children: <Widget>[
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 10),
+                Expanded(child: Text('Loading your reward progress…')),
+              ],
+            )
+          else if (error != null && value == null)
+            Text(error!,
+                style: const TextStyle(
+                    color: ServicePayColors.muted, height: 1.35))
+          else if (value == null || !value.hasData)
+            const Text(
+              'No reward progress is available for this campaign yet.',
+              style: TextStyle(color: ServicePayColors.muted, height: 1.35),
+            )
+          else ...[
+            _ProgressMetric(
+              label: 'Transactions',
+              value: value.requiredTransactionCount > 0
+                  ? '${value.transactionCount} / ${value.requiredTransactionCount}'
+                  : '${value.transactionCount}',
+              progress: _ratio(
+                value.transactionCount.toDouble(),
+                value.requiredTransactionCount.toDouble(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _ProgressMetric(
+              label: 'Transaction value',
+              value: value.requiredTransactionValue > 0
+                  ? '${_money(value.transactionValue)} / ${_money(value.requiredTransactionValue)}'
+                  : _money(value.transactionValue),
+              progress: _ratio(
+                value.transactionValue,
+                value.requiredTransactionValue,
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (value.qualified)
+              const Text(
+                'QUALIFIED',
+                style: TextStyle(
+                  color: ServicePayColors.brandDeep,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: .7,
+                ),
+              )
+            else ...[
+              const Text(
+                'Keep going! Complete both requirements to qualify for the reward draw.',
+                style: TextStyle(
+                  color: ServicePayColors.muted,
+                  height: 1.35,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (value.remainingTransactions != null ||
+                  value.remainingValue != null) ...[
+                const SizedBox(height: 5),
+                Text(
+                  _remainingLabel(value),
+                  style: const TextStyle(
+                    color: ServicePayColors.muted,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _remainingLabel(RewardProgress value) {
+    final List<String> remaining = <String>[];
+    if (value.remainingTransactions != null) {
+      remaining.add('${value.remainingTransactions} transactions');
+    }
+    if (value.remainingValue != null) {
+      remaining.add(_money(value.remainingValue!));
+    }
+    return '${remaining.join(' and ')} remaining.';
+  }
+}
+
+class _ProgressMetric extends StatelessWidget {
+  const _ProgressMetric({
+    required this.label,
+    required this.value,
+    required this.progress,
+  });
+
+  final String label;
+  final String value;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          runSpacing: 3,
+          children: <Widget>[
+            Text(label,
+                style: const TextStyle(
+                    color: ServicePayColors.muted,
+                    fontWeight: FontWeight.w700)),
+            Text(value,
+                style: const TextStyle(
+                    color: Color(0xFF17382B), fontWeight: FontWeight.w900)),
+          ],
+        ),
+        const SizedBox(height: 7),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0).toDouble(),
+            minHeight: 8,
+            color: ServicePayColors.brand,
+            backgroundColor: const Color(0xFFE6F1EA),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -685,12 +903,14 @@ class AnnouncementSurface extends StatefulWidget {
     required this.service,
     this.onPopupCompleted,
     this.onBannerRemoved,
+    this.rewardProgressService,
   });
 
   final List<ServicePayAnnouncement> announcements;
   final AnnouncementService service;
   final ValueChanged<ServicePayAnnouncement>? onPopupCompleted;
   final ValueChanged<ServicePayAnnouncement>? onBannerRemoved;
+  final RewardProgressService? rewardProgressService;
 
   @override
   State<AnnouncementSurface> createState() => _AnnouncementSurfaceState();
@@ -702,6 +922,10 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
   final Set<String> _completedPopupIds = <String>{};
   final Set<String> _reportedPopupCompletionIds = <String>{};
   final Set<String> _viewedIds = <String>{};
+  final Set<String> _requestedProgressIds = <String>{};
+  final Set<String> _loadingProgressIds = <String>{};
+  final Map<String, RewardProgress> _progress = <String, RewardProgress>{};
+  final Map<String, String> _progressErrors = <String, String>{};
 
   void _reportPopupCompleted(ServicePayAnnouncement item) {
     if (item.isBanner && _reportedPopupCompletionIds.add(item.id)) {
@@ -713,14 +937,61 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _schedulePopup();
+    _loadRewardProgress();
   }
 
   @override
   void didUpdateWidget(covariant AnnouncementSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.announcements != widget.announcements) {
+      // Dashboard refreshes replace the active list. Re-query the server even
+      // when a campaign id remains active so its progress is never stale.
+      _requestedProgressIds.removeWhere(
+        (id) => widget.announcements.any((item) => item.id == id),
+      );
       _items = widget.announcements;
       _schedulePopup();
+      _loadRewardProgress();
+    }
+  }
+
+  List<ServicePayAnnouncement> get _trackedBanners => _items
+      .where((item) =>
+          item.isBanner && item.campaignTrackingEnabled && _shouldShow(item))
+      .toList();
+
+  void _loadRewardProgress() {
+    final RewardProgressService? progressService = widget.rewardProgressService;
+    if (progressService == null) return;
+    for (final ServicePayAnnouncement item in _trackedBanners) {
+      if (!_requestedProgressIds.add(item.id)) continue;
+      _loadingProgressIds.add(item.id);
+      unawaited(_fetchRewardProgress(item, progressService));
+    }
+    if (mounted && _loadingProgressIds.isNotEmpty) setState(() {});
+  }
+
+  Future<void> _fetchRewardProgress(
+    ServicePayAnnouncement item,
+    RewardProgressService progressService,
+  ) async {
+    try {
+      final RewardProgress progress =
+          await progressService.fetchProgress(item.id);
+      if (!mounted) return;
+      if (_items.any((value) => value.id == item.id)) {
+        setState(() {
+          _progress[item.id] = progress;
+          _progressErrors.remove(item.id);
+          _loadingProgressIds.remove(item.id);
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _progressErrors[item.id] = 'Reward progress is currently unavailable.';
+        _loadingProgressIds.remove(item.id);
+      });
     }
   }
 
@@ -889,17 +1160,28 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
           ? right.priority.compareTo(left.priority)
           : (right.createdAt ?? DateTime(1970))
               .compareTo(left.createdAt ?? DateTime(1970)));
-    return Column(
-      children: banners.isEmpty
-          ? const <Widget>[]
-          : <Widget>[
-              AnnouncementPromotionCarousel(
-                announcements: banners,
-                onDismiss: _dismissBanner,
-                onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
-                onAction: (item) => unawaited(_action(item)),
-              ),
-            ],
-    );
+    final List<Widget> children = <Widget>[];
+    if (banners.isNotEmpty) {
+      children.add(
+        AnnouncementPromotionCarousel(
+          announcements: banners,
+          onDismiss: _dismissBanner,
+          onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
+          onAction: (item) => unawaited(_action(item)),
+        ),
+      );
+    }
+    for (final ServicePayAnnouncement item in _trackedBanners) {
+      children.add(
+        RewardProgressCard(
+          key: ValueKey<String>('reward-progress-card-${item.id}'),
+          announcement: item,
+          progress: _progress[item.id],
+          loading: _loadingProgressIds.contains(item.id),
+          error: _progressErrors[item.id],
+        ),
+      );
+    }
+    return Column(children: children);
   }
 }
