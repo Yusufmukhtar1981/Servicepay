@@ -9,6 +9,7 @@ void main() {
   ServicePayAnnouncement item({
     String id = 'a',
     String title = 'Service update',
+    String message = 'Your account remains protected.',
     String style = 'BANNER',
     String visibility = 'UNTIL_DISMISSED',
     bool acknowledged = false,
@@ -20,7 +21,7 @@ void main() {
       ServicePayAnnouncement(
         id: id,
         title: title,
-        message: 'Your account remains protected.',
+        message: message,
         type: 'INFO',
         displayStyle: style,
         priority: priority,
@@ -328,5 +329,297 @@ void main() {
     ));
     await tester.pump();
     expect(find.text('Service update'), findsOneWidget);
+  });
+
+  testWidgets(
+      'promotion carousel orders priority, shows indicators, and swipes',
+      (tester) async {
+    final ServicePayAnnouncement low = item(
+      id: 'low',
+      title: 'Lower promotion',
+      priority: 2,
+    );
+    final ServicePayAnnouncement high = item(
+      id: 'high',
+      title: 'Smartphone reward',
+      priority: 8,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementPromotionCarousel(
+            announcements: <ServicePayAnnouncement>[high, low],
+            onDismiss: (_) {},
+            onAcknowledge: (_) {},
+            onAction: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Smartphone reward'), findsOneWidget);
+    expect(find.bySemanticsLabel('ServicePay promotions'), findsOneWidget);
+    expect(find.byType(AnimatedContainer), findsNWidgets(2));
+
+    await tester.fling(find.byType(PageView), const Offset(-700, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('Lower promotion'), findsOneWidget);
+  });
+
+  testWidgets('promotion carousel is compact and uses branded no-image artwork',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementPromotionCarousel(
+            announcements: <ServicePayAnnouncement>[
+              item(title: 'SERVICEPAY SMARTPHONE REWARD PROMO'),
+            ],
+            onDismiss: (_) {},
+            onAcknowledge: (_) {},
+            onAction: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.account_balance_wallet_rounded), findsOneWidget);
+    final Size size = tester.getSize(find.byType(PageView));
+    expect(size.height, lessThan(230));
+  });
+
+  testWidgets('POPUP-only announcements never create a promotion carousel',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementSurface(
+            announcements: <ServicePayAnnouncement>[
+              item(id: 'popup-only', style: 'POPUP'),
+            ],
+            service: AnnouncementService(
+              client: MockClient((_) async => http.Response('{}', 204)),
+              baseUrl: 'https://example.test/api',
+              token: 'token',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(AnnouncementPromotionCarousel), findsNothing);
+    expect(find.byType(AlertDialog), findsOneWidget);
+  });
+
+  testWidgets('empty eligible set renders no promotion section or space',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementSurface(
+            announcements: <ServicePayAnnouncement>[
+              item(id: 'hidden', style: 'BANNER', acknowledged: true),
+            ],
+            service: AnnouncementService(
+              client: MockClient((_) async => http.Response('{}', 204)),
+              baseUrl: 'https://example.test/api',
+              token: 'token',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(AnnouncementPromotionCarousel), findsNothing);
+    expect(find.text('Service update'), findsNothing);
+  });
+
+  testWidgets('CTA is forwarded to the carousel callback', (tester) async {
+    ServicePayAnnouncement? selected;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementPromotionCarousel(
+            announcements: <ServicePayAnnouncement>[
+              item(cta: <String, dynamic>{'text': 'Review'}),
+            ],
+            onDismiss: (_) {},
+            onAcknowledge: (_) {},
+            onAction: (value) => selected = value,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Review'));
+    expect(selected?.id, 'a');
+  });
+
+  testWidgets('320px promotion card with CTA has no vertical overflow',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            child: AnnouncementPromotionCarousel(
+              announcements: <ServicePayAnnouncement>[
+                item(
+                  title: 'A promotion with a longer title',
+                  cta: <String, dynamic>{'text': 'Review offer'},
+                ),
+              ],
+              onDismiss: (_) {},
+              onAcknowledge: (_) {},
+              onAction: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Review offer'), findsOneWidget);
+    expect(tester.getSize(find.byType(PageView)).height, 194);
+  });
+
+  testWidgets(
+      '320px card reflows safely at 200 percent with long content and actions',
+      (tester) async {
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(
+          textScaler: TextScaler.linear(2),
+        ),
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              child: AnnouncementPromotionCarousel(
+                announcements: <ServicePayAnnouncement>[
+                  item(
+                    title:
+                        'A very long smartphone reward title that must reflow',
+                    message:
+                        'This longer promotion message explains the offer and needs to remain readable at a larger text size.',
+                    mandatory: true,
+                    cta: <String, dynamic>{'text': 'Review this offer'},
+                  ),
+                ],
+                onDismiss: (_) {},
+                onAcknowledge: (_) {},
+                onAction: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Review this offer'), findsOneWidget);
+    expect(find.text('Acknowledge'), findsOneWidget);
+    expect(tester.getSize(find.byType(PageView)).height, greaterThan(194));
+  });
+
+  testWidgets(
+      'larger phone and constrained web cards adapt at 200 percent text',
+      (tester) async {
+    for (final double width in <double>[412, 600]) {
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            textScaler: TextScaler.linear(2),
+          ),
+          child: MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: width,
+                child: AnnouncementPromotionCarousel(
+                  announcements: <ServicePayAnnouncement>[
+                    item(
+                      title:
+                          'A very long smartphone reward title that must reflow',
+                      message:
+                          'This longer promotion message explains the offer and needs to remain readable at a larger text size.',
+                      mandatory: true,
+                      cta: <String, dynamic>{'text': 'Review this offer'},
+                    ),
+                  ],
+                  onDismiss: (_) {},
+                  onAcknowledge: (_) {},
+                  onAction: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull, reason: 'viewport width $width');
+      expect(find.text('Review this offer'), findsOneWidget);
+      expect(find.text('Acknowledge'), findsOneWidget);
+      expect(tester.getSize(find.byType(PageView)).height, greaterThan(194));
+    }
+  });
+
+  testWidgets('pause and resume controls stop and restart auto-rotation',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementPromotionCarousel(
+            announcements: <ServicePayAnnouncement>[
+              item(id: 'one', title: 'First promotion'),
+              item(id: 'two', title: 'Second promotion'),
+            ],
+            onDismiss: (_) {},
+            onAcknowledge: (_) {},
+            onAction: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byTooltip('Pause promotions'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Pause promotions'));
+    await tester.pump();
+    expect(find.byTooltip('Resume promotions'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 7));
+    expect(find.text('First promotion'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Resume promotions'));
+    await tester.pump();
+    expect(find.byTooltip('Pause promotions'), findsOneWidget);
+  });
+
+  testWidgets('carousel exposes the current promotion position semantics',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementPromotionCarousel(
+            announcements: <ServicePayAnnouncement>[
+              item(id: 'one', title: 'First promotion'),
+              item(id: 'two', title: 'Second promotion'),
+            ],
+            onDismiss: (_) {},
+            onAcknowledge: (_) {},
+            onAction: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('Promotion 1 of 2'), findsOneWidget);
+    expect(
+        find.bySemanticsLabel('Pause promotion auto-rotation'), findsOneWidget);
   });
 }
