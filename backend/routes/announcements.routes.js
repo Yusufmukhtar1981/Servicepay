@@ -4,20 +4,28 @@ const { protect, customerOnly } = require("../middleware/auth.middleware");
 const {
   loadStaffRole,
   requirePermission,
+  requireAnyPermission,
 } = require("../middleware/staffPermission.middleware");
 const { STAFF_PERMISSIONS: P } = require("../config/staffPermissions");
 
 const router = express.Router();
 
 router.get("/active", protect, customerOnly, controller.getActive);
+router.get("/:id/progress", protect, customerOnly, controller.progress);
 router.post("/:id/view", protect, customerOnly, controller.view);
 router.post("/:id/acknowledge", protect, customerOnly, controller.acknowledge);
 router.post("/:id/dismiss", protect, customerOnly, controller.dismiss);
 router.post("/:id/click", protect, customerOnly, controller.click);
 
 const staff = (permission) => [protect, loadStaffRole, requirePermission(permission)];
+const staffAny = (...permissions) => [protect, loadStaffRole, requireAnyPermission(permissions)];
 router.get("/admin", ...staff(P.ANNOUNCEMENTS_VIEW), controller.listAdmin);
 router.get("/admin/summary", ...staff(P.ANNOUNCEMENTS_SUMMARY), controller.summary);
+router.get("/admin/:id/participants", ...staff(P.ANNOUNCEMENTS_PARTICIPANTS_VIEW), controller.participants);
+router.get("/admin/:id/participants/winners", ...staffAny(P.ANNOUNCEMENTS_PARTICIPANTS_HISTORY_VIEW, P.ANNOUNCEMENTS_WINNERS_VIEW), controller.winners);
+router.get("/admin/:id/winners", ...staffAny(P.ANNOUNCEMENTS_PARTICIPANTS_HISTORY_VIEW, P.ANNOUNCEMENTS_WINNERS_VIEW), controller.winners);
+router.get("/admin/:id/winners/history", ...staffAny(P.ANNOUNCEMENTS_PARTICIPANTS_HISTORY_VIEW, P.ANNOUNCEMENTS_WINNERS_VIEW), controller.winners);
+router.post("/admin/:id/participants/:customerId/winner", ...staff(P.ANNOUNCEMENTS_WINNER_MARK), controller.markWinner);
 router.get("/admin/:id", ...staff(P.ANNOUNCEMENTS_VIEW), controller.getAdmin);
 router.post("/admin", ...staff(P.ANNOUNCEMENTS_CREATE), controller.create);
 router.patch("/admin/:id", ...staff(P.ANNOUNCEMENTS_UPDATE), controller.update);

@@ -12,6 +12,8 @@ const Role = require("../models/role.model");
 const KycProfile = require("../models/kycProfile.model");
 const Announcement = require("../models/announcement.model");
 const AnnouncementInteraction = require("../models/announcementInteraction.model");
+const AnnouncementCampaignWinner = require("../models/announcementCampaignWinner.model");
+const Transaction = require("../models/transaction.model");
 
 let mongo;
 let server;
@@ -24,6 +26,8 @@ const models = [
   KycProfile,
   Announcement,
   AnnouncementInteraction,
+  AnnouncementCampaignWinner,
+  Transaction,
 ];
 
 const makeUser = async (role = "CUSTOMER", extra = {}) => {
@@ -78,6 +82,30 @@ const announcementBody = (overrides = {}) => ({
   ...overrides,
 });
 
+const campaignBody = (overrides = {}) => announcementBody({
+  title: "Smartphone Reward Promo",
+  campaignTrackingEnabled: true,
+  campaignStatus: "ACTIVE",
+  qualifyingTransactionCount: 100,
+  qualifyingTransactionValue: 250000,
+  eligibleTransactionTypes: ["AIRTIME"],
+  ...overrides,
+});
+
+const addTransactions = async (customer, count, amount, overrides = {}) => {
+  const amounts = amount && typeof amount === "object"
+    ? [...Array(Math.max(0, count - 1)).fill(1), amount.total - Math.max(0, count - 1)]
+    : Array(count).fill(amount);
+  return Transaction.insertMany(amounts.map((transactionAmount, index) => ({
+    reference: `promo-${String(sequence).padStart(3, "0")}-${Date.now()}-${index}-${Math.random()}`,
+    customerId: customer._id,
+    serviceType: "AIRTIME",
+    amount: transactionAmount,
+    status: "SUCCESSFUL",
+    ...overrides,
+  })));
+};
+
 let headOffice;
 let fullStaff;
 
@@ -123,6 +151,10 @@ test.beforeEach(async () => {
       "announcements.update",
       "announcements.activate",
       "announcements.delete",
+      "announcements.participants.view",
+      "announcements.participants.history_view",
+      "announcements.winner.mark",
+      "announcements.winners.view",
     ],
     scopeType: "GLOBAL",
   });
@@ -659,4 +691,449 @@ test("legacy GET never exposes plural targeting or scheduled records, and legacy
   assert.equal(persisted.title, "Updated legacy");
   assert.equal(persisted.audience, "ALL");
   assert.deepEqual(persisted.selectedCustomerIds, []);
+});
+
+test("campaign qualification requires both thresholds", async () => {
+  const matrix = [
+    [99, 300000, false],
+    [100, 249999, false],
+    [100, 250000, true],
+    [120, 500000, true],
+  ];
+  for (const [count, amount, qualified] of matrix) {
+    const customer = await makeUser();
+    const created = await api({
+      method: "POST",
+      path: "/api/announcements/admin",
+      actor: headOffice,
+      body: campaignBody({ title: `Matrix ${count}-${amount}` }),
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    await addTransactions(customer, count, { total: amount });
+    const progress = await api({
+      path: `/api/announcements/${created.body.data.announcement.id}/progress`,
+      actor: customer,
+    });
+    assert.equal(progress.status, 200, JSON.stringify(progress.body));
+    assert.equal(progress.body.data.progress.transactionCount, count);
+    assert.equal(progress.body.data.progress.qualified, qualified);
+    if (count === 100 && amount === 250000) {
+      assert.equal(progress.body.data.progress.transactionValue, 250000);
+      assert.equal(progress.body.data.progress.countPercentage, 100);
+      assert.equal(progress.body.data.progress.valuePercentage, 100);
+    }
+  }
+});
+
+test("campaign allowlist accepts genuine model types and rejects excluded internal types", async () => {
+  const included = [
+    "AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EXAM_PIN", "BANK_TRANSFER",
+    "DELIVERY", "ID_VERIFICATION", "AMANA", "MARKETPLACE", "SOLAR_DEPOSIT",
+    "SOLAR_INSTALLMENT", "PHONE_FINANCING_DEPOSIT",
+    "PHONE_FINANCING_INSTALLMENT", "PROTECTED_DEAL", "INTERSTATE_LOGISTICS",
+  ];
+  const accepted = await api({
+    method: "POST",
+    path: "/api/announcements/admin",
+    actor: headOffice,
+    body: campaignBody({ eligibleTransactionTypes: included }),
+  });
+  assert.equal(accepted.status, 201, JSON.stringify(accepted.body));
+  assert.deepEqual(accepted.body.data.announcement.eligibleTransactionTypes, included);
+
+  for (const type of [
+    "WALLET_FUNDING", "TRANSFER", "REFERRAL_BONUS", "EMPOWERMENT_FUNDING",
+    "EMPOWERMENT_DISBURSEMENT", "PHONE_FINANCING_REFUND",
+  ]) {
+    const rejected = await api({
+      method: "POST",
+      path: "/api/announcements/admin",
+      actor: headOffice,
+      body: campaignBody({
+        title: `Excluded ${type}`,
+        eligibleTransactionTypes: [type],
+      }),
+    });
+    assert.equal(rejected.status, 400, `${type}: ${JSON.stringify(rejected.body)}`);
+  }
+});
+
+test("campaign progress excludes unsuccessful, reversed, refunded, and pre-period transactions", async () => {
+  const customer = await makeUser();
+  const start = new Date(Date.now() - 60 * 60 * 1000);
+  const created = await api({
+    method: "POST",
+    path: "/api/announcements/admin",
+    actor: headOffice,
+    body: campaignBody({
+      eligibilityStartAt: start.toISOString(),
+      qualifyingTransactionCount: 2,
+      qualifyingTransactionValue: 3000,
+    }),
+  });
+  const id = created.body.data.announcement.id;
+  await addTransactions(customer, 1, 1500, { createdAt: new Date(start.getTime() + 1000) });
+  await Transaction.create([
+    {
+      reference: "promo-pending",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 9000,
+      status: "PENDING",
+    },
+    {
+      reference: "promo-failed",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 9000,
+      status: "FAILED",
+    },
+    {
+      reference: "promo-refunded",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 9000,
+      status: "REFUNDED",
+    },
+    {
+      reference: "promo-reversed",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 9000,
+      status: "SUCCESSFUL",
+      providerResponse: { reversalReference: "rev-1" },
+    },
+    {
+      reference: "promo-before-period",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 9000,
+      status: "SUCCESSFUL",
+      createdAt: new Date(start.getTime() - 1000),
+    },
+    {
+      reference: "promo-nested-reversal",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 9000,
+      status: "SUCCESSFUL",
+      providerResponse: { provider: { events: [{ reversal: { id: "rev-nested" } }] } },
+    },
+    {
+      reference: "promo-nested-refund",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 9000,
+      status: "SUCCESSFUL",
+      providerResponse: { audit: [{ payment: { refund: { reason: "refunded" } } }] },
+    },
+    {
+      reference: "promo-fractional",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 1500.5,
+      status: "SUCCESSFUL",
+    },
+    {
+      reference: "promo-unsafe-amount",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: Number.MAX_SAFE_INTEGER + 2,
+      status: "SUCCESSFUL",
+    },
+  ]);
+  const progress = await api({ path: `/api/announcements/${id}/progress`, actor: customer });
+  assert.equal(progress.status, 200);
+  assert.equal(progress.body.data.progress.transactionCount, 2);
+  assert.equal(progress.body.data.progress.transactionValue, 3000.5);
+  assert.equal(progress.body.data.progress.qualified, true);
+  const participants = await api({
+    path: `/api/announcements/admin/${id}/participants`,
+    actor: fullStaff,
+  });
+  assert.equal(participants.status, 200, JSON.stringify(participants.body));
+  assert.equal(participants.body.data.total, 1);
+  assert.equal(participants.body.data.participants.length, 1);
+  assert.equal(participants.body.data.participants[0].transactionCount, progress.body.data.progress.transactionCount);
+  assert.equal(participants.body.data.participants[0].transactionValue, progress.body.data.progress.transactionValue);
+  assert.equal(participants.body.data.summary.totalParticipants, 1);
+  assert.equal(participants.body.data.summary.qualifiedCustomers, 1);
+  assert.equal(participants.body.data.summary.totalQualifyingTransactionValue, 3000.5);
+});
+
+test("campaign tracking defensively excludes stale persisted TRANSFER eligibility", async () => {
+  const customer = await makeUser();
+  const created = await api({
+    method: "POST",
+    path: "/api/announcements/admin",
+    actor: headOffice,
+    body: campaignBody({ qualifyingTransactionCount: 2, qualifyingTransactionValue: 2000 }),
+  });
+  const id = created.body.data.announcement.id;
+  await Announcement.collection.updateOne(
+    { _id: id },
+    { $set: { eligibleTransactionTypes: ["TRANSFER", "AIRTIME"] } },
+  );
+  await Transaction.create([
+    {
+      reference: "promo-transfer-excluded",
+      customerId: customer._id,
+      serviceType: "TRANSFER",
+      amount: 2000,
+      status: "SUCCESSFUL",
+    },
+    {
+      reference: "promo-airtime-included",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 1000,
+      status: "SUCCESSFUL",
+    },
+  ]);
+  const progress = await api({ path: `/api/announcements/${id}/progress`, actor: customer });
+  assert.equal(progress.status, 200);
+  assert.equal(progress.body.data.progress.transactionCount, 1);
+  assert.equal(progress.body.data.progress.transactionValue, 1000);
+  const participants = await api({
+    path: `/api/announcements/admin/${id}/participants`,
+    actor: fullStaff,
+  });
+  assert.equal(participants.status, 200, JSON.stringify(participants.body));
+  assert.equal(participants.body.data.participants[0].transactionCount, 1);
+  assert.equal(participants.body.data.participants[0].transactionValue, 1000);
+  assert.equal(participants.body.data.summary.totalQualifyingTransactionValue, 1000);
+});
+
+test("fractional campaign amounts use matching half-even kobo normalization", async () => {
+  const customer = await makeUser();
+  const created = await api({
+    method: "POST",
+    path: "/api/announcements/admin",
+    actor: headOffice,
+    body: campaignBody({ qualifyingTransactionCount: 2, qualifyingTransactionValue: 2 }),
+  });
+  const id = created.body.data.announcement.id;
+  await Transaction.create([
+    {
+      reference: "promo-half-kobo-even",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 1.005,
+      status: "SUCCESSFUL",
+    },
+    {
+      reference: "promo-half-kobo-odd",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 1.015,
+      status: "SUCCESSFUL",
+    },
+  ]);
+  const progress = await api({ path: `/api/announcements/${id}/progress`, actor: customer });
+  assert.equal(progress.status, 200);
+  assert.equal(progress.body.data.progress.transactionValue, 2.02);
+  assert.equal(progress.body.data.progress.qualified, true);
+  const participants = await api({
+    path: `/api/announcements/admin/${id}/participants`,
+    actor: fullStaff,
+  });
+  assert.equal(participants.status, 200, JSON.stringify(participants.body));
+  assert.equal(participants.body.data.participants[0].transactionValue, 2.02);
+  assert.equal(participants.body.data.participants[0].status, "QUALIFIED");
+  assert.equal(participants.body.data.summary.totalQualifyingTransactionValue, 2.02);
+});
+
+test("ordinary fractional values and cumulative safe-kobo overflow fail consistently", async () => {
+  const customer = await makeUser();
+  const created = await api({
+    method: "POST",
+    path: "/api/announcements/admin",
+    actor: headOffice,
+    body: campaignBody({ qualifyingTransactionCount: 2, qualifyingTransactionValue: 12 }),
+  });
+  const id = created.body.data.announcement.id;
+  await Transaction.create([
+    {
+      reference: "promo-fractional-ordinary-a",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 12.34,
+      status: "SUCCESSFUL",
+    },
+    {
+      reference: "promo-fractional-ordinary-b",
+      customerId: customer._id,
+      serviceType: "AIRTIME",
+      amount: 0.01,
+      status: "SUCCESSFUL",
+    },
+  ]);
+  const progress = await api({ path: `/api/announcements/${id}/progress`, actor: customer });
+  assert.equal(progress.status, 200);
+  assert.equal(progress.body.data.progress.transactionValue, 12.35);
+  const participants = await api({
+    path: `/api/announcements/admin/${id}/participants`,
+    actor: fullStaff,
+  });
+  assert.equal(participants.status, 200, JSON.stringify(participants.body));
+  assert.equal(participants.body.data.participants[0].transactionValue, 12.35);
+  assert.equal(participants.body.data.summary.totalQualifyingTransactionValue, 12.35);
+
+  const overflowCustomer = await makeUser();
+  const overflowCreated = await api({
+    method: "POST",
+    path: "/api/announcements/admin",
+    actor: headOffice,
+    body: campaignBody({ qualifyingTransactionCount: 2, qualifyingTransactionValue: 1 }),
+  });
+  const overflowId = overflowCreated.body.data.announcement.id;
+  const maximumAmount = Number.MAX_SAFE_INTEGER / 100;
+  await Transaction.create([
+    {
+      reference: "promo-overflow-a",
+      customerId: overflowCustomer._id,
+      serviceType: "AIRTIME",
+      amount: maximumAmount,
+      status: "SUCCESSFUL",
+    },
+    {
+      reference: "promo-overflow-b",
+      customerId: overflowCustomer._id,
+      serviceType: "AIRTIME",
+      amount: maximumAmount,
+      status: "SUCCESSFUL",
+    },
+  ]);
+  const overflowProgress = await api({
+    path: `/api/announcements/${overflowId}/progress`,
+    actor: overflowCustomer,
+  });
+  assert.equal(overflowProgress.status, 500);
+  const overflowParticipants = await api({
+    path: `/api/announcements/admin/${overflowId}/participants`,
+    actor: fullStaff,
+  });
+  assert.equal(overflowParticipants.status, 500);
+});
+
+test("campaign progress is customer-scoped and independent from announcement interactions", async () => {
+  const alice = await makeUser();
+  const bob = await makeUser();
+  const created = await api({
+    method: "POST",
+    path: "/api/announcements/admin",
+    actor: headOffice,
+    body: campaignBody({
+      visibility: "UNTIL_DISMISSED",
+      qualifyingTransactionCount: 1,
+      qualifyingTransactionValue: 1000,
+    }),
+  });
+  const id = created.body.data.announcement.id;
+  await addTransactions(alice, 1, 1000);
+  const bobProgress = await api({
+    path: `/api/announcements/${id}/progress?customerId=${alice._id}`,
+    actor: bob,
+  });
+  assert.equal(bobProgress.status, 200);
+  assert.equal(bobProgress.body.data.progress.transactionCount, 0);
+  const acknowledged = await api({
+    method: "POST",
+    path: `/api/announcements/${id}/acknowledge`,
+    actor: alice,
+  });
+  assert.equal(acknowledged.status, 200);
+  const dismissed = await api({
+    method: "POST",
+    path: `/api/announcements/${id}/dismiss`,
+    actor: alice,
+  });
+  assert.equal(dismissed.status, 200);
+  const aliceProgress = await api({ path: `/api/announcements/${id}/progress`, actor: alice });
+  assert.equal(aliceProgress.body.data.progress.transactionCount, 1);
+  assert.equal(aliceProgress.body.data.progress.qualified, true);
+});
+
+test("admin participant filters, pagination, and winner marking are qualification-gated", async () => {
+  const qualified = await makeUser("CUSTOMER", { fullName: "Qualified Promo Customer" });
+  const inProgress = await makeUser("CUSTOMER", { fullName: "In Progress Promo Customer" });
+  const created = await api({
+    method: "POST",
+    path: "/api/announcements/admin",
+    actor: headOffice,
+    body: campaignBody(),
+  });
+  const id = created.body.data.announcement.id;
+  await addTransactions(qualified, 100, 2500);
+  await addTransactions(inProgress, 99, 2500);
+  const filtered = await api({
+    path: `/api/announcements/admin/${id}/participants?status=QUALIFIED&page=1&limit=1`,
+    actor: fullStaff,
+  });
+  assert.equal(filtered.status, 200, JSON.stringify(filtered.body));
+  assert.equal(filtered.body.data.total, 1);
+  assert.equal(filtered.body.data.participants.length, 1);
+  assert.equal(filtered.body.data.participants[0].status, "QUALIFIED");
+  assert.equal(filtered.body.data.summary.qualifiedCount, 1);
+  assert.equal(filtered.body.data.summary.totalParticipants, 2);
+  assert.equal(filtered.body.data.summary.qualifiedCustomers, 1);
+  assert.equal(filtered.body.data.summary.inProgressCustomers, 1);
+  assert.equal(filtered.body.data.summary.totalQualifyingTransactionValue, 497500);
+  assert.equal(filtered.body.data.summary.qualificationRate, 50);
+  const searched = await api({
+    path: `/api/announcements/admin/${id}/participants?search=In%20Progress`,
+    actor: fullStaff,
+  });
+  assert.equal(searched.status, 200, JSON.stringify(searched.body));
+  assert.equal(searched.body.data.total, 1);
+  assert.equal(searched.body.data.participants[0].customerId, String(inProgress._id));
+  assert.equal(searched.body.data.summary.totalParticipants, 2);
+  assert.equal(searched.body.data.summary.qualifiedCustomers, 1);
+  assert.equal(searched.body.data.summary.inProgressCustomers, 1);
+  assert.equal(searched.body.data.summary.totalQualifyingTransactionValue, 497500);
+  assert.equal(searched.body.data.summary.qualificationRate, 50);
+  const firstPage = await api({
+    path: `/api/announcements/admin/${id}/participants?page=1&limit=1&sort=value&order=desc`,
+    actor: fullStaff,
+  });
+  const secondPage = await api({
+    path: `/api/announcements/admin/${id}/participants?page=2&limit=1&sort=value&order=desc`,
+    actor: fullStaff,
+  });
+  assert.equal(firstPage.body.data.total, 2);
+  assert.equal(secondPage.body.data.total, 2);
+  assert.notEqual(
+    String(firstPage.body.data.participants[0].customerId),
+    String(secondPage.body.data.participants[0].customerId),
+  );
+  const rejected = await api({
+    method: "POST",
+    path: `/api/announcements/admin/${id}/participants/${inProgress._id}/winner`,
+    actor: fullStaff,
+  });
+  assert.equal(rejected.status, 409);
+  const marked = await api({
+    method: "POST",
+    path: `/api/announcements/admin/${id}/participants/${qualified._id}/winner`,
+    actor: fullStaff,
+  });
+  assert.equal(marked.status, 201, JSON.stringify(marked.body));
+  const history = await api({
+    path: `/api/announcements/admin/${id}/winners/history`,
+    actor: fullStaff,
+  });
+  assert.equal(history.status, 200);
+  assert.equal(history.body.data.total, 1);
+  const stored = await AnnouncementCampaignWinner.findOne({ announcementId: id }).lean();
+  assert.equal(String(stored.customerId), String(qualified._id));
+  assert.equal(stored.markedBy.toString(), fullStaff._id.toString());
+  const deletion = await api({
+    method: "DELETE",
+    path: `/api/announcements/admin/${id}`,
+    actor: fullStaff,
+  });
+  assert.equal(deletion.status, 409);
+  assert.equal(deletion.body.code, "CAMPAIGN_HAS_WINNER_HISTORY");
+  assert.ok(await Announcement.exists({ _id: id }));
+  assert.equal(await AnnouncementCampaignWinner.countDocuments({ announcementId: id }), 1);
 });

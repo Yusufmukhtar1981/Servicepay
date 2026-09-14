@@ -134,6 +134,19 @@ const transactionSchema =
           mongoose.Schema.Types.Mixed,
         default: null,
       },
+      // Campaign tracking excludes successful records that were later
+      // reversed. These references are optional for legacy transactions.
+      reversalReference: { type: String, default: "" },
+      reversalTransactionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Transaction",
+        default: null,
+      },
+      reversedTransactionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Transaction",
+        default: null,
+      },
     },
     {
       timestamps: true,
@@ -151,6 +164,15 @@ transactionSchema.index({
   serviceType: 1,
   status: 1,
   createdAt: -1,
+});
+
+// Campaign progress always scopes by customer, successful status, service
+// type, and the eligibility window. Keep the existing indexes intact.
+transactionSchema.index({
+  customerId: 1,
+  status: 1,
+  serviceType: 1,
+  createdAt: 1,
 });
 
 transactionSchema.index({

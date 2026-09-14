@@ -92,6 +92,51 @@ const announcementSchema =
         default: false,
       },
 
+      // Promotion tracking is opt-in. Existing announcements therefore keep
+      // their legacy delivery and metrics semantics unchanged.
+      campaignTrackingEnabled: { type: Boolean, default: false, index: true },
+      qualifyingTransactionCount: {
+        type: Number,
+        default: null,
+        min: 1,
+        validate: {
+          validator: (value) => value === null || Number.isSafeInteger(value),
+          message: "Qualifying transaction count must be a positive integer.",
+        },
+      },
+      qualifyingTransactionValue: {
+        type: Number,
+        default: null,
+        min: 0,
+        validate: {
+          validator: (value) => value === null ||
+            (Number.isSafeInteger(value) && value <= Number.MAX_SAFE_INTEGER / 100),
+          message: "Qualifying transaction value must be a nonnegative integer within the safe kobo range.",
+        },
+      },
+      eligibilityStartAt: { type: Date, default: null, index: true },
+      eligibilityEndAt: { type: Date, default: null, index: true },
+      eligibleTransactionTypes: {
+        type: [{
+          type: String,
+          enum: [
+            "AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EXAM_PIN",
+            "BANK_TRANSFER", "DELIVERY", "ID_VERIFICATION",
+            "AMANA", "MARKETPLACE", "SOLAR_DEPOSIT", "SOLAR_INSTALLMENT",
+            "PHONE_FINANCING_DEPOSIT", "PHONE_FINANCING_INSTALLMENT",
+            "PROTECTED_DEAL", "INTERSTATE_LOGISTICS",
+          ],
+        }],
+        default: [],
+      },
+      campaignStatus: {
+        type: String,
+        enum: ["DRAFT", "ACTIVE", "ENDED"],
+        default: "DRAFT",
+        index: true,
+      },
+      rewardDescription: { type: String, trim: true, maxlength: 500, default: "" },
+
       // Only records created by the retained singular API may be returned by
       // that API. New plural records are explicitly marked false so a future
       // field addition cannot accidentally widen the legacy response.
