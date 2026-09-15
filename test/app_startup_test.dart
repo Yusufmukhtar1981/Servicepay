@@ -10,6 +10,25 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
+  test('recognizes canonical and preview registration links', () {
+    expect(
+      isServicePayRegistrationUri(
+        Uri.parse('https://servicepay.ng/register?ref=SP-ADA-1234'),
+      ),
+      isTrue,
+    );
+    expect(
+      isServicePayRegistrationUri(
+        Uri.parse('https://servicepay.ng/?mode=register&ref=SP-ADA-1234'),
+      ),
+      isTrue,
+    );
+    expect(
+      isServicePayRegistrationUri(Uri.parse('https://servicepay.ng/')),
+      isFalse,
+    );
+  });
+
   testWidgets('mounts the login app without waiting for optional services',
       (WidgetTester tester) async {
     await tester.pumpWidget(const ServicePayApp());

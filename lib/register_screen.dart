@@ -5,10 +5,17 @@ import 'secure_registration_screen.dart';
 /// Compatibility wrapper.
 /// Existing navigation can continue opening RegisterScreen.
 class RegisterScreen extends StatelessWidget {
-  const RegisterScreen({super.key});
+  const RegisterScreen({
+    super.key,
+    this.initialReferralCode,
+  });
+
+  final String? initialReferralCode;
 
   @override
   Widget build(BuildContext context) {
-    return const SecureRegistrationScreen();
+    return SecureRegistrationScreen(
+      initialReferralCode: initialReferralCode,
+    );
   }
 }

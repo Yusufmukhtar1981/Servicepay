@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Register with ServicePay</title>
+</head>
+<body>
+  <p>Opening ServicePay registration…</p>
+  <script>
+    const source = new URL(window.location.href);
+    const destination = new URL("/", source.origin);
+    destination.searchParams.set("mode", "register");
+
+    const referralCode = source.searchParams.get("ref");
+    if (referralCode) {
+      destination.searchParams.set("ref", referralCode);
+    }
+
+    window.location.replace(
+      destination.pathname + destination.search + destination.hash
+    );
+  </script>
+  <noscript>
+    JavaScript is required to open ServicePay registration.
+  </noscript>
+</body>
+</html>

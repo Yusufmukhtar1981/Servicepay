@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'referral_attribution_service.dart';
 import 'security_utils.dart';
 
 Map<String, dynamic> buildRegistrationPayload({
@@ -40,8 +42,16 @@ Map<String, dynamic> buildRegistrationPayload({
     };
 
 class SecureRegistrationScreen extends StatefulWidget {
-  const SecureRegistrationScreen({super.key, this.client});
+  const SecureRegistrationScreen({
+    super.key,
+    this.client,
+    this.initialReferralCode,
+    this.referralService,
+  });
+
   final http.Client? client;
+  final String? initialReferralCode;
+  final ReferralAttributionService? referralService;
 
   @override
   State<SecureRegistrationScreen> createState() =>
@@ -76,9 +86,12 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
   bool hidePin = true;
   late final http.Client _client;
   late final bool _ownsClient;
+  late final ReferralAttributionService _referralService;
+  late final Future<void> _referralInitialization;
 
   bool acceptTerms = false;
   bool kycConsent = false;
+  ReferralAttribution? _appliedAttribution;
 
   String gender = '';
 
@@ -940,6 +953,30 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     super.initState();
     _ownsClient = widget.client == null;
     _client = widget.client ?? http.Client();
+    _referralService = widget.referralService ??
+        ReferralAttributionService(
+          client: _client,
+        );
+    _referralInitialization = _initializeReferralAttribution();
+  }
+
+  Future<void> _initializeReferralAttribution() async {
+    final rawCode = widget.initialReferralCode;
+    ReferralAttribution? attribution;
+
+    if (rawCode != null && rawCode.trim().isNotEmpty) {
+      // A link code takes precedence for this registration visit. Invalid
+      // links deliberately do not restore an unrelated pending attribution.
+      attribution = await _referralService.captureAndPersist(rawCode);
+    } else {
+      attribution = await _referralService.restore();
+    }
+
+    if (!mounted || attribution == null) return;
+    setState(() {
+      _appliedAttribution = attribution;
+      referralController.clear();
+    });
   }
 
   @override
@@ -963,6 +1000,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     ]) {
       c.dispose();
     }
+    if (widget.referralService == null) _referralService.dispose();
     if (_ownsClient) _client.close();
 
     super.dispose();
@@ -1116,6 +1154,17 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     setState(() => loading = true);
 
     try {
+      await _referralInitialization;
+      String? referralCode = _appliedAttribution?.code;
+      if (referralCode == null || referralCode.isEmpty) {
+        final manualCode =
+            ReferralCodeNormalizer.normalize(referralController.text);
+        if (manualCode != null) {
+          final result = await _referralService.validate(manualCode);
+          if (result.isValid) referralCode = result.code;
+        }
+      }
+
       final payload = buildRegistrationPayload(
         fullName: fullNameController.text.trim(),
         phone: phoneController.text.trim(),
@@ -1129,7 +1178,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
         state: stateController.text.trim(),
         lga: lgaController.text.trim(),
         nin: ninController.text.trim(),
-        referralCode: referralController.text.trim(),
+        referralCode: referralCode,
       );
 
       final response = await _client.post(
@@ -1150,6 +1199,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
           response.statusCode < 300 &&
           data is Map &&
           data['success'] == true) {
+        await _referralService.clearPending();
         if (!mounted) return;
 
         await showDialog<void>(
@@ -1410,10 +1460,45 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
           label: 'Residential address',
           maxLength: 160,
         ),
-        field(
-          controller: referralController,
-          label: 'Referral code (optional)',
-        ),
+        if (_appliedAttribution != null)
+          Container(
+            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: servicePayGreen.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: servicePayGreen.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.verified_rounded,
+                  color: servicePayGreen,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _appliedAttribution!.firstName == null
+                        ? 'Referred by Servicepay customer\n'
+                            '${_appliedAttribution!.code} Applied'
+                        : 'Referred by ${_appliedAttribution!.firstName}\n'
+                            '${_appliedAttribution!.code} Applied',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          field(
+            controller: referralController,
+            label: 'Referral code (optional)',
+          ),
       ],
     );
   }

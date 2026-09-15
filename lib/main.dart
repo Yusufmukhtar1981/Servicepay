@@ -11,11 +11,24 @@ import 'startup_session_gate.dart';
 import 'servicepay_theme.dart';
 import 'privacy_policy_screen.dart';
 import 'public_website_screen.dart';
+import 'register_screen.dart';
+import 'referral_attribution_service.dart';
 
 import 'rider/rider_delivery_alert_service.dart';
 
 final GlobalKey<NavigatorState> servicePayNavigatorKey =
     GlobalKey<NavigatorState>();
+
+bool isServicePayRegistrationUri(Uri uri) {
+  final path = uri.path.toLowerCase();
+  final mode = uri.queryParameters['mode']?.trim().toLowerCase();
+  final register = uri.queryParameters['register']?.trim().toLowerCase();
+
+  return path == '/register' ||
+      path == '/register/' ||
+      mode == 'register' ||
+      register == 'true';
+}
 
 /*
  * =====================================================
@@ -228,6 +241,12 @@ class ServicePayApp extends StatelessWidget {
 
     if (path == '/privacy-policy' || path == '/privacy-policy/') {
       return const PrivacyPolicyScreen();
+    }
+
+    if (isServicePayRegistrationUri(currentUri)) {
+      return RegisterScreen(
+        initialReferralCode: ReferralCodeNormalizer.fromUri(currentUri),
+      );
     }
 
     return kIsWeb ? const PublicWebsiteScreen() : const StartupSessionGate();
