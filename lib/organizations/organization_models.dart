@@ -23,6 +23,11 @@ class Organization {
     this.renewalStatus = '',
     this.verificationUrl = '',
     this.registrationDue,
+    this.status = '',
+    this.organizationReference = '',
+    this.reviewReason = '',
+    this.requestedInformation = const <String, dynamic>{},
+    this.documents = const <Map<String, dynamic>>[],
   });
 
   final String id;
@@ -48,6 +53,11 @@ class Organization {
   final String renewalStatus;
   final String verificationUrl;
   final Map<String, dynamic>? registrationDue;
+  final String status;
+  final String organizationReference;
+  final String reviewReason;
+  final Map<String, dynamic> requestedInformation;
+  final List<Map<String, dynamic>> documents;
 
   factory Organization.fromJson(Map<String, dynamic> json) {
     final raw = json['membership'] ?? json['application'];
@@ -63,7 +73,7 @@ class Organization {
       category: '${json['category'] ?? json['type'] ?? ''}',
       verified: json['verified'] == true ||
           json['isVerified'] == true ||
-          '${json['status']}'.toUpperCase() == 'VERIFIED',
+          ['VERIFIED', 'APPROVED'].contains('${json['status']}'.toUpperCase()),
       fee: _number(json['annualFee'] ??
           json['registrationFee'] ??
           json['membershipFee'] ??
@@ -96,6 +106,18 @@ class Organization {
           : json['registrationDue'] is Map
               ? Map<String, dynamic>.from(json['registrationDue'])
               : null,
+      status: '${json['status'] ?? ''}',
+      organizationReference: '${json['organizationReference'] ?? ''}',
+      reviewReason: '${json['reviewReason'] ?? json['rejectionReason'] ?? ''}',
+      requestedInformation: json['requestedInformation'] is Map
+          ? Map<String, dynamic>.from(json['requestedInformation'])
+          : const <String, dynamic>{},
+      documents: json['documents'] is List
+          ? (json['documents'] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : const <Map<String, dynamic>>[],
       fields: rawFields is List
           ? rawFields
               .whereType<Map>()

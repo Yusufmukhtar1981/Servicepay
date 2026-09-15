@@ -3,6 +3,7 @@ import 'organization_models.dart';
 import 'organizations_api.dart';
 import 'organization_owner_dashboard.dart';
 import '../servicepay_theme.dart';
+import 'organization_onboarding_screen.dart';
 
 class OrganizationsScreen extends StatefulWidget {
   const OrganizationsScreen({super.key, this.api});
@@ -75,7 +76,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
 
   void _create() => Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => CreateOrganizationScreen(api: api, onSubmitted: _load),
+      builder: (_) => OrganizationOnboardingScreen(api: api),
     ),
   );
 
@@ -94,6 +95,13 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
       backgroundColor: ServicePayColors.brand,
       foregroundColor: Colors.white,
       elevation: 0,
+    ),
+    floatingActionButton: FloatingActionButton.extended(
+      onPressed: _create,
+      backgroundColor: ServicePayColors.brand,
+      foregroundColor: Colors.white,
+      icon: const Icon(Icons.add_business_outlined),
+      label: const Text('Register organization'),
     ),
     body: RefreshIndicator(
       onRefresh: _load,
@@ -398,7 +406,9 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   ];
   @override
   void dispose() {
-    for (final c in fields.values) c.dispose();
+    for (final c in fields.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -415,7 +425,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
         await _showSubmitted();
         if (mounted) Navigator.pop(context);
       } catch (e) {
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -423,6 +433,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
               ),
             ),
           );
+        }
       } finally {
         if (mounted) setState(() => submitting = false);
       }
@@ -454,7 +465,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     if (logo.isNotEmpty) {
       final mime = _logoMime(logo);
       if (mime == null) {
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -462,6 +473,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
               ),
             ),
           );
+        }
         setState(() => submitting = false);
         return;
       }
@@ -473,8 +485,9 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
           ? result['organization']
           : result;
       final id = raw is Map ? '${raw['id'] ?? raw['_id'] ?? ''}' : '';
-      if (id.isEmpty)
+      if (id.isEmpty) {
         throw Exception('Organization was created without an identifier.');
+      }
       draftId = id;
       await widget.onSubmitted();
       await widget.api.submit(id);
@@ -482,7 +495,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
       await _showSubmitted();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -492,6 +505,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
             ),
           ),
         );
+      }
     } finally {
       if (mounted) setState(() => submitting = false);
     }
@@ -548,8 +562,9 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
         if (key == 'officialEmail' &&
             v != null &&
             v.trim().isNotEmpty &&
-            !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim()))
+            !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim())) {
           return 'Enter a valid email';
+        }
         if (key == 'annualFee' || key == 'registrationFee') {
           if (v != null && v.trim().isNotEmpty) {
             final parsed = num.tryParse(v.trim());
@@ -572,7 +587,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   );
 
   Widget _stepBody() {
-    if (step == 0)
+    if (step == 0) {
       return Column(
         children: [
           _input('name', 'Organization name', required: true),
@@ -589,7 +604,8 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
           _input('logoUrl', 'Logo URL (optional HTTPS)'),
         ],
       );
-    if (step == 1)
+    }
+    if (step == 1) {
       return Column(
         children: [
           _input('address', 'Official address', required: true),
@@ -622,7 +638,8 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
           ),
         ],
       );
-    if (step == 2)
+    }
+    if (step == 2) {
       return Column(
         children: [
           _input(
@@ -667,7 +684,8 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
           ),
         ],
       );
-    if (step == 3)
+    }
+    if (step == 3) {
       return Column(
         children: [
           _input('registrationNumber', 'Registration / CAC number (optional)'),
@@ -685,6 +703,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
           ),
         ],
       );
+    }
     return _Review(values: values, fields: fields, type: type);
   }
 
@@ -753,8 +772,9 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
                       ? null
                       : () {
                           if (step < 4) {
-                            if (form.currentState?.validate() ?? false)
+                            if (form.currentState?.validate() ?? false) {
                               setState(() => step++);
+                            }
                           } else {
                             _submit();
                           }

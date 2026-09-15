@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'organization_models.dart';
 
@@ -457,6 +459,90 @@ class OrganizationsApi {
 
   Future<Map<String, dynamic>> submit(String id) =>
       _request('POST', '/${Uri.encodeComponent(id)}/submit');
+
+  Future<Map<String, dynamic>> createOnboarding(Map<String, dynamic> body) =>
+      _request('POST', '/onboarding', body: body);
+
+  Future<Map<String, dynamic>> onboarding(String id) =>
+      _request('GET', '/onboarding/${Uri.encodeComponent(id)}');
+
+  Future<Map<String, dynamic>> saveOnboarding(
+          String id, Map<String, dynamic> body) =>
+      _request('PATCH', '/onboarding/${Uri.encodeComponent(id)}', body: body);
+
+  Future<Map<String, dynamic>> submitOnboarding(
+          String id, Map<String, dynamic> body, {String? idempotencyKey}) =>
+      _request('POST', '/onboarding/${Uri.encodeComponent(id)}/submit',
+          body: body,
+          idempotencyKey: idempotencyKey ?? _createIdempotencyKey());
+
+  Future<Map<String, dynamic>> uploadOrganizationDocument({
+    required String organizationId,
+    required String documentType,
+    required String filePath,
+    String? name,
+    Uint8List? bytes,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    var token = prefs.getString('auth_token') ??
+        prefs.getString('token') ??
+        prefs.getString('access_token');
+    if (token == null || token.trim().isEmpty) {
+      throw Exception(
+          'Your login session was not found. Please sign in again.');
+    }
+    token = token.replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
+    final request = http.MultipartRequest(
+        'POST',
+        Uri.parse(
+            '$baseUrl/onboarding/${Uri.encodeComponent(organizationId)}/documents'));
+    request.headers['Authorization'] = 'Bearer ${token.trim()}';
+    request.fields['documentType'] = documentType;
+    if (name != null && name.trim().isNotEmpty) {
+      request.fields['name'] = name.trim();
+    }
+    final contentType = _documentContentType(name ?? filePath);
+    if (bytes != null) {
+      request.files.add(http.MultipartFile.fromBytes('document', bytes,
+          filename: name ?? 'organization-document', contentType: contentType));
+    } else {
+      request.files.add(await http.MultipartFile.fromPath('document', filePath,
+          contentType: contentType));
+    }
+    final response = await _client.send(request);
+    final body = await response.stream.bytesToString();
+    final data = jsonDecode(body) is Map
+        ? Map<String, dynamic>.from(jsonDecode(body))
+        : <String, dynamic>{};
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        data['success'] == false) {
+      throw Exception(
+          data['message']?.toString() ?? 'Unable to upload document.');
+    }
+    return data;
+  }
+
+  MediaType _documentContentType(String value) {
+    final extension = value.toLowerCase().split('?').first.split('.').last;
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return MediaType('image', 'jpeg');
+      case 'png':
+        return MediaType('image', 'png');
+      case 'pdf':
+        return MediaType('application', 'pdf');
+      default:
+        return MediaType('application', 'octet-stream');
+    }
+  }
+
+  Future<Map<String, dynamic>> organizationDocument(
+          String organizationId, String documentId) =>
+      _request('GET',
+          '/onboarding/${Uri.encodeComponent(organizationId)}/documents/${Uri.encodeComponent(documentId)}/preview');
+
   Future<List<OrganizationPayment>> payments(String id) async {
     final data = await _request('GET', '/${Uri.encodeComponent(id)}/payments');
     final raw = data['payments'] ?? data['data'];
