@@ -378,12 +378,9 @@ const trustedCampaignTransactions = async (announcement, customerId) => {
   });
 };
 
-const campaignProgressFor = async (announcement, customerId) => {
-  const transactions = await trustedCampaignTransactions(announcement, customerId);
-  let count = 0;
-  let value = 0;
-  let valueKobo = 0;
-  let qualifiedAt = null;
+const campaignProgressFromState = (announcement, state) => {
+  const count = state.count || 0;
+  const valueKobo = state.valueKobo || 0;
   const countRequirement = announcement.qualifyingTransactionCount;
   const valueRequirement = announcement.qualifyingTransactionValue;
   const hasCountRequirement = countRequirement !== null && countRequirement !== undefined;
@@ -392,43 +389,56 @@ const campaignProgressFor = async (announcement, customerId) => {
   if (hasValueRequirement && valueRequirementKobo === null) {
     throw new Error("Campaign value requirement exceeds the safe kobo range.");
   }
-  for (const transaction of transactions) {
-    if (!Number.isSafeInteger(count + 1)) throw new Error("Campaign transaction count exceeds safe integer range.");
-    count += 1;
-    if (!Number.isSafeInteger(valueKobo + transaction.amountKobo)) {
-      throw new Error("Campaign amount exceeds safe integer range.");
-    }
-    valueKobo += transaction.amountKobo;
-    value = valueKobo / 100;
-    const countMet = !hasCountRequirement || count >= countRequirement;
-    const valueMet = !hasValueRequirement || valueKobo >= valueRequirementKobo;
-    if (!qualifiedAt && (hasCountRequirement || hasValueRequirement) && countMet && valueMet) {
-      qualifiedAt = transaction.createdAt;
-    }
-  }
   const countPercentage = countRequirement
     ? Math.min(100, Math.floor((count / countRequirement) * 100)) : 0;
   const valuePercentage = !hasValueRequirement
     ? 0 : valueRequirement === 0 ? 100
       : Math.min(100, Math.floor((valueKobo / valueRequirementKobo) * 100));
-  const qualified = Boolean(qualifiedAt);
   return {
     count,
-    value,
+    value: valueKobo / 100,
     transactionCount: count,
-    transactionValue: value,
+    transactionValue: valueKobo / 100,
     requiredTransactionCount: countRequirement ?? null,
     requiredTransactionValue: valueRequirement ?? null,
-    qualified,
-    qualifiedAt,
-    remainingCount: countRequirement ? Math.max(0, countRequirement - count) : null,
-    remainingValue: valueRequirement ? Math.max(0, valueRequirementKobo - valueKobo) / 100 : null,
-    remainingTransactions: countRequirement ? Math.max(0, countRequirement - count) : null,
+    qualified: Boolean(state.qualifiedAt),
+    qualifiedAt: state.qualifiedAt || null,
+    remainingCount: hasCountRequirement ? Math.max(0, countRequirement - count) : null,
+    remainingValue: hasValueRequirement ? Math.max(0, valueRequirementKobo - valueKobo) / 100 : null,
+    remainingTransactions: hasCountRequirement ? Math.max(0, countRequirement - count) : null,
     transactionCountPercent: countPercentage,
     transactionValuePercent: valuePercentage,
     countPercentage,
     valuePercentage,
   };
+};
+
+const addCampaignTransactionToState = (announcement, state, transaction) => {
+  if (!Number.isSafeInteger(state.count + 1)) throw new Error("Campaign transaction count exceeds safe integer range.");
+  if (!Number.isSafeInteger(state.valueKobo + transaction.amountKobo)) {
+    throw new Error("Campaign amount exceeds safe integer range.");
+  }
+  state.count += 1;
+  state.valueKobo += transaction.amountKobo;
+  state.lastAt = transaction.createdAt;
+  const countRequirement = announcement.qualifyingTransactionCount;
+  const valueRequirement = announcement.qualifyingTransactionValue;
+  const valueRequirementKobo = campaignRequirementToKobo(valueRequirement);
+  const countMet = countRequirement === null || countRequirement === undefined || state.count >= countRequirement;
+  const valueMet = valueRequirement === null || valueRequirement === undefined || state.valueKobo >= valueRequirementKobo;
+  if (!state.qualifiedAt && (countRequirement !== null && countRequirement !== undefined ||
+    valueRequirement !== null && valueRequirement !== undefined) && countMet && valueMet) {
+    state.qualifiedAt = transaction.createdAt;
+  }
+};
+
+const campaignProgressFor = async (announcement, customerId) => {
+  const transactions = await trustedCampaignTransactions(announcement, customerId);
+  const state = { count: 0, valueKobo: 0, qualifiedAt: null, lastAt: null };
+  for (const transaction of transactions) {
+    addCampaignTransactionToState(announcement, state, transaction);
+  }
+  return campaignProgressFromState(announcement, state);
 };
 
 const campaignRequirements = (announcement) => ({
@@ -711,7 +721,145 @@ exports.progress = async (req, res) => {
   }
 };
 
-const participantRows = async (announcement, query = {}) => {
+const leaderboardDateRange = (query = {}) => {
+  const range = String(query.range || "campaign").trim().toLowerCase();
+  const now = new Date();
+  if (!["today", "week", "month", "custom", "campaign"].includes(range)) {
+    throw new Error("range must be today, week, month, custom, or campaign.");
+  }
+  if (range === "custom") {
+    const from = parseDate(query.from, "from");
+    const to = parseDate(query.to, "to");
+    if (!from || !to || to <= from) throw new Error("custom range requires valid from and to dates.");
+    return { from, to };
+  }
+  if (range === "today") {
+    const from = new Date(now);
+    from.setUTCHours(0, 0, 0, 0);
+    return { from, to: now };
+  }
+  if (range === "week") return { from: new Date(now.getTime() - 7 * 86400000), to: now };
+  if (range === "month") {
+    return { from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)), to: now };
+  }
+  return { from: null, to: null };
+};
+
+const leaderboardQuery = (query = {}) => {
+  const pageValue = Number.parseInt(query.page, 10);
+  const limitValue = Number.parseInt(query.limit, 10);
+  const page = Number.isFinite(pageValue) ? Math.min(1000000, Math.max(1, pageValue)) : 1;
+  const limit = Number.isFinite(limitValue) ? Math.min(100, Math.max(1, limitValue)) : 25;
+  const status = String(query.status || "").trim().toUpperCase().replace(/[_-]+/g, " ");
+  if (!["", "REWARD PENDING", "QUALIFIED", "ALMOST QUALIFIED", "IN PROGRESS"].includes(status)) {
+    throw new Error("Invalid participant status.");
+  }
+  return {
+    page,
+    limit,
+    status,
+    search: String(query.search || "").trim().slice(0, 120),
+    campaignId: query.campaignId ? String(query.campaignId).trim() : null,
+    ...leaderboardDateRange(query),
+  };
+};
+
+const leaderboardTransactionMatch = (announcement, range) => {
+  const match = trackingTransactionMatch(announcement);
+  const period = campaignPeriod(announcement);
+  const campaignStart = period.start ? new Date(period.start).getTime() : null;
+  const campaignEnd = period.end ? new Date(period.end).getTime() : null;
+  const requestedStart = range.from ? new Date(range.from).getTime() : null;
+  const requestedEnd = range.to ? new Date(range.to).getTime() : null;
+  const start = campaignStart === null ? requestedStart
+    : requestedStart === null ? campaignStart : Math.max(campaignStart, requestedStart);
+  const end = campaignEnd === null ? requestedEnd
+    : requestedEnd === null ? campaignEnd : Math.min(campaignEnd, requestedEnd);
+  if (start !== null || end !== null) {
+    match.createdAt = {
+      ...(start !== null ? { $gte: new Date(start) } : {}),
+      ...(end !== null ? { $lt: new Date(end) } : {}),
+    };
+  }
+  return match;
+};
+
+const maskLeaderboardPhone = (value) => {
+  const raw = String(value || "");
+  if (!raw) return null;
+  if (raw.length <= 4) return "*".repeat(raw.length);
+  return `${raw.slice(0, 2)}${"*".repeat(Math.max(2, raw.length - 4))}${raw.slice(-2)}`;
+};
+
+const maskLeaderboardEmail = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw || !raw.includes("@")) return raw ? "***" : null;
+  return `${raw[0]}***@${"*".repeat(raw.slice(raw.indexOf("@") + 1).length)}`;
+};
+
+const maskLeaderboardRow = (row, campaignName) => ({
+  customerId: row.customerId,
+  name: row.fullName || "",
+  fullName: row.fullName || "",
+  phone: maskLeaderboardPhone(row.phone),
+  email: maskLeaderboardEmail(row.email),
+  maskedIdentifier: maskLeaderboardPhone(row.phone),
+  customerStatus: row.customerStatus || null,
+  campaignName,
+  eligibleTransactionCount: row.transactionCount,
+  transactionCount: row.transactionCount,
+  totalEligibleTransactionValue: row.transactionValue,
+  transactionValue: row.transactionValue,
+  qualificationTargetCount: row.requiredTransactionCount,
+  remainingTransactions: row.remainingCount,
+  remainingCount: row.remainingCount,
+  remainingValue: row.remainingValue,
+  progressPercentage: row.normalizedProgress,
+  progress: row.normalizedProgress,
+  progressPercent: row.normalizedProgress,
+  countPercentage: row.countPercentage,
+  valuePercentage: row.valuePercentage,
+  status: row.status,
+  statusCode: String(row.status || "").toUpperCase().replace(/ /g, "_"),
+  qualifiedAt: row.qualifiedAt || null,
+  lastEligibleTransactionAt: row.lastEligibleTransactionAt || null,
+  winner: Boolean(row.winner),
+  winnerMarkedAt: row.winnerMarkedAt || null,
+  rank: row.rank,
+});
+
+const emptyLeaderboardData = (query) => ({
+  campaign: null,
+  campaignName: null,
+  requirements: null,
+  summary: {
+    activeParticipants: 0,
+    qualifiedCustomers: 0,
+    almostQualified: 0,
+    rewardsPending: 0,
+    rewardsPaid: 0,
+    totalEligibleTransactions: 0,
+    eligibleTransactionCount: 0,
+    totalEligibleTransactionValue: 0,
+    conversionRate: 0,
+  },
+  topParticipants: [],
+  participants: [],
+  page: query.page,
+  limit: query.limit,
+  total: 0,
+  totalPages: 0,
+  lastUpdated: null,
+});
+
+const leaderboardCampaignView = (announcement) => announcement ? ({
+  id: announcement._id,
+  title: announcement.title,
+  status: announcement.campaignStatus || "DRAFT",
+  campaignTrackingEnabled: true,
+}) : null;
+
+const participantRows = async (announcement, query = {}, options = {}) => {
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit, 10) || 25));
   const skip = (page - 1) * limit;
@@ -728,6 +876,7 @@ const participantRows = async (announcement, query = {}) => {
     ? null
     : mongoose.Types.Decimal128.fromString(String(valueRequirementKobo));
   const maxKoboDecimal = mongoose.Types.Decimal128.fromString(String(MAX_CAMPAIGN_KOBO));
+  const zeroKoboDecimal = mongoose.Types.Decimal128.fromString("0");
   const sentinel = new Date("9999-12-31T23:59:59.999Z");
   const qualificationExpression = {
     $and: [
@@ -747,7 +896,34 @@ const participantRows = async (announcement, query = {}) => {
   const userSearch = [
     { $expr: { $eq: ["$_id", "$$customerId"] } },
     { role: "CUSTOMER" },
+    ...(options.leaderboard ? [{ status: "ACTIVE" }] : []),
   ];
+  const audience = asUpper(announcement.audience || "ALL");
+  if (options.leaderboard && audience === "SELECTED_CUSTOMERS") {
+    userSearch.push({ _id: { $in: announcement.selectedCustomerIds || [] } });
+  }
+  if (options.leaderboard && audience === "SELECTED_ROLE") {
+    userSearch.push({ role: asUpper(announcement.selectedRole) });
+  }
+  const userLookupPipeline = [{ $match: { $and: userSearch } }];
+  if (options.leaderboard && (audience === "KYC_VERIFIED" || audience === "KYC_PENDING")) {
+    userLookupPipeline.push({
+      $lookup: {
+        from: KycProfile.collection.name,
+        let: { customerId: "$_id" },
+        pipeline: [
+          { $match: { $expr: { $eq: ["$user", "$$customerId"] } } },
+          { $project: { _id: 0, status: 1 } },
+        ],
+        as: "kyc",
+      },
+    });
+    userLookupPipeline.push({
+      $match: audience === "KYC_VERIFIED"
+        ? { $or: [{ kycVerified: true }, { "kyc.status": "VERIFIED" }] }
+        : { "kyc.status": { $in: [...KYC_PENDING_STATES] } },
+    });
+  }
   const sort = String(query.sort || "qualifiedAt").toLowerCase();
   const direction = String(query.order || "desc").toLowerCase() === "asc" ? 1 : -1;
   const sortField = {
@@ -776,17 +952,27 @@ const participantRows = async (announcement, query = {}) => {
     ];
   }
   // Atlas tiers without server-side JavaScript still need the same bounded,
-  // recursive provider marker semantics as customer progress. Read only the
-  // candidate IDs and provider payloads, then keep all aggregation work
-  // (grouping, filtering, sorting, and pagination) in MongoDB.
-  const candidateTransactions = await Transaction.find(trackingTransactionMatch(announcement))
+  // recursive provider marker semantics as customer progress. Stream only
+  // candidate IDs/provider payloads and retain the small exclusion set, then
+  // keep all grouping, filtering, sorting, and pagination in MongoDB.
+  const transactionMatch = options.transactionMatch || trackingTransactionMatch(announcement);
+  const excludedTransactionIds = [];
+  const candidateCursor = Transaction.find(transactionMatch)
     .select("_id providerResponse")
-    .lean();
-  const excludedTransactionIds = candidateTransactions
-    .filter((transaction) => containsRefundOrReversalMarker(transaction.providerResponse))
-    .map((transaction) => transaction._id);
+    .lean()
+    .cursor();
+  for await (const transaction of candidateCursor) {
+    if (containsRefundOrReversalMarker(transaction.providerResponse)) {
+      excludedTransactionIds.push(transaction._id);
+    }
+  }
   const pipeline = [
-    { $match: trackingTransactionMatch(announcement, undefined, excludedTransactionIds) },
+    {
+      $match: {
+        ...transactionMatch,
+        ...(excludedTransactionIds.length ? { _id: { $nin: excludedTransactionIds } } : {}),
+      },
+    },
     {
       $set: {
         // Decimal128 plus $round implements exact half-even kobo rounding.
@@ -845,6 +1031,7 @@ const participantRows = async (announcement, query = {}) => {
         transactionCount: { $sum: 1 },
         transactionValueKobo: { $sum: "$campaignAmountKobo" },
         qualifiedAtCandidate: { $min: "$qualifiedAtCandidate" },
+        lastEligibleTransactionAt: { $max: "$createdAt" },
       },
     },
     {
@@ -865,7 +1052,7 @@ const participantRows = async (announcement, query = {}) => {
       $lookup: {
         from: User.collection.name,
         let: { customerId: "$_id" },
-        pipeline: [{ $match: { $and: userSearch } }],
+        pipeline: userLookupPipeline,
         as: "customer",
       },
     },
@@ -902,6 +1089,153 @@ const participantRows = async (announcement, query = {}) => {
       },
     },
   ];
+  if (options.leaderboard) {
+    const winnerCollection = AnnouncementCampaignWinner.collection.name;
+    const leaderboardFilter = {};
+    if (query.status) {
+      leaderboardFilter.status = {
+        "REWARD PENDING": "Reward Pending",
+        QUALIFIED: "Qualified",
+        "ALMOST QUALIFIED": "Almost Qualified",
+        "IN PROGRESS": "In Progress",
+      }[query.status];
+    }
+    if (safeSearch) leaderboardFilter.$or = rowFilter.$or;
+    const lowerProgressExpression = hasCount && hasValue
+      ? { $min: ["$countPercentage", "$valuePercentage"] }
+      : { $max: ["$countPercentage", "$valuePercentage"] };
+    const winnerStatusExpression = {
+      $cond: [
+        { $gt: [{ $size: "$winnerRecords" }, 0] },
+        "Reward Pending",
+        { $cond: ["$isQualified", "Qualified", {
+          $cond: [{ $gte: ["$normalizedProgress", 80] }, "Almost Qualified", "In Progress"],
+        }] },
+      ],
+    };
+    const leaderboardPipeline = pipeline.concat([
+      {
+        $set: {
+          normalizedProgress: lowerProgressExpression,
+          requiredTransactionCount: hasCount ? announcement.qualifyingTransactionCount : null,
+          requiredTransactionValue: hasValue ? announcement.qualifyingTransactionValue : null,
+          remainingCount: hasCount
+            ? { $max: [0, { $subtract: [announcement.qualifyingTransactionCount, "$transactionCount"] }] }
+            : null,
+          remainingValue: hasValue
+            ? {
+              $toDouble: {
+                $divide: [
+                  { $max: [zeroKoboDecimal, { $subtract: [valueRequirementDecimal, "$transactionValueKobo"] }] },
+                  100,
+                ],
+              },
+            }
+            : null,
+        },
+      },
+      {
+        $set: {
+          remainingRequirements: {
+            $add: [{ $ifNull: ["$remainingCount", 0] }, { $ifNull: ["$remainingValue", 0] }],
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: winnerCollection,
+          let: { customerId: "$customerId" },
+          pipeline: [{
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$announcementId", announcement._id] },
+                  { $eq: ["$customerId", "$$customerId"] },
+                ],
+              },
+            },
+          }, { $project: { _id: 0, markedAt: 1 } }],
+          as: "winnerRecords",
+        },
+      },
+      { $set: { status: winnerStatusExpression, winner: { $gt: [{ $size: "$winnerRecords" }, 0] } } },
+      { $match: leaderboardFilter },
+      {
+        $set: {
+          rankPriority: { $cond: [{ $in: ["$status", ["Reward Pending", "Qualified"]] }, 1, 0] },
+        },
+      },
+      {
+        $facet: {
+          summary: [{
+            $group: {
+              _id: null,
+              activeParticipants: { $sum: 1 },
+              qualifiedCustomers: {
+                $sum: { $cond: [{ $in: ["$status", ["Qualified", "Reward Pending"]] }, 1, 0] },
+              },
+              almostQualified: { $sum: { $cond: [{ $eq: ["$status", "Almost Qualified"] }, 1, 0] } },
+              rewardsPending: { $sum: { $cond: [{ $eq: ["$status", "Reward Pending"] }, 1, 0] } },
+              totalEligibleTransactions: { $sum: "$transactionCount" },
+              totalEligibleTransactionValue: { $sum: "$transactionValue" },
+              latestEligibleTransactionAt: { $max: "$lastEligibleTransactionAt" },
+            },
+          }],
+          topParticipants: [
+            { $sort: {
+              rankPriority: -1, normalizedProgress: -1, remainingRequirements: 1,
+              lastEligibleTransactionAt: -1, customerId: 1,
+            } },
+            { $limit: 10 },
+            { $project: { _id: 0, customerId: 1, fullName: 1, phone: 1, email: 1, customerStatus: 1,
+              transactionCount: 1, transactionValue: 1, requiredTransactionCount: 1,
+              remainingCount: 1, remainingValue: 1, normalizedProgress: 1, countPercentage: 1,
+              valuePercentage: 1, status: 1, qualifiedAt: 1, lastEligibleTransactionAt: 1,
+              winner: 1, winnerRecords: 1, rank: 1 } },
+          ],
+          participants: [
+            { $sort: {
+              rankPriority: -1, normalizedProgress: -1, remainingRequirements: 1,
+              lastEligibleTransactionAt: -1, customerId: 1,
+            } },
+            { $skip: skip },
+            { $limit: limit },
+            { $project: { _id: 0, customerId: 1, fullName: 1, phone: 1, email: 1, customerStatus: 1,
+              transactionCount: 1, transactionValue: 1, requiredTransactionCount: 1,
+              remainingCount: 1, remainingValue: 1, normalizedProgress: 1, countPercentage: 1,
+              valuePercentage: 1, status: 1, qualifiedAt: 1, lastEligibleTransactionAt: 1,
+              winner: 1, winnerRecords: 1 } },
+          ],
+          filteredTotal: [{ $count: "value" }],
+        },
+      },
+    ]);
+    const [leaderboardResult] = await Transaction.aggregate(leaderboardPipeline);
+    const summary = leaderboardResult?.summary?.[0] || {
+      activeParticipants: 0, qualifiedCustomers: 0, almostQualified: 0,
+      rewardsPending: 0, totalEligibleTransactions: 0, totalEligibleTransactionValue: 0,
+    };
+    const latestEligibleTransactionAt = summary.latestEligibleTransactionAt || null;
+    delete summary._id;
+    const mapRows = (rows, offset = 0) => (rows || []).map((row, index) => {
+      const winner = row.winnerRecords?.[0];
+      return maskLeaderboardRow({
+        ...row,
+        winnerMarkedAt: winner?.markedAt || null,
+        rank: offset + index + 1,
+      }, announcement.title || "");
+    });
+    return {
+      rows: mapRows(leaderboardResult?.participants, skip),
+      topParticipants: mapRows(leaderboardResult?.topParticipants),
+      total: leaderboardResult?.filteredTotal?.[0]?.value || 0,
+      summary: { ...summary, rewardsPaid: 0, eligibleTransactionCount: summary.totalEligibleTransactions || 0,
+        conversionRate: summary.activeParticipants
+          ? Number(((summary.qualifiedCustomers / summary.activeParticipants) * 100).toFixed(2)) : 0 },
+      page,
+      limit,
+    };
+  }
   // Summary deliberately runs beside the filtered row branch. This keeps the
   // campaign totals stable when search/status filters or pagination change.
   const summaryPipeline = pipeline.concat([
@@ -980,6 +1314,191 @@ const participantRows = async (announcement, query = {}) => {
     page,
     limit,
   };
+};
+
+const findLeaderboardCampaign = async (campaignId) => {
+  if (campaignId) {
+    if (!validId(campaignId)) throw new Error("campaignId must be a valid campaign ID.");
+    return Announcement.findOne({ _id: campaignId, campaignTrackingEnabled: true }).lean();
+  }
+  return Announcement.findOne({
+    campaignTrackingEnabled: true,
+    campaignStatus: "ACTIVE",
+  }).sort({ priority: -1, createdAt: -1, _id: 1 }).lean();
+};
+
+const leaderboardDetailTransactions = async (announcement, customerId, query) => {
+  const match = {
+    ...leaderboardTransactionMatch(announcement, query),
+    customerId,
+  };
+  const skip = (query.page - 1) * query.limit;
+  const windowSize = skip + query.limit;
+  const chronologicalPage = [];
+  let total = 0;
+  const state = { count: 0, valueKobo: 0, qualifiedAt: null, lastAt: null };
+  const chronological = Transaction.find(match)
+    .select("_id amount createdAt serviceType providerResponse")
+    .sort({ createdAt: 1, _id: 1 })
+    .lean()
+    .cursor();
+  for await (const transaction of chronological) {
+    if (containsRefundOrReversalMarker(transaction.providerResponse)) continue;
+    const amountKobo = normalizeCampaignAmountToKobo(transaction.amount);
+    if (amountKobo === null) continue;
+    addCampaignTransactionToState(announcement, state, { ...transaction, amountKobo });
+    total += 1;
+    chronologicalPage.push({ ...transaction, amountKobo });
+    if (chronologicalPage.length > windowSize) {
+      chronologicalPage.shift();
+    }
+  }
+  const retainedStart = Math.max(0, total - windowSize);
+  const pageStart = Math.max(0, total - skip - query.limit) - retainedStart;
+  const pageEnd = total - skip - retainedStart;
+  const pageTransactions = chronologicalPage
+    .slice(Math.max(0, pageStart), Math.max(0, pageEnd))
+    .reverse();
+  return { total, pageTransactions, state };
+};
+
+exports.promoLeaderboard = async (req, res) => {
+  try {
+    const query = leaderboardQuery(req.query);
+    const announcement = await findLeaderboardCampaign(query.campaignId);
+    if (!announcement || announcement.campaignStatus !== "ACTIVE") {
+      return res.json({ success: true, data: emptyLeaderboardData(query) });
+    }
+    const participantResult = await participantRows(
+      announcement,
+      query,
+      { leaderboard: true, transactionMatch: leaderboardTransactionMatch(announcement, query) },
+    );
+    const mapRequirements = campaignRequirements(announcement);
+    const latestEligibleTransactionAt = participantResult.summary.latestEligibleTransactionAt || null;
+    const summary = {
+      ...participantResult.summary,
+      activeParticipants: participantResult.summary.activeParticipants || 0,
+      qualifiedCustomers: participantResult.summary.qualifiedCustomers || 0,
+      almostQualified: participantResult.summary.almostQualified || 0,
+      rewardsPending: participantResult.summary.rewardsPending || 0,
+      rewardsPaid: 0,
+      totalEligibleTransactions: participantResult.summary.totalEligibleTransactions || 0,
+      eligibleTransactionCount: participantResult.summary.totalEligibleTransactions || 0,
+      totalEligibleTransactionValue: participantResult.summary.totalEligibleTransactionValue || 0,
+      conversionRate: participantResult.summary.conversionRate || 0,
+    };
+    delete summary.latestEligibleTransactionAt;
+    return res.json({
+      success: true,
+      data: {
+        campaign: leaderboardCampaignView(announcement),
+        campaignName: announcement.title || "",
+        requirements: mapRequirements,
+        summary,
+        eligibleTransactionCount: summary.totalEligibleTransactions,
+        totalEligibleTransactionValue: summary.totalEligibleTransactionValue,
+        topParticipants: participantResult.topParticipants || [],
+        participants: participantResult.rows,
+        page: participantResult.page,
+        limit: participantResult.limit,
+        total: participantResult.total,
+        totalPages: participantResult.total ? Math.ceil(participantResult.total / participantResult.limit) : 0,
+        lastUpdated: [announcement.updatedAt, latestEligibleTransactionAt].filter(Boolean)
+          .sort((a, b) => new Date(b) - new Date(a))[0] || null,
+      },
+    });
+  } catch (error) {
+    if (/must be|requires|Invalid participant|valid from|custom range|range must|safe kobo/i.test(error.message || "")) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    console.error("Promo leaderboard error:", error);
+    return res.status(500).json({ success: false, message: "Failed to load promo leaderboard." });
+  }
+};
+
+exports.promoLeaderboardDetail = async (req, res) => {
+  try {
+    const query = leaderboardQuery(req.query);
+    if (!validId(req.params.customerId)) {
+      return res.status(404).json({ success: false, message: "Customer not found." });
+    }
+    const announcement = await findLeaderboardCampaign(query.campaignId);
+    if (!announcement) return res.status(404).json({ success: false, message: "Campaign not found." });
+    const customer = await User.findOne({ _id: req.params.customerId, role: "CUSTOMER" })
+      .select("_id fullName phone email status kycVerified role").lean();
+    if (!customer) return res.status(404).json({ success: false, message: "Customer not found." });
+    const audienceEligible = announcement.campaignStatus === "ACTIVE" &&
+      await matchesAudience(announcement, customer);
+    const result = audienceEligible
+      ? await leaderboardDetailTransactions(announcement, customer._id, query)
+      : { total: 0, pageTransactions: [], state: { count: 0, valueKobo: 0, qualifiedAt: null, lastAt: null } };
+    const progress = campaignProgressFromState(announcement, result.state);
+    const winner = audienceEligible ? await AnnouncementCampaignWinner.findOne({
+      announcementId: announcement._id,
+      customerId: customer._id,
+    }).select("markedAt").lean() : null;
+    const status = winner ? "Reward Pending" : progress.qualified ? "Qualified"
+      : ((progress.requiredTransactionCount !== null && progress.requiredTransactionValue !== null
+        ? Math.min(progress.countPercentage, progress.valuePercentage)
+        : progress.requiredTransactionCount !== null ? progress.countPercentage : progress.valuePercentage) >= 80
+        ? "Almost Qualified" : "In Progress");
+    return res.json({
+      success: true,
+      data: {
+        customer: {
+          customerId: customer._id,
+          name: customer.fullName || "",
+          fullName: customer.fullName || "",
+          phone: maskLeaderboardPhone(customer.phone),
+          email: maskLeaderboardEmail(customer.email),
+          maskedIdentifier: maskLeaderboardPhone(customer.phone),
+          customerStatus: customer.status || null,
+        },
+        campaign: leaderboardCampaignView(announcement),
+        campaignName: announcement.title || "",
+        requirements: campaignRequirements(announcement),
+        current: { transactionCount: progress.transactionCount, transactionValue: progress.transactionValue },
+        remaining: { transactionCount: progress.remainingCount, transactionValue: progress.remainingValue },
+        progress: {
+          countPercentage: progress.countPercentage,
+          valuePercentage: progress.valuePercentage,
+          normalizedProgress: progress.requiredTransactionCount !== null && progress.requiredTransactionValue !== null
+            ? Math.min(progress.countPercentage, progress.valuePercentage)
+            : progress.requiredTransactionCount !== null ? progress.countPercentage : progress.valuePercentage,
+          qualified: progress.qualified,
+        },
+        eligibleTransactionCount: progress.transactionCount,
+        totalEligibleTransactionValue: progress.transactionValue,
+        qualificationTargetCount: progress.requiredTransactionCount,
+        remainingTransactions: progress.remainingTransactions,
+        progressPercentage: progress.requiredTransactionCount !== null && progress.requiredTransactionValue !== null
+          ? Math.min(progress.countPercentage, progress.valuePercentage)
+          : progress.requiredTransactionCount !== null ? progress.countPercentage : progress.valuePercentage,
+        qualificationDate: progress.qualifiedAt,
+        winner: Boolean(winner),
+        rewardState: status,
+        status,
+        winnerMarkedAt: winner?.markedAt || null,
+        eligibleTransactions: result.pageTransactions.map((transaction) => ({
+          id: transaction._id,
+          amount: transaction.amount,
+          serviceType: transaction.serviceType,
+          createdAt: transaction.createdAt,
+        })),
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: result.total ? Math.ceil(result.total / query.limit) : 0,
+      },
+    });
+  } catch (error) {
+    if (/must be|requires|Invalid participant|valid from|custom range|range must|safe kobo/i.test(error.message || "")) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    console.error("Promo leaderboard detail error:", error);
+    return res.status(500).json({ success: false, message: "Failed to load promo leaderboard detail." });
+  }
 };
 
 exports.participants = async (req, res) => {

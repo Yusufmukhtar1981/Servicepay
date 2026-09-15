@@ -19,8 +19,21 @@ router.post("/:id/click", protect, customerOnly, controller.click);
 
 const staff = (permission) => [protect, loadStaffRole, requirePermission(permission)];
 const staffAny = (...permissions) => [protect, loadStaffRole, requireAnyPermission(permissions)];
+const headOfficePromo = (permission) => [
+  protect,
+  loadStaffRole,
+  (req, res, next) => {
+    if (!req.staffAccess?.isHeadOffice) {
+      return res.status(403).json({ success: false, message: "Head Office access is required." });
+    }
+    return next();
+  },
+  requirePermission(permission),
+];
 router.get("/admin", ...staff(P.ANNOUNCEMENTS_VIEW), controller.listAdmin);
 router.get("/admin/summary", ...staff(P.ANNOUNCEMENTS_SUMMARY), controller.summary);
+router.get("/admin/promo-leaderboard", ...headOfficePromo(P.ANNOUNCEMENTS_PARTICIPANTS_VIEW), controller.promoLeaderboard);
+router.get("/admin/promo-leaderboard/:customerId", ...headOfficePromo(P.ANNOUNCEMENTS_PARTICIPANTS_VIEW), controller.promoLeaderboardDetail);
 router.get("/admin/:id/participants", ...staff(P.ANNOUNCEMENTS_PARTICIPANTS_VIEW), controller.participants);
 router.get("/admin/:id/participants/winners", ...staffAny(P.ANNOUNCEMENTS_PARTICIPANTS_HISTORY_VIEW, P.ANNOUNCEMENTS_WINNERS_VIEW), controller.winners);
 router.get("/admin/:id/winners", ...staffAny(P.ANNOUNCEMENTS_PARTICIPANTS_HISTORY_VIEW, P.ANNOUNCEMENTS_WINNERS_VIEW), controller.winners);

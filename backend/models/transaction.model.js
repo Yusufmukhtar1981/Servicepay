@@ -166,6 +166,16 @@ transactionSchema.index({
   createdAt: -1,
 });
 
+// Global campaign reports constrain status/service/date before grouping by
+// customer; keep the date window before the grouping key in this index.
+transactionSchema.index({
+  status: 1,
+  serviceType: 1,
+  createdAt: 1,
+  customerId: 1,
+  _id: 1,
+});
+
 // Campaign progress always scopes by customer, successful status, service
 // type, and the eligibility window. Keep the existing indexes intact.
 transactionSchema.index({
