@@ -17,6 +17,34 @@ const money = {
   },
 };
 
+const organizationAddressSchema = new Schema({
+  address: { type: String, trim: true, maxlength: 300 },
+  state: { type: String, trim: true, maxlength: 100 },
+  lga: { type: String, trim: true, maxlength: 100 },
+  city: { type: String, trim: true, maxlength: 100 },
+  landmark: { type: String, trim: true, maxlength: 180 },
+}, { _id: false });
+const representativeSchema = new Schema({
+  fullName: { type: String, trim: true, maxlength: 160 },
+  role: { type: String, trim: true, maxlength: 100 },
+  phone: { type: String, trim: true, maxlength: 30 },
+  email: { type: String, trim: true, lowercase: true, maxlength: 180 },
+  // NIN is intentionally excluded from normal queries and safe serializers.
+  nin: { type: String, trim: true, select: false, maxlength: 30 },
+  residentialAddress: { type: organizationAddressSchema },
+}, { _id: false });
+const organizationDocumentSchema = new Schema({
+  name: { type: String, trim: true, maxlength: 180 },
+  documentType: { type: String, trim: true, maxlength: 80 },
+  originalName: { type: String, trim: true, maxlength: 180 },
+  storageKey: { type: String, select: false, maxlength: 500 },
+  mimeType: { type: String, trim: true, maxlength: 80 },
+  size: { type: Number, min: 1, max: 8 * 1024 * 1024 },
+  uploadedBy: oid("User"),
+  uploadedAt: { type: Date, default: Date.now },
+  replacedAt: Date,
+}, { _id: true });
+
 const organizationSchema = new Schema({
   name: { type: String, required: true, trim: true, maxlength: 180 },
   slug: { type: String, required: true, unique: true, index: true, immutable: true },
@@ -26,17 +54,49 @@ const organizationSchema = new Schema({
   registrationNumber: { type: String, default: "" },
   contact: { name: String, email: String, phone: String, address: String, officialName: String, officialEmail: String, officialPhone: String },
   createdBy: oid("User", true),
-  status: { type: String, enum: ["DRAFT", "PENDING_VERIFICATION", "VERIFIED", "REJECTED", "SUSPENDED"], default: "DRAFT", index: true },
+  // PENDING_VERIFICATION and VERIFIED are retained for existing consumers/data.
+  // The validator below also accepts the newer KYB lifecycle values without
+  // changing the legacy enumValues contract used by older consumers.
+  status: { type: String, default: "DRAFT", index: true },
   approvedAt: Date, approvedBy: oid("User"), rejectionReason: String,
+  organizationType: { type: String, trim: true, maxlength: 50 },
+  registrationStatus: { type: String, enum: ["REGISTERED", "UNREGISTERED", "PENDING", "NOT_APPLICABLE"], default: "PENDING" },
+  dateEstablished: Date,
+  industry: { type: String, trim: true, maxlength: 120 },
+  sector: { type: String, trim: true, maxlength: 120 },
+  organizationEmail: { type: String, trim: true, lowercase: true, maxlength: 180 },
+  organizationPhone: { type: String, trim: true, maxlength: 30 },
+  website: { type: String, trim: true, maxlength: 300 },
+  officeAddress: { type: organizationAddressSchema },
+  representative: { type: representativeSchema },
+  organizationReference: { type: String, trim: true, unique: true, sparse: true, index: true },
+  // Used as the durable onboarding idempotency claim. It is private because
+  // it is an implementation detail, not a client-visible organization key.
+  submissionRequestKey: { type: String, trim: true, select: false, maxlength: 200 },
+  submittedAt: Date,
+  reviewedAt: Date,
+  reviewedBy: oid("User"),
+  reviewReason: { type: String, trim: true, maxlength: 1000 },
+  requestedInformation: {
+    reason: { type: String, trim: true, maxlength: 1000 },
+    fields: { type: [String], default: [] },
+    documents: { type: [String], default: [] },
+  },
   membershipMode: { type: String, enum: ["MANUAL", "AUTO"], default: "MANUAL" },
   country: { type: String, default: "NG" }, state: String, lga: String,
   annualFee: { ...money, default: 0 },
   registrationFee: { ...money, default: 0 },
   renewalCycle: { type: String, enum: ["ANNUAL", "MONTHLY", "NONE"], default: "ANNUAL" },
-  documents: [{ name: String, storageKey: String, mimeType: String, size: Number }],
+  documents: [organizationDocumentSchema],
   logo: { url: String, publicId: String, mimeType: { type: String, enum: ["image/png", "image/jpeg", "image/webp"] }, width: Number, height: Number },
   membershipNumberSequence: { type: Number, default: 0, min: 0 },
 }, timestamps);
+const organizationStatusPath = organizationSchema.path("status");
+organizationStatusPath.enumValues = ["DRAFT", "PENDING_VERIFICATION", "VERIFIED", "REJECTED", "SUSPENDED"];
+organizationStatusPath.validate({
+  validator: (value) => ["DRAFT", "PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "MORE_INFORMATION_REQUIRED", "PENDING_VERIFICATION", "VERIFIED", "REJECTED", "SUSPENDED"].includes(value),
+  message: "Invalid organization status.",
+});
 organizationSchema.index({ status: 1, createdAt: -1 });
 
 const memberSchema = new Schema({

@@ -1,4 +1,5 @@
 const { v2: cloudinary } = require("cloudinary");
+const crypto = require("crypto");
 
 const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
 const allowedMimeTypes = new Set(["image/jpeg", "image/png", "application/pdf"]);
@@ -28,11 +29,13 @@ const validateFile = (file) => {
   if (!file?.buffer || !allowedMimeTypes.has(mimeType) || !hasSignature(file.buffer, mimeType)) {
     const error = new Error("Amana uploads must be valid JPEG, PNG, or PDF files.");
     error.code = "UNSUPPORTED_DOCUMENT";
+    error.status = 400;
     throw error;
   }
   if (file.buffer.length > MAX_DOCUMENT_BYTES) {
     const error = new Error("Amana documents must be 8 MB or smaller.");
     error.code = "DOCUMENT_TOO_LARGE";
+    error.status = 413;
     throw error;
   }
 };
@@ -43,7 +46,12 @@ const uploadOne = async (file, folder, metadata = {}) => {
   const resourceType = String(file.mimetype).toLowerCase() === "application/pdf" ? "raw" : "image";
   const result = await new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: resourceType, type: "authenticated", overwrite: false },
+      {
+        ...(metadata.publicId ? { public_id: metadata.publicId } : { folder }),
+        resource_type: resourceType,
+        type: "authenticated",
+        overwrite: false,
+      },
       (error, response) => (error ? reject(error) : resolve(response))
     );
     stream.end(file.buffer);
@@ -61,18 +69,30 @@ const uploadOne = async (file, folder, metadata = {}) => {
   };
 };
 
+const createDocumentPublicId = (folder) => `${folder}/document-${crypto.randomUUID()}`;
+
+const destroyOne = async ({ assetId, resourceType = "image" }) => {
+  if (!assetId) return { result: "not found" };
+  configureCloudinary();
+  return cloudinary.uploader.destroy(String(assetId), {
+    resource_type: resourceType,
+    type: "authenticated",
+    invalidate: true,
+  });
+};
+
 const uploadMany = async (files, folder, metadata = {}) => Promise.all((files || []).map((file) => uploadOne(file, folder, metadata)));
 
 const buildSignedUrl = (document) => {
   if (!document?.assetId) return "";
   configureCloudinary();
-  return cloudinary.url(document.assetId, {
+  const expiresAt = Math.floor(Date.now() / 1000) + 300;
+  return cloudinary.utils.private_download_url(document.assetId, document.format || "jpg", {
     resource_type: document.resourceType || "image",
     type: "authenticated",
-    sign_url: true,
     secure: true,
-    expires_at: Math.floor(Date.now() / 1000) + 300,
+    expires_at: expiresAt,
   });
 };
 
-module.exports = { MAX_DOCUMENT_BYTES, validateFile, uploadOne, uploadMany, buildSignedUrl };
+module.exports = { MAX_DOCUMENT_BYTES, validateFile, uploadOne, createDocumentPublicId, destroyOne, uploadMany, buildSignedUrl };

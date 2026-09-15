@@ -1,7 +1,19 @@
 const express = require("express");
+const multer = require("multer");
 const { protect, customerOnly, adminOnly } = require("../middleware/auth.middleware");
 const c = require("../controllers/organizations.controller");
 const router = express.Router();
+const organizationUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+});
+const handleOrganizationUpload = (req, res, next) => organizationUpload.single("document")(req, res, (error) => {
+  if (!error) return next();
+  return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+    success: false,
+    message: error.code === "LIMIT_FILE_SIZE" ? "Organization documents must be 8 MB or smaller." : "Unable to process this upload.",
+  });
+});
 
 // These endpoints intentionally do not expose member PII or unpublished records.
 router.get("/public/search", c.publicSearch);
@@ -10,9 +22,18 @@ router.get("/public/cards/:cardNumber", c.verifyCard);
 
 router.use(protect);
 router.post("/", c.create);
+router.post("/onboarding", c.create);
 router.get("/mine", c.mine);
 router.get("/explore", c.explore);
 router.get("/", c.mine);
+router.get("/onboarding/:organizationId", c.onboardingGet);
+router.patch("/onboarding/:organizationId", c.onboardingPatch);
+router.post("/onboarding/:organizationId/submit", c.onboardingSubmit);
+router.post("/onboarding/:organizationId/resubmit", c.onboardingSubmit);
+router.post("/onboarding/:organizationId/documents", handleOrganizationUpload, c.organizationDocumentUpload);
+router.get("/onboarding/:organizationId/documents/:documentId", c.organizationDocumentView);
+router.get("/onboarding/:organizationId/documents/:documentId/preview", c.organizationDocumentView);
+router.get("/onboarding/:organizationId/documents/:documentId/download", c.organizationDocumentView);
 router.post("/:organizationId/submit", c.submit);
 router.patch("/:id/platform-status", adminOnly("SUPER_ADMIN", "ADMIN"), c.platformStatus);
 router.post("/:organizationId/apply", customerOnly, c.apply);

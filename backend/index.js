@@ -34,6 +34,9 @@ const {
 const {
   logFirebaseConfigurationStatus,
 } = require("./services/riderDeliveryAlert.service");
+const {
+  processDocumentAssetCleanup,
+} = require("./services/organizationDocument.service");
 
 const paystackRoutes = require(
   "./routes/paystack.routes"
@@ -412,16 +415,17 @@ app.set("io", attachCallSignaling(server));
 
 console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 
-server.on("error", (error) => {
-  console.error(
-    `Fatal server startup error: ${error.message}`
-  );
-  process.exit(1);
-});
-
 async function startServer() {
   // Do not bind until required startup data safety work is complete.
   await connectDB();
+  // A bounded, best-effort pass resumes durable document cleanup without
+  // delaying server startup or affecting settlement paths.
+  processDocumentAssetCleanup({ limit: 10 }).catch(() => {});
+  const organizationDocumentCleanupTimer = setInterval(
+    () => processDocumentAssetCleanup({ limit: 10 }).catch(() => {}),
+    60 * 1000,
+  );
+  organizationDocumentCleanupTimer.unref?.();
   await organizationTreasuryMigration.backfill();
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -455,5 +459,12 @@ async function startServer() {
 
 startServer().catch((error) => {
   console.error(`Fatal startup error: ${error.message}`);
+  process.exit(1);
+});
+
+server.on("error", (error) => {
+  console.error(
+    `Fatal server startup error: ${error.message}`
+  );
   process.exit(1);
 });

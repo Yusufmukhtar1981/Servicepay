@@ -70,6 +70,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("EMPOWERMENT_VIEW", "empowerment.view", "EMPOWERMENT", "View empowerment", "View programs, beneficiaries, and reports."),
   permission("EMPOWERMENT_MANAGE", "empowerment.manage", "EMPOWERMENT", "Manage empowerment", "Manage organizations, funding, and disbursements.", "CRITICAL"),
   permission("ORGANIZATIONS_VIEW", "organizations.view", "ORGANIZATIONS", "View organizations", "View organization records and reports."),
+  permission("ORGANIZATIONS_DOCUMENTS_VIEW", "organizations.documents.view", "ORGANIZATIONS", "View organization documents", "View private organization KYB document metadata and previews.", "PRIVILEGED"),
   permission("ORGANIZATIONS_REVIEW", "organizations.review", "ORGANIZATIONS", "Review organizations", "Review organization onboarding.", "PRIVILEGED"),
   permission("ORGANIZATIONS_STATUS_MANAGE", "organizations.status.manage", "ORGANIZATIONS", "Manage organization status", "Approve, reject, suspend, or verify organizations.", "CRITICAL"),
   permission("ORGANIZATIONS_WALLET_MANAGE", "organizations.wallet.manage", "ORGANIZATIONS", "Manage organization wallets", "Manage organization wallet status.", "CRITICAL"),

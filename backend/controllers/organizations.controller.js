@@ -2,9 +2,11 @@ const mongoose = require("mongoose");
 const { Organization, OrganizationMember, OrganizationRole, OrganizationBranch, OrganizationCustomField, OrganizationFee, OrganizationFeeAssignment, OrganizationPayment, OrganizationWallet, OrganizationLedger, OrganizationAuditLog, OrganizationAnnouncement, OrganizationMembershipCard } = require("../models/organizations.models");
 const models = require("../models/organizations.models");
 const svc = require("../services/organizations.service");
+const { hasPermission } = require("../middleware/staffPermission.middleware");
 const Notification = require("../models/notification.model");
 const { createInAppNotification } = require("../services/inAppNotification.service");
 const treasury = require("../services/organizationTreasury.service");
+const { uploadOrganizationDocument, normalizeDocumentType, MAX_DOCUMENT_BYTES, signedDocumentUrl, persistOrganizationDocument } = require("../services/organizationDocument.service");
 const fail = (res, status, message) => res.status(status).json({ success: false, message });
 const ok = (res, data = {}) => res.json({ success: true, ...data });
 const safeSettlementAccount = (account) => { if (!account) return account; const value = typeof account.toObject === "function" ? account.toObject() : { ...account }; delete value.accountNumber; return value; };
@@ -21,7 +23,69 @@ const requireOrg = async (req, exactPermission, operational = true) => {
   );
 };
 const adminScope = (req) => svc.platform(req) || Boolean(req.staffAccess?.isHeadOffice || req.staffAccess);
+const documentsAdminScope = (req) => svc.platform(req) || hasPermission(req.staffAccess, "organizations.documents.view");
 const publicProjection = "name slug code type description logo.url logo.mimeType status registrationFee annualFee";
+const safeOrganization = (organization) => svc.safeOrganization(organization);
+const DOCUMENT_STORAGE_UNAVAILABLE = "Secure document storage is temporarily unavailable. Please retry.";
+const safeDocumentUploadFailure = (error) => {
+  if (error?.code === "STORAGE_UNAVAILABLE" || Number(error?.status) === 503) {
+    return { status: 503, message: DOCUMENT_STORAGE_UNAVAILABLE };
+  }
+  const providerStatus = Number(
+    error?.http_code || error?.statusCode || error?.response?.status
+  );
+  if ([400, 415].includes(providerStatus)) {
+    return {
+      status: 400,
+      message: "Amana uploads must be valid JPEG, PNG, or PDF files.",
+    };
+  }
+  const knownValidationErrors = new Set(["INVALID_DOCUMENT_TYPE", "UNSUPPORTED_DOCUMENT", "DOCUMENT_TOO_LARGE"]);
+  if (knownValidationErrors.has(error?.code)) {
+    return {
+      status: Number(error.status) >= 400 && Number(error.status) < 500 ? Number(error.status) : 400,
+      message: error.message,
+    };
+  }
+  return { status: 500, message: "Unable to upload organization document." };
+};
+const safeOrganizationSummary = (organization) => {
+  const value = safeOrganization(organization);
+  delete value.documents;
+  return value;
+};
+const safeAudit = (entry) => {
+  const value = typeof entry?.toObject === "function" ? entry.toObject() : { ...(entry || {}) };
+  const metadata = value.metadata && typeof value.metadata === "object" ? value.metadata : {};
+  const actor = value.actor && typeof value.actor === "object"
+    ? { _id: value.actor._id, fullName: value.actor.fullName || "", email: value.actor.email || "" }
+    : null;
+  return {
+    ...value,
+    actor,
+    status: metadata.status || null,
+    reason: metadata.reason || metadata.rejectionReason || null,
+  };
+};
+const safeDocument = (document, includeUrl = false) => {
+  const value = typeof document?.toObject === "function" ? document.toObject() : { ...(document || {}) };
+  delete value.storageKey;
+  if (includeUrl && document?.storageKey) {
+    try {
+      value.url = signedDocumentUrl(document);
+      if (!value.url) throw Object.assign(new Error("Signed document URL was not generated."), { code: "STORAGE_UNAVAILABLE" });
+    } catch (error) {
+      throw Object.assign(new Error("Secure document storage is unavailable."), { code: error.code || "STORAGE_UNAVAILABLE" });
+    }
+  }
+  return value;
+};
+const maskedRepresentative = (representative) => {
+  if (!representative) return undefined;
+  const value = { ...representative };
+  delete value.nin;
+  return value;
+};
 const dashboardScope = (organizationId, branchScope, memberIds = null) => ({
   memberFilter: branchScope ? { organization: organizationId, branch: branchScope } : { organization: organizationId },
   memberIds: branchScope ? { $in: memberIds || [] } : undefined,
@@ -58,9 +122,140 @@ exports.payments = async (req, res) => { const org = await Organization.findOne(
 exports.adminList = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const filter = {}; if (req.query.status) filter.status = String(req.query.status).toUpperCase(); if (req.query.search) { const search = String(req.query.search).trim().slice(0, 100); const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); filter.$or = [{ name: new RegExp(escaped, "i") }, { code: search.toUpperCase() }]; } return ok(res, { organizations: await Organization.find(filter).sort({ createdAt: -1 }).limit(200).lean() }); };
 exports.adminSummary = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const [counts, members, collections] = await Promise.all([Organization.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]), OrganizationMember.countDocuments({}), OrganizationPayment.aggregate([{ $match: { status: "SUCCESS" } }, { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }])]); const byStatus = Object.fromEntries(counts.map((x) => [x._id, x.count])); return ok(res, { summary: { total: counts.reduce((n, x) => n + x.count, 0), verified: byStatus.VERIFIED || 0, pending: byStatus.PENDING_VERIFICATION || 0, suspended: byStatus.SUSPENDED || 0, members, collections: collections[0] || { total: 0, count: 0 } } }); };
 exports.adminDetail = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const org = await Organization.findById(req.params.id).lean(); return org ? ok(res, { organization: org }) : fail(res, 404, "Organization not found."); };
+exports.onboardingGet = async (req, res) => {
+  const organization = await svc.ownerOnboardingAccess(req, req.params.organizationId);
+  if (!organization) return fail(res, 404, "Organization not found.");
+  const value = safeOrganization(organization);
+  value.documents = (organization.documents || []).map((document) => safeDocument(document));
+  return ok(res, { organization: value, requiredDocuments: svc.requiredDocumentsFor(organization) });
+};
+exports.onboardingPatch = async (req, res) => {
+  try {
+    const organization = await svc.updateOrganizationDraft(req, req.params.organizationId);
+    const value = safeOrganization(organization);
+    value.documents = (organization.documents || []).map((document) => safeDocument(document));
+    return ok(res, { organization: value });
+  } catch (e) { return fail(res, e.status || 500, e.message); }
+};
+exports.onboardingSubmit = async (req, res) => {
+  try {
+    const result = await svc.submitOrganization(req, req.params.organizationId);
+    const value = safeOrganization(result.organization);
+    value.documents = (result.organization.documents || []).map((document) => safeDocument(document));
+    return ok(res, { duplicate: result.duplicate, organization: value, submission: { submittedAt: result.organization.submittedAt, organizationReference: result.organization.organizationReference } });
+  } catch (e) { return fail(res, e.status || 500, e.message); }
+};
+exports.organizationDocumentUpload = async (req, res) => {
+  try {
+    const owner = await svc.ownerOnboardingAccess(req, req.params.organizationId);
+    if (!owner) return fail(res, 403, "Organization access denied.");
+    const organization = await Organization.findOne({ _id: owner._id, createdBy: req.user._id }).select("+documents.storageKey");
+    if (!["DRAFT", "REJECTED", "MORE_INFORMATION_REQUIRED"].includes(organization.status)) return fail(res, 409, "Documents cannot be changed in the current status.");
+    if (!req.file) return fail(res, 400, "A document file is required.");
+    const requestedDocuments = organization.status === "MORE_INFORMATION_REQUIRED" ? (organization.requestedInformation?.documents || []) : [];
+    const requestedType = normalizeDocumentType(req.body.documentType);
+    if (organization.status === "MORE_INFORMATION_REQUIRED" && !requestedDocuments.includes(requestedType)) return fail(res, 400, "Only requested documents may be changed.");
+    const document = await uploadOrganizationDocument(req.file, organization._id, { documentType: req.body.documentType, name: req.body.name, uploadedBy: req.user._id });
+    // One current document per type prevents accidental duplicate submissions.
+    await persistOrganizationDocument(organization, document);
+    await svc.audit(req, organization, "ORGANIZATION_DOCUMENT_UPLOADED", "Organization", organization._id, { documentType: document.documentType, mimeType: document.mimeType, size: document.size });
+    const persistedDocument = organization.documents[organization.documents.length - 1];
+    return ok(res, { document: safeDocument(persistedDocument) });
+  } catch (e) {
+    const failure = safeDocumentUploadFailure(e);
+    return fail(res, failure.status, failure.message);
+  }
+};
+exports.organizationDocumentView = async (req, res) => {
+  const organizationId = req.params.organizationId || req.params.id;
+  const organization = await Organization.findById(organizationId).select("+documents.storageKey");
+  if (!organization) return fail(res, 404, "Organization not found.");
+  const owner = String(organization.createdBy) === String(req.user?._id);
+  const admin = documentsAdminScope(req);
+  if (!owner && !admin) return fail(res, 403, "Organization access denied.");
+  const document = organization.documents.id(req.params.documentId);
+  if (!document) return fail(res, 404, "Document not found.");
+  try {
+    return ok(res, { document: safeDocument(document, true) });
+  } catch (e) {
+    return fail(res, e?.code === "STORAGE_UNAVAILABLE" ? 503 : 500, DOCUMENT_STORAGE_UNAVAILABLE);
+  }
+};
+exports.mine = async (req, res) => { const [owned, memberships] = await Promise.all([Organization.find({ createdBy: req.user._id }).sort({ createdAt: -1 }).lean(), OrganizationMember.find({ user: req.user._id }).populate("organization", "name slug code type status contact.name contact.address").sort({ createdAt: -1 }).lean()]); return ok(res, { organizations: owned.map((organization) => ({ ...safeOrganization(organization), canManage: true, allowedToManage: true })), memberships }); };
+exports.explore = async (req, res) => { const q = String(req.query.search || "").trim(); const filter = { status: { $in: ["VERIFIED", "APPROVED"] }, ...(q ? { $or: [{ name: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }, { code: q.toUpperCase() }] } : {}) }; return ok(res, { organizations: (await Organization.find(filter).select(publicProjection).limit(50).lean()).map((o) => ({ ...o, _id: o._id, id: String(o._id), verified: true })) }); };
+exports.getCustomerOrganization = async (req, res) => { const org = await Organization.findOne({ _id: req.params.id, status: { $in: ["VERIFIED", "APPROVED"] } }).select("name slug code type description logo registrationFee annualFee renewalCycle status").lean(); if (!org) return fail(res, 404, "Organization not found."); const membership = await OrganizationMember.findOne({ organization: org._id, user: req.user._id }).select("membershipNumber year status joinedAt").lean(); const fields = await OrganizationCustomField.find({ organization: org._id, active: true }).select("key label type required options").lean(); const logo = org.logo?.mimeType && /^https:\/\//.test(org.logo?.url || "") ? org.logo.url : null; return ok(res, { organization: { _id: org._id, id: String(org._id), name: org.name, slug: org.slug, code: org.code, type: org.type, description: org.description, logo, verified: true, registrationFee: org.registrationFee, annualFee: org.annualFee, renewalCycle: org.renewalCycle, customFields: fields }, membership }); };
+exports.submit = async (req, res) => {
+  // Legacy clients use settings.manage and historically submitted a draft
+  // without the newer declaration/KYB requirements. Keep that contract on
+  // this route; strict declaration validation lives under /onboarding.
+  const org = await requireOrg(req, "settings.manage", false);
+  if (!org) return fail(res, 403, "Organization access denied.");
+  if (!["DRAFT", "REJECTED"].includes(org.status)) return fail(res, 409, "Organization cannot be submitted.");
+  const before = org.status;
+  org.status = "PENDING_VERIFICATION";
+  org.submittedAt = org.submittedAt || new Date();
+  try {
+    await org.save();
+    await svc.audit(req, org, "ORGANIZATION_SUBMITTED_LEGACY", "Organization", org._id, { before });
+    return ok(res, { duplicate: false, organization: safeOrganization(org) });
+  } catch (e) { return fail(res, e.status || 500, e.message); }
+};
+exports.platformStatus = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const org = await Organization.findById(req.params.id); if (!org) return fail(res, 404, "Organization not found."); const status = String(req.body.status || "").toUpperCase(); if (["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "MORE_INFORMATION_REQUIRED", "REJECTED", "SUSPENDED"].includes(status)) { try { return ok(res, { organization: safeOrganization(await svc.reviewOrganization(req, req.params.id, status, req.body)) }); } catch (e) { return fail(res, e.status || 500, e.message); } } const graph = { DRAFT: ["PENDING_VERIFICATION"], PENDING_VERIFICATION: ["VERIFIED", "REJECTED"], VERIFIED: ["SUSPENDED"], REJECTED: ["PENDING_VERIFICATION"], SUSPENDED: ["VERIFIED"] }; if (!graph[org.status]?.includes(status)) return fail(res, 409, "Invalid organization status transition."); const before = org.status; org.status = status; org.approvedAt = status === "VERIFIED" ? new Date() : null; org.approvedBy = status === "VERIFIED" ? req.user._id : null; org.rejectionReason = String(req.body.rejectionReason || "").slice(0, 500); await org.save(); await svc.audit(req, org, status === "SUSPENDED" ? "ORGANIZATION_FROZEN" : "ORGANIZATION_STATUS_UPDATED", "Organization", org._id, { before, status }); return ok(res, { organization: safeOrganization(org) }); };
+ exports.publicSearch = async (req, res) => { const q = String(req.query.q || req.query.search || "").trim(); const filter = { status: "VERIFIED", ...(q ? { $or: [{ name: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }, { code: q.toUpperCase() }, { slug: q.toLowerCase() }] } : {}) }; const rows = await Organization.find(filter).select(publicProjection).limit(30).lean(); return ok(res, { organizations: rows.map((o) => ({ ...o, _id: o._id, id: String(o._id), verified: true })) }); };
+exports.publicView = async (req, res) => { const org = await Organization.findOne({ $or: [{ slug: req.params.slug }, { code: req.params.slug }], status: { $in: ["VERIFIED", "APPROVED"] } }).select(publicProjection).lean(); return org ? ok(res, { organization: { ...org, _id: org._id, id: String(org._id), verified: true } }) : fail(res, 404, "Organization not found."); };
+exports.verifyCard = async (req, res) => { const card = await OrganizationMembershipCard.findOne({ cardNumber: req.params.cardNumber, active: true }).populate({ path: "organization", select: "name slug code status" }).populate({ path: "member", select: "membershipNumber year status" }).lean(); if (!card || !["VERIFIED", "APPROVED"].includes(card.organization?.status) || card.member?.status !== "ACTIVE") return fail(res, 404, "Membership card could not be verified."); return ok(res, { card: { cardNumber: card.cardNumber, issuedAt: card.issuedAt, organization: card.organization, member: card.member } }); };
+ exports.apply = async (req, res) => { try { const org = await Organization.findOne({ _id: req.params.organizationId, status: "VERIFIED" }); if (!org) return fail(res, 404, "Verified organization not found."); const existing = await OrganizationMember.findOne({ organization: org._id, user: req.user._id }); if (existing) { const validActive = existing.status === "ACTIVE" && typeof existing.membershipNumber === "string" && existing.membershipNumber.trim(); if (org.membershipMode === "AUTO" && org.registrationFee <= 0 && (validActive || existing.status === "PENDING")) { const membership = validActive ? existing : await svc.approveMember(req, existing); return res.status(200).json({ success: true, idempotent: true, membership }); } return fail(res, 409, "Membership application already exists."); } const applicationData = req.body.applicationData || req.body.fields || req.body; await validateApplication(org._id, applicationData); const session = await mongoose.startSession(); let member; let registrationDue = null; await session.withTransaction(async () => { member = (await OrganizationMember.create([{ organization: org._id, user: req.user._id, applicationData, status: "PENDING" }], { session }))[0]; if (org.registrationFee > 0) { const fee = await OrganizationFee.findOneAndUpdate({ organization: org._id, type: "REGISTRATION", active: true }, { $setOnInsert: { organization: org._id, name: "Registration fee", type: "REGISTRATION", amount: org.registrationFee, frequency: "ONCE", active: true } }, { upsert: true, new: true, session }); registrationDue = (await OrganizationFeeAssignment.create([{ organization: org._id, fee: fee._id, member: member._id, amount: fee.amount, billingPeriod: "LIFETIME", status: "ASSIGNED", assignedBy: org.createdBy }], { session }))[0]; } await svc.audit(req, org, "MEMBERSHIP_APPLIED", "OrganizationMember", member._id, {}, session); }); await session.endSession(); const approved = org.membershipMode === "AUTO" && !registrationDue ? await svc.approveMember(req, member) : member; return res.status(201).json({ success: true, membership: approved || member, registrationDue }); } catch (e) { const safe = svc.publicError(e, "Membership application already exists."); return fail(res, safe.status, safe.message); } };
+exports.adminReview = async (req, res) => {
+  if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  try { return ok(res, { organization: safeOrganization(await svc.reviewOrganization(req, req.params.id, "UNDER_REVIEW")) }); }
+  catch (e) { return fail(res, e.status || 500, e.message); }
+};
+exports.adminApprove = async (req, res) => {
+  if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  try { return ok(res, { organization: safeOrganization(await svc.reviewOrganization(req, req.params.id, "APPROVED")) }); }
+  catch (e) { return fail(res, e.status || 500, e.message); }
+};
+exports.adminReject = async (req, res) => {
+  if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  try { return ok(res, { organization: safeOrganization(await svc.reviewOrganization(req, req.params.id, "REJECTED", { reason: req.body.reason || req.body.rejectionReason })) }); }
+  catch (e) { return fail(res, e.status || 500, e.message); }
+};
+exports.adminMoreInformation = async (req, res) => {
+  if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  try { return ok(res, { organization: safeOrganization(await svc.reviewOrganization(req, req.params.id, "MORE_INFORMATION_REQUIRED", req.body)) }); }
+  catch (e) { return fail(res, e.status || 500, e.message); }
+};
+exports.adminSuspend = async (req, res) => {
+  if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  try { return ok(res, { organization: safeOrganization(await svc.reviewOrganization(req, req.params.id, "SUSPENDED", req.body)) }); }
+  catch (e) { return fail(res, e.status || 500, e.message); }
+};
+exports.dues = async (req, res) => { const org = await Organization.findOne({ _id: req.params.id, status: { $in: ["VERIFIED", "APPROVED"] } }); if (!org) return fail(res, 404, "Organization not found."); const member = await OrganizationMember.findOne({ organization: org._id, user: req.user._id }); if (!member) return fail(res, 403, "Membership required."); return ok(res, { dues: await OrganizationFeeAssignment.find({ organization: org._id, member: member._id }).populate("fee", "name description frequency").lean() }); };
+exports.payments = async (req, res) => { const org = await Organization.findOne({ _id: req.params.id, status: { $in: ["VERIFIED", "APPROVED"] } }); if (!org) return fail(res, 404, "Organization not found."); const member = await OrganizationMember.findOne({ organization: org._id, user: req.user._id }); if (!member) return fail(res, 403, "Membership required."); return ok(res, { payments: await OrganizationPayment.find({ organization: org._id, member: member._id, payer: req.user._id }).sort({ createdAt: -1 }).lean() }); };
+ exports.adminList = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const filter = {}; if (req.query.status) filter.status = String(req.query.status).toUpperCase(); if (req.query.search) { const search = String(req.query.search).trim().slice(0, 100); const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); filter.$or = [{ name: new RegExp(escaped, "i") }, { code: search.toUpperCase() }]; } return ok(res, { organizations: await Organization.find(filter).sort({ createdAt: -1 }).limit(200).lean() }); };
+exports.adminSummary = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const [counts, members, collections] = await Promise.all([Organization.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]), OrganizationMember.countDocuments({}), OrganizationPayment.aggregate([{ $match: { status: "SUCCESS" } }, { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }])]); const byStatus = Object.fromEntries(counts.map((x) => [x._id, x.count])); return ok(res, { summary: { total: counts.reduce((n, x) => n + x.count, 0), verified: (byStatus.VERIFIED || 0) + (byStatus.APPROVED || 0), pending: (byStatus.PENDING_VERIFICATION || 0) + (byStatus.PENDING_REVIEW || 0) + (byStatus.UNDER_REVIEW || 0), suspended: byStatus.SUSPENDED || 0, members, collections: collections[0] || { total: 0, count: 0 } } }); };
+exports.adminDetail = async (req, res) => {
+  if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  const includeDocuments = documentsAdminScope(req);
+  const projection = includeDocuments
+    ? "+representative.nin +documents.storageKey"
+    : "+representative.nin -documents";
+  const org = await Organization.findById(req.params.id).select(projection).lean();
+  if (!org) return fail(res, 404, "Organization not found.");
+  const organization = safeOrganization(org, { includeDocuments });
+  if (!includeDocuments) delete organization.documents;
+  if (org.representative?.nin) {
+    organization.representative = {
+      ...maskedRepresentative(org.representative),
+      ninMasked: `***${String(org.representative.nin).slice(-4)}`,
+    };
+  }
+  if (includeDocuments) organization.documents = (org.documents || []).map((document) => safeDocument(document));
+  return ok(res, { organization });
+};
 exports.adminMembers = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); return ok(res, { members: await OrganizationMember.find({ organization: req.params.id }).select("-applicationData").lean() }); };
 exports.adminPayments = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); return ok(res, { payments: await OrganizationPayment.find({ organization: req.params.id }).sort({ createdAt: -1 }).lean() }); };
-exports.adminAudit = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); return ok(res, { audit: await require("../models/organizations.models").OrganizationAuditLog.find({ organization: req.params.id }).sort({ createdAt: -1 }).limit(200).lean() }); };
+exports.adminAudit = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const audit = await OrganizationAuditLog.find({ organization: req.params.id }).sort({ createdAt: -1 }).limit(200).populate("actor", "fullName email").lean(); return ok(res, { audit: audit.map(safeAudit) }); };
 exports.adminWallet = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); if (req.method === "PATCH") { const status = req.body.frozen === true ? "FROZEN" : String(req.body.status || "").toUpperCase(); if (!["ACTIVE", "FROZEN"].includes(status)) return fail(res, 400, "Invalid wallet status."); const wallet = await OrganizationWallet.findOneAndUpdate({ organization: req.params.id }, { $set: { status } }, { new: true }); if (!wallet) return fail(res, 404, "Organization wallet not found."); await svc.audit(req, { _id: req.params.id }, "ORGANIZATION_WALLET_STATUS", "OrganizationWallet", wallet._id, { status }); return ok(res, { wallet }); } return ok(res, { wallet: await OrganizationWallet.findOne({ organization: req.params.id }).lean() }); };
 exports.adminWithdrawalsSummary = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const rows = await models.OrganizationWithdrawal.aggregate([{ $group: { _id: "$status", count: { $sum: 1 }, amount: { $sum: "$amount" }, fees: { $sum: "$fee" } } }]); return ok(res, { data: rows, summary: rows }); };
 exports.adminWithdrawals = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const filter = {}; if (req.query.status) filter.status = String(req.query.status).toUpperCase(); if (req.query.organizationId && id(req.query.organizationId)) filter.organization = req.query.organizationId; const withdrawals = await models.OrganizationWithdrawal.find(filter).sort({ createdAt: -1 }).limit(200).populate("organization", "name code").lean(); return ok(res, { data: withdrawals, withdrawals }); };
@@ -383,7 +578,7 @@ exports.staffUpdate = async (req, res) => {
   return ok(res, { staff });
 };
 exports.announcementList = async (req, res) => { const org = await runAccess(req, "messages.send"); if (!org) return fail(res, 403, "Organization access denied."); const paging = page(req); if (!paging) return fail(res, 400, "Invalid pagination."); const filter = { organization: org._id, ...(scopedId(req) ? { $or: [{ audience: "ALL" }, { audience: "BRANCH", branch: scopedId(req) }] } : {}) }; if (req.query.audience) { if (!["ALL", "MEMBERS", "STAFF", "BRANCH"].includes(String(req.query.audience).toUpperCase())) return fail(res, 400, "Invalid announcement audience."); filter.audience = String(req.query.audience).toUpperCase(); } const [announcements, total] = await Promise.all([OrganizationAnnouncement.find(filter).sort({ createdAt: -1 }).skip((paging.page - 1) * paging.limit).limit(paging.limit).lean(), OrganizationAnnouncement.countDocuments(filter)]); return ok(res, { announcements, pagination: pagination(paging.page, paging.limit, total) }); };
-exports.auditList = async (req, res) => { const org = await runAccess(req, "audit.view"); if (!org) return fail(res, 403, "Organization access denied."); const paging = page(req); if (!paging) return fail(res, 400, "Invalid pagination."); const filter = { organization: org._id }; if (req.query.action) filter.action = String(req.query.action); if (req.query.entityType) filter.entityType = String(req.query.entityType); if (req.query.actor) { if (!id(req.query.actor)) return fail(res, 400, "Invalid actor id."); filter.actor = req.query.actor; } if (req.query.from || req.query.to) { const from = req.query.from && new Date(req.query.from); const to = req.query.to && new Date(req.query.to); if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) return fail(res, 400, "Invalid audit date."); filter.createdAt = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) }; } const [audit, total] = await Promise.all([models.OrganizationAuditLog.find(filter).sort({ createdAt: -1 }).skip((paging.page - 1) * paging.limit).limit(paging.limit).populate("actor", "fullName email").lean(), models.OrganizationAuditLog.countDocuments(filter)]); return ok(res, { audit, pagination: pagination(paging.page, paging.limit, total) }); };
+exports.auditList = async (req, res) => { const org = await runAccess(req, "audit.view"); if (!org) return fail(res, 403, "Organization access denied."); const paging = page(req); if (!paging) return fail(res, 400, "Invalid pagination."); const filter = { organization: org._id }; if (req.query.action) filter.action = String(req.query.action); if (req.query.entityType) filter.entityType = String(req.query.entityType); if (req.query.actor) { if (!id(req.query.actor)) return fail(res, 400, "Invalid actor id."); filter.actor = req.query.actor; } if (req.query.from || req.query.to) { const from = req.query.from && new Date(req.query.from); const to = req.query.to && new Date(req.query.to); if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) return fail(res, 400, "Invalid audit date."); filter.createdAt = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) }; } const [audit, total] = await Promise.all([models.OrganizationAuditLog.find(filter).sort({ createdAt: -1 }).skip((paging.page - 1) * paging.limit).limit(paging.limit).populate("actor", "fullName email").lean(), models.OrganizationAuditLog.countDocuments(filter)]); return ok(res, { audit: audit.map(safeAudit), pagination: pagination(paging.page, paging.limit, total) }); };
 exports.cardList = async (req, res) => { const org = await runAccess(req, "cards.manage"); if (!org) return fail(res, 403, "Organization access denied."); const paging = page(req); if (!paging) return fail(res, 400, "Invalid pagination."); const memberIds = scopedId(req) ? await OrganizationMember.find(scopedMemberFilter(org, req)).distinct("_id") : undefined; const filter = { organization: org._id, ...(memberIds ? { member: { $in: memberIds } } : {}) }; const [cards, total] = await Promise.all([OrganizationMembershipCard.find(filter).sort({ createdAt: -1 }).skip((paging.page - 1) * paging.limit).limit(paging.limit).populate({ path: "member", select: "membershipNumber year status user", populate: { path: "user", select: "fullName" } }).lean(), OrganizationMembershipCard.countDocuments(filter)]); return ok(res, { cards, pagination: pagination(paging.page, paging.limit, total) }); };
 exports.cardDetail = async (req, res) => { const org = await runAccess(req, "cards.manage"); if (!org) return fail(res, 403, "Organization access denied."); if (!id(req.params.cardId)) return fail(res, 400, "Invalid card id."); const card = await OrganizationMembershipCard.findOne({ _id: req.params.cardId, organization: org._id }).populate("member", "membershipNumber year status branch").lean(); if (!card || (scopedId(req) && String(card.member?.branch) !== String(scopedId(req)))) return fail(res, 404, "Card not found."); return ok(res, { card }); };
 exports.report = async (req, res) => {

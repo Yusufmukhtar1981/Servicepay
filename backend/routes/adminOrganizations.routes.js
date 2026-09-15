@@ -17,9 +17,13 @@ const isFullAccessOrganizationAdminRole = (value) => [
   "HEAD_OFFICE",
   "HEAD_OFFICE_ADMIN",
 ].includes(normalizeAdminRole(value));
-const gate = (...permissions) => (req, res, next) => {
-  if (isFullAccessOrganizationAdminRole(req.user?.role)) return next();
-  return loadStaffRole(req, res, () => requireAnyPermission(...permissions)(req, res, next));
+const gate = (...permissions) => {
+  const middleware = (req, res, next) => {
+    if (isFullAccessOrganizationAdminRole(req.user?.role)) return next();
+    return loadStaffRole(req, res, () => requireAnyPermission(...permissions)(req, res, next));
+  };
+  middleware.requiredPermissions = permissions;
+  return middleware;
 };
 const criticalGate = (...permissions) => (req, res, next) => {
   const raw = String(req.user?.role || "").toUpperCase();
@@ -34,11 +38,11 @@ const statusGate = async (req, res, next) => {
     return res.status(404).json({ success: false, message: "Organization not found." });
   }
   const reviewTransition =
-    organization.status === "PENDING_VERIFICATION" &&
-    ["VERIFIED", "REJECTED"].includes(target);
+    ["PENDING_REVIEW", "UNDER_REVIEW", "PENDING_VERIFICATION"].includes(organization.status) &&
+    ["UNDER_REVIEW", "APPROVED", "VERIFIED", "REJECTED", "MORE_INFORMATION_REQUIRED"].includes(target);
   const managementTransition =
-    (organization.status === "VERIFIED" && target === "SUSPENDED") ||
-    (organization.status === "SUSPENDED" && target === "VERIFIED");
+    (["VERIFIED", "APPROVED"].includes(organization.status) && target === "SUSPENDED") ||
+    (organization.status === "SUSPENDED" && ["VERIFIED", "APPROVED"].includes(target));
   if (!reviewTransition && !managementTransition) {
     return res.status(409).json({
       success: false,
@@ -61,7 +65,17 @@ router.post("/settlement-accounts/:id/reject", criticalGate("organizations.settl
 router.get("/treasury-config", criticalGate("organizations.treasury.manage"), c.adminTreasuryConfig);
 router.patch("/treasury-config", criticalGate("organizations.treasury.manage"), c.adminTreasuryConfig);
 router.get("/", gate("organizations.view"), c.adminList);
+router.post("/:id/review", gate("organizations.review"), c.adminReview);
+router.post("/:id/start-review", gate("organizations.review"), c.adminReview);
+router.post("/:id/approve", gate("organizations.review"), c.adminApprove);
+router.post("/:id/reject", gate("organizations.review"), c.adminReject);
+router.post("/:id/more-information", gate("organizations.review"), c.adminMoreInformation);
+router.post("/:id/request-information", gate("organizations.review"), c.adminMoreInformation);
+router.post("/:id/suspend", gate("organizations.status.manage"), c.adminSuspend);
 router.get("/:id", gate("organizations.view"), c.adminDetail);
+router.get("/:id/documents/:documentId", gate("organizations.documents.view"), c.organizationDocumentView);
+router.get("/:id/documents/:documentId/preview", gate("organizations.documents.view"), c.organizationDocumentView);
+router.get("/:id/documents/:documentId/download", gate("organizations.documents.view"), c.organizationDocumentView);
 router.get("/:id/members", gate("organizations.members.view"), c.adminMembers);
 router.get("/:id/payments", gate("organizations.payments.view"), c.adminPayments);
 router.get("/:id/audit", gate("organizations.audit.view"), c.adminAudit);
