@@ -4,6 +4,10 @@ const mongoose = require("mongoose");
 const Delivery = require("../models/delivery.model");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
+const {
+  reconcileReferralReward,
+  enqueueReferralRewardEvent,
+} = require("../services/referralReward.service");
 
 // Kirkirar tracking number
 const generateTrackingNumber = () => {
@@ -766,6 +770,13 @@ exports.payDeliveryFee = async (req, res) => {
         }
       );
 
+    await enqueueReferralRewardEvent({
+      referredCustomerId: delivery.customerId,
+      sourceType: "DELIVERY",
+      sourceId: delivery._id,
+      session,
+    });
+
     await session.commitTransaction();
 
     return res.status(200).json({
@@ -873,7 +884,25 @@ exports.cancelDelivery = async (req, res) => {
     }
 
     delivery.status = "CANCELLED";
-    await delivery.save();
+    const sourceSession = await mongoose.startSession();
+    try {
+      await sourceSession.withTransaction(async () => {
+        await delivery.save({ session: sourceSession });
+        await enqueueReferralRewardEvent({
+          referredCustomerId: delivery.customerId,
+          sourceType: "DELIVERY",
+          sourceId: delivery._id,
+          session: sourceSession,
+        });
+      });
+    } finally {
+      await sourceSession.endSession();
+    }
+    await reconcileReferralReward({
+      referredCustomerId: delivery.customerId,
+      sourceType: "DELIVERY",
+      sourceId: delivery._id,
+    });
 
     return res.status(200).json({
       success: true,
@@ -1109,15 +1138,31 @@ exports.updateDeliveryStatus = async (
       updateData.deliveredAt = null;
     }
 
-    const delivery =
-      await Delivery.findByIdAndUpdate(
-        req.params.id,
-        updateData,
-        {
-          new: true,
-          runValidators: true,
+    const sourceSession = await mongoose.startSession();
+    let delivery;
+    try {
+      await sourceSession.withTransaction(async () => {
+        delivery = await Delivery.findByIdAndUpdate(
+          req.params.id,
+          updateData,
+          {
+            new: true,
+            runValidators: true,
+            session: sourceSession,
+          }
+        );
+        if (delivery) {
+          await enqueueReferralRewardEvent({
+            referredCustomerId: delivery.customerId,
+            sourceType: "DELIVERY",
+            sourceId: delivery._id,
+            session: sourceSession,
+          });
         }
-      );
+      });
+    } finally {
+      await sourceSession.endSession();
+    }
 
     if (!delivery) {
       return res.status(404).json({
@@ -1125,6 +1170,16 @@ exports.updateDeliveryStatus = async (
         message:
           "Delivery request not found.",
       });
+    }
+
+    try {
+      await reconcileReferralReward({
+        referredCustomerId: delivery.customerId,
+        sourceType: "DELIVERY",
+        sourceId: delivery._id,
+      });
+    } catch (error) {
+      console.error("DELIVERY_REFERRAL_REWARD_ERROR:", error.message);
     }
 
     return res.status(200).json({
@@ -1176,25 +1231,41 @@ exports.updatePaymentStatus = async (
       });
     }
 
-    const delivery =
-      await Delivery.findByIdAndUpdate(
-        req.params.id,
-        {
-          paymentStatus,
-          paidAt:
-            paymentStatus === "PAID"
-              ? new Date()
-              : null,
-          refundedAt:
-            paymentStatus === "REFUNDED"
-              ? new Date()
-              : null,
-        },
-        {
-          new: true,
-          runValidators: true,
+    const sourceSession = await mongoose.startSession();
+    let delivery;
+    try {
+      await sourceSession.withTransaction(async () => {
+        delivery = await Delivery.findByIdAndUpdate(
+          req.params.id,
+          {
+            paymentStatus,
+            paidAt:
+              paymentStatus === "PAID"
+                ? new Date()
+                : null,
+            refundedAt:
+              paymentStatus === "REFUNDED"
+                ? new Date()
+                : null,
+          },
+          {
+            new: true,
+            runValidators: true,
+            session: sourceSession,
+          }
+        );
+        if (delivery) {
+          await enqueueReferralRewardEvent({
+            referredCustomerId: delivery.customerId,
+            sourceType: "DELIVERY",
+            sourceId: delivery._id,
+            session: sourceSession,
+          });
         }
-      );
+      });
+    } finally {
+      await sourceSession.endSession();
+    }
 
     if (!delivery) {
       return res.status(404).json({
@@ -1202,6 +1273,16 @@ exports.updatePaymentStatus = async (
         message:
           "Delivery request not found.",
       });
+    }
+
+    try {
+      await reconcileReferralReward({
+        referredCustomerId: delivery.customerId,
+        sourceType: "DELIVERY",
+        sourceId: delivery._id,
+      });
+    } catch (error) {
+      console.error("DELIVERY_REFERRAL_REWARD_ERROR:", error.message);
     }
 
     return res.status(200).json({

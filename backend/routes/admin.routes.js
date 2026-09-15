@@ -56,6 +56,7 @@ const controlCenter = require("../controllers/adminControlCenter.controller");
 const riderWalletAdminController = require("../controllers/adminRiderWallet.controller");
 const adminAccessLog = require("../middleware/adminAccessLog.middleware");
 const privacyRequestController = require("../controllers/privacyRequest.controller");
+const adminReferralController = require("../controllers/adminReferral.controller");
 
 const router = express.Router();
 router.use(adminAccessLog);
@@ -69,6 +70,11 @@ router.use((req, res, next) => {
 });
 
 const controlCenterBase = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole];
+router.get("/referrals/summary", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), adminReferralController.summary);
+router.get("/referrals/readiness", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), adminReferralController.readiness);
+router.get("/referrals", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), adminReferralController.search);
+router.get("/referrals/:customerId/progress", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), adminReferralController.progress);
+router.get("/referrals/:customerId/audit", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), adminReferralController.audit);
 router.get("/control-center/catalog", ...controlCenterBase, requirePermission(P.DASHBOARD_VIEW), controlCenter.catalog);
 router.get("/control-center/audit-logs", ...controlCenterBase, requirePermission(P.AUDIT_VIEW), controlCenter.auditLogs);
 router.get("/control-center/security-events", ...controlCenterBase, requirePermission(P.AUDIT_VIEW), controlCenter.securityEvents);

@@ -298,6 +298,15 @@ const marketplaceOrderSchema = new mongoose.Schema(
 
 marketplaceOrderSchema.index({
   buyer: 1,
+  orderStatus: 1,
+  paymentStatus: 1,
+  totalAmount: 1,
+  fundsStatus: 1,
+  createdAt: 1,
+});
+
+marketplaceOrderSchema.index({
+  buyer: 1,
   createdAt: -1,
 });
 marketplaceOrderSchema.index({ branchId: 1, createdAt: -1 });

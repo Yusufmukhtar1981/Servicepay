@@ -7,6 +7,10 @@ const MarketplaceMerchant = require("../models/marketplaceMerchant.model");
 const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
 const { postDebit, postCredit } = require("../services/ledger.service");
+const {
+  reconcileReferralReward,
+  enqueueReferralRewardEvent,
+} = require("../services/referralReward.service");
 const { verifyTransactionPin } = require("../services/transactionPin.service");
 const {
   MAX_MARKETPLACE_IMAGE_BYTES,
@@ -1507,10 +1511,28 @@ exports.confirmOrderDelivery = async (req, res) => {
           note: "Delivery confirmed by the buyer; seller settlement posted.",
         });
         await order.save({ session });
+        await enqueueReferralRewardEvent({
+          referredCustomerId: order.buyer,
+          sourceType: "MARKETPLACE",
+          sourceId: order._id,
+          session,
+        });
         settledOrder = order;
       });
     } finally {
       await session.endSession();
+    }
+
+    if (settledOrder?.buyer) {
+      try {
+        await reconcileReferralReward({
+          referredCustomerId: settledOrder.buyer,
+          sourceType: "MARKETPLACE",
+          sourceId: settledOrder._id,
+        });
+      } catch (error) {
+        console.error("MARKETPLACE_REFERRAL_REWARD_ERROR:", error.message);
+      }
     }
 
     return res.json({
@@ -1653,10 +1675,24 @@ exports.cancelMyOrder = async (req, res) => {
           note: "Cancelled by the buyer before seller acceptance; wallet payment refunded.",
         });
         await order.save({ session });
+        await enqueueReferralRewardEvent({
+          referredCustomerId: order.buyer,
+          sourceType: "MARKETPLACE",
+          sourceId: order._id,
+          session,
+        });
         refundedOrder = order;
       });
     } finally {
       await session.endSession();
+    }
+
+    if (refundedOrder?.buyer) {
+      await reconcileReferralReward({
+        referredCustomerId: refundedOrder.buyer,
+        sourceType: "MARKETPLACE",
+        sourceId: refundedOrder._id,
+      });
     }
 
     return res.json({

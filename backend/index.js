@@ -37,6 +37,9 @@ const {
 const {
   processDocumentAssetCleanup,
 } = require("./services/organizationDocument.service");
+const {
+  startReferralRewardOutboxWorker,
+} = require("./services/referralReward.service");
 
 const paystackRoutes = require(
   "./routes/paystack.routes"
@@ -425,6 +428,7 @@ console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 async function startServer() {
   // Do not bind until required startup data safety work is complete.
   await connectDB();
+  startReferralRewardOutboxWorker();
   // A bounded, best-effort pass resumes durable document cleanup without
   // delaying server startup or affecting settlement paths.
   processDocumentAssetCleanup({ limit: 10 }).catch(() => {});

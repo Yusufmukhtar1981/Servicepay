@@ -309,16 +309,22 @@ test("referral dashboard preserves legacy fields and returns private-safe metric
     assert.equal(result.body.qualifiedReferrals, 0);
     assert.equal(result.body.pendingReferrals, 1);
     assert.equal(result.body.totalReferralRewards, 0);
-    assert.equal(result.body.rewardProgramStatus, "NOT_CONFIGURED");
+    assert.equal(result.body.rewardProgramStatus, "CONFIGURED");
+    assert.equal(result.body.rewardPolicy.amount, 2000);
     assert.deepEqual(result.body.referrals[0], {
       id: "child-id",
       firstName: "Grace",
       fullName: "Grace",
       status: "ACTIVE",
       joinedAt: "2026-01-01T00:00:00.000Z",
+      category: "DATA",
+      categoryProgress: { DATA: 0, DELIVERY: 0, MARKETPLACE: 0 },
       qualificationProgress: 0,
       qualificationStatus: "PENDING",
       rewardStatus: "NOT_ISSUED",
+      ledgerReference: null,
+      clawbackReference: null,
+      pendingClawback: null,
     });
     assert.equal(result.body.referrals[0].fullName, "Grace");
   } finally {

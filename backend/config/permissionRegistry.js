@@ -28,6 +28,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("CUSTOMER360_KYC", "customer360.kyc", "CUSTOMER_360", "View Customer 360 identity", "View masked customer KYC and identity-verification details.", "PRIVILEGED"),
   permission("CUSTOMER360_SECURITY", "customer360.security", "CUSTOMER_360", "View Customer 360 security", "View defensible customer security and risk signals.", "PRIVILEGED"),
   permission("TRANSACTIONS_VIEW", "transactions.view", "TRANSACTIONS", "View transactions", "View transactions within the actor data scope."),
+  permission("REFERRALS_VIEW", "referrals.view", "REFERRALS", "View referrals", "View privacy-safe referral qualification and reward records."),
   permission("TRANSACTIONS_EXPORT", "transactions.export", "TRANSACTIONS", "Export transactions", "Export permitted transaction records.", "PRIVILEGED"),
   permission("TRANSACTIONS_REVERSE", "transactions.reverse", "TRANSACTIONS", "Reverse transactions", "Perform supported transaction reversals.", "CRITICAL"),
   permission("TRANSACTIONS_REQUERY", "transactions.requery", "TRANSACTIONS", "Requery transactions", "Requery ambiguous provider transactions.", "CRITICAL"),

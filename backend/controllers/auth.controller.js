@@ -201,6 +201,10 @@ const emailService = require("../services/email.service");
 const { requestPhoneActivation, verifyPhoneActivation } = require("../services/businessPartnerActivation.service");
 
 const { validateStrongPassword, validateTransactionPin } = require('../utils/passwordPolicy');
+const {
+  REFERRAL_REWARD_POLICY,
+  getReferralProgress,
+} = require("../services/referralReward.service");
 
 const generateToken = (userId, authTokenVersion = 0) => {
   if (!process.env.JWT_SECRET) {
@@ -2331,18 +2335,7 @@ exports.getMyReferral = async (req, res) => {
       };
     }
 
-    const referrals =
-      await User.find({
-        referredBy: userId,
-        role: "CUSTOMER",
-      })
-        .select(
-          "_id fullName createdAt status"
-        )
-        .sort({
-          createdAt: -1,
-        })
-        .lean();
+    const referrals = await getReferralProgress(userId);
 
     const referredCount =
       referrals.length;
@@ -2352,24 +2345,21 @@ exports.getMyReferral = async (req, res) => {
       referralCode:
         user.referralCode,
       referredCount,
-      referrals: referrals.map((item) => ({
-        id: item._id,
-        firstName: firstNameFromFullName(item.fullName),
-        fullName: firstNameFromFullName(item.fullName),
-        status: item.status || "ACTIVE",
-        joinedAt: item.createdAt,
-        qualificationProgress: 0,
-        qualificationStatus: "PENDING",
-        rewardStatus: "NOT_ISSUED",
-      })),
+      referrals,
       referralLink: `https://servicepay.ng/register?ref=${encodeURIComponent(
         user.referralCode
       )}`,
       totalReferrals: referredCount,
-      qualifiedReferrals: 0,
-      pendingReferrals: referredCount,
-      totalReferralRewards: 0,
-      rewardProgramStatus: "NOT_CONFIGURED",
+      qualifiedReferrals: referrals.filter((item) => item.qualificationStatus === "QUALIFIED").length,
+      pendingReferrals: referrals.filter((item) => item.rewardStatus !== "AWARDED").length,
+      totalReferralRewards: referrals.filter((item) => item.rewardStatus === "AWARDED").length * REFERRAL_REWARD_POLICY.amount,
+      rewardProgramStatus: REFERRAL_REWARD_POLICY.status,
+      rewardPolicy: {
+        status: REFERRAL_REWARD_POLICY.status,
+        amount: REFERRAL_REWARD_POLICY.amount,
+        threshold: REFERRAL_REWARD_POLICY.threshold,
+        categories: REFERRAL_REWARD_POLICY.categories,
+      },
     });
   } catch (error) {
     console.error(

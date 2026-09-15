@@ -328,6 +328,8 @@ const deliverySchema =
     }
   );
 
+deliverySchema.index({ customerId: 1, status: 1, paymentStatus: 1, createdAt: 1 });
+
 /*
  * Rider delivery lookup.
  */

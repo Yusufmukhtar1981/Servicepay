@@ -19,6 +19,10 @@ const {
    updateDashboardTargets,
    getDashboardExport,
 } = require("../services/adminDashboard.service");
+const {
+  reconcileReferralReward,
+  enqueueReferralRewardEvent,
+} = require("../services/referralReward.service");
 
 exports.getAdminExecutiveDashboard = getExecutiveDashboard;
 exports.getAdminDashboardTargets = getDashboardTargets;
@@ -1493,7 +1497,26 @@ exports.updateDeliveryStatus = async (
         delivery.failedAt ?? now;
     }
 
-    await delivery.save();
+    const sourceSession = await mongoose.startSession();
+    try {
+      await sourceSession.withTransaction(async () => {
+        await delivery.save({ session: sourceSession });
+        await enqueueReferralRewardEvent({
+          referredCustomerId: delivery.customerId,
+          sourceType: "DELIVERY",
+          sourceId: delivery._id,
+          session: sourceSession,
+        });
+      });
+    } finally {
+      await sourceSession.endSession();
+    }
+
+    await reconcileReferralReward({
+      referredCustomerId: delivery.customerId,
+      sourceType: "DELIVERY",
+      sourceId: delivery._id,
+    });
 
     const updatedDelivery =
       await Delivery.findOne({
@@ -1598,7 +1621,25 @@ exports.updateDeliveryPrice = async (req, res) => {
     if (req.body?.adminNote !== undefined) delivery.adminNote = String(req.body.adminNote ?? "").trim();
     const calculation = delivery.calculateCommission();
     if (!delivery.riderCommissionCredited) delivery.riderCommissionStatus = "PENDING";
-    await delivery.save();
+    const sourceSession = await mongoose.startSession();
+    try {
+      await sourceSession.withTransaction(async () => {
+        await delivery.save({ session: sourceSession });
+        await enqueueReferralRewardEvent({
+          referredCustomerId: delivery.customerId,
+          sourceType: "DELIVERY",
+          sourceId: delivery._id,
+          session: sourceSession,
+        });
+      });
+    } finally {
+      await sourceSession.endSession();
+    }
+    await reconcileReferralReward({
+      referredCustomerId: delivery.customerId,
+      sourceType: "DELIVERY",
+      sourceId: delivery._id,
+    });
     const commission = await creditRiderCommissionIfEligible({
       deliveryId: delivery._id,
       riderId: delivery.assignedRiderId,

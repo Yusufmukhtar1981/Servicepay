@@ -8,6 +8,10 @@ const {
 } = require(
   "../services/riderCommission.service"
 );
+const {
+  reconcileReferralReward,
+  enqueueReferralRewardEvent,
+} = require("../services/referralReward.service");
 
 const RIDER_DELIVERY_STATUSES = [
   "ASSIGNED",
@@ -859,7 +863,20 @@ exports.updateRiderDeliveryStatus =
           now;
       }
 
-      await delivery.save();
+      const sourceSession = await mongoose.startSession();
+      try {
+        await sourceSession.withTransaction(async () => {
+          await delivery.save({ session: sourceSession });
+          await enqueueReferralRewardEvent({
+            referredCustomerId: delivery.customerId,
+            sourceType: "DELIVERY",
+            sourceId: delivery._id,
+            session: sourceSession,
+          });
+        });
+      } finally {
+        await sourceSession.endSession();
+      }
 
       let commissionResult = {
         credited: false,
@@ -894,6 +911,16 @@ exports.updateRiderDeliveryStatus =
                 rider._id,
             }
           );
+
+        try {
+          await reconcileReferralReward({
+            referredCustomerId: delivery.customerId,
+            sourceType: "DELIVERY",
+            sourceId: delivery._id,
+          });
+        } catch (error) {
+          console.error("DELIVERY_REFERRAL_REWARD_ERROR:", error.message);
+        }
       }
 
       const updatedDelivery =

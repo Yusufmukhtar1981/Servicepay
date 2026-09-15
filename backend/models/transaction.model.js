@@ -63,6 +63,7 @@ const transactionSchema =
           "EMPOWERMENT_DISBURSEMENT",
           "MARKETPLACE",
           "REFERRAL_BONUS",
+          "REFERRAL_BONUS_REVERSAL",
            "SOLAR_DEPOSIT",
            "SOLAR_INSTALLMENT",
            "PHONE_FINANCING_DEPOSIT",
@@ -193,6 +194,78 @@ transactionSchema.index({
 transactionSchema.index({
   amount: 1,
   createdAt: -1,
+});
+
+/*
+ * Reward money movements are terminal financial records. They may be
+ * created once, but they must never be changed or deleted afterward. DATA
+ * and other ordinary transactions retain their existing mutation behavior.
+ */
+const IMMUTABLE_REWARD_SERVICES = new Set([
+  "REFERRAL_BONUS",
+  "REFERRAL_BONUS_REVERSAL",
+]);
+const immutableRewardError = () =>
+  new Error("Referral reward transactions are immutable and cannot be modified or deleted.");
+const serviceFromUpdate = (update = {}) =>
+  update?.serviceType || update?.$set?.serviceType || update?.$setOnInsert?.serviceType;
+
+const guardRewardMutation = async function () {
+  const query = this.getQuery?.() || {};
+  const update = this.getUpdate?.() || {};
+  if (IMMUTABLE_REWARD_SERVICES.has(String(query.serviceType || "").toUpperCase())) {
+    throw immutableRewardError();
+  }
+  if (IMMUTABLE_REWARD_SERVICES.has(String(serviceFromUpdate(update) || "").toUpperCase())) {
+    throw immutableRewardError();
+  }
+  const model = this.model || this;
+  const hasImmutableReward = await model.exists({
+    $and: [
+      query,
+      { serviceType: { $in: [...IMMUTABLE_REWARD_SERVICES] } },
+    ],
+  });
+  if (hasImmutableReward) {
+    throw immutableRewardError();
+  }
+};
+
+transactionSchema.pre("save", function () {
+  if (!this.isNew && IMMUTABLE_REWARD_SERVICES.has(String(this.serviceType || "").toUpperCase())) {
+    throw immutableRewardError();
+  }
+});
+["updateOne", "updateMany", "findOneAndUpdate", "replaceOne", "findOneAndReplace",
+  "deleteOne", "deleteMany", "findOneAndDelete"].forEach((operation) => {
+  transactionSchema.pre(operation, { document: false, query: true }, guardRewardMutation);
+});
+transactionSchema.pre("deleteOne", { document: true, query: false }, function () {
+  if (IMMUTABLE_REWARD_SERVICES.has(String(this.serviceType || "").toUpperCase())) {
+    throw immutableRewardError();
+  }
+});
+transactionSchema.pre("bulkWrite", async function (operations = []) {
+  for (const operation of operations) {
+    const payload = operation?.updateOne || operation?.updateMany || operation?.deleteOne || operation?.deleteMany || {};
+    const serviceType =
+      payload.filter?.serviceType ||
+      payload.update?.serviceType ||
+      payload.update?.$set?.serviceType ||
+      payload.update?.$setOnInsert?.serviceType;
+    if (IMMUTABLE_REWARD_SERVICES.has(String(serviceType || "").toUpperCase())) {
+      throw immutableRewardError();
+    }
+    if (payload.filter) {
+      const hasImmutableReward = await this.findOne({
+        $and: [
+          payload.filter,
+          { serviceType: { $in: [...IMMUTABLE_REWARD_SERVICES] } },
+        ],
+      }).select("_id").lean();
+      if (hasImmutableReward) throw immutableRewardError();
+    }
+  }
 });
 
 const Transaction =

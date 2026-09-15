@@ -1,4 +1,5 @@
 const axios = require("axios");
+const mongoose = require("mongoose");
 
 const {
   postDebit,
@@ -11,6 +12,10 @@ const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const DataPriceOverride = require("../models/dataPriceOverride.model");
 const { distributeCommission } = require("../services/commission.service");
+const {
+  reconcileReferralReward,
+  enqueueReferralRewardEvent,
+} = require("../services/referralReward.service");
 
 const AIRTIME_URL = "https://www.nellobytesystems.com/APIAirtimeV1.asp";
 
@@ -515,6 +520,13 @@ const refundCustomer = async ({
     String(refundTransaction.status || "")
       .toUpperCase() === "REFUNDED"
   ) {
+    if (String(refundTransaction.serviceType || "").toUpperCase() === "DATA") {
+      await reconcileReferralReward({
+        referredCustomerId: customerId,
+        sourceType: "DATA",
+        sourceId: transactionId,
+      });
+    }
     return User.findById(customerId);
   }
 
@@ -555,13 +567,37 @@ const refundCustomer = async ({
       updatedCustomer?.walletBalance || 0
     );
 
-  await Transaction.findByIdAndUpdate(
-    transactionId,
-    {
-      status: "REFUNDED",
-      providerResponse,
-    }
-  );
+  const sourceSession = await mongoose.startSession();
+  try {
+    await sourceSession.withTransaction(async () => {
+      await Transaction.findByIdAndUpdate(
+        transactionId,
+        {
+          status: "REFUNDED",
+          providerResponse,
+        },
+        { session: sourceSession }
+      );
+      if (String(refundTransaction.serviceType || "").toUpperCase() === "DATA") {
+        await enqueueReferralRewardEvent({
+          referredCustomerId: customerId,
+          sourceType: "DATA",
+          sourceId: transactionId,
+          session: sourceSession,
+        });
+      }
+    });
+  } finally {
+    await sourceSession.endSession();
+  }
+
+  if (String(refundTransaction.serviceType || "").toUpperCase() === "DATA") {
+    await reconcileReferralReward({
+      referredCustomerId: customerId,
+      sourceType: "DATA",
+      sourceId: transactionId,
+    });
+  }
 
   /*
    * Only create reversal when the original service
@@ -1240,7 +1276,26 @@ transaction = await Transaction.create({
       response: providerResponse,
     };
 
-    await transaction.save();
+    const sourceSession = await mongoose.startSession();
+    try {
+      await sourceSession.withTransaction(async () => {
+        await transaction.save({ session: sourceSession });
+        await enqueueReferralRewardEvent({
+          referredCustomerId: customer._id,
+          sourceType: "DATA",
+          sourceId: transaction._id,
+          session: sourceSession,
+        });
+      });
+    } finally {
+      await sourceSession.endSession();
+    }
+
+    await reconcileReferralReward({
+      referredCustomerId: customer._id,
+      sourceType: "DATA",
+      sourceId: transaction._id,
+    });
 
     // DATA_COMMISSION_DISTRIBUTION
     try {
