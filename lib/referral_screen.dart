@@ -31,6 +31,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
     total: 0,
     qualified: 0,
     pending: 0,
+    paid: 0,
     totalRewards: 0,
     rewardProgramStatus: 'NOT_CONFIGURED',
     referrals: <ReferralEntry>[],
@@ -161,6 +162,115 @@ class _ReferralScreenState extends State<ReferralScreen> {
     );
   }
 
+  String _money(num value) {
+    if (value % 1 != 0) return value.toString();
+    final digits = value.toInt().abs().toString();
+    final groups = <String>[];
+    for (var end = digits.length; end > 0; end -= 3) {
+      final start = end - 3 < 0 ? 0 : end - 3;
+      groups.insert(0, digits.substring(start, end));
+    }
+    final formatted = groups.join(',');
+    return value < 0 ? '-$formatted' : formatted;
+  }
+
+  String _statusLabel(String status) {
+    switch (status.trim().toUpperCase()) {
+      case 'PENDING':
+        return 'Pending';
+      case 'QUALIFIED':
+        return 'Qualified';
+      case 'PAID':
+        return 'Paid';
+      default:
+        return status;
+    }
+  }
+
+  Widget _rewardPolicy() {
+    final configured = summary.rewardProgramStatus == 'CONFIGURED';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: configured
+              ? const Color(0xFFBFE8D0)
+              : const Color(0xFFF0F2F1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.card_giftcard_rounded, color: primaryGreen),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Reward policy',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: configured
+                      ? const Color(0xFFEAF7F0)
+                      : const Color(0xFFF1F3F2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  summary.rewardProgramStatus,
+                  style: TextStyle(
+                    color: configured ? primaryGreen : Colors.black54,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (!configured)
+            const Text(
+              'Rewards remain pending until ServicePay activates a reward '
+              'programme.',
+              style: TextStyle(color: Colors.black54, height: 1.4),
+            )
+          else if (summary.rewardPolicy.categories.isEmpty)
+            const Text(
+              'Your referral rewards are being tracked under the active policy.',
+              style: TextStyle(color: Colors.black54, height: 1.4),
+            )
+          else
+            ...summary.rewardPolicy.categories.map(
+              (rule) => Padding(
+                padding: const EdgeInsets.only(top: 5),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        rule.category,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Text(
+                      '${rule.target} referrals · ₦${_money(rule.reward)}'
+                      '${rule.minimumTransaction > 0 ? ' · min ₦${_money(rule.minimumTransaction)}' : ''}',
+                      style: const TextStyle(color: Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _referralCard(ReferralEntry item) {
     final initial =
         item.firstName.isEmpty ? 'S' : item.firstName[0].toUpperCase();
@@ -201,13 +311,23 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   item.registrationDate,
                   style: const TextStyle(color: Colors.black54, fontSize: 12),
                 ),
-                const SizedBox(height: 6),
+                if (item.category.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Category: ${item.category}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+                if (item.bestProgress.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Best progress: ${item.bestProgress}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+                const SizedBox(height: 2),
                 Text(
-                  'Qualification: ${item.qualificationProgress}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                Text(
-                  'Reward: ${item.rewardStatus}',
+                  'Reward status: ${_statusLabel(item.rewardStatus)}',
                   style: const TextStyle(fontSize: 12),
                 ),
               ],
@@ -282,6 +402,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
+                  _rewardPolicy(),
+                  const SizedBox(height: 14),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -290,10 +412,44 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     ),
                     child: Row(
                       children: [
-                        _metric('Total', '${summary.total}'),
-                        _metric('Qualified', '${summary.qualified}'),
+                        _metric('Total Referrals', '${summary.total}'),
                         _metric('Pending', '${summary.pending}'),
-                        _metric('Rewards', '₦${summary.totalRewards}'),
+                        _metric('Qualified', '${summary.qualified}'),
+                        _metric('Paid', '${summary.paid}'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 13,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.payments_outlined,
+                          color: primaryGreen,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Rewards Earned',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        Text(
+                          '₦${_money(summary.totalRewards)}',
+                          style: const TextStyle(
+                            color: primaryGreen,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
                       ],
                     ),
                   ),
