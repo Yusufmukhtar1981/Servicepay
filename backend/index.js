@@ -121,6 +121,13 @@ const transactionPinRoutes = require(
 
 const app = express();
 
+/*
+ * Render and Replit each place one trusted reverse proxy in front of the app.
+ * Trust exactly one hop so req.ip resolves the client without accepting an
+ * arbitrary left-most X-Forwarded-For value supplied by the requester.
+ */
+app.set("trust proxy", 1);
+
 const adminPartnerApplicationRoutes = require("./routes/adminPartnerApplication.routes");
 
 const empowermentRoutes = require("./routes/empowerment.routes");

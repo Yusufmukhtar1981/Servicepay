@@ -6,6 +6,7 @@ const {
   loginUser,
   getProfile,
   getMyReferral,
+  validateReferralCode,
   updateProfile,
   changePassword,
   forgotPassword,
@@ -19,6 +20,9 @@ const {
 const {
   protect,
 } = require("../middleware/auth.middleware");
+const {
+  referralValidationRateLimit,
+} = require("../middleware/referralValidationRateLimit.middleware");
 
 const router = express.Router();
 
@@ -62,6 +66,12 @@ const profilePhotoUpload = multer({
 router.post(
   "/register",
   registerUser
+);
+
+router.get(
+  "/referral/validate",
+  referralValidationRateLimit,
+  validateReferralCode
 );
 
 router.post(

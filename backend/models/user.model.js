@@ -659,6 +659,12 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: undefined,
+      index: true,
+    },
+
+    referralCapturedAt: {
+      type: Date,
+      default: null,
     },
 
     totalEarnings: {
