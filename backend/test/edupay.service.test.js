@@ -39,6 +39,15 @@ let classLevel;
 let fee;
 const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, AppSettings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, AccountVerificationEvidence, PayoutEvidence, Commission, Command, DutyAssignment];
 
+test("school registration index remains production-compatible", () => {
+  const registrationIndex = School.schema.indexes().find(
+    ([keys]) => keys.registrationNumber === 1
+  );
+  assert.ok(registrationIndex);
+  assert.equal(registrationIndex[1].unique, true);
+  assert.equal(registrationIndex[1].sparse, true);
+});
+
 test.before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(replica.getUri(), { dbName: "edupay-tests" });

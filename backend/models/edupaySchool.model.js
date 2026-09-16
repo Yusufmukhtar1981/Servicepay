@@ -28,7 +28,10 @@ const schema = new mongoose.Schema({
   currentSettlementAccountVersion: { type: Number, default: null },
   edupayPayoutLock: { settlement: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlement", default: null }, acquiredAt: { type: Date, default: null } },
 }, { timestamps: true });
-schema.index({ registrationNumber: 1 });
+// Keep this legacy production index definition byte-for-byte compatible with
+// the existing Atlas index. The normalized partial indexes below enforce the
+// current application lifecycle rules.
+schema.index({ registrationNumber: 1 }, { unique: true, sparse: true });
 schema.index({ status: 1, active: 1 });
 schema.index({ normalizedRegistrationNumber: 1 }, { unique: true, partialFilterExpression: { normalizedRegistrationNumber: { $type: "string" }, status: { $in: ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "SUSPENDED"] } } });
 schema.index({ normalizedEmail: 1 }, { unique: true, partialFilterExpression: { normalizedEmail: { $type: "string" }, status: { $in: ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "SUSPENDED"] } } });
