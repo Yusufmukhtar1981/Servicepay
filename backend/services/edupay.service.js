@@ -90,7 +90,10 @@ async function createSettlement({ planId, actor, settlementDate, idempotencyKey,
     await audit({ actor, action: "EDUPAY_SETTLEMENT_CREATED", entityType: "EduPaySettlement", entityId: settlement._id, school: settlement.school, req, session });
     await Command.updateOne({ _id: command._id }, { $set: { status: "SUCCEEDED", result: { settlementId: settlement._id } } }, { session });
   }); } catch (error) {
-    if (error?.code === 11000) { const replay = await Command.findOne({ key: idempotencyKey }); if (replay?.intentHash === intentHash && replay.status === "SUCCEEDED") return { settlement: await Settlement.findById(replay.result?.settlementId), duplicate: true }; }
+    if (error?.code === 11000) {
+      const replay = await Command.findOne({ key: idempotencyKey }); if (replay?.intentHash === intentHash && replay.status === "SUCCEEDED") return { settlement: await Settlement.findById(replay.result?.settlementId), duplicate: true };
+      const concurrent = await Settlement.findOne({ plan: planId }); if (concurrent) { const conflict = new Error("A settlement already exists for this plan."); conflict.statusCode = 409; throw conflict; }
+    }
     throw error;
   } finally { await session.endSession(); }
   return { settlement, duplicate: false };

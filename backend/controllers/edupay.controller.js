@@ -16,9 +16,9 @@ const safe = (doc) => doc?.toObject ? doc.toObject() : doc;
 const errorResponse = (res, error) => res.status(error.statusCode || 500).json({ success: false, message: error.message || "EduPay request failed." });
 const requireKey = (req) => String(req.headers["idempotency-key"] || req.body?.idempotencyKey || "").trim();
 const enabledForInitiation = async (res) => {
-  const settings = await getSettings();
-  if (!settings.enabled) { res.status(403).json({ success: false, code: "EDUPAY_DISABLED", message: "EduPay is temporarily unavailable for new plans and contributions." }); return null; }
-  return settings;
+  const feature = currentFeature(await AppSettings.findOne().lean(), FEATURE_REGISTRY.find((item) => item[0] === "edupay"));
+  if (!feature.effectiveEnabled) { res.status(403).json({ success: false, code: "EDUPAY_DISABLED", message: "EduPay is temporarily unavailable for new plans and contributions." }); return null; }
+  return getSettings();
 };
 
 exports.dashboard = async (req, res) => {
@@ -151,7 +151,7 @@ exports.repayments = async (req, res) => { try { res.json({ success: true, repay
 exports.repay = async (req, res) => { try { const result = await repayFromWallet({ userId: req.user._id, repaymentId: req.params.repaymentId, amount: req.body.amount, transactionPin: req.body.transactionPin || req.body.pin, idempotencyKey: requireKey(req) }); res.status(result.duplicate ? 200 : 201).json({ success: true, duplicate: result.duplicate, transaction: result.transaction }); } catch (error) { errorResponse(res, error); } };
 exports.receipt = async (req, res) => { try { const [contribution, repayment, settlement] = await Promise.all([Contribution.findOne({ _id: req.params.reference, parent: req.user._id }).populate("plan child"), EduPayRepaymentTransaction.findOne({ _id: req.params.reference, parent: req.user._id }), Settlement.findOne({ _id: req.params.reference, parent: req.user._id }).populate("school child")]); const result = contribution || repayment || settlement; if (!result) return res.status(404).json({ success: false, message: "EduPay receipt not found." }); res.json({ success: true, receipt: result }); } catch (error) { errorResponse(res, error); } };
 
-exports.applySchool = async (req, res) => { try { const settings = await enabledForInitiation(res); if (!settings) return; const allowed = ["name", "schoolType", "registrationNumber", "address", "state", "lga", "contactPerson", "phone", "email", "bankDetails", "supportingDocuments", "authorizedRepresentative"]; const input = Object.fromEntries(allowed.filter((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key)).map((key) => [key, req.body[key]])); input.status = "PENDING"; input.active = false; const school = await School.create(input); res.status(201).json({ success: true, school }); } catch (error) { errorResponse(res, error); } };
+exports.applySchool = async (req, res) => { try { const settings = await enabledForInitiation(res); if (!settings) return; const allowed = ["name", "schoolType", "registrationNumber", "address", "state", "lga", "contactPerson", "phone", "email", "supportingDocuments", "authorizedRepresentative"]; const input = Object.fromEntries(allowed.filter((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key)).map((key) => [key, req.body[key]])); input.status = "PENDING"; input.active = false; const school = await School.create(input); res.status(201).json({ success: true, school }); } catch (error) { errorResponse(res, error); } };
 exports.schoolLogin = async (req, res) => {
   try {
     const user = await User.findOne({ email: String(req.body.email || "").trim().toLowerCase() }).select("+password +authTokenVersion");
