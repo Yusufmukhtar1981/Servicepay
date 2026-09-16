@@ -3,13 +3,14 @@ import 'package:share_plus/share_plus.dart';
 import 'edupay_api.dart';
 
 class EduPayScreen extends StatefulWidget {
-  const EduPayScreen({super.key});
+  const EduPayScreen({super.key, this.api});
+  final EduPayApi? api;
   @override
   State<EduPayScreen> createState() => _EduPayScreenState();
 }
 
 class _EduPayScreenState extends State<EduPayScreen> {
-  final api = EduPayApi();
+  late final EduPayApi api;
   int tab = 0;
   bool loading = true;
   String? error;
@@ -19,6 +20,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
   @override
   void initState() {
     super.initState();
+    api = widget.api ?? EduPayApi();
     load();
   }
 
@@ -269,7 +271,9 @@ class _EduPayScreenState extends State<EduPayScreen> {
           child: Icon(Icons.school, color: Color(0xff0c6b51)),
         ),
         title: Text('$child'),
-        subtitle: Text('${school ?? ''}\n${p['status'] ?? 'ACTIVE'}'),
+        subtitle: Text(
+          '${school ?? ''}\n${_statusLabel(p['status']?.toString())}',
+        ),
         isThreeLine: true,
         trailing: Text(
           _money(p['officialFee'] ?? p['amountRemaining'] ?? p['totalAmount']),
@@ -372,11 +376,24 @@ class _EduPayScreenState extends State<EduPayScreen> {
 
   Future<void> _repaymentDetail(Map r) async {
     final id = (r['_id'] ?? r['id']).toString();
-    final pin = await _pinDialog('Pay repayment');
-    if (pin == null) return;
-    final amount = double.tryParse(
-      (r['amountRemaining'] ?? r['totalAmount'] ?? 0).toString(),
+    final amountController = TextEditingController(
+      text: (r['amountRemaining'] ?? r['totalAmount'] ?? '').toString(),
     );
+    final confirmed = await _formDialog('Make repayment', [
+      TextField(
+        controller: amountController,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(
+          prefixText: '₦ ',
+          labelText: 'Amount',
+          helperText: 'You can pay part or all of the amount remaining.',
+        ),
+      ),
+    ]);
+    if (confirmed != true) return;
+    final pin = await _pinDialog('Confirm repayment');
+    if (pin == null) return;
+    final amount = double.tryParse(amountController.text);
     if (amount == null) return;
     try {
       await api.repay(id, amount, pin);
@@ -384,6 +401,29 @@ class _EduPayScreenState extends State<EduPayScreen> {
       _snack('Payment submitted successfully.');
     } catch (e) {
       _snack(e.toString());
+    }
+  }
+
+  String _statusLabel(String? raw) {
+    switch (raw?.toUpperCase()) {
+      case 'SAVING':
+        return 'Saving';
+      case 'PARTIALLY_PAID':
+        return 'Partially paid';
+      case 'READY_FOR_SETTLEMENT':
+        return 'Ready for settlement';
+      case 'ADMIN_REVIEW':
+        return 'Under review';
+      case 'SETTLED':
+        return 'Settled';
+      case 'OVERDUE':
+        return 'Overdue';
+      case 'PAID':
+        return 'Paid';
+      case 'CANCELLED':
+        return 'Cancelled';
+      default:
+        return raw?.replaceAll('_', ' ') ?? 'Active';
     }
   }
 
@@ -473,6 +513,16 @@ class EduPayPlanDetail extends StatefulWidget {
 }
 
 class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
+  String _statusLabel(String? raw) => raw == null
+      ? 'Active'
+      : raw
+          .toLowerCase()
+          .split('_')
+          .map((word) => word.isEmpty
+              ? word
+              : '${word[0].toUpperCase()}${word.substring(1)}')
+          .join(' ');
+
   String money(dynamic v) {
     final n = v is num ? v : double.tryParse('$v') ?? 0;
     return '₦${n.toStringAsFixed(2)}';
@@ -670,6 +720,52 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                 ? 'Pause autosave'
                 : 'Resume autosave'),
           ),
+          if (widget.data['repayment'] is Map) ...[
+            const SizedBox(height: 18),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.receipt_long_outlined,
+                    color: Color(0xff0c6b51)),
+                title: const Text('Repayment status'),
+                subtitle: Text(
+                  '${_statusLabel((widget.data['repayment'] as Map)['status']?.toString())}'
+                  ' · ${money((widget.data['repayment'] as Map)['amountRemaining'])} remaining',
+                ),
+                trailing: IconButton(
+                  tooltip: 'View receipt',
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: () async {
+                    final repayment = widget.data['repayment'] as Map;
+                    final id = (repayment['_id'] ?? repayment['id']).toString();
+                    try {
+                      final result = await widget.api.receipt(id);
+                      if (!mounted) return;
+                      await showDialog<void>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text('EduPay receipt'),
+                          content:
+                              SelectableText('${result['receipt'] ?? result}'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Done'),
+                            ),
+                          ],
+                        ),
+                      );
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString())),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

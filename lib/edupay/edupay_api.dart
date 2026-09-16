@@ -79,30 +79,49 @@ class EduPayApi {
   Future<Map<String, dynamic>> createPlan(Map<String, dynamic> data) =>
       _send('POST', '/plans', body: data);
   Future<Map<String, dynamic>> plan(String id) => _send('GET', '/plans/$id');
-  Future<Map<String, dynamic>> contribute(
-    String id,
-    double amount,
-    String pin,
-  ) =>
+  Future<Map<String, dynamic>> contribute(String id, double amount, String pin,
+          {String? idempotencyKey}) =>
       _send(
         'POST',
         '/plans/$id/contributions',
         body: {'amount': amount, 'transactionPin': pin},
-        idempotencyKey: 'edupay-${DateTime.now().microsecondsSinceEpoch}',
+        idempotencyKey:
+            idempotencyKey ?? 'edupay-${DateTime.now().microsecondsSinceEpoch}',
       );
   Future<Map<String, dynamic>> autosave(String id, Map<String, dynamic> data) =>
       _send('PATCH', '/plans/$id/autosave', body: data);
   Future<Map<String, dynamic>> invite(String id, String name) =>
       _send('POST', '/plans/$id/sponsor-invites', body: {'sponsorName': name});
+  Future<Map<String, dynamic>> sponsorView(String token) =>
+      _send('GET', '/sponsor/$token');
+  Future<Map<String, dynamic>> sponsorContribute(
+    String token,
+    double amount,
+    String pin, {
+    String? idempotencyKey,
+  }) =>
+      _send(
+        'POST',
+        '/sponsor/$token/contribute',
+        body: {'amount': amount, 'transactionPin': pin},
+        idempotencyKey: idempotencyKey ??
+            'edupay-sponsor-${DateTime.now().microsecondsSinceEpoch}',
+      );
   Future<Map<String, dynamic>> history() => _send('GET', '/history');
   Future<List<dynamic>> repayments() async =>
       (await _send('GET', '/repayments'))['repayments'] as List? ?? [];
-  Future<Map<String, dynamic>> repay(String id, double amount, String pin) =>
+  Future<Map<String, dynamic>> repay(
+    String id,
+    double amount,
+    String pin, {
+    String? idempotencyKey,
+  }) =>
       _send(
         'POST',
         '/repayments/$id/payments',
         body: {'amount': amount, 'transactionPin': pin},
-        idempotencyKey: 'edupay-repay-${DateTime.now().microsecondsSinceEpoch}',
+        idempotencyKey: idempotencyKey ??
+            'edupay-repay-${DateTime.now().microsecondsSinceEpoch}',
       );
   Future<Map<String, dynamic>> receipt(String reference) =>
       _send('GET', '/receipts/$reference');
