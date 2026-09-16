@@ -246,6 +246,11 @@ async function confirmSettlement({ settlementId, actor, transactionId, providerR
       result = await Settlement.findById(settlement._id).session(session);
       await Command.updateOne({ key: idempotencyKey }, { $set: { status: "SUCCEEDED", result: { settlementId: String(settlement._id) } } }, { session });
     });
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    const replay = await Command.findOne({ key: idempotencyKey });
+    if (replay && replay.owner.equals(actor) && replay.intentHash === intentHash && replay.status === "SUCCEEDED") return { settlement: await Settlement.findById(settlementId), duplicate: true };
+    throw error;
   } finally { await session.endSession(); }
   return { settlement: result, duplicate };
 }
@@ -282,6 +287,11 @@ async function reverseSettlement({ settlementId, actor, transactionId, providerR
       result = reversal;
       await Command.updateOne({ key: idempotencyKey }, { $set: { status: "SUCCEEDED", result: { reversalId: String(reversal._id) } } }, { session });
     });
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    const replay = await Command.findOne({ key: idempotencyKey });
+    if (replay && replay.owner.equals(actor) && replay.intentHash === intentHash && replay.status === "SUCCEEDED") return { reversal: await Reversal.findOne({ settlement: settlementId }), duplicate: true };
+    throw error;
   } finally { await session.endSession(); }
   return { reversal: result, duplicate };
 }
