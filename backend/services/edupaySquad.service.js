@@ -13,13 +13,81 @@ const AccountVerificationEvidence = require("../models/edupayAccountVerification
 const School = require("../models/edupaySchool.model");
 
 const fail = (message, status = 400, code) => Object.assign(new Error(message), { statusCode: status, code });
+const configuredValue = (key) => String(process.env[key] || "").trim();
+const productionBaseUrl = (value) => {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "api.squadco.com" &&
+      !url.username && !url.password && !url.port &&
+      (url.pathname === "" || url.pathname === "/") &&
+      !url.search && !url.hash;
+  } catch (_) {
+    return false;
+  }
+};
+const providerCandidate = () => {
+  const group = (prefix) => {
+    const keys = {
+      transfer: `${prefix}TRANSFER_ENABLED`,
+      production: `${prefix}PRODUCTION_ENABLED`,
+      secret: `${prefix}SECRET_KEY`,
+      merchant: `${prefix}MERCHANT_ID`,
+      baseUrl: `${prefix}BASE_URL`,
+    };
+    const values = Object.fromEntries(Object.entries(keys).map(([name, key]) => [name, configuredValue(key)]));
+    return { keys, values, any: Object.values(values).some(Boolean) };
+  };
+  const dedicated = group("EDUPAY_SQUAD_");
+  const shared = group("SQUAD_");
+  const selected = dedicated.any ? dedicated : shared;
+  const source = dedicated.any ? "EDUPAY" : (shared.any ? "SHARED" : "EDUPAY");
+  const keys = source === "EDUPAY" ? dedicated.keys : shared.keys;
+  const values = source === "EDUPAY" ? dedicated.values : shared.values;
+  return {
+    source,
+    keys,
+    values,
+    requirements: [
+      { key: keys.transfer, ready: values.transfer.toLowerCase() === "true" },
+      { key: keys.production, ready: values.production.toLowerCase() === "true" },
+      { key: keys.secret, ready: Boolean(values.secret) },
+      { key: keys.merchant, ready: Boolean(values.merchant) },
+      { key: keys.baseUrl, ready: productionBaseUrl(values.baseUrl) },
+    ],
+  };
+};
+const payoutReadiness = () => {
+  const candidate = providerCandidate();
+  const encryptionKey = configuredValue("EDUPAY_ACCOUNT_ENCRYPTION_KEY")
+    ? "EDUPAY_ACCOUNT_ENCRYPTION_KEY"
+    : (configuredValue("ENCRYPTION_KEY") ? "ENCRYPTION_KEY" : "EDUPAY_ACCOUNT_ENCRYPTION_KEY");
+  const requirements = [
+    ...candidate.requirements,
+    { key: encryptionKey, ready: Boolean(configuredValue(encryptionKey)) },
+  ];
+  const providerReady = requirements.slice(0, 5).every((item) => item.ready);
+  const accountEncryptionReady = requirements[5].ready;
+  return {
+    provider: "SQUAD",
+    providerConfigurationSource: candidate.source,
+    providerReady,
+    accountEncryptionReady,
+    ready: providerReady && accountEncryptionReady,
+    configurationStatus: providerReady ? "CONFIGURED" : "CONFIGURATION_REQUIRED",
+    connectionStatus: providerReady ? "READY_FOR_VERIFICATION" : "NOT_READY",
+    settlementAccountMode: "PER_SCHOOL_VERIFIED",
+    requirements,
+    missingEnvironment: requirements.filter((item) => !item.ready).map((item) => item.key),
+  };
+};
 const providerConfig = () => {
-  const enabled = String(process.env.EDUPAY_SQUAD_TRANSFER_ENABLED || "").toLowerCase() === "true";
-  const production = String(process.env.EDUPAY_SQUAD_PRODUCTION_ENABLED || "").toLowerCase() === "true";
-  const secret = String(process.env.EDUPAY_SQUAD_SECRET_KEY || process.env.SQUAD_SECRET_KEY || "").trim();
-  const merchant = String(process.env.EDUPAY_SQUAD_MERCHANT_ID || process.env.SQUAD_MERCHANT_ID || "").trim();
-  const baseUrl = String(process.env.EDUPAY_SQUAD_BASE_URL || process.env.SQUAD_BASE_URL || "").replace(/\/+$/, "");
-  if (!enabled || !production || !secret || !merchant || !/^https:\/\/(?!.*(?:sandbox|api-d\.))/i.test(baseUrl)) throw fail("EduPay Squad payout configuration is not production-ready.", 503, "CONFIGURATION_REQUIRED");
+  const readiness = payoutReadiness();
+  const candidate = providerCandidate();
+  const secret = candidate.values.secret;
+  const merchant = candidate.values.merchant;
+  const baseUrl = candidate.values.baseUrl.replace(/\/+$/, "");
+  if (!readiness.providerReady) throw fail("EduPay Squad payout configuration is not production-ready.", 503, "CONFIGURATION_REQUIRED");
   return { secret, merchant, baseUrl };
 };
 const encryptionKey = () => crypto.createHash("sha256").update(String(process.env.EDUPAY_ACCOUNT_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY || "").trim()).digest();
@@ -158,4 +226,4 @@ async function handleWebhook({ payload, raw, signature, actor, req }) {
   const data = normalized(payload); const settlement = await Settlement.findOne({ providerReference: data.reference }); if (!settlement) throw fail("Provider reference does not match a persisted EduPay settlement.", 409, "REFERENCE_MISMATCH");
   return recordProviderEvidence({ settlement, payload, source: "WEBHOOK", raw, actor, req });
 }
-module.exports = { providerConfig, encryptAccount, saveAccount, verifyAccount, processSettlement, requerySettlement, handleWebhook, recordProviderEvidence, timingSafe, normalized };
+module.exports = { providerConfig, payoutReadiness, encryptAccount, saveAccount, verifyAccount, processSettlement, requerySettlement, handleWebhook, recordProviderEvidence, timingSafe, normalized };

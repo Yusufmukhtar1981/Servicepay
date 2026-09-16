@@ -50,7 +50,7 @@ const FEATURE_REGISTRY = Object.freeze([
 
 const PROTECTED_FEATURES = new Set([
   "wallet", "walletFunding", "servicepayTransfer", "bankTransfer",
-  "withdrawal", "organizationWithdrawals",
+  "withdrawal", "organizationWithdrawals", "edupay",
 ]);
 const KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const object = (value) =>
@@ -89,8 +89,9 @@ const latestActiveDutyHolders = async () => {
 const edupayCanEnable = async () => {
   const { manage, verify, process } = await latestActiveDutyHolders();
   const duties = [...manage].some((a) => [...verify].some((b) => b !== a && [...process].some((c) => c !== a && c !== b)));
-  const provider = String(process.env.EDUPAY_SQUAD_TRANSFER_ENABLED).toLowerCase() === "true" && String(process.env.EDUPAY_SQUAD_PRODUCTION_ENABLED).toLowerCase() === "true" && process.env.EDUPAY_SQUAD_SECRET_KEY && process.env.EDUPAY_SQUAD_MERCHANT_ID && /^https:\/\/(?!.*(?:sandbox|api-d-))/i.test(String(process.env.EDUPAY_SQUAD_BASE_URL || ""));
-  const encryption = Boolean(String(process.env.EDUPAY_ACCOUNT_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY || "").trim());
+  const payout = require("../services/edupaySquad.service").payoutReadiness();
+  const provider = payout.providerReady;
+  const encryption = payout.accountEncryptionReady;
   const Settings = require("../models/edupaySettings.model");
   const settings = await Settings.findOne({ key: "GLOBAL" }).lean();
   const rates = settings ? Number(settings.schoolCommissionRate) >= 0 && Number(settings.parentShortfallChargeRate) >= 0 : false;

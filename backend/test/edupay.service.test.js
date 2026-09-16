@@ -264,6 +264,61 @@ test("Squad PROCESS fails safely with explicit configuration error", async () =>
   if (previous === undefined) delete process.env.EDUPAY_SQUAD_TRANSFER_ENABLED; else process.env.EDUPAY_SQUAD_TRANSFER_ENABLED = previous;
 });
 
+test("payout readiness reports exact missing keys and safely reuses shared Squad configuration", () => {
+  const keys = [
+    "EDUPAY_SQUAD_TRANSFER_ENABLED", "EDUPAY_SQUAD_PRODUCTION_ENABLED",
+    "EDUPAY_SQUAD_SECRET_KEY", "EDUPAY_SQUAD_MERCHANT_ID",
+    "EDUPAY_SQUAD_BASE_URL", "EDUPAY_ACCOUNT_ENCRYPTION_KEY",
+    "SQUAD_TRANSFER_ENABLED", "SQUAD_PRODUCTION_ENABLED", "SQUAD_SECRET_KEY",
+    "SQUAD_MERCHANT_ID", "SQUAD_BASE_URL", "ENCRYPTION_KEY",
+  ];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  try {
+    keys.forEach((key) => delete process.env[key]);
+    const missing = squad.payoutReadiness();
+    assert.equal(missing.ready, false);
+    assert.deepEqual(missing.missingEnvironment, [
+      "EDUPAY_SQUAD_TRANSFER_ENABLED", "EDUPAY_SQUAD_PRODUCTION_ENABLED",
+      "EDUPAY_SQUAD_SECRET_KEY", "EDUPAY_SQUAD_MERCHANT_ID",
+      "EDUPAY_SQUAD_BASE_URL", "EDUPAY_ACCOUNT_ENCRYPTION_KEY",
+    ]);
+    Object.assign(process.env, {
+      SQUAD_TRANSFER_ENABLED: "true",
+      SQUAD_PRODUCTION_ENABLED: "true",
+      SQUAD_SECRET_KEY: "shared-test-secret",
+      SQUAD_MERCHANT_ID: "shared-merchant",
+      SQUAD_BASE_URL: "https://api.squadco.com",
+      ENCRYPTION_KEY: "shared-account-encryption",
+    });
+    const configured = squad.payoutReadiness();
+    assert.equal(configured.providerReady, true);
+    assert.equal(configured.accountEncryptionReady, true);
+    assert.equal(configured.ready, true);
+    assert.deepEqual(configured.missingEnvironment, []);
+
+    process.env.EDUPAY_SQUAD_SECRET_KEY = "partial-dedicated-secret";
+    const hybrid = squad.payoutReadiness();
+    assert.equal(hybrid.providerConfigurationSource, "EDUPAY");
+    assert.equal(hybrid.providerReady, false);
+    assert.ok(hybrid.missingEnvironment.includes("EDUPAY_SQUAD_MERCHANT_ID"));
+
+    Object.assign(process.env, {
+      EDUPAY_SQUAD_TRANSFER_ENABLED: "true",
+      EDUPAY_SQUAD_PRODUCTION_ENABLED: "true",
+      EDUPAY_SQUAD_MERCHANT_ID: "dedicated-merchant",
+      EDUPAY_SQUAD_BASE_URL: "https://api.squadco.com.attacker.test",
+    });
+    assert.equal(squad.payoutReadiness().providerReady, false);
+    process.env.EDUPAY_SQUAD_BASE_URL = "https://api.squadco.com";
+    assert.equal(squad.payoutReadiness().providerReady, true);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test("Squad webhook HMAC rejects invalid signatures and accepts timing-safe valid signatures", async () => {
   const crypto = require("crypto"); const raw = Buffer.from('{"event":"success"}'); const secret = "edupay-test-secret";
   const signature = crypto.createHmac("sha512", secret).update(raw).digest("hex");
@@ -403,6 +458,53 @@ test("duty assignment endpoint appends assign, change, and revoke history", asyn
   await controller.adminRevokeEduPayDuty({ params: { userId: target._id }, body: {}, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
   const rows = await DutyAssignment.find({ user: target._id }).sort({ version: 1 });
   assert.equal(rows.length, 3); assert.deepEqual(rows.map((row) => row.version), [1, 2, 3]); assert.equal(rows[2].active, false); assert.equal(String(rows[2].previousAssignment), String(rows[1]._id));
+});
+
+test("atomic duty configuration requires and persists three distinct active officers", async () => {
+  const controller = require("../controllers/edupay.controller");
+  const users = await User.create([
+    { fullName: "Atomic Manager", phone: `075${Date.now()}`, email: `atomic-manager-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+    { fullName: "Atomic Verifier", phone: `076${Date.now()}`, email: `atomic-verifier-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+    { fullName: "Atomic Processor", phone: `077${Date.now()}`, email: `atomic-processor-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+  ]);
+  const actor = { _id: parent._id, role: "SUPER_ADMIN" };
+  const response = (callback) => ({ status: (code) => ({ json: (value) => callback({ status: code, ...value }) }), json: (value) => callback({ status: 200, ...value }) });
+  let body;
+  await controller.adminConfigureEduPayDuties({
+    body: { assignments: { "account.manage": users[0]._id, "account.verify": users[0]._id, "settlement.process": users[2]._id } },
+    user: actor,
+  }, response((value) => { body = value; }));
+  assert.equal(body.status, 400);
+  assert.equal(body.code, "EDUPAY_DISTINCT_DUTIES_REQUIRED");
+
+  await controller.adminConfigureEduPayDuties({
+    body: { assignments: { "account.manage": users[0]._id, "account.verify": users[1]._id, "settlement.process": users[2]._id } },
+    user: actor,
+    ip: "127.0.0.1",
+  }, response((value) => { body = value; }));
+  assert.equal(body.success, true, JSON.stringify(body));
+  const holders = await require("../controllers/featureControl.controller").latestActiveDutyHolders();
+  assert.deepEqual([...holders.manage], [String(users[0]._id)]);
+  assert.deepEqual([...holders.verify], [String(users[1]._id)]);
+  assert.deepEqual([...holders.process], [String(users[2]._id)]);
+  assert.equal(await Audit.countDocuments({ action: "EDUPAY_DUTIES_CONFIGURED" }), 1);
+
+  const competing = await User.create([
+    { fullName: "Competing Manager", phone: `072${Date.now()}`, email: `competing-manager-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+    { fullName: "Competing Verifier", phone: `073${Date.now()}`, email: `competing-verifier-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+    { fullName: "Competing Processor", phone: `074${Date.now()}`, email: `competing-processor-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+  ]);
+  const configure = (officers) => controller.adminConfigureEduPayDuties({
+    body: { assignments: { "account.manage": officers[0]._id, "account.verify": officers[1]._id, "settlement.process": officers[2]._id } },
+    user: actor,
+    ip: "127.0.0.1",
+  }, response(() => {}));
+  await Promise.all([configure(users), configure(competing)]);
+  const afterConcurrent = await require("../controllers/featureControl.controller").latestActiveDutyHolders();
+  assert.equal(afterConcurrent.manage.size, 1);
+  assert.equal(afterConcurrent.verify.size, 1);
+  assert.equal(afterConcurrent.process.size, 1);
+  assert.equal(new Set([...afterConcurrent.manage, ...afterConcurrent.verify, ...afterConcurrent.process]).size, 3);
 });
 
 test("readiness requires three distinct latest duty holders", async () => {

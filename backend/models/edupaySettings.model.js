@@ -12,6 +12,7 @@ const schema = new mongoose.Schema({
   settlementLeadDays: { type: Number, default: 0, min: 0, max: 365 },
   gracePeriodDays: { type: Number, default: 7, min: 0, max: 365 },
   autosaveEnabled: { type: Boolean, default: true },
+  dutyConfigurationVersion: { type: Number, default: 0, select: false },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { timestamps: true });
 schema.index({ key: 1 }, { unique: true });

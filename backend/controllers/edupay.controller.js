@@ -11,6 +11,7 @@ const SchoolRequest = require("../models/edupaySchoolRequest.model");
 const EDUPAY_READINESS_MODELS = { School, Child, Plan, Contribution, EduLedger, Fee, Settlement, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, SchoolRequest };
 const EduPaySettlementAccount = require("../models/edupaySettlementAccount.model");
 const EduPayDutyAssignment = require("../models/edupayDutyAssignment.model");
+const EduPaySettings = require("../models/edupaySettings.model");
 const edupaySquad = require("../services/edupaySquad.service");
 const AppSettings = require("../models/appSettings.model");
 const { FEATURE_REGISTRY, currentFeature, evaluateEduPayReadiness } = require("./featureControl.controller");
@@ -503,6 +504,75 @@ exports.adminSettlementRequery = async (req, res) => { try { const settlement = 
 exports.adminSettlementAccount = async (req, res) => { try { const account = await edupaySquad.saveAccount({ schoolId: req.params.schoolId, accountName: req.body.accountName, bankName: req.body.bankName, bankCode: req.body.bankCode, accountNumber: req.body.accountNumber, actor: req.user._id, verified: false }); res.json({ success: true, account: { id: account._id, school: account.school, accountName: account.accountName, bankName: account.bankName, bankCode: account.bankCode, accountNumberLast4: account.accountNumberLast4, verified: account.verified, active: account.active } }); } catch (error) { errorResponse(res, error); } };
 exports.adminVerifySettlementAccount = async (req, res) => { try { const result = await edupaySquad.verifyAccount({ schoolId: req.params.schoolId, actor: req.user._id, accountId: req.body.accountId || req.query.accountId, version: req.body.version || req.query.version }); res.json({ success: true, account: { id: result.account._id, school: result.account.school, accountName: result.account.accountName, accountNumberLast4: result.account.accountNumberLast4, version: result.account.version, verified: result.account.verified, active: result.account.active }, evidence: result.evidence }); } catch (error) { errorResponse(res, error); } };
 exports.adminEduPayDuty = async (req, res) => { try { const target = await User.findById(req.params.userId).select("_id status role"); if (!target) return res.status(404).json({ success: false, message: "Duty target user not found." }); if (target.status !== "ACTIVE" || target.role !== "HEAD_OFFICE") return res.status(422).json({ success: false, code: "EDUPAY_DUTY_TARGET_INELIGIBLE", message: "Duty targets must be active HEAD_OFFICE users." }); const permissions = [...new Set((Array.isArray(req.body.permissions) ? req.body.permissions : []).map(String))]; const allowed = new Set(["account.manage", "account.verify", "settlement.process"]); if (!permissions.length || permissions.some((permission) => !allowed.has(permission))) return res.status(400).json({ success: false, message: "Invalid EduPay duty permissions." }); const session = await mongoose.startSession(); let assignment; try { await session.withTransaction(async () => { const previous = await EduPayDutyAssignment.findOne({ user: req.params.userId }).sort({ version: -1 }).session(session); const version = Number(previous?.version || 0) + 1; [assignment] = await EduPayDutyAssignment.create([{ user: req.params.userId, permissions, active: req.body.active !== false, assignedBy: req.user._id, version, previousAssignment: previous?._id || null }], { session }); await audit({ actor: req.user._id, action: "EDUPAY_DUTY_ASSIGNED", entityType: "EduPayDutyAssignment", entityId: assignment._id, metadata: { user: req.params.userId, permissions, active: assignment.active, version }, req, session }); }); } finally { await session.endSession(); } res.json({ success: true, assignment }); } catch (error) { errorResponse(res, error); } };
+exports.adminConfigureEduPayDuties = async (req, res) => {
+  try {
+    const required = ["account.manage", "account.verify", "settlement.process"];
+    const assignments = req.body?.assignments;
+    if (!assignments || typeof assignments !== "object" || Array.isArray(assignments)) {
+      return res.status(400).json({ success: false, message: "All three EduPay duty assignments are required." });
+    }
+    const selected = required.map((permission) => String(assignments[permission] || "").trim());
+    if (selected.some((userId) => !mongoose.Types.ObjectId.isValid(userId)) || new Set(selected).size !== required.length) {
+      return res.status(400).json({ success: false, code: "EDUPAY_DISTINCT_DUTIES_REQUIRED", message: "Select three distinct active Head Office officers." });
+    }
+    const eligible = await User.find({ _id: { $in: selected }, status: "ACTIVE", role: "HEAD_OFFICE" }).select("_id").lean();
+    if (eligible.length !== required.length) {
+      return res.status(422).json({ success: false, code: "EDUPAY_DUTY_TARGET_INELIGIBLE", message: "Duty targets must be active HEAD_OFFICE users." });
+    }
+
+    const desired = new Map(selected.map((userId, index) => [userId, [required[index]]]));
+    const session = await mongoose.startSession();
+    const configured = [];
+    try {
+      await session.withTransaction(async () => {
+        configured.length = 0;
+        await EduPaySettings.findOneAndUpdate(
+          { key: "GLOBAL" },
+          { $inc: { dutyConfigurationVersion: 1 } },
+          { upsert: true, new: true, setDefaultsOnInsert: true, session }
+        );
+        const existing = await EduPayDutyAssignment.find({}).sort({ user: 1, version: -1 }).session(session).lean();
+        const latest = new Map();
+        existing.forEach((row) => {
+          if (!latest.has(String(row.user))) latest.set(String(row.user), row);
+        });
+        const currentlyActive = [...latest.values()].filter((row) => row.active);
+        const affected = new Set([...currentlyActive.map((row) => String(row.user)), ...selected]);
+        for (const userId of affected) {
+          const previous = await EduPayDutyAssignment.findOne({ user: userId }).sort({ version: -1 }).session(session);
+          const permissions = desired.get(userId) || previous?.permissions || [];
+          const active = desired.has(userId);
+          if (previous && previous.active === active && JSON.stringify(previous.permissions) === JSON.stringify(permissions)) {
+            if (active) configured.push(previous);
+            continue;
+          }
+          const [assignment] = await EduPayDutyAssignment.create([{
+            user: userId,
+            permissions,
+            active,
+            assignedBy: req.user._id,
+            version: Number(previous?.version || 0) + 1,
+            previousAssignment: previous?._id || null,
+          }], { session });
+          if (active) configured.push(assignment);
+        }
+        await audit({
+          actor: req.user._id,
+          action: "EDUPAY_DUTIES_CONFIGURED",
+          entityType: "EduPayDutyAssignment",
+          metadata: { assignments: Object.fromEntries(required.map((permission, index) => [permission, selected[index]])) },
+          req,
+          session,
+        });
+      });
+    } finally {
+      await session.endSession();
+    }
+    res.json({ success: true, assignments: configured });
+  } catch (error) {
+    errorResponse(res, error);
+  }
+};
 exports.adminEligibleDutyUsers = async (req, res) => { try { const users = await User.find({ status: "ACTIVE", role: "HEAD_OFFICE" }).select("_id fullName role status").sort({ fullName: 1 }).lean(); res.json({ success: true, users: users.map((user) => ({ id: user._id, name: user.fullName, role: user.role, status: user.status })) }); } catch (error) { errorResponse(res, error); } };
 exports.adminRevokeEduPayDuty = async (req, res) => { try { const target = await User.findById(req.params.userId).select("_id status role"); if (!target) return res.status(404).json({ success: false, message: "Duty target user not found." }); if (target.status !== "ACTIVE" || target.role !== "HEAD_OFFICE") return res.status(422).json({ success: false, code: "EDUPAY_DUTY_TARGET_INELIGIBLE", message: "Duty targets must be active HEAD_OFFICE users." }); const session = await mongoose.startSession(); let assignment; try { await session.withTransaction(async () => { const previous = await EduPayDutyAssignment.findOne({ user: req.params.userId }).sort({ version: -1 }).session(session); if (!previous) { const error = new Error("EduPay duty assignment not found."); error.statusCode = 404; throw error; } [assignment] = await EduPayDutyAssignment.create([{ user: req.params.userId, permissions: previous.permissions, active: false, assignedBy: req.user._id, version: previous.version + 1, previousAssignment: previous._id }], { session }); await audit({ actor: req.user._id, action: "EDUPAY_DUTY_REVOKED", entityType: "EduPayDutyAssignment", entityId: assignment._id, metadata: { user: req.params.userId, version: assignment.version }, req, session }); }); } finally { await session.endSession(); } res.json({ success: true, assignment }); } catch (error) { errorResponse(res, error); } };
 exports.adminFees = async (req, res) => { try { const filter = req.params.feeId ? { _id: req.params.feeId } : {}; res.json({ success: true, fees: req.params.feeId ? await Fee.findOne(filter).lean() : await Fee.find({}).populate("school session term classLevel").sort({ createdAt: -1 }).lean() }); } catch (error) { errorResponse(res, error); } };

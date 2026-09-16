@@ -72,6 +72,11 @@ test("only ServicePay super admin inherits protected feature permission", () => 
   );
 });
 
+test("EduPay is a protected feature and requires protected confirmation", () => {
+  const { PROTECTED_FEATURES } = require("../controllers/featureControl.controller");
+  assert.equal(PROTECTED_FEATURES.has("edupay"), true);
+});
+
 test("canonical registry covers customer features and missing state defaults ON/visible", () => {
   assert.ok(FEATURE_REGISTRY.some(([key]) => key === "airtime"));
   assert.ok(FEATURE_REGISTRY.some(([key]) => key === "servicepayTransfer"));
