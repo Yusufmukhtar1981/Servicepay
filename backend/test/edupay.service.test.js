@@ -183,6 +183,16 @@ test("full repayment closes the obligation", async () => {
   assert.equal((await EduPayRepayment.findById(repayment._id)).status, "PAID");
 });
 
+test("partially paid repayments accept a second payment and then close exactly", async () => {
+  const repayment = await EduPayRepayment.create({ parent: parent._id, child: plan.child, plan: plan._id, settlement: new mongoose.Types.ObjectId(), principal: 80000, serviceCharge: 8000, totalAmount: 88000, amountRemaining: 88000, dueDate: new Date(Date.now() + 86400000) });
+  await repayFromWalletForTest(repayment, 10000, "partial-one");
+  assert.equal((await EduPayRepayment.findById(repayment._id)).status, "PARTIALLY_PAID");
+  await repayFromWalletForTest(repayment, 10000, "partial-two");
+  await repayFromWalletForTest(repayment, 68000, "partial-final");
+  const reloaded = await EduPayRepayment.findById(repayment._id);
+  assert.equal(reloaded.status, "PAID"); assert.equal(reloaded.amountRemaining, 0); assert.equal(reloaded.amountPaid, 88000);
+});
+
 test("concurrent duplicate repayment keys replay one immutable transaction", async () => {
   const repayment = await EduPayRepayment.create({ parent: parent._id, child: plan.child, plan: plan._id, settlement: new mongoose.Types.ObjectId(), principal: 80000, serviceCharge: 8000, totalAmount: 88000, amountRemaining: 88000, dueDate: new Date(Date.now() + 86400000) });
   const results = await Promise.allSettled([repayFromWalletForTest(repayment, 10000, "same-repay"), repayFromWalletForTest(repayment, 10000, "same-repay")]);
@@ -277,6 +287,22 @@ test("signed provider success callback recovers a PENDING_REVIEW settlement", as
   const raw = JSON.stringify({ event: "SUCCESS", data: { transaction_reference: "EDUPAY-SET-PENDING", amount: 19000000, currency: "NGN", status: "SUCCESS" } }); const secret = "pending-secret"; const old = process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = secret;
   const result = await squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature: require("crypto").createHmac("sha512", secret).update(raw).digest("hex"), req: {} });
   assert.equal(result.status, "SETTLED"); if (old === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = old;
+});
+
+test("verified PENDING_REVIEW provider evidence creates no financial transaction or accounting", async () => {
+  const settlement = await Settlement.create({ ...calculateSettlement({ officialFee: 200000, saved: 0, settings: await Settings.findOne() }), parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-PENDING-EVIDENCE", idempotencyKey: "set-pending-evidence", providerReference: "EDUPAY-SET-PENDING-EVIDENCE", status: "PENDING_REVIEW" });
+  const raw = JSON.stringify({ event: "PENDING", data: { transaction_reference: "EDUPAY-SET-PENDING-EVIDENCE", amount: 19000000, currency: "NGN", status: "PENDING" } }); const secret = "pending-evidence-secret"; const old = process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = secret;
+  const result = await squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature: require("crypto").createHmac("sha512", secret).update(raw).digest("hex"), req: {} });
+  assert.equal(result.status, "PENDING_REVIEW"); assert.equal(await PayoutEvidence.countDocuments({ settlement: settlement._id }), 1); assert.equal(await Transaction.countDocuments({ serviceType: "EDUPAY" }), 0); assert.equal(await EduLedger.countDocuments({ plan: plan._id }), 0);
+  if (old === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = old;
+});
+
+test("same-amount provider callback with wrong persisted reference is rejected without mutation", async () => {
+  const settlement = await Settlement.create({ ...calculateSettlement({ officialFee: 200000, saved: 0, settings: await Settings.findOne() }), parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-WRONG-REF", idempotencyKey: "set-wrong-ref", providerReference: "EDUPAY-SET-WRONG-REF", status: "PENDING_REVIEW" });
+  const raw = JSON.stringify({ event: "SUCCESS", data: { transaction_reference: "EDUPAY-OTHER-REF", amount: 19000000, currency: "NGN", status: "SUCCESS" } }); const secret = "wrong-ref-secret"; const old = process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = secret;
+  await assert.rejects(() => squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature: require("crypto").createHmac("sha512", secret).update(raw).digest("hex"), req: {} }), (error) => error.code === "REFERENCE_MISMATCH");
+  assert.equal(await PayoutEvidence.countDocuments({ settlement: settlement._id }), 0); assert.equal(await Transaction.countDocuments({ serviceType: "EDUPAY" }), 0); assert.equal((await Settlement.findById(settlement._id)).status, "PENDING_REVIEW");
+  if (old === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = old;
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {

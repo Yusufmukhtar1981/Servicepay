@@ -228,7 +228,7 @@ async function repayFromWallet({ userId, repaymentId, amount, transactionPin, id
       if (replay) { result = replay; return; }
       const repayment = await EduPayRepayment.findOne({ _id: repaymentId, parent: userId }).session(session);
       if (!repayment) { const error = new Error("Repayment not found."); error.statusCode = 404; throw error; }
-      if (!["ACTIVE", "OVERDUE"].includes(repayment.status)) { const error = new Error("This repayment is not payable in its current state."); error.statusCode = 409; throw error; }
+      if (!["ACTIVE", "PARTIALLY_PAID", "OVERDUE"].includes(repayment.status)) { const error = new Error("This repayment is not payable in its current state."); error.statusCode = 409; throw error; }
       if (value > round(repayment.amountRemaining)) { const error = new Error("Repayment amount exceeds the remaining balance."); error.statusCode = 400; throw error; }
       const before = await User.findById(userId).select("walletBalance").session(session);
       const updated = await User.findOneAndUpdate({ _id: userId, status: "ACTIVE", walletBalance: { $gte: value } }, { $inc: { walletBalance: -value } }, { new: true, session });
@@ -334,7 +334,7 @@ async function reverseSettlement({ settlementId, actor, transactionId, providerR
           const [refundTx] = await Transaction.create([{ reference: refundRef, customerId: repayment.parent, serviceType: "EDUPAY", amount: repayment.amountPaid, status: "SUCCESSFUL", provider: "EDUPAY_REVERSAL", providerResponse: { settlement: String(settlement._id), reversal: true } }], { session });
           await postCredit({ userId: repayment.parent, amount: repayment.amountPaid, openingBalance: parent.walletBalance, closingBalance: credited.walletBalance, service: "EDUPAY", reference: refundRef, idempotencyKey: `${refundRef}-LEDGER`, transactionId: refundTx._id, narration: "EduPay repayment reversal refund", session });
         }
-        await EduPayRepayment.updateOne({ _id: repayment._id }, { $set: { status: "CANCELLED", reversalSettlement: settlement._id, reversedUnpaidAmount: round(Math.max(0, repayment.amountRemaining)) } }, { session });
+        await EduPayRepayment.updateOne({ _id: repayment._id }, { $set: { status: "CANCELLED", reversedUnpaidAmount: round(Math.max(0, repayment.amountRemaining)), amountRemaining: 0, reversalSettlement: settlement._id } }, { session });
       }
       await Settlement.updateOne({ _id: settlement._id, status: "SETTLED" }, { $set: { status: "REVERSED", reversalOf: settlement._id } }, { session });
       await Plan.updateOne({ _id: settlement.plan }, { $set: { status: "REVERSED" } }, { session });

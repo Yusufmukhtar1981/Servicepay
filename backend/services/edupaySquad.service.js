@@ -60,6 +60,7 @@ async function finalizeEvidence(evidenceId, actor, req, session) {
 }
 async function recordProviderEvidence({ settlement, payload, source, raw, actor, req }) {
   const data = normalized(payload); if (!data.reference || !["SUCCESSFUL", "REVERSED", "PENDING_REVIEW"].includes(data.status)) throw fail("Provider evidence is incomplete or not final.", 409);
+  if (String(data.reference) !== String(settlement.providerReference)) throw fail("Provider reference does not match the persisted settlement reference.", 409, "REFERENCE_MISMATCH");
   if (data.amount !== Math.round(settlement.schoolNetSettlement * 100) || data.currency !== "NGN") throw fail("Provider evidence amount/currency does not match settlement.", 409);
   const eventDigest = digest(raw); const prior = await Evidence.findOne({ settlement: settlement._id, payloadDigest: eventDigest }); if (prior) return Settlement.findById(settlement._id);
   const session = await mongoose.startSession(); let output; let reversalTransaction; let reversalEvidence;
@@ -68,7 +69,7 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
     const [evidence] = await Evidence.create([{ settlement: current._id, providerReference: data.reference, providerId: data.providerId, normalizedStatus: data.status, amount: data.amount, currency: data.currency, eventType: data.eventType, payloadDigest: eventDigest, source }], { session });
     reversalEvidence = evidence;
     if (data.status === "SUCCESSFUL") output = await finalizeEvidence(evidence._id, actor, req, session);
-    else {
+    else if (data.status === "REVERSED") {
       [reversalTransaction] = await Transaction.create([{ reference: `REV-${data.reference}`, customerId: current.parent, serviceType: "EDUPAY", amount: current.schoolNetSettlement, status: "SUCCESSFUL", provider: "SQUAD", providerResponse: { edupaySettlementId: String(current._id), reversal: true, evidenceId: String(evidence._id) } }], { session });
       await Evidence.updateOne({ _id: evidence._id }, { $set: { coreTransaction: reversalTransaction._id } }, { session });
     }
@@ -91,7 +92,7 @@ async function processSettlement({ settlementId, actor, req }) {
     const response = await axios.post(`${cfg.baseUrl}/payout/transfer`, { remark: "EduPay school settlement", bank_code: account.bankCode, currency_id: "NGN", amount: String(Math.round(settlement.schoolNetSettlement * 100)), account_number: decryptAccount(account.encryptedAccountNumber), account_name: account.accountName, transaction_reference: settlement.providerReference }, { timeout: 45000, headers: { Authorization: `Bearer ${cfg.secret}`, "Content-Type": "application/json" }, validateStatus: () => true });
     const data = normalized(response.data); if (data.status === "SUCCESSFUL") return recordProviderEvidence({ settlement: await Settlement.findById(settlementId), payload: response.data, source: "REQUERY", raw: JSON.stringify(response.data), actor, req });
     await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "PENDING_REVIEW" } }); return Settlement.findById(settlementId);
-  } catch (error) { await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "PENDING_REVIEW" } }); if (error.code === "CONFIGURATION_REQUIRED") throw error; return Settlement.findById(settlementId); }
+  } catch (error) { if (error.code === "CONFIGURATION_REQUIRED" || error.code === "REFERENCE_MISMATCH") throw error; await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "PENDING_REVIEW" } }); return Settlement.findById(settlementId); }
 }
 async function requerySettlement({ settlementId, actor, req }) {
   const cfg = providerConfig(); const settlement = await Settlement.findOneAndUpdate({ _id: settlementId, status: { $in: ["PROCESSING", "PENDING_REVIEW"] } }, { $set: { requeryLeaseUntil: new Date(Date.now() + 60000) } }, { new: true }); if (!settlement) throw fail("Settlement is not eligible for requery.", 409);
@@ -99,7 +100,7 @@ async function requerySettlement({ settlementId, actor, req }) {
 }
 async function handleWebhook({ payload, raw, signature, actor, req }) {
   const secret = String(process.env.EDUPAY_SQUAD_WEBHOOK_SECRET || process.env.ORG_SQUAD_WEBHOOK_SECRET || process.env.SQUAD_WEBHOOK_SECRET || "").trim(); if (!secret || !timingSafe(raw, signature, secret)) throw fail("Invalid EduPay Squad webhook signature.", 401);
-  const data = normalized(payload); const settlement = await Settlement.findOne({ providerReference: data.reference }); if (!settlement) return null;
+  const data = normalized(payload); const settlement = await Settlement.findOne({ providerReference: data.reference }); if (!settlement) throw fail("Provider reference does not match a persisted EduPay settlement.", 409, "REFERENCE_MISMATCH");
   return recordProviderEvidence({ settlement, payload, source: "WEBHOOK", raw, actor, req });
 }
 module.exports = { providerConfig, encryptAccount, saveAccount, processSettlement, requerySettlement, handleWebhook, recordProviderEvidence, timingSafe, normalized };
