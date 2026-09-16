@@ -91,6 +91,13 @@ function isBypassPath(req) {
   const hasSegment = (segment) => segments.includes(segment);
   const hasPrefix = (prefix) =>
     pathname === prefix || pathname.startsWith(`${prefix}/`);
+  const method = String(req?.method || "").toUpperCase();
+  const edupay = pathname.replace(/^\/api/, "");
+  if (edupay === "/edupay" || edupay.startsWith("/edupay/")) {
+    if (method === "GET") return true;
+    if (method === "POST" && ["/edupay/schools/apply", "/edupay/school/auth/login", "/edupay/children"].includes(edupay)) return true;
+    if (method === "PATCH" && /^\/edupay\/children\/[^/]+$/.test(edupay)) return true;
+  }
 
   // Query strings and fragments are deliberately discarded.  Segment and
   // boundary matching prevents /not-admin, /administer, and similar paths

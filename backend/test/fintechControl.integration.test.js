@@ -24,11 +24,26 @@ const {
 const fintechControlMiddleware = require("../middleware/fintechControl.middleware");
 const {
   requireFeatureEnabled,
+  isBypassPath,
 } = require("../middleware/fintechControl.middleware");
 const { adminOnly } = require("../middleware/auth.middleware");
 
 let mongo;
 let sequence = 0;
+
+test("disabled EduPay bypasses only read/auth/profile entry points", () => {
+  const check = (method, originalUrl) => isBypassPath({ method, originalUrl });
+  assert.equal(check("POST", "/api/edupay/schools/apply"), true);
+  assert.equal(check("POST", "/api/edupay/school/auth/login"), true);
+  assert.equal(check("GET", "/api/edupay/schools/abc/catalogue"), true);
+  assert.equal(check("GET", "/api/edupay/school/dashboard"), true);
+  assert.equal(check("POST", "/api/edupay/children"), true);
+  assert.equal(check("PATCH", "/api/edupay/children/abc"), true);
+  assert.equal(check("POST", "/api/edupay/plans"), false);
+  assert.equal(check("POST", "/api/edupay/plans/abc/contributions"), false);
+  assert.equal(check("POST", "/api/edupay/school/sessions"), false);
+  assert.equal(check("POST", "/api/edupay/sponsor/x/contribute"), false);
+});
 
 const models = [
   AppSettings,
