@@ -62,6 +62,7 @@ import 'services/customer_feature_config_service.dart';
 import 'services/announcement_service.dart';
 import 'services/reward_progress_service.dart';
 import 'widgets/announcement_widgets.dart';
+import 'edupay/edupay_screen.dart';
 
 List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   required List<ServicePayAnnouncement> loaded,
@@ -5181,6 +5182,50 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Widget _buildEduPayEntry() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const EduPayScreen()),
+      ),
+      child: Ink(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xffe4f3ed),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xffb9ddcf)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xff0c6b51),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Icon(Icons.school_rounded, color: Colors.white),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('ServicePay EduPay',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  SizedBox(height: 3),
+                  Text('Plan ahead for school fees with clarity.',
+                      style: TextStyle(color: Color(0xff4e6f62), fontSize: 12)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Color(0xff0c6b51)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -5231,6 +5276,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 12),
                   buildPremiumActionRow(),
                   const SizedBox(height: 20),
+                  _buildEduPayEntry(),
+                  const SizedBox(height: 18),
                   buildActiveServiceStatuses(),
                   if (isLoadingServiceStatuses ||
                       activeServiceStatuses.isNotEmpty)
