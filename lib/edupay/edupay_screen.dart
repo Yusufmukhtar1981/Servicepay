@@ -238,6 +238,21 @@ class _EduPayScreenState extends State<EduPayScreen> {
               ),
             ],
           ),
+          Card(
+            color: const Color(0xffeaf6f0),
+            child: ListTile(
+              leading: const Icon(
+                Icons.search_outlined,
+                color: Color(0xff0c6b51),
+              ),
+              title: const Text("Can't find your school?"),
+              subtitle: const Text(
+                'Tell Head Office which school you need. This does not start a plan.',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _requestSchool,
+            ),
+          ),
           if (children.isEmpty)
             const _Empty(
               'Add a child when you are ready to build their school-fee plan.',
@@ -375,6 +390,87 @@ class _EduPayScreenState extends State<EduPayScreen> {
       } catch (e) {
         _snack(e.toString());
       }
+    }
+  }
+
+  Future<void> _requestSchool() async {
+    final schoolName = TextEditingController();
+    final location = TextEditingController();
+    final contactPhone = TextEditingController();
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Request a school'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Can’t find your school? Send a request to ServicePay Head Office.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: schoolName,
+                autofocus: true,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'School name',
+                  hintText: 'e.g. Bright Future Academy',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: location,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Location',
+                  hintText: 'City, state or area',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: contactPhone,
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'School contact phone (optional)',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (schoolName.text.trim().isEmpty ||
+                  location.text.trim().isEmpty) {
+                return;
+              }
+              Navigator.pop(dialogContext, true);
+            },
+            child: const Text('Request School'),
+          ),
+        ],
+      ),
+    );
+    if (submitted != true) return;
+    try {
+      await api.requestSchool(
+        schoolName: schoolName.text,
+        location: location.text,
+        contactPhone: contactPhone.text,
+      );
+      if (mounted) {
+        _snack(
+          'School request submitted. Head Office will review it before approval.',
+        );
+      }
+    } catch (e) {
+      if (mounted) _snack(e.toString());
     }
   }
 

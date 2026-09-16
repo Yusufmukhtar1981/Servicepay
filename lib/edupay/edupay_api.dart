@@ -52,6 +52,22 @@ class EduPayApi {
   Future<List<dynamic>> schools() async =>
       (await _send('GET', '/schools'))['schools'] as List? ?? [];
 
+  Future<Map<String, dynamic>> requestSchool({
+    required String schoolName,
+    required String location,
+    String? contactPhone,
+  }) =>
+      _send(
+        'POST',
+        '/school-requests',
+        body: {
+          'schoolName': schoolName.trim(),
+          'location': location.trim(),
+          if (contactPhone != null && contactPhone.trim().isNotEmpty)
+            'contactPhone': contactPhone.trim(),
+        },
+      );
+
   /// The authoritative school-specific fee catalogue used when opening a plan.
   Future<Map<String, dynamic>> catalogue(String schoolId) =>
       _send('GET', '/schools/$schoolId/catalogue');

@@ -42,6 +42,27 @@ class _DashboardClient extends http.BaseClient {
   }
 }
 
+class _RequestSchoolClient extends _DashboardClient {
+  _RequestSchoolClient({super.enabled});
+  String? requestPath;
+  Map<String, dynamic>? requestBody;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.url.path.endsWith('/school-requests')) {
+      requestPath = request.url.path;
+      requestBody = jsonDecode((request as http.Request).body)
+          as Map<String, dynamic>;
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(jsonEncode({'success': true}))),
+        201,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    return super.send(request);
+  }
+}
+
 class _PlanFlowClient extends http.BaseClient {
   Map<String, dynamic>? createdPlan;
   String? cataloguePath;
@@ -155,6 +176,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Transaction history'), findsOneWidget);
     expect(find.text('No EduPay transactions yet'), findsOneWidget);
+  });
+
+  testWidgets('paused EduPay still exposes a mobile-safe school request',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final client = _RequestSchoolClient(enabled: false);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EduPayScreen(api: EduPayApi(client: client)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Children').last);
+    await tester.pumpAndSettle();
+    expect(find.text("Can't find your school?"), findsOneWidget);
+    await tester.tap(find.text("Can't find your school?"));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'School name'),
+        'Bright Future Academy');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Location'),
+      'Ikeja, Lagos',
+    );
+    await tester.tap(find.text('Request School'));
+    await tester.pumpAndSettle();
+    expect(client.requestPath, '/api/edupay/school-requests');
+    expect(client.requestBody, {
+      'schoolName': 'Bright Future Academy',
+      'location': 'Ikeja, Lagos',
+    });
+    expect(
+      find.textContaining('School request submitted'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('compact mobile layout keeps all primary destinations reachable',

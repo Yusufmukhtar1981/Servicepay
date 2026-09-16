@@ -97,4 +97,23 @@ void main() {
     expect(client.last?.url.path, '/api/edupay/schools/school-1/catalogue');
     expect(catalogue['classes'], isEmpty);
   });
+
+  test('requestSchool posts a non-financial school onboarding request', () async {
+    final client = _Client();
+    final api = EduPayApi(client: client);
+
+    await api.requestSchool(
+      schoolName: 'Bright Future Academy',
+      location: 'Ikeja, Lagos',
+      contactPhone: '08012345678',
+    );
+
+    expect(client.last?.url.path, '/api/edupay/school-requests');
+    expect(jsonDecode(client.last!.body), {
+      'schoolName': 'Bright Future Academy',
+      'location': 'Ikeja, Lagos',
+      'contactPhone': '08012345678',
+    });
+    expect(client.last?.headers['authorization'], 'Bearer test-token');
+  });
 }
