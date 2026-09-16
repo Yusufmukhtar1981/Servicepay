@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
+const axios = require("axios");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const User = require("../models/user.model");
 const School = require("../models/edupaySchool.model");
@@ -20,6 +21,7 @@ const Settlement = require("../models/edupaySettlement.model");
 const SettlementAccount = require("../models/edupaySettlementAccount.model");
 const PayoutEvidence = require("../models/edupayPayoutEvidence.model");
 const Commission = require("../models/edupayCommission.model");
+const AccountVerificationEvidence = require("../models/edupayAccountVerificationEvidence.model");
 const Command = require("../models/edupayCommand.model");
 const squad = require("../services/edupaySquad.service");
 const Audit = require("../models/edupayAuditLog.model");
@@ -33,7 +35,7 @@ let session;
 let term;
 let classLevel;
 let fee;
-const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, AppSettings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, PayoutEvidence, Commission, Command];
+const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, AppSettings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, AccountVerificationEvidence, PayoutEvidence, Commission, Command];
 
 test.before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
@@ -310,7 +312,7 @@ test("signed provider REVERSED webhook without actor atomically recovers settlem
   const settings = await Settings.findOne(); const snapshot = calculateSettlement({ officialFee: 200000, saved: 10000, settings });
   const settlement = await Settlement.create({ ...snapshot, parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-REVERSED-WEBHOOK", idempotencyKey: "set-reversed-webhook", providerReference: "EDUPAY-SET-REVERSED-WEBHOOK", status: "SETTLED" });
   await EduLedger.create({ parent: parent._id, child: plan.child, plan: plan._id, direction: "CREDIT", type: "CONTRIBUTION", amount: 10000, openingBalance: 0, closingBalance: 10000, reference: "REV-SAVINGS-CREDIT", idempotencyKey: "rev-savings-credit", source: "TEST" });
-  await Commission.create({ settlement: settlement._id, school: school._id, amount: settlement.schoolCommissionAmount, direction: "RECEIVABLE", reference: "REV-COMMISSION" });
+  await Commission.create({ settlement: settlement._id, school: school._id, amount: settlement.schoolCommissionAmount, direction: "RECEIVABLE", reference: "REV-COMMISSION", actorType: "PROVIDER", actorLabel: "SQUAD_WEBHOOK" });
   const repayment = await EduPayRepayment.create({ parent: parent._id, child: plan.child, plan: plan._id, settlement: settlement._id, principal: settlement.servicepayFundedPrincipal, serviceCharge: settlement.parentChargeAmount, totalAmount: settlement.parentTotalRepayment, amountPaid: 10000, amountRemaining: settlement.parentTotalRepayment - 10000, dueDate: new Date(Date.now() + 86400000), status: "PARTIALLY_PAID" });
   const beforeWallet = (await User.findById(parent._id)).walletBalance;
   const raw = JSON.stringify({ event: "REVERSED", data: { transaction_reference: settlement.providerReference, amount: settlement.schoolNetSettlement * 100, currency: "NGN", status: "REVERSED" } }); const secret = "reversed-provider-secret"; const old = process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = secret;
@@ -330,6 +332,19 @@ test("dashboard enabled state follows AppSettings feature authority despite EduP
   const controller = require("../controllers/edupay.controller"); let response;
   await controller.dashboard({ user: { _id: parent._id } }, { json: (body) => { response = body; }, status: () => ({ json: (body) => { response = body; } }) });
   assert.equal(response.settings.enabled, false);
+});
+
+test("Squad account verification uses exact lookup payload and persists canonical evidence", async () => {
+  const old = { transfer: process.env.EDUPAY_SQUAD_TRANSFER_ENABLED, production: process.env.EDUPAY_SQUAD_PRODUCTION_ENABLED, secret: process.env.EDUPAY_SQUAD_SECRET_KEY, merchant: process.env.EDUPAY_SQUAD_MERCHANT_ID, base: process.env.EDUPAY_SQUAD_BASE_URL, encryption: process.env.EDUPAY_ACCOUNT_ENCRYPTION_KEY };
+  Object.assign(process.env, { EDUPAY_SQUAD_TRANSFER_ENABLED: "true", EDUPAY_SQUAD_PRODUCTION_ENABLED: "true", EDUPAY_SQUAD_SECRET_KEY: "test-secret", EDUPAY_SQUAD_MERCHANT_ID: "merchant", EDUPAY_SQUAD_BASE_URL: "https://api.squadco.com", EDUPAY_ACCOUNT_ENCRYPTION_KEY: "account-test-key" });
+  const account = await squad.saveAccount({ schoolId: school._id, accountName: "Operator Name", bankName: "Bank", bankCode: "058", accountNumber: "0123456789", actor: parent._id });
+  const originalPost = axios.post; let request;
+  axios.post = async (url, body) => { request = { url, body }; return { status: 200, data: { data: { account_number: "0123456789", account_name: "CANONICAL BENEFICIARY", id: "lookup-1" } } }; };
+  try {
+    const result = await squad.verifyAccount({ schoolId: school._id, actor: parent._id });
+    assert.equal(request.body.bank_code, "058"); assert.equal(request.body.account_number, "0123456789"); assert.equal(result.account.accountName, "CANONICAL BENEFICIARY"); assert.equal(result.account.verified, true); assert.equal(await AccountVerificationEvidence.countDocuments({ account: account._id }), 1);
+    await assert.rejects(() => AccountVerificationEvidence.updateOne({ _id: result.evidence._id }, { $set: { canonicalAccountName: "tampered" } }), /Immutable EduPay record/);
+  } finally { axios.post = originalPost; for (const [key, value] of Object.entries({ EDUPAY_SQUAD_TRANSFER_ENABLED: old.transfer, EDUPAY_SQUAD_PRODUCTION_ENABLED: old.production, EDUPAY_SQUAD_SECRET_KEY: old.secret, EDUPAY_SQUAD_MERCHANT_ID: old.merchant, EDUPAY_SQUAD_BASE_URL: old.base, EDUPAY_ACCOUNT_ENCRYPTION_KEY: old.encryption })) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {

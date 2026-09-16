@@ -7,5 +7,9 @@ const schema = immutableSchema({
   reference: { type: String, required: true, unique: true, immutable: true },
   original: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayCommission", default: null, immutable: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, immutable: true },
+  actor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, immutable: true },
+  actorType: { type: String, enum: ["USER", "PROVIDER", "SYSTEM"], default: "USER", immutable: true },
+  actorLabel: { type: String, default: null, immutable: true },
 });
+schema.pre("validate", function () { if (this.actorType === "USER" && !this.actor) throw new Error("USER EduPay commission records require an actor."); if (this.actorType !== "USER" && !this.actorLabel) throw new Error("Provider/system EduPay commission records require actorLabel."); });
 module.exports = mongoose.model("EduPayCommission", schema);

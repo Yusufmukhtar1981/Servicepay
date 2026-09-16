@@ -9,7 +9,7 @@ const Plan = require("../models/edupayPlan.model");
 const { EduPayRepayment } = require("../models/edupayRepayment.model");
 const { createEduLedger, availableSavings, getSettings, audit, reverseSettlement, reference, round } = require("./edupay.service");
 const Commission = require("../models/edupayCommission.model");
-const SYSTEM_PROVIDER_ACTOR = new mongoose.Types.ObjectId("000000000000000000000001");
+const AccountVerificationEvidence = require("../models/edupayAccountVerificationEvidence.model");
 
 const fail = (message, status = 400, code) => Object.assign(new Error(message), { statusCode: status, code });
 const providerConfig = () => {
@@ -43,7 +43,24 @@ async function saveAccount({ schoolId, accountName, bankName, bankCode, accountN
   if (!/^\d{10}$/.test(String(accountNumber))) throw fail("A valid ten-digit settlement account is required.", 400);
   return Account.findOneAndUpdate({ school: schoolId }, { $set: { accountName, bankName, bankCode, encryptedAccountNumber: encryptAccount(accountNumber), accountNumberLast4: String(accountNumber).slice(-4), verified, active: verified, verifiedBy: verified ? actor : null, verifiedAt: verified ? new Date() : null, updatedBy: actor } }, { upsert: true, new: true, runValidators: true });
 }
-async function finalizeEvidence(evidenceId, actor, req, session) {
+async function verifyAccount({ schoolId, actor }) {
+  const cfg = providerConfig(); const account = await Account.findOne({ school: schoolId }).select("+encryptedAccountNumber");
+  if (!account) throw fail("Settlement account not found.", 404);
+  const accountNumber = decryptAccount(account.encryptedAccountNumber);
+  const response = await axios.post(`${cfg.baseUrl}/payout/account/lookup`, { bank_code: String(account.bankCode), account_number: accountNumber }, { timeout: 45000, headers: { Authorization: `Bearer ${cfg.secret}`, "Content-Type": "application/json" }, validateStatus: () => true });
+  const data = response.data?.data || response.data || {};
+  const returnedNumber = String(data.account_number || data.accountNumber || "").replace(/\D/g, "");
+  const canonicalName = String(data.account_name || data.accountName || data.name || "").trim();
+  if (response.status < 200 || response.status >= 300 || !canonicalName || returnedNumber !== accountNumber) throw fail("Squad account verification did not match the submitted account.", 422, "ACCOUNT_VERIFICATION_MISMATCH");
+  const raw = JSON.stringify(response.data); const version = (await AccountVerificationEvidence.findOne({ account: account._id }).sort({ verificationVersion: -1 }).select("verificationVersion"))?.verificationVersion || 0;
+  const session = await mongoose.startSession(); let evidence;
+  try { await session.withTransaction(async () => {
+    [evidence] = await AccountVerificationEvidence.create([{ account: account._id, provider: "SQUAD", bankCode: account.bankCode, maskedAccount: `****${account.accountNumberLast4}`, canonicalAccountName: canonicalName, responseDigest: digest(raw), providerReference: String(data.id || data.reference || digest(raw)), verificationVersion: version + 1, verifiedBy: actor }], { session });
+    await Account.updateOne({ _id: account._id }, { $set: { accountName: canonicalName, verified: true, active: true, verifiedBy: actor, verifiedAt: new Date(), updatedBy: actor } }, { session });
+  }); } finally { await session.endSession(); }
+  return { account: await Account.findById(account._id), evidence };
+}
+async function finalizeEvidence(evidenceId, actor, req, session, actorType = "USER") {
   const evidence = await Evidence.findById(evidenceId).session(session); const settlement = await Settlement.findById(evidence.settlement).session(session);
   if (!settlement || settlement.status === "SETTLED") return settlement;
   if (evidence.normalizedStatus !== "SUCCESSFUL" || evidence.amount !== Math.round(settlement.schoolNetSettlement * 100) || evidence.currency !== "NGN") throw fail("Payout evidence does not match the frozen settlement.", 409);
@@ -51,12 +68,12 @@ async function finalizeEvidence(evidenceId, actor, req, session) {
   await Evidence.updateOne({ _id: evidence._id }, { $set: { coreTransaction: transaction._id } }, { session });
   const saved = await availableSavings(settlement.plan, session); if (saved < settlement.parentSavedAmount) throw fail("Eligible savings are insufficient for payout finalization.", 409);
   if (settlement.parentSavedAmount > 0) await createEduLedger({ parent: settlement.parent, child: settlement.child, plan: settlement.plan, direction: "DEBIT", type: "SETTLEMENT_DEBIT", amount: settlement.parentSavedAmount, openingBalance: saved, reference: `${settlement.reference}-SAVINGS-DEBIT`, idempotencyKey: `${settlement.idempotencyKey}-savings-debit`, source: "SETTLEMENT", session });
-  if (settlement.schoolCommissionAmount > 0) await Commission.create([{ settlement: settlement._id, school: settlement.school, amount: settlement.schoolCommissionAmount, direction: settlement.commissionMethod === "GROSS_AND_RECEIVABLE" ? "RECEIVABLE" : "WITHHELD", reference: `${settlement.reference}-COMMISSION`, createdBy: actor }], { session });
+  if (settlement.schoolCommissionAmount > 0) await Commission.create([{ settlement: settlement._id, school: settlement.school, amount: settlement.schoolCommissionAmount, direction: settlement.commissionMethod === "GROSS_AND_RECEIVABLE" ? "RECEIVABLE" : "WITHHELD", reference: `${settlement.reference}-COMMISSION`, createdBy: actor || null, actor: actor || null, actorType, actorLabel: actorType === "PROVIDER" ? "SQUAD_WEBHOOK" : null }], { session });
   const settings = await getSettings(session);
   if (settlement.servicepayFundedPrincipal > 0) await EduPayRepayment.create([{ parent: settlement.parent, child: settlement.child, plan: settlement.plan, settlement: settlement._id, principal: settlement.servicepayFundedPrincipal, serviceCharge: settlement.parentChargeAmount, totalAmount: settlement.parentTotalRepayment, amountRemaining: settlement.parentTotalRepayment, dueDate: new Date(Date.now() + (settings.defaultRepaymentPeriodDays + settings.gracePeriodDays) * 86400000) }], { session });
   await Settlement.updateOne({ _id: settlement._id, status: { $in: ["PROCESSING", "PENDING_REVIEW"] } }, { $set: { status: "SETTLED", providerReference: evidence.providerReference, provider: "SQUAD", confirmedBy: actor, confirmedAt: new Date() } }, { session });
   await Plan.updateOne({ _id: settlement.plan }, { $set: { status: "SETTLED" } }, { session });
-  await audit({ actor: actor || settlement.parent, action: "EDUPAY_SQUAD_PAYOUT_SUCCESS", entityType: "EduPayPayoutEvidence", entityId: evidence._id, school: settlement.school, metadata: { source: "SQUAD_VERIFIED_PROVIDER" }, req, session });
+  await audit({ actor: actor || null, actorType, actorLabel: actorType === "PROVIDER" ? "SQUAD_WEBHOOK" : null, action: "EDUPAY_SQUAD_PAYOUT_SUCCESS", entityType: "EduPayPayoutEvidence", entityId: evidence._id, school: settlement.school, metadata: { source: "SQUAD_VERIFIED_PROVIDER" }, req, session });
   return Settlement.findById(settlement._id).session(session);
 }
 async function recordProviderEvidence({ settlement, payload, source, raw, actor, req }) {
@@ -64,7 +81,7 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
   if (String(data.reference) !== String(settlement.providerReference)) throw fail("Provider reference does not match the persisted settlement reference.", 409, "REFERENCE_MISMATCH");
   if (data.amount !== Math.round(settlement.schoolNetSettlement * 100) || data.currency !== "NGN") throw fail("Provider evidence amount/currency does not match settlement.", 409);
   const eventDigest = digest(raw); const prior = await Evidence.findOne({ settlement: settlement._id, payloadDigest: eventDigest });
-  const providerActor = actor || SYSTEM_PROVIDER_ACTOR;
+  const providerActor = actor || null;
   if (prior) {
     const current = await Settlement.findById(settlement._id);
     if (data.status === "REVERSED" && current?.status !== "REVERSED") {
@@ -78,7 +95,7 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
     const current = await Settlement.findById(settlement._id).session(session); if (!current || !["PROCESSING", "PENDING_REVIEW", "SETTLED"].includes(current.status)) throw fail("Settlement is not awaiting provider evidence.", 409);
     const [evidence] = await Evidence.create([{ settlement: current._id, providerReference: data.reference, providerId: data.providerId, normalizedStatus: data.status, amount: data.amount, currency: data.currency, eventType: data.eventType, payloadDigest: eventDigest, source }], { session });
     reversalEvidence = evidence;
-    if (data.status === "SUCCESSFUL") output = await finalizeEvidence(evidence._id, actor, req, session);
+    if (data.status === "SUCCESSFUL") output = await finalizeEvidence(evidence._id, actor, req, session, actor ? "USER" : "PROVIDER");
     else if (data.status === "REVERSED") {
       [reversalTransaction] = await Transaction.create([{ reference: `REV-${data.reference}`, customerId: current.parent, serviceType: "EDUPAY", amount: current.schoolNetSettlement, status: "SUCCESSFUL", provider: "SQUAD", providerResponse: { edupaySettlementId: String(current._id), reversal: true, evidenceId: String(evidence._id) } }], { session });
       await Evidence.updateOne({ _id: evidence._id }, { $set: { coreTransaction: reversalTransaction._id } }, { session });
@@ -90,6 +107,8 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
 async function processSettlement({ settlementId, actor, req }) {
   const cfg = providerConfig(); const account = await Account.findOne({ school: (await Settlement.findById(settlementId)).school, active: true, verified: true }).select("+encryptedAccountNumber");
   if (!account) throw fail("A verified EduPay settlement account is required.", 409);
+  const verification = await AccountVerificationEvidence.findOne({ account: account._id }).sort({ verificationVersion: -1 });
+  if (!verification || String(verification.canonicalAccountName) !== String(account.accountName)) throw fail("A latest verified Squad settlement-account evidence record is required.", 409, "ACCOUNT_VERIFICATION_REQUIRED");
   const session = await mongoose.startSession(); let settlement;
   try { await session.withTransaction(async () => {
     const current = await Settlement.findOne({ _id: settlementId, status: "APPROVED" }).session(session); if (!current) throw fail("Settlement must be APPROVED before PROCESS.", 409);
@@ -113,4 +132,4 @@ async function handleWebhook({ payload, raw, signature, actor, req }) {
   const data = normalized(payload); const settlement = await Settlement.findOne({ providerReference: data.reference }); if (!settlement) throw fail("Provider reference does not match a persisted EduPay settlement.", 409, "REFERENCE_MISMATCH");
   return recordProviderEvidence({ settlement, payload, source: "WEBHOOK", raw, actor, req });
 }
-module.exports = { providerConfig, encryptAccount, saveAccount, processSettlement, requerySettlement, handleWebhook, recordProviderEvidence, timingSafe, normalized };
+module.exports = { providerConfig, encryptAccount, saveAccount, verifyAccount, processSettlement, requerySettlement, handleWebhook, recordProviderEvidence, timingSafe, normalized };

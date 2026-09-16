@@ -39,9 +39,9 @@ async function ensureInitiationEnabled() {
   if (!feature.effectiveEnabled) { const error = new Error("EduPay is temporarily unavailable for new plans and contributions."); error.statusCode = 403; error.code = "EDUPAY_DISABLED"; throw error; }
   return feature;
 }
-async function audit({ actor, action, entityType, entityId = null, school = null, metadata = {}, req, session = null }) {
+async function audit({ actor, actorType = "USER", actorLabel = null, action, entityType, entityId = null, school = null, metadata = {}, req, session = null }) {
   const options = session ? { session } : undefined;
-  return (await Audit.create([{ actor, action, entityType, entityId, school, metadata, ip: req?.ip || null }], options))[0];
+  return (await Audit.create([{ actor: actor || null, actorType, actorLabel, action, entityType, entityId, school, metadata, ip: req?.ip || null }], options))[0];
 }
 async function notify(userId, title, message, referenceId = null) {
   try { await Notification.create({ userId, title, message, type: "GENERAL", category: "OTHER", referenceId, referenceType: "EDUPAY" }); } catch (error) { console.warn("EduPay notification skipped:", error.message); }
@@ -258,7 +258,7 @@ async function confirmSettlement({ settlementId, actor, transactionId, providerR
   const intentHash = hash(JSON.stringify({ operation: "SETTLEMENT_CONFIRM", actor: String(actor), resource: String(settlementId), transactionId: String(transactionId), providerReference }));
   const priorCommand = await Command.findOne({ key: idempotencyKey });
   if (priorCommand) {
-    if (String(priorCommand.owner) !== String(actor) || priorCommand.intentHash !== intentHash) { const error = new Error("Idempotency-Key was already used for a different settlement command."); error.statusCode = 409; throw error; }
+    if (String(priorCommand.owner || "") !== String(actor || "") || priorCommand.intentHash !== intentHash) { const error = new Error("Idempotency-Key was already used for a different settlement command."); error.statusCode = 409; throw error; }
     if (priorCommand.status === "SUCCEEDED") return { settlement: await Settlement.findById(settlementId), duplicate: true };
   }
   const session = await mongoose.startSession(); let result; let duplicate = false;
@@ -303,7 +303,7 @@ async function reverseSettlement({ settlementId, actor, actorType = "USER", tran
   const intentHash = hash(JSON.stringify({ operation: "SETTLEMENT_REVERSE", actor: String(actor), resource: String(settlementId), transactionId: String(transactionId), providerReference, reason: reason || "" }));
   const priorCommand = await Command.findOne({ key: idempotencyKey });
   if (priorCommand) {
-    if (String(priorCommand.owner) !== String(actor) || priorCommand.intentHash !== intentHash) { const error = new Error("Idempotency-Key was already used for a different settlement command."); error.statusCode = 409; throw error; }
+    if (String(priorCommand.owner || "") !== String(actor || "") || priorCommand.intentHash !== intentHash) { const error = new Error("Idempotency-Key was already used for a different settlement command."); error.statusCode = 409; throw error; }
     if (priorCommand.status === "SUCCEEDED") return { reversal: await Reversal.findOne({ settlement: settlementId }), duplicate: true };
   }
   const session = await mongoose.startSession(); let result; let duplicate = false;
@@ -314,14 +314,14 @@ async function reverseSettlement({ settlementId, actor, actorType = "USER", tran
       const existing = await Reversal.findOne({ settlement: settlement._id }).session(session);
       if (existing) { duplicate = true; result = existing; return; }
       if (settlement.status !== "SETTLED") { const error = new Error("Only settled settlements can be reversed."); error.statusCode = 409; throw error; }
-      if (!priorCommand) await Command.create([{ key: idempotencyKey, owner: actor, command: "EDUPAY_SETTLEMENT_REVERSE", intentHash }], { session });
+      if (!priorCommand) await Command.create([{ key: idempotencyKey, owner: actor || null, actorType, actorLabel: actorType === "PROVIDER" ? "SQUAD_WEBHOOK" : null, command: "EDUPAY_SETTLEMENT_REVERSE", intentHash }], { session });
       const refund = await Transaction.findOne({ _id: transactionId, reference: providerReference, serviceType: "EDUPAY", status: "SUCCESSFUL", amount: settlement.schoolNetSettlement, "providerResponse.edupaySettlementId": String(settlement._id), "providerResponse.reversal": true }).session(session);
       if (!refund) { const error = new Error("A successful authoritative reversal transaction matching the settled amount is required."); error.statusCode = 409; throw error; }
       const payoutEvidence = await require("../models/edupayPayoutEvidence.model").findOne({ _id: evidenceId, settlement: settlement._id, normalizedStatus: "REVERSED", coreTransaction: refund._id, source: { $in: ["WEBHOOK", "REQUERY"] } }).session(session);
       if (!payoutEvidence) { const error = new Error("Verified provider REVERSED evidence is required."); error.statusCode = 409; throw error; }
-      const [reversal] = await Reversal.create([{ settlement: settlement._id, plan: settlement.plan, parent: settlement.parent, school: settlement.school, amount: settlement.schoolNetSettlement, reference: `REV-${refund.reference}`, reason: reason || "Settlement reversed", actor }], { session });
+      const [reversal] = await Reversal.create([{ settlement: settlement._id, plan: settlement.plan, parent: settlement.parent, school: settlement.school, amount: settlement.schoolNetSettlement, reference: `REV-${refund.reference}`, reason: reason || "Settlement reversed", actor: actor || null, actorType, actorLabel: actorType === "PROVIDER" ? "SQUAD_WEBHOOK" : null }], { session });
       const commission = await Commission.findOne({ settlement: settlement._id, direction: { $in: ["RECEIVABLE", "WITHHELD"] } }).session(session);
-      if (commission) await Commission.create([{ settlement: settlement._id, school: settlement.school, amount: commission.amount, direction: "REVERSAL", original: commission._id, reference: `${commission.reference}-REVERSAL`, createdBy: actor }], { session });
+      if (commission) await Commission.create([{ settlement: settlement._id, school: settlement.school, amount: commission.amount, direction: "REVERSAL", original: commission._id, reference: `${commission.reference}-REVERSAL`, createdBy: actor || null, actor: actor || null, actorType, actorLabel: actorType === "PROVIDER" ? "SQUAD_WEBHOOK" : null }], { session });
       const saved = await availableSavings(settlement.plan, session);
       if (settlement.parentSavedAmount > 0) await createEduLedger({ parent: settlement.parent, child: settlement.child, plan: settlement.plan, direction: "CREDIT", type: "REVERSAL", amount: settlement.parentSavedAmount, openingBalance: saved, reference: `${reversal.reference}-SAVINGS`, idempotencyKey: `${reversal.reference}-savings`, source: "REVERSAL", session });
       const repayment = await EduPayRepayment.findOne({ settlement: settlement._id }).session(session);
@@ -338,14 +338,14 @@ async function reverseSettlement({ settlementId, actor, actorType = "USER", tran
       }
       await Settlement.updateOne({ _id: settlement._id, status: "SETTLED" }, { $set: { status: "REVERSED", reversalOf: settlement._id } }, { session });
       await Plan.updateOne({ _id: settlement.plan }, { $set: { status: "REVERSED" } }, { session });
-      await audit({ actor, action: "EDUPAY_SETTLEMENT_REVERSED", entityType: "EduPaySettlementReversal", entityId: reversal._id, school: settlement.school, metadata: { refundTransaction: refund._id, actorType }, req, session });
+      await audit({ actor, actorType, actorLabel: actorType === "PROVIDER" ? "SQUAD_WEBHOOK" : null, action: "EDUPAY_SETTLEMENT_REVERSED", entityType: "EduPaySettlementReversal", entityId: reversal._id, school: settlement.school, metadata: { refundTransaction: refund._id }, req, session });
       result = reversal;
       await Command.updateOne({ key: idempotencyKey }, { $set: { status: "SUCCEEDED", result: { reversalId: String(reversal._id) } } }, { session });
     });
   } catch (error) {
     if (error?.code !== 11000) throw error;
     const replay = await Command.findOne({ key: idempotencyKey });
-    if (replay && replay.owner.equals(actor) && replay.intentHash === intentHash && replay.status === "SUCCEEDED") return { reversal: await Reversal.findOne({ settlement: settlementId }), duplicate: true };
+    if (replay && String(replay.owner || "") === String(actor || "") && replay.intentHash === intentHash && replay.status === "SUCCEEDED") return { reversal: await Reversal.findOne({ settlement: settlementId }), duplicate: true };
     throw error;
   } finally { await session.endSession(); }
   return { reversal: result, duplicate };
