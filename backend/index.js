@@ -40,6 +40,7 @@ const {
 const {
   startReferralRewardOutboxWorker,
 } = require("./services/referralReward.service");
+const { reconcileEduPaySchoolAssets } = require("./controllers/edupay.controller");
 
 const paystackRoutes = require(
   "./routes/paystack.routes"
@@ -435,6 +436,9 @@ console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 async function startServer() {
   // Do not bind until required startup data safety work is complete.
   await connectDB();
+  reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {});
+  const edupayAssetReconcileTimer = setInterval(() => reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {}), 60 * 60 * 1000);
+  edupayAssetReconcileTimer.unref?.();
   startReferralRewardOutboxWorker();
   // A bounded, best-effort pass resumes durable document cleanup without
   // delaying server startup or affecting settlement paths.

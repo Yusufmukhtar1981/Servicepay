@@ -74,6 +74,38 @@ const canProtectedManage = (req) =>
   (Array.isArray(req.staffAccess?.permissions) &&
     req.staffAccess.permissions.includes(P.FEATURE_CONTROL_PROTECTED_MANAGE));
 
+const latestActiveDutyHolders = async () => {
+  const Duty = require("../models/edupayDutyAssignment.model");
+  const User = require("../models/user.model");
+  const rows = await Duty.find({}).sort({ user: 1, version: -1 }).lean();
+  const latest = new Map();
+  rows.forEach((row) => { if (!latest.has(String(row.user))) latest.set(String(row.user), row); });
+  const eligibleUsers = await User.find({ _id: { $in: [...latest.keys()] }, status: "ACTIVE", role: "HEAD_OFFICE" }).select("_id fullName role").lean();
+  const users = new Set(eligibleUsers.map((row) => String(row._id)));
+  const holders = (permission) => new Set([...latest.values()].filter((row) => row.active && users.has(String(row.user)) && row.permissions.includes(permission)).map((row) => String(row.user)));
+  const manage = holders("account.manage"); const verify = holders("account.verify"); const process = holders("settlement.process");
+  return { manage, verify, process, users: eligibleUsers };
+};
+const edupayCanEnable = async () => {
+  const { manage, verify, process } = await latestActiveDutyHolders();
+  const duties = [...manage].some((a) => [...verify].some((b) => b !== a && [...process].some((c) => c !== a && c !== b)));
+  const provider = String(process.env.EDUPAY_SQUAD_TRANSFER_ENABLED).toLowerCase() === "true" && String(process.env.EDUPAY_SQUAD_PRODUCTION_ENABLED).toLowerCase() === "true" && process.env.EDUPAY_SQUAD_SECRET_KEY && process.env.EDUPAY_SQUAD_MERCHANT_ID && /^https:\/\/(?!.*(?:sandbox|api-d-))/i.test(String(process.env.EDUPAY_SQUAD_BASE_URL || ""));
+  const encryption = Boolean(String(process.env.EDUPAY_ACCOUNT_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY || "").trim());
+  const Settings = require("../models/edupaySettings.model");
+  const settings = await Settings.findOne({ key: "GLOBAL" }).lean();
+  const rates = settings ? Number(settings.schoolCommissionRate) >= 0 && Number(settings.parentShortfallChargeRate) >= 0 : false;
+  const settlementMethod = settings ? ["DEDUCT_COMMISSION", "GROSS_AND_RECEIVABLE"].includes(settings.settlementMethod) : false;
+  return duties && provider && encryption && rates && settlementMethod;
+};
+const ensureEduPayReady = async (next, previous) => {
+  const enabling = next.enabled === true && previous.enabled !== true;
+  const schedulingEnable = next.scheduledEnabledAt && next.scheduledEnabledAt !== previous.scheduledEnabledAt;
+  if ((enabling || schedulingEnable) && !(await edupayCanEnable())) {
+    const error = new Error("EduPay cannot be enabled until payout configuration and three-way duty separation are ready.");
+    error.statusCode = 409; error.code = "EDUPAY_NOT_READY"; throw error;
+  }
+};
+
 const reasonFrom = (body) =>
   String(body?.reason || body?.adminReason || "").trim();
 
@@ -98,11 +130,11 @@ const currentFeature = (settings, definition, now = new Date()) => {
         ? Boolean(services[`${legacyKey}Enabled`])
       : (legacyKey && toggles[legacyKey] !== undefined
         ? Boolean(toggles[legacyKey])
-        : true)));
+        : (key === "edupay" ? false : true))));
   const scheduledEnabledAt = persisted.scheduledEnabledAt || null;
   const scheduledDisabledAt = persisted.scheduledDisabledAt || null;
   let effectiveEnabled = enabled;
-  const scheduleEvents = [
+  const scheduleEvents = key === "edupay" ? [] : [
     scheduledEnabledAt && { at: new Date(scheduledEnabledAt), enabled: true },
     scheduledDisabledAt && { at: new Date(scheduledDisabledAt), enabled: false },
   ].filter((event) => event && !Number.isNaN(event.at.getTime()))
@@ -299,7 +331,7 @@ exports.customer = async (req, res) => {
     console.error("Customer feature configuration GET error:", error);
     const features = FEATURE_REGISTRY.map(([key, displayName, category, description]) => ({
       key, title: displayName, displayName, category, description,
-      enabled: true, effectiveEnabled: true, visible: true, maintenanceMode: false,
+      enabled: key === "edupay" ? false : true, effectiveEnabled: key === "edupay" ? false : true, visible: true, maintenanceMode: false,
     }));
     return res.json({ success: true, data: { features }, features, fallback: true });
   }
@@ -328,7 +360,13 @@ exports.patch = async (req, res) => {
     const settings = await AppSettings.getGlobalSettings({ session });
     const previous = currentFeature(settings, definition);
     const body = object(req.body?.feature || req.body);
+    if (key === "edupay" && [body.scheduledEnabledAt, body.scheduledDisabledAt].some((value) => value !== undefined && value !== null && value !== "")) {
+      return res.status(400).json({ success: false, code: "EDUPAY_SCHEDULING_DISABLED", message: "EduPay may only be enabled by a direct audited transition." });
+    }
     const next = { ...previous };
+    if (key === "edupay" && body.enabled === false) {
+      next.scheduledEnabledAt = null; next.scheduledDisabledAt = null;
+    }
     for (const field of ["enabled", "visible", "maintenanceMode"]) {
       if (body[field] !== undefined) {
         if (typeof body[field] !== "boolean") {
@@ -347,6 +385,7 @@ exports.patch = async (req, res) => {
         next[field] = value;
       }
     }
+    if (key === "edupay") await ensureEduPayReady(next, previous);
     if (body.expectedReturnAt !== undefined) {
       const value = normalizeDate(body.expectedReturnAt);
       if (value === undefined) return res.status(400).json({ success: false, message: "Invalid expectedReturnAt date." });
@@ -368,7 +407,7 @@ exports.patch = async (req, res) => {
     return res.json({ success: true, message: "Feature control saved.", data: saved });
   } catch (error) {
     console.error("Feature control PATCH error:", error);
-    return res.status(500).json({ success: false, message: "Unable to save feature control." });
+    return res.status(error.statusCode || 500).json({ success: false, code: error.code, message: error.message || "Unable to save feature control." });
   } finally {
     if (session) {
       if (session.inTransaction()) await session.abortTransaction();
@@ -412,6 +451,10 @@ exports.bulk = async (req, res) => {
     for (const key of keys) {
       const previous = all.find((feature) => feature.key === key);
       const next = { ...previous, ...actions[action], updatedAt: new Date(), updatedBy: req.user?.fullName || req.user?.name || role(req) };
+      if (key === "edupay" && action === "DISABLE") {
+        next.scheduledEnabledAt = null; next.scheduledDisabledAt = null;
+      }
+      if (key === "edupay" && action === "ENABLE") await ensureEduPayReady(next, previous);
       persistFeature(settings, next);
       changed.push({ previous, next });
     }
@@ -432,7 +475,7 @@ exports.bulk = async (req, res) => {
     return res.json({ success: true, message: "Feature controls saved.", data: { features: currentRegistry(settings), metrics: metrics(currentRegistry(settings)) } });
   } catch (error) {
     console.error("Feature control bulk error:", error);
-    return res.status(500).json({ success: false, message: "Unable to save feature controls." });
+    return res.status(error.statusCode || 500).json({ success: false, code: error.code, message: error.message || "Unable to save feature controls." });
   } finally {
     if (session) {
       if (session.inTransaction()) await session.abortTransaction();
@@ -461,3 +504,5 @@ exports.currentFeature = currentFeature;
 exports.currentRegistry = currentRegistry;
 exports.metrics = metrics;
 exports.canProtectedManage = canProtectedManage;
+exports.evaluateEduPayReadiness = edupayCanEnable;
+exports.latestActiveDutyHolders = latestActiveDutyHolders;

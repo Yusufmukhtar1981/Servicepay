@@ -61,6 +61,7 @@ test.beforeEach(async () => {
   const child = await Child.create({ parent: parent._id, createdBy: parent._id, fullName: "Child", school: school._id });
   plan = await Plan.create({ parent: parent._id, child: child._id, school: school._id, session: session._id, term: term._id, classLevel: classLevel._id, feeStructure: fee._id, officialFee: 200000, targetDate: new Date(Date.now() + 86400000 * 30) });
   await Settings.create({ key: "GLOBAL", schoolCommissionRate: 5, parentShortfallChargeRate: 10 });
+  await AppSettings.create({ fintechControl: { featureRegistry: { edupay: { enabled: true } } } });
 });
 
 test("calculates the approved settlement snapshot exactly", async () => {
@@ -216,6 +217,7 @@ test("cross-tenant academic references are rejected by scoped queries", async ()
 
 test("disabled initiation does not erase existing repayment recovery", async () => {
   const settings = await Settings.findOne(); settings.enabled = false; await settings.save();
+  await AppSettings.updateOne({}, { $set: { "fintechControl.featureRegistry.edupay.enabled": false } });
   const repayment = await EduPayRepayment.create({ parent: parent._id, child: plan.child, plan: plan._id, settlement: new mongoose.Types.ObjectId(), principal: 80000, serviceCharge: 8000, totalAmount: 88000, amountRemaining: 88000 });
   assert.equal((await EduPayRepayment.findById(repayment._id)).amountRemaining, 88000);
 });
@@ -330,7 +332,7 @@ test("signed provider REVERSED webhook without actor atomically recovers settlem
 
 test("dashboard enabled state follows AppSettings feature authority despite EduPaySettings disagreement", async () => {
   await Settings.updateOne({ key: "GLOBAL" }, { $set: { enabled: true } }, { upsert: true });
-  await AppSettings.create({ fintechControl: { featureRegistry: { edupay: { enabled: false } } } });
+  await AppSettings.updateOne({}, { $set: { "fintechControl.featureRegistry.edupay.enabled": false } });
   const controller = require("../controllers/edupay.controller"); let response;
   await controller.dashboard({ user: { _id: parent._id } }, { json: (body) => { response = body; }, status: () => ({ json: (body) => { response = body; } }) });
   assert.equal(response.settings.enabled, false);
@@ -407,6 +409,15 @@ test("readiness requires three distinct latest duty holders", async () => {
   assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, false);
   await result(["account.verify"], users[1]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, false);
   await result(["settlement.process"], users[2]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, true); User.init = originalUserInit;
+});
+
+test("latest revoked duty assignment removes a holder from readiness", async () => {
+  const { latestActiveDutyHolders } = require("../controllers/featureControl.controller");
+  const user = await User.create({ fullName: "Revoked Holder", phone: `089${Date.now()}`, email: `revoked-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" });
+  await DutyAssignment.create({ user: user._id, permissions: ["account.manage"], assignedBy: parent._id, version: 1, active: true });
+  await DutyAssignment.create({ user: user._id, permissions: ["account.manage"], assignedBy: parent._id, version: 2, active: false });
+  const holders = await latestActiveDutyHolders();
+  assert.equal(holders.manage.has(String(user._id)), false);
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {

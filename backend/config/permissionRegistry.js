@@ -31,6 +31,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("REFERRALS_VIEW", "referrals.view", "REFERRALS", "View referrals", "View privacy-safe referral qualification and reward records."),
   permission("EDUPAY_VIEW", "edupay.view", "EDUPAY", "View EduPay", "View EduPay parents, schools, plans and reports."),
   permission("EDUPAY_MANAGE", "edupay.manage", "EDUPAY", "Manage EduPay", "Review schools, fees, settlements, repayments and EduPay settings.", "CRITICAL"),
+  permission("EDUPAY_PRIVATE_ASSETS_VIEW", "edupay.school.private_assets.view", "EDUPAY", "View private school assets", "Access school logos and supporting documents."),
   permission("EDUPAY_SETTLEMENT_ACCOUNT_MANAGE", "edupay.settlement_account.manage", "EDUPAY", "Manage EduPay settlement accounts", "Create and update school settlement-account details."),
   permission("EDUPAY_SETTLEMENT_ACCOUNT_VERIFY", "edupay.settlement_account.verify", "EDUPAY", "Verify EduPay settlement accounts", "Verify school settlement accounts through the provider."),
   permission("EDUPAY_SETTLEMENT_PROCESS", "edupay.settlement.process", "EDUPAY", "Process EduPay settlements", "Process, reconcile and recover provider settlements."),
