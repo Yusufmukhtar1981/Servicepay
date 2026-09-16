@@ -10,6 +10,7 @@ const { EduPayRepayment } = require("../models/edupayRepayment.model");
 const { createEduLedger, availableSavings, getSettings, audit, reverseSettlement, reference, round } = require("./edupay.service");
 const Commission = require("../models/edupayCommission.model");
 const AccountVerificationEvidence = require("../models/edupayAccountVerificationEvidence.model");
+const School = require("../models/edupaySchool.model");
 
 const fail = (message, status = 400, code) => Object.assign(new Error(message), { statusCode: status, code });
 const providerConfig = () => {
@@ -45,6 +46,8 @@ async function saveAccount({ schoolId, accountName, bankName, bankCode, accountN
   try { await session.withTransaction(async () => {
     const previous = await Account.findOne({ school: schoolId }).sort({ version: -1 }).session(session);
     [account] = await Account.create([{ school: schoolId, accountName, bankName, bankCode, encryptedAccountNumber: encryptAccount(accountNumber), accountNumberLast4: String(accountNumber).slice(-4), verified: false, active: false, submittedBy: actor, updatedBy: actor, version: Number(previous?.version || 0) + 1, previousVersion: previous?._id || null }], { session });
+    const pointer = await School.updateOne({ _id: schoolId, "edupayPayoutLock.settlement": null }, { $set: { currentSettlementAccountId: account._id, currentSettlementAccountVersion: account.version } }, { session });
+    if (!pointer.matchedCount) throw fail("A school payout is unresolved; account replacement is locked.", 409, "PAYOUT_LOCKED");
   }); } finally { await session.endSession(); }
   return account;
 }
@@ -82,6 +85,7 @@ async function finalizeEvidence(evidenceId, actor, req, session, actorType = "US
   const settings = await getSettings(session);
   if (settlement.servicepayFundedPrincipal > 0) await EduPayRepayment.create([{ parent: settlement.parent, child: settlement.child, plan: settlement.plan, settlement: settlement._id, principal: settlement.servicepayFundedPrincipal, serviceCharge: settlement.parentChargeAmount, totalAmount: settlement.parentTotalRepayment, amountRemaining: settlement.parentTotalRepayment, dueDate: new Date(Date.now() + (settings.defaultRepaymentPeriodDays + settings.gracePeriodDays) * 86400000) }], { session });
   await Settlement.updateOne({ _id: settlement._id, status: { $in: ["PROCESSING", "PENDING_REVIEW"] } }, { $set: { status: "SETTLED", providerReference: evidence.providerReference, provider: "SQUAD", confirmedBy: actor, confirmedAt: new Date() } }, { session });
+  await School.updateOne({ _id: settlement.school, "edupayPayoutLock.settlement": settlement._id }, { $set: { "edupayPayoutLock.settlement": null, "edupayPayoutLock.acquiredAt": null } }, { session });
   await Plan.updateOne({ _id: settlement.plan }, { $set: { status: "SETTLED" } }, { session });
   await audit({ actor: actor || null, actorType, actorLabel: actorType === "PROVIDER" ? "SQUAD_WEBHOOK" : null, action: "EDUPAY_SQUAD_PAYOUT_SUCCESS", entityType: "EduPayPayoutEvidence", entityId: evidence._id, school: settlement.school, metadata: { source: "SQUAD_VERIFIED_PROVIDER" }, req, session });
   return Settlement.findById(settlement._id).session(session);
@@ -115,7 +119,7 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
   return output || Settlement.findById(settlement._id);
 }
 async function processSettlement({ settlementId, actor, req }) {
-  const cfg = providerConfig(); const settlementRecord = await Settlement.findById(settlementId); const account = await Account.findOne({ school: settlementRecord?.school }).sort({ version: -1 }).select("+encryptedAccountNumber");
+  const cfg = providerConfig(); const settlementRecord = await Settlement.findById(settlementId); const school = await School.findById(settlementRecord?.school).lean(); const account = school?.currentSettlementAccountId ? await Account.findOne({ _id: school.currentSettlementAccountId, school: settlementRecord?.school }).select("+encryptedAccountNumber") : null;
   if (!settlementRecord) throw fail("Settlement not found.", 404);
   if (String(settlementRecord.approvedBy) === String(actor)) throw fail("Settlement processor must be distinct from the approver.", 409, "SEPARATION_OF_DUTIES_REQUIRED");
   if (!account || !account.active || !account.verified) throw fail("A current verified EduPay settlement account is required.", 409);
@@ -125,19 +129,22 @@ async function processSettlement({ settlementId, actor, req }) {
   const session = await mongoose.startSession(); let settlement;
   try { await session.withTransaction(async () => {
     const current = await Settlement.findOne({ _id: settlementId, status: "APPROVED" }).session(session); if (!current) throw fail("Settlement must be APPROVED before PROCESS.", 409);
+    const currentSchool = await School.findOne({ _id: current.school, currentSettlementAccountId: account._id, currentSettlementAccountVersion: account.version, "edupayPayoutLock.settlement": null }).session(session); if (!currentSchool) throw fail("Settlement account changed or school payout is locked.", 409, "ACCOUNT_BINDING_CONFLICT");
     if (new Date(current.settlementDate) > new Date()) throw fail("Settlement date has not arrived.", 409);
     const providerReference = `EDUPAY-${current.reference}`;
-    const cas = await Settlement.updateOne({ _id: current._id, status: "APPROVED" }, { $set: { status: "PROCESSING", provider: "SQUAD", providerReference, beneficiaryAccountSnapshot: { accountName: account.canonicalAccountName, bankName: account.bankName, bankCode: account.bankCode, accountNumberLast4: account.accountNumberLast4 } } }, { session }); if (!cas.modifiedCount) throw fail("Settlement is already being processed.", 409);
+    const cas = await Settlement.updateOne({ _id: current._id, status: "APPROVED", payoutAccountId: null }, { $set: { status: "PROCESSING", provider: "SQUAD", providerReference, payoutAccountId: account._id, payoutAccountVersion: account.version, payoutVerificationEvidenceId: verification._id, beneficiaryAccountSnapshot: { accountName: account.canonicalAccountName, bankName: account.bankName, bankCode: account.bankCode, accountNumberLast4: account.accountNumberLast4 } } }, { session }); if (!cas.modifiedCount) throw fail("Settlement is already being processed.", 409);
+    const lock = await School.updateOne({ _id: current.school, currentSettlementAccountId: account._id, currentSettlementAccountVersion: account.version, "edupayPayoutLock.settlement": null }, { $set: { "edupayPayoutLock.settlement": current._id, "edupayPayoutLock.acquiredAt": new Date() } }, { session }); if (!lock.modifiedCount) throw fail("School payout is already locked.", 409, "PAYOUT_LOCKED");
     settlement = { ...current.toObject(), providerReference };
   }); } finally { await session.endSession(); }
   try {
-    const response = await axios.post(`${cfg.baseUrl}/payout/transfer`, { remark: "EduPay school settlement", bank_code: account.bankCode, currency_id: "NGN", amount: String(Math.round(settlement.schoolNetSettlement * 100)), account_number: decryptAccount(account.encryptedAccountNumber), account_name: account.accountName, transaction_reference: settlement.providerReference }, { timeout: 45000, headers: { Authorization: `Bearer ${cfg.secret}`, "Content-Type": "application/json" }, validateStatus: () => true });
-    const data = normalized(response.data); if (data.status === "SUCCESSFUL") return recordProviderEvidence({ settlement: await Settlement.findById(settlementId), payload: response.data, source: "REQUERY", raw: JSON.stringify(response.data), actor, req });
+    const response = await axios.post(`${cfg.baseUrl}/payout/transfer`, { remark: "EduPay school settlement", bank_code: account.bankCode, currency_id: "NGN", amount: String(Math.round(settlement.schoolNetSettlement * 100)), account_number: decryptAccount(account.encryptedAccountNumber), account_name: account.canonicalAccountName, transaction_reference: settlement.providerReference }, { timeout: 45000, headers: { Authorization: `Bearer ${cfg.secret}`, "Content-Type": "application/json" }, validateStatus: () => true });
+    const data = normalized(response.data); if (data.status === "SUCCESSFUL") return recordProviderEvidence({ settlement: await Settlement.findById(settlementId), payload: response.data, source: "REQUERY", raw: JSON.stringify(response.data), actor, req }); if (data.status === "FAILED") { await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "FAILED", failureReason: "Squad rejected payout." } }); await School.updateOne({ _id: settlement.school, "edupayPayoutLock.settlement": settlement._id }, { $set: { "edupayPayoutLock.settlement": null, "edupayPayoutLock.acquiredAt": null } }); return Settlement.findById(settlementId); }
     await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "PENDING_REVIEW" } }); return Settlement.findById(settlementId);
   } catch (error) { if (error.code === "CONFIGURATION_REQUIRED" || error.code === "REFERENCE_MISMATCH") throw error; await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "PENDING_REVIEW" } }); return Settlement.findById(settlementId); }
 }
 async function requerySettlement({ settlementId, actor, req }) {
   const cfg = providerConfig(); const settlement = await Settlement.findOneAndUpdate({ _id: settlementId, status: { $in: ["PROCESSING", "PENDING_REVIEW"] } }, { $set: { requeryLeaseUntil: new Date(Date.now() + 60000) } }, { new: true }); if (!settlement) throw fail("Settlement is not eligible for requery.", 409);
+  if (!settlement.payoutAccountId || !settlement.payoutAccountVersion || !settlement.payoutVerificationEvidenceId) throw fail("Settlement payout account binding is missing.", 409, "ACCOUNT_BINDING_REQUIRED");
   try { const response = await axios.post(`${cfg.baseUrl}/payout/requery`, { transaction_reference: settlement.providerReference }, { timeout: 45000, headers: { Authorization: `Bearer ${cfg.secret}` }, validateStatus: () => true }); const state = normalized(response.data); if (state.status === "PENDING_REVIEW") { await Settlement.updateOne({ _id: settlementId }, { $set: { status: "PENDING_REVIEW" } }); return Settlement.findById(settlementId); } return recordProviderEvidence({ settlement, payload: response.data, source: "REQUERY", raw: JSON.stringify(response.data), actor, req }); } finally { await Settlement.updateOne({ _id: settlementId }, { $unset: { requeryLeaseUntil: 1 } }); }
 }
 async function handleWebhook({ payload, raw, signature, actor, req }) {

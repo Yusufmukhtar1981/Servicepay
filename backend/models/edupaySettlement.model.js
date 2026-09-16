@@ -29,8 +29,11 @@ const schema = immutableSchema({
   failureReason: String,
   reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlement", default: null },
   beneficiaryAccountSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+  payoutAccountId: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlementAccount", default: null },
+  payoutAccountVersion: { type: Number, default: null },
+  payoutVerificationEvidenceId: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayAccountVerificationEvidence", default: null },
   requeryLeaseUntil: { type: Date, default: null },
-}, { mutablePaths: ["status", "approvedBy", "approvedAt", "confirmedBy", "confirmedAt", "providerReference", "provider", "failureReason", "reversalOf", "beneficiaryAccountSnapshot", "requeryLeaseUntil"] });
+}, { mutablePaths: ["status", "approvedBy", "approvedAt", "confirmedBy", "confirmedAt", "providerReference", "provider", "failureReason", "reversalOf", "beneficiaryAccountSnapshot", "requeryLeaseUntil", "payoutAccountId", "payoutAccountVersion", "payoutVerificationEvidenceId"] });
 schema.index({ plan: 1 }, { unique: true });
 schema.index({ school: 1, status: 1, settlementDate: 1 });
 schema.pre(["findOneAndUpdate", "updateOne"], async function () {

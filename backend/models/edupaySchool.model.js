@@ -18,6 +18,9 @@ const schema = new mongoose.Schema({
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   reviewedAt: { type: Date, default: null },
   reviewNote: { type: String, maxlength: 1000 },
+  currentSettlementAccountId: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlementAccount", default: null },
+  currentSettlementAccountVersion: { type: Number, default: null },
+  edupayPayoutLock: { settlement: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlement", default: null }, acquiredAt: { type: Date, default: null } },
 }, { timestamps: true });
 schema.index({ registrationNumber: 1 }, { unique: true, sparse: true });
 schema.index({ status: 1, active: 1 });
