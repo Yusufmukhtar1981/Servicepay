@@ -146,7 +146,7 @@ exports.quote = async (req, res) => {
   try { const { route, input, quote } = await getRouteQuote(req.body); const routeVersion = String(route.updatedAt.getTime()); const persisted = await LogisticsQuote.create({ customerId: req.user._id, routeId: route._id, routeVersion, inputHash: quoteHash(input), quote, expiresAt: new Date(Date.now() + 15 * 60 * 1000) }); return res.json({ success: true, data: { ...quote, routeId: route._id, quoteId: persisted._id, expiresAt: persisted.expiresAt }, routeId: route._id, quoteId: persisted._id, quote: { ...quote, quoteId: persisted._id, expiresAt: persisted.expiresAt } }); }
   catch (e) { return responseError(res, e); }
 };
-exports.createShipment = async (req, res) => {
+exports.createShipment = async (req, res, retryAttempt = 0) => {
   const session = await mongoose.startSession();
   try {
     const b = req.body;
@@ -157,7 +157,7 @@ exports.createShipment = async (req, res) => {
     const { route, input, quote } = await getRouteQuote(b, session);
     const admission = await LogisticsRoute.updateOne(
       activeRouteFilter({ _id: route._id }),
-      { $inc: { shipmentAdmissionVersion: 1 } },
+      { $inc: { shipmentAdmissionVersion: 1 }, $set: { updatedAt: route.updatedAt } },
       { session, timestamps: false },
     );
     if (admission.modifiedCount !== 1) {
@@ -178,6 +178,10 @@ exports.createShipment = async (req, res) => {
   } catch (e) {
     if (session.inTransaction()) await session.abortTransaction();
     const concurrent = e.hasErrorLabel?.("TransientTransactionError") || e.code === 112;
+    if (concurrent && retryAttempt < 4) {
+      await session.endSession();
+      return exports.createShipment(req, res, retryAttempt + 1);
+    }
     return res.status(e.status || (concurrent ? 409 : 400)).json({ success: false, code: e.code && typeof e.code === "string" ? e.code : concurrent ? "ROUTE_CHANGED" : undefined, message: concurrent ? "The route changed while creating this shipment. Request a new quote." : e.message });
   } finally { await session.endSession(); }
 };
