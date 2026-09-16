@@ -356,10 +356,36 @@ test("explicit EduPay duty middleware ignores Head Office wildcard and enforces 
   const req = { user: { _id: parent._id }, staffAccess: { isHeadOffice: true, permissions: ["*"] } };
   await requireExplicitEduPayDuty("account.verify")(req, response, () => { nextCalled = true; });
   assert.equal(nextCalled, false); assert.equal(denied.code, "EDUPAY_DUTY_REQUIRED");
-  await DutyAssignment.create({ user: parent._id, permissions: ["account.verify"], assignedBy: parent._id });
+  await DutyAssignment.create({ user: parent._id, permissions: ["account.verify"], assignedBy: parent._id, version: 1 });
   await requireExplicitEduPayDuty("account.verify")(req, response, () => { nextCalled = true; });
   assert.equal(nextCalled, true);
   nextCalled = false; await requireExplicitEduPayDuty("account.manage")(req, response, () => { nextCalled = true; }); assert.equal(nextCalled, false);
+});
+
+test("duty assignment endpoint appends assign, change, and revoke history", async () => {
+  const controller = require("../controllers/edupay.controller"); const actor = { _id: parent._id, role: "SUPER_ADMIN" }; const response = (callback) => ({ status: () => ({ json: callback }), json: callback });
+  let body;
+  await controller.adminEduPayDuty({ params: { userId: parent._id }, body: { permissions: ["account.manage", "account.verify"] }, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
+  assert.equal(body.success, true, JSON.stringify(body));
+  await controller.adminEduPayDuty({ params: { userId: parent._id }, body: { permissions: ["settlement.process"] }, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
+  assert.equal(body.success, true, JSON.stringify(body));
+  await controller.adminRevokeEduPayDuty({ params: { userId: parent._id }, body: {}, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
+  const rows = await DutyAssignment.find({ user: parent._id }).sort({ version: 1 });
+  assert.equal(rows.length, 3); assert.deepEqual(rows.map((row) => row.version), [1, 2, 3]); assert.equal(rows[2].active, false); assert.equal(String(rows[2].previousAssignment), String(rows[1]._id));
+});
+
+test("readiness requires three distinct latest duty holders", async () => {
+  const controller = require("../controllers/edupay.controller"); const users = await User.create([
+    { fullName: "Duty One", phone: `082${Date.now()}`, email: `d1-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+    { fullName: "Duty Two", phone: `083${Date.now()}`, email: `d2-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+    { fullName: "Duty Three", phone: `084${Date.now()}`, email: `d3-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
+  ]);
+  const result = (permissions, user, version) => DutyAssignment.create({ user, permissions, assignedBy: parent._id, version });
+  await result(["account.manage", "account.verify", "settlement.process"], users[0]._id, 1);
+  const getReadiness = async () => { let body; await controller.adminReadiness({}, { json: (value) => { body = value; }, status: () => ({ json: (value) => { body = value; } }) }); return body; };
+  assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, false);
+  await result(["account.verify"], users[1]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, false);
+  await result(["settlement.process"], users[2]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, true);
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {

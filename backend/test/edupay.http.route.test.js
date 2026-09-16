@@ -6,6 +6,7 @@ const express = require("express");
 const edupayRoutes = require("../routes/edupay.routes");
 const squadWebhookRoutes = require("../routes/edupaySquadWebhook.routes");
 const squad = require("../services/edupaySquad.service");
+const { adminOnly } = require("../middleware/auth.middleware");
 
 const request = (app, { method, path, body, headers = {} }) => new Promise((resolve, reject) => {
   const server = app.listen(0, "127.0.0.1", () => {
@@ -43,4 +44,10 @@ test("EduPay Squad webhook HTTP route forwards a valid signed raw reversal callb
   } finally {
     squad.handleWebhook = original; if (oldSecret === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = oldSecret;
   }
+});
+
+test("duty owner admission accepts SUPER_ADMIN but rejects HEAD_OFFICE", async () => {
+  const app = express(); app.use((req, res, next) => { req.user = { _id: "000000000000000000000001", role: req.get("x-test-role") }; next(); }); app.put("/duty", adminOnly("SUPER_ADMIN"), (req, res) => res.json({ success: true }));
+  assert.equal((await request(app, { method: "PUT", path: "/duty", headers: { "x-test-role": "SUPER_ADMIN" } })).status, 200);
+  assert.equal((await request(app, { method: "PUT", path: "/duty", headers: { "x-test-role": "HEAD_OFFICE" } })).status, 403);
 });

@@ -9,7 +9,7 @@ const manage = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermiss
 const accountManage = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.settlement_account.manage"), requireExplicitEduPayDuty("account.manage")];
 const accountVerify = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.settlement_account.verify"), requireExplicitEduPayDuty("account.verify")];
 const settlementProcess = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.settlement.process"), requireExplicitEduPayDuty("settlement.process")];
-const dutyOwner = [protect, adminOnly("SERVICEPAY_SUPER_ADMIN")];
+const dutyOwner = [protect, adminOnly("SUPER_ADMIN")];
 router.get("/readiness", ...view, controller.adminReadiness);
 router.put("/duties/:userId", ...dutyOwner, controller.adminEduPayDuty);
 router.delete("/duties/:userId", ...dutyOwner, controller.adminRevokeEduPayDuty);
