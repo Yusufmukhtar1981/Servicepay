@@ -347,6 +347,9 @@ test("Squad account verification uses exact lookup payload and persists canonica
     const result = await squad.verifyAccount({ schoolId: school._id, actor: verifier._id });
     assert.equal(request.body.bank_code, "058"); assert.equal(request.body.account_number, "0123456789"); assert.equal(result.account.accountName, "CANONICAL BENEFICIARY"); assert.equal(result.account.verified, true); assert.equal(await AccountVerificationEvidence.countDocuments({ account: account._id }), 1);
     await assert.rejects(() => AccountVerificationEvidence.updateOne({ _id: result.evidence._id }, { $set: { canonicalAccountName: "tampered" } }), /Immutable EduPay record/);
+    await School.updateOne({ _id: school._id }, { $set: { "edupayPayoutLock.settlement": new mongoose.Types.ObjectId(), "edupayPayoutLock.acquiredAt": new Date() } });
+    await assert.rejects(() => squad.saveAccount({ schoolId: school._id, accountName: "Blocked", bankName: "Bank", bankCode: "058", accountNumber: "9999999999", actor: verifier._id }), (error) => error.code === "PAYOUT_LOCKED");
+    await School.updateOne({ _id: school._id }, { $set: { "edupayPayoutLock.settlement": null, "edupayPayoutLock.acquiredAt": null } });
     const replacement = await squad.saveAccount({ schoolId: school._id, accountName: "Replacement Operator", bankName: "Bank", bankCode: "058", accountNumber: "9876543210", actor: verifier._id });
     assert.equal(replacement.version, account.version + 1); assert.equal(String(replacement.previousVersion), String(account._id));
     await assert.rejects(() => squad.verifyAccount({ schoolId: school._id, actor: verifier._id }), (error) => error.code === "SEPARATION_OF_DUTIES_REQUIRED");
