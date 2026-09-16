@@ -342,11 +342,17 @@ test("Squad account verification uses exact lookup payload and persists canonica
   const verifier = await User.create({ fullName: "Distinct Verifier", phone: `081${Date.now()}`, email: `verifier-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" });
   const account = await squad.saveAccount({ schoolId: school._id, accountName: "Operator Name", bankName: "Bank", bankCode: "058", accountNumber: "0123456789", actor: parent._id });
   const originalPost = axios.post; let request;
-  axios.post = async (url, body) => { request = { url, body }; return { status: 200, data: { data: { account_number: "0123456789", account_name: "CANONICAL BENEFICIARY", id: "lookup-1" } } }; };
+  axios.post = async (url, body) => { request = { url, body }; return { status: 200, data: { data: { account_number: body.account_number, account_name: "CANONICAL BENEFICIARY", id: `lookup-${body.account_number}` } } }; };
   try {
     const result = await squad.verifyAccount({ schoolId: school._id, actor: verifier._id });
     assert.equal(request.body.bank_code, "058"); assert.equal(request.body.account_number, "0123456789"); assert.equal(result.account.accountName, "CANONICAL BENEFICIARY"); assert.equal(result.account.verified, true); assert.equal(await AccountVerificationEvidence.countDocuments({ account: account._id }), 1);
     await assert.rejects(() => AccountVerificationEvidence.updateOne({ _id: result.evidence._id }, { $set: { canonicalAccountName: "tampered" } }), /Immutable EduPay record/);
+    const replacement = await squad.saveAccount({ schoolId: school._id, accountName: "Replacement Operator", bankName: "Bank", bankCode: "058", accountNumber: "9876543210", actor: verifier._id });
+    assert.equal(replacement.version, account.version + 1); assert.equal(String(replacement.previousVersion), String(account._id));
+    await assert.rejects(() => squad.verifyAccount({ schoolId: school._id, actor: verifier._id }), (error) => error.code === "SEPARATION_OF_DUTIES_REQUIRED");
+    const finalVerifier = await User.create({ fullName: "Final Verifier", phone: `089${Date.now()}`, email: `final-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" });
+    const replacementResult = await squad.verifyAccount({ schoolId: school._id, actor: finalVerifier._id });
+    assert.equal(String(replacementResult.evidence.account), String(replacement._id)); assert.notEqual(String(replacementResult.evidence.account), String(result.evidence.account));
   } finally { axios.post = originalPost; for (const [key, value] of Object.entries({ EDUPAY_SQUAD_TRANSFER_ENABLED: old.transfer, EDUPAY_SQUAD_PRODUCTION_ENABLED: old.production, EDUPAY_SQUAD_SECRET_KEY: old.secret, EDUPAY_SQUAD_MERCHANT_ID: old.merchant, EDUPAY_SQUAD_BASE_URL: old.base, EDUPAY_ACCOUNT_ENCRYPTION_KEY: old.encryption })) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
 });
 

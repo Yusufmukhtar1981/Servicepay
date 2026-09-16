@@ -41,11 +41,19 @@ const normalized = (payload) => {
 };
 async function saveAccount({ schoolId, accountName, bankName, bankCode, accountNumber, actor, verified = false }) {
   if (!/^\d{10}$/.test(String(accountNumber))) throw fail("A valid ten-digit settlement account is required.", 400);
-  return Account.findOneAndUpdate({ school: schoolId }, { $set: { accountName, bankName, bankCode, encryptedAccountNumber: encryptAccount(accountNumber), accountNumberLast4: String(accountNumber).slice(-4), verified: false, active: false, verifiedBy: null, verifiedAt: null, updatedBy: actor }, $setOnInsert: { submittedBy: actor } }, { upsert: true, new: true, runValidators: true });
+  const session = await mongoose.startSession(); let account;
+  try { await session.withTransaction(async () => {
+    const previous = await Account.findOne({ school: schoolId }).sort({ version: -1 }).session(session);
+    [account] = await Account.create([{ school: schoolId, accountName, bankName, bankCode, encryptedAccountNumber: encryptAccount(accountNumber), accountNumberLast4: String(accountNumber).slice(-4), verified: false, active: false, submittedBy: actor, updatedBy: actor, version: Number(previous?.version || 0) + 1, previousVersion: previous?._id || null }], { session });
+  }); } finally { await session.endSession(); }
+  return account;
 }
-async function verifyAccount({ schoolId, actor }) {
-  const cfg = providerConfig(); const account = await Account.findOne({ school: schoolId }).select("+encryptedAccountNumber");
+async function verifyAccount({ schoolId, actor, accountId, version }) {
+  const cfg = providerConfig(); const filter = { school: schoolId }; if (accountId) filter._id = accountId; else if (version !== undefined) filter.version = Number(version);
+  const account = await Account.findOne(filter).sort({ version: -1 }).select("+encryptedAccountNumber");
   if (!account) throw fail("Settlement account not found.", 404);
+  const latest = await Account.findOne({ school: schoolId }).sort({ version: -1 }).select("_id version");
+  if (!latest || String(latest._id) !== String(account._id)) throw fail("Only the current settlement-account version may be verified.", 409, "STALE_ACCOUNT_VERSION");
   if (String(account.submittedBy) === String(actor)) throw fail("Account verifier must be distinct from the account submitter.", 409, "SEPARATION_OF_DUTIES_REQUIRED");
   const accountNumber = decryptAccount(account.encryptedAccountNumber);
   const response = await axios.post(`${cfg.baseUrl}/payout/account/lookup`, { bank_code: String(account.bankCode), account_number: accountNumber }, { timeout: 45000, headers: { Authorization: `Bearer ${cfg.secret}`, "Content-Type": "application/json" }, validateStatus: () => true });
@@ -53,13 +61,14 @@ async function verifyAccount({ schoolId, actor }) {
   const returnedNumber = String(data.account_number || data.accountNumber || "").replace(/\D/g, "");
   const canonicalName = String(data.account_name || data.accountName || data.name || "").trim();
   if (response.status < 200 || response.status >= 300 || !canonicalName || returnedNumber !== accountNumber) throw fail("Squad account verification did not match the submitted account.", 422, "ACCOUNT_VERIFICATION_MISMATCH");
-  const raw = JSON.stringify(response.data); const version = (await AccountVerificationEvidence.findOne({ account: account._id }).sort({ verificationVersion: -1 }).select("verificationVersion"))?.verificationVersion || 0;
+  const raw = JSON.stringify(response.data); const verificationVersion = (await AccountVerificationEvidence.findOne({ account: account._id }).sort({ verificationVersion: -1 }).select("verificationVersion"))?.verificationVersion || 0;
   const session = await mongoose.startSession(); let evidence;
   try { await session.withTransaction(async () => {
-    [evidence] = await AccountVerificationEvidence.create([{ account: account._id, provider: "SQUAD", bankCode: account.bankCode, maskedAccount: `****${account.accountNumberLast4}`, canonicalAccountName: canonicalName, responseDigest: digest(raw), providerReference: String(data.id || data.reference || digest(raw)), verificationVersion: version + 1, verifiedBy: actor }], { session });
-    await Account.updateOne({ _id: account._id }, { $set: { accountName: canonicalName, verified: true, active: true, verifiedBy: actor, verifiedAt: new Date(), updatedBy: actor } }, { session });
+    [evidence] = await AccountVerificationEvidence.create([{ account: account._id, provider: "SQUAD", bankCode: account.bankCode, maskedAccount: `****${account.accountNumberLast4}`, canonicalAccountName: canonicalName, responseDigest: digest(raw), providerReference: String(data.id || data.reference || digest(raw)), verificationVersion: verificationVersion + 1, verifiedBy: actor }], { session });
+    await Account.updateOne({ _id: account._id }, { $set: { canonicalAccountName: canonicalName, verified: true, active: true, verifiedBy: actor, verifiedAt: new Date(), updatedBy: actor } }, { session });
   }); } finally { await session.endSession(); }
-  return { account: await Account.findById(account._id), evidence };
+  const verifiedAccount = await Account.findById(account._id); const responseAccount = verifiedAccount.toObject(); responseAccount.accountName = canonicalName;
+  return { account: responseAccount, evidence };
 }
 async function finalizeEvidence(evidenceId, actor, req, session, actorType = "USER") {
   const evidence = await Evidence.findById(evidenceId).session(session); const settlement = await Settlement.findById(evidence.settlement).session(session);
@@ -106,19 +115,19 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
   return output || Settlement.findById(settlement._id);
 }
 async function processSettlement({ settlementId, actor, req }) {
-  const cfg = providerConfig(); const settlementRecord = await Settlement.findById(settlementId); const account = await Account.findOne({ school: settlementRecord?.school, active: true, verified: true }).select("+encryptedAccountNumber");
+  const cfg = providerConfig(); const settlementRecord = await Settlement.findById(settlementId); const account = await Account.findOne({ school: settlementRecord?.school }).sort({ version: -1 }).select("+encryptedAccountNumber");
   if (!settlementRecord) throw fail("Settlement not found.", 404);
   if (String(settlementRecord.approvedBy) === String(actor)) throw fail("Settlement processor must be distinct from the approver.", 409, "SEPARATION_OF_DUTIES_REQUIRED");
-  if (!account) throw fail("A verified EduPay settlement account is required.", 409);
+  if (!account || !account.active || !account.verified) throw fail("A current verified EduPay settlement account is required.", 409);
   const verification = await AccountVerificationEvidence.findOne({ account: account._id }).sort({ verificationVersion: -1 });
-  if (!verification || String(verification.canonicalAccountName) !== String(account.accountName)) throw fail("A latest verified Squad settlement-account evidence record is required.", 409, "ACCOUNT_VERIFICATION_REQUIRED");
+  if (!verification || String(verification.canonicalAccountName) !== String(account.canonicalAccountName)) throw fail("A latest verified Squad settlement-account evidence record is required.", 409, "ACCOUNT_VERIFICATION_REQUIRED");
   if (String(account.submittedBy) === String(actor) || String(verification.verifiedBy) === String(actor)) throw fail("Settlement processor must be distinct from account submitter and verifier.", 409, "SEPARATION_OF_DUTIES_REQUIRED");
   const session = await mongoose.startSession(); let settlement;
   try { await session.withTransaction(async () => {
     const current = await Settlement.findOne({ _id: settlementId, status: "APPROVED" }).session(session); if (!current) throw fail("Settlement must be APPROVED before PROCESS.", 409);
     if (new Date(current.settlementDate) > new Date()) throw fail("Settlement date has not arrived.", 409);
     const providerReference = `EDUPAY-${current.reference}`;
-    const cas = await Settlement.updateOne({ _id: current._id, status: "APPROVED" }, { $set: { status: "PROCESSING", provider: "SQUAD", providerReference, beneficiaryAccountSnapshot: { accountName: account.accountName, bankName: account.bankName, bankCode: account.bankCode, accountNumberLast4: account.accountNumberLast4 } } }, { session }); if (!cas.modifiedCount) throw fail("Settlement is already being processed.", 409);
+    const cas = await Settlement.updateOne({ _id: current._id, status: "APPROVED" }, { $set: { status: "PROCESSING", provider: "SQUAD", providerReference, beneficiaryAccountSnapshot: { accountName: account.canonicalAccountName, bankName: account.bankName, bankCode: account.bankCode, accountNumberLast4: account.accountNumberLast4 } } }, { session }); if (!cas.modifiedCount) throw fail("Settlement is already being processed.", 409);
     settlement = { ...current.toObject(), providerReference };
   }); } finally { await session.endSession(); }
   try {
