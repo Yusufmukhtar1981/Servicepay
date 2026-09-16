@@ -51,6 +51,10 @@ class EduPayApi {
   Future<Map<String, dynamic>> dashboard() => _send('GET', '/dashboard');
   Future<List<dynamic>> schools() async =>
       (await _send('GET', '/schools'))['schools'] as List? ?? [];
+
+  /// The authoritative school-specific fee catalogue used when opening a plan.
+  Future<Map<String, dynamic>> catalogue(String schoolId) =>
+      _send('GET', '/schools/$schoolId/catalogue');
   Future<List<dynamic>> fees(
     String school, {
     String? session,

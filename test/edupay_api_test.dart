@@ -63,4 +63,38 @@ void main() {
           .having((e) => e.code, 'code', 'EDUPAY_DISABLED')),
     );
   });
+
+  test('history reads contributions, repayments, and ledger from customer API',
+      () async {
+    final client = _Client()
+      ..response = {
+        'success': true,
+        'contributions': [
+          {'id': 'contribution-1'}
+        ],
+        'repayments': [
+          {'id': 'repayment-1'}
+        ],
+        'ledger': [],
+      };
+    final history = await EduPayApi(client: client).history();
+    expect(client.last?.url.path, '/api/edupay/history');
+    expect(history['contributions'], isNotEmpty);
+    expect(history['repayments'], isNotEmpty);
+  });
+
+  test('catalogue uses the authoritative customer catalogue endpoint',
+      () async {
+    final client = _Client()
+      ..response = {
+        'success': true,
+        'schools': [],
+        'sessions': [],
+        'terms': [],
+        'classes': [],
+      };
+    final catalogue = await EduPayApi(client: client).catalogue('school-1');
+    expect(client.last?.url.path, '/api/edupay/schools/school-1/catalogue');
+    expect(catalogue['classes'], isEmpty);
+  });
 }

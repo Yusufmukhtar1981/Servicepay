@@ -5211,10 +5211,12 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('ServicePay EduPay',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  Text('Servicepay EduPay',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                   SizedBox(height: 3),
-                  Text('Plan ahead for school fees with clarity.',
+                  Text(
+                      'Save gradually. We settle the school. You complete the balance later.',
                       style: TextStyle(color: Color(0xff4e6f62), fontSize: 12)),
                 ],
               ),
