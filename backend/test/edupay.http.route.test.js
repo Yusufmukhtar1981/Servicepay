@@ -5,6 +5,7 @@ const express = require("express");
 
 const edupayRoutes = require("../routes/edupay.routes");
 const squadWebhookRoutes = require("../routes/edupaySquadWebhook.routes");
+const squad = require("../services/edupaySquad.service");
 
 const request = (app, { method, path, body, headers = {} }) => new Promise((resolve, reject) => {
   const server = app.listen(0, "127.0.0.1", () => {
@@ -27,4 +28,19 @@ test("EduPay Squad webhook HTTP route rejects invalid signed callbacks", async (
   const app = express(); app.use("/api/edupay/webhooks/squad", squadWebhookRoutes);
   const response = await request(app, { method: "POST", path: "/api/edupay/webhooks/squad", body: { event: "SUCCESS" }, headers: { "x-squad-encrypted-body": "00" } });
   assert.equal(response.status, 401);
+});
+
+test("EduPay Squad webhook HTTP route forwards a valid signed raw reversal callback", async () => {
+  const app = express(); app.use("/api/edupay/webhooks/squad", squadWebhookRoutes);
+  const oldSecret = process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = "http-route-secret";
+  const raw = JSON.stringify({ event: "REVERSED", data: { transaction_reference: "EDUPAY-HTTP-REV", status: "REVERSED", amount: 19000000, currency: "NGN" } });
+  const crypto = require("crypto"); const signature = crypto.createHmac("sha512", process.env.EDUPAY_SQUAD_WEBHOOK_SECRET).update(raw).digest("hex");
+  const original = squad.handleWebhook; let forwarded;
+  squad.handleWebhook = async (args) => { forwarded = args; return { status: "REVERSED" }; };
+  try {
+    const response = await request(app, { method: "POST", path: "/api/edupay/webhooks/squad", body: JSON.parse(raw), headers: { "x-squad-encrypted-body": signature } });
+    assert.equal(response.status, 200); assert.equal(response.body.settlement.status, "REVERSED"); assert.equal(Buffer.isBuffer(forwarded.raw), true); assert.equal(forwarded.payload.event, "REVERSED");
+  } finally {
+    squad.handleWebhook = original; if (oldSecret === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = oldSecret;
+  }
 });
