@@ -2,10 +2,14 @@ const express = require("express");
 const controller = require("../controllers/edupay.controller");
 const { latestActiveDutyHolders } = require("../controllers/featureControl.controller");
 const { payoutReadiness } = require("../services/edupaySquad.service");
-const { protect, adminOnly } = require("../middleware/auth.middleware");
+const { protect, adminOnly, normalizeRole } = require("../middleware/auth.middleware");
 const { loadStaffRole, requirePermission } = require("../middleware/staffPermission.middleware");
 const { requireExplicitEduPayDuty } = require("../middleware/edupayDuty.middleware");
 const router = express.Router();
+const canConfigureDuties = (user) =>
+  ["SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"].includes(
+    normalizeRole(user?.role)
+  );
 const view = [protect, adminOnly("HEAD_OFFICE", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"), loadStaffRole, requirePermission("edupay.view")];
 const manage = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.manage")];
 const privateAssets = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.school.private_assets.view")];
@@ -13,7 +17,7 @@ const accountManage = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, require
 const accountVerify = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.settlement_account.verify"), requireExplicitEduPayDuty("account.verify")];
 const settlementProcess = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.settlement.process"), requireExplicitEduPayDuty("settlement.process")];
 const dutyOwner = [protect, adminOnly("SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN")];
-router.get("/readiness", ...view, async (req, res, next) => { try { await controller.reconcileEduPaySchoolAssets({ limit: 50 }); } catch (_) {} const send = res.json.bind(res); res.json = (payload) => { const holders = req.edupayCurrentHolders || {}; const config = payoutReadiness(); payload.currentHolders = holders; payload.payoutConfig = { ...(payload.payoutConfig || {}), provider: config.providerReady, accountEncryption: config.accountEncryptionReady, providerName: config.provider, configurationStatus: config.configurationStatus, connectionStatus: config.connectionStatus, settlementAccountMode: config.settlementAccountMode, requirements: config.requirements, missingEnvironment: config.missingEnvironment, ready: config.ready && Boolean(payload.payoutConfig?.settlementMethod) && Boolean(payload.payoutConfig?.rates) }; payload.ready = Boolean(payload.dutyCoverage?.ready) && Boolean(payload.payoutConfig?.ready); return send(payload); }; try { const result = await latestActiveDutyHolders(); const dto = (ids) => [...ids].map((id) => result.users.find((user) => String(user._id) === String(id))).filter(Boolean).map((user) => ({ _id: user._id, fullName: user.fullName, role: user.role })); req.edupayCurrentHolders = { "account.manage": dto(result.manage), "account.verify": dto(result.verify), "settlement.process": dto(result.process) }; next(); } catch (error) { next(error); } }, controller.adminReadiness);
+router.get("/readiness", ...view, async (req, res, next) => { try { await controller.reconcileEduPaySchoolAssets({ limit: 50 }); } catch (_) {} const send = res.json.bind(res); res.json = (payload) => { const holders = req.edupayCurrentHolders || {}; const config = payoutReadiness(); payload.currentHolders = holders; payload.capabilities = { ...(payload.capabilities || {}), configureDuties: canConfigureDuties(req.user) }; payload.payoutConfig = { ...(payload.payoutConfig || {}), provider: config.providerReady, accountEncryption: config.accountEncryptionReady, providerName: config.provider, configurationStatus: config.configurationStatus, connectionStatus: config.connectionStatus, settlementAccountMode: config.settlementAccountMode, requirements: config.requirements, missingEnvironment: config.missingEnvironment, ready: config.ready && Boolean(payload.payoutConfig?.settlementMethod) && Boolean(payload.payoutConfig?.rates) }; payload.ready = Boolean(payload.dutyCoverage?.ready) && Boolean(payload.payoutConfig?.ready); return send(payload); }; try { const result = await latestActiveDutyHolders(); const dto = (ids) => [...ids].map((id) => result.users.find((user) => String(user._id) === String(id))).filter(Boolean).map((user) => ({ _id: user._id, fullName: user.fullName, role: user.role })); req.edupayCurrentHolders = { "account.manage": dto(result.manage), "account.verify": dto(result.verify), "settlement.process": dto(result.process) }; next(); } catch (error) { next(error); } }, controller.adminReadiness);
 router.put("/duties", ...dutyOwner, controller.adminConfigureEduPayDuties);
 router.get("/duties/eligible-users", ...dutyOwner, controller.adminEligibleDutyUsers);
 router.put("/duties/:userId", ...dutyOwner, controller.adminEduPayDuty);
@@ -48,3 +52,4 @@ router.get("/reconciliation", ...view, controller.adminTransactions);
 router.get("/audit", ...view, controller.adminAudit);
 router.get("/audit-logs", ...view, controller.adminAudit);
 module.exports = router;
+module.exports.canConfigureDuties = canConfigureDuties;

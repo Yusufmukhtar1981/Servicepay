@@ -7,6 +7,7 @@ const edupayRoutes = require("../routes/edupay.routes");
 const squadWebhookRoutes = require("../routes/edupaySquadWebhook.routes");
 const squad = require("../services/edupaySquad.service");
 const { adminOnly } = require("../middleware/auth.middleware");
+const { canConfigureDuties } = require("../routes/adminEdupay.routes");
 
 const request = (app, { method, path, body, headers = {} }) => new Promise((resolve, reject) => {
   const server = app.listen(0, "127.0.0.1", () => {
@@ -51,4 +52,11 @@ test("duty owner admission accepts Super Admin roles but rejects HEAD_OFFICE", a
   assert.equal((await request(app, { method: "PUT", path: "/duty", headers: { "x-test-role": "SUPER_ADMIN" } })).status, 200);
   assert.equal((await request(app, { method: "PUT", path: "/duty", headers: { "x-test-role": "SERVICEPAY_SUPER_ADMIN" } })).status, 200);
   assert.equal((await request(app, { method: "PUT", path: "/duty", headers: { "x-test-role": "HEAD_OFFICE" } })).status, 403);
+});
+
+test("readiness duty capability matches protected duty-route admission", () => {
+  assert.equal(canConfigureDuties({ role: "SUPER_ADMIN" }), true);
+  assert.equal(canConfigureDuties({ role: "servicepay-super-admin" }), true);
+  assert.equal(canConfigureDuties({ role: "SERVICEPAY_SUPER_ADMIN" }), true);
+  assert.equal(canConfigureDuties({ role: "HEAD_OFFICE" }), false);
 });
