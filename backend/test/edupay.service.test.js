@@ -9,6 +9,7 @@ const Fee = require("../models/edupayFeeStructure.model");
 const Child = require("../models/edupayChild.model");
 const Plan = require("../models/edupayPlan.model");
 const Settings = require("../models/edupaySettings.model");
+const AppSettings = require("../models/appSettings.model");
 const EduLedger = require("../models/edupayLedgerEntry.model");
 const Transaction = require("../models/transaction.model");
 const CoreLedger = require("../models/ledgerEntry.model");
@@ -32,7 +33,7 @@ let session;
 let term;
 let classLevel;
 let fee;
-const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, PayoutEvidence, Commission, Command];
+const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, AppSettings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, PayoutEvidence, Commission, Command];
 
 test.before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
@@ -303,6 +304,32 @@ test("same-amount provider callback with wrong persisted reference is rejected w
   await assert.rejects(() => squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature: require("crypto").createHmac("sha512", secret).update(raw).digest("hex"), req: {} }), (error) => error.code === "REFERENCE_MISMATCH");
   assert.equal(await PayoutEvidence.countDocuments({ settlement: settlement._id }), 0); assert.equal(await Transaction.countDocuments({ serviceType: "EDUPAY" }), 0); assert.equal((await Settlement.findById(settlement._id)).status, "PENDING_REVIEW");
   if (old === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = old;
+});
+
+test("signed provider REVERSED webhook without actor atomically recovers settlement and retries safely", async () => {
+  const settings = await Settings.findOne(); const snapshot = calculateSettlement({ officialFee: 200000, saved: 10000, settings });
+  const settlement = await Settlement.create({ ...snapshot, parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-REVERSED-WEBHOOK", idempotencyKey: "set-reversed-webhook", providerReference: "EDUPAY-SET-REVERSED-WEBHOOK", status: "SETTLED" });
+  await EduLedger.create({ parent: parent._id, child: plan.child, plan: plan._id, direction: "CREDIT", type: "CONTRIBUTION", amount: 10000, openingBalance: 0, closingBalance: 10000, reference: "REV-SAVINGS-CREDIT", idempotencyKey: "rev-savings-credit", source: "TEST" });
+  await Commission.create({ settlement: settlement._id, school: school._id, amount: settlement.schoolCommissionAmount, direction: "RECEIVABLE", reference: "REV-COMMISSION" });
+  const repayment = await EduPayRepayment.create({ parent: parent._id, child: plan.child, plan: plan._id, settlement: settlement._id, principal: settlement.servicepayFundedPrincipal, serviceCharge: settlement.parentChargeAmount, totalAmount: settlement.parentTotalRepayment, amountPaid: 10000, amountRemaining: settlement.parentTotalRepayment - 10000, dueDate: new Date(Date.now() + 86400000), status: "PARTIALLY_PAID" });
+  const beforeWallet = (await User.findById(parent._id)).walletBalance;
+  const raw = JSON.stringify({ event: "REVERSED", data: { transaction_reference: settlement.providerReference, amount: settlement.schoolNetSettlement * 100, currency: "NGN", status: "REVERSED" } }); const secret = "reversed-provider-secret"; const old = process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = secret;
+  const signature = require("crypto").createHmac("sha512", secret).update(raw).digest("hex");
+  const result = await squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature, req: {} });
+  const after = await EduPayRepayment.findById(repayment._id);
+  assert.equal(result.status, "REVERSED"); assert.equal(after.status, "CANCELLED"); assert.equal(after.amountRemaining, 0); assert.equal(after.reversedUnpaidAmount, settlement.parentTotalRepayment - 10000);
+  assert.equal((await User.findById(parent._id)).walletBalance, beforeWallet + 10000); assert.equal(await Transaction.countDocuments({ reference: `EDUPAY-REFUND-${settlement.reference}` }), 1); assert.equal(await Commission.countDocuments({ settlement: settlement._id, direction: "REVERSAL" }), 1);
+  await squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature, req: {} });
+  assert.equal((await User.findById(parent._id)).walletBalance, beforeWallet + 10000); assert.equal(await Transaction.countDocuments({ reference: `EDUPAY-REFUND-${settlement.reference}` }), 1);
+  if (old === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = old;
+});
+
+test("dashboard enabled state follows AppSettings feature authority despite EduPaySettings disagreement", async () => {
+  await Settings.updateOne({ key: "GLOBAL" }, { $set: { enabled: true } }, { upsert: true });
+  await AppSettings.create({ fintechControl: { featureRegistry: { edupay: { enabled: false } } } });
+  const controller = require("../controllers/edupay.controller"); let response;
+  await controller.dashboard({ user: { _id: parent._id } }, { json: (body) => { response = body; }, status: () => ({ json: (body) => { response = body; } }) });
+  assert.equal(response.settings.enabled, false);
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {

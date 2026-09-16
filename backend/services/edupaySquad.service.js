@@ -9,6 +9,7 @@ const Plan = require("../models/edupayPlan.model");
 const { EduPayRepayment } = require("../models/edupayRepayment.model");
 const { createEduLedger, availableSavings, getSettings, audit, reverseSettlement, reference, round } = require("./edupay.service");
 const Commission = require("../models/edupayCommission.model");
+const SYSTEM_PROVIDER_ACTOR = new mongoose.Types.ObjectId("000000000000000000000001");
 
 const fail = (message, status = 400, code) => Object.assign(new Error(message), { statusCode: status, code });
 const providerConfig = () => {
@@ -62,7 +63,16 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
   const data = normalized(payload); if (!data.reference || !["SUCCESSFUL", "REVERSED", "PENDING_REVIEW"].includes(data.status)) throw fail("Provider evidence is incomplete or not final.", 409);
   if (String(data.reference) !== String(settlement.providerReference)) throw fail("Provider reference does not match the persisted settlement reference.", 409, "REFERENCE_MISMATCH");
   if (data.amount !== Math.round(settlement.schoolNetSettlement * 100) || data.currency !== "NGN") throw fail("Provider evidence amount/currency does not match settlement.", 409);
-  const eventDigest = digest(raw); const prior = await Evidence.findOne({ settlement: settlement._id, payloadDigest: eventDigest }); if (prior) return Settlement.findById(settlement._id);
+  const eventDigest = digest(raw); const prior = await Evidence.findOne({ settlement: settlement._id, payloadDigest: eventDigest });
+  const providerActor = actor || SYSTEM_PROVIDER_ACTOR;
+  if (prior) {
+    const current = await Settlement.findById(settlement._id);
+    if (data.status === "REVERSED" && current?.status !== "REVERSED") {
+      const transaction = await Transaction.findById(prior.coreTransaction);
+      if (transaction) await reverseSettlement({ settlementId: settlement._id, actor: providerActor, actorType: "PROVIDER", transactionId: transaction._id, providerReference: transaction.reference, evidenceId: prior._id, idempotencyKey: `squad-reversal-${eventDigest}`, req });
+    }
+    return Settlement.findById(settlement._id);
+  }
   const session = await mongoose.startSession(); let output; let reversalTransaction; let reversalEvidence;
   try { await session.withTransaction(async () => {
     const current = await Settlement.findById(settlement._id).session(session); if (!current || !["PROCESSING", "PENDING_REVIEW", "SETTLED"].includes(current.status)) throw fail("Settlement is not awaiting provider evidence.", 409);
@@ -74,7 +84,7 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
       await Evidence.updateOne({ _id: evidence._id }, { $set: { coreTransaction: reversalTransaction._id } }, { session });
     }
   }); } finally { await session.endSession(); }
-  if (data.status === "REVERSED" && reversalTransaction) await reverseSettlement({ settlementId: settlement._id, actor, transactionId: reversalTransaction._id, providerReference: reversalTransaction.reference, evidenceId: reversalEvidence._id, idempotencyKey: `squad-reversal-${eventDigest}`, req });
+  if (data.status === "REVERSED" && reversalTransaction) await reverseSettlement({ settlementId: settlement._id, actor: providerActor, actorType: "PROVIDER", transactionId: reversalTransaction._id, providerReference: reversalTransaction.reference, evidenceId: reversalEvidence._id, idempotencyKey: `squad-reversal-${eventDigest}`, req });
   return output || Settlement.findById(settlement._id);
 }
 async function processSettlement({ settlementId, actor, req }) {

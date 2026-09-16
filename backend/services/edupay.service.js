@@ -296,7 +296,7 @@ async function confirmSettlement({ settlementId, actor, transactionId, providerR
   return { settlement: result, duplicate };
 }
 
-async function reverseSettlement({ settlementId, actor, transactionId, providerReference, idempotencyKey, req, reason, evidenceId }) {
+async function reverseSettlement({ settlementId, actor, actorType = "USER", transactionId, providerReference, idempotencyKey, req, reason, evidenceId }) {
   ensureObjectId(settlementId, "Settlement"); ensureObjectId(transactionId, "Reversal transaction");
   const Reversal = require("../models/edupaySettlementReversal.model");
   if (!idempotencyKey) { const error = new Error("Idempotency-Key is required."); error.statusCode = 400; throw error; }
@@ -338,7 +338,7 @@ async function reverseSettlement({ settlementId, actor, transactionId, providerR
       }
       await Settlement.updateOne({ _id: settlement._id, status: "SETTLED" }, { $set: { status: "REVERSED", reversalOf: settlement._id } }, { session });
       await Plan.updateOne({ _id: settlement.plan }, { $set: { status: "REVERSED" } }, { session });
-      await audit({ actor, action: "EDUPAY_SETTLEMENT_REVERSED", entityType: "EduPaySettlementReversal", entityId: reversal._id, school: settlement.school, metadata: { refundTransaction: refund._id }, req, session });
+      await audit({ actor, action: "EDUPAY_SETTLEMENT_REVERSED", entityType: "EduPaySettlementReversal", entityId: reversal._id, school: settlement.school, metadata: { refundTransaction: refund._id, actorType }, req, session });
       result = reversal;
       await Command.updateOne({ key: idempotencyKey }, { $set: { status: "SUCCEEDED", result: { reversalId: String(reversal._id) } } }, { session });
     });

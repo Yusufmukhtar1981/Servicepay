@@ -30,9 +30,10 @@ exports.dashboard = async (req, res) => {
       Contribution.aggregate([{ $match: { parent: req.user._id, status: "SUCCESS" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
     ]);
     const settings = await getSettings();
+    const feature = currentFeature(await AppSettings.findOne().lean(), FEATURE_REGISTRY.find((item) => item[0] === "edupay"));
     const saved = round(contributions[0]?.total);
     const upcoming = plans.filter((plan) => !["SETTLED", "CANCELLED", "REVERSED"].includes(plan.status)).sort((a, b) => new Date(a.targetDate) - new Date(b.targetDate))[0] || null;
-    res.json({ success: true, settings: { enabled: settings.enabled, autosaveEnabled: settings.autosaveEnabled }, summary: { totalEducationSavings: saved, totalChildren: children, activePlans: plans.filter((p) => !["SETTLED", "CANCELLED", "REVERSED"].includes(p.status)).length, outstandingRepayment: round(repayments.reduce((sum, row) => sum + Number(row.amountRemaining || 0), 0)), upcomingSchoolFee: upcoming ? { amount: upcoming.officialFee, targetDate: upcoming.targetDate, saved: saved } : null }, plans });
+    res.json({ success: true, settings: { enabled: feature.effectiveEnabled, autosaveEnabled: settings.autosaveEnabled }, summary: { totalEducationSavings: saved, totalChildren: children, activePlans: plans.filter((p) => !["SETTLED", "CANCELLED", "REVERSED"].includes(p.status)).length, outstandingRepayment: round(repayments.reduce((sum, row) => sum + Number(row.amountRemaining || 0), 0)), upcomingSchoolFee: upcoming ? { amount: upcoming.officialFee, targetDate: upcoming.targetDate, saved: saved } : null }, plans });
   } catch (error) { errorResponse(res, error); }
 };
 
