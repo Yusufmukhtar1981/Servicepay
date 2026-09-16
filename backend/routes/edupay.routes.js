@@ -11,6 +11,9 @@ const schoolUpload = (req, res, next) => {
 // Public/safe entry points.
 router.post("/schools/apply", schoolUpload, controller.applySchoolMultipartDirect);
 router.post("/school/auth/login", controller.schoolLogin);
+// A school discovery request is non-financial onboarding and must remain
+// available while EduPay initiation is paused.
+router.post("/school-requests", ...customer, controller.createSchoolRequest);
 router.get("/sponsor/:token", controller.sponsorView);
 router.post("/sponsor/:token/contribute", ...customer, controller.sponsorContribute);
 router.get("/schools", controller.listSchools);

@@ -7,7 +7,8 @@ const SchoolUser = require("../models/edupaySchoolUser.model").EduPaySchoolUser;
 const User = require("../models/user.model");
 const { getSettings, audit, notify, round, reference, hash, ensureObjectId, calculateSettlement, availableSavings, contributeFromWallet, contributeSponsorFromWallet, repayFromWallet, confirmSettlement, reverseSettlement, createEduLedger, createSettlement, models } = require("../services/edupay.service");
 const { School, Child, Plan, Contribution, EduLedger, Fee, Settlement, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution } = models;
-const EDUPAY_READINESS_MODELS = { School, Child, Plan, Contribution, EduLedger, Fee, Settlement, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution };
+const SchoolRequest = require("../models/edupaySchoolRequest.model");
+const EDUPAY_READINESS_MODELS = { School, Child, Plan, Contribution, EduLedger, Fee, Settlement, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, SchoolRequest };
 const EduPaySettlementAccount = require("../models/edupaySettlementAccount.model");
 const EduPayDutyAssignment = require("../models/edupayDutyAssignment.model");
 const edupaySquad = require("../services/edupaySquad.service");
@@ -18,6 +19,19 @@ const edupaySquadService = require("../services/edupaySquad.service");
 const safe = (doc) => doc?.toObject ? doc.toObject() : doc;
 const publicSchool = (school) => { const row = safe(school) || {}; delete row.bankDetails; delete row.supportingDocuments; delete row.logo; delete row.portalUser; return row; };
 const schoolAdminDto = (school) => { const row = safe(school) || {}; if (row.bankDetails) row.bankDetails = { bankName: row.bankDetails.bankName, bankCode: row.bankDetails.bankCode, accountName: row.bankDetails.accountName, accountNumberLast4: row.bankDetails.accountNumberLast4 }; delete row.encryptedAccountNumber; delete row.logo; delete row.supportingDocuments; return row; };
+const schoolRequestDto = (request) => {
+  const row = safe(request) || {};
+  return {
+    id: row._id,
+    schoolName: row.schoolName,
+    location: row.location,
+    contactPhone: row.contactPhone || null,
+    status: row.status,
+    createdAt: row.createdAt,
+  };
+};
+const normalizeRequestText = (value) =>
+  String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
 const parsePrivateAsset = (value, allowed, maxBytes, label) => {
   const match = /^data:([a-z0-9.+-]+);base64,([a-z0-9+/]+={0,2})$/i.exec(String(value || ""));
   if (!match || !allowed.has(match[1].toLowerCase())) throw Object.assign(new Error(`${label} must be an allowed base64 data URL.`), { statusCode: 400 });
@@ -272,6 +286,115 @@ exports.schoolLogin = async (req, res) => {
     res.json({ success: true, token, school: publicSchool(membership.school), role: membership.role });
   } catch (error) { errorResponse(res, error); }
 };
+exports.createSchoolRequest = async (req, res) => {
+  let normalizedSchoolName;
+  let normalizedLocation;
+  try {
+    const schoolName = String(req.body?.schoolName || "").trim();
+    const location = String(req.body?.location || "").trim();
+    const contactPhone = String(req.body?.contactPhone || "").trim();
+    if (!schoolName || !location) {
+      return res.status(400).json({
+        success: false,
+        code: "SCHOOL_REQUEST_FIELDS_REQUIRED",
+        message: "School name and location are required.",
+      });
+    }
+    const oversized = [
+      ["schoolName", schoolName, 180],
+      ["location", location, 240],
+      ["contactPhone", contactPhone, 40],
+    ].find(([, value, max]) => value.length > max);
+    if (oversized) {
+      return res.status(400).json({
+        success: false,
+        code: "SCHOOL_REQUEST_FIELD_TOO_LONG",
+        field: oversized[0],
+        maxLength: oversized[2],
+        message: `${oversized[0]} must be ${oversized[2]} characters or fewer.`,
+      });
+    }
+    normalizedSchoolName = normalizeRequestText(schoolName);
+    normalizedLocation = normalizeRequestText(location);
+    const existing = await SchoolRequest.findOne({
+      parent: req.user._id,
+      normalizedSchoolName,
+      normalizedLocation,
+      status: { $in: ["PENDING_REVIEW", "CONTACTED"] },
+    });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        code: "ACTIVE_SCHOOL_REQUEST_EXISTS",
+        message: "You already have an active request for this school.",
+        request: schoolRequestDto(existing),
+      });
+    }
+    const session = await mongoose.startSession();
+    let request;
+    try {
+      await session.withTransaction(async () => {
+        [request] = await SchoolRequest.create([{
+          parent: req.user._id,
+          schoolName,
+          normalizedSchoolName,
+          location,
+          normalizedLocation,
+          contactPhone: contactPhone || null,
+        }], { session });
+        await audit({
+          actor: req.user._id,
+          action: "EDUPAY_SCHOOL_REQUEST_CREATED",
+          entityType: "EduPaySchoolRequest",
+          entityId: request._id,
+          metadata: { schoolName, location },
+          req,
+          session,
+        });
+      });
+    } finally {
+      await session.endSession();
+    }
+    return res.status(201).json({
+      success: true,
+      request: schoolRequestDto(request),
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      const existing = await SchoolRequest.findOne({
+        parent: req.user._id,
+        normalizedSchoolName,
+        normalizedLocation,
+        status: { $in: ["PENDING_REVIEW", "CONTACTED"] },
+      }).sort({ createdAt: -1 });
+      return res.status(409).json({
+        success: false,
+        code: "ACTIVE_SCHOOL_REQUEST_EXISTS",
+        message: "You already have an active request for this school.",
+        request: existing ? schoolRequestDto(existing) : undefined,
+      });
+    }
+    return errorResponse(res, error);
+  }
+};
+exports.adminSchoolRequests = async (req, res) => {
+  try {
+    const status = String(req.query.status || "").toUpperCase();
+    const filter = status && ["PENDING_REVIEW", "CONTACTED", "CLOSED"].includes(status)
+      ? { status }
+      : {};
+    const requests = await SchoolRequest.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
+    return res.json({
+      success: true,
+      requests: requests.map(schoolRequestDto),
+    });
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};
 exports.schoolDashboard = async (req, res) => { try { const school = req.eduPaySchool._id; const [students, plans, settlements] = await Promise.all([Child.countDocuments({ school }), Plan.find({ school }).lean(), Settlement.find({ school }).lean()]); res.json({ success: true, school: publicSchool(req.eduPaySchool), summary: { totalRegisteredStudents: students, activeEduPayStudents: plans.length, totalExpectedFees: round(plans.reduce((s, p) => s + p.officialFee, 0)), parentSavings: round((await Contribution.aggregate([{ $match: { plan: { $in: plans.map((p) => p._id) }, status: "SUCCESS" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]))[0]?.total), upcomingSettlements: settlements.filter((s) => !["SETTLED", "REVERSED"].includes(s.status)).length, completedSettlements: settlements.filter((s) => s.status === "SETTLED").length }, settlements }); } catch (error) { errorResponse(res, error); } };
 exports.schoolProfile = async (req, res) => { try { res.json({ success: true, school: publicSchool(req.eduPaySchool) }); } catch (error) { errorResponse(res, error); } };
 exports.schoolSessions = async (req, res) => { try { const rows = await EduPayAcademicSession.find({ school: req.eduPaySchool._id }).sort({ createdAt: -1 }); res.json({ success: true, sessions: rows }); } catch (error) { errorResponse(res, error); } };
@@ -289,7 +412,58 @@ exports.schoolReport = async (req, res) => { try { const [plans, settlements] = 
 
 exports.adminOverview = async (req, res) => { try { const [settings, parents, children, schools, plans, settlements, repayments, ledger] = await Promise.all([getSettings(), Plan.distinct("parent"), Child.countDocuments(), School.countDocuments(), Plan.countDocuments({ status: { $nin: ["CANCELLED"] } }), Settlement.find().lean(), EduPayRepayment.find({ status: { $in: ["ACTIVE", "PARTIALLY_PAID", "OVERDUE"] } }).lean(), EduLedger.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }])]); res.json({ success: true, settings, summary: { totalEduPayParents: parents.length, totalChildren: children, partnerSchools: schools, activePlans: plans, educationSavings: round(ledger[0]?.total), upcomingSettlements: settlements.filter((s) => !["SETTLED", "REVERSED"].includes(s.status)).length, completedSettlements: settlements.filter((s) => s.status === "SETTLED").length, outstandingRepayments: round(repayments.reduce((sum, r) => sum + r.amountRemaining, 0)), overdueRepayments: repayments.filter((r) => r.status === "OVERDUE").length, schoolCommissionRevenue: round(settlements.filter((s) => s.status === "SETTLED").reduce((sum, s) => sum + s.schoolCommissionAmount, 0)), parentChargeRevenue: round(settlements.filter((s) => s.status === "SETTLED").reduce((sum, s) => sum + s.parentChargeAmount, 0)) } }); } catch (error) { errorResponse(res, error); } };
 exports.adminReadiness = async (req, res) => { try { const modelEntries = Object.entries(EDUPAY_READINESS_MODELS); await EduPayDutyAssignment.init(); await Promise.all(modelEntries.filter(([, model]) => model?.init).map(([, model]) => model.init())); const indexes = {}; await Promise.all(modelEntries.filter(([, model]) => model?.collection?.listIndexes).map(async ([name, model]) => { indexes[name] = await model.collection.listIndexes().toArray(); })); const all = await EduPayDutyAssignment.find({}).sort({ user: 1, version: -1 }).lean(); const latest = new Map(); all.forEach((row) => { if (!latest.has(String(row.user))) latest.set(String(row.user), row); }); const eligible = new Set((await User.find({ _id: { $in: [...latest.keys()] }, status: "ACTIVE", role: "HEAD_OFFICE" }).select("_id").lean()).map((row) => String(row._id))); const current = [...latest.values()].filter((row) => row.active && eligible.has(String(row.user))); const holders = (permission) => new Set(current.filter((row) => row.permissions.includes(permission)).map((row) => String(row.user))); const manageUsers = holders("account.manage"); const verifyUsers = holders("account.verify"); const processUsers = holders("settlement.process"); const viableDutySeparation = [...manageUsers].some((manager) => [...verifyUsers].some((verifier) => verifier !== manager && [...processUsers].some((processor) => processor !== manager && processor !== verifier))); const settings = await getSettings(); const payoutConfig = { provider: Boolean(String(process.env.EDUPAY_SQUAD_TRANSFER_ENABLED).toLowerCase() === "true" && String(process.env.EDUPAY_SQUAD_PRODUCTION_ENABLED).toLowerCase() === "true" && process.env.EDUPAY_SQUAD_SECRET_KEY && process.env.EDUPAY_SQUAD_MERCHANT_ID && /^https:\/\/(?!.*(?:sandbox|api-d-))/i.test(String(process.env.EDUPAY_SQUAD_BASE_URL || ""))), accountEncryption: Boolean(String(process.env.EDUPAY_ACCOUNT_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY || "").trim()), settlementMethod: ["DEDUCT_COMMISSION", "GROSS_AND_RECEIVABLE"].includes(settings.settlementMethod), rates: Number(settings.schoolCommissionRate) >= 0 && Number(settings.parentShortfallChargeRate) >= 0 }; payoutConfig.ready = payoutConfig.provider && payoutConfig.accountEncryption && payoutConfig.settlementMethod && payoutConfig.rates; const dutyCoverage = { manage: manageUsers.size, verify: verifyUsers.size, process: processUsers.size, viableDutySeparation, ready: viableDutySeparation }; const ready = dutyCoverage.ready && payoutConfig.ready && await evaluateEduPayReadiness(); res.json({ success: true, ready, dutyCoverage, payoutConfig, checkedAt: new Date(), indexes }); } catch (error) { errorResponse(res, error); } };
-exports.adminSettings = async (req, res) => { try { const settings = await getSettings(); const feature = currentFeature(await AppSettings.findOne().lean(), FEATURE_REGISTRY.find((item) => item[0] === "edupay")); if (req.method === "GET") return res.json({ success: true, settings: { ...settings.toObject(), enabled: feature.effectiveEnabled } }); const allowed = ["schoolCommissionRate", "parentShortfallChargeRate", "minimumSavingsRequirement", "maximumEduPayCover", "maximumCoverPercentage", "defaultRepaymentPeriodDays", "settlementMethod", "settlementLeadDays", "gracePeriodDays", "autosaveEnabled"]; allowed.forEach((key) => { if (req.body[key] !== undefined) settings[key] = req.body[key]; }); settings.updatedBy = req.user._id; await settings.save(); await audit({ actor: req.user._id, action: "EDUPAY_SETTINGS_UPDATED", entityType: "EduPaySettings", entityId: settings._id, metadata: req.body, req }); res.json({ success: true, settings: { ...settings.toObject(), enabled: feature.effectiveEnabled } }); } catch (error) { errorResponse(res, error); } };
+exports.adminSettings = async (req, res) => {
+  try {
+    const allowed = {
+      schoolCommissionRate: { type: "percentage", min: 0, max: 100 },
+      parentShortfallChargeRate: { type: "percentage", min: 0, max: 100 },
+      minimumSavingsRequirement: { type: "number", min: 0 },
+      maximumEduPayCover: { type: "number", min: 0 },
+      maximumCoverPercentage: { type: "percentage", min: 0, max: 100 },
+      defaultRepaymentPeriodDays: { type: "integer", min: 1, max: 3650 },
+      settlementMethod: { type: "enum", values: ["DEDUCT_COMMISSION", "GROSS_AND_RECEIVABLE"] },
+      settlementLeadDays: { type: "integer", min: 0, max: 365 },
+      gracePeriodDays: { type: "integer", min: 0, max: 365 },
+      autosaveEnabled: { type: "boolean" },
+    };
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    if (req.method !== "GET") {
+      const unknown = Object.keys(body).filter((key) => !Object.prototype.hasOwnProperty.call(allowed, key));
+      if (unknown.length) {
+        const error = new Error(`Unknown EduPay setting(s): ${unknown.join(", ")}.`);
+        error.statusCode = 400;
+        error.code = "EDUPAY_SETTINGS_UNKNOWN_FIELD";
+        throw error;
+      }
+      const applied = {};
+      for (const [key, value] of Object.entries(body)) {
+        const rule = allowed[key];
+        const validNumber = typeof value === "number" && Number.isFinite(value);
+        const valid = rule.type === "boolean" ? typeof value === "boolean"
+          : rule.type === "enum" ? rule.values.includes(value)
+            : validNumber && (rule.type !== "integer" || Number.isInteger(value))
+              && value >= rule.min && value <= (rule.max ?? Infinity);
+        if (!valid) {
+          const error = new Error(`Invalid EduPay setting: ${key}.`);
+          error.statusCode = 400;
+          error.code = "EDUPAY_SETTINGS_INVALID_VALUE";
+          throw error;
+        }
+        applied[key] = value;
+      }
+      const settings = await getSettings();
+      Object.assign(settings, applied);
+      settings.updatedBy = req.user._id;
+      await settings.save();
+      const feature = currentFeature(await AppSettings.findOne().lean(), FEATURE_REGISTRY.find((item) => item[0] === "edupay"));
+      await audit({ actor: req.user._id, action: "EDUPAY_SETTINGS_UPDATED", entityType: "EduPaySettings", entityId: settings._id, metadata: applied, req });
+      return res.json({ success: true, settings: { ...settings.toObject(), enabled: feature.effectiveEnabled } });
+    }
+    const settings = await getSettings();
+    const feature = currentFeature(await AppSettings.findOne().lean(), FEATURE_REGISTRY.find((item) => item[0] === "edupay"));
+    return res.json({ success: true, settings: { ...settings.toObject(), enabled: feature.effectiveEnabled } });
+  } catch (error) { errorResponse(res, error); }
+};
 exports.adminSchools = async (req, res) => { try { const status = String(req.query.status || "").toUpperCase(); const filter = status && ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "REJECTED", "SUSPENDED"].includes(status) ? { status } : {}; if (req.query.state) filter.state = String(req.query.state).trim(); if (req.query.search) { const search = String(req.query.search).trim(); filter.$or = [{ name: new RegExp(search, "i") }, { email: new RegExp(search, "i") }, { registrationNumber: new RegExp(search, "i") }]; } const schools = await School.find(filter).sort({ createdAt: -1 }).lean(); res.json({ success: true, filter: { status: status || "ALL", state: req.query.state || null, search: req.query.search || null }, schools: schools.map(schoolAdminDto) }); } catch (error) { errorResponse(res, error); } };
 exports.adminSchoolDetail = async (req, res) => { try { const school = await School.findById(req.params.schoolId).populate("reviewedBy", "fullName email").lean(); if (!school) return res.status(404).json({ success: false, message: "School not found." }); res.json({ success: true, school: schoolAdminDto(school) }); } catch (error) { errorResponse(res, error); } };
 exports.adminSchoolPrivateAssets = async (req, res) => { try { const school = await School.findById(req.params.schoolId).select("logo supportingDocuments").lean(); if (!school) return res.status(404).json({ success: false, message: "School not found." }); res.json({ success: true, assets: { logo: school.logo, supportingDocuments: school.supportingDocuments } }); } catch (error) { errorResponse(res, error); } };
