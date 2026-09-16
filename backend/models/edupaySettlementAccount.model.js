@@ -11,5 +11,6 @@ const schema = new mongoose.Schema({
   verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   verifiedAt: { type: Date, default: null },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, immutable: true },
 }, { timestamps: true });
 module.exports = mongoose.model("EduPaySettlementAccount", schema);

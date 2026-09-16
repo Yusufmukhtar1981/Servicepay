@@ -351,26 +351,31 @@ test("Squad account verification uses exact lookup payload and persists canonica
 });
 
 test("explicit EduPay duty middleware ignores Head Office wildcard and enforces assigned duty", async () => {
+  const eligible = await User.create({ fullName: "Duty Eligible", phone: `085${Date.now()}`, email: `eligible-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" });
   let nextCalled = false; let denied;
   const response = { status: () => ({ json: (body) => { denied = body; } }) };
-  const req = { user: { _id: parent._id }, staffAccess: { isHeadOffice: true, permissions: ["*"] } };
+  const req = { user: { _id: eligible._id }, staffAccess: { isHeadOffice: true, permissions: ["*"] } };
   await requireExplicitEduPayDuty("account.verify")(req, response, () => { nextCalled = true; });
   assert.equal(nextCalled, false); assert.equal(denied.code, "EDUPAY_DUTY_REQUIRED");
-  await DutyAssignment.create({ user: parent._id, permissions: ["account.verify"], assignedBy: parent._id, version: 1 });
+  await DutyAssignment.create({ user: eligible._id, permissions: ["account.verify"], assignedBy: parent._id, version: 1 });
   await requireExplicitEduPayDuty("account.verify")(req, response, () => { nextCalled = true; });
   assert.equal(nextCalled, true);
   nextCalled = false; await requireExplicitEduPayDuty("account.manage")(req, response, () => { nextCalled = true; }); assert.equal(nextCalled, false);
+  await User.updateOne({ _id: eligible._id }, { $set: { role: "CUSTOMER" } }); nextCalled = false; await requireExplicitEduPayDuty("account.verify")(req, response, () => { nextCalled = true; }); assert.equal(nextCalled, false);
 });
 
 test("duty assignment endpoint appends assign, change, and revoke history", async () => {
-  const controller = require("../controllers/edupay.controller"); const actor = { _id: parent._id, role: "SUPER_ADMIN" }; const response = (callback) => ({ status: () => ({ json: callback }), json: callback });
+  const controller = require("../controllers/edupay.controller"); const target = await User.create({ fullName: "Duty Target", phone: `086${Date.now()}`, email: `target-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" }); const inactive = await User.create({ fullName: "Inactive Duty", phone: `087${Date.now()}`, email: `inactive-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "SUSPENDED" }); const actor = { _id: parent._id, role: "SUPER_ADMIN" }; const response = (callback) => ({ status: (code) => ({ json: (value) => callback({ status: code, ...value }) }), json: (value) => callback({ status: 200, ...value }) });
   let body;
-  await controller.adminEduPayDuty({ params: { userId: parent._id }, body: { permissions: ["account.manage", "account.verify"] }, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
+  await controller.adminEduPayDuty({ params: { userId: new mongoose.Types.ObjectId() }, body: { permissions: ["account.manage"] }, user: actor }, response((value) => { body = value; })); assert.equal(body.status, 404);
+  await controller.adminEduPayDuty({ params: { userId: parent._id }, body: { permissions: ["account.manage"] }, user: actor }, response((value) => { body = value; })); assert.equal(body.status, 422);
+  await controller.adminEduPayDuty({ params: { userId: inactive._id }, body: { permissions: ["account.manage"] }, user: actor }, response((value) => { body = value; })); assert.equal(body.status, 422);
+  await controller.adminEduPayDuty({ params: { userId: target._id }, body: { permissions: ["account.manage", "account.verify"] }, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
   assert.equal(body.success, true, JSON.stringify(body));
-  await controller.adminEduPayDuty({ params: { userId: parent._id }, body: { permissions: ["settlement.process"] }, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
+  await controller.adminEduPayDuty({ params: { userId: target._id }, body: { permissions: ["settlement.process"] }, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
   assert.equal(body.success, true, JSON.stringify(body));
-  await controller.adminRevokeEduPayDuty({ params: { userId: parent._id }, body: {}, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
-  const rows = await DutyAssignment.find({ user: parent._id }).sort({ version: 1 });
+  await controller.adminRevokeEduPayDuty({ params: { userId: target._id }, body: {}, user: actor, ip: "127.0.0.1" }, response((value) => { body = value; }));
+  const rows = await DutyAssignment.find({ user: target._id }).sort({ version: 1 });
   assert.equal(rows.length, 3); assert.deepEqual(rows.map((row) => row.version), [1, 2, 3]); assert.equal(rows[2].active, false); assert.equal(String(rows[2].previousAssignment), String(rows[1]._id));
 });
 
