@@ -22,6 +22,8 @@ const SettlementAccount = require("../models/edupaySettlementAccount.model");
 const PayoutEvidence = require("../models/edupayPayoutEvidence.model");
 const Commission = require("../models/edupayCommission.model");
 const AccountVerificationEvidence = require("../models/edupayAccountVerificationEvidence.model");
+const DutyAssignment = require("../models/edupayDutyAssignment.model");
+const { requireExplicitEduPayDuty } = require("../middleware/edupayDuty.middleware");
 const Command = require("../models/edupayCommand.model");
 const squad = require("../services/edupaySquad.service");
 const Audit = require("../models/edupayAuditLog.model");
@@ -35,7 +37,7 @@ let session;
 let term;
 let classLevel;
 let fee;
-const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, AppSettings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, AccountVerificationEvidence, PayoutEvidence, Commission, Command];
+const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, AppSettings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, AccountVerificationEvidence, PayoutEvidence, Commission, Command, DutyAssignment];
 
 test.before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
@@ -337,14 +339,27 @@ test("dashboard enabled state follows AppSettings feature authority despite EduP
 test("Squad account verification uses exact lookup payload and persists canonical evidence", async () => {
   const old = { transfer: process.env.EDUPAY_SQUAD_TRANSFER_ENABLED, production: process.env.EDUPAY_SQUAD_PRODUCTION_ENABLED, secret: process.env.EDUPAY_SQUAD_SECRET_KEY, merchant: process.env.EDUPAY_SQUAD_MERCHANT_ID, base: process.env.EDUPAY_SQUAD_BASE_URL, encryption: process.env.EDUPAY_ACCOUNT_ENCRYPTION_KEY };
   Object.assign(process.env, { EDUPAY_SQUAD_TRANSFER_ENABLED: "true", EDUPAY_SQUAD_PRODUCTION_ENABLED: "true", EDUPAY_SQUAD_SECRET_KEY: "test-secret", EDUPAY_SQUAD_MERCHANT_ID: "merchant", EDUPAY_SQUAD_BASE_URL: "https://api.squadco.com", EDUPAY_ACCOUNT_ENCRYPTION_KEY: "account-test-key" });
+  const verifier = await User.create({ fullName: "Distinct Verifier", phone: `081${Date.now()}`, email: `verifier-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" });
   const account = await squad.saveAccount({ schoolId: school._id, accountName: "Operator Name", bankName: "Bank", bankCode: "058", accountNumber: "0123456789", actor: parent._id });
   const originalPost = axios.post; let request;
   axios.post = async (url, body) => { request = { url, body }; return { status: 200, data: { data: { account_number: "0123456789", account_name: "CANONICAL BENEFICIARY", id: "lookup-1" } } }; };
   try {
-    const result = await squad.verifyAccount({ schoolId: school._id, actor: parent._id });
+    const result = await squad.verifyAccount({ schoolId: school._id, actor: verifier._id });
     assert.equal(request.body.bank_code, "058"); assert.equal(request.body.account_number, "0123456789"); assert.equal(result.account.accountName, "CANONICAL BENEFICIARY"); assert.equal(result.account.verified, true); assert.equal(await AccountVerificationEvidence.countDocuments({ account: account._id }), 1);
     await assert.rejects(() => AccountVerificationEvidence.updateOne({ _id: result.evidence._id }, { $set: { canonicalAccountName: "tampered" } }), /Immutable EduPay record/);
   } finally { axios.post = originalPost; for (const [key, value] of Object.entries({ EDUPAY_SQUAD_TRANSFER_ENABLED: old.transfer, EDUPAY_SQUAD_PRODUCTION_ENABLED: old.production, EDUPAY_SQUAD_SECRET_KEY: old.secret, EDUPAY_SQUAD_MERCHANT_ID: old.merchant, EDUPAY_SQUAD_BASE_URL: old.base, EDUPAY_ACCOUNT_ENCRYPTION_KEY: old.encryption })) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
+});
+
+test("explicit EduPay duty middleware ignores Head Office wildcard and enforces assigned duty", async () => {
+  let nextCalled = false; let denied;
+  const response = { status: () => ({ json: (body) => { denied = body; } }) };
+  const req = { user: { _id: parent._id }, staffAccess: { isHeadOffice: true, permissions: ["*"] } };
+  await requireExplicitEduPayDuty("account.verify")(req, response, () => { nextCalled = true; });
+  assert.equal(nextCalled, false); assert.equal(denied.code, "EDUPAY_DUTY_REQUIRED");
+  await DutyAssignment.create({ user: parent._id, permissions: ["account.verify"], assignedBy: parent._id });
+  await requireExplicitEduPayDuty("account.verify")(req, response, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+  nextCalled = false; await requireExplicitEduPayDuty("account.manage")(req, response, () => { nextCalled = true; }); assert.equal(nextCalled, false);
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {

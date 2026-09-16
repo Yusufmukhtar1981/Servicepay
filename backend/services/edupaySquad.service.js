@@ -46,6 +46,7 @@ async function saveAccount({ schoolId, accountName, bankName, bankCode, accountN
 async function verifyAccount({ schoolId, actor }) {
   const cfg = providerConfig(); const account = await Account.findOne({ school: schoolId }).select("+encryptedAccountNumber");
   if (!account) throw fail("Settlement account not found.", 404);
+  if (String(account.updatedBy) === String(actor)) throw fail("Account verifier must be distinct from the account updater.", 409, "SEPARATION_OF_DUTIES_REQUIRED");
   const accountNumber = decryptAccount(account.encryptedAccountNumber);
   const response = await axios.post(`${cfg.baseUrl}/payout/account/lookup`, { bank_code: String(account.bankCode), account_number: accountNumber }, { timeout: 45000, headers: { Authorization: `Bearer ${cfg.secret}`, "Content-Type": "application/json" }, validateStatus: () => true });
   const data = response.data?.data || response.data || {};
@@ -105,10 +106,13 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
   return output || Settlement.findById(settlement._id);
 }
 async function processSettlement({ settlementId, actor, req }) {
-  const cfg = providerConfig(); const account = await Account.findOne({ school: (await Settlement.findById(settlementId)).school, active: true, verified: true }).select("+encryptedAccountNumber");
+  const cfg = providerConfig(); const settlementRecord = await Settlement.findById(settlementId); const account = await Account.findOne({ school: settlementRecord?.school, active: true, verified: true }).select("+encryptedAccountNumber");
+  if (!settlementRecord) throw fail("Settlement not found.", 404);
+  if (String(settlementRecord.approvedBy) === String(actor)) throw fail("Settlement processor must be distinct from the approver.", 409, "SEPARATION_OF_DUTIES_REQUIRED");
   if (!account) throw fail("A verified EduPay settlement account is required.", 409);
   const verification = await AccountVerificationEvidence.findOne({ account: account._id }).sort({ verificationVersion: -1 });
   if (!verification || String(verification.canonicalAccountName) !== String(account.accountName)) throw fail("A latest verified Squad settlement-account evidence record is required.", 409, "ACCOUNT_VERIFICATION_REQUIRED");
+  if (String(account.updatedBy) === String(actor) || String(verification.verifiedBy) === String(actor)) throw fail("Settlement processor must be distinct from account manager and verifier.", 409, "SEPARATION_OF_DUTIES_REQUIRED");
   const session = await mongoose.startSession(); let settlement;
   try { await session.withTransaction(async () => {
     const current = await Settlement.findOne({ _id: settlementId, status: "APPROVED" }).session(session); if (!current) throw fail("Settlement must be APPROVED before PROCESS.", 409);
