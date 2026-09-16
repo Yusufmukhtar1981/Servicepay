@@ -5,6 +5,7 @@ const LedgerEntry = require("../models/ledgerEntry.model");
 const Transaction = require("../models/transaction.model");
 const Notification = require("../models/notification.model");
 const { postDebit } = require("./ledger.service");
+const { postCredit } = require("./ledger.service");
 const { verifyTransactionPin } = require("./transactionPin.service");
 const Settings = require("../models/edupaySettings.model");
 const School = require("../models/edupaySchool.model");
@@ -18,6 +19,9 @@ const { EduPayRepayment, EduPayRepaymentTransaction } = require("../models/edupa
 const { EduPaySponsorInvite, EduPaySponsorContribution } = require("../models/edupaySponsor.model");
 const Audit = require("../models/edupayAuditLog.model");
 const Command = require("../models/edupayCommand.model");
+const Commission = require("../models/edupayCommission.model");
+const AppSettings = require("../models/appSettings.model");
+const { FEATURE_REGISTRY, currentFeature } = require("../controllers/featureControl.controller");
 
 const round = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 const reference = (prefix) => `${prefix}-${Date.now()}-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
@@ -29,9 +33,11 @@ async function getSettings(session = null) {
   return query;
 }
 async function ensureInitiationEnabled() {
-  const settings = await getSettings();
-  if (!settings.enabled) { const error = new Error("EduPay is temporarily unavailable for new plans and contributions."); error.statusCode = 403; error.code = "EDUPAY_DISABLED"; throw error; }
-  return settings;
+  const settings = await AppSettings.findOne().lean();
+  const definition = FEATURE_REGISTRY.find((item) => item[0] === "edupay");
+  const feature = currentFeature(settings, definition);
+  if (!feature.effectiveEnabled) { const error = new Error("EduPay is temporarily unavailable for new plans and contributions."); error.statusCode = 403; error.code = "EDUPAY_DISABLED"; throw error; }
+  return feature;
 }
 async function audit({ actor, action, entityType, entityId = null, school = null, metadata = {}, req, session = null }) {
   const options = session ? { session } : undefined;
@@ -188,6 +194,7 @@ async function repayFromWallet({ userId, repaymentId, amount, transactionPin, id
     await session.withTransaction(async () => {
       const repayment = await EduPayRepayment.findOne({ _id: repaymentId, parent: userId }).session(session);
       if (!repayment) { const error = new Error("Repayment not found."); error.statusCode = 404; throw error; }
+      if (repayment.status === "RESTRUCTURED") { const error = new Error("This repayment was closed by a settlement reversal."); error.statusCode = 409; throw error; }
       if (value > round(repayment.amountRemaining)) { const error = new Error("Repayment amount exceeds the remaining balance."); error.statusCode = 400; throw error; }
       const before = await User.findById(userId).select("walletBalance").session(session);
       const updated = await User.findOneAndUpdate({ _id: userId, status: "ACTIVE", walletBalance: { $gte: value } }, { $inc: { walletBalance: -value } }, { new: true, session });
@@ -277,10 +284,22 @@ async function reverseSettlement({ settlementId, actor, transactionId, providerR
       const refund = await Transaction.findOne({ _id: transactionId, reference: providerReference, serviceType: "EDUPAY", status: "SUCCESSFUL", amount: settlement.schoolNetSettlement, "providerResponse.edupaySettlementId": String(settlement._id), "providerResponse.reversal": true }).session(session);
       if (!refund) { const error = new Error("A successful authoritative reversal transaction matching the settled amount is required."); error.statusCode = 409; throw error; }
       const [reversal] = await Reversal.create([{ settlement: settlement._id, plan: settlement.plan, parent: settlement.parent, school: settlement.school, amount: settlement.schoolNetSettlement, reference: `REV-${refund.reference}`, reason: reason || "Settlement reversed", actor }], { session });
+      const commission = await Commission.findOne({ settlement: settlement._id, direction: "RECEIVABLE" }).session(session);
+      if (commission) await Commission.create([{ settlement: settlement._id, school: settlement.school, amount: commission.amount, direction: "REVERSAL", original: commission._id, reference: `${commission.reference}-REVERSAL`, createdBy: actor }], { session });
       const saved = await availableSavings(settlement.plan, session);
       if (settlement.parentSavedAmount > 0) await createEduLedger({ parent: settlement.parent, child: settlement.child, plan: settlement.plan, direction: "CREDIT", type: "REVERSAL", amount: settlement.parentSavedAmount, openingBalance: saved, reference: `${reversal.reference}-SAVINGS`, idempotencyKey: `${reversal.reference}-savings`, source: "REVERSAL", session });
       const repayment = await EduPayRepayment.findOne({ settlement: settlement._id }).session(session);
-      if (repayment) await EduPayRepayment.updateOne({ _id: repayment._id }, { $set: { status: "RESTRUCTURED", reversalSettlement: settlement._id, reversedUnpaidAmount: round(Math.max(0, repayment.amountRemaining)) } }, { session });
+      if (repayment) {
+        if (repayment.amountPaid > 0) {
+          const parent = await User.findById(repayment.parent).select("walletBalance").session(session);
+          const credited = await User.findOneAndUpdate({ _id: repayment.parent, status: "ACTIVE" }, { $inc: { walletBalance: repayment.amountPaid } }, { new: true, session });
+          if (!credited) throw new Error("Parent wallet is unavailable for repayment reversal.");
+          const refundRef = `EDUPAY-REFUND-${settlement.reference}`;
+          const [refundTx] = await Transaction.create([{ reference: refundRef, customerId: repayment.parent, serviceType: "EDUPAY", amount: repayment.amountPaid, status: "SUCCESSFUL", provider: "EDUPAY_REVERSAL", providerResponse: { settlement: String(settlement._id), reversal: true } }], { session });
+          await postCredit({ userId: repayment.parent, amount: repayment.amountPaid, openingBalance: parent.walletBalance, closingBalance: credited.walletBalance, service: "EDUPAY", reference: refundRef, idempotencyKey: `${refundRef}-LEDGER`, transactionId: refundTx._id, narration: "EduPay repayment reversal refund", session });
+        }
+        await EduPayRepayment.updateOne({ _id: repayment._id }, { $set: { status: "RESTRUCTURED", reversalSettlement: settlement._id, reversedUnpaidAmount: round(Math.max(0, repayment.amountRemaining)) } }, { session });
+      }
       await Settlement.updateOne({ _id: settlement._id, status: "SETTLED" }, { $set: { status: "REVERSED", reversalOf: settlement._id } }, { session });
       await Plan.updateOne({ _id: settlement.plan }, { $set: { status: "REVERSED" } }, { session });
       await audit({ actor, action: "EDUPAY_SETTLEMENT_REVERSED", entityType: "EduPaySettlementReversal", entityId: reversal._id, school: settlement.school, metadata: { refundTransaction: refund._id }, req, session });

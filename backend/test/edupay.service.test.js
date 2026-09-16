@@ -16,6 +16,11 @@ const { EduPayRepayment, EduPayRepaymentTransaction } = require("../models/edupa
 const { EduPaySponsorInvite, EduPaySponsorContribution } = require("../models/edupaySponsor.model");
 const Reversal = require("../models/edupaySettlementReversal.model");
 const Settlement = require("../models/edupaySettlement.model");
+const SettlementAccount = require("../models/edupaySettlementAccount.model");
+const PayoutEvidence = require("../models/edupayPayoutEvidence.model");
+const Commission = require("../models/edupayCommission.model");
+const Command = require("../models/edupayCommand.model");
+const squad = require("../services/edupaySquad.service");
 const Audit = require("../models/edupayAuditLog.model");
 const { contributeFromWallet, contributeSponsorFromWallet, calculateSettlement, availableSavings, confirmSettlement, reverseSettlement } = require("../services/edupay.service");
 
@@ -27,7 +32,7 @@ let session;
 let term;
 let classLevel;
 let fee;
-const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit];
+const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, PayoutEvidence, Commission, Command];
 
 test.before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
@@ -223,6 +228,39 @@ test("EduPay financial ledger and audit records cannot be mutated", async () => 
 test("all critical model indexes can be initialized without startup data mutation", async () => {
   await Promise.all([EduLedger.init(), Settlement.init(), EduPaySponsorContribution.init(), EduPayRepaymentTransaction.init()]);
   assert.ok((await EduLedger.collection.listIndexes().toArray()).length > 0);
+});
+
+test("Squad PROCESS fails safely with explicit configuration error", async () => {
+  const previous = process.env.EDUPAY_SQUAD_TRANSFER_ENABLED;
+  delete process.env.EDUPAY_SQUAD_TRANSFER_ENABLED;
+  await assert.rejects(() => squad.processSettlement(new mongoose.Types.ObjectId()), (error) => error.code === "CONFIGURATION_REQUIRED");
+  if (previous === undefined) delete process.env.EDUPAY_SQUAD_TRANSFER_ENABLED; else process.env.EDUPAY_SQUAD_TRANSFER_ENABLED = previous;
+});
+
+test("Squad webhook HMAC rejects invalid signatures and accepts timing-safe valid signatures", async () => {
+  const crypto = require("crypto"); const raw = Buffer.from('{"event":"success"}'); const secret = "edupay-test-secret";
+  const signature = crypto.createHmac("sha512", secret).update(raw).digest("hex");
+  assert.equal(squad.timingSafe(raw, signature, secret), true);
+  assert.equal(squad.timingSafe(raw, `${signature.slice(0, -2)}00`, secret), false);
+});
+
+test("verified Squad callback creates immutable payout evidence and finalizes once", async () => {
+  const settlement = await Settlement.create({ ...calculateSettlement({ officialFee: 200000, saved: 0, settings: await Settings.findOne() }), parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-WEBHOOK", idempotencyKey: "set-webhook", providerReference: "EDUPAY-SET-WEBHOOK", status: "PROCESSING" });
+  const raw = JSON.stringify({ event: "SUCCESS", data: { transaction_reference: "EDUPAY-SET-WEBHOOK", amount: 19000000, currency: "NGN", status: "SUCCESS" } });
+  const old = process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = "edupay-test-secret";
+  const result = await squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature: require("crypto").createHmac("sha512", process.env.EDUPAY_SQUAD_WEBHOOK_SECRET).update(raw).digest("hex"), req: {} });
+  assert.equal(result.status, "SETTLED");
+  assert.equal(await PayoutEvidence.countDocuments({ settlement: settlement._id }), 1);
+  assert.equal(await Transaction.countDocuments({ reference: "EDUPAY-SET-WEBHOOK", serviceType: "EDUPAY" }), 1);
+  const replay = await squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature: require("crypto").createHmac("sha512", process.env.EDUPAY_SQUAD_WEBHOOK_SECRET).update(raw).digest("hex"), req: {} });
+  assert.equal(replay.status, "SETTLED");
+  if (old === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = old;
+});
+
+test("payout evidence fields are immutable after persistence", async () => {
+  const settlement = await Settlement.create({ ...calculateSettlement({ officialFee: 200000, saved: 0, settings: await Settings.findOne() }), parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-EVIDENCE-IMM", idempotencyKey: "set-evidence-imm", status: "PROCESSING" });
+  const evidence = await PayoutEvidence.create({ settlement: settlement._id, providerReference: "EVIDENCE-IMM", normalizedStatus: "SUCCESSFUL", amount: 19000000, currency: "NGN", eventType: "SUCCESS", payloadDigest: "digest-imm", source: "WEBHOOK" });
+  await assert.rejects(() => PayoutEvidence.updateOne({ _id: evidence._id }, { $set: { providerReference: "changed" } }), /Immutable EduPay record/);
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {

@@ -171,9 +171,12 @@ const privacyRequestRoutes = require("./routes/privacyRequest.routes");
 const svpRoutes = require("./routes/svp.routes");
 const edupayRoutes = require("./routes/edupay.routes");
 const adminEdupayRoutes = require("./routes/adminEdupay.routes");
+const edupaySquadWebhookRoutes = require("./routes/edupaySquadWebhook.routes");
 
 app.use(helmet());
 app.use(cors());
+// Must precede the global JSON parser so Squad HMAC covers the exact bytes.
+app.use("/api/edupay/webhooks/squad", edupaySquadWebhookRoutes);
 
 /*
  * Keep the original raw JSON payload.

@@ -7,7 +7,7 @@ const schema = immutableSchema({
   reference: { type: String, required: true, unique: true, immutable: true },
   idempotencyKey: { type: String, required: true, unique: true, immutable: true },
   intentHash: { type: String, immutable: true, default: "LEGACY" },
-  status: { type: String, enum: ["READY_FOR_SETTLEMENT", "ADMIN_REVIEW", "APPROVED", "PROCESSING", "SETTLED", "FAILED", "REVERSED", "CANCELLED", "DISPUTED"], default: "READY_FOR_SETTLEMENT", index: true },
+  status: { type: String, enum: ["READY_FOR_SETTLEMENT", "ADMIN_REVIEW", "APPROVED", "PROCESSING", "PENDING_REVIEW", "SETTLED", "FAILED", "REVERSED", "CANCELLED", "DISPUTED"], default: "READY_FOR_SETTLEMENT", index: true },
   officialFee: { ...money(0), required: true, immutable: true },
   parentSavedAmount: { ...money(0), required: true, immutable: true },
   servicepayFundedPrincipal: { ...money(0), required: true, immutable: true },
@@ -28,7 +28,9 @@ const schema = immutableSchema({
   confirmedAt: Date,
   failureReason: String,
   reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlement", default: null, immutable: true },
-}, { mutablePaths: ["status", "approvedBy", "approvedAt", "confirmedBy", "confirmedAt", "providerReference", "provider", "failureReason", "reversalOf"] });
+  beneficiaryAccountSnapshot: { type: mongoose.Schema.Types.Mixed, default: null, immutable: true },
+  requeryLeaseUntil: { type: Date, default: null },
+}, { mutablePaths: ["status", "approvedBy", "approvedAt", "confirmedBy", "confirmedAt", "providerReference", "provider", "failureReason", "reversalOf", "beneficiaryAccountSnapshot", "requeryLeaseUntil"] });
 schema.index({ plan: 1 }, { unique: true });
 schema.index({ school: 1, status: 1, settlementDate: 1 });
 module.exports = mongoose.model("EduPaySettlement", schema);

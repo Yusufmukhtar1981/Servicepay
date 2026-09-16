@@ -42,8 +42,9 @@ const FEATURE_ROUTE_REGISTRY = Object.freeze([
       /^\/api\/edupay\/children$/,
       /^\/api\/edupay\/plans$/,
       /^\/api\/edupay\/plans\/[^/]+\/(?:contributions|autosave|sponsor-invites)$/,
-      /^\/api\/edupay\/repayments\/[^/]+\/payments$/,
       /^\/api\/edupay\/sponsor\/[^/]+\/contribute$/,
+      /^\/api\/edupay\/schools\/apply$/,
+      /^\/api\/edupay\/school\/(?:sessions|terms|classes|fees)$/,
     ],
   },
   {
