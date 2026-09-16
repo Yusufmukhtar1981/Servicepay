@@ -44,6 +44,7 @@ const FEATURE_REGISTRY = Object.freeze([
   ["cards", "Cards", "Lifestyle & Services", "ServicePay cards.", null],
   ["flightBooking", "Flight Booking", "Lifestyle & Services", "Flight booking when available.", "flightBooking"],
   ["referral", "Referral", "Growth", "Customer referral programme.", null],
+  ["edupay", "EduPay", "Education", "Education savings, school settlement and repayment.", null],
   ["notifications", "Notifications", "Platform", "Customer notifications.", "notifications"],
 ]);
 

@@ -1,0 +1,19 @@
+const { mongoose, money } = require("./edupayModelUtils");
+const schema = new mongoose.Schema({
+  parent: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, immutable: true, index: true },
+  child: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayChild", required: true, immutable: true, index: true },
+  school: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySchool", required: true, immutable: true, index: true },
+  session: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayAcademicSession", required: true, immutable: true },
+  term: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayTerm", required: true, immutable: true },
+  classLevel: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayClass", required: true, immutable: true },
+  feeStructure: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayFeeStructure", required: true, immutable: true },
+  officialFee: { ...money(0), required: true, immutable: true },
+  savingFrequency: { type: String, enum: ["DAILY", "WEEKLY", "MONTHLY", "CUSTOM"], default: "MONTHLY" },
+  targetDate: { type: Date, required: true },
+  recommendedContribution: money(0),
+  status: { type: String, enum: ["SAVING", "UPCOMING", "READY_FOR_SETTLEMENT", "ADMIN_REVIEW", "APPROVED", "PROCESSING", "SETTLED", "FAILED", "REVERSED", "CANCELLED", "DISPUTED"], default: "SAVING", index: true },
+  autosave: { enabled: { type: Boolean, default: false }, amount: money(0), frequency: { type: String, enum: ["DAILY", "WEEKLY", "MONTHLY", "CUSTOM", null], default: null }, nextContributionAt: Date, pausedAt: Date },
+}, { timestamps: true });
+schema.index({ parent: 1, status: 1 });
+schema.index({ school: 1, status: 1, targetDate: 1 });
+module.exports = mongoose.model("EduPayPlan", schema);

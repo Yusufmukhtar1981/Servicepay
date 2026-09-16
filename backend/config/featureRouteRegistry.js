@@ -36,6 +36,17 @@ const FEATURE_ROUTE_REGISTRY = Object.freeze([
   },
   { key: "marketplace", methods: ["POST"], patterns: [/^\/api\/marketplace\/orders$/] },
   {
+    key: "edupay",
+    methods: ["POST", "PATCH"],
+    patterns: [
+      /^\/api\/edupay\/children$/,
+      /^\/api\/edupay\/plans$/,
+      /^\/api\/edupay\/plans\/[^/]+\/(?:contributions|autosave|sponsor-invites)$/,
+      /^\/api\/edupay\/repayments\/[^/]+\/payments$/,
+      /^\/api\/edupay\/sponsor\/[^/]+\/contribute$/,
+    ],
+  },
+  {
     key: "storePosting",
     methods: ["POST"],
     patterns: [

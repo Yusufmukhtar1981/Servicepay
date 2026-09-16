@@ -71,6 +71,7 @@ const transactionSchema =
            "PHONE_FINANCING_REFUND",
            "PROTECTED_DEAL",
            "INTERSTATE_LOGISTICS",
+           "EDUPAY",
         ],
         required: true,
         index: true,
