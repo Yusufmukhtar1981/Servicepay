@@ -28,6 +28,11 @@ async function getSettings(session = null) {
   if (session) query = query.session(session);
   return query;
 }
+async function ensureInitiationEnabled() {
+  const settings = await getSettings();
+  if (!settings.enabled) { const error = new Error("EduPay is temporarily unavailable for new plans and contributions."); error.statusCode = 403; error.code = "EDUPAY_DISABLED"; throw error; }
+  return settings;
+}
 async function audit({ actor, action, entityType, entityId = null, school = null, metadata = {}, req, session = null }) {
   const options = session ? { session } : undefined;
   return (await Audit.create([{ actor, action, entityType, entityId, school, metadata, ip: req?.ip || null }], options))[0];
@@ -96,6 +101,7 @@ function assertIntent(existing, intentHash) {
 }
 
 async function contributeFromWallet({ userId, planId, amount, transactionPin, idempotencyKey }) {
+  await ensureInitiationEnabled();
   ensureObjectId(planId, "Plan");
   const value = round(amount); if (!(value > 0)) { const error = new Error("Contribution amount must be greater than zero."); error.statusCode = 400; throw error; }
   if (!idempotencyKey) { const error = new Error("Idempotency-Key is required."); error.statusCode = 400; throw error; }
@@ -133,6 +139,7 @@ async function contributeFromWallet({ userId, planId, amount, transactionPin, id
 }
 
 async function contributeSponsorFromWallet({ sponsorId, tokenHash, amount, transactionPin, idempotencyKey }) {
+  await ensureInitiationEnabled();
   const value = round(amount);
   if (!(value > 0) || !idempotencyKey) { const error = new Error("A valid amount and Idempotency-Key are required."); error.statusCode = 400; throw error; }
   await verifyTransactionPin(sponsorId, transactionPin);
