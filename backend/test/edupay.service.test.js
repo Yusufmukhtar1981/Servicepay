@@ -213,7 +213,8 @@ test("reversal requires successful authoritative refund and is idempotent", asyn
 test("successful reversal appends compensation, restructures repayment, and replays", async () => {
   const settlement = await Settlement.create({ ...calculateSettlement({ officialFee: 200000, saved: 0, settings: await Settings.findOne() }), parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-REV-OK", idempotencyKey: "set-rev-ok", status: "SETTLED" });
   const refund = await Transaction.create({ reference: "REFUND-1", customerId: parent._id, serviceType: "EDUPAY", amount: 190000, status: "SUCCESSFUL", provider: "BANK", providerResponse: { edupaySettlementId: String(settlement._id), reversal: true } });
-  const result = await reverseSettlement({ settlementId: settlement._id, actor: parent._id, transactionId: refund._id, providerReference: refund.reference, idempotencyKey: "reverse-ok" });
+  const evidence = await PayoutEvidence.create({ settlement: settlement._id, coreTransaction: refund._id, providerReference: refund.reference, normalizedStatus: "REVERSED", amount: 19000000, currency: "NGN", eventType: "REVERSED", payloadDigest: "legacy-reversal-evidence", source: "REQUERY" });
+  const result = await reverseSettlement({ settlementId: settlement._id, actor: parent._id, transactionId: refund._id, providerReference: refund.reference, evidenceId: evidence._id, idempotencyKey: "reverse-ok" });
   assert.equal(result.reversal.reference, "REV-REFUND-1");
   assert.equal((await Settlement.findById(settlement._id)).status, "REVERSED");
   const replay = await reverseSettlement({ settlementId: settlement._id, actor: parent._id, transactionId: refund._id, providerReference: refund.reference, idempotencyKey: "reverse-ok" });
@@ -261,6 +262,21 @@ test("payout evidence fields are immutable after persistence", async () => {
   const settlement = await Settlement.create({ ...calculateSettlement({ officialFee: 200000, saved: 0, settings: await Settings.findOne() }), parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-EVIDENCE-IMM", idempotencyKey: "set-evidence-imm", status: "PROCESSING" });
   const evidence = await PayoutEvidence.create({ settlement: settlement._id, providerReference: "EVIDENCE-IMM", normalizedStatus: "SUCCESSFUL", amount: 19000000, currency: "NGN", eventType: "SUCCESS", payloadDigest: "digest-imm", source: "WEBHOOK" });
   await assert.rejects(() => PayoutEvidence.updateOne({ _id: evidence._id }, { $set: { providerReference: "changed" } }), /Immutable EduPay record/);
+});
+
+test("settlement lifecycle fields persist after approval, processing, provider callback, and reload", async () => {
+  const settlement = await Settlement.create({ ...calculateSettlement({ officialFee: 200000, saved: 0, settings: await Settings.findOne() }), parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-LIFECYCLE", idempotencyKey: "set-lifecycle", status: "ADMIN_REVIEW" });
+  await Settlement.updateOne({ _id: settlement._id, status: "ADMIN_REVIEW" }, { $set: { status: "APPROVED", approvedBy: parent._id, approvedAt: new Date("2025-01-01") } });
+  await Settlement.updateOne({ _id: settlement._id, status: "APPROVED" }, { $set: { status: "PROCESSING", provider: "SQUAD", providerReference: "EDUPAY-SET-LIFECYCLE", beneficiaryAccountSnapshot: { bankCode: "000", accountNumberLast4: "4321" } } });
+  const reloaded = await Settlement.findById(settlement._id);
+  assert.equal(String(reloaded.approvedBy), String(parent._id)); assert.equal(reloaded.provider, "SQUAD"); assert.equal(reloaded.providerReference, "EDUPAY-SET-LIFECYCLE"); assert.equal(reloaded.beneficiaryAccountSnapshot.accountNumberLast4, "4321");
+});
+
+test("signed provider success callback recovers a PENDING_REVIEW settlement", async () => {
+  const settlement = await Settlement.create({ ...calculateSettlement({ officialFee: 200000, saved: 0, settings: await Settings.findOne() }), parent: parent._id, child: plan.child, school: school._id, plan: plan._id, reference: "SET-PENDING", idempotencyKey: "set-pending", providerReference: "EDUPAY-SET-PENDING", status: "PENDING_REVIEW" });
+  const raw = JSON.stringify({ event: "SUCCESS", data: { transaction_reference: "EDUPAY-SET-PENDING", amount: 19000000, currency: "NGN", status: "SUCCESS" } }); const secret = "pending-secret"; const old = process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = secret;
+  const result = await squad.handleWebhook({ payload: JSON.parse(raw), raw: Buffer.from(raw), signature: require("crypto").createHmac("sha512", secret).update(raw).digest("hex"), req: {} });
+  assert.equal(result.status, "SETTLED"); if (old === undefined) delete process.env.EDUPAY_SQUAD_WEBHOOK_SECRET; else process.env.EDUPAY_SQUAD_WEBHOOK_SECRET = old;
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {

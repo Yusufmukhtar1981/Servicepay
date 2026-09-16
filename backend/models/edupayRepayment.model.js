@@ -11,7 +11,7 @@ const repaymentSchema = new mongoose.Schema({
   amountRemaining: money(0),
   dueDate: Date,
   nextPaymentAt: Date,
-  status: { type: String, enum: ["ACTIVE", "PARTIALLY_PAID", "PAID", "OVERDUE", "RESTRUCTURED"], default: "ACTIVE", index: true },
+  status: { type: String, enum: ["ACTIVE", "PARTIALLY_PAID", "PAID", "OVERDUE", "RESTRUCTURED", "CANCELLED"], default: "ACTIVE", index: true },
   reversalSettlement: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlement", default: null },
   reversedUnpaidAmount: money(0),
 }, { timestamps: true });

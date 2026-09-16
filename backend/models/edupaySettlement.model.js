@@ -20,17 +20,25 @@ const schema = immutableSchema({
   schoolNetSettlement: { ...money(0), required: true, immutable: true },
   commissionMethod: { type: String, enum: ["DEDUCT_COMMISSION", "GROSS_AND_RECEIVABLE"], required: true, immutable: true },
   settlementDate: { type: Date, required: true, immutable: true },
-  providerReference: { type: String, default: null, immutable: true },
-  provider: { type: String, default: null, immutable: true },
-  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, immutable: true },
+  providerReference: { type: String, default: null },
+  provider: { type: String, default: null },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   approvedAt: Date,
-  confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, immutable: true },
+  confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   confirmedAt: Date,
   failureReason: String,
-  reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlement", default: null, immutable: true },
-  beneficiaryAccountSnapshot: { type: mongoose.Schema.Types.Mixed, default: null, immutable: true },
+  reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlement", default: null },
+  beneficiaryAccountSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   requeryLeaseUntil: { type: Date, default: null },
 }, { mutablePaths: ["status", "approvedBy", "approvedAt", "confirmedBy", "confirmedAt", "providerReference", "provider", "failureReason", "reversalOf", "beneficiaryAccountSnapshot", "requeryLeaseUntil"] });
 schema.index({ plan: 1 }, { unique: true });
 schema.index({ school: 1, status: 1, settlementDate: 1 });
+schema.pre(["findOneAndUpdate", "updateOne"], async function () {
+  const update = this.getUpdate() || {};
+  const lifecycle = ["approvedBy", "provider", "providerReference", "confirmedBy", "beneficiaryAccountSnapshot", "reversalOf"];
+  const touched = Object.keys(update.$set || {}).some((path) => lifecycle.includes(path));
+  if (!touched) return;
+  let lookup = this.model.findOne(this.getQuery()).select("status"); if (this.getOptions().session) lookup = lookup.session(this.getOptions().session); const current = await lookup.lean();
+  if (["SETTLED", "REVERSED"].includes(current?.status) && update.$set?.status !== "REVERSED") throw new Error("Settled EduPay lifecycle fields are locked.");
+});
 module.exports = mongoose.model("EduPaySettlement", schema);

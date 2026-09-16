@@ -69,6 +69,32 @@ function calculateSettlement({ officialFee, saved, settings, settlementDate = ne
   const schoolNetSettlement = settings.settlementMethod === "DEDUCT_COMMISSION" ? round(fee - schoolCommissionAmount) : fee;
   return { officialFee: fee, parentSavedAmount, servicepayFundedPrincipal, schoolCommissionRate, schoolCommissionAmount, parentChargeRate, parentChargeAmount, parentTotalRepayment, schoolGrossSettlement, schoolNetSettlement, commissionMethod: settings.settlementMethod, settlementDate };
 }
+async function createSettlement({ planId, actor, settlementDate, idempotencyKey, req }) {
+  await ensureInitiationEnabled();
+  if (!idempotencyKey) { const error = new Error("Idempotency-Key is required."); error.statusCode = 400; throw error; }
+  ensureObjectId(planId, "Plan");
+  const date = new Date(settlementDate); if (Number.isNaN(date.getTime())) { const error = new Error("Settlement date is invalid."); error.statusCode = 400; throw error; }
+  const intentHash = hash(JSON.stringify({ operation: "SETTLEMENT_CREATE", actor: String(actor), resource: String(planId), settlementDate: date.toISOString() }));
+  const prior = await Command.findOne({ key: idempotencyKey }); if (prior) { assertIntent(prior, intentHash); if (prior.status === "SUCCEEDED") return { settlement: await Settlement.findById(prior.result?.settlementId), duplicate: true }; }
+  const session = await mongoose.startSession(); let settlement;
+  try { await session.withTransaction(async () => {
+    const command = prior || (await Command.create([{ key: idempotencyKey, owner: actor, command: "SETTLEMENT_CREATE", intentHash }], { session }))[0];
+    const plan = await Plan.findOne({ _id: planId, status: "SAVING" }).session(session); if (!plan) { const error = new Error("Plan must be SAVING to initiate settlement."); error.statusCode = 409; throw error; }
+    const existing = await Settlement.findOne({ plan: plan._id }).session(session); if (existing) { if (existing.intentHash === intentHash) { settlement = existing; return; } const error = new Error("A settlement already exists for this plan."); error.statusCode = 409; throw error; }
+    const saved = await availableSavings(plan._id, session); const settings = await getSettings(session);
+    if (saved < Number(settings.minimumSavingsRequirement || 0)) { const error = new Error("Plan has not met the minimum savings requirement."); error.statusCode = 409; throw error; }
+    if (date < new Date(plan.targetDate)) { const error = new Error("Settlement date must not precede the plan target date."); error.statusCode = 400; throw error; }
+    const snapshot = calculateSettlement({ officialFee: plan.officialFee, saved, settings, settlementDate: date });
+    [settlement] = await Settlement.create([{ ...snapshot, parent: plan.parent, child: plan.child, school: plan.school, plan: plan._id, reference: reference("EDU-SET"), idempotencyKey, intentHash, status: "ADMIN_REVIEW" }], { session });
+    const frozen = await Plan.updateOne({ _id: plan._id, status: "SAVING" }, { $set: { status: "ADMIN_REVIEW" } }, { session }); if (!frozen.modifiedCount) throw new Error("Plan changed while settlement was being created.");
+    await audit({ actor, action: "EDUPAY_SETTLEMENT_CREATED", entityType: "EduPaySettlement", entityId: settlement._id, school: settlement.school, req, session });
+    await Command.updateOne({ _id: command._id }, { $set: { status: "SUCCEEDED", result: { settlementId: settlement._id } } }, { session });
+  }); } catch (error) {
+    if (error?.code === 11000) { const replay = await Command.findOne({ key: idempotencyKey }); if (replay?.intentHash === intentHash && replay.status === "SUCCEEDED") return { settlement: await Settlement.findById(replay.result?.settlementId), duplicate: true }; }
+    throw error;
+  } finally { await session.endSession(); }
+  return { settlement, duplicate: false };
+}
 async function availableSavings(planId, session = null) {
   const pipeline = [
     { $match: { plan: new mongoose.Types.ObjectId(planId) } },
@@ -121,7 +147,7 @@ async function contributeFromWallet({ userId, planId, amount, transactionPin, id
     await session.withTransaction(async () => {
       const plan = await Plan.findOne({ _id: planId, parent: userId }).session(session);
       if (!plan) { const error = new Error("EduPay plan not found."); error.statusCode = 404; throw error; }
-      if (["SETTLED", "CANCELLED", "REVERSED"].includes(plan.status)) { const error = new Error("This plan cannot receive contributions."); error.statusCode = 409; throw error; }
+      if (plan.status !== "SAVING") { const error = new Error("Only SAVING plans can receive contributions."); error.statusCode = 409; throw error; }
       const before = await User.findById(userId).select("walletBalance").session(session);
       const updated = await User.findOneAndUpdate({ _id: userId, status: "ACTIVE", walletBalance: { $gte: value } }, { $inc: { walletBalance: -value } }, { new: true, session });
       if (!updated) { const error = new Error("Your wallet balance is insufficient."); error.statusCode = 400; throw error; }
@@ -158,6 +184,9 @@ async function contributeSponsorFromWallet({ sponsorId, tokenHash, amount, trans
   const session = await mongoose.startSession(); let result;
   try {
     await session.withTransaction(async () => {
+      const currentInvite = await EduPaySponsorInvite.findOne({ _id: invite._id, status: "ACTIVE", expiresAt: { $gt: new Date() } }).session(session);
+      const invitePlan = currentInvite ? await Plan.findOne({ _id: currentInvite.plan, status: "SAVING" }).session(session) : null;
+      if (!currentInvite || !invitePlan) { const error = new Error("Sponsor invite or plan is no longer active."); error.statusCode = 409; throw error; }
       const [before] = await User.find({ _id: sponsorId, status: "ACTIVE" }).select("walletBalance").session(session);
       if (!before || Number(before.walletBalance) < value) { const error = new Error("Your wallet balance is insufficient."); error.statusCode = 400; throw error; }
       const updated = await User.findOneAndUpdate({ _id: sponsorId, status: "ACTIVE", walletBalance: { $gte: value } }, { $inc: { walletBalance: -value } }, { new: true, session });
@@ -165,9 +194,9 @@ async function contributeSponsorFromWallet({ sponsorId, tokenHash, amount, trans
       const ref = reference("EDU-SPN");
       const [coreTransaction] = await Transaction.create([{ reference: ref, customerId: sponsorId, serviceType: "EDUPAY", amount: value, status: "SUCCESSFUL", provider: "SERVICEPAY_WALLET", providerResponse: { product: "EDUPAY_SPONSOR", invite: String(invite._id) } }], { session });
       const walletLedger = await postDebit({ userId: sponsorId, amount: value, openingBalance: before.walletBalance, closingBalance: updated.walletBalance, service: "EDUPAY", reference: ref, idempotencyKey: `edupay-sponsor-wallet-${idempotencyKey}`, transactionId: coreTransaction._id, narration: "EduPay sponsor contribution", session });
-      const saved = await availableSavings(invite.plan, session);
-      const savings = await createEduLedger({ parent: invite.parent, child: invite.child, plan: invite.plan, direction: "CREDIT", type: "SPONSOR_CONTRIBUTION", amount: value, openingBalance: saved, reference: `${ref}-SAVINGS`, idempotencyKey: `${idempotencyKey}-savings`, source: "SPONSOR", session });
-      [result] = await EduPaySponsorContribution.create([{ sponsor: sponsorId, invite: invite._id, parent: invite.parent, child: invite.child, plan: invite.plan, sponsorName: updated.fullName, amount: value, reference: ref, idempotencyKey, intentHash, walletLedgerEntry: walletLedger.entry._id, transaction: coreTransaction._id }], { session });
+      const saved = await availableSavings(currentInvite.plan, session);
+      const savings = await createEduLedger({ parent: currentInvite.parent, child: currentInvite.child, plan: currentInvite.plan, direction: "CREDIT", type: "SPONSOR_CONTRIBUTION", amount: value, openingBalance: saved, reference: `${ref}-SAVINGS`, idempotencyKey: `${idempotencyKey}-savings`, source: "SPONSOR", session });
+      [result] = await EduPaySponsorContribution.create([{ sponsor: sponsorId, invite: currentInvite._id, parent: currentInvite.parent, child: currentInvite.child, plan: currentInvite.plan, sponsorName: updated.fullName, amount: value, reference: ref, idempotencyKey, intentHash, walletLedgerEntry: walletLedger.entry._id, transaction: coreTransaction._id }], { session });
       void savings;
     });
   } catch (error) {
@@ -192,9 +221,11 @@ async function repayFromWallet({ userId, repaymentId, amount, transactionPin, id
   const session = await mongoose.startSession(); let result;
   try {
     await session.withTransaction(async () => {
+      const replay = await EduPayRepaymentTransaction.findOne({ idempotencyKey, parent: userId }).session(session);
+      if (replay) { result = replay; return; }
       const repayment = await EduPayRepayment.findOne({ _id: repaymentId, parent: userId }).session(session);
       if (!repayment) { const error = new Error("Repayment not found."); error.statusCode = 404; throw error; }
-      if (repayment.status === "RESTRUCTURED") { const error = new Error("This repayment was closed by a settlement reversal."); error.statusCode = 409; throw error; }
+      if (!["ACTIVE", "OVERDUE"].includes(repayment.status)) { const error = new Error("This repayment is not payable in its current state."); error.statusCode = 409; throw error; }
       if (value > round(repayment.amountRemaining)) { const error = new Error("Repayment amount exceeds the remaining balance."); error.statusCode = 400; throw error; }
       const before = await User.findById(userId).select("walletBalance").session(session);
       const updated = await User.findOneAndUpdate({ _id: userId, status: "ACTIVE", walletBalance: { $gte: value } }, { $inc: { walletBalance: -value } }, { new: true, session });
@@ -262,7 +293,7 @@ async function confirmSettlement({ settlementId, actor, transactionId, providerR
   return { settlement: result, duplicate };
 }
 
-async function reverseSettlement({ settlementId, actor, transactionId, providerReference, idempotencyKey, req, reason }) {
+async function reverseSettlement({ settlementId, actor, transactionId, providerReference, idempotencyKey, req, reason, evidenceId }) {
   ensureObjectId(settlementId, "Settlement"); ensureObjectId(transactionId, "Reversal transaction");
   const Reversal = require("../models/edupaySettlementReversal.model");
   if (!idempotencyKey) { const error = new Error("Idempotency-Key is required."); error.statusCode = 400; throw error; }
@@ -283,8 +314,10 @@ async function reverseSettlement({ settlementId, actor, transactionId, providerR
       if (!priorCommand) await Command.create([{ key: idempotencyKey, owner: actor, command: "EDUPAY_SETTLEMENT_REVERSE", intentHash }], { session });
       const refund = await Transaction.findOne({ _id: transactionId, reference: providerReference, serviceType: "EDUPAY", status: "SUCCESSFUL", amount: settlement.schoolNetSettlement, "providerResponse.edupaySettlementId": String(settlement._id), "providerResponse.reversal": true }).session(session);
       if (!refund) { const error = new Error("A successful authoritative reversal transaction matching the settled amount is required."); error.statusCode = 409; throw error; }
+      const payoutEvidence = await require("../models/edupayPayoutEvidence.model").findOne({ _id: evidenceId, settlement: settlement._id, normalizedStatus: "REVERSED", coreTransaction: refund._id, source: { $in: ["WEBHOOK", "REQUERY"] } }).session(session);
+      if (!payoutEvidence) { const error = new Error("Verified provider REVERSED evidence is required."); error.statusCode = 409; throw error; }
       const [reversal] = await Reversal.create([{ settlement: settlement._id, plan: settlement.plan, parent: settlement.parent, school: settlement.school, amount: settlement.schoolNetSettlement, reference: `REV-${refund.reference}`, reason: reason || "Settlement reversed", actor }], { session });
-      const commission = await Commission.findOne({ settlement: settlement._id, direction: "RECEIVABLE" }).session(session);
+      const commission = await Commission.findOne({ settlement: settlement._id, direction: { $in: ["RECEIVABLE", "WITHHELD"] } }).session(session);
       if (commission) await Commission.create([{ settlement: settlement._id, school: settlement.school, amount: commission.amount, direction: "REVERSAL", original: commission._id, reference: `${commission.reference}-REVERSAL`, createdBy: actor }], { session });
       const saved = await availableSavings(settlement.plan, session);
       if (settlement.parentSavedAmount > 0) await createEduLedger({ parent: settlement.parent, child: settlement.child, plan: settlement.plan, direction: "CREDIT", type: "REVERSAL", amount: settlement.parentSavedAmount, openingBalance: saved, reference: `${reversal.reference}-SAVINGS`, idempotencyKey: `${reversal.reference}-savings`, source: "REVERSAL", session });
@@ -298,7 +331,7 @@ async function reverseSettlement({ settlementId, actor, transactionId, providerR
           const [refundTx] = await Transaction.create([{ reference: refundRef, customerId: repayment.parent, serviceType: "EDUPAY", amount: repayment.amountPaid, status: "SUCCESSFUL", provider: "EDUPAY_REVERSAL", providerResponse: { settlement: String(settlement._id), reversal: true } }], { session });
           await postCredit({ userId: repayment.parent, amount: repayment.amountPaid, openingBalance: parent.walletBalance, closingBalance: credited.walletBalance, service: "EDUPAY", reference: refundRef, idempotencyKey: `${refundRef}-LEDGER`, transactionId: refundTx._id, narration: "EduPay repayment reversal refund", session });
         }
-        await EduPayRepayment.updateOne({ _id: repayment._id }, { $set: { status: "RESTRUCTURED", reversalSettlement: settlement._id, reversedUnpaidAmount: round(Math.max(0, repayment.amountRemaining)) } }, { session });
+        await EduPayRepayment.updateOne({ _id: repayment._id }, { $set: { status: "CANCELLED", reversalSettlement: settlement._id, reversedUnpaidAmount: round(Math.max(0, repayment.amountRemaining)) } }, { session });
       }
       await Settlement.updateOne({ _id: settlement._id, status: "SETTLED" }, { $set: { status: "REVERSED", reversalOf: settlement._id } }, { session });
       await Plan.updateOne({ _id: settlement.plan }, { $set: { status: "REVERSED" } }, { session });
@@ -317,6 +350,6 @@ async function reverseSettlement({ settlementId, actor, transactionId, providerR
 
 module.exports = {
   getSettings, audit, notify, round, reference, hash, ensureObjectId, calculateSettlement, availableSavings,
-  contributeFromWallet, contributeSponsorFromWallet, repayFromWallet, confirmSettlement, reverseSettlement, createEduLedger,
+  contributeFromWallet, contributeSponsorFromWallet, repayFromWallet, confirmSettlement, reverseSettlement, createEduLedger, createSettlement,
   models: { User, School, Child, Plan, Contribution, EduLedger, Fee, Settlement, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution },
 };
