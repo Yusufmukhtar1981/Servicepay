@@ -38,7 +38,7 @@ const timingSafe = (raw, signature, secret) => {
 const normalized = (payload) => {
   const data = payload?.data || payload;
   const status = String(data?.status || data?.event || payload?.event || "").toUpperCase();
-  return { reference: String(data?.transaction_reference || data?.reference || payload?.reference || "").trim(), providerId: String(data?.id || data?.transaction_id || "").trim() || null, status: status.includes("REVER") ? "REVERSED" : status.includes("SUCCESS") || status.includes("COMPLET") ? "SUCCESSFUL" : "PENDING_REVIEW", amount: Number(data?.amount ?? payload?.amount), currency: String(data?.currency || data?.currency_id || payload?.currency || "NGN").toUpperCase(), eventType: String(payload?.event || data?.event || status || "PAYOUT_UPDATE").toUpperCase() };
+  return { reference: String(data?.transaction_reference || data?.reference || payload?.reference || "").trim(), providerId: String(data?.id || data?.transaction_id || "").trim() || null, status: /(FAIL|REJECT|DECLIN|CANCEL)/.test(status) ? "FAILED" : status.includes("REVER") ? "REVERSED" : status.includes("SUCCESS") || status.includes("COMPLET") ? "SUCCESSFUL" : "PENDING_REVIEW", amount: Number(data?.amount ?? payload?.amount), currency: String(data?.currency || data?.currency_id || payload?.currency || "NGN").toUpperCase(), eventType: String(payload?.event || data?.event || status || "PAYOUT_UPDATE").toUpperCase() };
 };
 async function saveAccount({ schoolId, accountName, bankName, bankCode, accountNumber, actor, verified = false }) {
   if (!/^\d{10}$/.test(String(accountNumber))) throw fail("A valid ten-digit settlement account is required.", 400);
@@ -91,7 +91,7 @@ async function finalizeEvidence(evidenceId, actor, req, session, actorType = "US
   return Settlement.findById(settlement._id).session(session);
 }
 async function recordProviderEvidence({ settlement, payload, source, raw, actor, req }) {
-  const data = normalized(payload); if (!data.reference || !["SUCCESSFUL", "REVERSED", "PENDING_REVIEW"].includes(data.status)) throw fail("Provider evidence is incomplete or not final.", 409);
+  const data = normalized(payload); if (!data.reference || !["SUCCESSFUL", "FAILED", "REVERSED", "PENDING_REVIEW"].includes(data.status)) throw fail("Provider evidence is incomplete or not final.", 409);
   if (String(data.reference) !== String(settlement.providerReference)) throw fail("Provider reference does not match the persisted settlement reference.", 409, "REFERENCE_MISMATCH");
   if (data.amount !== Math.round(settlement.schoolNetSettlement * 100) || data.currency !== "NGN") throw fail("Provider evidence amount/currency does not match settlement.", 409);
   const eventDigest = digest(raw); const prior = await Evidence.findOne({ settlement: settlement._id, payloadDigest: eventDigest });
@@ -110,6 +110,12 @@ async function recordProviderEvidence({ settlement, payload, source, raw, actor,
     const [evidence] = await Evidence.create([{ settlement: current._id, providerReference: data.reference, providerId: data.providerId, normalizedStatus: data.status, amount: data.amount, currency: data.currency, eventType: data.eventType, payloadDigest: eventDigest, source }], { session });
     reversalEvidence = evidence;
     if (data.status === "SUCCESSFUL") output = await finalizeEvidence(evidence._id, actor, req, session, actor ? "USER" : "PROVIDER");
+    else if (data.status === "FAILED") {
+      await Settlement.updateOne({ _id: current._id, status: { $in: ["PROCESSING", "PENDING_REVIEW"] } }, { $set: { status: "FAILED", failureReason: "Squad reported a terminal payout failure." } }, { session });
+      await School.updateOne({ _id: current.school, "edupayPayoutLock.settlement": current._id }, { $set: { "edupayPayoutLock.settlement": null, "edupayPayoutLock.acquiredAt": null } }, { session });
+      await audit({ actor: providerActor, actorType: providerActor ? "USER" : "PROVIDER", actorLabel: providerActor ? null : "SQUAD_WEBHOOK", action: "EDUPAY_SQUAD_PAYOUT_FAILED", entityType: "EduPayPayoutEvidence", entityId: evidence._id, school: current.school, metadata: { source, providerReference: data.reference }, req, session });
+      output = await Settlement.findById(current._id).session(session);
+    }
     else if (data.status === "REVERSED") {
       [reversalTransaction] = await Transaction.create([{ reference: `REV-${data.reference}`, customerId: current.parent, serviceType: "EDUPAY", amount: current.schoolNetSettlement, status: "SUCCESSFUL", provider: "SQUAD", providerResponse: { edupaySettlementId: String(current._id), reversal: true, evidenceId: String(evidence._id) } }], { session });
       await Evidence.updateOne({ _id: evidence._id }, { $set: { coreTransaction: reversalTransaction._id } }, { session });
@@ -138,7 +144,7 @@ async function processSettlement({ settlementId, actor, req }) {
   }); } finally { await session.endSession(); }
   try {
     const response = await axios.post(`${cfg.baseUrl}/payout/transfer`, { remark: "EduPay school settlement", bank_code: account.bankCode, currency_id: "NGN", amount: String(Math.round(settlement.schoolNetSettlement * 100)), account_number: decryptAccount(account.encryptedAccountNumber), account_name: account.canonicalAccountName, transaction_reference: settlement.providerReference }, { timeout: 45000, headers: { Authorization: `Bearer ${cfg.secret}`, "Content-Type": "application/json" }, validateStatus: () => true });
-    const data = normalized(response.data); if (data.status === "SUCCESSFUL") return recordProviderEvidence({ settlement: await Settlement.findById(settlementId), payload: response.data, source: "REQUERY", raw: JSON.stringify(response.data), actor, req }); if (data.status === "FAILED") { await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "FAILED", failureReason: "Squad rejected payout." } }); await School.updateOne({ _id: settlement.school, "edupayPayoutLock.settlement": settlement._id }, { $set: { "edupayPayoutLock.settlement": null, "edupayPayoutLock.acquiredAt": null } }); return Settlement.findById(settlementId); }
+    const data = normalized(response.data); if (data.status === "SUCCESSFUL" || data.status === "FAILED") return recordProviderEvidence({ settlement: await Settlement.findById(settlementId), payload: response.data, source: "PROCESS", raw: JSON.stringify(response.data), actor, req });
     await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "PENDING_REVIEW" } }); return Settlement.findById(settlementId);
   } catch (error) { if (error.code === "CONFIGURATION_REQUIRED" || error.code === "REFERENCE_MISMATCH") throw error; await Settlement.updateOne({ _id: settlementId, status: "PROCESSING" }, { $set: { status: "PENDING_REVIEW" } }); return Settlement.findById(settlementId); }
 }

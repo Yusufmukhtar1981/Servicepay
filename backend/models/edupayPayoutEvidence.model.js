@@ -4,7 +4,7 @@ const schema = immutableSchema({
   coreTransaction: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null },
   providerReference: { type: String, required: true, immutable: true },
   providerId: { type: String, default: null, immutable: true },
-  normalizedStatus: { type: String, enum: ["SUCCESSFUL", "REVERSED", "PENDING_REVIEW"], required: true, immutable: true },
+  normalizedStatus: { type: String, enum: ["SUCCESSFUL", "FAILED", "REVERSED", "PENDING_REVIEW"], required: true, immutable: true },
   amount: { type: Number, required: true, immutable: true },
   currency: { type: String, required: true, immutable: true },
   eventType: { type: String, required: true, immutable: true },

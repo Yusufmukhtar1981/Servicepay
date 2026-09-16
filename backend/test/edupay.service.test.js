@@ -336,6 +336,12 @@ test("dashboard enabled state follows AppSettings feature authority despite EduP
   assert.equal(response.settings.enabled, false);
 });
 
+test("Squad terminal failure statuses normalize to FAILED while unknown remains pending review", () => {
+  assert.equal(squad.normalized({ status: "REJECTED", reference: "r" }).status, "FAILED");
+  assert.equal(squad.normalized({ status: "DECLINED", reference: "r" }).status, "FAILED");
+  assert.equal(squad.normalized({ status: "TIMEOUT", reference: "r" }).status, "PENDING_REVIEW");
+});
+
 test("Squad account verification uses exact lookup payload and persists canonical evidence", async () => {
   const old = { transfer: process.env.EDUPAY_SQUAD_TRANSFER_ENABLED, production: process.env.EDUPAY_SQUAD_PRODUCTION_ENABLED, secret: process.env.EDUPAY_SQUAD_SECRET_KEY, merchant: process.env.EDUPAY_SQUAD_MERCHANT_ID, base: process.env.EDUPAY_SQUAD_BASE_URL, encryption: process.env.EDUPAY_ACCOUNT_ENCRYPTION_KEY };
   Object.assign(process.env, { EDUPAY_SQUAD_TRANSFER_ENABLED: "true", EDUPAY_SQUAD_PRODUCTION_ENABLED: "true", EDUPAY_SQUAD_SECRET_KEY: "test-secret", EDUPAY_SQUAD_MERCHANT_ID: "merchant", EDUPAY_SQUAD_BASE_URL: "https://api.squadco.com", EDUPAY_ACCOUNT_ENCRYPTION_KEY: "account-test-key" });
