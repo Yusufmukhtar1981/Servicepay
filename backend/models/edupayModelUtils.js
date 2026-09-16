@@ -15,7 +15,7 @@ const immutableSchema = (definition, options = {}) => {
   });
   schema.pre(["findOneAndUpdate", "updateOne", "updateMany", "replaceOne"], function () {
     const update = this.getUpdate() || {};
-    const allowed = options.mutablePaths || [];
+    const allowed = [...(options.mutablePaths || []), "updatedAt", "createdAt"];
     const paths = Object.keys(update.$set || {}).concat(Object.keys(update.$unset || {}));
     const illegal = paths.filter((path) => !allowed.some((allowedPath) => path === allowedPath || path.startsWith(`${allowedPath}.`)));
     if (illegal.length) throw new Error(`Immutable EduPay record fields cannot be changed: ${illegal.join(", ")}`);

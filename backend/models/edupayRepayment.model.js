@@ -12,6 +12,8 @@ const repaymentSchema = new mongoose.Schema({
   dueDate: Date,
   nextPaymentAt: Date,
   status: { type: String, enum: ["ACTIVE", "PARTIALLY_PAID", "PAID", "OVERDUE", "RESTRUCTURED"], default: "ACTIVE", index: true },
+  reversalSettlement: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySettlement", default: null },
+  reversedUnpaidAmount: money(0),
 }, { timestamps: true });
 repaymentSchema.index({ parent: 1, status: 1 });
 const transactionSchema = immutableSchema({
@@ -20,6 +22,7 @@ const transactionSchema = immutableSchema({
   amount: { ...money(0), required: true, immutable: true },
   reference: { type: String, required: true, unique: true, immutable: true },
   idempotencyKey: { type: String, required: true, unique: true, immutable: true },
+  intentHash: { type: String, required: true, immutable: true },
   walletLedgerEntry: { type: mongoose.Schema.Types.ObjectId, ref: "LedgerEntry", default: null, immutable: true },
   status: { type: String, enum: ["SUCCESS", "FAILED", "REVERSED"], default: "SUCCESS", immutable: true },
 });

@@ -8,6 +8,7 @@ const schema = immutableSchema({
   status: { type: String, enum: ["PENDING", "SUCCESS", "FAILED", "REVERSED"], default: "SUCCESS", immutable: true, index: true },
   reference: { type: String, required: true, unique: true, immutable: true },
   idempotencyKey: { type: String, required: true, unique: true, immutable: true },
+  intentHash: { type: String, required: true, immutable: true },
   walletLedgerEntry: { type: mongoose.Schema.Types.ObjectId, ref: "LedgerEntry", default: null, immutable: true },
   transaction: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null, immutable: true },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },

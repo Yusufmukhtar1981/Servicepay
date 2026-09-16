@@ -7,7 +7,7 @@ const router = express.Router();
 router.post("/schools/apply", controller.applySchool);
 router.post("/school/auth/login", controller.schoolLogin);
 router.get("/sponsor/:token", controller.sponsorView);
-router.post("/sponsor/:token/contribute", controller.sponsorContribute);
+router.post("/sponsor/:token/contribute", ...customer, controller.sponsorContribute);
 router.get("/schools", controller.listSchools);
 router.get("/schools/:schoolId/fees", controller.listFees);
 
@@ -35,5 +35,7 @@ router.post("/school/classes", ...school, controller.schoolCreateClass);
 router.post("/school/fees", ...school, controller.schoolCreateFee);
 router.get("/school/students", ...school, controller.schoolStudents);
 router.get("/school/settlements", ...school, controller.schoolSettlements);
+router.get("/school/reconciliation", ...school, controller.schoolReconciliation);
+router.get("/school/reports", ...school, controller.schoolReport);
 
 module.exports = router;

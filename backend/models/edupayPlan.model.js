@@ -12,6 +12,7 @@ const schema = new mongoose.Schema({
   targetDate: { type: Date, required: true },
   recommendedContribution: money(0),
   status: { type: String, enum: ["SAVING", "UPCOMING", "READY_FOR_SETTLEMENT", "ADMIN_REVIEW", "APPROVED", "PROCESSING", "SETTLED", "FAILED", "REVERSED", "CANCELLED", "DISPUTED"], default: "SAVING", index: true },
+  ledgerVersion: { type: Number, default: 0, min: 0 },
   autosave: { enabled: { type: Boolean, default: false }, amount: money(0), frequency: { type: String, enum: ["DAILY", "WEEKLY", "MONTHLY", "CUSTOM", null], default: null }, nextContributionAt: Date, pausedAt: Date },
 }, { timestamps: true });
 schema.index({ parent: 1, status: 1 });

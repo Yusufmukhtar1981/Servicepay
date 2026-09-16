@@ -6,6 +6,7 @@ const schema = immutableSchema({
   school: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySchool", required: true, immutable: true, index: true },
   reference: { type: String, required: true, unique: true, immutable: true },
   idempotencyKey: { type: String, required: true, unique: true, immutable: true },
+  intentHash: { type: String, immutable: true, default: "LEGACY" },
   status: { type: String, enum: ["READY_FOR_SETTLEMENT", "ADMIN_REVIEW", "APPROVED", "PROCESSING", "SETTLED", "FAILED", "REVERSED", "CANCELLED", "DISPUTED"], default: "READY_FOR_SETTLEMENT", index: true },
   officialFee: { ...money(0), required: true, immutable: true },
   parentSavedAmount: { ...money(0), required: true, immutable: true },

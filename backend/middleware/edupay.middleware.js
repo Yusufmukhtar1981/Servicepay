@@ -4,7 +4,7 @@ const { protect, adminOnly } = require("./auth.middleware");
 
 const customer = [protect, (req, res, next) => {
   const role = String(req.user?.role || "").toUpperCase();
-  if (["CUSTOMER", "USER", ""].includes(role) && req.user?.isStaff !== true) return next();
+  if (role === "CUSTOMER" && req.user?.isStaff !== true) return next();
   return res.status(403).json({ success: false, message: "Customer access required." });
 }];
 const headOffice = [protect, adminOnly("HEAD_OFFICE")];

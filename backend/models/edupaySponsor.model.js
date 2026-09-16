@@ -10,6 +10,7 @@ const inviteSchema = immutableSchema({
 });
 inviteSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 const contributionSchema = immutableSchema({
+  sponsor: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, immutable: true, index: true },
   invite: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySponsorInvite", required: true, immutable: true, index: true },
   parent: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, immutable: true },
   child: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayChild", required: true, immutable: true },
@@ -18,6 +19,9 @@ const contributionSchema = immutableSchema({
   amount: { ...money(0), required: true, min: 0.01, immutable: true },
   reference: { type: String, required: true, unique: true, immutable: true },
   idempotencyKey: { type: String, required: true, unique: true, immutable: true },
+  intentHash: { type: String, required: true, immutable: true },
+  walletLedgerEntry: { type: mongoose.Schema.Types.ObjectId, ref: "LedgerEntry", required: true, immutable: true },
+  transaction: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", required: true, immutable: true },
   status: { type: String, enum: ["SUCCESS", "FAILED", "REVERSED"], default: "SUCCESS", immutable: true },
 });
 module.exports = {
