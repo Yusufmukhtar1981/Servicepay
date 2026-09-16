@@ -403,9 +403,10 @@ test("readiness requires three distinct latest duty holders", async () => {
   const result = (permissions, user, version) => DutyAssignment.create({ user, permissions, assignedBy: parent._id, version });
   await result(["account.manage", "account.verify", "settlement.process"], users[0]._id, 1);
   const getReadiness = async () => { let body; await controller.adminReadiness({}, { json: (value) => { body = value; }, status: () => ({ json: (value) => { body = value; } }) }); return body; };
+  const originalUserInit = User.init; User.init = async () => { throw new Error("Shared User model must not be initialized by EduPay readiness."); };
   assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, false);
   await result(["account.verify"], users[1]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, false);
-  await result(["settlement.process"], users[2]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, true);
+  await result(["settlement.process"], users[2]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, true); User.init = originalUserInit;
 });
 
 async function repayFromWalletForTest(repayment, amount, key) {
