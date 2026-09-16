@@ -10,7 +10,7 @@ const schema = immutableSchema({
   eventType: { type: String, required: true, immutable: true },
   payloadDigest: { type: String, required: true, immutable: true },
   receivedAt: { type: Date, default: Date.now, immutable: true },
-  source: { type: String, enum: ["WEBHOOK", "REQUERY"], required: true, immutable: true },
+  source: { type: String, enum: ["PROCESS", "WEBHOOK", "REQUERY"], required: true, immutable: true },
 }, { timestamps: true, mutablePaths: ["coreTransaction"] });
 schema.index({ settlement: 1, payloadDigest: 1 }, { unique: true });
 schema.index({ providerReference: 1, eventType: 1 }, { unique: true });
