@@ -268,7 +268,8 @@ test("payout readiness reports exact missing keys and safely reuses shared Squad
   const keys = [
     "EDUPAY_SQUAD_TRANSFER_ENABLED", "EDUPAY_SQUAD_PRODUCTION_ENABLED",
     "EDUPAY_SQUAD_SECRET_KEY", "EDUPAY_SQUAD_MERCHANT_ID",
-    "EDUPAY_SQUAD_BASE_URL", "EDUPAY_ACCOUNT_ENCRYPTION_KEY",
+    "EDUPAY_SQUAD_BASE_URL", "EDUPAY_SQUAD_USE_SHARED_CREDENTIALS",
+    "EDUPAY_ACCOUNT_ENCRYPTION_KEY",
     "SQUAD_TRANSFER_ENABLED", "SQUAD_PRODUCTION_ENABLED", "SQUAD_SECRET_KEY",
     "SQUAD_MERCHANT_ID", "SQUAD_BASE_URL", "ENCRYPTION_KEY",
   ];
@@ -311,6 +312,15 @@ test("payout readiness reports exact missing keys and safely reuses shared Squad
     assert.equal(squad.payoutReadiness().providerReady, false);
     process.env.EDUPAY_SQUAD_BASE_URL = "https://api.squadco.com";
     assert.equal(squad.payoutReadiness().providerReady, true);
+
+    delete process.env.EDUPAY_SQUAD_SECRET_KEY;
+    delete process.env.EDUPAY_SQUAD_MERCHANT_ID;
+    process.env.EDUPAY_SQUAD_USE_SHARED_CREDENTIALS = "true";
+    const reused = squad.payoutReadiness();
+    assert.equal(reused.providerConfigurationSource, "EDUPAY_WITH_SHARED_CREDENTIALS");
+    assert.equal(reused.providerReady, true);
+    assert.equal(reused.requirements[2].key, "SQUAD_SECRET_KEY");
+    assert.equal(reused.requirements[3].key, "SQUAD_MERCHANT_ID");
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];

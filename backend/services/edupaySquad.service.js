@@ -40,10 +40,19 @@ const providerCandidate = () => {
   };
   const dedicated = group("EDUPAY_SQUAD_");
   const shared = group("SQUAD_");
-  const selected = dedicated.any ? dedicated : shared;
-  const source = dedicated.any ? "EDUPAY" : (shared.any ? "SHARED" : "EDUPAY");
-  const keys = source === "EDUPAY" ? dedicated.keys : shared.keys;
-  const values = source === "EDUPAY" ? dedicated.values : shared.values;
+  const reuseSharedCredentials =
+    configuredValue("EDUPAY_SQUAD_USE_SHARED_CREDENTIALS").toLowerCase() === "true";
+  const source = dedicated.any
+    ? (reuseSharedCredentials ? "EDUPAY_WITH_SHARED_CREDENTIALS" : "EDUPAY")
+    : (shared.any ? "SHARED" : "EDUPAY");
+  const keys = source === "SHARED" ? shared.keys : dedicated.keys;
+  const values = source === "SHARED" ? { ...shared.values } : { ...dedicated.values };
+  if (source === "EDUPAY_WITH_SHARED_CREDENTIALS") {
+    keys.secret = shared.keys.secret;
+    keys.merchant = shared.keys.merchant;
+    values.secret = shared.values.secret;
+    values.merchant = shared.values.merchant;
+  }
   return {
     source,
     keys,
