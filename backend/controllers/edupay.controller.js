@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const { customer, school, headOffice } = require("../middleware/edupay.middleware");
 const { EduPayAcademicSession, EduPayTerm, EduPayClass } = require("../models/edupayAcademic.model");
-const SchoolUser = require("../models/edupaySchoolUser.model").EduPaySchoolUser;
+const SchoolUser = require("../models/edupaySchoolUser.model");
 const User = require("../models/user.model");
 const { getSettings, audit, notify, round, reference, hash, ensureObjectId, calculateSettlement, availableSavings, contributeFromWallet, contributeSponsorFromWallet, repayFromWallet, confirmSettlement, reverseSettlement, createEduLedger, createSettlement, models } = require("../services/edupay.service");
 const { School, Child, Plan, Contribution, EduLedger, Fee, Settlement, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution } = models;
@@ -17,8 +17,8 @@ const { evaluateEduPayReadiness } = require("./featureControl.controller");
 const edupaySquadService = require("../services/edupaySquad.service");
 
 const safe = (doc) => doc?.toObject ? doc.toObject() : doc;
-const publicSchool = (school) => { const row = safe(school) || {}; delete row.bankDetails; delete row.supportingDocuments; delete row.logo; delete row.portalUser; return row; };
-const schoolAdminDto = (school) => { const row = safe(school) || {}; if (row.bankDetails) row.bankDetails = { bankName: row.bankDetails.bankName, bankCode: row.bankDetails.bankCode, accountName: row.bankDetails.accountName, accountNumberLast4: row.bankDetails.accountNumberLast4 }; delete row.encryptedAccountNumber; delete row.logo; delete row.supportingDocuments; return row; };
+const publicSchool = (school) => { const row = safe(school) || {}; delete row.bankDetails; delete row.supportingDocuments; delete row.logo; delete row.portalUser; delete row.sourceRequest; delete row.normalizedSchoolName; delete row.normalizedLocation; delete row.normalizedAddress; delete row.sourceRequestNormalizedSchoolName; delete row.sourceRequestNormalizedLocation; return row; };
+const schoolAdminDto = (school) => { const row = safe(school) || {}; if (row.bankDetails) row.bankDetails = { bankName: row.bankDetails.bankName, bankCode: row.bankDetails.bankCode, accountName: row.bankDetails.accountName, accountNumberLast4: row.bankDetails.accountNumberLast4 }; delete row.encryptedAccountNumber; delete row.logo; delete row.supportingDocuments; delete row.sourceRequest; delete row.normalizedSchoolName; delete row.normalizedLocation; delete row.normalizedAddress; delete row.sourceRequestNormalizedSchoolName; delete row.sourceRequestNormalizedLocation; return row; };
 const schoolRequestDto = (request) => {
   const row = safe(request) || {};
   return {
@@ -28,10 +28,49 @@ const schoolRequestDto = (request) => {
     contactPhone: row.contactPhone || null,
     status: row.status,
     createdAt: row.createdAt,
+    schoolId: row.school ? String(row.school) : null,
+  };
+};
+const schoolRequestDetailDto = (request) => {
+  const row = schoolRequestDto(request);
+  return {
+    ...row,
+    type: "SCHOOL_REQUEST",
+    approvedAt: safe(request)?.approvedAt || null,
+    rejectedAt: safe(request)?.rejectedAt || null,
+    rejectionReason: safe(request)?.rejectionReason || null,
+    schoolId: safe(request)?.school ? String(safe(request).school) : null,
+    requesterName: safe(request)?.parent?.fullName || null,
+    requesterEmail: safe(request)?.parent?.email || null,
+    requesterPhone: safe(request)?.parent?.phone || null,
   };
 };
 const normalizeRequestText = (value) =>
   String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
+const schoolRequestIdentity = (request) => ({
+  schoolName: normalizeRequestText(request.schoolName),
+  location: normalizeRequestText(request.location),
+});
+const activeSchoolStatuses = ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "SUSPENDED"];
+const escapedWhitespaceExact = (value) => String(value || "").trim().split(/\s+/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+const findAuthoritativeSchoolIdentity = async ({ schoolName, location, session = null }) => {
+  const normalizedSchoolName = normalizeRequestText(schoolName);
+  const normalizedLocation = normalizeRequestText(location);
+  let canonical = School.findOne({
+    normalizedSchoolName,
+    normalizedLocation,
+    status: { $in: activeSchoolStatuses },
+  }).select("_id");
+  if (session) canonical = canonical.session(session);
+  if (await canonical.lean()) return true;
+  let legacy = School.findOne({
+    name: { $regex: `^${escapedWhitespaceExact(schoolName)}$`, $options: "i" },
+    address: { $regex: `^${escapedWhitespaceExact(location)}$`, $options: "i" },
+    status: { $in: activeSchoolStatuses },
+  }).select("_id");
+  if (session) legacy = legacy.session(session);
+  return Boolean(await legacy.lean());
+};
 const parsePrivateAsset = (value, allowed, maxBytes, label) => {
   const match = /^data:([a-z0-9.+-]+);base64,([a-z0-9+/]+={0,2})$/i.exec(String(value || ""));
   if (!match || !allowed.has(match[1].toLowerCase())) throw Object.assign(new Error(`${label} must be an allowed base64 data URL.`), { statusCode: 400 });
@@ -263,16 +302,56 @@ exports.reconcileEduPaySchoolAssets = async ({ limit = 50 } = {}) => { const buc
 const markAssetsFinal = async (ids, schoolId, batchId) => mongoose.connection.db.collection("edupaySchoolAssets.files").updateMany({ _id: { $in: ids }, "metadata.uploadBatchId": batchId }, { $set: { "metadata.stage": "FINAL", "metadata.schoolId": schoolId } });
 exports.applySchoolMultipartDirect = async (req, res) => {
   const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: "edupaySchoolAssets" });
-  const files = [...(req.files?.logo || []), ...(req.files?.supportingDocuments || [])]; const ids = []; const batchId = require("crypto").randomUUID();
+  const files = [...(req.files?.logo || []), ...(req.files?.supportingDocuments || [])];
+  const ids = [];
+  const batchId = require("crypto").randomUUID();
   try {
     await cleanupStaleStagedAssets(bucket);
-    const b = req.body || {}; const email = String(b.email || "").trim().toLowerCase(); const registration = String(b.registrationNumber || "").trim().toUpperCase(); const phone = String(b.phone || "").trim(); if ((req.files?.logo || []).length !== 1 || (req.files?.supportingDocuments || []).length < 1) return res.status(400).json({ success: false, message: "Exactly one logo and at least one supporting document are required." });
+    const b = req.body || {};
+    const email = String(b.email || "").trim().toLowerCase();
+    const registration = String(b.registrationNumber || "").trim().toUpperCase();
+    const phone = String(b.phone || "").trim();
+    if ((req.files?.logo || []).length !== 1 || (req.files?.supportingDocuments || []).length < 1) return res.status(400).json({ success: false, message: "Exactly one logo and at least one supporting document are required." });
     if (!b.name || !b.schoolType || !b.address || !b.state || !b.lga || !b.contactPerson || !phone || !email || !b.password || !registration || files.length < 2 || !b.bankName || !b.bankCode || !b.accountNumber || !b.accountName || !b.authorizedRepresentative) return res.status(400).json({ success: false, message: "Complete school application fields and files are required." });
     if (files.length > 11 || !PRIVATE_IMAGE_TYPES.has(files[0].mimetype) || files[0].size > 2 * 1024 * 1024 || !validAssetBytes(files[0]) || files.slice(1).some((f) => !PRIVATE_DOCUMENT_TYPES.has(f.mimetype) || f.size > 10 * 1024 * 1024 || !validAssetBytes(f)) || files.reduce((n, f) => n + f.size, 0) > 25 * 1024 * 1024) return res.status(400).json({ success: false, message: "Invalid or oversized private school files." });
     if (String(b.password).length < 6 || !/^\d{10}$/.test(String(b.accountNumber))) return res.status(400).json({ success: false, message: "Invalid password or bank account number." });
-    const duplicate = await School.findOne({ $or: [{ normalizedRegistrationNumber: registration }, { normalizedEmail: email }, { normalizedPhone: phone }], status: { $in: ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "SUSPENDED"] } }).select("_id").lean(); if (duplicate) return res.status(409).json({ success: false, code: "ACTIVE_APPLICATION_EXISTS", message: "An active school application already exists." });
+    const duplicate = await School.findOne({ $or: [{ normalizedRegistrationNumber: registration }, { normalizedEmail: email }, { normalizedPhone: phone }], status: { $in: activeSchoolStatuses } }).select("_id").lean();
+    const canonicalDuplicate = await findAuthoritativeSchoolIdentity({ schoolName: b.name, location: b.address });
+    if (duplicate || canonicalDuplicate) return res.status(409).json({ success: false, code: "ACTIVE_APPLICATION_EXISTS", message: "An active school application already exists." });
     for (const file of files) { const id = new mongoose.Types.ObjectId(); await new Promise((resolve, reject) => { const stream = bucket.openUploadStreamWithId(id, file.originalname, { contentType: file.mimetype, metadata: { product: "edupay-school-private", stage: "STAGED", uploadBatchId: batchId } }); stream.once("error", reject).once("finish", resolve).end(file.buffer); }); ids.push(id); }
-    const session = await mongoose.startSession(); let school; try { await session.withTransaction(async () => { const user = await User.create([{ fullName: b.contactPerson, email, phone, password: b.password, role: "CUSTOMER", status: "INACTIVE" }], { session }); [school] = await School.create([{ name: b.name, schoolType: b.schoolType, registrationNumber: registration, normalizedRegistrationNumber: registration, address: b.address, state: b.state, lga: b.lga, contactPerson: b.contactPerson, phone, email, normalizedEmail: email, normalizedPhone: phone, bankDetails: { bankName: b.bankName, bankCode: b.bankCode, accountNumberLast4: String(b.accountNumber).slice(-4), encryptedAccountNumber: edupaySquadService.encryptAccount(String(b.accountNumber)), accountName: b.accountName }, logo: { fileId: ids[0], mimeType: files[0].mimetype, size: files[0].size, originalName: files[0].originalname }, supportingDocuments: ids.slice(1).map((fileId, i) => ({ fileId, mimeType: files[i + 1].mimetype, size: files[i + 1].size, originalName: files[i + 1].originalname })), authorizedRepresentative: b.authorizedRepresentative, status: "PENDING_REVIEW", active: false, portalUser: user[0]._id }], { session }); }); } finally { await session.endSession(); }
+    const session = await mongoose.startSession();
+    let school;
+    try {
+      await session.withTransaction(async () => {
+        const user = await User.create([{ fullName: b.contactPerson, email, phone, password: b.password, role: "CUSTOMER", status: "INACTIVE" }], { session });
+        [school] = await School.create([{
+          name: b.name,
+          normalizedSchoolName: normalizeRequestText(b.name),
+          schoolType: b.schoolType,
+          registrationNumber: registration,
+          normalizedRegistrationNumber: registration,
+          address: b.address,
+          normalizedLocation: normalizeRequestText(b.address),
+          normalizedAddress: normalizeRequestText(b.address),
+          state: b.state,
+          lga: b.lga,
+          contactPerson: b.contactPerson,
+          phone,
+          email,
+          normalizedEmail: email,
+          normalizedPhone: phone,
+          bankDetails: { bankName: b.bankName, bankCode: b.bankCode, accountNumberLast4: String(b.accountNumber).slice(-4), encryptedAccountNumber: edupaySquadService.encryptAccount(String(b.accountNumber)), accountName: b.accountName },
+          logo: { fileId: ids[0], mimeType: files[0].mimetype, size: files[0].size, originalName: files[0].originalname },
+          supportingDocuments: ids.slice(1).map((fileId, i) => ({ fileId, mimeType: files[i + 1].mimetype, size: files[i + 1].size, originalName: files[i + 1].originalname })),
+          authorizedRepresentative: b.authorizedRepresentative,
+          status: "PENDING_REVIEW",
+          active: false,
+          portalUser: user[0]._id,
+        }], { session });
+      });
+    } finally {
+      await session.endSession();
+    }
     await markAssetsFinal(ids, school._id, batchId).catch(() => {}); return res.status(201).json({ success: true, application: publicSchool(school) });
   } catch (error) { await cleanupStagedAssets(bucket, ids); if (error.code === 11000) return res.status(409).json({ success: false, code: "ACTIVE_APPLICATION_EXISTS", message: "An active school application already exists." }); return errorResponse(res, error); }
 };
@@ -361,6 +440,9 @@ exports.createSchoolRequest = async (req, res) => {
       request: schoolRequestDto(request),
     });
   } catch (error) {
+    if (error?.statusCode && typeof error.code === "string") {
+      return res.status(error.statusCode).json({ success: false, code: error.code, message: error.message });
+    }
     if (error?.code === 11000) {
       const existing = await SchoolRequest.findOne({
         parent: req.user._id,
@@ -381,9 +463,11 @@ exports.createSchoolRequest = async (req, res) => {
 exports.adminSchoolRequests = async (req, res) => {
   try {
     const status = String(req.query.status || "").toUpperCase();
-    const filter = status && ["PENDING_REVIEW", "CONTACTED", "CLOSED"].includes(status)
-      ? { status }
-      : {};
+    const supported = ["PENDING_REVIEW", "CONTACTED", "CLOSED", "APPROVED", "REJECTED"];
+    if (status && status !== "ALL" && !supported.includes(status)) {
+      return res.status(400).json({ success: false, message: "Unsupported school request status." });
+    }
+    const filter = status && status !== "ALL" ? { status } : {};
     const requests = await SchoolRequest.find(filter)
       .sort({ createdAt: -1 })
       .limit(500)
@@ -394,6 +478,161 @@ exports.adminSchoolRequests = async (req, res) => {
     });
   } catch (error) {
     return errorResponse(res, error);
+  }
+};
+exports.adminSchoolRequestDetail = async (req, res) => {
+  try {
+    ensureObjectId(req.params.requestId, "School request");
+    const request = await SchoolRequest.findById(req.params.requestId)
+      .populate("parent", "fullName email phone")
+      .lean();
+    if (!request) return res.status(404).json({ success: false, message: "School request not found." });
+    return res.json({ success: true, request: schoolRequestDetailDto(request) });
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};
+exports.adminSchoolRequestAction = async (req, res) => {
+  const action = String(req.body?.action || "").trim().toUpperCase();
+  if (!["APPROVE", "REJECT"].includes(action)) {
+    return res.status(400).json({ success: false, message: "Unsupported school request action." });
+  }
+  const rejectionReason = String(req.body?.rejectionReason || req.body?.reason || "").trim();
+  if (action === "REJECT" && !rejectionReason) {
+    return res.status(400).json({ success: false, code: "REJECTION_REASON_REQUIRED", message: "A rejection reason is required." });
+  }
+  if (rejectionReason.length > 1000) {
+    return res.status(400).json({ success: false, message: "Rejection reason is too long." });
+  }
+  if (action === "APPROVE" && req.body?.representativeAuthorityConfirmed !== true) {
+    return res.status(400).json({
+      success: false,
+      code: "REPRESENTATIVE_AUTHORITY_CONFIRMATION_REQUIRED",
+      message: "Head Office must confirm the requester's representative authority before approval.",
+    });
+  }
+  let session;
+  try {
+    ensureObjectId(req.params.requestId, "School request");
+    session = await mongoose.startSession();
+    let request;
+    await session.withTransaction(async () => {
+      request = await SchoolRequest.findOne({ _id: req.params.requestId, status: "PENDING_REVIEW" }).session(session);
+      if (!request) {
+        const existing = await SchoolRequest.findById(req.params.requestId).select("status").lean();
+        const error = new Error(existing ? `School request cannot transition from ${existing.status}.` : "School request not found.");
+        error.statusCode = existing ? 409 : 404;
+        throw error;
+      }
+      const previousStatus = request.status;
+      if (action === "REJECT") {
+        request.status = "REJECTED";
+        request.rejectedAt = new Date();
+        request.rejectedBy = req.user._id;
+        request.rejectionReason = rejectionReason;
+      } else {
+        const requester = await User.findById(request.parent)
+          .select("_id status email phone")
+          .session(session)
+          .lean();
+        if (!requester || requester.status !== "ACTIVE" || (!String(requester.email || "").trim() && !String(requester.phone || "").trim())) {
+          const error = new Error("The school requester's active identity could not be verified.");
+          error.statusCode = 409;
+          error.code = "REQUESTER_IDENTITY_UNVERIFIED";
+          throw error;
+        }
+        const identity = schoolRequestIdentity(request);
+        let admittedSchool = null;
+        if (!request.school && await findAuthoritativeSchoolIdentity({
+          schoolName: request.schoolName,
+          location: request.location,
+          session,
+        })) {
+          const error = new Error("An authoritative school already exists for this name and location.");
+          error.statusCode = 409;
+          error.code = "SCHOOL_ALREADY_EXISTS";
+          throw error;
+        }
+        if (request.school) {
+          admittedSchool = await School.findById(request.school).session(session);
+          if (!admittedSchool
+            || String(admittedSchool.sourceRequest || "") !== String(request._id)
+            || admittedSchool.sourceRequestNormalizedSchoolName !== identity.schoolName
+            || admittedSchool.sourceRequestNormalizedLocation !== identity.location
+            || String(admittedSchool.portalUser || "") !== String(requester._id)) {
+            const error = new Error("School request is linked to a mismatched school.");
+            error.statusCode = 409;
+            error.code = "SCHOOL_REQUEST_LINK_MISMATCH";
+            throw error;
+          }
+        } else {
+        }
+        if (!admittedSchool) {
+          admittedSchool = new School({
+            name: request.schoolName,
+            address: request.location,
+            state: "Not specified",
+            phone: request.contactPhone || null,
+            status: "APPROVED",
+            active: true,
+            portalUser: requester._id,
+            normalizedSchoolName: identity.schoolName,
+            normalizedLocation: identity.location,
+            normalizedAddress: identity.location,
+            sourceRequest: request._id,
+            sourceRequestNormalizedSchoolName: identity.schoolName,
+            sourceRequestNormalizedLocation: identity.location,
+          });
+        } else {
+          admittedSchool.status = "APPROVED";
+          admittedSchool.active = true;
+        }
+        admittedSchool.reviewedBy = req.user._id;
+        admittedSchool.reviewedAt = new Date();
+        await admittedSchool.save({ session });
+        await SchoolUser.updateOne(
+          { school: admittedSchool._id, user: requester._id },
+          { $set: { role: "ADMIN", status: "ACTIVE", invitedBy: req.user._id }, $setOnInsert: { school: admittedSchool._id, user: requester._id } },
+          { upsert: true, session }
+        );
+        request.status = "APPROVED";
+        request.approvedAt = new Date();
+        request.approvedBy = req.user._id;
+        request.school = admittedSchool._id;
+      }
+      await request.save({ session });
+      await audit({
+        actor: req.user._id,
+        action: action === "APPROVE" ? "EDUPAY_SCHOOL_REQUEST_APPROVED" : "EDUPAY_SCHOOL_REQUEST_REJECTED",
+        entityType: "EduPaySchoolRequest",
+        entityId: request._id,
+        school: request.school || null,
+        metadata: {
+          from: previousStatus,
+          to: request.status,
+          rejectionReason: action === "REJECT" ? rejectionReason : undefined,
+          representativeAuthorityConfirmed: action === "APPROVE" ? true : undefined,
+          requesterIdentityRef: action === "APPROVE" ? String(request.parent) : undefined,
+        },
+        req,
+        session,
+      });
+    });
+    return res.json({ success: true, request: schoolRequestDetailDto(request) });
+  } catch (error) {
+    if (error?.statusCode && typeof error.code === "string") {
+      return res.status(error.statusCode).json({ success: false, code: error.code, message: error.message });
+    }
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        code: "SCHOOL_REQUEST_IDENTITY_CONFLICT",
+        message: "Another approved request already registered this school identity.",
+      });
+    }
+    return errorResponse(res, error);
+  } finally {
+    if (session) await session.endSession();
   }
 };
 exports.schoolDashboard = async (req, res) => { try { const school = req.eduPaySchool._id; const [students, plans, settlements] = await Promise.all([Child.countDocuments({ school }), Plan.find({ school }).lean(), Settlement.find({ school }).lean()]); res.json({ success: true, school: publicSchool(req.eduPaySchool), summary: { totalRegisteredStudents: students, activeEduPayStudents: plans.length, totalExpectedFees: round(plans.reduce((s, p) => s + p.officialFee, 0)), parentSavings: round((await Contribution.aggregate([{ $match: { plan: { $in: plans.map((p) => p._id) }, status: "SUCCESS" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]))[0]?.total), upcomingSettlements: settlements.filter((s) => !["SETTLED", "REVERSED"].includes(s.status)).length, completedSettlements: settlements.filter((s) => s.status === "SETTLED").length }, settlements }); } catch (error) { errorResponse(res, error); } };

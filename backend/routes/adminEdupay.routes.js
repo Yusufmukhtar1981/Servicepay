@@ -27,6 +27,8 @@ router.get("/settings", ...view, controller.adminSettings);
 router.patch("/settings", ...manage, controller.adminSettings);
 router.get("/schools", ...view, controller.adminSchools);
 router.get("/school-requests", ...view, controller.adminSchoolRequests);
+router.get("/school-requests/:requestId", ...view, controller.adminSchoolRequestDetail);
+router.patch("/school-requests/:requestId", ...manage, controller.adminSchoolRequestAction);
 router.get("/schools/:schoolId", ...view, controller.adminSchoolDetail);
 router.get("/schools/:schoolId/private-assets", ...privateAssets, controller.adminSchoolPrivateAssets);
 router.get("/schools/:schoolId/private-assets/:fileId", ...privateAssets, controller.adminSchoolPrivateAssetDownload);

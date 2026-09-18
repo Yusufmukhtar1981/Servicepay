@@ -223,7 +223,7 @@ test("Head Office request listing exposes safe onboarding DTOs only", async () =
   assert.equal(response.body.requests.length, 1);
   assert.deepEqual(
     Object.keys(response.body.requests[0]).sort(),
-    ["contactPhone", "createdAt", "id", "location", "schoolName", "status"].sort()
+    ["contactPhone", "createdAt", "id", "location", "schoolId", "schoolName", "status"].sort()
   );
   assert.equal(response.body.requests[0].parent, undefined);
 });

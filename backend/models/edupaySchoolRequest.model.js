@@ -15,10 +15,16 @@ const schema = new mongoose.Schema({
   contactPhone: { type: String, trim: true, maxlength: 40, default: null },
   status: {
     type: String,
-    enum: ["PENDING_REVIEW", "CONTACTED", "CLOSED"],
+    enum: ["PENDING_REVIEW", "CONTACTED", "CLOSED", "APPROVED", "REJECTED"],
     default: "PENDING_REVIEW",
     index: true,
   },
+  approvedAt: { type: Date, default: null },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  rejectedAt: { type: Date, default: null },
+  rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  rejectionReason: { type: String, trim: true, maxlength: 1000, default: null },
+  school: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySchool", default: null, index: true },
 }, { timestamps: true });
 
 schema.index(

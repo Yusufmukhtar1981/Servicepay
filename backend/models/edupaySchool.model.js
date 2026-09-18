@@ -21,6 +21,12 @@ const schema = new mongoose.Schema({
   reviewedAt: { type: Date, default: null },
   reviewNote: { type: String, maxlength: 1000 },
   portalUser: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, immutable: true },
+  normalizedSchoolName: { type: String, default: null, immutable: true },
+  normalizedLocation: { type: String, default: null, immutable: true },
+  normalizedAddress: { type: String, default: null, immutable: true },
+  sourceRequest: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySchoolRequest", default: null, immutable: true },
+  sourceRequestNormalizedSchoolName: { type: String, default: null, immutable: true },
+  sourceRequestNormalizedLocation: { type: String, default: null, immutable: true },
   normalizedRegistrationNumber: { type: String, default: null, immutable: true },
   normalizedEmail: { type: String, default: null, immutable: true },
   normalizedPhone: { type: String, default: null, immutable: true },
@@ -36,4 +42,29 @@ schema.index({ status: 1, active: 1 });
 schema.index({ normalizedRegistrationNumber: 1 }, { unique: true, partialFilterExpression: { normalizedRegistrationNumber: { $type: "string" }, status: { $in: ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "SUSPENDED"] } } });
 schema.index({ normalizedEmail: 1 }, { unique: true, partialFilterExpression: { normalizedEmail: { $type: "string" }, status: { $in: ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "SUSPENDED"] } } });
 schema.index({ normalizedPhone: 1 }, { unique: true, partialFilterExpression: { normalizedPhone: { $type: "string" }, status: { $in: ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "SUSPENDED"] } } });
+schema.index(
+  { normalizedSchoolName: 1, normalizedLocation: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      normalizedSchoolName: { $type: "string" },
+      normalizedLocation: { $type: "string" },
+      status: { $in: ["PENDING_REVIEW", "UNDER_REVIEW", "APPROVED", "SUSPENDED"] },
+    },
+  }
+);
+schema.index(
+  { sourceRequest: 1 },
+  { unique: true, partialFilterExpression: { sourceRequest: { $type: "objectId" } } }
+);
+schema.index(
+  { sourceRequestNormalizedSchoolName: 1, sourceRequestNormalizedLocation: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      sourceRequestNormalizedSchoolName: { $type: "string" },
+      sourceRequestNormalizedLocation: { $type: "string" },
+    },
+  }
+);
 module.exports = mongoose.model("EduPaySchool", schema);
