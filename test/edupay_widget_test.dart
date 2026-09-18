@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:servicepay_app/edupay/edupay_api.dart';
 import 'package:servicepay_app/edupay/edupay_screen.dart';
+import 'package:servicepay_app/edupay/student_activity_center.dart';
 import 'package:servicepay_app/dashboard_screen.dart';
 
 class _DashboardClient extends http.BaseClient {
@@ -51,8 +52,8 @@ class _RequestSchoolClient extends _DashboardClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     if (request.url.path.endsWith('/school-requests')) {
       requestPath = request.url.path;
-      requestBody = jsonDecode((request as http.Request).body)
-          as Map<String, dynamic>;
+      requestBody =
+          jsonDecode((request as http.Request).body) as Map<String, dynamic>;
       return http.StreamedResponse(
         Stream.value(utf8.encode(jsonEncode({'success': true}))),
         201,
@@ -144,6 +145,108 @@ class _PlanFlowClient extends http.BaseClient {
   }
 }
 
+class _ActivityCenterClient extends http.BaseClient {
+  _ActivityCenterClient({this.forbidden = false});
+  final bool forbidden;
+  String? lastPath;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    lastPath = request.url.path;
+    final path = request.url.path;
+    if (forbidden && path.endsWith('/dashboard')) {
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(jsonEncode({
+          'success': false,
+          'code': 'EDUPAY_FORBIDDEN',
+          'message': 'Student is not linked',
+        }))),
+        403,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    final body = path.endsWith('/dashboard')
+        ? {
+            'student': {
+              'fullName': 'Ada Student',
+              'admissionNumber': 'ST-1',
+              'school': {'name': 'Bright Future Academy'},
+            },
+            'attendance': {
+              'today': 'Present',
+              'presentDays': 12,
+              'absentDays': 1,
+              'percentage': 92,
+            },
+            'latestPublishedResult': {
+              'term': 'First term',
+              'session': '2026/2027',
+              'overallAverage': 81,
+              'subjects': [
+                {'subject': 'Mathematics', 'total': 81, 'grade': 'A'}
+              ],
+            },
+            'assignments': [
+              {'title': 'Fractions', 'dueDate': '2026-10-02'}
+            ],
+            'activities': [],
+            'announcements': [],
+            'conduct': [],
+          }
+        : {
+            'timeline': [
+              {'type': 'Attendance', 'title': 'Present', 'date': 'Today'}
+            ]
+          };
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(jsonEncode(body))),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
+class _GuardianLinkClient extends _ActivityCenterClient {
+  bool accepted = false;
+  String? acceptedCode;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final path = request.url.path;
+    if (path.endsWith('/guardian-links/accept')) {
+      accepted = true;
+      acceptedCode = jsonDecode((request as http.Request).body)['code'];
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(jsonEncode({'success': true}))),
+        201,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (path.endsWith('/activity-center/parent/children')) {
+      final body = accepted
+          ? {
+              'success': true,
+              'children': [
+                {'id': 'student-1', 'fullName': 'Ada Student'},
+                {'id': 'student-2', 'fullName': 'Bola Student'},
+              ],
+            }
+          : {
+              'success': true,
+              'children': [
+                {'id': 'student-1', 'fullName': 'Ada Student'},
+              ],
+            };
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(jsonEncode(body))),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    return super.send(request);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('EduPay renders authoritative empty overview state',
@@ -198,8 +301,8 @@ void main() {
     expect(find.text("Can't find your school?"), findsOneWidget);
     await tester.tap(find.text("Can't find your school?"));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'School name'),
-        'Bright Future Academy');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'School name'), 'Bright Future Academy');
     await tester.enterText(
       find.widgetWithText(TextField, 'Location'),
       'Ikeja, Lagos',
@@ -285,5 +388,90 @@ void main() {
       'savingFrequency': 'MONTHLY',
     });
     expect(client.cataloguePath, '/api/edupay/schools/school-2/catalogue');
+  });
+
+  testWidgets('parent can switch linked children and view activity timeline',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'test-token'});
+    final client = _ActivityCenterClient();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StudentActivityCenter(
+          api: EduPayApi(client: client),
+          children: const [
+            {'id': 'student-1', 'fullName': 'Ada Student'},
+            {'id': 'student-2', 'fullName': 'Bola Student'},
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ada Student'), findsWidgets);
+    expect(find.textContaining('Present'), findsWidgets);
+    await tester.tap(find.byType(DropdownButtonFormField<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bola Student').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Bola Student'), findsWidgets);
+    await tester.drag(
+      find.byType(ListView).first,
+      const Offset(0, -1200),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Activity timeline'), findsOneWidget);
+
+    // The dashboard remains available after switching children; timeline
+    // content is intentionally paginated and may not be in the viewport.
+    await tester.drag(
+      find.byType(ListView).first,
+      const Offset(0, 1200),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(DropdownButtonFormField<int>), findsOneWidget);
+  });
+
+  testWidgets('parent activity center displays isolation failure',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'test-token'});
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StudentActivityCenter(
+          api: EduPayApi(client: _ActivityCenterClient(forbidden: true)),
+          children: const [
+            {'id': 'unrelated', 'fullName': 'Unrelated Student'},
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('no longer linked'), findsOneWidget);
+  });
+
+  testWidgets('guardian code acceptance reloads backend-linked children',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'test-token'});
+    final client = _GuardianLinkClient();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StudentActivityCenter(
+          api: EduPayApi(client: client),
+          children: const [
+            {'id': 'student-1', 'fullName': 'Ada Student'},
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Link another child'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), ' SCHOOL-CODE ');
+    await tester.tap(find.text('Link child'));
+    await tester.pumpAndSettle();
+
+    expect(client.accepted, isTrue);
+    expect(client.acceptedCode, 'SCHOOL-CODE');
+    await tester.tap(find.byType(DropdownButtonFormField<int>));
+    await tester.pumpAndSettle();
+    expect(find.text('Bola Student'), findsOneWidget);
   });
 }

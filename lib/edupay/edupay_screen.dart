@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'edupay_api.dart';
+import 'student_activity_center.dart';
 
 class EduPayScreen extends StatefulWidget {
   const EduPayScreen({super.key, this.api});
@@ -16,6 +17,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
   String? error;
   Map<String, dynamic> dash = {};
   List<dynamic> plans = [], children = [], repayments = [], schools = [];
+  List<dynamic> activityChildren = [];
   Map<String, dynamic> history = {};
 
   @override
@@ -38,6 +40,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
         api.repayments(),
         api.schools(),
         api.history(),
+        api.parentActivityChildren(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -47,6 +50,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
         repayments = values[3] as List;
         schools = values[4] as List;
         history = values[5] as Map<String, dynamic>;
+        activityChildren = values[6] as List;
         loading = false;
       });
     } catch (e) {
@@ -228,6 +232,49 @@ class _EduPayScreenState extends State<EduPayScreen> {
   Widget _children() => ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (activityChildren.isNotEmpty) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _sectionTitle('Student Activity Center'),
+                TextButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StudentActivityCenter(
+                        api: api,
+                        children: activityChildren,
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Open'),
+                ),
+              ],
+            ),
+            Card(
+              color: const Color(0xffe8f4ef),
+              child: ListTile(
+                leading: const Icon(Icons.insights_outlined,
+                    color: Color(0xff0c6b51)),
+                title: const Text('School updates for your children'),
+                subtitle: Text(
+                  '${activityChildren.length} linked student${activityChildren.length == 1 ? '' : 's'} · attendance, results, assignments and activities',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => StudentActivityCenter(
+                      api: api,
+                      children: activityChildren,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

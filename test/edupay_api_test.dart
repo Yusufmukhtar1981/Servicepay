@@ -98,7 +98,8 @@ void main() {
     expect(catalogue['classes'], isEmpty);
   });
 
-  test('requestSchool posts a non-financial school onboarding request', () async {
+  test('requestSchool posts a non-financial school onboarding request',
+      () async {
     final client = _Client();
     final api = EduPayApi(client: client);
 
@@ -115,5 +116,87 @@ void main() {
       'contactPhone': '08012345678',
     });
     expect(client.last?.headers['authorization'], 'Bearer test-token');
+  });
+
+  test('parent activity center uses verified-child endpoints only', () async {
+    final client = _Client()
+      ..response = {
+        'children': [
+          {'id': 'student-1', 'fullName': 'Ada Student'}
+        ]
+      };
+    final api = EduPayApi(client: client);
+    final linked = await api.parentActivityChildren();
+    expect(linked.single['id'], 'student-1');
+    expect(
+        client.last?.url.path, '/api/edupay/activity-center/parent/children');
+
+    await api.parentStudentDashboard('student-1');
+    expect(client.last?.url.path,
+        '/api/edupay/activity-center/parent/children/student-1/dashboard');
+    await api.parentStudentTimeline('student-1', type: 'Attendance', page: 2);
+    expect(client.last?.url.path,
+        '/api/edupay/activity-center/parent/children/student-1/timeline');
+    expect(
+        client.last?.url.queryParameters, {'type': 'Attendance', 'page': '2'});
+    await api.parentStudentSummary('student-1');
+    expect(client.last?.url.path,
+        '/api/edupay/activity-center/parent/children/student-1/summary');
+    await api.parentStudentAttendance('student-1');
+    expect(client.last?.url.path,
+        '/api/edupay/activity-center/parent/children/student-1/attendance');
+    await api.parentStudentAssignments('student-1');
+    expect(client.last?.url.path,
+        '/api/edupay/activity-center/parent/children/student-1/assignments');
+  });
+
+  test('parent activity center preserves backend isolation errors', () async {
+    final client = _Client()
+      ..status = 403
+      ..response = {
+        'success': false,
+        'code': 'EDUPAY_FORBIDDEN',
+        'message': 'Student is not linked',
+      };
+    expect(
+      () => EduPayApi(client: client).parentStudentDashboard('unrelated'),
+      throwsA(isA<EduPayException>()
+          .having((e) => e.code, 'code', 'EDUPAY_FORBIDDEN')),
+    );
+  });
+
+  test('guardian invite acceptance posts the one-time code without storing it',
+      () async {
+    final client = _Client()
+      ..response = {
+        'success': true,
+        'link': {'id': 'link-1'},
+      };
+    final api = EduPayApi(client: client);
+    await api.acceptGuardianLink(' SCHOOL-ONE-TIME ');
+    expect(client.last?.url.path,
+        '/api/edupay/activity-center/parent/guardian-links/accept');
+    expect(jsonDecode(client.last!.body), {'code': 'SCHOOL-ONE-TIME'});
+  });
+
+  test('guardian invite acceptance preserves invalid and expired errors',
+      () async {
+    for (final failure in [
+      (400, 'Guardian code is invalid.'),
+      (410, 'Guardian code has expired.'),
+      (409, 'Guardian code has already been used.'),
+    ]) {
+      final client = _Client()
+        ..status = failure.$1
+        ..response = {'success': false, 'message': failure.$2};
+      expect(
+        () => EduPayApi(client: client).acceptGuardianLink('one-time-code'),
+        throwsA(isA<EduPayException>().having(
+          (e) => e.message,
+          'message',
+          failure.$2,
+        )),
+      );
+    }
   });
 }

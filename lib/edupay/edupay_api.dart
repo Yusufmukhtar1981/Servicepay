@@ -39,9 +39,13 @@ class EduPayApi {
       decoded = {};
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401) {
+        await SessionStore.clear();
+      }
       throw EduPayException(
         decoded is Map ? decoded['message']?.toString() : null,
         code: decoded is Map ? decoded['code']?.toString() : null,
+        statusCode: response.statusCode,
       );
     }
     return decoded is Map
@@ -93,6 +97,68 @@ class EduPayApi {
 
   Future<List<dynamic>> children() async =>
       (await _send('GET', '/children'))['children'] as List? ?? [];
+
+  /// Returns only children the authenticated parent is authorized to monitor.
+  /// This is deliberately separate from the fee-plan child catalogue: the
+  /// activity center must never search for or infer a student by id.
+  Future<List<dynamic>> parentActivityChildren() async =>
+      (await _send('GET', '/activity-center/parent/children'))['children']
+          as List? ??
+      [];
+
+  Future<Map<String, dynamic>> acceptGuardianLink(String code) => _send(
+        'POST',
+        '/activity-center/parent/guardian-links/accept',
+        body: {'code': code.trim()},
+      );
+
+  Future<Map<String, dynamic>> parentStudentDashboard(String studentId) =>
+      _send('GET', '/activity-center/parent/children/$studentId/dashboard');
+
+  Future<Map<String, dynamic>> parentStudentTimeline(
+    String studentId, {
+    String? type,
+    int page = 1,
+  }) {
+    final query = <String, String>{
+      if (type != null && type.isNotEmpty && type != 'All') 'type': type,
+      'page': '$page',
+    };
+    final suffix = query.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    return _send(
+      'GET',
+      '/activity-center/parent/children/$studentId/timeline?$suffix',
+    );
+  }
+
+  Future<Map<String, dynamic>> parentStudentSummary(String studentId) =>
+      _send('GET', '/activity-center/parent/children/$studentId/summary');
+
+  Future<Map<String, dynamic>> parentStudentAttendance(String studentId) =>
+      parentStudentType(studentId, 'attendance');
+
+  Future<Map<String, dynamic>> parentStudentResults(String studentId) =>
+      _send('GET', '/activity-center/parent/children/$studentId/results');
+
+  Future<Map<String, dynamic>> parentStudentAssignments(String studentId) =>
+      parentStudentType(studentId, 'assignments');
+
+  Future<Map<String, dynamic>> parentStudentActivities(String studentId) =>
+      parentStudentType(studentId, 'activities');
+
+  Future<Map<String, dynamic>> parentStudentAnnouncements(String studentId) =>
+      parentStudentType(studentId, 'announcements');
+
+  Future<Map<String, dynamic>> parentStudentConduct(String studentId) =>
+      parentStudentType(studentId, 'conduct');
+
+  Future<Map<String, dynamic>> parentStudentType(
+    String studentId,
+    String type,
+  ) =>
+      _send('GET', '/activity-center/parent/children/$studentId/$type');
   Future<Map<String, dynamic>> createChild(Map<String, dynamic> data) =>
       _send('POST', '/children', body: data);
   Future<List<dynamic>> plans() async =>
@@ -100,8 +166,12 @@ class EduPayApi {
   Future<Map<String, dynamic>> createPlan(Map<String, dynamic> data) =>
       _send('POST', '/plans', body: data);
   Future<Map<String, dynamic>> plan(String id) => _send('GET', '/plans/$id');
-  Future<Map<String, dynamic>> contribute(String id, double amount, String pin,
-          {String? idempotencyKey}) =>
+  Future<Map<String, dynamic>> contribute(
+    String id,
+    double amount,
+    String pin, {
+    String? idempotencyKey,
+  }) =>
       _send(
         'POST',
         '/plans/$id/contributions',
@@ -149,9 +219,10 @@ class EduPayApi {
 }
 
 class EduPayException implements Exception {
-  EduPayException(this.message, {this.code});
+  EduPayException(this.message, {this.code, this.statusCode});
   final String? message;
   final String? code;
+  final int? statusCode;
   @override
   String toString() => message ?? 'Unable to complete that EduPay request.';
 }
