@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 import 'dart:math';
 
@@ -6,6 +7,9 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'marketplace_cart_store.dart';
+import '../feature_transaction_pin_dialog.dart';
+import '../services/biometric_auth_service.dart';
+import '../services/transaction_authorization_service.dart';
 
 class MarketplaceCheckoutScreen extends StatefulWidget {
   const MarketplaceCheckoutScreen({super.key});
@@ -88,9 +92,9 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
 
-    return prefs.getString('auth_token') ??
-        prefs.getString('token') ??
-        prefs.getString('access_token');
+    return (await SessionStore.readToken()) ??
+        (await SessionStore.readToken()) ??
+        (await SessionStore.readToken());
   }
 
   String _money(num value) {
@@ -146,6 +150,70 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
 
   String _title(Map<String, dynamic> item) {
     return '${item['title'] ?? item['name'] ?? 'Marketplace Product'}';
+  }
+
+  Future<Map<String, dynamic>?> _authorizeCheckout({
+    required String token,
+    required Map<String, dynamic> body,
+  }) async {
+    final enteredPin = transactionPinController.text.trim();
+    if (enteredPin.isNotEmpty) return {'transactionPin': enteredPin};
+
+    final enrolled = await BiometricAuthService().isEnrolled();
+    if (!mounted) return null;
+    var choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Authorize Marketplace order'),
+        content: const Text('Choose how to authorize this wallet payment.'),
+        actions: [
+          if (enrolled)
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'biometric'),
+              child: const Text('Biometrics'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'pin'),
+            child: const Text('Transaction PIN'),
+          ),
+        ],
+      ),
+    );
+    if (choice == 'biometric') {
+      try {
+        final grant =
+            await TransactionAuthorizationService().authorizeTransaction(
+          token: token,
+          operation: 'MARKETPLACE_ORDER',
+          requestBody: body,
+          idempotencyKey: checkoutIdempotencyKey,
+        );
+        final deviceId =
+            grant == null ? null : await BiometricAuthService().deviceId();
+        if (grant != null && deviceId != null) {
+          return {'biometricGrant': grant, 'deviceId': deviceId};
+        }
+      } catch (_) {
+        // Fall through to the legacy PIN dialog.
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Biometric authorization was cancelled or unavailable.')),
+        );
+      }
+      choice = 'pin';
+    }
+    if (choice == 'pin') {
+      final pin = await showFeatureTransactionPinDialog(
+        context,
+        title: 'Authorize Marketplace order',
+        message: 'Enter your transaction PIN to continue.',
+      );
+      return pin == null ? null : {'transactionPin': pin};
+    }
+    return null;
   }
 
   Future<void> _placeOrder() async {
@@ -209,6 +277,22 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
     });
 
     try {
+      final requestBody = <String, dynamic>{
+        'items': orderItems,
+        'customerName': nameController.text.trim(),
+        'customerPhone': phoneController.text.trim(),
+        'deliveryAddress': addressController.text.trim(),
+        'state': stateController.text.trim(),
+        'lga': lgaController.text.trim(),
+        'deliveryNote': noteController.text.trim(),
+        'paymentMethod': 'WALLET',
+      };
+      final authorization = await _authorizeCheckout(
+        token: token,
+        body: requestBody,
+      );
+      if (authorization == null) return;
+      requestBody.addAll(authorization);
       final response = await http
           .post(
             Uri.parse('$baseUrl/marketplace/orders'),
@@ -218,17 +302,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
               'Authorization': 'Bearer ${token.trim()}',
               'Idempotency-Key': checkoutIdempotencyKey,
             },
-            body: jsonEncode({
-              'items': orderItems,
-              'customerName': nameController.text.trim(),
-              'customerPhone': phoneController.text.trim(),
-              'deliveryAddress': addressController.text.trim(),
-              'state': stateController.text.trim(),
-              'lga': lgaController.text.trim(),
-              'deliveryNote': noteController.text.trim(),
-              'paymentMethod': 'WALLET',
-              'transactionPin': transactionPinController.text.trim(),
-            }),
+            body: jsonEncode(requestBody),
           )
           .timeout(const Duration(seconds: 45));
 

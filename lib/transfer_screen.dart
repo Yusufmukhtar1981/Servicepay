@@ -7,6 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'servicepay_transfer_helper.dart';
 import 'services/customer_feature_config_service.dart';
+import 'services/session_store.dart';
+import 'services/biometric_auth_service.dart';
+import 'services/transaction_authorization_service.dart';
 
 bool retainServicePayTransferRequestKey({
   required int statusCode,
@@ -43,6 +46,72 @@ class _TransferScreenState extends State<TransferScreen> {
   String? pendingClientReference;
   bool hasUnresolvedIntent = false;
   bool isRestoringIntent = true;
+  bool _authorizationInProgress = false;
+
+  Future<Map<String, dynamic>?> _authorizeTransfer({
+    required String token,
+    required String beneficiaryName,
+    required String receiverPhone,
+    required double amount,
+    required String requestKey,
+    required Map<String, dynamic> requestBody,
+  }) async {
+    if (_authorizationInProgress) return null;
+    _authorizationInProgress = true;
+    try {
+      var choice = TransactionAuthorizationService.transactionBiometricsEnabled
+          ? await showDialog<String>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Authorize transfer'),
+                content: const Text('Choose how to confirm this transfer.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, 'biometric'),
+                    child: const Text('Biometrics'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, 'pin'),
+                    child: const Text('Transaction PIN'),
+                  ),
+                ],
+              ),
+            )
+          : 'pin';
+      if (choice == 'biometric') {
+        try {
+          final grant = await TransactionAuthorizationService(
+            client: widget.client,
+          ).authorizeTransaction(
+            token: token,
+            operation: TransactionAuthorizationService.transfer,
+            requestBody: requestBody,
+            idempotencyKey: requestKey,
+          );
+          final deviceId = grant == null
+              ? null
+              : await BiometricAuthService().deviceId();
+          if (grant != null && deviceId != null) {
+            return {'biometricGrant': grant, 'deviceId': deviceId};
+          }
+        } catch (_) {
+          // Fall through to the legacy PIN dialog.
+        }
+        choice = 'pin';
+      }
+      if (choice == 'pin') {
+        final pin = await requestTransactionPin(
+          beneficiaryName: beneficiaryName,
+          receiverPhone: receiverPhone,
+          amount: amount,
+        );
+        return pin == null ? null : {'pin': pin};
+      }
+      return null;
+    } finally {
+      _authorizationInProgress = false;
+    }
+  }
 
   @override
   void initState() {
@@ -71,7 +140,7 @@ class _TransferScreenState extends State<TransferScreen> {
     phoneController.text = intent.receiverPhone;
     amountController.text = intent.amount.toString();
     await recoverTransferStatus(
-      token: prefs.getString('auth_token') ?? '',
+      token: (await SessionStore.readToken()) ?? '',
       reference: intent.reference,
     );
   }
@@ -665,28 +734,24 @@ class _TransferScreenState extends State<TransferScreen> {
         isLoading = false;
       });
 
-      final String? pin = await requestTransactionPin(
-        beneficiaryName: beneficiaryName,
-        receiverPhone: receiverPhone,
-        amount: amount,
-      );
-
-      if (pin == null) {
-        return;
-      }
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        isLoading = true;
-      });
-
       final String requestKey = requestKeyForTransfer(
         receiverPhone,
         amount,
       );
+      final authorization = await _authorizeTransfer(
+        token: token,
+        beneficiaryName: beneficiaryName,
+        receiverPhone: receiverPhone,
+        amount: amount,
+        requestKey: requestKey,
+        requestBody: {
+          'receiverPhone': receiverPhone,
+          'amount': amount,
+          'clientReference': pendingClientReference,
+        },
+      );
+      if (authorization == null || !mounted) return;
+      setState(() => isLoading = true);
       await savePendingServicePayTransfer(
         preferences,
         PendingServicePayTransfer(
@@ -713,7 +778,7 @@ class _TransferScreenState extends State<TransferScreen> {
             body: jsonEncode({
               'receiverPhone': receiverPhone,
               'amount': amount,
-              'pin': pin,
+              ...authorization,
               'clientReference': pendingClientReference,
             }),
           )
@@ -915,7 +980,7 @@ class _TransferScreenState extends State<TransferScreen> {
       if (key != null) {
         final prefs = await SharedPreferences.getInstance();
         await recoverTransferStatus(
-          token: prefs.getString('auth_token') ?? '',
+          token: (await SessionStore.readToken()) ?? '',
           reference: key,
         );
       } else {
@@ -976,7 +1041,7 @@ class _TransferScreenState extends State<TransferScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await recoverTransferStatus(
-        token: prefs.getString('auth_token') ?? '',
+        token: (await SessionStore.readToken()) ?? '',
         reference: pendingClientReference!,
       );
     } finally {

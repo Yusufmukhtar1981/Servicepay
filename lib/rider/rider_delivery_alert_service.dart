@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -367,7 +368,7 @@ class RiderDeliveryAlertService {
         'DELIVERY_RIDER') {
       return;
     }
-    final String auth = prefs.getString('auth_token')?.trim() ?? '';
+    final String auth = (await SessionStore.readToken())?.trim() ?? '';
     final String? fcmToken =
         tokenOverride ?? await FirebaseMessaging.instance.getToken();
     if (auth.isEmpty || fcmToken == null || fcmToken.isEmpty) return;
@@ -424,7 +425,7 @@ class RiderDeliveryAlertService {
   static Future<void> unregisterCurrentToken() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String auth = prefs.getString('auth_token')?.trim() ?? '';
+    final String auth = (await SessionStore.readToken())?.trim() ?? '';
     final String? fcmToken = await FirebaseMessaging.instance.getToken();
     if (auth.isEmpty || fcmToken == null || fcmToken.isEmpty) return;
     try {

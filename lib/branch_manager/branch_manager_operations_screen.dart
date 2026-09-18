@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -87,9 +88,9 @@ class _BranchManagerOperationsScreenState
     });
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = (prefs.getString('auth_token') ??
-              prefs.getString('access_token') ??
-              prefs.getString('token') ??
+      final String token = ((await SessionStore.readToken()) ??
+              (await SessionStore.readToken()) ??
+              (await SessionStore.readToken()) ??
               '')
           .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '')
           .trim();
@@ -188,8 +189,8 @@ class _BranchManagerOperationsScreenState
     if (id.isEmpty) return;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = (prefs.getString('auth_token') ??
-              prefs.getString('access_token') ??
+      final String token = ((await SessionStore.readToken()) ??
+              (await SessionStore.readToken()) ??
               '')
           .trim();
       final http.Response response = await _client.get(
@@ -302,8 +303,8 @@ class _BranchManagerOperationsScreenState
     if (config == null) return;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = (prefs.getString('auth_token') ??
-              prefs.getString('access_token') ??
+      final String token = ((await SessionStore.readToken()) ??
+              (await SessionStore.readToken()) ??
               '')
           .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '')
           .trim();
@@ -434,8 +435,8 @@ class _BranchManagerOperationsScreenState
             'Enter a name, valid phone, and password of at least 6 characters.');
       }
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = (prefs.getString('auth_token') ??
-              prefs.getString('access_token') ??
+      final String token = ((await SessionStore.readToken()) ??
+              (await SessionStore.readToken()) ??
               '')
           .trim();
       final http.Response response = await http.post(

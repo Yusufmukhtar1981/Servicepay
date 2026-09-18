@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -77,7 +78,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   Future<String?> _token() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token') ?? prefs.getString('token');
+    return (await SessionStore.readToken()) ?? (await SessionStore.readToken());
   }
 
   Future<void> _connectSocket() async {

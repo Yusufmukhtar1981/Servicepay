@@ -21,8 +21,8 @@ class PhoneFinancingApi {
   Future<Map<String, dynamic>> schedule(String id) => get('/finance/${Uri.encodeComponent(id)}/schedule');
   Future<Map<String, dynamic>> payments(String id) => get('/finance/${Uri.encodeComponent(id)}/payments');
   Future<Map<String, dynamic>> submit(Map<String, dynamic> body) => post('/applications', body);
-  Future<Map<String, dynamic>> deposit(String id, double amount, String pin, String key) => post('/applications/${Uri.encodeComponent(id)}/pay-deposit', {'amount': amount, 'transactionPin': pin}, idempotencyKey: key);
-  Future<Map<String, dynamic>> pay(String id, double amount, String pin, String key) => post('/finance/${Uri.encodeComponent(id)}/pay', {'amount': amount, 'transactionPin': pin}, idempotencyKey: key);
+  Future<Map<String, dynamic>> deposit(String id, double amount, String pin, String key, {String? biometricGrant, String? deviceId}) => post('/applications/${Uri.encodeComponent(id)}/pay-deposit', {'amount': amount, 'transactionPin': pin, if (biometricGrant != null) 'biometricGrant': biometricGrant, if (deviceId != null) 'deviceId': deviceId}, idempotencyKey: key);
+  Future<Map<String, dynamic>> pay(String id, double amount, String pin, String key, {String? biometricGrant, String? deviceId}) => post('/finance/${Uri.encodeComponent(id)}/pay', {'amount': amount, 'transactionPin': pin, if (biometricGrant != null) 'biometricGrant': biometricGrant, if (deviceId != null) 'deviceId': deviceId}, idempotencyKey: key);
   Future<String> pendingKey(String operation) async {
     final p = await SharedPreferences.getInstance(); final name = 'phone_financing_pending_$operation';
     final old = p.getString(name); if (old != null && old.isNotEmpty) return old;

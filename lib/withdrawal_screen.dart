@@ -9,6 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'reset_transaction_pin_screen.dart';
 import 'transaction_pin_screen.dart';
 import 'services/customer_feature_config_service.dart';
+import 'services/session_store.dart';
+import 'services/biometric_auth_service.dart';
+import 'services/transaction_authorization_service.dart';
 
 class WithdrawalScreen extends StatefulWidget {
   const WithdrawalScreen({
@@ -69,27 +72,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   }
 
   Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    for (final key in [
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ]) {
-      final value = prefs.getString(key)?.trim();
-
-      if (value != null && value.isNotEmpty) {
-        return value.replaceFirst(
-          'Bearer ',
-          '',
-        );
-      }
-    }
-
-    return null;
+    return (await SessionStore.readToken())?.trim();
   }
 
   Future<void> loadTransactionPinStatus() async {
@@ -356,19 +339,6 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       isAwaitingPin = true;
     });
 
-    final pin = await showWithdrawalPinDialog(
-      bank: bank,
-      accountNumber: accountNumber,
-      amount: amount,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      isAwaitingPin = false;
-    });
-
-    if (pin == null) return;
-
     final fingerprint =
         '$bank|$accountNumber|$accountName|${amount.toStringAsFixed(2)}';
     if (pendingRequestKey == null || pendingFingerprint != fingerprint) {
@@ -377,16 +347,66 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       pendingFingerprint = fingerprint;
     }
 
+    final token = await getToken();
+    if (token == null) {
+      showMessage('Your login session was not found.');
+      return;
+    }
+    final requestBody = <String, dynamic>{
+      'bankName': bank,
+      'accountNumber': accountNumber,
+      'accountName': accountName,
+      'amount': amount,
+    };
+    Map<String, dynamic> authorization;
+    if (TransactionAuthorizationService.transactionBiometricsEnabled) {
+      String? grant;
+      String? deviceId;
+      try {
+        grant = await TransactionAuthorizationService().authorizeTransaction(
+          token: token,
+          operation: TransactionAuthorizationService.withdrawal,
+          requestBody: requestBody,
+          idempotencyKey: pendingRequestKey!,
+        );
+        deviceId = grant == null
+            ? null
+            : await BiometricAuthService().deviceId();
+      } catch (_) {
+        grant = null;
+      }
+      if (grant != null && deviceId != null) {
+        authorization = {'biometricGrant': grant, 'deviceId': deviceId};
+      } else {
+        setState(() => isAwaitingPin = true);
+        final pin = await showWithdrawalPinDialog(
+          bank: bank,
+          accountNumber: accountNumber,
+          amount: amount,
+        );
+        if (!mounted) return;
+        setState(() => isAwaitingPin = false);
+        if (pin == null) return;
+        authorization = {'transactionPin': pin};
+      }
+    } else {
+      setState(() => isAwaitingPin = true);
+      final pin = await showWithdrawalPinDialog(
+        bank: bank,
+        accountNumber: accountNumber,
+        amount: amount,
+      );
+      if (!mounted) return;
+      setState(() => isAwaitingPin = false);
+      if (pin == null) return;
+      authorization = {'transactionPin': pin};
+    }
+
     setState(() {
       isSubmitting = true;
     });
 
     try {
-      final token = await getToken();
-      if (token == null) {
-        throw StateError('Your login session was not found.');
-      }
-
       final response = await _client
           .post(
             Uri.parse(
@@ -403,7 +423,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
               'accountNumber': accountNumber,
               'accountName': accountName,
               'amount': amount,
-              'transactionPin': pin,
+              ...authorization,
             }),
           )
           .timeout(const Duration(seconds: 30));

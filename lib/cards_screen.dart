@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -32,7 +33,7 @@ class _CardsScreenState extends State<CardsScreen> {
 
   Future<String> getToken() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    String token = prefs.getString('auth_token') ?? '';
+    String token = (await SessionStore.readToken()) ?? '';
 
     if (token.toLowerCase().startsWith('bearer ')) {
       token = token.substring(7).trim();

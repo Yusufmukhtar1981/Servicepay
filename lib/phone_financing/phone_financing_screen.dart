@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'phone_financing_api.dart';
 import 'phone_financing_models.dart';
+import '../services/transaction_authorization_service.dart';
+import '../services/biometric_auth_service.dart';
+import '../services/session_store.dart';
 
 const _green = Color(0xFF08783E);
 const _ink = Color(0xFF173126);
@@ -131,7 +134,7 @@ class _ApplicationTile extends StatelessWidget {
     if (item.history.isNotEmpty) ...[const SizedBox(height: 14), ...item.history.reversed.take(3).map((h) => ListTile(contentPadding: EdgeInsets.zero, dense: true, leading: const Icon(Icons.check_circle_outline, color: _green, size: 20), title: Text('${h['status'] ?? ''}'.replaceAll('_', ' ')), subtitle: Text('${h['note'] ?? ''}')))],
     if (item.status == 'AWAITING_DEPOSIT') Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: () => _pay(context), style: FilledButton.styleFrom(backgroundColor: _green), child: Text('Pay deposit ${_money(item.depositRequired - item.depositPaid)}')))
   ]))); }
-  Future<void> _pay(BuildContext context) async { final amount = item.depositRequired - item.depositPaid; final result = await _paymentDialog(context, 'Pay your deposit', amount); if (result == null) return; try { final key = await api.pendingKey('deposit_${item.id}'); await api.deposit(item.id, amount, result, key); await api.completeKey('deposit_${item.id}'); if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deposit payment submitted.'), backgroundColor: _green)); refresh(); } } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); } }
+  Future<void> _pay(BuildContext context) async { final amount = item.depositRequired - item.depositPaid; try { final key = await api.pendingKey('deposit_${item.id}'); final token = await SessionStore.readToken(); final body = <String,dynamic>{'amount':amount,'idempotencyKey':key}; final grant = token == null ? null : await TransactionAuthorizationService().authorizeTransaction(token: token, operation: 'PHONE_FINANCING_DEPOSIT', requestBody: body, idempotencyKey: key); final device = grant == null ? null : await BiometricAuthService().deviceId(); final pin = grant == null ? await _paymentDialog(context, 'Pay your deposit', amount) : ''; if (pin == null) return; await api.deposit(item.id, amount, pin, key, biometricGrant: grant, deviceId: device); await api.completeKey('deposit_${item.id}'); if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deposit payment submitted.'), backgroundColor: _green)); refresh(); } } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); } }
 }
 
 class _Finance extends StatelessWidget {
@@ -170,7 +173,7 @@ class _FinanceCard extends StatelessWidget {
     ]),
     if (next != null && amount > 0) SizedBox(width: double.infinity, child: FilledButton(onPressed: () => _pay(context, amount), style: FilledButton.styleFrom(backgroundColor: _green, minimumSize: const Size.fromHeight(52)), child: Text('Pay exact weekly amount · ${_money(amount)}'))),
   ]); }
-  Future<void> _pay(BuildContext context, double amount) async { final pin = await _paymentDialog(context, 'Confirm weekly payment', amount); if (pin == null) return; try { final key = await api.pendingKey('installment_${finance.id}'); await api.pay(finance.id, amount, pin, key); await api.completeKey('installment_${finance.id}'); if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Weekly payment submitted.'), backgroundColor: _green)); refresh(); } } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); } }
+  Future<void> _pay(BuildContext context, double amount) async { try { final key = await api.pendingKey('installment_${finance.id}'); final token = await SessionStore.readToken(); final body = <String,dynamic>{'amount':amount,'idempotencyKey':key}; final grant = token == null ? null : await TransactionAuthorizationService().authorizeTransaction(token: token, operation: 'PHONE_FINANCING_INSTALLMENT', requestBody: body, idempotencyKey: key); final device = grant == null ? null : await BiometricAuthService().deviceId(); final pin = grant == null ? await _paymentDialog(context, 'Confirm weekly payment', amount) : ''; if (pin == null) return; await api.pay(finance.id, amount, pin, key, biometricGrant: grant, deviceId: device); await api.completeKey('installment_${finance.id}'); if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Weekly payment submitted.'), backgroundColor: _green)); refresh(); } } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); } }
 }
 
 class _Page extends StatelessWidget {

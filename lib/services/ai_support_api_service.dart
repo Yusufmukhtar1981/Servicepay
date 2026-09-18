@@ -1,3 +1,4 @@
+import 'session_store.dart';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -144,7 +145,7 @@ class AiSupportApiService {
 
   static Future<Map<String, String>> _authHeaders() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? token = prefs.getString('auth_token')?.trim();
+    final String? token = (await SessionStore.readToken())?.trim();
 
     if (token == null || token.isEmpty) {
       throw const AiSupportApiException(

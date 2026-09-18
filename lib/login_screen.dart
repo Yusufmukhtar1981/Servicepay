@@ -9,11 +9,15 @@ import 'forgot_password_screen.dart';
 import 'login_routing.dart';
 import 'register_screen.dart';
 import 'servicepay_theme.dart';
+import 'services/biometric_auth_service.dart';
+import 'services/session_store.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
-  });
+    BiometricAuthService? biometricService,
+  }) : biometricService = biometricService;
+  final BiometricAuthService? biometricService;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -30,12 +34,51 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool hidePassword = true;
   bool isLoading = false;
+  bool biometricAvailable = false;
+  late final BiometricAuthService _biometrics =
+      widget.biometricService ?? BiometricAuthService();
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      if (!await BiometricAuthService.hasEnrollmentMarker()) return;
+      final available =
+          await _biometrics.isSupported() && await _biometrics.isEnrolled();
+      if (mounted) setState(() => biometricAvailable = available);
+    }();
+  }
+
+  Future<void> _biometricLogin() async {
+    if (isLoading) return;
+    setState(() => isLoading = true);
+    try {
+      final result = await _biometrics.login();
+      if (result == null) {
+        showMessage('Biometric sign in was cancelled or is unavailable.');
+        return;
+      }
+      final role = loginRoleFromResponse(result.user, result.user);
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => authenticatedHomeForLogin(role,
+                mustChangePassword: result.user['mustChangePassword'] == true),
+          ),
+          (_) => false,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
   }
 
   void showMessage(
@@ -201,16 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await clearOldLoginData(prefs);
 
-    final bool tokenSaved = await prefs.setString(
-      'auth_token',
-      token.trim(),
-    );
-
-    if (!tokenSaved) {
-      throw Exception(
-        'Unable to save the login session.',
-      );
-    }
+    await SessionStore.writeToken(token);
 
     await prefs.setString(
       'user_id',
@@ -303,7 +337,7 @@ class _LoginScreenState extends State<LoginScreen> {
       walletBalance,
     );
 
-    final String? savedToken = prefs.getString('auth_token');
+    final String? savedToken = (await SessionStore.readToken());
 
     if (savedToken == null || savedToken.trim().isEmpty) {
       throw Exception(
@@ -350,10 +384,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       debugPrint(
         'Login status: ${response.statusCode}',
-      );
-
-      debugPrint(
-        'Login response: ${response.body}',
       );
 
       final String responseBody = response.body.trim();
@@ -803,6 +833,20 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                           ),
                         ),
+                        if (biometricAvailable)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: SizedBox(
+                              height: 52,
+                              child: OutlinedButton.icon(
+                                onPressed: isLoading ? null : _biometricLogin,
+                                icon: const Icon(Icons.fingerprint),
+                                label: const Text(
+                                  'Login with Fingerprint / Biometrics',
+                                ),
+                              ),
+                            ),
+                          ),
                         const SizedBox(
                           height: 17,
                         ),

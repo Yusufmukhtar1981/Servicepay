@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'session_store.dart';
 
 class ApiService {
   static const String baseUrl = 'https://api.servicepay.ng/api';
@@ -42,6 +42,9 @@ class ApiService {
     required String phone,
     required String amount,
     required String transactionPin,
+    String? biometricGrant,
+    String? deviceId,
+    String? idempotencyKey,
   }) async {
     final String token = await _getAuthToken();
 
@@ -54,12 +57,16 @@ class ApiService {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Authorization': 'Bearer $token',
+            if (idempotencyKey != null && idempotencyKey.isNotEmpty)
+              'Idempotency-Key': idempotencyKey,
           },
           body: jsonEncode({
             'network': network.trim(),
             'phone': phone.trim(),
             'amount': amount.trim(),
-            'transactionPin': transactionPin,
+            if (transactionPin.isNotEmpty) 'transactionPin': transactionPin,
+            if (biometricGrant != null) 'biometricGrant': biometricGrant,
+            if (deviceId != null) 'deviceId': deviceId,
           }),
         )
         .timeout(requestTimeout);
@@ -73,6 +80,9 @@ class ApiService {
     required String planCode,
     required num amount,
     required String transactionPin,
+    String? biometricGrant,
+    String? deviceId,
+    String? idempotencyKey,
   }) async {
     final String token = await _getAuthToken();
 
@@ -85,13 +95,17 @@ class ApiService {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Authorization': 'Bearer $token',
+            if (idempotencyKey != null && idempotencyKey.isNotEmpty)
+              'Idempotency-Key': idempotencyKey,
           },
           body: jsonEncode({
             'network': network.trim(),
             'phone': phone.trim(),
             'planCode': planCode.trim(),
             'amount': amount,
-            'transactionPin': transactionPin,
+            if (transactionPin.isNotEmpty) 'transactionPin': transactionPin,
+            if (biometricGrant != null) 'biometricGrant': biometricGrant,
+            if (deviceId != null) 'deviceId': deviceId,
           }),
         )
         .timeout(requestTimeout);
@@ -100,9 +114,7 @@ class ApiService {
   }
 
   static Future<String> _getAuthToken() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    final String? token = prefs.getString('auth_token')?.trim();
+    final String? token = (await SessionStore.readToken())?.trim();
 
     if (token == null || token.isEmpty) {
       throw Exception(

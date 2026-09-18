@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servicepay_app/forced_password_change_screen.dart';
+import 'package:servicepay_app/services/session_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -14,6 +16,19 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{
       'auth_token': 'temporary-session-token',
     });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+      (MethodCall call) async => null,
+    );
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+      null,
+    );
   });
 
   testWidgets('shows three spaced password fields with visibility controls',
@@ -107,6 +122,7 @@ void main() {
       'confirmPassword': 'Replacement123!',
     });
     final preferences = await SharedPreferences.getInstance();
-    expect(preferences.getString('auth_token'), 'replacement-session-token');
+    expect(await SessionStore.readToken(), 'replacement-session-token');
+    expect(preferences.getString('auth_token'), isNull);
   });
 }

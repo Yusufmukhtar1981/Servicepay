@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -92,9 +93,9 @@ class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
     String? endDate,
   }) async {
     final SharedPreferences prefs = await preferencesLoader();
-    final String token = (prefs.getString('auth_token') ??
-            prefs.getString('access_token') ??
-            prefs.getString('token') ??
+    final String token = ((await SessionStore.readToken()) ??
+            (await SessionStore.readToken()) ??
+            (await SessionStore.readToken()) ??
             '')
         .trim();
     if (token.isEmpty) {

@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -56,7 +57,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
 
   Future<String?> _token() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token') ?? prefs.getString('token');
+    return (await SessionStore.readToken()) ?? (await SessionStore.readToken());
   }
 
   Future<Map<String, String>> _headers() async {

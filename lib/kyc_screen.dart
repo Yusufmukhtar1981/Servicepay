@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -118,7 +119,7 @@ class _KycScreenState extends State<KycScreen> {
 
   Future<String?> _token() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? value = prefs.getString('auth_token')?.trim();
+    final String? value = (await SessionStore.readToken())?.trim();
     if (value == null || value.isEmpty) return null;
     return value.toLowerCase().startsWith('bearer ')
         ? value.substring(7).trim()

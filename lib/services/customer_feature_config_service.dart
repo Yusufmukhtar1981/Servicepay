@@ -224,7 +224,6 @@ class CustomerFeatureConfigurationService {
     'BVN_VERIFICATION',
     'DELIVERY',
     'SOLAR',
-    'EMPOWERMENT',
     'MARKETPLACE',
     'AMANA',
     'ORGANIZATIONS',

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'feature_transaction_pin_dialog.dart';
 import 'services/solar_api_service.dart';
+import 'services/transaction_authorization_service.dart';
+import 'services/biometric_auth_service.dart';
+import 'services/session_store.dart';
 
 const Color _solarGreen = Color(0xFF08783E);
 
@@ -1060,23 +1063,41 @@ class _ApplicationTile extends StatelessWidget {
                                 if (!context.mounted) {
                                   return;
                                 }
-                                final String? pin =
-                                    await showFeatureTransactionPinDialog(
-                                        context,
-                                        title: 'Confirm deposit',
-                                        message:
-                                            'Enter your transaction PIN to pay the solar deposit from your wallet.');
-                                if (pin == null) {
-                                  return;
-                                }
                                 final String operation = 'deposit_$id';
                                 final String key =
                                     await api.beginMonetaryOperation(operation);
+                                final body = <String, dynamic>{
+                                  'amount': amount,
+                                  'idempotencyKey': key,
+                                };
+                                final token = await SessionStore.readToken();
+                                final deviceId = token == null
+                                    ? null
+                                    : await BiometricAuthService().deviceId();
+                                final grant = token == null
+                                    ? null
+                                    : await TransactionAuthorizationService()
+                                        .authorizeTransaction(
+                                        token: token,
+                                        operation: 'SOLAR_PAYMENT',
+                                        requestBody: body,
+                                        idempotencyKey: key,
+                                      );
+                                final String? pin = grant == null
+                                    ? await showFeatureTransactionPinDialog(
+                                        context,
+                                        title: 'Confirm deposit',
+                                        message:
+                                            'Enter your transaction PIN to pay the solar deposit from your wallet.')
+                                    : '';
+                                if (pin == null) return;
                                 await api.payDeposit(
                                     applicationId: id,
                                     amount: amount,
                                     transactionPin: pin,
-                                    idempotencyKey: key);
+                                    idempotencyKey: key,
+                                    biometricGrant: grant,
+                                    deviceId: deviceId);
                                 await api.completeMonetaryOperation(operation);
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1182,23 +1203,41 @@ class _FinanceTile extends StatelessWidget {
                                 if (!context.mounted) {
                                   return;
                                 }
-                                final String? pin =
-                                    await showFeatureTransactionPinDialog(
-                                        context,
-                                        title: 'Confirm installment',
-                                        message:
-                                            'Enter your transaction PIN to pay the next solar installment from your wallet.');
-                                if (pin == null) {
-                                  return;
-                                }
                                 final String operation = 'installment_$id';
                                 final String key =
                                     await api.beginMonetaryOperation(operation);
+                                final body = <String, dynamic>{
+                                  'amount': amount,
+                                  'idempotencyKey': key,
+                                };
+                                final token = await SessionStore.readToken();
+                                final deviceId = token == null
+                                    ? null
+                                    : await BiometricAuthService().deviceId();
+                                final grant = token == null
+                                    ? null
+                                    : await TransactionAuthorizationService()
+                                        .authorizeTransaction(
+                                        token: token,
+                                        operation: 'SOLAR_FINANCE_PAYMENT',
+                                        requestBody: body,
+                                        idempotencyKey: key,
+                                      );
+                                final String? pin = grant == null
+                                    ? await showFeatureTransactionPinDialog(
+                                        context,
+                                        title: 'Confirm installment',
+                                        message:
+                                            'Enter your transaction PIN to pay the next solar installment from your wallet.')
+                                    : '';
+                                if (pin == null) return;
                                 await api.payInstallment(
                                     financeId: id,
                                     amount: amount,
                                     transactionPin: pin,
-                                    idempotencyKey: key);
+                                    idempotencyKey: key,
+                                    biometricGrant: grant,
+                                    deviceId: deviceId);
                                 await api.completeMonetaryOperation(operation);
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(

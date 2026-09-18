@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -211,7 +212,7 @@ class OrganizationsApi {
     'POST',
     '/${Uri.encodeComponent(id)}/withdrawals',
     body: body,
-    idempotencyKey: _createIdempotencyKey(),
+    idempotencyKey: body['idempotencyKey']?.toString() ?? _createIdempotencyKey(),
   );
   Future<Map<String, dynamic>> withdrawalDetail(
     String id,
@@ -484,9 +485,9 @@ class OrganizationsApi {
     Uint8List? bytes,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    var token = prefs.getString('auth_token') ??
-        prefs.getString('token') ??
-        prefs.getString('access_token');
+    var token = (await SessionStore.readToken()) ??
+        (await SessionStore.readToken()) ??
+        (await SessionStore.readToken());
     if (token == null || token.trim().isEmpty) {
       throw Exception(
           'Your login session was not found. Please sign in again.');
@@ -613,9 +614,9 @@ class OrganizationsApi {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     var token =
-        prefs.getString('auth_token') ??
-        prefs.getString('token') ??
-        prefs.getString('access_token');
+        (await SessionStore.readToken()) ??
+        (await SessionStore.readToken()) ??
+        (await SessionStore.readToken());
     if (token == null || token.trim().isEmpty) {
       throw Exception(
         'Your login session was not found. Please sign in again.',

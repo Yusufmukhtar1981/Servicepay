@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,7 +10,7 @@ class EduPayApi {
 
   Future<String> _token() async {
     final p = await SharedPreferences.getInstance();
-    return p.getString('auth_token') ?? '';
+    return (await SessionStore.readToken()) ?? '';
   }
 
   Future<Map<String, dynamic>> _send(

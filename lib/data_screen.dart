@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'services/api_service.dart';
+import 'services/biometric_auth_service.dart';
+import 'services/session_store.dart';
+import 'services/transaction_authorization_service.dart';
 import 'receipt_screen.dart';
 
 class DataScreen extends StatefulWidget {
@@ -31,6 +34,9 @@ class _DataScreenState extends State<DataScreen> {
 
   bool isLoadingPlans = true;
   bool isBuyingData = false;
+  final TransactionAuthorizationService _authorization =
+      TransactionAuthorizationService();
+  String? _pendingIdempotencyKey;
 
   String plansError = '';
 
@@ -400,53 +406,80 @@ class _DataScreenState extends State<DataScreen> {
     });
 
     try {
-      final TextEditingController transactionPinController =
-          TextEditingController();
-
-      final String? transactionPin = await showDialog<String>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text('Enter Transaction PIN'),
-            content: TextField(
-              controller: transactionPinController,
-              autofocus: true,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              decoration: const InputDecoration(
-                labelText: '4-digit PIN',
-                hintText: '••••',
-                counterText: '',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop(
-                    transactionPinController.text.trim(),
-                  );
-                },
-                child: const Text('Confirm'),
-              ),
-            ],
+      final String idempotencyKey = _pendingIdempotencyKey ??=
+          'data-${DateTime.now().microsecondsSinceEpoch}';
+      final Map<String, dynamic> authorizationBody = {
+        'network': selectedNetwork,
+        'phone': phone,
+        'planCode': code,
+        'amount': price,
+        'idempotencyKey': idempotencyKey,
+      };
+      final String? token = await SessionStore.readToken();
+      String? biometricGrant;
+      if (token != null && token.isNotEmpty) {
+        final BiometricDeviceSettings? settings =
+            await BiometricAuthService().settings(token);
+        if (settings?.transactionEnabled == true) {
+          biometricGrant = await _authorization.authorizeTransaction(
+            token: token,
+            operation: 'DATA_PURCHASE',
+            requestBody: authorizationBody,
+            idempotencyKey: idempotencyKey,
           );
-        },
-      );
+        }
+      }
+      String transactionPin = '';
+      if (biometricGrant == null) {
+        final TextEditingController transactionPinController =
+            TextEditingController();
+        final String? enteredPin = await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: const Text('Enter Transaction PIN'),
+              content: TextField(
+                controller: transactionPinController,
+                autofocus: true,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                decoration: const InputDecoration(
+                  labelText: '4-digit PIN',
+                  hintText: '••••',
+                  counterText: '',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(
+                      transactionPinController.text.trim(),
+                    );
+                  },
+                  child: const Text('Confirm'),
+                ),
+              ],
+            );
+          },
+        );
 
-      transactionPinController.dispose();
+        transactionPinController.dispose();
+        transactionPin = enteredPin ?? '';
+      }
 
-      if (transactionPin == null) {
+      if (biometricGrant == null && transactionPin.isEmpty) {
         return;
       }
 
-      if (!RegExp(r'^\d{4}$').hasMatch(transactionPin)) {
+      if (biometricGrant == null &&
+          !RegExp(r'^\d{4}$').hasMatch(transactionPin)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -466,6 +499,9 @@ class _DataScreenState extends State<DataScreen> {
         // Backward compatibility only.
         // Backend now determines real selling price.
         amount: price,
+        biometricGrant: biometricGrant,
+        deviceId: await BiometricAuthService().deviceId(),
+        idempotencyKey: idempotencyKey,
       );
 
       if (!mounted) return;
@@ -496,6 +532,7 @@ class _DataScreenState extends State<DataScreen> {
       );
 
       if (success) {
+        _pendingIdempotencyKey = null;
         final String receiptPhone = phone;
         final String receiptNetwork = selectedNetwork;
 

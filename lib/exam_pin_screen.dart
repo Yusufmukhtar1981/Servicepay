@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -83,7 +84,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
         continue;
       }
 
-      await preferences.setString('auth_token', token);
+      await SessionStore.writeToken(token);
 
       return token;
     }
@@ -166,7 +167,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
       final Map<String, dynamic> data = decodeResponse(response);
 
       if (response.statusCode == 401) {
-        await preferences.remove('auth_token');
+        await SessionStore.clear();
 
         throw Exception(
           responseMessage(
@@ -446,7 +447,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
       }
 
       if (response.statusCode == 401) {
-        await preferences.remove('auth_token');
+        await SessionStore.clear();
 
         showMessage(
           responseMessage(

@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -74,7 +75,7 @@ class _WalletScreenState extends State<WalletScreen> {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String? token = prefs.getString('auth_token');
+      final String? token = (await SessionStore.readToken());
 
       final String savedName = prefs.getString('user_name') ??
           prefs.getString('full_name') ??
@@ -342,7 +343,7 @@ class _WalletScreenState extends State<WalletScreen> {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = (await SessionStore.readToken()) ?? '';
 
       if (token.trim().isEmpty) {
         _showMessage(

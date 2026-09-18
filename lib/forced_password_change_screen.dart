@@ -1,8 +1,8 @@
+import 'services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_routing.dart';
 
@@ -61,10 +61,10 @@ class _ForcedPasswordChangeScreenState
       _error = null;
     });
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = prefs.getString('auth_token') ??
-          prefs.getString('access_token') ??
+      final String token = (await SessionStore.readToken()) ??
+          (await SessionStore.readToken()) ??
           '';
+      // SessionStore is the source of truth for this replacement request.
       final http.Response response = await _client.put(
         Uri.parse(
           '${const String.fromEnvironment(
@@ -100,7 +100,7 @@ class _ForcedPasswordChangeScreenState
                 .toString()
                 .trim();
         if (replacementToken.isNotEmpty) {
-          await prefs.setString('auth_token', replacementToken);
+          await SessionStore.writeToken(replacementToken);
         }
       }
       if (!mounted) return;

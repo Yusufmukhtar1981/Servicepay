@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -63,7 +64,7 @@ class _DeliveryHistoryScreenState
           await SharedPreferences.getInstance();
 
       final token =
-          preferences.getString('auth_token') ?? '';
+          (await SessionStore.readToken()) ?? '';
 
       if (token.isEmpty) {
         if (!mounted) {
@@ -230,7 +231,7 @@ class _DeliveryHistoryScreenState
           await SharedPreferences.getInstance();
 
       final token =
-          preferences.getString('auth_token') ?? '';
+          (await SessionStore.readToken()) ?? '';
 
       if (token.isEmpty) {
         showMessage(
@@ -358,7 +359,7 @@ class _DeliveryHistoryScreenState
           await SharedPreferences.getInstance();
 
       final token =
-          preferences.getString('auth_token') ?? '';
+          (await SessionStore.readToken()) ?? '';
 
       if (token.isEmpty) {
         showMessage(

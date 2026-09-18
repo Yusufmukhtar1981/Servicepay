@@ -3,6 +3,9 @@ import '../servicepay_theme.dart';
 
 import 'organization_models.dart';
 import 'organizations_api.dart';
+import '../feature_transaction_pin_dialog.dart';
+import '../services/session_store.dart';
+import '../services/transaction_authorization_service.dart';
 
 /// The owner surface deliberately keeps each section's contract visible here.
 /// This prevents a new backend envelope from silently becoming a generic card.
@@ -228,7 +231,35 @@ class _OrganizationOwnerDashboardState
             'accountName': accountName,
           });
         } else if (action == 'withdraw') {
-          await widget.api.createWithdrawal(id, body);
+          final idempotencyKey = body['idempotencyKey']?.toString() ??
+              'organization-withdrawal:$id:${DateTime.now().toUtc().toIso8601String()}';
+          if (!TransactionAuthorizationService.transactionBiometricsEnabled) {
+            await widget.api.createWithdrawal(id, {
+              ...body,
+              'idempotencyKey': idempotencyKey,
+            });
+          } else {
+            final token = (await SessionStore.readToken()) ?? '';
+            final intent = Map<String, dynamic>.from(body)
+              ..remove('transactionPin')
+              ..remove('biometricGrant')
+              ..remove('deviceId')
+              ..['idempotencyKey'] = idempotencyKey;
+            final authorization = await authorizeFeatureTransaction(
+              context,
+              token: token,
+              operation: organizationTreasuryWithdrawalOperation,
+              requestBody: intent,
+              idempotencyKey: idempotencyKey,
+              title: 'Confirm treasury withdrawal',
+              message: 'Authorize this organization treasury withdrawal.',
+            );
+            if (authorization == null) return;
+            await widget.api.createWithdrawal(id, {
+              ...intent,
+              ...authorization,
+            });
+          }
         } else if (action == 'approveWithdrawal') {
           await widget.api.approveWithdrawal(id, '${body['withdrawalId']}');
         } else if (action == 'rejectWithdrawal') {

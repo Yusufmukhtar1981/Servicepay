@@ -1,3 +1,4 @@
+import 'session_store.dart';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -81,8 +82,8 @@ class TransactionIssueSubmissionKeys {
   static const String _prefix = 'pending_transaction_issue';
   final Future<SharedPreferences> Function() _preferencesLoader;
 
-  String _accountScope(SharedPreferences preferences) {
-    final String token = preferences.getString('auth_token') ?? '';
+  Future<String> _accountScope(SharedPreferences preferences) async {
+    final String token = (await SessionStore.readToken()) ?? '';
     var hash = 2166136261;
     for (final int byte in utf8.encode(token)) {
       hash ^= byte;
@@ -91,13 +92,16 @@ class TransactionIssueSubmissionKeys {
     return hash.toRadixString(16);
   }
 
-  String _storageKey(SharedPreferences preferences, String lookupId) {
-    return '${_prefix}_${_accountScope(preferences)}_${Uri.encodeComponent(lookupId)}';
+  Future<String> _storageKey(
+    SharedPreferences preferences,
+    String lookupId,
+  ) async {
+    return '${_prefix}_${await _accountScope(preferences)}_${Uri.encodeComponent(lookupId)}';
   }
 
   Future<String> forTransaction(String lookupId) async {
     final SharedPreferences preferences = await _preferencesLoader();
-    final String storageKey = _storageKey(preferences, lookupId);
+    final String storageKey = await _storageKey(preferences, lookupId);
     final String existing = preferences.getString(storageKey) ?? '';
     if (existing.isNotEmpty) return existing;
 
@@ -113,7 +117,7 @@ class TransactionIssueSubmissionKeys {
 
   Future<void> complete(String lookupId) async {
     final SharedPreferences preferences = await _preferencesLoader();
-    await preferences.remove(_storageKey(preferences, lookupId));
+    await preferences.remove(await _storageKey(preferences, lookupId));
   }
 }
 
@@ -215,8 +219,8 @@ class SupportApiService {
 
   Future<Map<String, String>> _headers(bool json) async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token')?.trim() ??
-        prefs.getString('token')?.trim() ??
+    final token = (await SessionStore.readToken())?.trim() ??
+        (await SessionStore.readToken())?.trim() ??
         '';
     if (token.isEmpty) {
       throw const SupportApiException(

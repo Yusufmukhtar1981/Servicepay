@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/transaction_authorization_service.dart';
+import 'services/biometric_auth_service.dart';
 
 class ElectricityScreen extends StatefulWidget {
   const ElectricityScreen({super.key});
@@ -31,6 +34,9 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
 
   bool isVerifyingMeter = false;
   bool isPaying = false;
+  final TransactionAuthorizationService _authorization =
+      TransactionAuthorizationService();
+  String? _paymentIdempotencyKey;
 
   String verifiedCustomerName = '';
   String verifiedMeterNumber = '';
@@ -212,7 +218,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   Future<String?> getAuthToken() async {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
 
-    final String token = preferences.getString('auth_token') ?? '';
+    final String token = (await SessionStore.readToken()) ?? '';
 
     if (token.trim().isEmpty) {
       return null;
@@ -650,9 +656,33 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       amountController.text.trim(),
     );
 
-    final String? pin = await requestTransactionPin(
-      amount: amount,
-    );
+    final String idempotencyKey = _paymentIdempotencyKey ??=
+        'electricity-${DateTime.now().microsecondsSinceEpoch}';
+    final Map<String, dynamic> authorizationBody = {
+      'electricCompany': selectedDiscoCode,
+      'meterType': selectedMeterTypeCode,
+      'meterNumber': meterController.text.trim(),
+      'phoneNumber': phoneController.text.trim(),
+      'amount': amount,
+      'idempotencyKey': idempotencyKey,
+    };
+    final String? token = await getAuthToken();
+    String? biometricGrant;
+    if (token != null) {
+      final BiometricDeviceSettings? settings =
+          await BiometricAuthService().settings(token);
+      if (settings?.transactionEnabled == true) {
+        biometricGrant = await _authorization.authorizeTransaction(
+          token: token,
+          operation: 'ELECTRICITY_PAYMENT',
+          requestBody: authorizationBody,
+          idempotencyKey: idempotencyKey,
+        );
+      }
+    }
+    final String? pin = biometricGrant == null
+        ? await requestTransactionPin(amount: amount)
+        : '';
 
     if (pin == null || !mounted) {
       return;
@@ -663,8 +693,6 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
     });
 
     try {
-      final String? token = await getAuthToken();
-
       if (token == null) {
         showMessage(
           'Your login session has expired. Please log out and log in again.',
@@ -681,6 +709,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
+              'Idempotency-Key': idempotencyKey,
             },
             body: jsonEncode({
               'electricCompany': selectedDiscoCode,
@@ -689,6 +718,9 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
               'phoneNumber': phoneController.text.trim(),
               'amount': amount,
               'pin': pin,
+              'biometricGrant': biometricGrant,
+              'deviceId': await BiometricAuthService().deviceId(),
+              'idempotencyKey': idempotencyKey,
             }),
           )
           .timeout(
@@ -751,6 +783,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
           paymentData['status']?.toString().toUpperCase() ?? '';
 
       if (status == 'SUCCESSFUL' || status == 'PENDING') {
+        _paymentIdempotencyKey = null;
         meterController.clear();
         phoneController.clear();
         amountController.clear();

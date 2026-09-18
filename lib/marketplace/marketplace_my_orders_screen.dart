@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -29,9 +30,9 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
 
   Future<String?> _token() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token') ??
-        prefs.getString('token') ??
-        prefs.getString('access_token');
+    return (await SessionStore.readToken()) ??
+        (await SessionStore.readToken()) ??
+        (await SessionStore.readToken());
   }
 
   Future<void> _loadOrders() async {

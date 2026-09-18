@@ -2,15 +2,30 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servicepay_app/login_screen.dart';
 import 'package:servicepay_app/main_navigation.dart';
+import 'package:servicepay_app/services/session_store.dart';
 import 'package:servicepay_app/startup_session_gate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const secureStorageChannel =
+      MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorageChannel, (_) async => null);
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorageChannel, null);
+  });
+
   Future<SharedPreferences> preferences() => SharedPreferences.getInstance();
 
   testWidgets('logged-out customer reaches Login without a network request',
@@ -138,10 +153,8 @@ void main() {
     );
     expect(find.byKey(const Key('startup-retry')), findsOneWidget);
     expect(find.byKey(const Key('startup-sign-out')), findsOneWidget);
-    expect(
-      (await preferences()).getString('auth_token'),
-      'temporarily-unverified-token',
-    );
+    expect(await SessionStore.readToken(), 'temporarily-unverified-token');
+    expect((await preferences()).getString('auth_token'), isNull);
     expect(tester.takeException(), isNull);
   });
 }

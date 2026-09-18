@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -93,6 +94,7 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
   }
 
   Future<void> _clearLocalSession(SharedPreferences preferences) async {
+    await SessionStore.clear();
     for (final String key in _sessionKeys) {
       await preferences.remove(key);
     }
@@ -122,7 +124,7 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
     try {
       final SharedPreferences preferences =
           await widget.preferencesLoader().timeout(widget.requestTimeout);
-      final String token = preferences.getString('auth_token')?.trim() ?? '';
+      final String token = (await SessionStore.readToken())?.trim() ?? '';
       if (token.isEmpty) {
         _showLoggedOut();
         return;

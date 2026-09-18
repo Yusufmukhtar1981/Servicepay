@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import 'referral_screen.dart';
 import 'kyc_screen.dart';
 import 'servicepay_theme.dart';
 import 'voice_call_screen.dart';
+import 'biometric_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.client});
@@ -94,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> loadKycSummary() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = (await SessionStore.readToken()) ?? '';
       if (token.trim().isEmpty) return;
       final http.Response response = await _client.get(
         Uri.parse('$baseUrl/kyc/status'),
@@ -146,7 +148,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = (await SessionStore.readToken()) ?? '';
 
       if (token.trim().isEmpty) {
         throw Exception(
@@ -438,7 +440,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => isPhotoUploading = true);
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = (await SessionStore.readToken()) ?? '';
       final http.MultipartRequest request = http.MultipartRequest(
         'PATCH',
         Uri.parse('$baseUrl/auth/profile/photo'),
@@ -665,6 +667,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
+      await SessionStore.clear();
       await prefs.remove(
         'auth_token',
       );
@@ -940,7 +943,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 'Use a strong password unique to ServicePay',
                             onTap: openChangePassword,
                           ),
-                          const _SecurityAvailabilityNote(),
+                          _ProfileActionTile(
+                            icon: Icons.fingerprint_rounded,
+                            title: 'Security & Biometrics',
+                            subtitle: 'Manage biometric login and approvals',
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const BiometricSettingsScreen(),
+                              ),
+                            ),
+                          ),
                           _ProfileActionTile(
                             icon: Icons.card_giftcard_rounded,
                             title: 'My Referral',
@@ -1519,44 +1532,6 @@ class _LimitItem extends StatelessWidget {
               style: const TextStyle(
                 color: Color(0xFF17211A),
                 fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-      );
-}
-
-class _SecurityAvailabilityNote extends StatelessWidget {
-  const _SecurityAvailabilityNote();
-
-  @override
-  Widget build(BuildContext context) => Container(
-        key: const Key('security-availability-note'),
-        padding: const EdgeInsets.fromLTRB(10, 13, 10, 14),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Color(0xFFE8ECE8)),
-          ),
-        ),
-        child: const Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.devices_other_rounded,
-              size: 20,
-              color: Color(0xFF64748B),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Biometric approval and device/session management are not '
-                'available for this account yet. Your password and transaction '
-                'PIN remain the active security controls.',
-                style: TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 11,
-                  height: 1.45,
-                ),
               ),
             ),
           ],

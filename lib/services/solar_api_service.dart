@@ -70,11 +70,15 @@ class SolarApiService {
     required num amount,
     required String transactionPin,
     required String idempotencyKey,
+    String? biometricGrant,
+    String? deviceId,
   }) =>
       post('/applications/${Uri.encodeComponent(applicationId)}/pay-deposit',
           body: <String, dynamic>{
             'amount': amount,
             'transactionPin': transactionPin,
+            if (biometricGrant != null) 'biometricGrant': biometricGrant,
+            if (deviceId != null) 'deviceId': deviceId,
           },
           idempotencyKey: idempotencyKey);
 
@@ -83,11 +87,15 @@ class SolarApiService {
     required num amount,
     required String transactionPin,
     required String idempotencyKey,
+    String? biometricGrant,
+    String? deviceId,
   }) =>
       post('/finance/${Uri.encodeComponent(financeId)}/pay',
           body: <String, dynamic>{
             'amount': amount,
             'transactionPin': transactionPin,
+            if (biometricGrant != null) 'biometricGrant': biometricGrant,
+            if (deviceId != null) 'deviceId': deviceId,
           },
           idempotencyKey: idempotencyKey);
 

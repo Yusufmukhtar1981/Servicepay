@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/transaction_authorization_service.dart';
+import '../services/biometric_auth_service.dart';
 
 class RiderWithdrawalScreen extends StatefulWidget {
   const RiderWithdrawalScreen({
@@ -845,6 +847,26 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
 
       final String intent = _intentForWithdrawal(amount);
       final String idempotencyKey = _keyForIntent(intent);
+      final authorizationBody = <String, dynamic>{
+        'amount': amount,
+        'bankCode': selectedBankCode,
+        'bankName': selectedBankName,
+        'accountNumber': accountNumberController.text.trim(),
+        'accountName': accountNameController.text.trim(),
+        'idempotencyKey': idempotencyKey,
+      };
+      String? biometricDeviceId;
+      String? biometricGrant;
+      if (TransactionAuthorizationService.transactionBiometricsEnabled) {
+        biometricDeviceId = await BiometricAuthService().deviceId();
+        biometricGrant =
+            await TransactionAuthorizationService().authorizeTransaction(
+          token: token,
+          operation: 'RIDER_WITHDRAWAL',
+          requestBody: authorizationBody,
+          idempotencyKey: idempotencyKey,
+        );
+      }
       final http.Response response = await _httpClient
           .post(
             Uri.parse(
@@ -862,7 +884,10 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
               'bankName': selectedBankName,
               'accountNumber': accountNumberController.text.trim(),
               'accountName': accountNameController.text.trim(),
-              'transactionPin': pinController.text.trim(),
+              'transactionPin':
+                  biometricGrant == null ? pinController.text.trim() : '',
+              if (biometricGrant != null) 'biometricGrant': biometricGrant,
+              if (biometricGrant != null) 'deviceId': biometricDeviceId,
               'narration': 'ServicePay Rider commission withdrawal',
             }),
           )

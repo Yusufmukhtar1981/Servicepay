@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -22,7 +21,6 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
   final _nameController = TextEditingController();
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _random = Random.secure();
 
   String _frequency = 'MONTHLY';
   bool _submitting = false;
@@ -196,16 +194,28 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
   Future<void> _contribute(Map<String, dynamic> group) async {
     final id = group['_id']?.toString() ?? '';
     if (id.isEmpty || group['status']?.toString() != 'ACTIVE') return;
-    final pin = await showFeatureTransactionPinDialog(
-      context,
-      title: 'Ajo contribution',
-      message: 'Contribute ${_money(group['contributionAmount'])} to ${_name(group)}.',
-    );
-    if (pin == null) return;
     try {
+      final idempotencyKey =
+          'group-wallet:$id:${DateTime.now().toUtc().toIso8601String().split('T').first}';
+      final token = await _token();
+      final requestBody = <String, dynamic>{
+        'groupId': id,
+        'amount': group['contributionAmount'],
+        'idempotencyKey': idempotencyKey,
+      };
+      final authorization = await authorizeFeatureTransaction(
+        context,
+        token: token,
+        operation: groupWalletContributionOperation,
+        requestBody: requestBody,
+        idempotencyKey: idempotencyKey,
+        title: 'Ajo contribution',
+        message: 'Contribute ${_money(group['contributionAmount'])} to ${_name(group)}.',
+      );
+      if (authorization == null) return;
       final data = await _request('POST', '/groups/$id/contribute', body: {
-        'transactionPin': pin,
-        'idempotencyKey': '${DateTime.now().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}',
+        ...requestBody,
+        ...authorization,
       });
       _message(data['message']?.toString() ?? 'Contribution completed.');
       if (_ok(data)) await _loadGroups();

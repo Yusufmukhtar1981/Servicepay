@@ -188,17 +188,24 @@ class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
 
     if (id.isEmpty) return;
 
-    final pin = await showFeatureTransactionPinDialog(
-      context,
-      title: 'Pay Money Request',
-      message:
-          'You are about to pay ₦${item['amount'] ?? 0}. Enter your transaction PIN.',
-    );
-
-    if (pin == null) return;
-
     try {
       final token = await getToken();
+      final idempotencyKey = 'money-request-payment:$id';
+      final requestBody = <String, dynamic>{
+        'requestId': id,
+        'amount': item['amount'],
+        'idempotencyKey': idempotencyKey,
+      };
+      final authorization = await authorizeFeatureTransaction(
+        context,
+        token: token,
+        operation: requestMoneyPaymentOperation,
+        requestBody: requestBody,
+        idempotencyKey: idempotencyKey,
+        title: 'Pay Money Request',
+        message: 'You are about to pay ₦${item['amount'] ?? 0}.',
+      );
+      if (authorization == null) return;
 
       final response = await http.post(
         Uri.parse(
@@ -209,9 +216,7 @@ class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'transactionPin': pin,
-        }),
+        body: jsonEncode({...requestBody, ...authorization}),
       );
 
       final dynamic decoded = jsonDecode(response.body);

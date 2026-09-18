@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -10,6 +11,8 @@ import 'package:http/http.dart' as http;
 
 import 'transactions_screen.dart';
 import 'servicepay_transfer_helper.dart';
+import 'services/biometric_auth_service.dart';
+import 'services/transaction_authorization_service.dart';
 
 class QrPayScreen extends StatefulWidget {
   const QrPayScreen({super.key, this.client});
@@ -90,7 +93,8 @@ class _QrPayScreenState extends State<QrPayScreen> {
   Future<void> _openScanner() async {
     if (recoveryBlocked || pendingQrIntent != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Resolve the pending payment status first.')),
+        const SnackBar(
+            content: Text('Resolve the pending payment status first.')),
       );
       return;
     }
@@ -105,17 +109,24 @@ class _QrPayScreenState extends State<QrPayScreen> {
     final receiverPhone = (result['phone'] ?? '').toString();
     if (!RegExp(r'^\d{11}$').hasMatch(receiverPhone)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This QR code has no valid phone number.')),
+        const SnackBar(
+            content: Text('This QR code has no valid phone number.')),
       );
       return;
     }
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+    final token = (await SessionStore.readToken()) ??
+        (await SessionStore.readToken()) ??
+        '';
     Map<String, dynamic> verified;
     try {
       final response = await http.get(
-        Uri.parse('https://api.servicepay.ng/api/transfer/beneficiary/$receiverPhone'),
-        headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+        Uri.parse(
+            'https://api.servicepay.ng/api/transfer/beneficiary/$receiverPhone'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token'
+        },
       );
       final root = decodeServicePayResponse(response.body);
       final data = servicePayData(root);
@@ -516,6 +527,7 @@ class QrPaymentSheet extends StatefulWidget {
   final String receiverName;
   final String receiverPhone;
   final http.Client? client;
+  final Future<bool> Function()? authorizationAvailability;
   final Duration requestTimeout;
   final VoidCallback? onViewTransaction;
   final bool restorePendingIntent;
@@ -528,6 +540,7 @@ class QrPaymentSheet extends StatefulWidget {
     required this.receiverName,
     required this.receiverPhone,
     this.client,
+    this.authorizationAvailability,
     this.requestTimeout = const Duration(seconds: 30),
     this.onViewTransaction,
     this.restorePendingIntent = true,
@@ -548,6 +561,118 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
   String outcomeMessage = '';
   String? idempotencyKey;
   String? clientReference;
+  bool _authorizationInProgress = false;
+
+  Future<Map<String, dynamic>?> _authorizePayment({
+    required String token,
+    required String requestKey,
+    required Map<String, dynamic> body,
+  }) async {
+    if (_authorizationInProgress) return null;
+    _authorizationInProgress = true;
+    try {
+      final enrolled = widget.authorizationAvailability == null
+          ? false
+          : await widget.authorizationAvailability!();
+      if (!enrolled) {
+        final pin = pinController.text.trim();
+        if (pin.length != 4) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enter your 4-digit transaction PIN.'),
+            ),
+          );
+          return null;
+        }
+        return {'pin': pin};
+      }
+      var choice = enrolled
+          ? await showDialog<String>(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                title: const Text('Authorize payment'),
+                content: const Text('Choose how to confirm this payment.'),
+                actions: [
+                  if (enrolled)
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, 'biometric'),
+                      child: const Text('Biometrics'),
+                    ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, 'pin'),
+                    child: const Text('Transaction PIN'),
+                  ),
+                ],
+              ),
+            )
+          : 'pin';
+      if (choice == 'biometric') {
+        try {
+          final grant = await TransactionAuthorizationService(
+            client: widget.client,
+          ).authorizeTransaction(
+            token: token,
+            operation: 'TRANSFER',
+            requestBody: body,
+            idempotencyKey: requestKey,
+          );
+          final deviceId = grant == null
+              ? null
+              : await BiometricAuthService().deviceId();
+          if (grant != null && deviceId != null) {
+            return {'biometricGrant': grant, 'deviceId': deviceId};
+          }
+        } catch (_) {
+          // Fall through to the legacy PIN dialog.
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text('Biometric authorization was cancelled or unavailable.'),
+            ),
+          );
+        }
+        choice = 'pin';
+      }
+      if (choice == 'pin') {
+        pinController.clear();
+        final pin = await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Confirm Payment'),
+            content: TextField(
+              autofocus: true,
+              obscureText: true,
+              maxLength: 4,
+              keyboardType: TextInputType.number,
+              controller: pinController,
+              decoration: const InputDecoration(
+                labelText: 'Transaction PIN',
+                counterText: '',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  if (pinController.text.trim().length == 4) {
+                    Navigator.pop(dialogContext, pinController.text.trim());
+                  }
+                },
+                child: const Text('Confirm'),
+              ),
+            ],
+          ),
+        );
+        return pin == null ? null : {'pin': pin};
+      }
+      return null;
+    } finally {
+      _authorizationInProgress = false;
+    }
+  }
 
   @override
   void initState() {
@@ -568,8 +693,7 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
 
   Future<void> _restorePendingIntent() async {
     final prefs = await SharedPreferences.getInstance();
-    final intent =
-        restorePendingServicePayTransfer(prefs, flowType: 'qr');
+    final intent = restorePendingServicePayTransfer(prefs, flowType: 'qr');
     if (intent == null) return;
     idempotencyKey = intent.idempotencyKey;
     clientReference = intent.reference;
@@ -581,7 +705,9 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
     });
     await _recoverStatus(
       intent.reference,
-      prefs.getString('auth_token') ?? prefs.getString('token') ?? '',
+      (await SessionStore.readToken()) ??
+          (await SessionStore.readToken()) ??
+          '',
       intent.amount,
     );
   }
@@ -648,8 +774,7 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
       );
       return;
     }
-
-    if (pin.length != 4) {
+    if (widget.authorizationAvailability == null && pin.length != 4) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Enter your 4-digit transaction PIN.'),
@@ -674,10 +799,11 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
     });
 
     try {
-      final String reference = clientReference ??= newServicePayClientReference();
+      final String reference =
+          clientReference ??= newServicePayClientReference();
       final String requestKey = idempotencyKey ??= reference;
       final prefs = await SharedPreferences.getInstance();
-      await savePendingServicePayTransfer(
+      unawaited(savePendingServicePayTransfer(
         prefs,
         PendingServicePayTransfer(
           reference: reference,
@@ -687,10 +813,9 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
           flowType: 'qr',
           createdAt: DateTime.now(),
         ),
-      );
+      ));
 
-      final token =
-          prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+      final token = (await SessionStore.readToken()) ?? '';
 
       if (token.isEmpty) {
         if (!mounted) return;
@@ -699,6 +824,21 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
           status = QrPaymentStatus.failure;
           outcomeMessage = 'Your session has expired. Please login again.';
         });
+        return;
+      }
+      final authorization = widget.authorizationAvailability == null
+          ? <String, dynamic>{'pin': pin}
+          : await _authorizePayment(
+              token: token,
+              requestKey: requestKey,
+              body: {
+                'receiverPhone': widget.receiverPhone.trim(),
+                'amount': amount,
+                'clientReference': reference,
+              },
+            );
+      if (authorization == null || !mounted) {
+        if (mounted) setState(() => status = QrPaymentStatus.idle);
         return;
       }
 
@@ -721,7 +861,7 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
                 <String, dynamic>{
                   'receiverPhone': widget.receiverPhone.trim(),
                   'amount': amount,
-                  'pin': pin,
+                  ...authorization,
                   'clientReference': reference,
                 },
               ),
@@ -760,7 +900,9 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
       }
       await _recoverStatus(
         clientReference!,
-        prefs.getString('auth_token') ?? prefs.getString('token') ?? '',
+        (await SessionStore.readToken()) ??
+            (await SessionStore.readToken()) ??
+            '',
         amount,
       );
     } catch (_) {
@@ -773,7 +915,9 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
       }
       await _recoverStatus(
         clientReference!,
-        prefs.getString('auth_token') ?? prefs.getString('token') ?? '',
+        (await SessionStore.readToken()) ??
+            (await SessionStore.readToken()) ??
+            '',
         amount,
       );
     }
@@ -816,11 +960,13 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
     final client = widget.client ?? http.Client();
     try {
       for (var attempt = 0; attempt < 3; attempt++) {
-        final response = await client
-            .get(Uri.parse(
+        final response = await client.get(
+            Uri.parse(
                 'https://api.servicepay.ng/api/transfer/servicepay/status/$reference'),
-                headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'})
-            .timeout(widget.requestTimeout);
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token'
+            }).timeout(widget.requestTimeout);
         result = parseServicePayTransferResponse(
             statusCode: response.statusCode,
             root: decodeServicePayResponse(response.body));
@@ -852,8 +998,11 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() => status = QrPaymentStatus.submitting);
-    await _recoverStatus(reference,
-        prefs.getString('auth_token') ?? prefs.getString('token') ?? '',
+    await _recoverStatus(
+        reference,
+        (await SessionStore.readToken()) ??
+            (await SessionStore.readToken()) ??
+            '',
         double.tryParse(amountController.text.trim().replaceAll(',', '')) ?? 0);
   }
 

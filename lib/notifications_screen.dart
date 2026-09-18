@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'services/session_store.dart';
 
 import 'kyc_screen.dart';
 import 'marketplace/marketplace_my_orders_screen.dart';
@@ -89,8 +89,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Future<String?> _token() async =>
-      (await SharedPreferences.getInstance()).getString('auth_token');
+  Future<String?> _token() => SessionStore.readToken();
 
   Future<void> _load({bool more = false}) async {
     if (more && (_loadingMore || !_hasMore)) return;

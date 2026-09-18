@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -55,7 +56,7 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
 
   Future<String> token() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token') ?? '';
+    return (await SessionStore.readToken()) ?? '';
   }
 
   Map<String, String> headers(String authToken) => {

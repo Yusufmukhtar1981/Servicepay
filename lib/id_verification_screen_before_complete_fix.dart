@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -296,7 +297,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
       }
 
       if (response.statusCode == 401) {
-        await preferences.remove('auth_token');
+        await SessionStore.clear();
 
         showMessage(
           messageFromResponse(

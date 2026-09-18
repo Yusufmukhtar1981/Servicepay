@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -45,7 +46,7 @@ class _MarketplaceSellerOrdersScreenState
 
   Future<String?> _token() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+    return (await SessionStore.readToken());
   }
 
   Future<void> _loadOrders({bool showLoading = true}) async {

@@ -1,3 +1,4 @@
+import '../services/session_store.dart';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -95,9 +96,9 @@ class BranchManagerStaffHttpApi implements BranchManagerStaffApi {
   Future<Map<String, dynamic>> _request(String method, String path,
       {Map<String, String>? query, Map<String, dynamic>? body}) async {
     final prefs = await preferencesLoader();
-    final token = (prefs.getString('auth_token') ??
-            prefs.getString('access_token') ??
-            prefs.getString('token') ??
+    final token = ((await SessionStore.readToken()) ??
+            (await SessionStore.readToken()) ??
+            (await SessionStore.readToken()) ??
             '')
         .trim();
     if (token.isEmpty) {

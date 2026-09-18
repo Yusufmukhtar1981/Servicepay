@@ -1,3 +1,4 @@
+import 'services/session_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -105,7 +106,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = (await SessionStore.readToken()) ?? '';
 
       if (token.trim().isEmpty) {
         throw Exception(
@@ -532,7 +533,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         );
       }
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = (await SessionStore.readToken()) ?? '';
       if (token.trim().isEmpty) {
         throw Exception('Your login session has expired.');
       }
@@ -654,7 +655,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = prefs.getString('auth_token') ?? '';
+      final String token = (await SessionStore.readToken()) ?? '';
       if (token.trim().isEmpty) {
         throw Exception('Your login session has expired.');
       }

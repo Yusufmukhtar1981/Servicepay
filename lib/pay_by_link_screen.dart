@@ -304,15 +304,23 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
 
       if (!mounted) return;
 
-      final pin = await showFeatureTransactionPinDialog(
+      final idempotencyKey = 'PAY_LINK:$code';
+      final requestBody = <String, dynamic>{
+        'code': code,
+        'amount': paymentLink['amount'],
+        'idempotencyKey': idempotencyKey,
+      };
+      final authorization = await authorizeFeatureTransaction(
         context,
+        token: token,
+        operation: payLinkPaymentOperation,
+        requestBody: requestBody,
+        idempotencyKey: idempotencyKey,
         title: 'Pay Merchant',
         message: '${paymentLink['title'] ?? 'Payment'}\n'
-            'Amount: ₦${paymentLink['amount'] ?? 0}\n\n'
-            'Enter your transaction PIN to continue.',
+            'Amount: ₦${paymentLink['amount'] ?? 0}',
       );
-
-      if (pin == null) return;
+      if (authorization == null) return;
 
       final response = await http.post(
         Uri.parse(
@@ -323,9 +331,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'transactionPin': pin,
-        }),
+        body: jsonEncode({...requestBody, ...authorization}),
       );
 
       final dynamic decoded = jsonDecode(response.body);
