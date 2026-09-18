@@ -12,12 +12,23 @@ import 'package:servicepay_app/login_screen.dart';
 import 'package:servicepay_app/services/biometric_auth_service.dart';
 
 class FakeAuth extends LocalAuthentication {
-  FakeAuth({this.supported = true, this.result = true, this.error});
+  FakeAuth({
+    this.supported = true,
+    this.result = true,
+    this.error,
+    this.supportFuture,
+  });
   final bool supported;
   final bool result;
   final Object? error;
+  final Future<bool>? supportFuture;
+  int supportChecks = 0;
   @override
-  Future<bool> isDeviceSupported() async => supported;
+  Future<bool> isDeviceSupported() {
+    supportChecks++;
+    return supportFuture ?? Future<bool>.value(supported);
+  }
+
   @override
   Future<bool> get canCheckBiometrics async => supported;
   @override
@@ -82,14 +93,19 @@ BiometricAuthService service({
 }) {
   return BiometricAuthService(
     localAuthentication: auth ?? FakeAuth(),
-    keyValueStore: keys ??
+    keyValueStore:
+        keys ??
         (FakeKeys()..values['servicepay_biometric_device_id'] = 'device'),
     credentialStore: credentials ?? FakeCredentials('old-credential'),
-    client: client ??
-        ReplyClient(200,
-            '{"token":"token","credential":"next","data":{"user":{"id":"u"}}}'),
-    sessionTokenWriter:
-        tokens == null ? null : (value) async => tokens.add(value),
+    client:
+        client ??
+        ReplyClient(
+          200,
+          '{"token":"token","credential":"next","data":{"user":{"id":"u"}}}',
+        ),
+    sessionTokenWriter: tokens == null
+        ? null
+        : (value) async => tokens.add(value),
   );
 }
 
@@ -97,90 +113,101 @@ void main() {
   test('PATCH settings persists a rotated credential before success', () async {
     final credentials = FakeCredentials('old-credential');
     final client = ReplyClient(200, '{"credential":"rotated-credential"}');
-    final result = await service(
-      credentials: credentials,
-      client: client,
-    ).updateSettings(
-      'session-token',
-      loginEnabled: true,
-      transactionEnabled: false,
-    );
+    final result = await service(credentials: credentials, client: client)
+        .updateSettings(
+          'session-token',
+          loginEnabled: true,
+          transactionEnabled: false,
+        );
     expect(result, isTrue);
     expect(credentials.value, 'rotated-credential');
   });
 
   test(
-      'successful Android-style biometric login rotates credential and session',
-      () async {
-    final tokens = <String>[];
-    final credentials = FakeCredentials('old');
-    final result = await service(
-      credentials: credentials,
-      tokens: tokens,
-    ).login();
-    expect(result?.token, 'token');
-    expect(credentials.value, 'next');
-    expect(tokens, ['token']);
-  });
+    'successful Android-style biometric login rotates credential and session',
+    () async {
+      final tokens = <String>[];
+      final credentials = FakeCredentials('old');
+      final result = await service(
+        credentials: credentials,
+        tokens: tokens,
+      ).login();
+      expect(result?.token, 'token');
+      expect(credentials.value, 'next');
+      expect(tokens, ['token']);
+    },
+  );
 
-  test('cancel, unsupported hardware, and not enrolled use safe fallback',
-      () async {
-    final cancelled = FakeCredentials('credential')
-      ..readError = AuthException(AuthExceptionCode.userCanceled, 'cancelled');
-    expect(await service(credentials: cancelled).login(), isNull);
-    expect(await service(auth: FakeAuth(supported: false)).login(), isNull);
-    expect(await service(keys: FakeKeys()).login(), isNull);
-  });
+  test(
+    'cancel, unsupported hardware, and not enrolled use safe fallback',
+    () async {
+      final cancelled = FakeCredentials(
+        'credential',
+      )..readError = AuthException(AuthExceptionCode.userCanceled, 'cancelled');
+      expect(await service(credentials: cancelled).login(), isNull);
+      expect(await service(auth: FakeAuth(supported: false)).login(), isNull);
+      expect(await service(keys: FakeKeys()).login(), isNull);
+    },
+  );
 
   test('platform credential failure is treated as cancellation', () async {
     final credentials = FakeCredentials('credential')
       ..readError = PlatformException(code: 'NotAvailable');
-    final result = await service(
-      credentials: credentials,
-    ).login();
+    final result = await service(credentials: credentials).login();
     expect(result, isNull);
   });
 
-  test('credential cancellation/invalidation clears local enrollment',
-      () async {
-    final keys = FakeKeys()
-      ..values['servicepay_biometric_device_id'] = 'device';
-    final credentials = FakeCredentials('stale')
-      ..readError = AuthException(AuthExceptionCode.userCanceled, 'cancelled');
-    final instance = service(keys: keys, credentials: credentials);
-    expect(await instance.credentialAfterAuthentication(), isNull);
-    expect(await instance.isEnrolled(), isFalse);
-    expect(credentials.value, isNull);
-  });
+  test(
+    'credential cancellation/invalidation clears local enrollment',
+    () async {
+      final keys = FakeKeys()
+        ..values['servicepay_biometric_device_id'] = 'device';
+      final credentials = FakeCredentials(
+        'stale',
+      )..readError = AuthException(AuthExceptionCode.userCanceled, 'cancelled');
+      final instance = service(keys: keys, credentials: credentials);
+      expect(await instance.credentialAfterAuthentication(), isNull);
+      expect(await instance.isEnrolled(), isFalse);
+      expect(credentials.value, isNull);
+    },
+  );
 
-  test('revoked server credential and reinstall loss clear enrollment',
-      () async {
-    final keys = FakeKeys()
-      ..values['servicepay_biometric_device_id'] = 'device';
-    final client = ReplyClient(401, '{"message":"revoked"}');
-    final instance = service(keys: keys, client: client);
-    expect(await instance.login(), isNull);
-    expect(await instance.isEnrolled(), isFalse);
+  test(
+    'revoked server credential and reinstall loss clear enrollment',
+    () async {
+      final keys = FakeKeys()
+        ..values['servicepay_biometric_device_id'] = 'device';
+      final client = ReplyClient(401, '{"message":"revoked"}');
+      final instance = service(keys: keys, client: client);
+      expect(await instance.login(), isNull);
+      expect(await instance.isEnrolled(), isFalse);
 
-    final reinstallKeys = FakeKeys();
-    expect(await service(keys: reinstallKeys).login(), isNull);
-  });
+      final reinstallKeys = FakeKeys();
+      expect(await service(keys: reinstallKeys).login(), isNull);
+    },
+  );
 
-  test('logout cleanup calls server and removes device and credential',
-      () async {
-    final keys = FakeKeys()
-      ..values['servicepay_biometric_device_id'] = 'device';
-    final credentials = FakeCredentials('credential');
-    final client = ReplyClient(204, '');
-    await service(keys: keys, credentials: credentials, client: client)
-        .revoke('token');
-    expect(await keys.read('servicepay_biometric_device_id'), isNull);
-    expect(credentials.value, isNull);
-    expect(client.requested?.path, contains('/auth/biometric/logout'));
-  });
+  test(
+    'logout cleanup calls server and removes device and credential',
+    () async {
+      final keys = FakeKeys()
+        ..values['servicepay_biometric_device_id'] = 'device';
+      final credentials = FakeCredentials('credential');
+      final client = ReplyClient(204, '');
+      await service(
+        keys: keys,
+        credentials: credentials,
+        client: client,
+      ).revoke('token');
+      expect(await keys.read('servicepay_biometric_device_id'), isNull);
+      expect(credentials.value, isNull);
+      expect(client.requested?.path, contains('/auth/biometric/logout'));
+    },
+  );
 
-  testWidgets('password fallback and login remain usable at 320px large text',
-      (tester) async {
+  testWidgets('password fallback and login remain usable at 320px large text', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(320, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -199,8 +226,9 @@ void main() {
     expect(find.text('Create account'), findsOneWidget);
   });
 
-  testWidgets('biometric settings explains fallback at 320px large text',
-      (tester) async {
+  testWidgets('biometric settings explains fallback at 320px large text', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(320, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -215,5 +243,48 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('password and transaction PIN'), findsOneWidget);
+  });
+
+  testWidgets('web biometric settings render without invoking native auth', (
+    tester,
+  ) async {
+    final auth = FakeAuth(supportFuture: Completer<bool>().future);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BiometricSettingsScreen(
+          service: service(auth: auth),
+          isWeb: true,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      find.textContaining(
+        'Biometric authentication is available in the Servicepay mobile app.',
+      ),
+      findsOneWidget,
+    );
+    expect(auth.supportChecks, 0);
+  });
+
+  testWidgets('biometric settings timeout stops spinner and offers retry', (
+    tester,
+  ) async {
+    final auth = FakeAuth(supportFuture: Completer<bool>().future);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BiometricSettingsScreen(
+          service: service(auth: auth),
+          loadTimeout: const Duration(milliseconds: 20),
+          isWeb: false,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 30));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Unable to load biometric settings.'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
   });
 }

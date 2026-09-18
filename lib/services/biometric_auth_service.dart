@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
@@ -103,9 +104,10 @@ class BiometricAuthService {
   String? _lastCredential;
 
   Future<bool> isSupported() async {
+    if (kIsWeb) return false;
     try {
       return await _auth.isDeviceSupported() && await _auth.canCheckBiometrics;
-    } on PlatformException {
+    } catch (_) {
       return false;
     }
   }
@@ -348,7 +350,8 @@ class BiometricAuthService {
         final raw = jsonDecode(response.body);
         if (raw is Map) envelope = Map<String, dynamic>.from(raw);
       } catch (_) {}
-      final rotated = envelope['credential']?.toString() ??
+      final rotated =
+          envelope['credential']?.toString() ??
           (envelope['data'] is Map
               ? (envelope['data'] as Map)['credential']?.toString()
               : null);
