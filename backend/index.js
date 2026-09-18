@@ -172,6 +172,7 @@ const transportLogisticsRoutes = require("./routes/transportLogistics.routes");
 const privacyRequestRoutes = require("./routes/privacyRequest.routes");
 const svpRoutes = require("./routes/svp.routes");
 const edupayRoutes = require("./routes/edupay.routes");
+const edupayActivityRoutes = require("./routes/edupayActivity.routes");
 const adminEdupayRoutes = require("./routes/adminEdupay.routes");
 const edupaySquadWebhookRoutes = require("./routes/edupaySquadWebhook.routes");
 
@@ -340,6 +341,7 @@ app.use('/api/marketplace', marketplaceRoutes);
 app.use("/api/settings", appSettingsRoutes);
 app.use("/api/feature-control", featureControlRoutes);
 app.use("/api/edupay", edupayRoutes);
+app.use("/api/edupay/activity-center", edupayActivityRoutes);
 app.use("/api/admin/edupay", adminEdupayRoutes);
 app.use('/api/cards', cardRoutes);
 

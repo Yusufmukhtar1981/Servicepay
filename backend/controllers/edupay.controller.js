@@ -119,11 +119,10 @@ exports.schoolCatalogue = async (req, res) => {
 
 exports.createChild = async (req, res) => {
   try {
-    const settings = await enabledForInitiation(res); if (!settings) return;
     ensureObjectId(req.body.school, "School");
     const school = await School.findOne({ _id: req.body.school, status: "APPROVED", active: true });
     if (!school) return res.status(400).json({ success: false, message: "Only approved active schools may be selected." });
-    const child = await Child.create({ parent: req.user._id, createdBy: req.user._id, fullName: req.body.fullName, dateOfBirth: req.body.dateOfBirth, gender: req.body.gender, photo: req.body.photo || null, school: school._id });
+    const child = await Child.create({ parent: req.user._id, createdBy: req.user._id, fullName: req.body.fullName, dateOfBirth: req.body.dateOfBirth, gender: req.body.gender, photo: req.body.photo || null, admissionNumber: req.body.admissionNumber || null, className: req.body.className || null, arm: req.body.arm || null, academicSession: req.body.academicSession || null, term: req.body.term || null, school: school._id });
     await audit({ actor: req.user._id, action: "EDUPAY_CHILD_CREATED", entityType: "EduPayChild", entityId: child._id, school: school._id, req });
     res.status(201).json({ success: true, child });
   } catch (error) { errorResponse(res, error); }
@@ -135,7 +134,7 @@ exports.updateChild = async (req, res) => {
   try {
     const child = await Child.findOne({ _id: req.params.childId, parent: req.user._id, status: "ACTIVE" });
     if (!child) return res.status(404).json({ success: false, message: "Child not found." });
-    ["fullName", "dateOfBirth", "gender", "photo"].forEach((key) => { if (req.body[key] !== undefined) child[key] = req.body[key]; });
+    ["fullName", "dateOfBirth", "gender", "photo", "admissionNumber", "className", "arm", "academicSession", "term", "studentStatus"].forEach((key) => { if (req.body[key] !== undefined) child[key] = req.body[key]; });
     await child.save(); res.json({ success: true, child });
   } catch (error) { errorResponse(res, error); }
 };

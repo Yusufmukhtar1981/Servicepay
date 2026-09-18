@@ -106,6 +106,13 @@ const notificationSchema = new mongoose.Schema(
       maxlength: 300,
     },
 
+    edupayDedupeKey: {
+      type: String,
+      default: undefined,
+      trim: true,
+      maxlength: 300,
+    },
+
     isRead: {
       type: Boolean,
       default: false,
@@ -139,6 +146,7 @@ notificationSchema.index(
     sparse: true,
   }
 );
+notificationSchema.index({ edupayDedupeKey: 1 }, { unique: true, partialFilterExpression: { edupayDedupeKey: { $type: "string" } } });
 notificationSchema.index(
   { userId: 1, referenceId: 1, referenceType: 1 },
   {
