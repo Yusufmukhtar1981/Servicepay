@@ -58,6 +58,7 @@ const securewaveRoutes = require(
 const authRoutes = require(
   "./routes/auth.routes"
 );
+const biometricRoutes = require("./routes/biometric.routes");
 
 const transferRoutes = require(
   "./routes/transfer.routes"
@@ -244,6 +245,8 @@ app.use(
   "/api/auth",
   authRoutes
 );
+app.use("/api/biometric", biometricRoutes);
+app.use("/api/auth/biometric", biometricRoutes);
 app.use("/api/privacy", privacyRequestRoutes);
 
 app.use(

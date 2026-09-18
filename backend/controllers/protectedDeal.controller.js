@@ -2,6 +2,7 @@ const ProtectedDeal = require("../models/protectedDeal.model");
 const User = require("../models/user.model");
 const TrustDispute = require("../models/trustDispute.model");
 const service = require("../services/protectedDeal.service");
+const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("../services/biometric.service");
 
 const userId = (req) => req.user?._id || req.user?.id;
 const idem = (req) => req.get?.("Idempotency-Key") || req.headers?.["idempotency-key"];
@@ -39,7 +40,9 @@ const create = async (req, res) => {
 };
 const fund = async (req, res) => {
   try {
-    const result = await service.fundDeal({ dealId: req.params.dealId, buyerId: userId(req), idempotencyKey: idem(req) });
+    const idempotencyKey = idem(req);
+    await authorizeTransaction({ userId: userId(req), body: req.body, operation: BIOMETRIC_OPERATIONS.TRUST_FUND, idempotencyKey });
+    const result = await service.fundDeal({ dealId: req.params.dealId, buyerId: userId(req), idempotencyKey });
     return res.status(200).json({ success: true, deal: privateDeal(await hydrate(result.deal), userId(req)), duplicate: result.duplicate });
   } catch (error) { return send(res, error, "Unable to fund protected deal."); }
 };
@@ -57,7 +60,9 @@ const start = async (req, res) => {
 };
 const release = async (req, res) => {
   try {
-    const result = await service.transition({ dealId: req.params.dealId, actorId: userId(req), idempotencyKey: idem(req), from: ["FUNDED", "DELIVERED"], to: "COMPLETED", note: req.body?.note, settlement: "RELEASE", requiredParticipant: "BUYER" });
+    const idempotencyKey = idem(req);
+    await authorizeTransaction({ userId: userId(req), body: req.body, operation: BIOMETRIC_OPERATIONS.TRUST_RELEASE, idempotencyKey });
+    const result = await service.transition({ dealId: req.params.dealId, actorId: userId(req), idempotencyKey, from: ["FUNDED", "DELIVERED"], to: "COMPLETED", note: req.body?.note, settlement: "RELEASE", requiredParticipant: "BUYER" });
     return res.status(200).json({ success: true, deal: privateDeal(await hydrate(result.deal), userId(req)), duplicate: result.duplicate });
   } catch (error) { return send(res, error, "Unable to release protected deal."); }
 };

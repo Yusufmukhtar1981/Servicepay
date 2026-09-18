@@ -10,7 +10,7 @@ const crypto = require("crypto");
 const User = require("../models/user.model");
 const Transfer = require("../models/transfer.model");
 const ServicePayTransferAttempt = require("../models/servicePayTransferAttempt.model");
-const { verifyTransactionPin } = require("../services/transactionPin.service");
+const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("../services/biometric.service");
 const Transaction = require(
   "../models/transaction.model"
 );
@@ -640,7 +640,12 @@ exports.transfer = async (
      * stale snapshot when the wallet is later debited, causing a WriteConflict.
      */
     if (!req[TRANSFER_PIN_VERIFIED]) {
-      await verifyTransactionPin(senderId, transactionPin);
+      await authorizeTransaction({
+        userId: senderId,
+        body: req.body,
+        operation: BIOMETRIC_OPERATIONS.TRANSFER,
+        idempotencyKey,
+      });
       req[TRANSFER_PIN_VERIFIED] = true;
     }
 

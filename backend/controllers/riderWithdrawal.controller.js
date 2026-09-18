@@ -8,7 +8,7 @@ const User = require(
 const RiderWithdrawal = require(
   "../models/riderWithdrawal.model"
 );
-const { verifyTransactionPin } = require("../services/transactionPin.service");
+const { authorizeTransaction } = require("../services/biometric.service");
 const AppSettings = require("../models/appSettings.model");
 const RiderWalletLedger = require("../models/riderWalletLedger.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
@@ -1317,7 +1317,12 @@ exports.createWithdrawalRequest =
        * security writes outside caller sessions.
        */
       try {
-        await verifyTransactionPin(riderId, transactionPin);
+        await authorizeTransaction({
+          userId: riderId,
+          body: req.body,
+          operation: "RIDER_WITHDRAWAL",
+          idempotencyKey,
+        });
         logStage("pin_admitted");
       } catch (error) {
         logStage("pin_rejected", {

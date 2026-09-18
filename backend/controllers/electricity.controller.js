@@ -6,7 +6,7 @@ const User = require("../models/user.model");
 const Transaction = require(
   "../models/transaction.model"
 );
-const { verifyTransactionPin } = require("../services/transactionPin.service");
+const { authorizeTransaction } = require("../services/biometric.service");
 
 const ELECTRICITY_PAYMENT_URL =
   "https://www.nellobytesystems.com/APIElectricityV1.asp";
@@ -762,7 +762,12 @@ exports.payElectricity = async (
       });
     }
 
-    await verifyTransactionPin(sender._id, transactionPin);
+    await authorizeTransaction({
+      userId: sender._id,
+      body: req.body,
+      operation: "ELECTRICITY_PAYMENT",
+      idempotencyKey: req.get?.("Idempotency-Key") || req.body?.idempotencyKey || req.body?.reference,
+    });
 
     const reference =
       generateReference();

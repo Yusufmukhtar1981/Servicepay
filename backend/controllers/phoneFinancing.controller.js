@@ -12,10 +12,13 @@ const Transaction = require("../models/transaction.model");
 const Notification = require("../models/notification.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 const { postDebit, postCredit } = require("../services/ledger.service");
-const { verifyTransactionPin } = require("../services/transactionPin.service");
+const { authorizeTransaction } = require("../services/biometric.service");
 const { requestProviderAction } = require("../services/phoneProvider.service");
 const { createCommissionForEvent, reverseCommissionsForApplication } = require("../services/businessPartnerCommission.service");
 const BusinessPartnerProfile = require("../models/businessPartnerProfile.model");
+
+const PHONE_FINANCING_DEPOSIT_OPERATION = "PHONE_FINANCING_DEPOSIT";
+const PHONE_FINANCING_INSTALLMENT_OPERATION = "PHONE_FINANCING_INSTALLMENT";
 
 const money = n => Number.isFinite(Number(n)) ? Math.round((Number(n) + Number.EPSILON) * 100) / 100 : null;
 const text = (v, max = 500) => String(v || "").trim().slice(0, max);
@@ -315,7 +318,21 @@ async function debit(req, app, amount, type, session, finance = null, allocation
  const payer=await User.findById(uid(req)).select("walletBalance").session(session);if(!payer)throw error("Customer account not found.",401);
  const updated=await User.findOneAndUpdate({_id:payer._id,walletBalance:{$gte:amount}},{$inc:{walletBalance:-amount}},{new:true,session});if(!updated)throw error("Insufficient wallet balance.");const closing=money(updated.walletBalance), opening=money(closing+amount), service=type==="DEPOSIT"?"PHONE_FINANCING_DEPOSIT":"PHONE_FINANCING_INSTALLMENT";const tx=(await Transaction.create([{reference:ref("SPF-PAY"),customerId:payer._id,branchId:app.branchId||null,serviceType:service,provider:"SERVICEPAY_PHONE_FINANCING",amount,status:"SUCCESSFUL",providerResponse:{applicationId:String(app._id),financeId:finance?String(finance._id):null,idempotencyKey:idem}}],{session}))[0];const ledger=await postDebit({userId:payer._id,amount,openingBalance:opening,closingBalance:closing,service,reference:tx.reference,idempotencyKey:`phone:${idem}`,transactionId:tx._id,narration:`Phone financing ${type.toLowerCase()}`,session});if(ledger.duplicate)throw error("Duplicate ledger state requires support review.");const payment=(await Payment.create([{reference:ref("SPF-PAY"),application:app._id,finance:finance?finance._id:null,customer:payer._id,branchId:app.branchId||null,type,amount,idempotencyKey:idem,transaction:tx._id,ledgerEntry:ledger.entry._id,allocation}],{session}))[0];return {payment,idempotent:false};
 }
-exports.deposit = async (req,res) => {try{const idem=key(req);if(idem&&!await Payment.exists({idempotencyKey:idem}))await verifyTransactionPin(uid(req),req.body?.transactionPin ?? req.body?.pin);}catch(e){return res.status(e.statusCode||500).json({success:false,code:e.code,message:e.message});}const session=await mongoose.startSession();try{let result;await session.withTransaction(async()=>{const app=await Application.findOne({_id:req.params.applicationId,customer:uid(req)}).session(session);if(!app)throw error("Phone application not found.",404);const duplicate=await Payment.findOne({idempotencyKey:key(req)}).session(session);if(duplicate){if(duplicate.type!=="DEPOSIT"||String(duplicate.customer)!==String(uid(req))||String(duplicate.application)!==String(app._id)||money(duplicate.amount)!==money(req.body.amount))throw error("Idempotency key is already associated with a different payment.");result={payment:duplicate,idempotent:true};return;}if(app.status!=="AWAITING_DEPOSIT")throw error("Deposit cannot be paid for this application.");const amount=money(app.depositRequired-app.depositPaid);if(!amount||money(req.body.amount)!==amount)throw error("Deposit amount must equal the server-calculated amount.",400);const now=new Date(),expires=new Date(now.getTime()+7*86400000);const reserved=await Device.findOneAndUpdate({product:app.product,status:"AVAILABLE"},{$set:{status:"RESERVED",reservedForApplication:app._id,reservedForCustomer:app.customer,reservedAt:now,reservationExpiresAt:expires},$push:{statusHistory:{status:"RESERVED",changedBy:uid(req),changedAt:now}}},{new:true,session});if(!reserved)throw error("No available physical device can be reserved for this product.");const product=await Product.findOneAndUpdate({_id:app.product,stock:{$gt:0}},{$inc:{stock:-1}},{new:true,session});if(!product)throw error("Product availability is inconsistent.");app.device=reserved._id;result=await debit(req,app,amount,"DEPOSIT",session);app.depositPaid=amount;app.outstandingBalance=money(app.outstandingBalance-amount);history(app,"DEPOSIT_PAID",uid(req),"Deposit paid and device reserved");await app.save({session});});res.status(result.idempotent?200:201).json({success:true,...result});}catch(e){res.status(e.statusCode||500).json({success:false,code:e.code,message:e.message});}finally{session.endSession();}};
+exports.deposit = async (req,res) => {
+  try {
+    const idem=key(req);
+    if (idem && !await Payment.exists({idempotencyKey:idem})) {
+      await authorizeTransaction({
+        userId: uid(req),
+        body: req.body,
+        operation: PHONE_FINANCING_DEPOSIT_OPERATION,
+        idempotencyKey: idem,
+      });
+    }
+  } catch(e) {
+    return res.status(e.statusCode||500).json({success:false,code:e.code,message:e.message});
+  }
+  const session=await mongoose.startSession();try{let result;await session.withTransaction(async()=>{const app=await Application.findOne({_id:req.params.applicationId,customer:uid(req)}).session(session);if(!app)throw error("Phone application not found.",404);const duplicate=await Payment.findOne({idempotencyKey:key(req)}).session(session);if(duplicate){if(duplicate.type!=="DEPOSIT"||String(duplicate.customer)!==String(uid(req))||String(duplicate.application)!==String(app._id)||money(duplicate.amount)!==money(req.body.amount))throw error("Idempotency key is already associated with a different payment.");result={payment:duplicate,idempotent:true};return;}if(app.status!=="AWAITING_DEPOSIT")throw error("Deposit cannot be paid for this application.");const amount=money(app.depositRequired-app.depositPaid);if(!amount||money(req.body.amount)!==amount)throw error("Deposit amount must equal the server-calculated amount.",400);const now=new Date(),expires=new Date(now.getTime()+7*86400000);const reserved=await Device.findOneAndUpdate({product:app.product,status:"AVAILABLE"},{$set:{status:"RESERVED",reservedForApplication:app._id,reservedForCustomer:app.customer,reservedAt:now,reservationExpiresAt:expires},$push:{statusHistory:{status:"RESERVED",changedBy:uid(req),changedAt:now}}},{new:true,session});if(!reserved)throw error("No available physical device can be reserved for this product.");const product=await Product.findOneAndUpdate({_id:app.product,stock:{$gt:0}},{$inc:{stock:-1}},{new:true,session});if(!product)throw error("Product availability is inconsistent.");app.device=reserved._id;result=await debit(req,app,amount,"DEPOSIT",session);app.depositPaid=amount;app.outstandingBalance=money(app.outstandingBalance-amount);history(app,"DEPOSIT_PAID",uid(req),"Deposit paid and device reserved");await app.save({session});});res.status(result.idempotent?200:201).json({success:true,...result});}catch(e){res.status(e.statusCode||500).json({success:false,code:e.code,message:e.message});}finally{session.endSession();}};
 exports.createDevice = async (req, res) => {
   const phoneProductId = text(req.body.phoneProductId, 80);
   const imei1 = inventoryCode(req.body.imei1);
@@ -397,7 +414,19 @@ exports.finance=async(req,res)=>{const finance=await Finance.findOne({_id:req.pa
 exports.schedule=async(req,res)=>{const finance=await Finance.findOne({_id:req.params.financeId,customer:uid(req)}).lean();if(!finance)return res.status(404).json({success:false,message:"Phone finance not found."});res.json({success:true,financeReference:finance.reference,schedule:finance.paymentSchedule});};
 exports.payments=async(req,res)=>{const finance=await Finance.findOne({_id:req.params.financeId,customer:uid(req)}).lean();if(!finance)return res.status(404).json({success:false,message:"Phone finance not found."});res.json({success:true,financeReference:finance.reference,payments:await Payment.find({finance:finance._id,type:"INSTALLMENT"}).sort({createdAt:-1})});};
 exports.pay=async(req,res)=>{
-  try{const idem=key(req);if(idem&&!await Payment.exists({idempotencyKey:idem}))await verifyTransactionPin(uid(req),req.body?.transactionPin ?? req.body?.pin);}catch(e){return res.status(e.statusCode||500).json({success:false,code:e.code,message:e.message});}
+   try {
+     const idem=key(req);
+     if (idem && !await Payment.exists({idempotencyKey:idem})) {
+       await authorizeTransaction({
+         userId: uid(req),
+         body: req.body,
+         operation: PHONE_FINANCING_INSTALLMENT_OPERATION,
+         idempotencyKey: idem,
+       });
+     }
+   } catch(e) {
+     return res.status(e.statusCode||500).json({success:false,code:e.code,message:e.message});
+   }
   const s=await mongoose.startSession();
   try{
     let result;

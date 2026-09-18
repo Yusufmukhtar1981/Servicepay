@@ -11,9 +11,7 @@ const {
   postDebit,
   postCredit,
 } = require("../services/ledger.service");
-const {
-  verifyTransactionPin,
-} = require("../services/transactionPin.service");
+const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("../services/biometric.service");
 
 const getUserId = (req) =>
   req.user?._id ||
@@ -71,12 +69,14 @@ exports.createWithdrawal = async (
     // PIN admission maintains durable security state outside financial
     // transactions. Verify before opening the wallet transaction so its
     // reservation cannot be rolled back or cause a transaction retry loop.
-    await verifyTransactionPin(
-      userId,
-      String(req.body?.transactionPin || "").trim()
-    );
     const idempotencyKey =
       getIdempotencyKey(req);
+    await authorizeTransaction({
+      userId,
+      body: req.body,
+      operation: BIOMETRIC_OPERATIONS.WITHDRAWAL,
+      idempotencyKey,
+    });
     const limits =
       await getWithdrawalLimits();
 

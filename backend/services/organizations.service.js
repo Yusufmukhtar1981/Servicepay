@@ -4,7 +4,7 @@ const models = require("../models/organizations.models");
 const User = require("../models/user.model");
 const Wallet = require("../models/wallet.model");
 const { postDebit } = require("./ledger.service");
-const { verifyTransactionPin } = require("./transactionPin.service");
+const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("./biometric.service");
 const { resolveState, isValidLga } = require("../data/nigeriaLocations");
 const { normalizeDocumentType } = require("./organizationDocument.service");
 
@@ -451,8 +451,7 @@ async function pay(req, assignment, member, amount, key) {
   if (conflicting) throw Object.assign(new Error("Idempotency key is already used for another payment."), { status: 409 });
   const session = await mongoose.startSession();
   try {
-    if (!req.body?.transactionPin) throw Object.assign(new Error("Transaction PIN is required."), { status: 400 });
-    await verifyTransactionPin(req.user._id, String(req.body.transactionPin));
+    await authorizeTransaction({ userId: req.user._id, body: req.body, operation: BIOMETRIC_OPERATIONS.ORGANIZATION_PAYMENT, idempotencyKey: key });
     let payment;
     await session.withTransaction(async () => {
       const claimed = await models.OrganizationFeeAssignment.findOneAndUpdate({ _id: assignment._id, status: { $in: ["ASSIGNED", "PARTIAL"] }, amount }, { $set: { status: "PAID" } }, { new: true, session });

@@ -217,6 +217,8 @@ const generateToken = (userId, authTokenVersion = 0) => {
     {
       id: userId,
       authTokenVersion: Number(authTokenVersion || 0),
+      amr: ["pwd"],
+      auth_time: Math.floor(Date.now() / 1000),
     },
     process.env.JWT_SECRET,
     {

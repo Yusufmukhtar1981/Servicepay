@@ -11,9 +11,7 @@ const GroupWalletActivity = require("../models/groupWalletActivity.model");
 const FeaturePayment = require("../models/featurePayment.model");
 const Notification = require("../models/notification.model");
 const mongoose = require("mongoose");
-const {
-  verifyTransactionPin: verifyCanonicalTransactionPin,
-} = require("../services/transactionPin.service");
+const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("../services/biometric.service");
 
 const userId = (req) =>
   req.user?._id || req.user?.id;
@@ -781,11 +779,13 @@ exports.payMoneyRequest = async (
           throw error;
         }
 
-        await verifyCanonicalTransactionPin(
-          payer._id,
-          req.body?.transactionPin ?? req.body?.pin,
-          { session }
-        );
+        await authorizeTransaction({
+          userId: payer._id,
+          body: req.body,
+          operation: BIOMETRIC_OPERATIONS.REQUEST_MONEY_PAYMENT,
+          idempotencyKey,
+          session,
+        });
 
         const debited =
           await debitWallet({
@@ -1054,11 +1054,13 @@ exports.payPaymentLink = async (
           throw error;
         }
 
-        await verifyCanonicalTransactionPin(
-          payer._id,
-          req.body?.transactionPin ?? req.body?.pin,
-          { session }
-        );
+        await authorizeTransaction({
+          userId: payer._id,
+          body: req.body,
+          operation: BIOMETRIC_OPERATIONS.PAY_LINK_PAYMENT,
+          idempotencyKey,
+          session,
+        });
 
         const debited =
           await debitWallet({
@@ -1467,10 +1469,14 @@ exports.contributeToGroup = async (
     // PIN admission maintains its own security state, so it must complete
     // outside the money transaction to avoid write conflicts with its attempt
     // reservation. The payer is reloaded in that transaction before debiting.
-    await verifyCanonicalTransactionPin(
-      payerId,
-      req.body?.transactionPin ?? req.body?.pin
-    );
+    await authorizeTransaction({
+      userId: payerId,
+      body: req.body,
+      operation: BIOMETRIC_OPERATIONS.GROUP_WALLET_CONTRIBUTION,
+      idempotencyKey: suppliedKey
+        ? `AJO:${suppliedKey}`
+        : `AJO:${req.params.id}:${payerId}`,
+    });
 
     await session.withTransaction(async () => {
       if (!mongoose.isValidObjectId(req.params.id)) {

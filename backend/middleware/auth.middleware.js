@@ -52,6 +52,8 @@ const protect = async (req, res, next) => {
     req.authTokenIssuedAt =
       decoded.jti ||
       (decoded.iat ? String(decoded.iat) : null);
+    req.authAmr = Array.isArray(decoded.amr) ? decoded.amr : (decoded.amr ? [decoded.amr] : []);
+    req.authTime = Number(decoded.auth_time || 0);
 
     const userId =
       decoded.id ||

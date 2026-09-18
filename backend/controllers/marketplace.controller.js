@@ -11,7 +11,7 @@ const {
   reconcileReferralReward,
   enqueueReferralRewardEvent,
 } = require("../services/referralReward.service");
-const { verifyTransactionPin } = require("../services/transactionPin.service");
+const { authorizeTransaction } = require("../services/biometric.service");
 const {
   MAX_MARKETPLACE_IMAGE_BYTES,
   SUPPORTED_MARKETPLACE_IMAGE_TYPES,
@@ -957,10 +957,12 @@ exports.createOrder = async (req, res) => {
     // PIN admission persists its own attempt reservation independently of the
     // business transaction. Complete it before opening the checkout snapshot
     // so the subsequent wallet debit does not conflict with that reservation.
-    await verifyTransactionPin(
+    await authorizeTransaction({
       userId,
-      req.body?.transactionPin ?? req.body?.pin
-    );
+      body: req.body,
+      operation: "MARKETPLACE_ORDER",
+      idempotencyKey: req.get?.("Idempotency-Key") || req.body?.idempotencyKey,
+    });
 
     const session = await mongoose.startSession();
     let createdOrder = null;

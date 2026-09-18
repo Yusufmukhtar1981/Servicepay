@@ -16,6 +16,7 @@ const Branch = require("../models/branch.model");
 const LogisticsQuote = require("../models/logisticsQuote.model");
 const { calculateInterstateQuote } = require("../services/interstatePricing.service");
 const { sendDeliveryOtp } = require("../services/logisticsSms.service");
+const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("../services/biometric.service");
 
 const staffRoles = ["HEAD_OFFICE", "ZONAL_MANAGER", "STATE_MANAGER", "BRANCH_MANAGER", "STAFF"];
 const transitions = {
@@ -192,6 +193,7 @@ exports.pay = async (req, res) => {
     if (key.length > 120) return res.status(400).json({ success: false, message: "Idempotency-Key is too long." });
     const existing = await Shipment.findOne({ customerId: req.user._id, paymentIdempotencyKey: key }).populate("paymentTransactionId");
     if (existing) return res.json({ success: true, idempotent: true, data: existing, shipment: existing, transaction: existing.paymentTransactionId });
+    await authorizeTransaction({ userId: req.user._id, body: req.body, operation: BIOMETRIC_OPERATIONS.INTERSTATE_PAYMENT, idempotencyKey: key });
     session.startTransaction();
     const shipment = await Shipment.findOne({ _id: req.params.id, customerId: req.user._id, paymentStatus: "UNPAID", status: "AWAITING_PAYMENT" }).session(session);
     if (!shipment) throw Object.assign(new Error("Shipment is not available for payment."), { status: 404 });
@@ -260,6 +262,7 @@ exports.paySupplement = async (req, res) => {
     const key = String(req.get("Idempotency-Key") || req.body.idempotencyKey || "").trim() || `shipment-supplement:${req.params.id}`;
     const shipment = await Shipment.findOne({ _id: req.params.id, customerId: req.user._id, status: "ADDITIONAL_PAYMENT_REQUIRED" }).session(session);
     if (!shipment) return res.status(404).json({ success: false, message: "No additional payment is due for this shipment." });
+    await authorizeTransaction({ userId: req.user._id, body: req.body, operation: BIOMETRIC_OPERATIONS.INTERSTATE_ADJUSTMENT, idempotencyKey: key });
     const adjustment = shipment.priceAdjustments[shipment.priceAdjustments.length - 1];
     if (adjustment?.settlementTransactionId) return res.json({ success: true, idempotent: true, data: shipment, shipment });
     const amount = Number(adjustment?.difference || 0); if (amount <= 0) return res.status(409).json({ success: false, message: "Invalid supplemental adjustment." });

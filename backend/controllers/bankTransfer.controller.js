@@ -5,7 +5,7 @@ const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const BankTransfer = require("../models/bankTransfer.model");
-const { verifyTransactionPin } = require("../services/transactionPin.service");
+const { authorizeTransaction } = require("../services/biometric.service");
 const { postDebit, postCredit } = require("../services/ledger.service");
 
 const SQUAD_BANKS = [
@@ -1079,7 +1079,12 @@ exports.initiateBankTransfer =
         });
       }
 
-      await verifyTransactionPin(userId, transactionPin);
+      await authorizeTransaction({
+        userId,
+        body: req.body,
+        operation: "BANK_TRANSFER",
+        idempotencyKey: req.get?.("Idempotency-Key") || req.body?.idempotencyKey || req.body?.reference,
+      });
 
       const lookup =
         await lookupAccountWithSquad({

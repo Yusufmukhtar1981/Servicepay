@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const axios = require("axios");
 const models = require("../models/organizations.models");
-const { verifyTransactionPin } = require("./transactionPin.service");
+const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("./biometric.service");
 const base = require("./organizations.service");
 
 const { Organization, OrganizationRole, OrganizationWallet, OrganizationLedger,
@@ -63,7 +63,7 @@ async function createWithdrawal(req, org) {
   if (!account) throw error("An approved settlement account is required.", 409);
   const cfg = await config(org);
   if (amount < cfg.minimumWithdrawal || amount > cfg.maximumWithdrawal) throw error("Withdrawal amount is outside the configured limits.", 400);
-  await verifyTransactionPin(req.user._id, req.body.transactionPin ?? req.body.pin);
+  await authorizeTransaction({ userId: req.user._id, body: req.body, operation: BIOMETRIC_OPERATIONS.ORGANIZATION_TREASURY_WITHDRAWAL, idempotencyKey: idempotency(req) });
   const actor = await assertMode(req, org, cfg.authorizationMode, "initiate");
   const total = amount + Number(cfg.fee || 0);
   const status = cfg.authorizationMode === "OWNER_ONLY" ? "APPROVED" : "PENDING_APPROVAL";

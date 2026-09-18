@@ -14,7 +14,7 @@ const AdminAuditLog = require("../models/adminAuditLog.model");
 const SolarAssignment = require("../models/solarAssignment.model");
 const SolarVerification = require("../models/solarVerification.model");
 const { postDebit } = require("../services/ledger.service");
-const { verifyTransactionPin } = require("../services/transactionPin.service");
+const { authorizeTransaction } = require("../services/biometric.service");
 const {
   createSolarOfficerCommission,
 } = require("../services/solarOfficerCommission.service");
@@ -445,7 +445,7 @@ exports.pay = async (req,res) => {
   try {
     const paymentType=text(req.body?.type,20).toUpperCase(); const requested=money(req.body?.amount); const idem=keyFor(req);
     if(!["DEPOSIT","INSTALLMENT"].includes(paymentType)||requested===null||requested<=0||!idem) throw problem("Payment type, positive amount and Idempotency-Key are required.",400);
-    await verifyTransactionPin(id(req), req.body?.transactionPin ?? req.body?.pin);
+    await authorizeTransaction({ userId: id(req), body: req.body, operation: "SOLAR_PAYMENT", idempotencyKey: keyFor(req) });
     let output;
     await session.withTransaction(async()=>{
       const existing=await SolarPayment.findOne({idempotencyKey:idem}).session(session);
@@ -626,7 +626,7 @@ exports.payFinance = async (req, res) => {
   try {
     const requestedAmount = money(req.body?.amount), idem = keyFor(req);
     if (requestedAmount === null || requestedAmount <= 0 || !idem) throw problem("A positive amount and Idempotency-Key are required.", 400);
-    await verifyTransactionPin(id(req), req.body?.transactionPin ?? req.body?.pin);
+    await authorizeTransaction({ userId: id(req), body: req.body, operation: "SOLAR_FINANCE_PAYMENT", idempotencyKey: keyFor(req) });
     let result;
     await session.withTransaction(async () => {
       const duplicate = await SolarPayment.findOne({ idempotencyKey: idem }).session(session);

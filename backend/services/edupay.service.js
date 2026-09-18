@@ -6,7 +6,7 @@ const Transaction = require("../models/transaction.model");
 const Notification = require("../models/notification.model");
 const { postDebit } = require("./ledger.service");
 const { postCredit } = require("./ledger.service");
-const { verifyTransactionPin } = require("./transactionPin.service");
+const { authorizeTransaction } = require("./biometric.service");
 const Settings = require("../models/edupaySettings.model");
 const School = require("../models/edupaySchool.model");
 const Child = require("../models/edupayChild.model");
@@ -135,7 +135,7 @@ function assertIntent(existing, intentHash) {
   }
 }
 
-async function contributeFromWallet({ userId, planId, amount, transactionPin, idempotencyKey }) {
+async function contributeFromWallet({ userId, planId, amount, transactionPin, biometricGrant, deviceId, idempotencyKey, body }) {
   await ensureInitiationEnabled();
   ensureObjectId(planId, "Plan");
   const value = round(amount); if (!(value > 0)) { const error = new Error("Contribution amount must be greater than zero."); error.statusCode = 400; throw error; }
@@ -144,7 +144,7 @@ async function contributeFromWallet({ userId, planId, amount, transactionPin, id
   const existing = await Contribution.findOne({ idempotencyKey }).populate("plan child");
   assertIntent(existing, intentHash);
   if (existing) return { contribution: existing, duplicate: true };
-  await verifyTransactionPin(userId, transactionPin);
+  await authorizeTransaction({ userId, body: body || { transactionPin, biometricGrant, deviceId }, operation: "EDUPAY_CONTRIBUTION", idempotencyKey });
   const session = await mongoose.startSession(); let output;
   try {
     await session.withTransaction(async () => {
@@ -173,11 +173,11 @@ async function contributeFromWallet({ userId, planId, amount, transactionPin, id
   return { contribution: output, duplicate: false };
 }
 
-async function contributeSponsorFromWallet({ sponsorId, tokenHash, amount, transactionPin, idempotencyKey }) {
+async function contributeSponsorFromWallet({ sponsorId, tokenHash, amount, transactionPin, biometricGrant, deviceId, idempotencyKey, body }) {
   await ensureInitiationEnabled();
   const value = round(amount);
   if (!(value > 0) || !idempotencyKey) { const error = new Error("A valid amount and Idempotency-Key are required."); error.statusCode = 400; throw error; }
-  await verifyTransactionPin(sponsorId, transactionPin);
+  await authorizeTransaction({ userId: sponsorId, body: body || { transactionPin, biometricGrant, deviceId }, operation: "EDUPAY_SPONSOR_CONTRIBUTION", idempotencyKey });
   const invite = await EduPaySponsorInvite.findOne({ tokenHash, status: "ACTIVE", expiresAt: { $gt: new Date() } });
   if (!invite) { const error = new Error("Sponsor link is invalid or expired."); error.statusCode = 404; throw error; }
   const intentHash = hash(JSON.stringify({ operation: "SPONSOR_CONTRIBUTION", actor: String(sponsorId), resource: String(invite._id), amount: value }));
@@ -213,14 +213,14 @@ async function contributeSponsorFromWallet({ sponsorId, tokenHash, amount, trans
   return { contribution: result, duplicate: false };
 }
 
-async function repayFromWallet({ userId, repaymentId, amount, transactionPin, idempotencyKey }) {
+async function repayFromWallet({ userId, repaymentId, amount, transactionPin, biometricGrant, deviceId, idempotencyKey, body }) {
   ensureObjectId(repaymentId, "Repayment"); const value = round(amount);
   if (!(value > 0) || !idempotencyKey) { const error = new Error("A valid amount and Idempotency-Key are required."); error.statusCode = 400; throw error; }
   const intentHash = hash(JSON.stringify({ operation: "REPAYMENT", actor: String(userId), resource: String(repaymentId), amount: value }));
   const existing = await EduPayRepaymentTransaction.findOne({ idempotencyKey });
   assertIntent(existing, intentHash);
   if (existing) return { transaction: existing, duplicate: true };
-  await verifyTransactionPin(userId, transactionPin);
+  await authorizeTransaction({ userId, body: body || { transactionPin, biometricGrant, deviceId }, operation: "EDUPAY_REPAYMENT", idempotencyKey });
   const session = await mongoose.startSession(); let result;
   try {
     await session.withTransaction(async () => {
