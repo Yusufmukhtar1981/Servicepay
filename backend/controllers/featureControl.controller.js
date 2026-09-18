@@ -87,8 +87,6 @@ const latestActiveDutyHolders = async () => {
   return { manage, verify, process, users: eligibleUsers };
 };
 const edupayCanEnable = async () => {
-  const { manage, verify, process } = await latestActiveDutyHolders();
-  const duties = [...manage].some((a) => [...verify].some((b) => b !== a && [...process].some((c) => c !== a && c !== b)));
   const payout = require("../services/edupaySquad.service").payoutReadiness();
   const provider = payout.providerReady;
   const encryption = payout.accountEncryptionReady;
@@ -96,13 +94,13 @@ const edupayCanEnable = async () => {
   const settings = await Settings.findOne({ key: "GLOBAL" }).lean();
   const rates = settings ? Number(settings.schoolCommissionRate) >= 0 && Number(settings.parentShortfallChargeRate) >= 0 : false;
   const settlementMethod = settings ? ["DEDUCT_COMMISSION", "GROSS_AND_RECEIVABLE"].includes(settings.settlementMethod) : false;
-  return duties && provider && encryption && rates && settlementMethod;
+  return provider && encryption && rates && settlementMethod;
 };
 const ensureEduPayReady = async (next, previous) => {
   const enabling = next.enabled === true && previous.enabled !== true;
   const schedulingEnable = next.scheduledEnabledAt && next.scheduledEnabledAt !== previous.scheduledEnabledAt;
   if ((enabling || schedulingEnable) && !(await edupayCanEnable())) {
-    const error = new Error("EduPay cannot be enabled until payout configuration and three-way duty separation are ready.");
+    const error = new Error("EduPay cannot be enabled until payout configuration is ready.");
     error.statusCode = 409; error.code = "EDUPAY_NOT_READY"; throw error;
   }
 };

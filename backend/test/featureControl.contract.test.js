@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const AppSettings = require("../models/appSettings.model");
+const EduPaySettings = require("../models/edupaySettings.model");
 const {
   FEATURE_REGISTRY,
   currentFeature,
@@ -9,11 +10,13 @@ const {
   registry,
   customer,
   canProtectedManage,
+  evaluateEduPayReadiness,
 } = require("../controllers/featureControl.controller");
 const {
   featureState,
   requireFeatureEnabled,
 } = require("../middleware/fintechControl.middleware");
+const fintechControlMiddleware = require("../middleware/fintechControl.middleware");
 const {
   FEATURE_ROUTE_REGISTRY,
   featureBindingsForRequest,
@@ -75,6 +78,121 @@ test("only ServicePay super admin inherits protected feature permission", () => 
 test("EduPay is a protected feature and requires protected confirmation", () => {
   const { PROTECTED_FEATURES } = require("../controllers/featureControl.controller");
   assert.equal(PROTECTED_FEATURES.has("edupay"), true);
+});
+
+test("EduPay readiness ignores feature-control state and duty-holder coverage", async () => {
+  const squad = require("../services/edupaySquad.service");
+  const originalPayout = squad.payoutReadiness;
+  const originalFindOne = EduPaySettings.findOne;
+  squad.payoutReadiness = () => ({ providerReady: true, accountEncryptionReady: true });
+  EduPaySettings.findOne = () => ({ lean: async () => ({
+    schoolCommissionRate: 5,
+    parentShortfallChargeRate: 10,
+    settlementMethod: "DEDUCT_COMMISSION",
+  }) });
+  try {
+    assert.equal(await evaluateEduPayReadiness(), true);
+  } finally {
+    squad.payoutReadiness = originalPayout;
+    EduPaySettings.findOne = originalFindOne;
+  }
+});
+
+test("app middleware ignores only EduPay manual enabled=false and preserves maintenance", async () => {
+  const original = AppSettings.getGlobalSettings;
+  AppSettings.getGlobalSettings = async () => ({
+    fintechControl: { featureRegistry: { edupay: { enabled: false } } },
+  });
+  const request = { method: "POST", originalUrl: "/api/edupay/plans", body: {}, user: { role: "CUSTOMER" } };
+  const response = () => {
+    const result = {};
+    return {
+      result,
+      res: { status(code) { result.status = code; return this; }, json(body) { result.body = body; return this; } },
+    };
+  };
+  try {
+    const financiallyReady = response();
+    let reached = false;
+    await fintechControlMiddleware(request, financiallyReady.res, () => { reached = true; });
+    assert.equal(reached, true);
+    assert.equal(financiallyReady.result.body?.code, undefined);
+
+    AppSettings.getGlobalSettings = async () => ({
+      fintechControl: { featureRegistry: { edupay: { enabled: false, maintenanceMode: true, maintenanceMessage: "Scheduled work." } } },
+    });
+    const maintenance = response();
+    reached = false;
+    await fintechControlMiddleware({ ...request }, maintenance.res, () => { reached = true; });
+    assert.equal(reached, false);
+    assert.equal(maintenance.result.body.code, "FEATURE_MAINTENANCE");
+  } finally {
+    AppSettings.getGlobalSettings = original;
+  }
+});
+
+test("EduPay readiness rejects every missing financial requirement", async () => {
+  const squad = require("../services/edupaySquad.service");
+  const originalPayout = squad.payoutReadiness;
+  const originalFindOne = EduPaySettings.findOne;
+  const settings = {
+    schoolCommissionRate: 5,
+    parentShortfallChargeRate: 10,
+    settlementMethod: "DEDUCT_COMMISSION",
+  };
+  EduPaySettings.findOne = () => ({ lean: async () => ({ ...settings }) });
+  try {
+    for (const missing of ["providerReady", "accountEncryptionReady"]) {
+      squad.payoutReadiness = () => ({
+        providerReady: missing !== "providerReady",
+        accountEncryptionReady: missing !== "accountEncryptionReady",
+      });
+      assert.equal(await evaluateEduPayReadiness(), false, missing);
+    }
+    squad.payoutReadiness = () => ({ providerReady: true, accountEncryptionReady: true });
+    for (const missing of ["schoolCommissionRate", "parentShortfallChargeRate", "settlementMethod"]) {
+      const original = settings[missing];
+      settings[missing] = missing === "settlementMethod" ? "INVALID" : -1;
+      assert.equal(await evaluateEduPayReadiness(), false, missing);
+      settings[missing] = original;
+    }
+  } finally {
+    squad.payoutReadiness = originalPayout;
+    EduPaySettings.findOne = originalFindOne;
+  }
+});
+
+test("EduPay school context only accepts approved active memberships", async () => {
+  const SchoolUser = require("../models/edupaySchoolUser.model");
+  SchoolUser.EduPaySchoolUser = SchoolUser;
+  const { school } = require("../middleware/edupay.middleware");
+  const originalFind = SchoolUser.find;
+  const schoolId = "approved-school";
+  const memberships = [
+    { school: { _id: "pending-school", status: "PENDING_REVIEW", active: false }, status: "ACTIVE" },
+    { school: { _id: "suspended-school", status: "SUSPENDED", active: false }, status: "ACTIVE" },
+    { school: { _id: "inactive-school", status: "APPROVED", active: false }, status: "ACTIVE" },
+    { school: { _id: schoolId, status: "APPROVED", active: true }, status: "ACTIVE", role: "ADMIN" },
+  ];
+  SchoolUser.find = () => ({ populate: async () => memberships });
+  const invoke = (requested) => new Promise((resolve) => {
+    const req = { user: { _id: "parent" }, headers: requested ? { "x-edupay-school-id": requested } : {}, query: {}, body: {} };
+    const res = { status: (status) => ({ json: (body) => resolve({ status, body }) }) };
+    school[1](req, res, (error) => resolve({ error, req }));
+  });
+  try {
+    for (const id of ["pending-school", "suspended-school", "inactive-school"]) {
+      const denied = await invoke(id);
+      assert.equal(denied.status || denied.error?.statusCode, 403, `${id}: ${denied.error?.message || JSON.stringify(denied)}`);
+    }
+    const accepted = await invoke(schoolId);
+    assert.equal(accepted.error, undefined);
+    assert.equal(String(accepted.req.eduPaySchool._id), schoolId);
+    assert.equal(accepted.req.eduPaySchool.status, "APPROVED");
+    assert.equal(accepted.req.eduPaySchool.active, true);
+  } finally {
+    SchoolUser.find = originalFind;
+  }
 });
 
 test("canonical registry covers customer features and missing state defaults ON/visible", () => {

@@ -20,8 +20,7 @@ const { EduPaySponsorInvite, EduPaySponsorContribution } = require("../models/ed
 const Audit = require("../models/edupayAuditLog.model");
 const Command = require("../models/edupayCommand.model");
 const Commission = require("../models/edupayCommission.model");
-const AppSettings = require("../models/appSettings.model");
-const { FEATURE_REGISTRY, currentFeature } = require("../controllers/featureControl.controller");
+const { evaluateEduPayReadiness } = require("../controllers/featureControl.controller");
 
 const round = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 const reference = (prefix) => `${prefix}-${Date.now()}-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
@@ -33,11 +32,8 @@ async function getSettings(session = null) {
   return query;
 }
 async function ensureInitiationEnabled() {
-  const settings = await AppSettings.findOne().lean();
-  const definition = FEATURE_REGISTRY.find((item) => item[0] === "edupay");
-  const feature = currentFeature(settings, definition);
-  if (!feature.effectiveEnabled) { const error = new Error("EduPay is temporarily unavailable for new plans and contributions."); error.statusCode = 403; error.code = "EDUPAY_DISABLED"; throw error; }
-  return feature;
+  if (!(await evaluateEduPayReadiness())) { const error = new Error("EduPay is temporarily unavailable until payout configuration is ready."); error.statusCode = 503; error.code = "EDUPAY_NOT_READY"; throw error; }
+  return true;
 }
 async function audit({ actor, actorType = "USER", actorLabel = null, action, entityType, entityId = null, school = null, metadata = {}, req, session = null }) {
   const options = session ? { session } : undefined;

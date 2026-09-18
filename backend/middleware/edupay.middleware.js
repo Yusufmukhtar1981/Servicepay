@@ -1,4 +1,4 @@
-const { EduPaySchoolUser } = require("../models/edupaySchoolUser.model");
+const EduPaySchoolUser = require("../models/edupaySchoolUser.model");
 const School = require("../models/edupaySchool.model");
 const { protect, adminOnly } = require("./auth.middleware");
 

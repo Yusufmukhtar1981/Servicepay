@@ -517,7 +517,7 @@ test("atomic duty configuration requires and persists three distinct active offi
   assert.equal(new Set([...afterConcurrent.manage, ...afterConcurrent.verify, ...afterConcurrent.process]).size, 3);
 });
 
-test("readiness requires three distinct latest duty holders", async () => {
+test("readiness is financial-only while duty coverage remains informational", async () => {
   const controller = require("../controllers/edupay.controller"); const users = await User.create([
     { fullName: "Duty One", phone: `082${Date.now()}`, email: `d1-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
     { fullName: "Duty Two", phone: `083${Date.now()}`, email: `d2-${Date.now()}@test.invalid`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
@@ -526,10 +526,47 @@ test("readiness requires three distinct latest duty holders", async () => {
   const result = (permissions, user, version) => DutyAssignment.create({ user, permissions, assignedBy: parent._id, version });
   await result(["account.manage", "account.verify", "settlement.process"], users[0]._id, 1);
   const getReadiness = async () => { let body; await controller.adminReadiness({}, { json: (value) => { body = value; }, status: () => ({ json: (value) => { body = value; } }) }); return body; };
+  const environment = Object.fromEntries([
+    "EDUPAY_SQUAD_TRANSFER_ENABLED", "EDUPAY_SQUAD_PRODUCTION_ENABLED",
+    "EDUPAY_SQUAD_SECRET_KEY", "EDUPAY_SQUAD_MERCHANT_ID",
+    "EDUPAY_SQUAD_BASE_URL", "EDUPAY_ACCOUNT_ENCRYPTION_KEY",
+  ].map((key) => [key, process.env[key]]));
+  Object.assign(process.env, {
+    EDUPAY_SQUAD_TRANSFER_ENABLED: "true",
+    EDUPAY_SQUAD_PRODUCTION_ENABLED: "true",
+    EDUPAY_SQUAD_SECRET_KEY: "readiness-test-secret",
+    EDUPAY_SQUAD_MERCHANT_ID: "readiness-test-merchant",
+    EDUPAY_SQUAD_BASE_URL: "https://api.squadco.com",
+    EDUPAY_ACCOUNT_ENCRYPTION_KEY: "readiness-test-encryption-key",
+  });
+  await Settings.updateOne({ key: "GLOBAL" }, { $set: { settlementMethod: "DEDUCT_COMMISSION", schoolCommissionRate: 5, parentShortfallChargeRate: 10 } });
+  await AppSettings.updateOne({}, { $set: { "fintechControl.featureRegistry.edupay.enabled": false } });
   const originalUserInit = User.init; User.init = async () => { throw new Error("Shared User model must not be initialized by EduPay readiness."); };
-  assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, false);
-  await result(["account.verify"], users[1]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, false);
-  await result(["settlement.process"], users[2]._id, 1); assert.equal((await getReadiness()).dutyCoverage.viableDutySeparation, true); User.init = originalUserInit;
+  try {
+    let readiness = await getReadiness();
+    assert.equal(readiness.ready, true);
+    assert.equal(readiness.eduPayActive, true);
+    assert.equal(readiness.customerInitiationEnabled, true);
+    assert.equal(readiness.dutyCoverage.viableDutySeparation, false);
+    await result(["account.verify"], users[1]._id, 1);
+    readiness = await getReadiness();
+    assert.equal(readiness.ready, true);
+    assert.equal(readiness.eduPayActive, true);
+    assert.equal(readiness.customerInitiationEnabled, true);
+    assert.equal(readiness.dutyCoverage.viableDutySeparation, false);
+    await result(["settlement.process"], users[2]._id, 1);
+    readiness = await getReadiness();
+    assert.equal(readiness.ready, true);
+    assert.equal(readiness.eduPayActive, true);
+    assert.equal(readiness.customerInitiationEnabled, true);
+    assert.equal(readiness.dutyCoverage.viableDutySeparation, true);
+  } finally {
+    User.init = originalUserInit;
+    for (const [key, value] of Object.entries(environment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test("latest revoked duty assignment removes a holder from readiness", async () => {

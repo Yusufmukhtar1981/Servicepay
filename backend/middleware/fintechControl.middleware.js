@@ -253,8 +253,12 @@ function disabledService(req, control) {
   const toggles = control?.featureToggles || {};
   for (const key of featureBindingsForRequest(req)) {
     const state = featureState(control, key);
-    if ((!state.registryEnabled && boolValue(toggles[key], true) === false) || !state.visible ||
-        !state.enabled || state.maintenanceMode) {
+    const manualEnabled = key === "edupay"
+      ? true
+      : state.registryEnabled
+        ? state.enabled
+        : boolValue(toggles[key], true);
+    if (!state.visible || !manualEnabled || state.maintenanceMode) {
       return {
         key,
         maintenance: state.maintenanceMode,
@@ -286,7 +290,7 @@ function requireFeatureEnabled(key) {
       return next();
     }
     const state = featureState(control || {}, key);
-    if (!state.visible || !state.enabled || state.maintenanceMode) {
+    if (!state.visible || (key !== "edupay" && !state.enabled) || state.maintenanceMode) {
       return res.status(503).json({
         success: false,
         code: state.maintenanceMode ? "FEATURE_MAINTENANCE" : "FEATURE_DISABLED",
