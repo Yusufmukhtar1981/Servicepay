@@ -296,7 +296,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Children').last);
+    await tester.tap(find.text('My Children').last);
     await tester.pumpAndSettle();
     expect(find.text("Can't find your school?"), findsOneWidget);
     await tester.tap(find.text("Can't find your school?"));

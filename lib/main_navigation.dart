@@ -8,11 +8,10 @@ import 'qr_pay_screen.dart';
 import 'transactions_screen.dart';
 import 'wallet_screen.dart';
 import 'servicepay_theme.dart';
+import 'edupay/edupay_screen.dart';
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({
-    super.key,
-  });
+  const MainNavigation({super.key});
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -57,12 +56,8 @@ class _MainNavigationState extends State<MainNavigation>
       final SharedPreferences preferences =
           await SharedPreferences.getInstance();
 
-      String role = preferences.getString(
-            'user_role',
-          ) ??
-          preferences.getString(
-            'role',
-          ) ??
+      String role = preferences.getString('user_role') ??
+          preferences.getString('role') ??
           'CUSTOMER';
 
       role = role.trim().toUpperCase();
@@ -78,9 +73,7 @@ class _MainNavigationState extends State<MainNavigation>
       setState(() {
         userRole = role;
 
-        pages = _buildPages(
-          role,
-        );
+        pages = _buildPages(role);
 
         currentIndex = 0;
 
@@ -94,9 +87,7 @@ class _MainNavigationState extends State<MainNavigation>
       setState(() {
         userRole = 'CUSTOMER';
 
-        pages = _buildPages(
-          'CUSTOMER',
-        );
+        pages = _buildPages('CUSTOMER');
 
         currentIndex = 0;
 
@@ -105,9 +96,7 @@ class _MainNavigationState extends State<MainNavigation>
     }
   }
 
-  List<Widget> _buildPages(
-    String role,
-  ) {
+  List<Widget> _buildPages(String role) {
     /*
      * =====================================================
      * DELIVERY RIDER
@@ -141,6 +130,7 @@ class _MainNavigationState extends State<MainNavigation>
       TransactionsScreen(),
       WalletScreen(),
       ProfileScreen(),
+      EduPayScreen(),
     ];
   }
 
@@ -169,60 +159,32 @@ class _MainNavigationState extends State<MainNavigation>
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     if (isLoadingRole) {
       return const Scaffold(
-        backgroundColor: Color(
-          0xFFF7F9FB,
-        ),
-        body: Center(
-          child: CircularProgressIndicator(
-            color: primaryGreen,
-          ),
-        ),
+        backgroundColor: Color(0xFFF7F9FB),
+        body: Center(child: CircularProgressIndicator(color: primaryGreen)),
       );
     }
 
     return Scaffold(
       extendBody: false,
-      body: IndexedStack(
-        index: currentIndex,
-        children: pages,
-      ),
+      body: IndexedStack(index: currentIndex, children: pages),
       bottomNavigationBar: SafeArea(
         top: false,
-        minimum: const EdgeInsets.fromLTRB(
-          10,
-          0,
-          10,
-          8,
-        ),
+        minimum: const EdgeInsets.fromLTRB(10, 0, 10, 8),
         child: Container(
           height: userRole == 'DELIVERY_RIDER' ? 78 : 82,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 7,
-            vertical: 6,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(
-              22,
-            ),
-            border: Border.all(
-              color: ServicePayColors.border,
-            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: ServicePayColors.border),
             boxShadow: const <BoxShadow>[
               BoxShadow(
-                color: Color(
-                  0x24101828,
-                ),
+                color: Color(0x24101828),
                 blurRadius: 24,
-                offset: Offset(
-                  0,
-                  10,
-                ),
+                offset: Offset(0, 10),
               ),
             ],
           ),
@@ -293,6 +255,12 @@ class _MainNavigationState extends State<MainNavigation>
         activeIcon: Icons.person_rounded,
         label: 'Profile',
       ),
+      buildNavigationItem(
+        index: 4,
+        icon: Icons.school_outlined,
+        activeIcon: Icons.school_rounded,
+        label: 'EduPay',
+      ),
     ];
   }
 
@@ -305,9 +273,7 @@ class _MainNavigationState extends State<MainNavigation>
           key: const Key('customer-qr-navigation'),
           onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const QrPayScreen(),
-              ),
+              MaterialPageRoute<void>(builder: (_) => const QrPayScreen()),
             );
           },
           borderRadius: BorderRadius.circular(22),
@@ -372,9 +338,7 @@ class _MainNavigationState extends State<MainNavigation>
 
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 2,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
@@ -383,36 +347,21 @@ class _MainNavigationState extends State<MainNavigation>
                 currentIndex = index;
               });
             },
-            borderRadius: BorderRadius.circular(
-              18,
-            ),
+            borderRadius: BorderRadius.circular(18),
             child: AnimatedContainer(
-              duration: const Duration(
-                milliseconds: 220,
-              ),
+              duration: const Duration(milliseconds: 220),
               curve: Curves.easeOut,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 2,
-                vertical: 5,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
               decoration: BoxDecoration(
-                color: selected
-                    ? const Color(
-                        0xFFEAF7F0,
-                      )
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(
-                  18,
-                ),
+                color: selected ? const Color(0xFFEAF7F0) : Colors.transparent,
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   AnimatedContainer(
-                    duration: const Duration(
-                      milliseconds: 220,
-                    ),
+                    duration: const Duration(milliseconds: 220),
                     width: selected ? 31 : 27,
                     height: selected ? 31 : 27,
                     decoration: BoxDecoration(
@@ -426,9 +375,7 @@ class _MainNavigationState extends State<MainNavigation>
                       size: selected ? 19 : 21,
                     ),
                   ),
-                  const SizedBox(
-                    height: 3,
-                  ),
+                  const SizedBox(height: 3),
                   SizedBox(
                     width: double.infinity,
                     child: Text(

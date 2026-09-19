@@ -22,6 +22,7 @@ class StartupSessionGate extends StatefulWidget {
     this.client,
     this.preferencesLoader = SharedPreferences.getInstance,
     this.requestTimeout = const Duration(seconds: 10),
+    this.authenticatedHomeOverride,
   });
 
   static const String baseUrl = 'https://api.servicepay.ng/api';
@@ -29,6 +30,7 @@ class StartupSessionGate extends StatefulWidget {
   final http.Client? client;
   final Future<SharedPreferences> Function() preferencesLoader;
   final Duration requestTimeout;
+  final Widget? authenticatedHomeOverride;
 
   @override
   State<StartupSessionGate> createState() => _StartupSessionGateState();
@@ -122,21 +124,24 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
     final int generation = ++_requestGeneration;
 
     try {
-      final SharedPreferences preferences =
-          await widget.preferencesLoader().timeout(widget.requestTimeout);
+      final SharedPreferences preferences = await widget
+          .preferencesLoader()
+          .timeout(widget.requestTimeout);
       final String token = (await SessionStore.readToken())?.trim() ?? '';
       if (token.isEmpty) {
         _showLoggedOut();
         return;
       }
 
-      final http.Response response = await _client.get(
-        Uri.parse('${StartupSessionGate.baseUrl}/auth/profile'),
-        headers: <String, String>{
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(widget.requestTimeout);
+      final http.Response response = await _client
+          .get(
+            Uri.parse('${StartupSessionGate.baseUrl}/auth/profile'),
+            headers: <String, String>{
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(widget.requestTimeout);
 
       if (generation != _requestGeneration || !mounted) return;
       if (response.statusCode == 401 || response.statusCode == 403) {
@@ -170,8 +175,12 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
       await preferences.setString('user_status', status);
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
-        _authenticatedHome = authenticatedHomeForLogin(role,
-            mustChangePassword: profile['mustChangePassword'] == true);
+        _authenticatedHome =
+            widget.authenticatedHomeOverride ??
+            authenticatedHomeForLogin(
+              role,
+              mustChangePassword: profile['mustChangePassword'] == true,
+            );
         _state = StartupSessionState.authenticated;
       });
     } on TimeoutException {
@@ -199,8 +208,9 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
   Future<void> _signOut() async {
     _requestGeneration += 1;
     try {
-      final SharedPreferences preferences =
-          await widget.preferencesLoader().timeout(widget.requestTimeout);
+      final SharedPreferences preferences = await widget
+          .preferencesLoader()
+          .timeout(widget.requestTimeout);
       await _clearLocalSession(preferences);
     } catch (error) {
       debugPrint('Local session cleanup failed: $error');
@@ -216,10 +226,7 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
       case StartupSessionState.authenticated:
         return _authenticatedHome ?? const LoginScreen();
       case StartupSessionState.recoverableError:
-        return _StartupRecoveryScreen(
-          onRetry: _retry,
-          onSignOut: _signOut,
-        );
+        return _StartupRecoveryScreen(onRetry: _retry, onSignOut: _signOut);
       case StartupSessionState.checking:
         return const _StartupSessionLoadingScreen();
     }
@@ -279,10 +286,7 @@ class _StartupRecoveryScreen extends StatelessWidget {
                   const Text(
                     "We couldn't prepare your account right now.",
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 10),
                   const Text(

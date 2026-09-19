@@ -13,6 +13,9 @@ import 'privacy_policy_screen.dart';
 import 'public_website_screen.dart';
 import 'register_screen.dart';
 import 'referral_attribution_service.dart';
+import 'services/session_store.dart';
+import 'edupay/edupay_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'rider/rider_delivery_alert_service.dart';
 
@@ -42,12 +45,8 @@ bool isServicePayRegistrationUri(Uri uri) {
  * in the next step.
  */
 @pragma('vm:entry-point')
-Future<void> firebaseMessagingBackgroundHandler(
-  RemoteMessage message,
-) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   await RiderDeliveryAlertService.handleBackgroundMessage(message);
 }
@@ -61,9 +60,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Register the top-level background entry point before mounting any UI.
   // The handler initializes Firebase inside its own isolate when invoked.
-  FirebaseMessaging.onBackgroundMessage(
-    firebaseMessagingBackgroundHandler,
-  );
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // Authentication and the customer UI do not depend on notification setup.
   // Mount the app immediately so a slow or unavailable Firebase/plugin
@@ -73,39 +70,39 @@ Future<void> main() async {
     initializeServicePayServices()
         .timeout(const Duration(seconds: 5))
         .catchError((Object error, StackTrace stackTrace) {
-      debugPrint('ServicePay background startup failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    }),
+          debugPrint('ServicePay background startup failed: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }),
   );
 }
 
 Future<void> initializeServicePayServices() async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   await RiderDeliveryAlertService.initialize();
 
   // Messaging listeners are process-wide; RiderMainNavigation supplies the
   // Rider-facing presentation callback only after an authenticated Rider opens.
-  unawaited(Future<void>.delayed(const Duration(milliseconds: 300), () async {
-    FirebaseMessaging.onMessage.listen(
-      RiderDeliveryAlertService.handleForegroundMessage,
-    );
+  unawaited(
+    Future<void>.delayed(const Duration(milliseconds: 300), () async {
+      FirebaseMessaging.onMessage.listen(
+        RiderDeliveryAlertService.handleForegroundMessage,
+      );
 
-    FirebaseMessaging.onMessageOpenedApp.listen(
-      (RemoteMessage message) =>
-          RiderDeliveryAlertService.handleOpenedMessage(message),
-    );
+      FirebaseMessaging.onMessageOpenedApp.listen(
+        (RemoteMessage message) =>
+            RiderDeliveryAlertService.handleOpenedMessage(message),
+      );
 
-    final RemoteMessage? initialMessage =
-        await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null) {
-      await RiderDeliveryAlertService.handleOpenedMessage(initialMessage);
-    }
-  }).catchError((Object error, StackTrace stackTrace) {
-    debugPrint('Messaging listener startup failed: $error');
-  }));
+      final RemoteMessage? initialMessage = await FirebaseMessaging.instance
+          .getInitialMessage();
+      if (initialMessage != null) {
+        await RiderDeliveryAlertService.handleOpenedMessage(initialMessage);
+      }
+    }).catchError((Object error, StackTrace stackTrace) {
+      debugPrint('Messaging listener startup failed: $error');
+    }),
+  );
 }
 
 class ServicePayBootstrap extends StatefulWidget {
@@ -165,9 +162,7 @@ class _ServicePayBootstrapState extends State<ServicePayBootstrap> {
 }
 
 class ServicePayStartupScreen extends StatelessWidget {
-  const ServicePayStartupScreen({
-    super.key,
-  });
+  const ServicePayStartupScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -197,10 +192,7 @@ class ServicePayStartupScreen extends StatelessWidget {
             SizedBox(height: 16),
             Text(
               'Preparing your account…',
-              style: TextStyle(
-                color: Color(0xFF52605D),
-                fontSize: 15,
-              ),
+              style: TextStyle(color: Color(0xFF52605D), fontSize: 15),
             ),
           ],
         ),
@@ -210,9 +202,7 @@ class ServicePayStartupScreen extends StatelessWidget {
 }
 
 class ServicePayApp extends StatelessWidget {
-  const ServicePayApp({
-    super.key,
-  });
+  const ServicePayApp({super.key});
 
   Widget getInitialScreen() {
     final Uri currentUri = Uri.base;
@@ -226,17 +216,14 @@ class ServicePayApp extends StatelessWidget {
 
     final String token = currentUri.queryParameters['token']?.trim() ?? '';
 
-    final bool isResetPasswordLink = path == '/reset-password' ||
-        path.endsWith(
-          '/reset-password/',
-        ) ||
+    final bool isResetPasswordLink =
+        path == '/reset-password' ||
+        path.endsWith('/reset-password/') ||
         resetMode == 'true' ||
         mode == 'reset-password';
 
     if (isResetPasswordLink) {
-      return ResetPasswordScreen(
-        token: token,
-      );
+      return ResetPasswordScreen(token: token);
     }
 
     if (path == '/privacy-policy' || path == '/privacy-policy/') {
@@ -249,19 +236,79 @@ class ServicePayApp extends StatelessWidget {
       );
     }
 
-    return kIsWeb ? const PublicWebsiteScreen() : const StartupSessionGate();
+    if (kIsWeb) {
+      final bool edupayEntry =
+          path == '/edupay' ||
+          path == '/edupay/' ||
+          currentUri.queryParameters['entry']?.toLowerCase() == 'edupay';
+      return WebLandingSessionGate(edupayEntry: edupayEntry);
+    }
+    return const StartupSessionGate();
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ServicePay',
       navigatorKey: servicePayNavigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ServicePayTheme.light(),
       home: getInitialScreen(),
+    );
+  }
+}
+
+/// Keeps the public website as the signed-out web root while restoring an
+/// existing authenticated session. This intentionally does not change the
+/// shared StartupSessionGate logged-out behavior used by native and login.
+class WebLandingSessionGate extends StatefulWidget {
+  const WebLandingSessionGate({super.key, this.edupayEntry = false});
+
+  final bool edupayEntry;
+
+  @override
+  State<WebLandingSessionGate> createState() => _WebLandingSessionGateState();
+}
+
+class _WebLandingSessionGateState extends State<WebLandingSessionGate> {
+  bool _checking = true;
+  bool _hasSession = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSession();
+  }
+
+  Future<void> _checkSession() async {
+    try {
+      // SharedPreferences is retained here for compatibility with older
+      // sessions; SessionStore is the authoritative token location.
+      await SharedPreferences.getInstance();
+      final token = (await SessionStore.readToken())?.trim() ?? '';
+      if (mounted) {
+        setState(() {
+          _hasSession = token.isNotEmpty;
+          _checking = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_checking) {
+      return const ServicePayStartupScreen();
+    }
+    if (!_hasSession) {
+      return const PublicWebsiteScreen();
+    }
+    return StartupSessionGate(
+      authenticatedHomeOverride: widget.edupayEntry
+          ? const EduPayScreen()
+          : null,
     );
   }
 }
