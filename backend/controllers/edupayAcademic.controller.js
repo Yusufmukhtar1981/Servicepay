@@ -326,4 +326,147 @@ exports.parentResults = async (req, res) => { try { const child = await parentCh
 exports.parentActivities = async (req, res) => { try { const child = await parentChild(req); res.json({ success: true, child, activities: await EduPayAcademicActivity.find({ school: child.school, status: "PUBLISHED", $or: [{ audience: "SCHOOL" }, { audience: "CLASS", classLevel: child.classLevel }, { audience: "STUDENT", student: child._id }] }).sort({ eventDate: -1 }).lean() }); } catch (e) { fail(res, e); } };
 exports.parentTimetable = async (req, res) => { try { const child = await parentChild(req); res.json({ success: true, child, timetable: await EduPayTimetable.find({ school: child.school, classLevel: child.classLevel }).populate("subject teacher").sort({ day: 1, startsAt: 1 }).lean() }); } catch (e) { fail(res, e); } };
 
-exports.adminAcademicOverview = async (req, res) => { try { const [schools, students, teachers, parents, attendance, results] = await Promise.all([School.countDocuments({ status: "APPROVED", active: true }), EduPayStudent.countDocuments({ status: "ACTIVE" }), EduPayTeacher.countDocuments({ status: "ACTIVE" }), EduPayStudent.distinct("parent", { parent: { $ne: null } }).then((r) => r.length), EduPayAttendance.countDocuments({ createdAt: { $gte: new Date(Date.now() - 30 * 86400000) } }), EduPayAssessment.countDocuments({ status: "PUBLISHED", updatedAt: { $gte: new Date(Date.now() - 30 * 86400000) } })]); res.json({ success: true, usage: { activeSchools: schools, activeStudents: students, activeTeachers: teachers, linkedParents: parents, attendanceLast30Days: attendance, publishedResultsLast30Days: results } }); } catch (e) { fail(res, e); } };
+exports.adminAcademicOverview = async (req, res) => {
+  try {
+    const requestedSchoolId = String(req.query.schoolId || "").trim();
+    if (requestedSchoolId && !mongoose.isValidObjectId(requestedSchoolId)) {
+      return res.status(400).json({
+        success: false,
+        message: "School is invalid.",
+      });
+    }
+
+    const schoolFilter = {
+      status: "APPROVED",
+      active: true,
+      ...(requestedSchoolId
+        ? { _id: new mongoose.Types.ObjectId(requestedSchoolId) }
+        : {}),
+    };
+    const schools = await School.find(schoolFilter)
+      .select("name location status active")
+      .sort({ name: 1 })
+      .lean();
+    const schoolIds = schools.map((school) => school._id);
+    const scoped = { school: { $in: schoolIds } };
+    const last30Days = new Date(Date.now() - 30 * 86400000);
+
+    const countBySchool = async (Model, match = {}) =>
+      Model.aggregate([
+        { $match: { ...scoped, ...match } },
+        { $group: { _id: "$school", count: { $sum: 1 } } },
+      ]);
+    const latestBySchool = async (Model, dateField, match = {}) =>
+      Model.aggregate([
+        { $match: { ...scoped, ...match } },
+        {
+          $group: {
+            _id: "$school",
+            count: { $sum: 1 },
+            latestAt: { $max: `$${dateField}` },
+          },
+        },
+      ]);
+
+    const [
+      studentCounts,
+      teacherCounts,
+      classCounts,
+      subjectCounts,
+      sessionCounts,
+      attendanceActivity,
+      publishedResultActivity,
+      timetableCounts,
+      activityCounts,
+      linkedParents,
+    ] = await Promise.all([
+      countBySchool(EduPayStudent, { status: "ACTIVE" }),
+      countBySchool(EduPayTeacher, { status: "ACTIVE" }),
+      countBySchool(EduPayClass),
+      countBySchool(EduPaySubject),
+      countBySchool(EduPayAcademicSession),
+      latestBySchool(EduPayAttendance, "createdAt"),
+      latestBySchool(EduPayAssessment, "updatedAt", { status: "PUBLISHED" }),
+      countBySchool(EduPayTimetable),
+      latestBySchool(EduPayAcademicActivity, "createdAt", {
+        status: "PUBLISHED",
+      }),
+      EduPayStudent.distinct("parent", {
+        ...scoped,
+        parent: { $ne: null },
+      }).then((rows) => rows.length),
+    ]);
+
+    const asCountMap = (rows) =>
+      new Map(rows.map((row) => [String(row._id), Number(row.count || 0)]));
+    const asActivityMap = (rows) =>
+      new Map(
+        rows.map((row) => [
+          String(row._id),
+          {
+            count: Number(row.count || 0),
+            latestAt: row.latestAt || null,
+          },
+        ])
+      );
+    const studentsBySchool = asCountMap(studentCounts);
+    const teachersBySchool = asCountMap(teacherCounts);
+    const classesBySchool = asCountMap(classCounts);
+    const subjectsBySchool = asCountMap(subjectCounts);
+    const sessionsBySchool = asCountMap(sessionCounts);
+    const attendanceBySchool = asActivityMap(attendanceActivity);
+    const resultsBySchool = asActivityMap(publishedResultActivity);
+    const timetableBySchool = asCountMap(timetableCounts);
+    const activitiesBySchool = asActivityMap(activityCounts);
+    const schoolProfiles = schools.map((school) => {
+      const key = String(school._id);
+      return {
+        id: school._id,
+        name: school.name,
+        location: school.location,
+        status: school.status,
+        students: studentsBySchool.get(key) || 0,
+        teachers: teachersBySchool.get(key) || 0,
+        classes: classesBySchool.get(key) || 0,
+        subjects: subjectsBySchool.get(key) || 0,
+        academicSessions: sessionsBySchool.get(key) || 0,
+        attendanceRecords: attendanceBySchool.get(key)?.count || 0,
+        lastAttendanceAt: attendanceBySchool.get(key)?.latestAt || null,
+        publishedResults: resultsBySchool.get(key)?.count || 0,
+        lastPublishedResultAt: resultsBySchool.get(key)?.latestAt || null,
+        timetableEntries: timetableBySchool.get(key) || 0,
+        schoolActivities: activitiesBySchool.get(key)?.count || 0,
+        lastSchoolActivityAt: activitiesBySchool.get(key)?.latestAt || null,
+      };
+    });
+    const sum = (rows) =>
+      rows.reduce((total, row) => total + Number(row.count || 0), 0);
+
+    return res.json({
+      success: true,
+      usage: {
+        activeSchools: schools.length,
+        activeStudents: sum(studentCounts),
+        activeTeachers: sum(teacherCounts),
+        linkedParents,
+        classes: sum(classCounts),
+        subjects: sum(subjectCounts),
+        academicSessions: sum(sessionCounts),
+        timetableEntries: sum(timetableCounts),
+        schoolActivities: sum(activityCounts),
+        attendanceLast30Days: await EduPayAttendance.countDocuments({
+          ...scoped,
+          createdAt: { $gte: last30Days },
+        }),
+        publishedResultsLast30Days: await EduPayAssessment.countDocuments({
+          ...scoped,
+          status: "PUBLISHED",
+          updatedAt: { $gte: last30Days },
+        }),
+      },
+      schoolProfiles,
+    });
+  } catch (e) {
+    fail(res, e);
+  }
+};
