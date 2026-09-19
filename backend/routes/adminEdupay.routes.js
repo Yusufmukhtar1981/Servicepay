@@ -5,6 +5,7 @@ const { payoutReadiness } = require("../services/edupaySquad.service");
 const { protect, adminOnly, normalizeRole } = require("../middleware/auth.middleware");
 const { loadStaffRole, requirePermission } = require("../middleware/staffPermission.middleware");
 const { requireExplicitEduPayDuty } = require("../middleware/edupayDuty.middleware");
+const academic = require("../controllers/edupayAcademic.controller");
 const router = express.Router();
 const canConfigureDuties = (user) =>
   ["SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"].includes(
@@ -24,6 +25,7 @@ router.get("/duties/eligible-users", ...dutyOwner, controller.adminEligibleDutyU
 router.put("/duties/:userId", ...dutyOwner, controller.adminEduPayDuty);
 router.delete("/duties/:userId", ...dutyOwner, controller.adminRevokeEduPayDuty);
 router.get("/overview", ...view, controller.adminOverview);
+router.get("/academic-overview", ...view, academic.adminAcademicOverview);
 router.get("/settings", ...view, controller.adminSettings);
 router.patch("/settings", ...manage, controller.adminSettings);
 router.get("/schools", ...view, controller.adminSchools);
