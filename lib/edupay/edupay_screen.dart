@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'edupay_api.dart';
 import 'student_activity_center.dart';
+import 'academic_child_profile_screen.dart';
 
 class EduPayScreen extends StatefulWidget {
   const EduPayScreen({super.key, this.api});
@@ -41,12 +42,22 @@ class _EduPayScreenState extends State<EduPayScreen> {
         api.schools(),
         api.history(),
         api.parentActivityChildren(),
+        api.academicChildren(),
       ]);
       if (!mounted) return;
       setState(() {
         dash = values[0] as Map<String, dynamic>;
         plans = values[1] as List;
-        children = values[2] as List;
+        final financeChildren = values[2] as List;
+        final academicChildren = values[7] as List;
+        final mergedChildren = <String, dynamic>{};
+        for (final child in [...financeChildren, ...academicChildren]) {
+          if (child is Map) {
+            final key = '${child['_id'] ?? child['id'] ?? child['studentId']}';
+            mergedChildren[key] = child;
+          }
+        }
+        children = mergedChildren.values.toList();
         repayments = values[3] as List;
         schools = values[4] as List;
         history = values[5] as Map<String, dynamic>;
@@ -404,11 +415,18 @@ class _EduPayScreenState extends State<EduPayScreen> {
 
   Widget _childTile(Map c) => Card(
         child: ListTile(
+           onTap: () => Navigator.push(
+             context,
+             MaterialPageRoute(
+               builder: (_) => AcademicChildProfileScreen(api: api, child: c),
+             ),
+           ),
           leading: const CircleAvatar(child: Icon(Icons.person_outline)),
           title: Text('${c['fullName'] ?? 'Child'}'),
           subtitle: Text(
             c['school'] is Map ? '${c['school']['name']}' : 'School not listed',
           ),
+           trailing: const Icon(Icons.chevron_right),
         ),
       );
   Future<void> _newChild() async {

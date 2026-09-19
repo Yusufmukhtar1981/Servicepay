@@ -97,6 +97,8 @@ class EduPayApi {
 
   Future<List<dynamic>> children() async =>
       (await _send('GET', '/children'))['children'] as List? ?? [];
+  Future<List<dynamic>> academicChildren() async =>
+      (await _send('GET', '/academic/children'))['children'] as List? ?? [];
 
   /// Returns only children the authenticated parent is authorized to monitor.
   /// This is deliberately separate from the fee-plan child catalogue: the
@@ -159,6 +161,21 @@ class EduPayApi {
     String type,
   ) =>
       _send('GET', '/activity-center/parent/children/$studentId/$type');
+
+  /// Academic endpoints intentionally return only the authenticated parent's
+  /// linked child data. Published results and activities are filtered server
+  /// side; the client must not infer visibility from finance records.
+  Future<Map<String, dynamic>> academicAttendance(String childId) =>
+      _send('GET', '/children/$childId/academic/attendance');
+
+  Future<Map<String, dynamic>> academicResults(String childId) =>
+      _send('GET', '/children/$childId/academic/results');
+
+  Future<Map<String, dynamic>> academicActivities(String childId) =>
+      _send('GET', '/children/$childId/academic/activities');
+
+  Future<Map<String, dynamic>> academicTimetable(String childId) =>
+      _send('GET', '/children/$childId/academic/timetable');
   Future<Map<String, dynamic>> createChild(Map<String, dynamic> data) =>
       _send('POST', '/children', body: data);
   Future<List<dynamic>> plans() async =>
