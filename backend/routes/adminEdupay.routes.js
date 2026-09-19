@@ -10,8 +10,9 @@ const canConfigureDuties = (user) =>
   ["SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"].includes(
     normalizeRole(user?.role)
   );
-const view = [protect, adminOnly("HEAD_OFFICE", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"), loadStaffRole, requirePermission("edupay.view")];
+const view = [protect, adminOnly("HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"), loadStaffRole, requirePermission("edupay.view")];
 const manage = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.manage")];
+const schoolRequestApproval = [protect, adminOnly("HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"), loadStaffRole, requirePermission("edupay.manage")];
 const privateAssets = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.school.private_assets.view")];
 const accountManage = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.settlement_account.manage"), requireExplicitEduPayDuty("account.manage")];
 const accountVerify = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requirePermission("edupay.settlement_account.verify"), requireExplicitEduPayDuty("account.verify")];
@@ -28,7 +29,7 @@ router.patch("/settings", ...manage, controller.adminSettings);
 router.get("/schools", ...view, controller.adminSchools);
 router.get("/school-requests", ...view, controller.adminSchoolRequests);
 router.get("/school-requests/:requestId", ...view, controller.adminSchoolRequestDetail);
-router.patch("/school-requests/:requestId", ...manage, controller.adminSchoolRequestAction);
+router.patch("/school-requests/:requestId", ...schoolRequestApproval, controller.adminSchoolRequestAction);
 router.get("/schools/:schoolId", ...view, controller.adminSchoolDetail);
 router.get("/schools/:schoolId/private-assets", ...privateAssets, controller.adminSchoolPrivateAssets);
 router.get("/schools/:schoolId/private-assets/:fileId", ...privateAssets, controller.adminSchoolPrivateAssetDownload);
@@ -55,3 +56,6 @@ router.get("/audit", ...view, controller.adminAudit);
 router.get("/audit-logs", ...view, controller.adminAudit);
 module.exports = router;
 module.exports.canConfigureDuties = canConfigureDuties;
+module.exports.viewMiddleware = view;
+module.exports.schoolRequestApproval = schoolRequestApproval;
+module.exports.manageMiddleware = manage;
