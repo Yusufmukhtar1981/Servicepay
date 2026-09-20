@@ -42,4 +42,22 @@ void main() {
     expect(prefs.getString('auth_token'), isNull);
     expect(prefs.getString('accessToken'), isNull);
   });
+
+  test('unauthorized clears the session and invokes the root login reset',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'accessToken': 'expired-rider-token',
+    });
+    expect(await RiderAuthSession.token(), 'expired-rider-token');
+    var resetCount = 0;
+    RiderAuthSession.onUnauthorized = () {
+      resetCount += 1;
+    };
+    addTearDown(() => RiderAuthSession.onUnauthorized = null);
+
+    await RiderAuthSession.handleUnauthorized();
+
+    expect(await RiderAuthSession.token(), isEmpty);
+    expect(resetCount, 1);
+  });
 }

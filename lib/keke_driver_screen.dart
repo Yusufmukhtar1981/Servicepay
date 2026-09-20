@@ -614,6 +614,11 @@ class _KekeDriverScreenState
         ),
       );
 
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+        return;
+      }
+
       final dynamic decoded =
           jsonDecode(
         response.body,
@@ -691,6 +696,11 @@ class _KekeDriverScreenState
           seconds: 20,
         ),
       );
+
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+        return;
+      }
 
       final dynamic decoded =
           jsonDecode(
@@ -958,6 +968,11 @@ class _KekeDriverScreenState
         ),
       );
 
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+        return;
+      }
+
       final dynamic decoded =
           jsonDecode(
         response.body,
@@ -1182,6 +1197,11 @@ class _KekeDriverScreenState
           seconds: 30,
         ),
       );
+
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+        return;
+      }
 
       final dynamic decoded =
           jsonDecode(
