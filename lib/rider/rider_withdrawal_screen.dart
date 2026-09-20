@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'rider_auth_session.dart';
 
 class RiderWithdrawalScreen extends StatefulWidget {
   const RiderWithdrawalScreen({
@@ -208,32 +208,7 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
   }
 
   Future<String> getToken() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
-
-    const List<String> tokenKeys = [
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in tokenKeys) {
-      String token = preferences.getString(key)?.trim() ?? '';
-
-      if (token.toLowerCase().startsWith(
-            'bearer ',
-          )) {
-        token = token.substring(7).trim();
-      }
-
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    return '';
+    return RiderAuthSession.token();
   }
 
   Map<String, dynamic> decodeResponse(
@@ -330,6 +305,9 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
     final Map<String, dynamic> root = decodeResponse(response);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+      }
       throw Exception(
         text(
           root['message'],
@@ -403,6 +381,9 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
     final Map<String, dynamic> root = decodeResponse(response);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+      }
       throw Exception(
         text(
           root['message'],
@@ -676,6 +657,9 @@ class _RiderWithdrawalScreenState extends State<RiderWithdrawalScreen> {
       final Map<String, dynamic> root = decodeResponse(response);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode == 401) {
+          await RiderAuthSession.handleUnauthorized();
+        }
         throw Exception(
           text(
             root['message'],

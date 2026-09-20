@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
+import 'login_screen.dart';
 import 'reset_password_screen.dart';
 import 'startup_session_gate.dart';
 import 'servicepay_theme.dart';
@@ -13,6 +14,7 @@ import 'privacy_policy_screen.dart';
 import 'public_website_screen.dart';
 
 import 'rider/rider_delivery_alert_service.dart';
+import 'rider/rider_auth_session.dart';
 
 final GlobalKey<NavigatorState> servicePayNavigatorKey =
     GlobalKey<NavigatorState>();
@@ -237,6 +239,14 @@ class ServicePayApp extends StatelessWidget {
   Widget build(
     BuildContext context,
   ) {
+    RiderAuthSession.onUnauthorized = () {
+      servicePayNavigatorKey.currentState?.pushAndRemoveUntil<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const LoginScreen(),
+        ),
+        (_) => false,
+      );
+    };
     return MaterialApp(
       title: 'ServicePay',
       navigatorKey: servicePayNavigatorKey,

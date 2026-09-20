@@ -77,6 +77,44 @@ void main() {
     expect(find.text('Preparing your account…'), findsNothing);
   });
 
+  testWidgets('legacy rider token restores and migrates after browser reopen',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'accessToken': 'legacy-rider-token',
+    });
+    final MockClient client = MockClient((http.Request request) async {
+      expect(request.headers['Authorization'], 'Bearer legacy-rider-token');
+      return http.Response(
+        jsonEncode(<String, Object>{
+          'success': true,
+          'user': <String, Object>{
+            '_id': 'rider-1',
+            'role': 'DELIVERY_RIDER',
+            'status': 'ACTIVE',
+          },
+        }),
+        200,
+      );
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StartupSessionGate(
+          client: client,
+          preferencesLoader: preferences,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(
+      (await preferences()).getString('auth_token'),
+      'legacy-rider-token',
+    );
+    expect(find.text('Preparing your account…'), findsNothing);
+  });
+
   testWidgets('invalid stored session is cleared and routed to Login',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{

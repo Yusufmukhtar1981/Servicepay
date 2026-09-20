@@ -11,6 +11,7 @@ import 'rider_withdrawal_screen.dart';
 
 import 'rider_transaction_pin_screen.dart';
 import 'rider_delivery_alert_service.dart';
+import 'rider_auth_session.dart';
 import '../logistics/logistics_operations_screens.dart';
 
 class RiderApi {
@@ -91,32 +92,7 @@ class RiderApi {
   }
 
   static Future<String> getToken() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    const List<String> tokenKeys = <String>[
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in tokenKeys) {
-      String token = prefs.getString(key)?.trim() ?? '';
-
-      if (token.toLowerCase().startsWith(
-            'bearer ',
-          )) {
-        token = token.substring(7).trim();
-      }
-
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    return '';
+    return RiderAuthSession.token();
   }
 
   /*
@@ -156,6 +132,9 @@ class RiderApi {
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+      }
       throw Exception(
         text(
           root['message'],
@@ -473,6 +452,15 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
         root['delivery'] ?? data['delivery'] ?? data,
       );
       Map<String, dynamic> resolvedDelivery = delivery;
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+        throw Exception(
+          RiderApi.text(
+            root['message'],
+            fallback: 'Your session has expired. Please sign in again.',
+          ),
+        );
+      }
       if (response.statusCode < 200 ||
           response.statusCode >= 300 ||
           resolvedDelivery.isEmpty) {
@@ -768,6 +756,9 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode == 401) {
+          await RiderAuthSession.handleUnauthorized();
+        }
         throw Exception(
           RiderApi.text(
             root['message'],
@@ -921,6 +912,9 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode == 401) {
+          await RiderAuthSession.handleUnauthorized();
+        }
         throw Exception(
           RiderApi.text(
             root['message'],

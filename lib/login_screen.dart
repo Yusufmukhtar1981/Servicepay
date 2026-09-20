@@ -108,6 +108,9 @@ class _LoginScreenState extends State<LoginScreen> {
     Map<String, dynamic> result,
   ) {
     final Map<String, dynamic> data = mapFromDynamic(result['data']);
+    final Map<String, dynamic> dataAuthentication =
+        mapFromDynamic(data['authentication']);
+    final Map<String, dynamic> dataAuth = mapFromDynamic(data['auth']);
 
     final Map<String, dynamic> authentication = mapFromDynamic(
       result['authentication'],
@@ -125,8 +128,16 @@ class _LoginScreenState extends State<LoginScreen> {
         data['jwt'] ??
         authentication['token'] ??
         authentication['accessToken'] ??
+        authentication['access_token'] ??
         auth['token'] ??
-        auth['accessToken'];
+        auth['accessToken'] ??
+        auth['access_token'] ??
+        dataAuthentication['token'] ??
+        dataAuthentication['accessToken'] ??
+        dataAuthentication['access_token'] ??
+        dataAuth['token'] ??
+        dataAuth['accessToken'] ??
+        dataAuth['access_token'];
 
     String token = tokenValue?.toString().trim() ?? '';
 
@@ -349,10 +360,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       debugPrint(
         'Login status: ${response.statusCode}',
-      );
-
-      debugPrint(
-        'Login response: ${response.body}',
       );
 
       final String responseBody = response.body.trim();

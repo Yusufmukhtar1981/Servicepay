@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_routing.dart';
 import 'login_screen.dart';
+import 'rider/rider_auth_session.dart';
 
 enum StartupSessionState {
   checking,
@@ -122,7 +123,8 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
     try {
       final SharedPreferences preferences =
           await widget.preferencesLoader().timeout(widget.requestTimeout);
-      final String token = preferences.getString('auth_token')?.trim() ?? '';
+      final String token =
+          await RiderAuthSession.token(preferences: preferences);
       if (token.isEmpty) {
         _showLoggedOut();
         return;
@@ -137,7 +139,7 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
       ).timeout(widget.requestTimeout);
 
       if (generation != _requestGeneration || !mounted) return;
-      if (response.statusCode == 401 || response.statusCode == 403) {
+      if (response.statusCode == 401) {
         await _clearLocalSession(preferences);
         _showLoggedOut();
         return;

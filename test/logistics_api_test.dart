@@ -2,8 +2,52 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servicepay_app/logistics/logistics_api.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('interstate migrates legacy rider token and sends bearer auth',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'accessToken': 'Bearer rider-interstate-token',
+    });
+    late http.Request captured;
+    final LogisticsApi api = LogisticsApi(
+      baseUrl: 'https://api.servicepay.ng/api',
+      client: MockClient((http.Request request) async {
+        captured = request;
+        return http.Response('{"shipments":[]}', 200);
+      }),
+    );
+
+    await api.list('rider', 'shipments');
+
+    expect(captured.headers['authorization'], 'Bearer rider-interstate-token');
+    expect(
+      (await SharedPreferences.getInstance()).getString('auth_token'),
+      'rider-interstate-token',
+    );
+  });
+
+  test('interstate clears rider tokens only on genuine 401', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'expired-rider-token',
+    });
+    final LogisticsApi api = LogisticsApi(
+      client: MockClient(
+        (_) async => http.Response('{"message":"Unauthorized"}', 401),
+      ),
+    );
+
+    await expectLater(
+      api.list('rider', 'shipments'),
+      throwsA(isA<LogisticsApiException>()),
+    );
+    expect(
+      (await SharedPreferences.getInstance()).getString('auth_token'),
+      isNull,
+    );
+  });
+
   test('lists only server-provided branch queue records', () async {
     late http.Request captured;
     final LogisticsApi api = LogisticsApi(

@@ -6,6 +6,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'rider_auth_session.dart';
+
 /// The deliberately small data contract retained for an alert launch.
 @immutable
 class RiderDeliveryAlertPayload {
@@ -103,8 +105,7 @@ class RiderDeliveryAlertPayload {
         reference: data['reference']?.toString() ?? '',
         pickup: data['pickup']?.toString() ?? '',
         dropoff: data['dropoff']?.toString() ?? '',
-        isDiagnostic:
-            data['diagnostic']?.toString().toLowerCase() == 'true',
+        isDiagnostic: data['diagnostic']?.toString().toLowerCase() == 'true',
       );
     } catch (_) {
       return null;
@@ -230,12 +231,11 @@ class RiderDeliveryAlertService {
               message.data['delivery_id'] ??
               '')
           .toString();
-      final String assignmentEventId =
-          (message.data['assignmentEventId'] ??
-                  message.data['assignment_event_id'] ??
-                  '')
-              .toString()
-              .trim();
+      final String assignmentEventId = (message.data['assignmentEventId'] ??
+              message.data['assignment_event_id'] ??
+              '')
+          .toString()
+          .trim();
       if (id.trim().isNotEmpty) {
         await cancelAssignment(
           id.trim(),
@@ -367,7 +367,7 @@ class RiderDeliveryAlertService {
         'DELIVERY_RIDER') {
       return;
     }
-    final String auth = prefs.getString('auth_token')?.trim() ?? '';
+    final String auth = await RiderAuthSession.token(preferences: prefs);
     final String? fcmToken =
         tokenOverride ?? await FirebaseMessaging.instance.getToken();
     if (auth.isEmpty || fcmToken == null || fcmToken.isEmpty) return;
@@ -424,7 +424,7 @@ class RiderDeliveryAlertService {
   static Future<void> unregisterCurrentToken() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String auth = prefs.getString('auth_token')?.trim() ?? '';
+    final String auth = await RiderAuthSession.token(preferences: prefs);
     final String? fcmToken = await FirebaseMessaging.instance.getToken();
     if (auth.isEmpty || fcmToken == null || fcmToken.isEmpty) return;
     try {

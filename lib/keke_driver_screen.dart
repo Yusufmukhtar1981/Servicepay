@@ -8,7 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'rider/rider_auth_session.dart';
 
 class KekeDriverScreen extends StatefulWidget {
   const KekeDriverScreen({
@@ -130,46 +131,8 @@ class _KekeDriverScreenState
    */
 
   Future<String?> _getAuthToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
-
-    const List<String> tokenKeys =
-        <String>[
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in tokenKeys) {
-      final String? value =
-          prefs.getString(key);
-
-      if (value == null ||
-          value.trim().isEmpty) {
-        continue;
-      }
-
-      String token =
-          value.trim();
-
-      if (token
-          .toLowerCase()
-          .startsWith(
-            'bearer ',
-          )) {
-        token =
-            token.substring(7).trim();
-      }
-
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    return null;
+    final String token = await RiderAuthSession.token();
+    return token.isEmpty ? null : token;
   }
 
   /*

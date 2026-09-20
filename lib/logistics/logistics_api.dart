@@ -1,7 +1,8 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../rider/rider_auth_session.dart';
 
 /// Authenticated client for interstate-operations endpoints.  Branch and rider
 /// identity is deliberately inferred by the server from the access token.
@@ -84,6 +85,9 @@ class LogisticsApi {
     }
     final Map<String, dynamic> root = map(decoded);
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+      }
       throw LogisticsApiException(
         root['message']?.toString() ??
             'The logistics request could not be completed.',
@@ -102,20 +106,7 @@ class LogisticsApi {
       return (await tokenLoader!())
           .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '')
           .trim();
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    for (final String key in <String>[
-      'auth_token',
-      'access_token',
-      'token',
-      'jwt_token',
-      'jwt'
-    ]) {
-      final String value = (prefs.getString(key) ?? '')
-          .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '')
-          .trim();
-      if (value.isNotEmpty) return value;
-    }
-    return '';
+    return RiderAuthSession.token();
   }
 
   static Map<String, dynamic> map(dynamic value) =>
