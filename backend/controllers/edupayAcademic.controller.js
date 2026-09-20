@@ -78,8 +78,25 @@ const id = (value, label) => {
 };
 const schoolId = (req) => req.eduPaySchool._id;
 const isManager = (req) => ["OWNER", "ADMIN", "SCHOOL_ADMIN"].includes(String(req.eduPaySchoolUser?.role || "").toUpperCase());
-const manager = (req, res) => {
-  if (!isManager(req)) { res.status(403).json({ success: false, message: "School administrator access required." }); return false; }
+const manager = async (req, res) => {
+  const membership = req.eduPaySchoolUser;
+  const school = req.eduPaySchool;
+  const role = String(membership?.role || "").toUpperCase();
+  const validMembership = membership && school && req.user?._id && role &&
+    ["OWNER", "ADMIN", "SCHOOL_ADMIN"].includes(role) &&
+    await SchoolUser.exists({
+      user: req.user._id,
+      school: school._id,
+      status: "ACTIVE",
+      role,
+    });
+  const validContext = validMembership &&
+    String(membership.user) === String(req.user._id) &&
+    String(membership.school?._id || membership.school) === String(school._id) &&
+    membership.status === "ACTIVE" &&
+    ["APPROVED"].includes(String(school.status || "").toUpperCase()) &&
+    school.active === true;
+  if (!validContext) { res.status(403).json({ success: false, message: "School administrator access required." }); return false; }
   return true;
 };
 const teacherFor = async (req, classLevel, subject = null) => {
@@ -165,7 +182,7 @@ exports.dashboard = async (req, res) => {
 
 exports.createSession = async (req, res) => {
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const school = schoolId(req); const status = String(req.body.status || "DRAFT").toUpperCase();
     if (status === "ACTIVE") await EduPayAcademicSession.updateMany({ school, status: "ACTIVE" }, { $set: { status: "CLOSED", updatedBy: req.user._id } });
     const row = await EduPayAcademicSession.create({ school, name: req.body.name, startsAt: req.body.startsAt, endsAt: req.body.endsAt, status });
@@ -175,7 +192,7 @@ exports.createSession = async (req, res) => {
 };
 exports.updateSession = async (req, res) => {
   try {
-    if (!manager(req, res)) return; const row = await ensureOwned(EduPayAcademicSession, req.params.sessionId, schoolId(req), "Session");
+    if (!(await manager(req, res))) return; const row = await ensureOwned(EduPayAcademicSession, req.params.sessionId, schoolId(req), "Session");
     if (req.body.status === "ACTIVE") await EduPayAcademicSession.updateMany({ school: schoolId(req), status: "ACTIVE", _id: { $ne: row._id } }, { $set: { status: "CLOSED" } });
     ["name", "startsAt", "endsAt", "status"].forEach((k) => { if (req.body[k] !== undefined) row[k] = req.body[k]; }); row.updatedBy = req.user._id; await row.save();
     res.json({ success: true, session: row });
@@ -183,7 +200,7 @@ exports.updateSession = async (req, res) => {
 };
 exports.createTerm = async (req, res) => {
   try {
-    if (!manager(req, res)) return; const session = await ensureOwned(EduPayAcademicSession, req.body.session, schoolId(req), "Session");
+    if (!(await manager(req, res))) return; const session = await ensureOwned(EduPayAcademicSession, req.body.session, schoolId(req), "Session");
     const status = String(req.body.status || "DRAFT").toUpperCase();
     if (status === "ACTIVE") await EduPayTerm.updateMany({ school: schoolId(req), status: "ACTIVE" }, { $set: { status: "CLOSED" } });
     const row = await EduPayTerm.create({ school: schoolId(req), session: session._id, name: req.body.name, startsAt: req.body.startsAt, endsAt: req.body.endsAt, status });
@@ -214,7 +231,7 @@ exports.listAcademic = async (req, res) => {
 };
 exports.createClass = async (req, res) => {
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const school = schoolId(req);
     const session = await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session");
     if (req.body.classTeacher) await ensureOwned(EduPayTeacher, req.body.classTeacher, school, "Class teacher");
@@ -227,7 +244,7 @@ exports.createClass = async (req, res) => {
 };
 exports.createSubject = async (req, res) => {
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const name = String(req.body.name || "").trim().replace(/\s+/g, " ");
     if (!name) throw inputError("Subject name is required.");
     if (await subjectDuplicate(schoolId(req), name)) throw inputError("A subject with this name already exists in this school.", 409);
@@ -238,7 +255,7 @@ exports.createSubject = async (req, res) => {
 const batchEntries = (body, key) => Array.isArray(body[key]) ? body[key] : [];
 exports.createClassesBatch = async (req, res) => {
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const school = schoolId(req), entries = batchEntries(req.body, "classes");
     if (!entries.length) throw inputError("Select at least one class.");
     const session = req.body.session ? await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session") : null;
@@ -257,7 +274,7 @@ exports.createClassesBatch = async (req, res) => {
 };
 exports.createSubjectsBatch = async (req, res) => {
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const school = schoolId(req), entries = batchEntries(req.body, "subjects");
     if (!entries.length) throw inputError("Select at least one subject.");
     const seen = new Set(), docs = [];
@@ -275,7 +292,7 @@ exports.createSubjectsBatch = async (req, res) => {
 };
 exports.replaceClassSubjects = async (req, res) => {
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const school = schoolId(req);
     const classLevel = await ensureOwned(EduPayClass, req.params.classId, school, "Class");
     const subjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : (Array.isArray(req.body.subjects) ? req.body.subjects : []);
@@ -447,7 +464,7 @@ const saveAssignments = async (teacher, assignments, actor, { replace = false, s
 exports.createTeacher = async (req, res) => {
   let session;
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const school = schoolId(req);
     session = await mongoose.startSession();
     let result;
@@ -506,7 +523,7 @@ exports.createTeacher = async (req, res) => {
 exports.updateTeacher = async (req, res) => {
   let session;
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const school = schoolId(req);
     session = await mongoose.startSession();
     let result;
@@ -527,7 +544,7 @@ exports.updateTeacher = async (req, res) => {
 exports.updateTeacherStatus = async (req, res) => {
   let session;
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const status = String(req.body.status || "").toUpperCase();
     if (!["ACTIVE", "INACTIVE"].includes(status)) return res.status(400).json({ success: false, message: "Teacher status must be ACTIVE or INACTIVE." });
     const school = schoolId(req);
@@ -546,7 +563,7 @@ exports.updateTeacherStatus = async (req, res) => {
 };
 exports.resetTeacherPassword = async (req, res) => {
   try {
-    if (!manager(req, res)) return;
+    if (!(await manager(req, res))) return;
     const password = temporaryPassword(req.body.temporaryPassword);
     const teacher = await ensureOwned(EduPayTeacher, req.params.teacherId, schoolId(req), "Teacher");
     const user = await User.findById(teacher.user).select("+password +authTokenVersion");
@@ -556,7 +573,7 @@ exports.resetTeacherPassword = async (req, res) => {
     res.json({ success: true, message: "Temporary teacher password set.", teacher: { id: teacher._id, userId: user._id, mustChangePassword: true } });
   } catch (e) { fail(res, e); }
 };
-exports.assignTeacher = async (req, res) => { try { if (!manager(req, res)) return; const teacher = await ensureOwned(EduPayTeacher, req.body.teacher, schoolId(req), "Teacher"); const assignments = await saveAssignments(teacher, [{ classLevel: req.body.classLevel, subject: req.body.subject }], req.user._id); res.status(201).json({ success: true, assignment: assignments[0] }); } catch (e) { fail(res, e); } };
+exports.assignTeacher = async (req, res) => { try { if (!(await manager(req, res))) return; const teacher = await ensureOwned(EduPayTeacher, req.body.teacher, schoolId(req), "Teacher"); const assignments = await saveAssignments(teacher, [{ classLevel: req.body.classLevel, subject: req.body.subject }], req.user._id); res.status(201).json({ success: true, assignment: assignments[0] }); } catch (e) { fail(res, e); } };
 exports.listTeachers = async (req, res) => {
   try {
     const school = schoolId(req);
@@ -600,7 +617,7 @@ exports.submitAttendance = async (req, res) => {
   } catch (e) { fail(res, e); }
 };
 
-exports.createAssessment = async (req, res) => { try { if (!manager(req, res)) return; const school = schoolId(req); await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session"); await ensureOwned(EduPayTerm, req.body.term, school, "Term"); await ensureOwned(EduPayClass, req.body.classLevel, school, "Class"); await ensureOwned(EduPaySubject, req.body.subject, school, "Subject"); if (await classHasMappings(school, req.body.classLevel) && !(await mappedPair(school, req.body.classLevel, req.body.subject))) throw inputError("Map the selected subject to this class before creating an assessment."); const row = await EduPayAssessment.create({ ...req.body, school, components: req.body.components || [{ name: "Total", max: 100 }], grading: ranges(req.body.grading), createdBy: req.user._id }); res.status(201).json({ success: true, assessment: row }); } catch (e) { fail(res, e); } };
+exports.createAssessment = async (req, res) => { try { if (!(await manager(req, res))) return; const school = schoolId(req); await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session"); await ensureOwned(EduPayTerm, req.body.term, school, "Term"); await ensureOwned(EduPayClass, req.body.classLevel, school, "Class"); await ensureOwned(EduPaySubject, req.body.subject, school, "Subject"); if (await classHasMappings(school, req.body.classLevel) && !(await mappedPair(school, req.body.classLevel, req.body.subject))) throw inputError("Map the selected subject to this class before creating an assessment."); const row = await EduPayAssessment.create({ ...req.body, school, components: req.body.components || [{ name: "Total", max: 100 }], grading: ranges(req.body.grading), createdBy: req.user._id }); res.status(201).json({ success: true, assessment: row }); } catch (e) { fail(res, e); } };
 exports.listAssessments = async (req, res) => {
   try {
     const query = { school: schoolId(req) };
@@ -669,9 +686,9 @@ exports.saveScores = async (req, res) => {
   } catch (e) { fail(res, e); }
   finally { if (session) await session.endSession(); }
 };
-exports.reviewAssessment = async (req, res) => { try { if (!manager(req, res)) return; const row = await EduPayAssessment.findOne({ _id: req.params.assessmentId, school: schoolId(req) }); if (!row) return res.status(404).json({ success: false, message: "Assessment not found." }); const action = String(req.body.action || "").toUpperCase(); const transitions = { SUBMITTED: { RETURN: "RETURNED", APPROVE: "APPROVED" }, APPROVED: { PUBLISH: "PUBLISHED" } }; const next = transitions[row.status]?.[action]; if (!next) return res.status(409).json({ success: false, message: "Invalid assessment review transition." }); row.status = next; row.reviewedBy = req.user._id; row.reviewedAt = new Date(); row.reviewNote = req.body.note; await row.save(); await audit({ actor: req.user._id, action: `EDUPAY_RESULT_${next}`, entityType: "EduPayAssessment", entityId: row._id, school: schoolId(req), req }); res.json({ success: true, assessment: row }); } catch (e) { fail(res, e); } };
+exports.reviewAssessment = async (req, res) => { try { if (!(await manager(req, res))) return; const row = await EduPayAssessment.findOne({ _id: req.params.assessmentId, school: schoolId(req) }); if (!row) return res.status(404).json({ success: false, message: "Assessment not found." }); const action = String(req.body.action || "").toUpperCase(); const transitions = { SUBMITTED: { RETURN: "RETURNED", APPROVE: "APPROVED" }, APPROVED: { PUBLISH: "PUBLISHED" } }; const next = transitions[row.status]?.[action]; if (!next) return res.status(409).json({ success: false, message: "Invalid assessment review transition." }); row.status = next; row.reviewedBy = req.user._id; row.reviewedAt = new Date(); row.reviewNote = req.body.note; await row.save(); await audit({ actor: req.user._id, action: `EDUPAY_RESULT_${next}`, entityType: "EduPayAssessment", entityId: row._id, school: schoolId(req), req }); res.json({ success: true, assessment: row }); } catch (e) { fail(res, e); } };
 
-exports.createTimetable = async (req, res) => { try { if (!manager(req, res)) return; const school = schoolId(req); await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session"); await ensureOwned(EduPayTerm, req.body.term, school, "Term"); await ensureOwned(EduPayClass, req.body.classLevel, school, "Class"); await ensureOwned(EduPaySubject, req.body.subject, school, "Subject"); await ensureOwned(EduPayTeacher, req.body.teacher, school, "Teacher"); const row = await EduPayTimetable.create({ ...req.body, school, createdBy: req.user._id }); res.status(201).json({ success: true, timetable: row }); } catch (e) { fail(res, e); } };
+exports.createTimetable = async (req, res) => { try { if (!(await manager(req, res))) return; const school = schoolId(req); await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session"); await ensureOwned(EduPayTerm, req.body.term, school, "Term"); await ensureOwned(EduPayClass, req.body.classLevel, school, "Class"); await ensureOwned(EduPaySubject, req.body.subject, school, "Subject"); await ensureOwned(EduPayTeacher, req.body.teacher, school, "Teacher"); const row = await EduPayTimetable.create({ ...req.body, school, createdBy: req.user._id }); res.status(201).json({ success: true, timetable: row }); } catch (e) { fail(res, e); } };
 exports.listTimetable = async (req, res) => { try { const query = { school: schoolId(req), ...(req.query.classId ? { classLevel: req.query.classId } : {}) }; if (!isManager(req)) { const scope = await teacherScope(req); if (!scope.teacher) return res.status(403).json({ success: false, message: "Active teacher profile required." }); query.teacher = scope.teacher._id; } const rows = await EduPayTimetable.find(query).populate("classLevel subject teacher").sort({ day: 1, startsAt: 1 }).lean(); res.json({ success: true, timetable: rows }); } catch (e) { fail(res, e); } };
 exports.createActivity = async (req, res) => {
   try {

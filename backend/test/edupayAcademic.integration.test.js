@@ -24,7 +24,12 @@ const response = () => ({
 const request = (user, school, role, body = {}, extra = {}) => ({
   user,
   eduPaySchool: school,
-  eduPaySchoolUser: { role },
+  eduPaySchoolUser: {
+    role,
+    user: user?._id,
+    school: school?._id,
+    status: "ACTIVE",
+  },
   body,
   params: extra.params || {},
   query: extra.query || {},
@@ -169,8 +174,37 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
     { name: "Academic School", address: "Lagos", state: "Lagos", status: "APPROVED", active: true },
     { name: "Other School", address: "Abuja", state: "Abuja", status: "APPROVED", active: true },
   ]);
+  const [adminUser] = await User.create([{
+    fullName: "Academic Admin", email: `academic-admin-${stamp}@example.com`,
+    phone: `0816${stamp}`, password: "AcademicAdmin9!", role: "CUSTOMER", status: "ACTIVE",
+  }]);
+  await SchoolUser.create([
+    { school: school._id, user: owner._id, role: "OWNER", status: "ACTIVE" },
+    { school: school._id, user: adminUser._id, role: "ADMIN", status: "ACTIVE" },
+    { school: school._id, user: teacherUser._id, role: "TEACHER", status: "ACTIVE" },
+  ]);
+  let result = await invoke("createSubject", request(adminUser, school, "ADMIN", { name: `Admin Subject ${stamp}` }));
+  assert.equal(result.statusCode, 201);
+  result = await invoke("createSubject", request(teacherUser, school, "TEACHER", { name: `Teacher Subject ${stamp}` }));
+  assert.equal(result.statusCode, 403);
+  result = await invoke("createSubject", request(adminUser, otherSchool, "ADMIN", { name: `Cross School Subject ${stamp}` }));
+  assert.equal(result.statusCode, 403);
+  result = await invoke("createSubject", {
+    ...request(adminUser, school, "ADMIN", { name: `Suspended Subject ${stamp}` }),
+    eduPaySchoolUser: { user: adminUser._id, school: school._id, role: "ADMIN", status: "SUSPENDED" },
+  });
+  assert.equal(result.statusCode, 403);
+  const [unapprovedSchool] = await School.create([{
+    name: "Unapproved Academic School", address: "Lagos", state: "Lagos",
+    status: "PENDING_REVIEW", active: false,
+  }]);
+  result = await invoke("createSubject", {
+    ...request(adminUser, unapprovedSchool, "ADMIN", { name: `Pending Subject ${stamp}` }),
+    eduPaySchoolUser: { user: adminUser._id, school: unapprovedSchool._id, role: "ADMIN", status: "ACTIVE" },
+  });
+  assert.equal(result.statusCode, 403);
 
-  let result = await invoke("createSession", request(owner, school, "OWNER", {
+  result = await invoke("createSession", request(owner, school, "OWNER", {
     name: "2026/2027", startsAt: "2026-09-01", endsAt: "2027-07-31", status: "ACTIVE",
   }));
   assert.equal(result.statusCode, 201);
@@ -251,10 +285,10 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }, { params: { classId: classLevel._id } }));
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.classSubjects.length, 1);
-  const foreignSubject = await (async () => {
-    const foreign = await invoke("createSubject", request(owner, otherSchool, "OWNER", { name: `Foreign Subject ${stamp}` }));
-    return foreign.body.subject;
-  })();
+  const [foreignSubject] = await EduPaySubject.create([{
+    school: otherSchool._id, name: `Foreign Subject ${stamp}`,
+    createdBy: owner._id,
+  }]);
   result = await invoke("replaceClassSubjects", request(owner, school, "OWNER", {
     subjectIds: [foreignSubject._id],
   }, { params: { classId: classLevel._id } }));
