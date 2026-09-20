@@ -3,7 +3,7 @@ const User = require("../models/user.model");
 const SchoolUser = require("../models/edupaySchoolUser.model");
 const { EduPayAcademicSession, EduPayTerm, EduPayClass } = require("../models/edupayAcademic.model");
 const {
-  EduPaySubject, EduPayStudent, EduPayTeacher, EduPayTeacherAssignment,
+  EduPaySubject, EduPayClassSubject, EduPayStudent, EduPayTeacher, EduPayTeacherAssignment,
   EduPayAttendance, EduPayAssessment, EduPayScore, EduPayTimetable,
   EduPayAcademicActivity,
 } = require("../models/edupayAcademicManagement.model");
@@ -12,6 +12,42 @@ const { models } = require("../services/edupay.service");
 const { validateStrongPassword } = require("../utils/passwordPolicy");
 const School = models.School;
 const EduPayChild = models.Child;
+const normalizeLabel = (value) => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+const educationLevel = (value) => {
+  const level = String(value || "OTHER").trim().toUpperCase().replace(/\s+/g, "_");
+  return ["EARLY_YEARS", "PRIMARY", "JUNIOR_SECONDARY", "SENIOR_SECONDARY", "OTHER"].includes(level) ? level : "OTHER";
+};
+const classDisplay = (name, arm) => ({ name: String(name || "").trim().replace(/\s+/g, " "), arm: String(arm || "").trim().replace(/\s+/g, " ") || null });
+const classDuplicate = async (school, name, arm, exclude = null) => {
+  const display = classDisplay(name, arm);
+  const expectedName = normalizeLabel(display.name);
+  const expectedArm = normalizeLabel(display.arm);
+  const query = { school };
+  if (exclude) query._id = { $ne: exclude };
+  const rows = await EduPayClass.find(query).select("_id name arm normalizedName normalizedArm").lean();
+  return rows.find((row) =>
+    (normalizeLabel(row.normalizedName || row.name) === expectedName) &&
+    (normalizeLabel(row.normalizedArm || row.arm) === expectedArm)
+  ) || null;
+};
+const subjectDuplicate = async (school, name, exclude = null) => {
+  const clean = String(name || "").trim().replace(/\s+/g, " ");
+  const expected = normalizeLabel(clean);
+  const query = { school };
+  if (exclude) query._id = { $ne: exclude };
+  const rows = await EduPaySubject.find(query).select("_id name normalizedName").lean();
+  return rows.find((row) => normalizeLabel(row.normalizedName || row.name) === expected) || null;
+};
+const mappedPair = async (school, classLevel, subject, session = null) => {
+  let query = EduPayClassSubject.findOne({ school, classLevel, subject });
+  if (session) query = query.session(session);
+  return query;
+};
+const classHasMappings = async (school, classLevel, session = null) => {
+  let query = EduPayClassSubject.exists({ school, classLevel });
+  if (session) query = query.session(session);
+  return Boolean(await query);
+};
 const fail = (res, e) => {
   if (e?.code === 11000) {
     const fields = e.keyPattern || {};
@@ -65,8 +101,13 @@ const teacherScope = async (req) => {
   const assignments = await EduPayTeacherAssignment.find({
     school: schoolId(req),
     teacher: teacher._id,
-  }).lean();
-  return { teacher, assignments };
+  }).populate("classLevel", "status").lean();
+  const activeClassIds = new Set((await EduPayClass.find({ school: schoolId(req), status: "ACTIVE" }).select("_id").lean()).map((row) => String(row._id)));
+  const scopedAssignments = assignments.filter((row) => activeClassIds.has(String(row.classLevel?._id || row.classLevel))).map((row) => ({
+    ...row,
+    classLevel: row.classLevel?._id || row.classLevel,
+  }));
+  return { teacher, assignments: scopedAssignments };
 };
 const clean = (row) => row?.toObject ? row.toObject() : row;
 const ensureOwned = async (Model, value, school, label, session = null) => {
@@ -152,9 +193,10 @@ exports.createTerm = async (req, res) => {
 exports.listAcademic = async (req, res) => {
   try {
     const school = schoolId(req);
-    let [sessions, terms, classes, subjects] = await Promise.all([
+    let [sessions, terms, classes, subjects, classSubjects] = await Promise.all([
       EduPayAcademicSession.find({ school }).sort({ startsAt: -1 }).lean(), EduPayTerm.find({ school }).sort({ startsAt: 1 }).lean(),
       EduPayClass.find({ school }).sort({ name: 1 }).lean(), EduPaySubject.find({ school }).sort({ name: 1 }).lean(),
+      EduPayClassSubject.find({ school }).populate("classLevel subject").lean(),
     ]);
     let assignments = [];
     if (!isManager(req)) {
@@ -164,9 +206,10 @@ exports.listAcademic = async (req, res) => {
       const classIds = new Set(assignments.map((row) => String(row.classLevel)));
       const subjectIds = new Set(assignments.map((row) => String(row.subject)));
       classes = classes.filter((row) => row.status === "ACTIVE" && classIds.has(String(row._id)));
-      subjects = subjects.filter((row) => subjectIds.has(String(row._id)));
+       subjects = subjects.filter((row) => subjectIds.has(String(row._id)));
+       classSubjects = classSubjects.filter((row) => classIds.has(String(row.classLevel?._id || row.classLevel)) && subjectIds.has(String(row.subject?._id || row.subject)));
     }
-    res.json({ success: true, sessions, terms, classes, subjects, assignments });
+    res.json({ success: true, sessions, terms, classes, subjects, classSubjects, assignments });
   } catch (e) { fail(res, e); }
 };
 exports.createClass = async (req, res) => {
@@ -175,14 +218,73 @@ exports.createClass = async (req, res) => {
     const school = schoolId(req);
     const session = await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session");
     if (req.body.classTeacher) await ensureOwned(EduPayTeacher, req.body.classTeacher, school, "Class teacher");
-    const row = await EduPayClass.create({ school, name: req.body.name, arm: req.body.arm, session: session._id, classTeacher: req.body.classTeacher || null, status: req.body.status || "ACTIVE" });
+    const display = classDisplay(req.body.name, req.body.arm);
+    if (!display.name) throw inputError("Class name is required.");
+    if (await classDuplicate(school, display.name, display.arm)) throw inputError("A class with this name and arm already exists in this school.", 409);
+    const row = await EduPayClass.create({ school, name: display.name, arm: display.arm, normalizedName: normalizeLabel(display.name), normalizedArm: normalizeLabel(display.arm) || null, educationLevel: educationLevel(req.body.educationLevel), session: session._id, classTeacher: req.body.classTeacher || null, status: req.body.status || "ACTIVE" });
     res.status(201).json({ success: true, classLevel: row });
   } catch (e) { fail(res, e); }
 };
 exports.createSubject = async (req, res) => {
   try {
-    if (!manager(req, res)) return; const row = await EduPaySubject.create({ school: schoolId(req), name: req.body.name, code: req.body.code, createdBy: req.user._id });
+    if (!manager(req, res)) return;
+    const name = String(req.body.name || "").trim().replace(/\s+/g, " ");
+    if (!name) throw inputError("Subject name is required.");
+    if (await subjectDuplicate(schoolId(req), name)) throw inputError("A subject with this name already exists in this school.", 409);
+    const row = await EduPaySubject.create({ school: schoolId(req), name, normalizedName: normalizeLabel(name), educationLevel: educationLevel(req.body.educationLevel), code: req.body.code, createdBy: req.user._id });
     res.status(201).json({ success: true, subject: row });
+  } catch (e) { fail(res, e); }
+};
+const batchEntries = (body, key) => Array.isArray(body[key]) ? body[key] : [];
+exports.createClassesBatch = async (req, res) => {
+  try {
+    if (!manager(req, res)) return;
+    const school = schoolId(req), entries = batchEntries(req.body, "classes");
+    if (!entries.length) throw inputError("Select at least one class.");
+    const session = req.body.session ? await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session") : null;
+    const seen = new Set(), docs = [];
+    for (const entry of entries) {
+      const display = classDisplay(entry.name, entry.arm);
+      if (!display.name) throw inputError("Every class must have a name.");
+      const key = `${normalizeLabel(display.name)}|${normalizeLabel(display.arm)}`;
+      if (seen.has(key) || await classDuplicate(school, display.name, display.arm)) throw inputError(`Class "${display.name}${display.arm ? ` ${display.arm}` : ""}" already exists or is duplicated.`, 409);
+      seen.add(key);
+      docs.push({ school, name: display.name, arm: display.arm, normalizedName: normalizeLabel(display.name), normalizedArm: normalizeLabel(display.arm) || null, educationLevel: educationLevel(entry.educationLevel || req.body.educationLevel), session: session?._id || null, status: entry.status || "ACTIVE", classTeacher: null, createdBy: req.user._id });
+    }
+    const classes = await EduPayClass.insertMany(docs, { ordered: true });
+    res.status(201).json({ success: true, classes });
+  } catch (e) { fail(res, e); }
+};
+exports.createSubjectsBatch = async (req, res) => {
+  try {
+    if (!manager(req, res)) return;
+    const school = schoolId(req), entries = batchEntries(req.body, "subjects");
+    if (!entries.length) throw inputError("Select at least one subject.");
+    const seen = new Set(), docs = [];
+    for (const entry of entries) {
+      const name = String(entry.name || entry || "").trim().replace(/\s+/g, " ");
+      if (!name) throw inputError("Every subject must have a name.");
+      const key = normalizeLabel(name);
+      if (seen.has(key) || await subjectDuplicate(school, name)) throw inputError(`Subject "${name}" already exists or is duplicated.`, 409);
+      seen.add(key);
+      docs.push({ school, name, normalizedName: key, educationLevel: educationLevel(entry.educationLevel || req.body.educationLevel), code: entry.code, createdBy: req.user._id });
+    }
+    const subjects = await EduPaySubject.insertMany(docs, { ordered: true });
+    res.status(201).json({ success: true, subjects });
+  } catch (e) { fail(res, e); }
+};
+exports.replaceClassSubjects = async (req, res) => {
+  try {
+    if (!manager(req, res)) return;
+    const school = schoolId(req);
+    const classLevel = await ensureOwned(EduPayClass, req.params.classId, school, "Class");
+    const subjectIds = Array.isArray(req.body.subjectIds) ? req.body.subjectIds : (Array.isArray(req.body.subjects) ? req.body.subjects : []);
+    const unique = [...new Set(subjectIds.map(String))];
+    const subjects = [];
+    for (const subjectId of unique) subjects.push(await ensureOwned(EduPaySubject, subjectId, school, "Subject"));
+    await EduPayClassSubject.deleteMany({ school, classLevel: classLevel._id });
+    const mappings = subjects.length ? await EduPayClassSubject.insertMany(subjects.map((subject) => ({ school, classLevel: classLevel._id, subject: subject._id, createdBy: req.user._id })), { ordered: true }) : [];
+    res.json({ success: true, classSubject: mappings, classSubjects: mappings });
   } catch (e) { fail(res, e); }
 };
 
@@ -321,6 +423,10 @@ const validateAssignments = async (assignments, school, session = null) => {
   for (const assignment of assignments) {
     await ensureOwned(EduPayClass, assignment.classLevel, school, "Class", session);
     await ensureOwned(EduPaySubject, assignment.subject, school, "Subject", session);
+    if (await classHasMappings(school, assignment.classLevel, session) &&
+        !(await mappedPair(school, assignment.classLevel, assignment.subject, session))) {
+      throw inputError("Map the selected subject to this class before assigning it to a teacher.");
+    }
   }
 };
 const saveAssignments = async (teacher, assignments, actor, { replace = false, session = null } = {}) => {
@@ -494,7 +600,7 @@ exports.submitAttendance = async (req, res) => {
   } catch (e) { fail(res, e); }
 };
 
-exports.createAssessment = async (req, res) => { try { if (!manager(req, res)) return; const school = schoolId(req); await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session"); await ensureOwned(EduPayTerm, req.body.term, school, "Term"); await ensureOwned(EduPayClass, req.body.classLevel, school, "Class"); await ensureOwned(EduPaySubject, req.body.subject, school, "Subject"); const row = await EduPayAssessment.create({ ...req.body, school, components: req.body.components || [{ name: "Total", max: 100 }], grading: ranges(req.body.grading), createdBy: req.user._id }); res.status(201).json({ success: true, assessment: row }); } catch (e) { fail(res, e); } };
+exports.createAssessment = async (req, res) => { try { if (!manager(req, res)) return; const school = schoolId(req); await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session"); await ensureOwned(EduPayTerm, req.body.term, school, "Term"); await ensureOwned(EduPayClass, req.body.classLevel, school, "Class"); await ensureOwned(EduPaySubject, req.body.subject, school, "Subject"); if (await classHasMappings(school, req.body.classLevel) && !(await mappedPair(school, req.body.classLevel, req.body.subject))) throw inputError("Map the selected subject to this class before creating an assessment."); const row = await EduPayAssessment.create({ ...req.body, school, components: req.body.components || [{ name: "Total", max: 100 }], grading: ranges(req.body.grading), createdBy: req.user._id }); res.status(201).json({ success: true, assessment: row }); } catch (e) { fail(res, e); } };
 exports.listAssessments = async (req, res) => {
   try {
     const query = { school: schoolId(req) };

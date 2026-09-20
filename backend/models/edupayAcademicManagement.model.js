@@ -9,11 +9,25 @@ const schoolRef = { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySchool", r
 const subjectSchema = new mongoose.Schema({
   school: schoolRef,
   name: { type: String, required: true, trim: true, maxlength: 120 },
+  normalizedName: { type: String, trim: true, lowercase: true, index: true },
+  educationLevel: { type: String, trim: true, uppercase: true, maxlength: 40, default: "OTHER", index: true },
   code: { type: String, trim: true, uppercase: true, maxlength: 30 },
   status: { type: String, enum: ["ACTIVE", "INACTIVE"], default: "ACTIVE", index: true },
   ...auditFields,
 }, { timestamps: true });
 subjectSchema.index({ school: 1, name: 1 }, { unique: true });
+subjectSchema.index(
+  { school: 1, normalizedName: 1 },
+  { unique: true, partialFilterExpression: { normalizedName: { $type: "string" } } },
+);
+
+const classSubjectSchema = new mongoose.Schema({
+  school: schoolRef,
+  classLevel: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayClass", required: true, index: true },
+  subject: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySubject", required: true, index: true },
+  ...auditFields,
+}, { timestamps: true });
+classSubjectSchema.index({ school: 1, classLevel: 1, subject: 1 }, { unique: true });
 
 const studentSchema = new mongoose.Schema({
   school: schoolRef,
@@ -139,6 +153,7 @@ activitySchema.index({ school: 1, status: 1, createdAt: -1 });
 
 module.exports = {
   EduPaySubject: mongoose.model("EduPaySubject", subjectSchema),
+  EduPayClassSubject: mongoose.model("EduPayClassSubject", classSubjectSchema),
   EduPayStudent: mongoose.model("EduPayStudent", studentSchema),
   EduPayTeacher: mongoose.model("EduPayTeacher", teacherSchema),
   EduPayTeacherAssignment: mongoose.model("EduPayTeacherAssignment", assignmentSchema),

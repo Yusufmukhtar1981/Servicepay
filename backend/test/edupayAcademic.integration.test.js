@@ -9,7 +9,8 @@ const SchoolUser = require("../models/edupaySchoolUser.model");
 const edupayController = require("../controllers/edupay.controller");
 const authController = require("../controllers/auth.controller");
 const controller = require("../controllers/edupayAcademic.controller");
-const { EduPayTeacherAssignment } = require("../models/edupayAcademicManagement.model");
+const { EduPayClass } = require("../models/edupayAcademic.model");
+const { EduPaySubject, EduPayTeacherAssignment } = require("../models/edupayAcademicManagement.model");
 
 const uri = String(process.env.MONGODB_URI || "").trim();
 const dbName = `edupay_academic_${crypto.randomBytes(10).toString("hex")}`;
@@ -174,6 +175,61 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }));
   assert.equal(result.statusCode, 201);
   const session = result.body.session;
+  await EduPayClass.create({
+    school: school._id,
+    name: "Legacy   Nursery   One",
+    arm: null,
+    session: session._id,
+    createdBy: owner._id,
+  });
+  result = await invoke("createClass", request(owner, school, "OWNER", {
+    session: session._id, name: " legacy nursery one ",
+  }));
+  assert.equal(result.statusCode, 409);
+  result = await invoke("createClassesBatch", request(owner, school, "OWNER", {
+    session: session._id, classes: [{ name: "LEGACY  NURSERY ONE" }],
+  }));
+  assert.equal(result.statusCode, 409);
+  await EduPaySubject.create({
+    school: school._id,
+    name: "Legacy   Literacy",
+    code: "LL",
+    createdBy: owner._id,
+  });
+  result = await invoke("createSubject", request(owner, school, "OWNER", {
+    name: " legacy literacy ",
+  }));
+  assert.equal(result.statusCode, 409);
+  result = await invoke("createSubjectsBatch", request(owner, school, "OWNER", {
+    subjects: [{ name: "LEGACY  LITERACY" }],
+  }));
+  assert.equal(result.statusCode, 409);
+  result = await invoke("createClassesBatch", request(owner, school, "OWNER", {
+    session: session._id,
+    classes: [
+      { name: "  Basic   1 ", educationLevel: "PRIMARY" },
+      { name: "Basic 2", arm: "Gold", educationLevel: "PRIMARY" },
+    ],
+  }));
+  assert.equal(result.statusCode, 201);
+  assert.equal(result.body.classes.length, 2);
+  assert.equal(result.body.classes[0].educationLevel, "PRIMARY");
+  result = await invoke("createClassesBatch", request(owner, school, "OWNER", {
+    session: session._id, classes: [{ name: "basic 1" }],
+  }));
+  assert.equal(result.statusCode, 409);
+  result = await invoke("createSubjectsBatch", request(owner, school, "OWNER", {
+    subjects: [
+      { name: "  Robotics  ", educationLevel: "JUNIOR_SECONDARY" },
+      { name: "Civic Education", educationLevel: "PRIMARY" },
+    ],
+  }));
+  assert.equal(result.statusCode, 201);
+  assert.equal(result.body.subjects[0].name, "Robotics");
+  result = await invoke("createSubjectsBatch", request(owner, school, "OWNER", {
+    subjects: [{ name: " robotics " }],
+  }));
+  assert.equal(result.statusCode, 409);
 
   result = await invoke("createTerm", request(owner, school, "OWNER", {
     session: session._id, name: "First Term", startsAt: "2026-09-01", endsAt: "2026-12-18", status: "ACTIVE",
@@ -190,6 +246,20 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   result = await invoke("createSubject", request(owner, school, "OWNER", { name: "Mathematics", code: "MTH" }));
   assert.equal(result.statusCode, 201);
   const subject = result.body.subject;
+  result = await invoke("replaceClassSubjects", request(owner, school, "OWNER", {
+    subjectIds: [subject._id],
+  }, { params: { classId: classLevel._id } }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.classSubjects.length, 1);
+  const foreignSubject = await (async () => {
+    const foreign = await invoke("createSubject", request(owner, otherSchool, "OWNER", { name: `Foreign Subject ${stamp}` }));
+    return foreign.body.subject;
+  })();
+  result = await invoke("replaceClassSubjects", request(owner, school, "OWNER", {
+    subjectIds: [foreignSubject._id],
+  }, { params: { classId: classLevel._id } }));
+  assert.equal(result.statusCode, 400);
+  assert.match(result.body.message, /does not belong to this school/);
 
   result = await invoke("createTeacher", request(owner, school, "OWNER", {
     fullName: teacherUser.fullName,
@@ -202,6 +272,14 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   assert.equal(String(result.body.teacher.user), String(teacherUser._id));
   assert.equal(result.body.assignments.length, 0);
   const teacher = result.body.teacher;
+  result = await invoke("createSubject", request(owner, school, "OWNER", { name: `Unmapped Subject ${stamp}` }));
+  assert.equal(result.statusCode, 201);
+  const unmappedSubject = result.body.subject;
+  result = await invoke("assignTeacher", request(owner, school, "OWNER", {
+    teacher: teacher._id, classLevel: classLevel._id, subject: unmappedSubject._id,
+  }));
+  assert.equal(result.statusCode, 400);
+  assert.match(result.body.message, /Map the selected subject/);
 
   result = await invoke("createStudent", request(teacherUser, school, "TEACHER", {
     studentId: "NO-CLASS", fullName: "No Class Student",
@@ -447,6 +525,12 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }));
   assert.equal(result.statusCode, 201);
   const assessment = result.body.assessment;
+  result = await invoke("createAssessment", request(owner, school, "OWNER", {
+    session: session._id, term: term._id, classLevel: classLevel._id,
+    subject: unmappedSubject._id, title: "Unmapped Subject Assessment",
+  }));
+  assert.equal(result.statusCode, 400);
+  assert.match(result.body.message, /Map the selected subject/);
 
   const hidden = await invoke("parentResults", request(parent, null, null, {}, {
     params: { childId: student._id },
@@ -492,6 +576,16 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   assert.equal(visible.statusCode, 200);
   assert.equal(visible.body.results.length, 1);
   assert.equal(visible.body.results[0].percentage, 85);
+  result = await invoke("assignTeacher", request(owner, school, "OWNER", {
+    teacher: teacher._id, classLevel: otherClass._id, subject: unmappedSubject._id,
+  }));
+  assert.equal(result.statusCode, 201);
+  result = await invoke("createAssessment", request(owner, school, "OWNER", {
+    session: session._id, term: term._id, classLevel: otherClass._id,
+    subject: unmappedSubject._id, title: "Legacy Unmapped Assessment",
+    components: [{ name: "Exam", max: 100 }],
+  }));
+  assert.equal(result.statusCode, 201);
 
   const crossSchool = await invoke("submitAttendance", request(teacherUser, otherSchool, "TEACHER", {
     classId: classLevel._id,
