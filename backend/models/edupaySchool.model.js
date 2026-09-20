@@ -1,7 +1,9 @@
 const { mongoose } = require("./edupayModelUtils");
 const schema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 180 },
+  schoolCode: { type: String, trim: true, uppercase: true, unique: true, sparse: true, index: true },
   schoolType: { type: String, trim: true, maxlength: 80 },
+  proprietorName: { type: String, trim: true, maxlength: 160 },
   registrationNumber: { type: String, trim: true, maxlength: 120 },
   address: { type: String, required: true, trim: true, maxlength: 500 },
   state: { type: String, required: true, trim: true, maxlength: 80 },

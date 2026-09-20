@@ -15,6 +15,7 @@ const EduPaySettings = require("../models/edupaySettings.model");
 const edupaySquad = require("../services/edupaySquad.service");
 const { evaluateEduPayReadiness } = require("./featureControl.controller");
 const edupaySquadService = require("../services/edupaySquad.service");
+const { validateStrongPassword } = require("../utils/passwordPolicy");
 
 const safe = (doc) => doc?.toObject ? doc.toObject() : doc;
 const publicSchool = (school) => { const row = safe(school) || {}; delete row.bankDetails; delete row.supportingDocuments; delete row.logo; delete row.portalUser; delete row.sourceRequest; delete row.normalizedSchoolName; delete row.normalizedLocation; delete row.normalizedAddress; delete row.sourceRequestNormalizedSchoolName; delete row.sourceRequestNormalizedLocation; return row; };
@@ -93,6 +94,16 @@ const validAssetBytes = (file) => file.mimetype === "image/png" ? file.buffer.su
     : file.mimetype === "image/webp" ? file.buffer.subarray(0, 4).toString() === "RIFF" && file.buffer.subarray(8, 12).toString() === "WEBP"
       : file.mimetype === "application/pdf" && file.buffer.subarray(0, 5).toString() === "%PDF-";
 const errorResponse = (res, error) => res.status(error.statusCode || 500).json({ success: false, message: error.message || "EduPay request failed." });
+const requireTemporaryPassword = (value) => {
+  const check = validateStrongPassword(String(value || ""));
+  if (!check.valid) {
+    const error = new Error(check.message);
+    error.statusCode = 400;
+    throw error;
+  }
+  return String(value);
+};
+const publicSchoolCode = () => `EDU-${Date.now().toString(36).toUpperCase()}-${require("crypto").randomBytes(3).toString("hex").toUpperCase()}`;
 const requireKey = (req) => String(req.headers["idempotency-key"] || req.body?.idempotencyKey || "").trim();
 const enabledForInitiation = async (res) => {
   if (!(await evaluateEduPayReadiness())) {
@@ -360,10 +371,11 @@ exports.schoolLogin = async (req, res) => {
   try {
     const user = await User.findOne({ email: String(req.body.email || "").trim().toLowerCase() }).select("+password +authTokenVersion");
     if (!user || !(await bcrypt.compare(String(req.body.password || ""), user.password || ""))) return res.status(401).json({ success: false, message: "Invalid school credentials." });
+    if (user.status !== "ACTIVE") return res.status(403).json({ success: false, message: "This school account is inactive or suspended." });
     const membership = await SchoolUser.findOne({ user: user._id, status: "ACTIVE" }).populate("school");
     if (!membership || membership.school.status !== "APPROVED" || !membership.school.active) return res.status(403).json({ success: false, message: "Approved school access required." });
     const token = jwt.sign({ id: user._id, authTokenVersion: Number(user.authTokenVersion || 0), edupaySchool: membership.school._id }, process.env.JWT_SECRET, { expiresIn: "12h" });
-    res.json({ success: true, token, school: publicSchool(membership.school), role: membership.role });
+    res.json({ success: true, token, school: publicSchool(membership.school), role: membership.role, mustChangePassword: user.mustChangePassword === true, user: { id: user._id, fullName: user.fullName, email: user.email } });
   } catch (error) { errorResponse(res, error); }
 };
 exports.createSchoolRequest = async (req, res) => {
@@ -706,8 +718,170 @@ exports.adminSchools = async (req, res) => { try { const status = String(req.que
 exports.adminSchoolDetail = async (req, res) => { try { const school = await School.findById(req.params.schoolId).populate("reviewedBy", "fullName email").lean(); if (!school) return res.status(404).json({ success: false, message: "School not found." }); res.json({ success: true, school: schoolAdminDto(school) }); } catch (error) { errorResponse(res, error); } };
 exports.adminSchoolPrivateAssets = async (req, res) => { try { const school = await School.findById(req.params.schoolId).select("logo supportingDocuments").lean(); if (!school) return res.status(404).json({ success: false, message: "School not found." }); res.json({ success: true, assets: { logo: school.logo, supportingDocuments: school.supportingDocuments } }); } catch (error) { errorResponse(res, error); } };
 exports.adminSchoolPrivateAssetDownload = async (req, res) => { try { const school = await School.findById(req.params.schoolId).select("logo supportingDocuments").lean(); const assets = [school?.logo, ...(school?.supportingDocuments || [])].filter(Boolean); const asset = assets.find((row) => String(row.fileId) === String(req.params.fileId)); if (!asset) return res.status(404).json({ success: false, message: "Private school asset not found." }); const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: "edupaySchoolAssets" }); res.set("Content-Type", asset.mimeType); res.set("Content-Length", String(asset.size)); return bucket.openDownloadStream(asset.fileId).on("error", () => { if (!res.headersSent) res.status(404).end(); }).pipe(res); } catch (error) { errorResponse(res, error); } };
-exports.adminSchoolAction = async (req, res) => { let session; try { const action = String(req.body.action || "").toUpperCase(); const allowed = new Set(["APPROVE", "REJECT", "SUSPEND", "REACTIVATE", "REQUEST_UPDATE", "REVIEW"]); if (!allowed.has(action)) return res.status(400).json({ success: false, message: "Unsupported school action." }); session = await mongoose.startSession(); let school; await session.withTransaction(async () => { school = await School.findById(req.params.schoolId).session(session); if (!school) { const error = new Error("School not found."); error.statusCode = 404; throw error; } const previousStatus = school.status; const valid = action === "APPROVE" ? ["PENDING_REVIEW", "UNDER_REVIEW"].includes(previousStatus) : action === "REQUEST_UPDATE" || action === "REVIEW" ? ["PENDING_REVIEW", "UNDER_REVIEW"].includes(previousStatus) : action === "REJECT" ? ["PENDING_REVIEW", "UNDER_REVIEW"].includes(previousStatus) : action === "SUSPEND" ? previousStatus === "APPROVED" : action === "REACTIVATE" ? previousStatus === "SUSPENDED" : false; if (!valid) { const error = new Error(`School cannot transition via ${action} from ${previousStatus}.`); error.statusCode = 409; throw error; } const next = { APPROVE: ["APPROVED", true], REJECT: ["REJECTED", false], SUSPEND: ["SUSPENDED", false], REACTIVATE: ["APPROVED", true], REQUEST_UPDATE: ["UNDER_REVIEW", false], REVIEW: ["UNDER_REVIEW", false] }[action]; school.status = next[0]; school.active = next[1]; school.reviewedBy = req.user._id; school.reviewedAt = new Date(); school.reviewNote = req.body.note; await school.save({ session }); if (school.portalUser) { const enabled = action === "APPROVE" || action === "REACTIVATE"; await User.updateOne({ _id: school.portalUser }, { $set: { status: enabled ? "ACTIVE" : "INACTIVE" } }, { session }); if (enabled) await SchoolUser.updateOne({ school: school._id, user: school.portalUser }, { $set: { role: "ADMIN", status: "ACTIVE", invitedBy: req.user._id }, $setOnInsert: { school: school._id, user: school.portalUser } }, { upsert: true, session }); else await SchoolUser.updateOne({ school: school._id, user: school.portalUser }, { $set: { status: "SUSPENDED" } }, { session }); } await audit({ actor: req.user._id, action: `EDUPAY_SCHOOL_${action}`, entityType: "EduPaySchool", entityId: school._id, school: school._id, metadata: { note: req.body.note, from: previousStatus, to: next[0] }, req, session }); }); res.json({ success: true, school: schoolAdminDto(school) }); } catch (error) { errorResponse(res, error); } finally { if (session) await session.endSession(); } };
-exports.adminCreateSchoolUser = async (req, res) => { try { const school = await School.findById(req.params.schoolId); if (!school) return res.status(404).json({ success: false, message: "School not found." }); if (school.status !== "APPROVED" || !school.active) return res.status(409).json({ success: false, message: "School must be approved before staff can be provisioned." }); const user = await User.create({ fullName: req.body.fullName, phone: req.body.phone, email: String(req.body.email || "").trim().toLowerCase(), password: req.body.password, role: "CUSTOMER", status: "ACTIVE" }); const membership = await SchoolUser.create({ school: school._id, user: user._id, role: req.body.role || "STAFF", status: "ACTIVE", invitedBy: req.user._id }); await audit({ actor: req.user._id, action: "EDUPAY_SCHOOL_USER_CREATED", entityType: "EduPaySchoolUser", entityId: membership._id, school: school._id, req }); res.status(201).json({ success: true, schoolUser: { id: membership._id, userId: user._id, email: user.email, role: membership.role, status: membership.status } }); } catch (error) { errorResponse(res, error); } };
+exports.adminCreateSchool = async (req, res) => {
+  let session;
+  try {
+    const b = req.body || {};
+    const name = String(b.schoolName || "").trim();
+    const schoolType = String(b.schoolType || "").trim().toUpperCase();
+    const email = String(b.email || "").trim().toLowerCase();
+    const phone = String(b.phone || "").trim();
+    const address = String(b.address || "").trim();
+    const state = String(b.state || "").trim();
+    const lga = String(b.lga || "").trim();
+    const proprietorName = String(b.proprietorName || "").trim();
+    if (!name || !["NURSERY", "PRIMARY", "SECONDARY", "COMBINED", "OTHER"].includes(schoolType) || !proprietorName || !email || !phone || !address || !state || !lga) {
+      return res.status(400).json({ success: false, message: "School name, type, proprietor, email, phone, address, state, and LGA are required." });
+    }
+    const temporaryPassword = requireTemporaryPassword(b.temporaryPassword);
+    if (await User.exists({ $or: [{ email }, { phone }] })) return res.status(409).json({ success: false, message: "An account already exists with this email or phone." });
+    const normalizedSchoolName = normalizeRequestText(name);
+    const normalizedLocation = normalizeRequestText(`${state} ${lga}`);
+    if (await School.exists({ normalizedSchoolName, normalizedLocation, status: { $in: activeSchoolStatuses } })) return res.status(409).json({ success: false, message: "An active school with this identity already exists." });
+    session = await mongoose.startSession();
+    let school;
+    await session.withTransaction(async () => {
+      const [user] = await User.create([{ fullName: proprietorName, email, phone, password: temporaryPassword, role: "CUSTOMER", status: "ACTIVE", mustChangePassword: true }], { session });
+      [school] = await School.create([{
+        schoolCode: publicSchoolCode(), name, schoolType, proprietorName, contactPerson: proprietorName, email, phone, address, state, lga,
+        normalizedSchoolName, normalizedLocation, normalizedAddress: normalizeRequestText(address), normalizedEmail: email, normalizedPhone: phone,
+        status: "APPROVED", active: true, portalUser: user._id, reviewedBy: req.user._id, reviewedAt: new Date(),
+      }], { session });
+      await SchoolUser.create([{ school: school._id, user: user._id, role: "SCHOOL_ADMIN", status: "ACTIVE", invitedBy: req.user._id }], { session });
+      await audit({ actor: req.user._id, action: "EDUPAY_SCHOOL_MANUALLY_CREATED", entityType: "EduPaySchool", entityId: school._id, school: school._id, metadata: { schoolCode: school.schoolCode, adminUserId: user._id }, req, session });
+    });
+    return res.status(201).json({ success: true, school: schoolAdminDto(school), schoolAdmin: { email, role: "SCHOOL_ADMIN", mustChangePassword: true } });
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ success: false, message: "A school or account with these details already exists." });
+    return errorResponse(res, error);
+  } finally { if (session) await session.endSession(); }
+};
+exports.adminSchoolUpdate = async (req, res) => {
+  if (req.body?.action) return exports.adminSchoolAction(req, res);
+  try {
+    const school = await School.findById(req.params.schoolId);
+    if (!school) return res.status(404).json({ success: false, message: "School not found." });
+    const requestedName = req.body.schoolName !== undefined ? req.body.schoolName : req.body.name;
+    if (req.body.email !== undefined || req.body.phone !== undefined) {
+      const duplicate = await School.findOne({
+        _id: { $ne: school._id },
+        $or: [
+          ...(req.body.email !== undefined ? [{ normalizedEmail: String(req.body.email).trim().toLowerCase() }] : []),
+          ...(req.body.phone !== undefined ? [{ normalizedPhone: String(req.body.phone).trim() }] : []),
+        ],
+        status: { $in: activeSchoolStatuses },
+      }).select("_id");
+      if (duplicate) return res.status(409).json({ success: false, message: "Another active school uses this email or phone." });
+    }
+    const fields = ["name", "schoolType", "proprietorName", "contactPerson", "email", "phone", "address", "state", "lga"];
+    for (const key of fields) if (req.body[key] !== undefined) school[key] = String(req.body[key]).trim();
+    if (requestedName !== undefined) school.name = String(requestedName).trim();
+    if (req.body.schoolType !== undefined && !["NURSERY", "PRIMARY", "SECONDARY", "COMBINED", "OTHER"].includes(String(req.body.schoolType).toUpperCase())) return res.status(400).json({ success: false, message: "Unsupported school type." });
+    if (requestedName !== undefined) school.normalizedSchoolName = normalizeRequestText(requestedName);
+    if (req.body.address !== undefined) school.normalizedAddress = normalizeRequestText(req.body.address);
+    if (req.body.email !== undefined) school.normalizedEmail = String(req.body.email).trim().toLowerCase();
+    if (req.body.phone !== undefined) school.normalizedPhone = String(req.body.phone).trim();
+    school.updatedBy = req.user._id;
+    await school.save();
+    if (school.portalUser) {
+      const portalUser = await User.findById(school.portalUser);
+      if (portalUser) {
+        if (req.body.email !== undefined) portalUser.email = String(req.body.email).trim().toLowerCase();
+        if (req.body.phone !== undefined) portalUser.phone = String(req.body.phone).trim();
+        if (req.body.proprietorName !== undefined) portalUser.fullName = String(req.body.proprietorName).trim();
+        await portalUser.save();
+      }
+    }
+    await audit({ actor: req.user._id, action: "EDUPAY_SCHOOL_UPDATED", entityType: "EduPaySchool", entityId: school._id, school: school._id, metadata: { fields: [...fields.filter((key) => req.body[key] !== undefined), ...(req.body.schoolName !== undefined ? ["schoolName"] : [])] }, req });
+    return res.json({ success: true, school: schoolAdminDto(school) });
+  } catch (error) { return errorResponse(res, error); }
+};
+exports.adminResetSchoolPassword = async (req, res) => {
+  try {
+    const temporaryPassword = requireTemporaryPassword(req.body.temporaryPassword);
+    const school = await School.findById(req.params.schoolId);
+    if (!school) return res.status(404).json({ success: false, message: "School not found." });
+    const membership = await SchoolUser.findOne({ school: school._id, role: { $in: ["OWNER", "ADMIN", "SCHOOL_ADMIN"] }, status: { $in: ["ACTIVE", "SUSPENDED"] } }).sort({ role: 1 });
+    if (!membership) return res.status(404).json({ success: false, message: "School administrator account not found." });
+    const user = await User.findById(membership.user).select("+password +authTokenVersion");
+    if (!user) return res.status(404).json({ success: false, message: "School administrator account not found." });
+    user.password = temporaryPassword; user.passwordResetToken = undefined; user.passwordResetExpires = undefined; user.mustChangePassword = true; user.passwordChangedAt = new Date(); user.authTokenVersion = Number(user.authTokenVersion || 0) + 1;
+    await user.save();
+    await audit({ actor: req.user._id, action: "EDUPAY_SCHOOL_ADMIN_PASSWORD_RESET", entityType: "User", entityId: user._id, school: school._id, metadata: { membershipId: membership._id }, req });
+    return res.json({ success: true, message: "Temporary school administrator password set.", schoolAdmin: { userId: user._id, email: user.email, mustChangePassword: true } });
+  } catch (error) { return errorResponse(res, error); }
+};
+exports.adminSchoolAction = async (req, res) => {
+  let session;
+  try {
+    const action = String(req.body.action || "").toUpperCase();
+    const allowed = new Set(["APPROVE", "REJECT", "SUSPEND", "REACTIVATE", "REQUEST_UPDATE", "REVIEW"]);
+    if (!allowed.has(action)) return res.status(400).json({ success: false, message: "Unsupported school action." });
+    session = await mongoose.startSession();
+    let school;
+    await session.withTransaction(async () => {
+      school = await School.findById(req.params.schoolId).session(session);
+      if (!school) { const error = new Error("School not found."); error.statusCode = 404; throw error; }
+      const previousStatus = school.status;
+      const valid = action === "APPROVE" ? ["PENDING_REVIEW", "UNDER_REVIEW"].includes(previousStatus)
+        : action === "REQUEST_UPDATE" || action === "REVIEW" ? ["PENDING_REVIEW", "UNDER_REVIEW"].includes(previousStatus)
+          : action === "REJECT" ? ["PENDING_REVIEW", "UNDER_REVIEW"].includes(previousStatus)
+            : action === "SUSPEND" ? previousStatus === "APPROVED"
+              : action === "REACTIVATE" ? previousStatus === "SUSPENDED" : false;
+      if (!valid) { const error = new Error(`School cannot transition via ${action} from ${previousStatus}.`); error.statusCode = 409; throw error; }
+      const next = { APPROVE: ["APPROVED", true], REJECT: ["REJECTED", false], SUSPEND: ["SUSPENDED", false], REACTIVATE: ["APPROVED", true], REQUEST_UPDATE: ["UNDER_REVIEW", false], REVIEW: ["UNDER_REVIEW", false] }[action];
+      school.status = next[0]; school.active = next[1]; school.reviewedBy = req.user._id; school.reviewedAt = new Date(); school.reviewNote = req.body.note;
+      await school.save({ session });
+      let memberships = await SchoolUser.find({ school: school._id }).session(session);
+      if (action === "APPROVE" && school.portalUser && !memberships.some((membership) => String(membership.user) === String(school.portalUser))) {
+        const [membership] = await SchoolUser.create([{ school: school._id, user: school.portalUser, role: "SCHOOL_ADMIN", status: "ACTIVE", invitedBy: req.user._id }], { session });
+        memberships.push(membership);
+      }
+      for (const membership of memberships) {
+        const user = await User.findById(membership.user).select("+authTokenVersion").session(session);
+        if (!user) continue;
+        const wasLifecycleSuspended = membership.suspendedBySchoolLifecycle === true;
+        if (action === "SUSPEND") {
+          if (membership.status === "ACTIVE") { membership.status = "SUSPENDED"; membership.suspendedBySchoolLifecycle = true; await membership.save({ session }); }
+          if (user.status === "ACTIVE") user.status = "SUSPENDED";
+          user.authTokenVersion = Number(user.authTokenVersion || 0) + 1;
+          await user.save({ session });
+        } else if (action === "REACTIVATE") {
+          if (wasLifecycleSuspended) {
+            membership.status = "ACTIVE"; membership.suspendedBySchoolLifecycle = false; await membership.save({ session });
+          }
+          user.authTokenVersion = Number(user.authTokenVersion || 0) + 1;
+          if (wasLifecycleSuspended && user.status === "SUSPENDED") user.status = "ACTIVE";
+          await user.save({ session });
+        } else if (action === "APPROVE") {
+          if (String(user._id) === String(school.portalUser)) { user.status = "ACTIVE"; user.authTokenVersion = Number(user.authTokenVersion || 0) + 1; await user.save({ session }); }
+          if (membership.status !== "ACTIVE") { membership.status = "ACTIVE"; await membership.save({ session }); }
+        }
+      }
+      await audit({ actor: req.user._id, action: `EDUPAY_SCHOOL_${action}`, entityType: "EduPaySchool", entityId: school._id, school: school._id, metadata: { note: req.body.note, from: previousStatus, to: next[0] }, req, session });
+    });
+    res.json({ success: true, school: schoolAdminDto(school) });
+  } catch (error) { errorResponse(res, error); }
+  finally { if (session) await session.endSession(); }
+};
+exports.adminCreateSchoolUser = async (req, res) => {
+  let session;
+  try {
+    session = await mongoose.startSession();
+    let result;
+    await session.withTransaction(async () => {
+      const school = await School.findById(req.params.schoolId).session(session);
+      if (!school) { const e = new Error("School not found."); e.statusCode = 404; throw e; }
+      if (school.status !== "APPROVED" || !school.active) { const e = new Error("School must be approved before staff can be provisioned."); e.statusCode = 409; throw e; }
+      const [user] = await User.create([{ fullName: req.body.fullName, phone: req.body.phone, email: String(req.body.email || "").trim().toLowerCase(), password: req.body.password, role: "CUSTOMER", status: "ACTIVE" }], { session });
+      const [membership] = await SchoolUser.create([{ school: school._id, user: user._id, role: req.body.role || "STAFF", status: "ACTIVE", invitedBy: req.user._id }], { session });
+      await audit({ actor: req.user._id, action: "EDUPAY_SCHOOL_USER_CREATED", entityType: "EduPaySchoolUser", entityId: membership._id, school: school._id, req, session });
+      result = { schoolUser: { id: membership._id, userId: user._id, email: user.email, role: membership.role, status: membership.status } };
+    });
+    res.status(201).json({ success: true, ...result });
+  } catch (error) { errorResponse(res, error); }
+  finally { if (session) await session.endSession(); }
+};
 
 exports.adminSettlementActionSecure = async (req, res) => {
   try {

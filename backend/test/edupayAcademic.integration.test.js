@@ -5,7 +5,10 @@ const mongoose = require("mongoose");
 
 const User = require("../models/user.model");
 const School = require("../models/edupaySchool.model");
+const SchoolUser = require("../models/edupaySchoolUser.model");
+const edupayController = require("../controllers/edupay.controller");
 const controller = require("../controllers/edupayAcademic.controller");
+const { EduPayTeacherAssignment } = require("../models/edupayAcademicManagement.model");
 
 const uri = String(process.env.MONGODB_URI || "").trim();
 const dbName = `edupay_academic_${crypto.randomBytes(10).toString("hex")}`;
@@ -31,6 +34,11 @@ const invoke = async (name, req) => {
   await controller[name](req, res);
   return res;
 };
+const invokeController = async (module, name, req) => {
+  const res = response();
+  await module[name](req, res);
+  return res;
+};
 
 test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip: !uri }, async (t) => {
   await mongoose.connect(uri, { dbName });
@@ -43,12 +51,39 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   });
 
   const stamp = Date.now();
-  const [owner, teacherUser, parent, otherParent] = await User.create([
+  const [owner, teacherUser, parent, otherParent, headOffice] = await User.create([
     { fullName: "School Owner", phone: `0801${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
     { fullName: "Teacher One", phone: `0802${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
     { fullName: "Parent One", phone: `0803${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
     { fullName: "Other Parent", phone: `0804${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
+    { fullName: "Head Office", phone: `0805${stamp}`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
   ]);
+  let adminCreateResult = await invokeController(edupayController, "adminCreateSchool", {
+    user: headOffice,
+    body: {
+      schoolName: "Manually Provisioned School", schoolType: "COMBINED", proprietorName: "New Proprietor",
+      email: `proprietor-${stamp}@example.com`, phone: `0810${stamp}`, address: "18 School Road", state: "Lagos", lga: "Ikeja", temporaryPassword: "AdminTemp9!",
+    },
+  });
+  assert.equal(adminCreateResult.statusCode, 201);
+  assert.equal(adminCreateResult.body.school.status, "APPROVED");
+  assert.equal(adminCreateResult.body.schoolAdmin.mustChangePassword, true);
+  const manuallyProvisionedSchoolId = adminCreateResult.body.school._id;
+  assert.equal(Boolean(await SchoolUser.exists({ school: manuallyProvisionedSchoolId, role: "SCHOOL_ADMIN", status: "ACTIVE" })), true);
+  const schoolAdminMembership = await SchoolUser.findOne({ school: manuallyProvisionedSchoolId, role: "SCHOOL_ADMIN" });
+  const schoolAdminUser = await User.findById(schoolAdminMembership.user).select("+passwordResetToken +passwordResetExpires +authTokenVersion");
+  schoolAdminUser.passwordResetToken = "old-reset-token";
+  schoolAdminUser.passwordResetExpires = new Date(Date.now() + 3600000);
+  const schoolAdminVersion = Number(schoolAdminUser.authTokenVersion || 0);
+  await schoolAdminUser.save();
+  adminCreateResult = await invokeController(edupayController, "adminResetSchoolPassword", {
+    user: headOffice, params: { schoolId: manuallyProvisionedSchoolId }, body: { temporaryPassword: "AdminReset9!" },
+  });
+  assert.equal(adminCreateResult.statusCode, 200);
+  const resetSchoolAdminUser = await User.findById(schoolAdminUser._id).select("+passwordResetToken +passwordResetExpires +authTokenVersion");
+  assert.equal(resetSchoolAdminUser.passwordResetToken, undefined);
+  assert.equal(resetSchoolAdminUser.passwordResetExpires, undefined);
+  assert.equal(Number(resetSchoolAdminUser.authTokenVersion), schoolAdminVersion + 1);
   const [school, otherSchool] = await School.create([
     { name: "Academic School", address: "Lagos", state: "Lagos", status: "APPROVED", active: true },
     { name: "Other School", address: "Abuja", state: "Abuja", status: "APPROVED", active: true },
@@ -87,11 +122,136 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }));
   assert.equal(result.statusCode, 201);
 
+  result = await invoke("createTeacher", request(owner, school, "OWNER", {
+    fullName: "Provisioned Teacher",
+    email: `provisioned-${stamp}@example.com`,
+    phone: `0809${stamp}`,
+    staffId: `T-${stamp}`,
+    gender: "FEMALE",
+    responsibility: "Class Teacher",
+    temporaryPassword: "TempPass9!",
+    classIds: [classLevel._id],
+    subjectIds: [subject._id],
+  }));
+  assert.equal(result.statusCode, 201);
+  assert.equal(result.body.account.mustChangePassword, true);
+  assert.equal(result.body.assignments.length, 1);
+  const provisionedTeacher = result.body.teacher;
+  const failedTeacherEmail = `rollback-${stamp}@example.com`;
+  result = await invoke("createTeacher", request(owner, school, "OWNER", {
+    fullName: "Rollback Teacher", email: failedTeacherEmail, phone: `0819${stamp}`, staffId: `ROLLBACK-${stamp}`,
+    temporaryPassword: "TempPass9!", classIds: [new mongoose.Types.ObjectId()], subjectIds: [subject._id],
+  }));
+  assert.equal(result.statusCode, 400);
+  assert.equal(await User.exists({ email: failedTeacherEmail }), null);
+  const provisionedUser = await User.findOne({ email: `provisioned-${stamp}@example.com` });
+  assert.equal(provisionedUser.mustChangePassword, true);
+  result = await invoke("updateTeacher", request(owner, school, "OWNER", {
+    replaceAssignments: true,
+    assignments: [{ classLevel: new mongoose.Types.ObjectId(), subject: subject._id }],
+  }, { params: { teacherId: provisionedTeacher._id } }));
+  assert.equal(result.statusCode, 400);
+  assert.equal(await EduPayTeacherAssignment.countDocuments({ teacher: provisionedTeacher._id }), 1);
+  result = await invoke("updateTeacherStatus", request(owner, school, "OWNER", { status: "INACTIVE" }, { params: { teacherId: provisionedTeacher._id } }));
+  assert.equal(result.statusCode, 200);
+  result = await invoke("submitAttendance", request(await User.findById(provisionedUser._id), school, "TEACHER", {
+    classId: classLevel._id, session: session._id, term: term._id, date: "2026-09-19", records: [],
+  }));
+  assert.equal(result.statusCode, 403);
+  result = await invoke("resetTeacherPassword", request(owner, school, "OWNER", { temporaryPassword: "ResetPass9!" }, { params: { teacherId: provisionedTeacher._id } }));
+  assert.equal(result.statusCode, 200);
+  const resetTeacherUser = await User.findById(provisionedUser._id).select("+passwordResetToken +passwordResetExpires +authTokenVersion");
+  assert.equal(resetTeacherUser.mustChangePassword, true);
+  assert.equal(resetTeacherUser.passwordResetToken, undefined);
+  assert.equal(resetTeacherUser.passwordResetExpires, undefined);
+  result = await invoke("updateTeacherStatus", request(owner, school, "OWNER", { status: "ACTIVE" }, { params: { teacherId: provisionedTeacher._id } }));
+  assert.equal(result.statusCode, 200);
+  result = await invokeController(edupayController, "adminSchoolUpdate", {
+    user: headOffice, params: { schoolId: manuallyProvisionedSchoolId }, body: { schoolName: "Renamed Provisioned School" },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.school.name, "Renamed Provisioned School");
+  assert.equal((await School.findById(manuallyProvisionedSchoolId)).name, "Renamed Provisioned School");
+  result = await invokeController(edupayController, "adminCreateSchoolUser", {
+    user: headOffice, params: { schoolId: manuallyProvisionedSchoolId },
+    body: { fullName: "School Staff", email: `staff-${stamp}@example.com`, phone: `0811${stamp}`, password: "StaffPass9!", role: "STAFF" },
+  });
+  assert.equal(result.statusCode, 201);
+  assert.equal(Boolean(await SchoolUser.exists({ _id: result.body.schoolUser.id, school: manuallyProvisionedSchoolId, status: "ACTIVE" })), true);
+  const staffUser = await User.findById(result.body.schoolUser.userId).select("+authTokenVersion");
+  result = await invokeController(edupayController, "adminCreateSchoolUser", {
+    user: headOffice, params: { schoolId: manuallyProvisionedSchoolId },
+    body: { fullName: "Independent Inactive", email: `inactive-${stamp}@example.com`, phone: `0812${stamp}`, password: "StaffPass9!", role: "STAFF" },
+  });
+  assert.equal(result.statusCode, 201);
+  const inactiveUser = await User.findById(result.body.schoolUser.userId).select("+authTokenVersion");
+  inactiveUser.status = "BLOCKED";
+  await inactiveUser.save();
+  const beforeSuspendVersion = Number((await User.findById(schoolAdminUser._id).select("+authTokenVersion")).authTokenVersion || 0);
+  const beforeStaffSuspendVersion = Number(staffUser.authTokenVersion || 0);
+  const beforeInactiveSuspendVersion = Number(inactiveUser.authTokenVersion || 0);
+  result = await invokeController(edupayController, "adminSchoolAction", {
+    user: headOffice, params: { schoolId: manuallyProvisionedSchoolId }, body: { action: "SUSPEND" },
+  });
+  assert.equal(result.statusCode, 200);
+  const suspendedVersion = Number((await User.findById(schoolAdminUser._id).select("+authTokenVersion")).authTokenVersion || 0);
+  assert.equal(suspendedVersion, beforeSuspendVersion + 1);
+  assert.equal(Number((await User.findById(staffUser._id).select("+authTokenVersion")).authTokenVersion), beforeStaffSuspendVersion + 1);
+  assert.equal(Number((await User.findById(inactiveUser._id).select("+authTokenVersion")).authTokenVersion), beforeInactiveSuspendVersion + 1);
+  result = await invokeController(edupayController, "schoolLogin", {
+    body: { email: `proprietor-${stamp}@example.com`, password: "AdminReset9!" },
+  });
+  assert.equal(result.statusCode, 403);
+  result = await invokeController(edupayController, "adminSchoolAction", {
+    user: headOffice, params: { schoolId: manuallyProvisionedSchoolId }, body: { action: "REACTIVATE" },
+  });
+  assert.equal(result.statusCode, 200);
+  const reactivatedVersion = Number((await User.findById(schoolAdminUser._id).select("+authTokenVersion")).authTokenVersion || 0);
+  assert.equal(reactivatedVersion, suspendedVersion + 1);
+  assert.equal(Number((await User.findById(staffUser._id).select("+authTokenVersion")).authTokenVersion), beforeStaffSuspendVersion + 2);
+  assert.equal(Number((await User.findById(inactiveUser._id).select("+authTokenVersion")).authTokenVersion), beforeInactiveSuspendVersion + 2);
+  assert.equal((await User.findById(inactiveUser._id)).status, "BLOCKED");
+
   result = await invoke("createStudent", request(owner, school, "OWNER", {
     studentId: "S-001", fullName: "Student One", classLevel: classLevel._id, parent: parent._id,
   }));
   assert.equal(result.statusCode, 201);
   const student = result.body.student;
+  result = await invoke("createActivity", request(teacherUser, school, "TEACHER", {
+    type: "ANNOUNCEMENT", title: "Class update", body: "Bring your workbook.", audience: "CLASS", classLevel: classLevel._id,
+  }));
+  assert.equal(result.statusCode, 201);
+  result = await invoke("createClass", request(owner, school, "OWNER", {
+    session: session._id, name: "JSS 2", arm: "B",
+  }));
+  assert.equal(result.statusCode, 201);
+  const otherClass = result.body.classLevel;
+  result = await invoke("createStudent", request(owner, school, "OWNER", {
+    studentId: "S-002", fullName: "Student Two", classLevel: otherClass._id, parent: otherParent._id,
+  }));
+  assert.equal(result.statusCode, 201);
+  const otherStudent = result.body.student;
+  for (const activity of [
+    { title: "School notice", audience: "SCHOOL" },
+    { title: "Other class notice", audience: "CLASS", classLevel: otherClass._id },
+    { title: "Other student notice", audience: "STUDENT", classLevel: otherClass._id, student: otherStudent._id },
+  ]) {
+    result = await invoke("createActivity", request(owner, school, "OWNER", {
+      type: "ANNOUNCEMENT", body: activity.title, ...activity,
+    }));
+    assert.equal(result.statusCode, 201);
+  }
+  result = await invoke("listStudents", request(teacherUser, school, "TEACHER"));
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(result.body.students.map((row) => String(row._id)), [String(student._id)]);
+  result = await invoke("listStudents", request(teacherUser, school, "TEACHER", {}, { query: { classId: otherClass._id } }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.students.length, 0);
+  result = await invoke("listActivities", request(teacherUser, school, "TEACHER"));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.activities.some((row) => row.title === "School notice"), true);
+  assert.equal(result.body.activities.some((row) => row.title === "Class update"), true);
+  assert.equal(result.body.activities.some((row) => row.title === "Other class notice" || row.title === "Other student notice"), false);
 
   result = await invoke("submitAttendance", request(teacherUser, school, "TEACHER", {
     classId: classLevel._id,
@@ -129,6 +289,13 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }));
   assert.equal(hidden.body.results.length, 0);
 
+  for (const invalid of [null, undefined, "", "   ", [], NaN, Infinity, -1, 31]) {
+    const invalidResult = await invoke("saveScores", request(teacherUser, school, "TEACHER", {
+      submit: false,
+      scores: [{ student: student._id, values: { CA: invalid, Exam: 60 } }],
+    }, { params: { assessmentId: assessment._id } }));
+    assert.equal(invalidResult.statusCode, 400, `invalid score should be rejected: ${String(invalid)}`);
+  }
   result = await invoke("saveScores", request(teacherUser, school, "TEACHER", {
     submit: true,
     scores: [{ student: student._id, values: { CA: 25, Exam: 60 } }],
@@ -149,6 +316,11 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
     action: "PUBLISH",
   }, { params: { assessmentId: assessment._id } }));
   assert.equal(result.statusCode, 200);
+  result = await invoke("saveScores", request(teacherUser, school, "TEACHER", {
+    submit: false,
+    scores: [{ student: student._id, values: { CA: 20, Exam: 50 } }],
+  }, { params: { assessmentId: assessment._id } }));
+  assert.equal(result.statusCode, 409);
 
   const visible = await invoke("parentResults", request(parent, null, null, {}, {
     params: { childId: student._id },

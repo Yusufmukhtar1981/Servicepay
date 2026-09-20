@@ -28,10 +28,16 @@ test("academic route contract is mounted without replacing finance routes", () =
   const paths = routePaths(edupayRoutes);
   assert.ok(paths.includes("GET /school/academic/dashboard"));
   assert.ok(paths.includes("POST /school/academic/attendance"));
+  assert.ok(paths.includes("POST /school/academic/teachers"));
+  assert.ok(paths.includes("PATCH /school/academic/teachers/:teacherId"));
+  assert.ok(paths.includes("PATCH /school/academic/teachers/:teacherId/status"));
+  assert.ok(paths.includes("POST /school/academic/teachers/:teacherId/reset-password"));
   assert.ok(paths.includes("PUT /school/academic/assessments/:assessmentId/scores"));
   assert.ok(paths.includes("GET /children/:childId/academic/results"));
   assert.ok(paths.includes("POST /plans/:planId/contributions"));
   assert.ok(routePaths(adminRoutes).includes("GET /academic-overview"));
+  assert.ok(routePaths(adminRoutes).includes("POST /schools"));
+  assert.ok(routePaths(adminRoutes).includes("POST /schools/:schoolId/reset-password"));
 });
 
 test("academic and existing finance ownership routes reject unauthenticated callers", async () => {

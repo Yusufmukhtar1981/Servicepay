@@ -43,6 +43,8 @@ const teacherSchema = new mongoose.Schema({
   fullName: { type: String, required: true, trim: true, maxlength: 180 },
   phone: { type: String, trim: true, maxlength: 40 },
   email: { type: String, trim: true, lowercase: true, maxlength: 180 },
+  gender: { type: String, trim: true, maxlength: 30 },
+  responsibility: { type: String, trim: true, maxlength: 120 },
   status: { type: String, enum: ["ACTIVE", "INACTIVE"], default: "ACTIVE", index: true },
   ...auditFields,
 }, { timestamps: true });

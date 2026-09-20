@@ -9,9 +9,15 @@ const {
 } = require("../models/edupayAcademicManagement.model");
 const { audit, notify } = require("../services/edupay.service");
 const { models } = require("../services/edupay.service");
+const { validateStrongPassword } = require("../utils/passwordPolicy");
 const School = models.School;
 const EduPayChild = models.Child;
 const fail = (res, e) => res.status(e.statusCode || 500).json({ success: false, message: e.message || "Academic request failed." });
+const temporaryPassword = (value) => {
+  const check = validateStrongPassword(String(value || ""));
+  if (!check.valid) { const e = new Error(check.message); e.statusCode = 400; throw e; }
+  return String(value);
+};
 const id = (value, label) => {
   if (!mongoose.isValidObjectId(value)) { const e = new Error(`${label} is invalid.`); e.statusCode = 400; throw e; }
   return value;
@@ -45,9 +51,11 @@ const teacherScope = async (req) => {
   return { teacher, assignments };
 };
 const clean = (row) => row?.toObject ? row.toObject() : row;
-const ensureOwned = async (Model, value, school, label) => {
+const ensureOwned = async (Model, value, school, label, session = null) => {
   id(value, label);
-  const row = await Model.findOne({ _id: value, school });
+  let query = Model.findOne({ _id: value, school });
+  if (session) query = query.session(session);
+  const row = await query;
   if (!row) { const e = new Error(`${label} does not belong to this school.`); e.statusCode = 400; throw e; }
   return row;
 };
@@ -185,7 +193,20 @@ const validateRows = (rows) => {
   });
   return { validRows, invalidRows, duplicates };
 };
-exports.listStudents = async (req, res) => { try { res.json({ success: true, students: await EduPayStudent.find({ school: schoolId(req), ...(req.query.classId ? { classLevel: req.query.classId } : {}), ...(req.query.status ? { status: req.query.status } : {}) }).populate("classLevel").sort({ fullName: 1 }).lean() }); } catch (e) { fail(res, e); } };
+exports.listStudents = async (req, res) => {
+  try {
+    const school = schoolId(req);
+    const query = { school, ...(req.query.status ? { status: req.query.status } : {}) };
+    if (!isManager(req)) {
+      const scope = await teacherScope(req);
+      if (!scope.teacher) return res.status(403).json({ success: false, message: "Active teacher profile required." });
+      const assignedClasses = [...new Set(scope.assignments.map((row) => String(row.classLevel)))];
+      const requested = req.query.classId ? String(req.query.classId) : null;
+      query.classLevel = requested && assignedClasses.includes(requested) ? requested : requested ? { $in: [] } : { $in: assignedClasses };
+    } else if (req.query.classId) query.classLevel = req.query.classId;
+    res.json({ success: true, students: await EduPayStudent.find(query).populate("classLevel").sort({ fullName: 1 }).lean() });
+  } catch (e) { fail(res, e); }
+};
 exports.validateStudentImport = async (req, res) => {
   try {
     const result = validateRows(Array.isArray(req.body.rows) ? req.body.rows : []);
@@ -230,15 +251,122 @@ exports.updateStudent = async (req, res) => {
   } catch (e) { fail(res, e); }
 };
 
+const assignmentInputs = (body) => {
+  if (Array.isArray(body.assignments)) return body.assignments.map((row) => ({ classLevel: row.classLevel || row.classId, subject: row.subject || row.subjectId }));
+  const classes = Array.isArray(body.classIds) ? body.classIds : [];
+  const subjects = Array.isArray(body.subjectIds) ? body.subjectIds : [];
+  return classes.map((classLevel, index) => ({ classLevel, subject: subjects[index] })).filter((row) => row.subject);
+};
+const validateAssignments = async (assignments, school, session = null) => {
+  for (const assignment of assignments) {
+    await ensureOwned(EduPayClass, assignment.classLevel, school, "Class", session);
+    await ensureOwned(EduPaySubject, assignment.subject, school, "Subject", session);
+  }
+};
+const saveAssignments = async (teacher, assignments, actor, { replace = false, session = null } = {}) => {
+  const school = schoolId({ eduPaySchool: teacher.school });
+  await validateAssignments(assignments, school, session);
+  if (replace) await EduPayTeacherAssignment.deleteMany({ school, teacher: teacher._id }).session(session);
+  const output = [];
+  for (const assignment of assignments) {
+    const row = await EduPayTeacherAssignment.findOneAndUpdate(
+      { school, teacher: teacher._id, classLevel: assignment.classLevel, subject: assignment.subject },
+      { $setOnInsert: { school, teacher: teacher._id, classLevel: assignment.classLevel, subject: assignment.subject, createdBy: actor } },
+      { upsert: true, new: true, setDefaultsOnInsert: true, session },
+    );
+    output.push(row);
+  }
+  return output;
+};
 exports.createTeacher = async (req, res) => {
+  let session;
   try {
-    if (!manager(req, res)) return; id(req.body.userId, "User"); const user = await User.findOne({ _id: req.body.userId, status: "ACTIVE" }).select("_id fullName email phone"); if (!user) return res.status(404).json({ success: false, message: "Active teacher user not found." });
-    const row = await EduPayTeacher.create({ school: schoolId(req), user: user._id, staffId: req.body.staffId, fullName: req.body.fullName || user.fullName, email: req.body.email || user.email, phone: req.body.phone || user.phone, createdBy: req.user._id });
-    await SchoolUser.updateOne({ school: schoolId(req), user: user._id }, { $set: { role: "TEACHER", status: "ACTIVE" }, $setOnInsert: { school: schoolId(req), user: user._id, invitedBy: req.user._id } }, { upsert: true });
-    res.status(201).json({ success: true, teacher: row });
+    if (!manager(req, res)) return;
+    const school = schoolId(req);
+    session = await mongoose.startSession();
+    let result;
+    await session.withTransaction(async () => {
+    let user;
+    if (req.body.userId) {
+      id(req.body.userId, "User");
+      user = await User.findOne({ _id: req.body.userId, status: "ACTIVE" }).select("_id fullName email phone").session(session);
+       if (!user) { const e = new Error("Active teacher user not found."); e.statusCode = 404; throw e; }
+      const otherMembership = await SchoolUser.findOne({ user: user._id, school: { $ne: school }, status: { $in: ["ACTIVE", "INVITED"] } }).session(session);
+       if (otherMembership) { const e = new Error("This user already belongs to another school."); e.statusCode = 409; throw e; }
+    } else {
+      const email = String(req.body.email || "").trim().toLowerCase();
+      const phone = String(req.body.phone || "").trim();
+       if (!req.body.fullName || !email || !phone) { const e = new Error("Full name, email, and phone are required for a new teacher account."); e.statusCode = 400; throw e; }
+      const password = temporaryPassword(req.body.temporaryPassword);
+      if (await User.exists({ $or: [{ email }, { phone }] }).session(session)) { const e = new Error("An account already exists with this email or phone."); e.statusCode = 409; throw e; }
+      [user] = await User.create([{ fullName: req.body.fullName, email, phone, password, role: "CUSTOMER", status: "ACTIVE", mustChangePassword: true }], { session });
+    }
+    const staffId = String(req.body.staffId || "").trim();
+    if (!staffId) { const e = new Error("Teacher ID is required."); e.statusCode = 400; throw e; }
+    const [row] = await EduPayTeacher.create([{ school, user: user._id, staffId, fullName: req.body.fullName || user.fullName, email: req.body.email || user.email, phone: req.body.phone || user.phone, gender: req.body.gender, responsibility: req.body.responsibility, createdBy: req.user._id }], { session });
+    await SchoolUser.updateOne({ school, user: user._id }, { $set: { role: "TEACHER", status: "ACTIVE" }, $setOnInsert: { school, user: user._id, invitedBy: req.user._id } }, { upsert: true, session });
+    const assignments = await saveAssignments(row, assignmentInputs(req.body), req.user._id, { session });
+    await audit({ actor: req.user._id, action: "EDUPAY_TEACHER_CREATED", entityType: "EduPayTeacher", entityId: row._id, school, metadata: { accountCreated: !req.body.userId, assignmentCount: assignments.length }, req, session });
+    result = { teacher: row, assignments, account: { userId: user._id, email: user.email, mustChangePassword: user.mustChangePassword === true } };
+    });
+    res.status(201).json({ success: true, ...result });
+  } catch (e) { fail(res, e); }
+  finally { if (session) await session.endSession(); }
+};
+exports.updateTeacher = async (req, res) => {
+  let session;
+  try {
+    if (!manager(req, res)) return;
+    const school = schoolId(req);
+    session = await mongoose.startSession();
+    let result;
+    await session.withTransaction(async () => {
+    const teacher = await ensureOwned(EduPayTeacher, req.params.teacherId, school, "Teacher", session);
+    for (const key of ["fullName", "phone", "email", "gender", "responsibility", "staffId"]) if (req.body[key] !== undefined) teacher[key] = req.body[key];
+    teacher.updatedBy = req.user._id; await teacher.save({ session });
+    const user = await User.findById(teacher.user).session(session);
+    if (user) { if (req.body.fullName !== undefined) user.fullName = req.body.fullName; if (req.body.phone !== undefined) user.phone = req.body.phone; if (req.body.email !== undefined) user.email = String(req.body.email).trim().toLowerCase(); await user.save({ session }); }
+    const assignments = req.body.assignments || req.body.classIds || req.body.subjectIds ? await saveAssignments(teacher, assignmentInputs(req.body), req.user._id, { replace: req.body.replaceAssignments === true, session }) : undefined;
+    await audit({ actor: req.user._id, action: "EDUPAY_TEACHER_UPDATED", entityType: "EduPayTeacher", entityId: teacher._id, school, metadata: { assignmentsChanged: assignments !== undefined }, req, session });
+    result = { teacher, assignments };
+    });
+    res.json({ success: true, ...result, ...(result.assignments ? { assignments: result.assignments } : {}) });
+  } catch (e) { fail(res, e); }
+  finally { if (session) await session.endSession(); }
+};
+exports.updateTeacherStatus = async (req, res) => {
+  let session;
+  try {
+    if (!manager(req, res)) return;
+    const status = String(req.body.status || "").toUpperCase();
+    if (!["ACTIVE", "INACTIVE"].includes(status)) return res.status(400).json({ success: false, message: "Teacher status must be ACTIVE or INACTIVE." });
+    const school = schoolId(req);
+    session = await mongoose.startSession();
+    let teacher;
+    await session.withTransaction(async () => {
+    teacher = await ensureOwned(EduPayTeacher, req.params.teacherId, school, "Teacher", session);
+    teacher.status = status; teacher.updatedBy = req.user._id; await teacher.save({ session });
+    await SchoolUser.updateOne({ school, user: teacher.user }, { $set: { status: status === "ACTIVE" ? "ACTIVE" : "SUSPENDED" } }, { session });
+    await User.updateOne({ _id: teacher.user }, { $set: { status: status === "ACTIVE" ? "ACTIVE" : "SUSPENDED" }, $inc: { authTokenVersion: 1 } }, { session });
+    await audit({ actor: req.user._id, action: `EDUPAY_TEACHER_${status}`, entityType: "EduPayTeacher", entityId: teacher._id, school, req, session });
+    });
+    res.json({ success: true, teacher });
+  } catch (e) { fail(res, e); }
+  finally { if (session) await session.endSession(); }
+};
+exports.resetTeacherPassword = async (req, res) => {
+  try {
+    if (!manager(req, res)) return;
+    const password = temporaryPassword(req.body.temporaryPassword);
+    const teacher = await ensureOwned(EduPayTeacher, req.params.teacherId, schoolId(req), "Teacher");
+    const user = await User.findById(teacher.user).select("+password +authTokenVersion");
+    if (!user) return res.status(404).json({ success: false, message: "Teacher account not found." });
+    user.password = password; user.passwordResetToken = undefined; user.passwordResetExpires = undefined; user.mustChangePassword = true; user.passwordChangedAt = new Date(); user.authTokenVersion = Number(user.authTokenVersion || 0) + 1; await user.save();
+    await audit({ actor: req.user._id, action: "EDUPAY_TEACHER_PASSWORD_RESET", entityType: "User", entityId: user._id, school: schoolId(req), req });
+    res.json({ success: true, message: "Temporary teacher password set.", teacher: { id: teacher._id, userId: user._id, mustChangePassword: true } });
   } catch (e) { fail(res, e); }
 };
-exports.assignTeacher = async (req, res) => { try { if (!manager(req, res)) return; await ensureOwned(EduPayTeacher, req.body.teacher, schoolId(req), "Teacher"); await ensureOwned(EduPayClass, req.body.classLevel, schoolId(req), "Class"); await ensureOwned(EduPaySubject, req.body.subject, schoolId(req), "Subject"); const row = await EduPayTeacherAssignment.create({ school: schoolId(req), teacher: req.body.teacher, classLevel: req.body.classLevel, subject: req.body.subject, createdBy: req.user._id }); res.status(201).json({ success: true, assignment: row }); } catch (e) { fail(res, e); } };
+exports.assignTeacher = async (req, res) => { try { if (!manager(req, res)) return; const teacher = await ensureOwned(EduPayTeacher, req.body.teacher, schoolId(req), "Teacher"); const assignments = await saveAssignments(teacher, [{ classLevel: req.body.classLevel, subject: req.body.subject }], req.user._id); res.status(201).json({ success: true, assignment: assignments[0] }); } catch (e) { fail(res, e); } };
 exports.listTeachers = async (req, res) => {
   try {
     const school = schoolId(req);
@@ -295,14 +423,106 @@ exports.listAssessments = async (req, res) => {
     res.json({ success: true, assessments: await EduPayAssessment.find(query).populate("classLevel subject session term").sort({ createdAt: -1 }).lean() });
   } catch (e) { fail(res, e); }
 };
-const scoreResult = (assessment, values, allowMissing = false) => { const keys = assessment.components.map((c) => c.name); if (!allowMissing && keys.some((k) => values[k] === undefined || values[k] === "")) { const e = new Error("Every assessment component requires a score."); e.statusCode = 400; throw e; } const entered = keys.filter((k) => values[k] !== undefined && values[k] !== ""); const total = entered.reduce((sum, k) => { const value = Number(values[k]); const max = assessment.components.find((c) => c.name === k).max; if (!Number.isFinite(value) || value < 0 || value > max) { const e = new Error(`Score for ${k} must be between 0 and ${max}.`); e.statusCode = 400; throw e; } return sum + value; }, 0); const max = assessment.components.reduce((sum, c) => sum + Number(c.max), 0); const percentage = max ? Math.round(total / max * 10000) / 100 : 0; const grade = assessment.grading.find((r) => percentage >= r.min && percentage <= r.max) || {}; return { total, percentage, grade: grade.grade || null, remark: grade.remark || null }; };
-exports.saveScores = async (req, res) => { try { const assessment = await EduPayAssessment.findOne({ _id: req.params.assessmentId, school: schoolId(req) }); if (!assessment) return res.status(404).json({ success: false, message: "Assessment not found." }); if (["PUBLISHED", "APPROVED"].includes(assessment.status)) return res.status(409).json({ success: false, message: "This assessment is locked." }); const teacher = isManager(req) ? null : await teacherFor(req, assessment.classLevel, assessment.subject); if (!isManager(req) && !teacher) return res.status(403).json({ success: false, message: "Teacher is not assigned to this assessment." }); const entries = []; for (const input of (req.body.scores || [])) { const student = await EduPayStudent.findOne({ _id: input.student, school: schoolId(req), classLevel: assessment.classLevel, status: "ACTIVE" }); if (!student) return res.status(403).json({ success: false, message: "Score student is outside the assigned class." }); const calculated = scoreResult(assessment, input.values || {}, !req.body.submit); entries.push(await EduPayScore.findOneAndUpdate({ school: schoolId(req), assessment: assessment._id, student: student._id }, { $set: { values: input.values, ...calculated, status: req.body.submit ? "SUBMITTED" : "DRAFT", teacher: teacher?._id || null, updatedBy: req.user._id }, $setOnInsert: { school: schoolId(req), assessment: assessment._id, student: student._id, createdBy: req.user._id } }, { upsert: true, new: true, runValidators: true })); } if (req.body.submit) { assessment.status = "SUBMITTED"; assessment.updatedBy = req.user._id; await assessment.save(); } res.json({ success: true, scores: entries, status: assessment.status }); } catch (e) { fail(res, e); } };
+const scoreResult = (assessment, values, allowMissing = false) => {
+  const keys = assessment.components.map((c) => c.name);
+  const entered = [];
+  for (const key of keys) {
+    const hasValue = Object.prototype.hasOwnProperty.call(values, key);
+    if (!hasValue && allowMissing) continue;
+    const raw = values[key];
+    if (raw === null || raw === undefined || typeof raw === "boolean" || (typeof raw === "object" && raw !== null) || (typeof raw === "string" && !raw.trim())) {
+      const e = new Error(`Score for ${key} is required and must be a finite number.`); e.statusCode = 400; throw e;
+    }
+    const value = Number(raw);
+    const max = assessment.components.find((c) => c.name === key).max;
+    if (!Number.isFinite(value) || value < 0 || value > max) {
+      const e = new Error(`Score for ${key} must be between 0 and ${max}.`); e.statusCode = 400; throw e;
+    }
+    entered.push([key, value]);
+  }
+  const total = entered.reduce((sum, [, value]) => sum + value, 0);
+  const max = assessment.components.reduce((sum, c) => sum + Number(c.max), 0);
+  const percentage = max ? Math.round(total / max * 10000) / 100 : 0;
+  const grade = assessment.grading.find((r) => percentage >= r.min && percentage <= r.max) || {};
+  return { total, percentage, grade: grade.grade || null, remark: grade.remark || null };
+};
+exports.saveScores = async (req, res) => {
+  let session;
+  try {
+    const school = schoolId(req);
+    session = await mongoose.startSession();
+    let result;
+    await session.withTransaction(async () => {
+      const assessment = await EduPayAssessment.findOne({ _id: req.params.assessmentId, school }).session(session);
+      if (!assessment) { const e = new Error("Assessment not found."); e.statusCode = 404; throw e; }
+      if (!["DRAFT", "RETURNED"].includes(assessment.status)) { const e = new Error("This assessment is locked."); e.statusCode = 409; throw e; }
+      const expectedVersion = Number(assessment.__v || 0);
+      const teacher = isManager(req) ? null : await teacherFor(req, assessment.classLevel, assessment.subject);
+      if (!isManager(req) && !teacher) { const e = new Error("Teacher is not assigned to this assessment."); e.statusCode = 403; throw e; }
+      const entries = [];
+      for (const input of (req.body.scores || [])) {
+        const student = await EduPayStudent.findOne({ _id: input.student, school, classLevel: assessment.classLevel, status: "ACTIVE" }).session(session);
+        if (!student) { const e = new Error("Score student is outside the assigned class."); e.statusCode = 403; throw e; }
+        const calculated = scoreResult(assessment, input.values || {}, !req.body.submit);
+        entries.push(await EduPayScore.findOneAndUpdate({ school, assessment: assessment._id, student: student._id }, { $set: { values: input.values, ...calculated, status: req.body.submit ? "SUBMITTED" : "DRAFT", teacher: teacher?._id || null, updatedBy: req.user._id }, $setOnInsert: { school, assessment: assessment._id, student: student._id, createdBy: req.user._id } }, { upsert: true, new: true, runValidators: true, session }));
+      }
+      const nextStatus = req.body.submit ? "SUBMITTED" : assessment.status;
+      const updated = await EduPayAssessment.findOneAndUpdate(
+        { _id: assessment._id, school, status: { $in: ["DRAFT", "RETURNED"] }, __v: expectedVersion },
+        { $set: { status: nextStatus, updatedBy: req.user._id }, $inc: { __v: 1 } },
+        { new: true, session },
+      );
+      if (!updated) { const e = new Error("Assessment changed while scores were being saved."); e.statusCode = 409; throw e; }
+      result = { entries, status: updated.status };
+    });
+    res.json({ success: true, scores: result.entries, status: result.status });
+  } catch (e) { fail(res, e); }
+  finally { if (session) await session.endSession(); }
+};
 exports.reviewAssessment = async (req, res) => { try { if (!manager(req, res)) return; const row = await EduPayAssessment.findOne({ _id: req.params.assessmentId, school: schoolId(req) }); if (!row) return res.status(404).json({ success: false, message: "Assessment not found." }); const action = String(req.body.action || "").toUpperCase(); const transitions = { SUBMITTED: { RETURN: "RETURNED", APPROVE: "APPROVED" }, APPROVED: { PUBLISH: "PUBLISHED" } }; const next = transitions[row.status]?.[action]; if (!next) return res.status(409).json({ success: false, message: "Invalid assessment review transition." }); row.status = next; row.reviewedBy = req.user._id; row.reviewedAt = new Date(); row.reviewNote = req.body.note; await row.save(); await audit({ actor: req.user._id, action: `EDUPAY_RESULT_${next}`, entityType: "EduPayAssessment", entityId: row._id, school: schoolId(req), req }); res.json({ success: true, assessment: row }); } catch (e) { fail(res, e); } };
 
 exports.createTimetable = async (req, res) => { try { if (!manager(req, res)) return; const school = schoolId(req); await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session"); await ensureOwned(EduPayTerm, req.body.term, school, "Term"); await ensureOwned(EduPayClass, req.body.classLevel, school, "Class"); await ensureOwned(EduPaySubject, req.body.subject, school, "Subject"); await ensureOwned(EduPayTeacher, req.body.teacher, school, "Teacher"); const row = await EduPayTimetable.create({ ...req.body, school, createdBy: req.user._id }); res.status(201).json({ success: true, timetable: row }); } catch (e) { fail(res, e); } };
 exports.listTimetable = async (req, res) => { try { const query = { school: schoolId(req), ...(req.query.classId ? { classLevel: req.query.classId } : {}) }; if (!isManager(req)) { const scope = await teacherScope(req); if (!scope.teacher) return res.status(403).json({ success: false, message: "Active teacher profile required." }); query.teacher = scope.teacher._id; } const rows = await EduPayTimetable.find(query).populate("classLevel subject teacher").sort({ day: 1, startsAt: 1 }).lean(); res.json({ success: true, timetable: rows }); } catch (e) { fail(res, e); } };
-exports.createActivity = async (req, res) => { try { if (!manager(req, res)) return; const row = await EduPayAcademicActivity.create({ ...req.body, school: schoolId(req), type: String(req.body.type || "ANNOUNCEMENT").toUpperCase(), createdBy: req.user._id }); res.status(201).json({ success: true, activity: row }); } catch (e) { fail(res, e); } };
-exports.listActivities = async (req, res) => { try { res.json({ success: true, activities: await EduPayAcademicActivity.find({ school: schoolId(req), status: "PUBLISHED" }).sort({ eventDate: -1, createdAt: -1 }).lean() }); } catch (e) { fail(res, e); } };
+exports.createActivity = async (req, res) => {
+  try {
+    const school = schoolId(req);
+    if (!isManager(req)) {
+      const audience = String(req.body.audience || "CLASS").toUpperCase();
+      if (!["CLASS", "STUDENT"].includes(audience)) return res.status(403).json({ success: false, message: "Teachers may only publish class or student updates." });
+      const scope = await teacherScope(req);
+      if (!scope.teacher) return res.status(403).json({ success: false, message: "Active teacher profile required." });
+      const classLevel = await ensureOwned(EduPayClass, req.body.classLevel || req.body.classId, school, "Class");
+      if (!(await teacherFor(req, classLevel._id))) return res.status(403).json({ success: false, message: "Teacher is not assigned to this class." });
+      if (audience === "STUDENT") {
+        const student = await ensureOwned(EduPayStudent, req.body.student, school, "Student");
+        if (String(student.classLevel) !== String(classLevel._id)) return res.status(403).json({ success: false, message: "Student is outside the assigned class." });
+      }
+      req.body.audience = audience; req.body.classLevel = classLevel._id;
+    } else if (req.body.classLevel || req.body.classId) {
+      await ensureOwned(EduPayClass, req.body.classLevel || req.body.classId, school, "Class");
+    }
+    const row = await EduPayAcademicActivity.create({ ...req.body, school, classLevel: req.body.classLevel || req.body.classId || null, type: String(req.body.type || "ANNOUNCEMENT").toUpperCase(), createdBy: req.user._id });
+    res.status(201).json({ success: true, activity: row });
+  } catch (e) { fail(res, e); }
+};
+exports.listActivities = async (req, res) => {
+  try {
+    const school = schoolId(req);
+    const query = { school, status: "PUBLISHED" };
+    if (!isManager(req)) {
+      const scope = await teacherScope(req);
+      if (!scope.teacher) return res.status(403).json({ success: false, message: "Active teacher profile required." });
+      const classIds = [...new Set(scope.assignments.map((row) => String(row.classLevel)))];
+      const studentIds = await EduPayStudent.find({ school, classLevel: { $in: classIds } }).distinct("_id");
+      query.$or = [
+        { audience: "SCHOOL" },
+        { audience: "CLASS", classLevel: { $in: classIds } },
+        { audience: "STUDENT", student: { $in: studentIds } },
+      ];
+    }
+    res.json({ success: true, activities: await EduPayAcademicActivity.find(query).sort({ eventDate: -1, createdAt: -1 }).lean() });
+  } catch (e) { fail(res, e); }
+};
 
 const parentChild = async (req) => {
   let child = await EduPayStudent.findOne({ _id: req.params.childId, parent: req.user._id, school: { $exists: true }, status: "ACTIVE" }).populate("classLevel").lean();

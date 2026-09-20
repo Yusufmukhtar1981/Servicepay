@@ -68,6 +68,9 @@ router.post("/school/academic/students/import/validate", ...school, academic.val
 router.post("/school/academic/students/import/commit", ...school, academic.commitStudentImport);
 router.get("/school/academic/teachers", ...school, academic.listTeachers);
 router.post("/school/academic/teachers", ...school, academic.createTeacher);
+router.patch("/school/academic/teachers/:teacherId", ...school, academic.updateTeacher);
+router.patch("/school/academic/teachers/:teacherId/status", ...school, academic.updateTeacherStatus);
+router.post("/school/academic/teachers/:teacherId/reset-password", ...school, academic.resetTeacherPassword);
 router.post("/school/academic/teachers/assignments", ...school, academic.assignTeacher);
 router.get("/school/academic/attendance/roster", ...school, academic.attendanceRoster);
 router.post("/school/academic/attendance", ...school, academic.submitAttendance);

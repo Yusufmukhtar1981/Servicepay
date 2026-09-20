@@ -35,7 +35,9 @@ router.patch("/school-requests/:requestId", ...schoolRequestApproval, controller
 router.get("/schools/:schoolId", ...view, controller.adminSchoolDetail);
 router.get("/schools/:schoolId/private-assets", ...privateAssets, controller.adminSchoolPrivateAssets);
 router.get("/schools/:schoolId/private-assets/:fileId", ...privateAssets, controller.adminSchoolPrivateAssetDownload);
-router.patch("/schools/:schoolId", ...manage, controller.adminSchoolAction);
+router.post("/schools", ...manage, controller.adminCreateSchool);
+router.patch("/schools/:schoolId", ...manage, controller.adminSchoolUpdate);
+router.post("/schools/:schoolId/reset-password", ...manage, controller.adminResetSchoolPassword);
 router.post("/schools/:schoolId/users", ...manage, controller.adminCreateSchoolUser);
 router.get("/fees", ...view, controller.adminFees);
 router.get("/fees/:feeId", ...view, controller.adminFees);
