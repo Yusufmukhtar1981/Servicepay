@@ -8,6 +8,7 @@ const squadWebhookRoutes = require("../routes/edupaySquadWebhook.routes");
 const squad = require("../services/edupaySquad.service");
 const { adminOnly } = require("../middleware/auth.middleware");
 const { canConfigureDuties } = require("../routes/adminEdupay.routes");
+const { allowSchoolRoles } = require("../middleware/edupay.middleware");
 
 const request = (app, { method, path, body, headers = {} }) => new Promise((resolve, reject) => {
   const server = app.listen(0, "127.0.0.1", () => {
@@ -59,4 +60,23 @@ test("readiness duty capability matches protected duty-route admission", () => {
   assert.equal(canConfigureDuties({ role: "servicepay-super-admin" }), true);
   assert.equal(canConfigureDuties({ role: "SERVICEPAY_SUPER_ADMIN" }), true);
   assert.equal(canConfigureDuties({ role: "HEAD_OFFICE" }), false);
+});
+
+test("school administration rejects teacher and generic staff memberships", async () => {
+  const app = express();
+  app.use((req, res, next) => {
+    req.eduPaySchoolUser = { role: req.get("x-school-role") };
+    next();
+  });
+  app.get(
+    "/school/manage",
+    allowSchoolRoles("OWNER", "ADMIN", "SCHOOL_ADMIN"),
+    (req, res) => res.json({ success: true }),
+  );
+  for (const role of ["TEACHER", "STAFF", "FINANCE"]) {
+    assert.equal((await request(app, { method: "GET", path: "/school/manage", headers: { "x-school-role": role } })).status, 403);
+  }
+  for (const role of ["OWNER", "ADMIN", "SCHOOL_ADMIN"]) {
+    assert.equal((await request(app, { method: "GET", path: "/school/manage", headers: { "x-school-role": role } })).status, 200);
+  }
 });

@@ -6,6 +6,7 @@ const AppSettings = require("../models/appSettings.model");
 const AccountRestriction = require("../models/accountRestriction.model");
 const FintechWatchlist = require("../models/fintechWatchlist.model");
 const LoginSecurityEvent = require("../models/loginSecurityEvent.model");
+const EduPaySchoolUser = require("../models/edupaySchoolUser.model");
 const {
   createInAppNotification,
 } = require("../services/inAppNotification.service");
@@ -635,6 +636,29 @@ const formatUser = (user) => {
   };
 };
 
+const activeEduPaySchoolMemberships = async (userId) => {
+  const memberships = await EduPaySchoolUser.find({
+    user: userId,
+    status: "ACTIVE",
+  })
+    .sort({ createdAt: 1 })
+    .populate({
+      path: "school",
+      match: { status: "APPROVED", active: true },
+      select: "_id name status active",
+    });
+
+  return memberships
+    .filter((membership) => membership.school)
+    .map((membership) => ({
+      schoolId: String(membership.school._id),
+      role: membership.role,
+      status: membership.status,
+      schoolStatus: membership.school.status,
+      schoolName: membership.school.name,
+    }));
+};
+
 exports.registerUser = async (
   req,
   res
@@ -1203,12 +1227,17 @@ exports.loginUser = async (
       outcome: "SUCCESS",
     });
 
+    const schoolMemberships = await activeEduPaySchoolMemberships(user._id);
+    const schoolMembership =
+      schoolMemberships.length === 1 ? schoolMemberships[0] : null;
     return res.status(200).json({
       success: true,
       message:
         "Login successful.",
       token: generateToken(user._id, user.authTokenVersion),
       user: formatUser(user),
+      schoolMembership,
+      schoolMemberships,
     });
   } catch (error) {
     console.error(
@@ -1254,13 +1283,20 @@ exports.getProfile = async (
       });
     }
 
+    const schoolMemberships = await activeEduPaySchoolMemberships(user._id);
+    const schoolMembership =
+      schoolMemberships.length === 1 ? schoolMemberships[0] : null;
     return res.status(200).json({
       success: true,
       message:
         "Profile fetched successfully.",
       user: formatUser(user),
+      schoolMembership,
+      schoolMemberships,
       data: {
         user: formatUser(user),
+        schoolMembership,
+        schoolMemberships,
       },
     });
   } catch (error) {

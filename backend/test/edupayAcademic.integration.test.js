@@ -7,6 +7,7 @@ const User = require("../models/user.model");
 const School = require("../models/edupaySchool.model");
 const SchoolUser = require("../models/edupaySchoolUser.model");
 const edupayController = require("../controllers/edupay.controller");
+const authController = require("../controllers/auth.controller");
 const controller = require("../controllers/edupayAcademic.controller");
 const { EduPayTeacherAssignment } = require("../models/edupayAcademicManagement.model");
 
@@ -84,6 +85,85 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   assert.equal(resetSchoolAdminUser.passwordResetToken, undefined);
   assert.equal(resetSchoolAdminUser.passwordResetExpires, undefined);
   assert.equal(Number(resetSchoolAdminUser.authTokenVersion), schoolAdminVersion + 1);
+  let schoolLoginResult = await invokeController(edupayController, "schoolLogin", {
+    body: { email: `proprietor-${stamp}@example.com`, password: "AdminReset9!" },
+  });
+  assert.equal(schoolLoginResult.statusCode, 200);
+  assert.equal(schoolLoginResult.body.role, "SCHOOL_ADMIN");
+  assert.equal(schoolLoginResult.body.schoolId, String(manuallyProvisionedSchoolId));
+  assert.deepEqual(schoolLoginResult.body.schoolMembership, {
+    schoolId: String(manuallyProvisionedSchoolId),
+    role: "SCHOOL_ADMIN",
+    status: "ACTIVE",
+    schoolStatus: "APPROVED",
+  });
+  const genericLoginResult = await invokeController(authController, "loginUser", {
+    body: { email: `proprietor-${stamp}@example.com`, password: "AdminReset9!" },
+    ip: "127.0.0.1",
+    headers: {},
+    get: () => undefined,
+  });
+  assert.equal(genericLoginResult.statusCode, 200);
+  assert.equal(genericLoginResult.body.user.role, "CUSTOMER");
+  assert.equal(genericLoginResult.body.schoolMembership.role, "SCHOOL_ADMIN");
+  assert.equal(genericLoginResult.body.schoolMembership.schoolId, String(manuallyProvisionedSchoolId));
+  const [pendingUser] = await User.create([{
+    fullName: "Pending School Owner", email: `pending-school-${stamp}@example.com`,
+    phone: `0813${stamp}`, password: "PendingPass9!", role: "CUSTOMER", status: "PENDING",
+  }]);
+  await School.create({
+    name: "Pending School", address: "Lagos", state: "Lagos",
+    status: "PENDING_REVIEW", active: false, portalUser: pendingUser._id,
+  });
+  schoolLoginResult = await invokeController(edupayController, "schoolLogin", {
+    body: { email: `pending-school-${stamp}@example.com`, password: "PendingPass9!" },
+  });
+  assert.equal(schoolLoginResult.statusCode, 403);
+  assert.equal(schoolLoginResult.body.code, "SCHOOL_APPROVAL_PENDING");
+  assert.equal(schoolLoginResult.body.message, "School registration is awaiting approval.");
+  const [rejectedUser, multiSchoolUser] = await User.create([
+    {
+      fullName: "Rejected School Owner", email: `rejected-school-${stamp}@example.com`,
+      phone: `0814${stamp}`, password: "RejectedPass9!", role: "CUSTOMER", status: "PENDING",
+    },
+    {
+      fullName: "Multi School Owner", email: `multi-school-${stamp}@example.com`,
+      phone: `0815${stamp}`, password: "MultiSchoolPass9!", role: "CUSTOMER", status: "ACTIVE",
+    },
+  ]);
+  await School.create({
+    name: "Rejected School", address: "Lagos", state: "Lagos",
+    status: "REJECTED", active: false, portalUser: rejectedUser._id,
+  });
+  schoolLoginResult = await invokeController(edupayController, "schoolLogin", {
+    body: { email: `rejected-school-${stamp}@example.com`, password: "RejectedPass9!" },
+  });
+  assert.equal(schoolLoginResult.statusCode, 403);
+  assert.equal(schoolLoginResult.body.code, "SCHOOL_REGISTRATION_REJECTED");
+  const multiSchools = await School.create([
+    { name: "Multi School One", address: "Lagos", state: "Lagos", status: "APPROVED", active: true },
+    { name: "Multi School Two", address: "Abuja", state: "Abuja", status: "APPROVED", active: true },
+  ]);
+  await SchoolUser.create([
+    { school: multiSchools[0]._id, user: multiSchoolUser._id, role: "OWNER", status: "ACTIVE" },
+    { school: multiSchools[1]._id, user: multiSchoolUser._id, role: "SCHOOL_ADMIN", status: "ACTIVE" },
+  ]);
+  schoolLoginResult = await invokeController(edupayController, "schoolLogin", {
+    body: { email: `multi-school-${stamp}@example.com`, password: "MultiSchoolPass9!" },
+  });
+  assert.equal(schoolLoginResult.statusCode, 409);
+  assert.equal(schoolLoginResult.body.code, "EDUPAY_SCHOOL_CONTEXT_REQUIRED");
+  assert.equal(schoolLoginResult.body.schools.length, 2);
+  schoolLoginResult = await invokeController(edupayController, "schoolLogin", {
+    body: {
+      email: `multi-school-${stamp}@example.com`,
+      password: "MultiSchoolPass9!",
+      schoolId: multiSchools[1]._id,
+    },
+  });
+  assert.equal(schoolLoginResult.statusCode, 200);
+  assert.equal(schoolLoginResult.body.schoolId, String(multiSchools[1]._id));
+  assert.equal(schoolLoginResult.body.role, "SCHOOL_ADMIN");
   const [school, otherSchool] = await School.create([
     { name: "Academic School", address: "Lagos", state: "Lagos", status: "APPROVED", active: true },
     { name: "Other School", address: "Abuja", state: "Abuja", status: "APPROVED", active: true },

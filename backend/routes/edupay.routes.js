@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const controller = require("../controllers/edupay.controller");
-const { customer, school, headOffice } = require("../middleware/edupay.middleware");
+const { customer, school, schoolManager, schoolFinance, headOffice } = require("../middleware/edupay.middleware");
 const academic = require("../controllers/edupayAcademic.controller");
 const router = express.Router();
 const schoolUpload = (req, res, next) => {
@@ -36,20 +36,20 @@ router.get("/repayments", ...customer, controller.repayments);
 router.post("/repayments/:repaymentId/payments", ...customer, controller.repay);
 router.get("/receipts/:reference", ...customer, controller.receipt);
 
-router.get("/school/dashboard", ...school, controller.schoolDashboard);
-router.get("/school/profile", ...school, controller.schoolProfile);
-router.get("/school/sessions", ...school, controller.schoolSessions);
-router.get("/school/terms", ...school, controller.schoolTerms);
-router.get("/school/classes", ...school, controller.schoolClasses);
-router.get("/school/fees", ...school, controller.schoolFees);
-router.post("/school/sessions", ...school, controller.schoolCreateSession);
-router.post("/school/terms", ...school, controller.schoolCreateTerm);
-router.post("/school/classes", ...school, controller.schoolCreateClass);
-router.post("/school/fees", ...school, controller.schoolCreateFee);
-router.get("/school/students", ...school, controller.schoolStudents);
-router.get("/school/settlements", ...school, controller.schoolSettlements);
-router.get("/school/reconciliation", ...school, controller.schoolReconciliation);
-router.get("/school/reports", ...school, controller.schoolReport);
+router.get("/school/dashboard", ...schoolFinance, controller.schoolDashboard);
+router.get("/school/profile", ...schoolFinance, controller.schoolProfile);
+router.get("/school/sessions", ...schoolManager, controller.schoolSessions);
+router.get("/school/terms", ...schoolManager, controller.schoolTerms);
+router.get("/school/classes", ...schoolManager, controller.schoolClasses);
+router.get("/school/fees", ...schoolFinance, controller.schoolFees);
+router.post("/school/sessions", ...schoolManager, controller.schoolCreateSession);
+router.post("/school/terms", ...schoolManager, controller.schoolCreateTerm);
+router.post("/school/classes", ...schoolManager, controller.schoolCreateClass);
+router.post("/school/fees", ...schoolManager, controller.schoolCreateFee);
+router.get("/school/students", ...schoolFinance, controller.schoolStudents);
+router.get("/school/settlements", ...schoolFinance, controller.schoolSettlements);
+router.get("/school/reconciliation", ...schoolFinance, controller.schoolReconciliation);
+router.get("/school/reports", ...schoolFinance, controller.schoolReport);
 
 // Academic management is intentionally isolated from the existing finance
 // handlers above. Every endpoint still passes the existing school membership

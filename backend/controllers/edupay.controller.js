@@ -371,11 +371,37 @@ exports.schoolLogin = async (req, res) => {
   try {
     const user = await User.findOne({ email: String(req.body.email || "").trim().toLowerCase() }).select("+password +authTokenVersion");
     if (!user || !(await bcrypt.compare(String(req.body.password || ""), user.password || ""))) return res.status(401).json({ success: false, message: "Invalid school credentials." });
-    if (user.status !== "ACTIVE") return res.status(403).json({ success: false, message: "This school account is inactive or suspended." });
-    const membership = await SchoolUser.findOne({ user: user._id, status: "ACTIVE" }).populate("school");
-    if (!membership || membership.school.status !== "APPROVED" || !membership.school.active) return res.status(403).json({ success: false, message: "Approved school access required." });
+    const linkedSchool = await School.findOne({ portalUser: user._id }).select("status active").lean();
+    if (linkedSchool?.status === "PENDING_REVIEW" || linkedSchool?.status === "UNDER_REVIEW") return res.status(403).json({ success: false, code: "SCHOOL_APPROVAL_PENDING", message: "School registration is awaiting approval." });
+    if (linkedSchool?.status === "REJECTED") return res.status(403).json({ success: false, code: "SCHOOL_REGISTRATION_REJECTED", message: "School registration was rejected. Contact ServicePay support for assistance." });
+    if (user.status !== "ACTIVE") return res.status(403).json({ success: false, code: "SCHOOL_ACCOUNT_INACTIVE", message: "This school account is inactive or suspended." });
+    const memberships = await SchoolUser.find({ user: user._id, status: "ACTIVE" })
+      .sort({ createdAt: 1 })
+      .populate("school");
+    const eligible = memberships.filter((row) => row.school && row.school.status === "APPROVED" && row.school.active);
+    if (!eligible.length) return res.status(403).json({ success: false, code: "SCHOOL_ACCESS_REQUIRED", message: "Approved school access required." });
+    const requestedSchoolId = String(req.body.schoolId || "").trim();
+    if (!requestedSchoolId && eligible.length > 1) {
+      return res.status(409).json({
+        success: false,
+        code: "EDUPAY_SCHOOL_CONTEXT_REQUIRED",
+        message: "Select the school you want to open.",
+        schools: eligible.map((row) => ({
+          schoolId: String(row.school._id),
+          schoolName: row.school.name,
+          role: row.role,
+          status: row.status,
+          schoolStatus: row.school.status,
+        })),
+      });
+    }
+    const membership = requestedSchoolId
+      ? eligible.find((row) => String(row.school._id) === requestedSchoolId)
+      : eligible[0];
+    if (!membership) return res.status(403).json({ success: false, code: "SCHOOL_CONTEXT_FORBIDDEN", message: "The selected school is not an active membership." });
     const token = jwt.sign({ id: user._id, authTokenVersion: Number(user.authTokenVersion || 0), edupaySchool: membership.school._id }, process.env.JWT_SECRET, { expiresIn: "12h" });
-    res.json({ success: true, token, school: publicSchool(membership.school), role: membership.role, mustChangePassword: user.mustChangePassword === true, user: { id: user._id, fullName: user.fullName, email: user.email } });
+    const schoolId = String(membership.school._id);
+    res.json({ success: true, token, schoolId, school: publicSchool(membership.school), role: membership.role, schoolMembership: { schoolId, role: membership.role, status: membership.status, schoolStatus: membership.school.status }, mustChangePassword: user.mustChangePassword === true, user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role } });
   } catch (error) { errorResponse(res, error); }
 };
 exports.createSchoolRequest = async (req, res) => {

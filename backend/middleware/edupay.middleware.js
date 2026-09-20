@@ -20,4 +20,31 @@ const school = [protect, async (req, res, next) => {
     req.eduPaySchool = membership.school; req.eduPaySchoolUser = membership; return next();
   } catch (error) { return next(error); }
 }];
-module.exports = { customer, headOffice, school };
+const allowSchoolRoles = (...roles) => {
+  const allowed = new Set(roles.map((role) => String(role).toUpperCase()));
+  return (req, res, next) => {
+    const role = String(req.eduPaySchoolUser?.role || "").toUpperCase();
+    if (allowed.has(role)) return next();
+    return res.status(403).json({
+      success: false,
+      code: "EDUPAY_SCHOOL_ROLE_REQUIRED",
+      message: "This school role is not authorized for this section.",
+    });
+  };
+};
+const schoolManager = [
+  ...school,
+  allowSchoolRoles("OWNER", "ADMIN", "SCHOOL_ADMIN"),
+];
+const schoolFinance = [
+  ...school,
+  allowSchoolRoles("OWNER", "ADMIN", "SCHOOL_ADMIN", "FINANCE"),
+];
+module.exports = {
+  customer,
+  headOffice,
+  school,
+  schoolManager,
+  schoolFinance,
+  allowSchoolRoles,
+};
