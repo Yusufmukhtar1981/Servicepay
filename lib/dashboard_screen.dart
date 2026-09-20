@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'airtime_screen.dart';
 import 'ai_support_screen.dart';
@@ -63,6 +65,7 @@ import 'services/announcement_service.dart';
 import 'services/reward_progress_service.dart';
 import 'widgets/announcement_widgets.dart';
 import 'edupay/edupay_screen.dart';
+import 'school_portal_handoff_client.dart';
 
 List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   required List<ServicePayAnnouncement> loaded,
@@ -95,9 +98,11 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
     this.client,
+    this.schoolPortalSupported,
   });
 
   final http.Client? client;
+  final bool? schoolPortalSupported;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -138,6 +143,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<Map<String, dynamic>> recentTransactions = <Map<String, dynamic>>[];
   List<_DashboardServiceStatus> activeServiceStatuses =
       <_DashboardServiceStatus>[];
+  List<Map<String, dynamic>> schoolPortalMemberships =
+      <Map<String, dynamic>>[];
+  bool isOpeningSchoolPortal = false;
+  bool get _schoolPortalSupported => widget.schoolPortalSupported ?? kIsWeb;
   CustomerFeatureConfiguration featureConfiguration =
       CustomerFeatureConfigurationService.defaults();
   List<ServicePayAnnouncement> announcements = <ServicePayAnnouncement>[];
@@ -291,6 +300,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         _loadRecentTransactions(token),
         _loadNotificationSummary(token),
         _loadActiveServiceStatuses(token),
+        _loadSchoolPortalMemberships(token),
       ]);
       receivedFreshWalletBalance = results.first == true;
       // Announcements are deliberately non-blocking: dashboard data remains
@@ -308,6 +318,165 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return receivedFreshWalletBalance;
+  }
+
+  Future<void> _loadSchoolPortalMemberships(String token) async {
+    if (!_schoolPortalSupported) return;
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/edupay/school/handoff/options'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      final decoded = _decodeDashboardResponse(response.body);
+      final schools = decoded is Map ? decoded['schools'] : null;
+      if (!mounted || response.statusCode != 200 || schools is! List) return;
+      setState(() {
+        schoolPortalMemberships = schools
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+      });
+    } catch (_) {
+      // School Portal eligibility is optional and must not block the dashboard.
+    }
+  }
+
+  Future<void> _openSchoolPortal() async {
+    if (isOpeningSchoolPortal || schoolPortalMemberships.isEmpty) return;
+    Map<String, dynamic>? selected = schoolPortalMemberships.length == 1
+        ? schoolPortalMemberships.first
+        : null;
+    if (selected == null) {
+      selected = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Select a school',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 12),
+                ...schoolPortalMemberships.map(
+                  (school) => ListTile(
+                    leading: const Icon(
+                      Icons.school_rounded,
+                      color: primaryGreen,
+                    ),
+                    title: Text(school['schoolName']?.toString() ?? 'School'),
+                    subtitle: Text(school['role']?.toString() ?? ''),
+                    onTap: () => Navigator.of(context).pop(school),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    if (selected == null || !mounted) return;
+    setState(() => isOpeningSchoolPortal = true);
+    final client = createSchoolPortalHandoffClient();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = await getSavedAuthToken(prefs);
+      if (token == null) throw Exception('Please sign in again.');
+      final response = await client.post(
+        Uri.parse('$baseUrl/edupay/school/handoff'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'schoolId': selected['schoolId']}),
+      );
+      final decoded = _decodeDashboardResponse(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(_dashboardResponseMessage(
+          decoded,
+          fallback: 'Unable to open School Portal.',
+        ));
+      }
+      final portalUrl =
+          decoded is Map ? decoded['portalUrl']?.toString() : null;
+      final opened = await launchUrl(
+        Uri.parse(portalUrl ?? 'https://admin.servicepay.ng/school/'),
+        webOnlyWindowName: '_self',
+      );
+      if (!opened) throw Exception('Unable to open School Portal.');
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ));
+      }
+    } finally {
+      client.close();
+      if (mounted) setState(() => isOpeningSchoolPortal = false);
+    }
+  }
+
+  Widget buildSchoolPortalCard() {
+    if (!_schoolPortalSupported || schoolPortalMemberships.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return InkWell(
+      key: const Key('customer-school-portal-card'),
+      borderRadius: BorderRadius.circular(20),
+      onTap: isOpeningSchoolPortal ? null : _openSchoolPortal,
+      child: Ink(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF075D35), Color(0xFF0A8F4D)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(children: [
+          const Icon(Icons.school_rounded, color: Colors.white, size: 34),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'School Portal',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Manage students, teachers, attendance, results and school activities.',
+                  style: TextStyle(color: Color(0xFFE5F7ED), fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          if (isOpeningSchoolPortal)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          else
+            const Icon(Icons.arrow_forward_rounded, color: Colors.white),
+        ]),
+      ),
+    );
   }
 
   Future<void> _loadAnnouncements(String token) async {
@@ -5277,6 +5446,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   buildPremiumBalanceCard(),
                   const SizedBox(height: 12),
                   buildPremiumActionRow(),
+                  if (schoolPortalMemberships.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    buildSchoolPortalCard(),
+                  ],
                   const SizedBox(height: 20),
                   _buildEduPayEntry(),
                   const SizedBox(height: 18),
