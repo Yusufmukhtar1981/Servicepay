@@ -12,7 +12,23 @@ const { models } = require("../services/edupay.service");
 const { validateStrongPassword } = require("../utils/passwordPolicy");
 const School = models.School;
 const EduPayChild = models.Child;
-const fail = (res, e) => res.status(e.statusCode || 500).json({ success: false, message: e.message || "Academic request failed." });
+const fail = (res, e) => {
+  if (e?.code === 11000) {
+    const field = Object.keys(e.keyPattern || {})[0];
+    const message = field === "staffId"
+      ? "Staff ID already exists in this school."
+      : field === "user"
+        ? "A teacher account already exists for this user in this school."
+        : "This academic record already exists.";
+    return res.status(409).json({ success: false, message });
+  }
+  return res.status(e.statusCode || 500).json({ success: false, message: e.message || "Academic request failed." });
+};
+const inputError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
 const temporaryPassword = (value) => {
   const check = validateStrongPassword(String(value || ""));
   if (!check.valid) { const e = new Error(check.message); e.statusCode = 400; throw e; }
@@ -252,10 +268,24 @@ exports.updateStudent = async (req, res) => {
 };
 
 const assignmentInputs = (body) => {
-  if (Array.isArray(body.assignments)) return body.assignments.map((row) => ({ classLevel: row.classLevel || row.classId, subject: row.subject || row.subjectId }));
+  if (Array.isArray(body.assignments)) {
+    return body.assignments.map((row) => {
+      const assignment = { classLevel: row.classLevel || row.classId, subject: row.subject || row.subjectId };
+      if (!assignment.classLevel || !assignment.subject) {
+        throw inputError("Select both a class and subject for every assignment.");
+      }
+      return assignment;
+    });
+  }
+  const hasClasses = body.classIds !== undefined;
+  const hasSubjects = body.subjectIds !== undefined;
+  if (!hasClasses && !hasSubjects) return [];
   const classes = Array.isArray(body.classIds) ? body.classIds : [];
   const subjects = Array.isArray(body.subjectIds) ? body.subjectIds : [];
-  return classes.map((classLevel, index) => ({ classLevel, subject: subjects[index] })).filter((row) => row.subject);
+  if (classes.length !== subjects.length || classes.some((value) => !value) || subjects.some((value) => !value)) {
+    throw inputError("Select both a class and subject for every assignment.");
+  }
+  return classes.map((classLevel, index) => ({ classLevel, subject: subjects[index] }));
 };
 const validateAssignments = async (assignments, school, session = null) => {
   for (const assignment of assignments) {
@@ -287,6 +317,7 @@ exports.createTeacher = async (req, res) => {
     let result;
     await session.withTransaction(async () => {
     let user;
+    let accountCreated = false;
     if (req.body.userId) {
       id(req.body.userId, "User");
       user = await User.findOne({ _id: req.body.userId, status: "ACTIVE" }).select("_id fullName email phone").session(session);
@@ -296,17 +327,40 @@ exports.createTeacher = async (req, res) => {
     } else {
       const email = String(req.body.email || "").trim().toLowerCase();
       const phone = String(req.body.phone || "").trim();
-       if (!req.body.fullName || !email || !phone) { const e = new Error("Full name, email, and phone are required for a new teacher account."); e.statusCode = 400; throw e; }
-      const password = temporaryPassword(req.body.temporaryPassword);
-      if (await User.exists({ $or: [{ email }, { phone }] }).session(session)) { const e = new Error("An account already exists with this email or phone."); e.statusCode = 409; throw e; }
-      [user] = await User.create([{ fullName: req.body.fullName, email, phone, password, role: "CUSTOMER", status: "ACTIVE", mustChangePassword: true }], { session });
+      if (!String(req.body.fullName || "").trim()) throw inputError("Full name is required.");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw inputError("Enter a valid email address.");
+      if (!/^\+?[0-9]{7,20}$/.test(phone)) throw inputError("Enter a valid phone number.");
+      const matches = await User.find({ $or: [{ email }, { phone }] })
+        .select("_id fullName email phone status mustChangePassword")
+        .session(session);
+      if (matches.length > 1) throw inputError("Email and phone belong to different ServicePay accounts.", 409);
+      user = matches[0];
+      if (user) {
+        if (user.status !== "ACTIVE") throw inputError("The matching ServicePay account is not active.", 409);
+        const otherMembership = await SchoolUser.findOne({ user: user._id, school: { $ne: school }, status: { $in: ["ACTIVE", "INVITED"] } }).session(session);
+        if (otherMembership) throw inputError("This user already belongs to another school.", 409);
+        const sameMembership = await SchoolUser.findOne({ user: user._id, school, status: { $in: ["ACTIVE", "INVITED"] } }).session(session);
+        if (sameMembership && sameMembership.role !== "TEACHER") {
+          throw inputError("This ServicePay account already has another role in this school.", 409);
+        }
+        if (await EduPayTeacher.exists({ school, user: user._id }).session(session)) {
+          throw inputError("A teacher with this email or phone already exists.", 409);
+        }
+      } else {
+        const password = temporaryPassword(req.body.temporaryPassword);
+        [user] = await User.create([{ fullName: req.body.fullName, email, phone, password, role: "CUSTOMER", status: "ACTIVE", mustChangePassword: true }], { session });
+        accountCreated = true;
+      }
     }
     const staffId = String(req.body.staffId || "").trim();
-    if (!staffId) { const e = new Error("Teacher ID is required."); e.statusCode = 400; throw e; }
+    if (!staffId) throw inputError("Staff ID is required.");
+    if (await EduPayTeacher.exists({ school, staffId }).session(session)) {
+      throw inputError("Staff ID already exists in this school.", 409);
+    }
     const [row] = await EduPayTeacher.create([{ school, user: user._id, staffId, fullName: req.body.fullName || user.fullName, email: req.body.email || user.email, phone: req.body.phone || user.phone, gender: req.body.gender, responsibility: req.body.responsibility, createdBy: req.user._id }], { session });
     await SchoolUser.updateOne({ school, user: user._id }, { $set: { role: "TEACHER", status: "ACTIVE" }, $setOnInsert: { school, user: user._id, invitedBy: req.user._id } }, { upsert: true, session });
     const assignments = await saveAssignments(row, assignmentInputs(req.body), req.user._id, { session });
-    await audit({ actor: req.user._id, action: "EDUPAY_TEACHER_CREATED", entityType: "EduPayTeacher", entityId: row._id, school, metadata: { accountCreated: !req.body.userId, assignmentCount: assignments.length }, req, session });
+    await audit({ actor: req.user._id, action: "EDUPAY_TEACHER_CREATED", entityType: "EduPayTeacher", entityId: row._id, school, metadata: { accountCreated, assignmentCount: assignments.length }, req, session });
     result = { teacher: row, assignments, account: { userId: user._id, email: user.email, mustChangePassword: user.mustChangePassword === true } };
     });
     res.status(201).json({ success: true, ...result });

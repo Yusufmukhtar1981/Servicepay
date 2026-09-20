@@ -54,7 +54,7 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   const stamp = Date.now();
   const [owner, teacherUser, parent, otherParent, headOffice] = await User.create([
     { fullName: "School Owner", phone: `0801${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
-    { fullName: "Teacher One", phone: `0802${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
+    { fullName: "Teacher One", email: `teacher-one-${stamp}@example.com`, phone: `0802${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
     { fullName: "Parent One", phone: `0803${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
     { fullName: "Other Parent", phone: `0804${stamp}`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE" },
     { fullName: "Head Office", phone: `0805${stamp}`, password: "Password123!", role: "HEAD_OFFICE", status: "ACTIVE" },
@@ -192,9 +192,15 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   const subject = result.body.subject;
 
   result = await invoke("createTeacher", request(owner, school, "OWNER", {
-    userId: teacherUser._id, staffId: "T-001",
+    fullName: teacherUser.fullName,
+    email: teacherUser.email,
+    phone: "08020000001",
+    staffId: "T-001",
+    temporaryPassword: "IgnoredPass9!",
   }));
   assert.equal(result.statusCode, 201);
+  assert.equal(String(result.body.teacher.user), String(teacherUser._id));
+  assert.equal(result.body.assignments.length, 0);
   const teacher = result.body.teacher;
 
   result = await invoke("assignTeacher", request(owner, school, "OWNER", {
@@ -224,6 +230,17 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }));
   assert.equal(result.statusCode, 400);
   assert.equal(await User.exists({ email: failedTeacherEmail }), null);
+  result = await invoke("createTeacher", request(owner, school, "OWNER", {
+    fullName: "Incomplete Assignment Teacher",
+    email: `incomplete-${stamp}@example.com`,
+    phone: `0818${stamp}`,
+    staffId: `INCOMPLETE-${stamp}`,
+    temporaryPassword: "TempPass9!",
+    classIds: [classLevel._id],
+    subjectIds: [],
+  }));
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.body.message, "Select both a class and subject for every assignment.");
   const provisionedUser = await User.findOne({ email: `provisioned-${stamp}@example.com` });
   assert.equal(provisionedUser.mustChangePassword, true);
   result = await invoke("updateTeacher", request(owner, school, "OWNER", {
