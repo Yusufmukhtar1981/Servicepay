@@ -163,7 +163,7 @@ exports.listAcademic = async (req, res) => {
       assignments = scope.assignments;
       const classIds = new Set(assignments.map((row) => String(row.classLevel)));
       const subjectIds = new Set(assignments.map((row) => String(row.subject)));
-      classes = classes.filter((row) => classIds.has(String(row._id)));
+      classes = classes.filter((row) => row.status === "ACTIVE" && classIds.has(String(row._id)));
       subjects = subjects.filter((row) => subjectIds.has(String(row._id)));
     }
     res.json({ success: true, sessions, terms, classes, subjects, assignments });
@@ -206,6 +206,9 @@ const authorizeStudentClass = async (req, value) => {
     return null;
   }
   const classLevel = await ensureOwned(EduPayClass, value, schoolId(req), "Class");
+  if (!isManager(req) && classLevel.status !== "ACTIVE") {
+    throw inputError("You can only manage students in active classes assigned to you.", 403);
+  }
   if (!isManager(req) && !(await teacherFor(req, classLevel._id))) {
     throw inputError("You can only manage students in classes assigned to you.", 403);
   }
