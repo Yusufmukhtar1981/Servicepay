@@ -150,6 +150,11 @@ class _RiderTransactionPinScreenState extends State<RiderTransactionPinScreen> {
 
       final data = _decode(response);
 
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+        return;
+      }
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (!mounted) return;
 
@@ -263,6 +268,11 @@ class _RiderTransactionPinScreenState extends State<RiderTransactionPinScreen> {
           .timeout(const Duration(seconds: 30));
 
       final data = _decode(response);
+
+      if (response.statusCode == 401) {
+        await RiderAuthSession.handleUnauthorized();
+        return;
+      }
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         _currentPinController.clear();
