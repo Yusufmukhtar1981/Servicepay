@@ -1,9 +1,11 @@
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const { customer, school, headOffice } = require("../middleware/edupay.middleware");
 const { EduPayAcademicSession, EduPayTerm, EduPayClass } = require("../models/edupayAcademic.model");
 const SchoolUser = require("../models/edupaySchoolUser.model");
+const SchoolHandoff = require("../models/edupaySchoolHandoff.model");
 const User = require("../models/user.model");
 const { getSettings, audit, notify, round, reference, hash, ensureObjectId, calculateSettlement, availableSavings, contributeFromWallet, contributeSponsorFromWallet, repayFromWallet, confirmSettlement, reverseSettlement, createEduLedger, createSettlement, models } = require("../services/edupay.service");
 const { School, Child, Plan, Contribution, EduLedger, Fee, Settlement, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution } = models;
@@ -16,6 +18,46 @@ const edupaySquad = require("../services/edupaySquad.service");
 const { evaluateEduPayReadiness } = require("./featureControl.controller");
 const edupaySquadService = require("../services/edupaySquad.service");
 const { validateStrongPassword } = require("../utils/passwordPolicy");
+
+const SCHOOL_HANDOFF_COOKIE = "servicepay_school_handoff";
+const SCHOOL_HANDOFF_TTL_MS = 2 * 60 * 1000;
+const SCHOOL_MANAGEMENT_ROLES = new Set(["OWNER", "ADMIN", "SCHOOL_ADMIN"]);
+const SCHOOL_PORTAL_ORIGIN = "https://admin.servicepay.ng";
+const handoffCookieOptions = (req) => ({
+  httpOnly: true,
+  secure: req.secure || String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https" || process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/api/edupay/school/handoff/consume",
+});
+const readCookie = (req, name) => String(req.headers.cookie || "")
+  .split(";")
+  .map((part) => part.trim().split("="))
+  .find(([key]) => key === name)?.slice(1).join("=") || "";
+const clearHandoffCookie = (req, res) => res.clearCookie(SCHOOL_HANDOFF_COOKIE, handoffCookieOptions(req));
+const eligibleManagementMemberships = async (userId) => {
+  const memberships = await SchoolUser.find({ user: userId, status: "ACTIVE", role: { $in: [...SCHOOL_MANAGEMENT_ROLES] } })
+    .sort({ createdAt: 1 })
+    .populate("school");
+  return memberships.filter((row) => row.school && row.school.status === "APPROVED" && row.school.active);
+};
+const schoolSessionResponse = (user, membership) => {
+  const schoolId = String(membership.school._id);
+  const token = jwt.sign(
+    { id: user._id, authTokenVersion: Number(user.authTokenVersion || 0), edupaySchool: membership.school._id },
+    process.env.JWT_SECRET,
+    { expiresIn: "12h" },
+  );
+  return {
+    success: true,
+    token,
+    schoolId,
+    school: publicSchool(membership.school),
+    role: membership.role,
+    schoolMembership: { schoolId, role: membership.role, status: membership.status, schoolStatus: membership.school.status },
+    mustChangePassword: user.mustChangePassword === true,
+    user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role },
+  };
+};
 
 const safe = (doc) => doc?.toObject ? doc.toObject() : doc;
 const publicSchool = (school) => { const row = safe(school) || {}; delete row.bankDetails; delete row.supportingDocuments; delete row.logo; delete row.portalUser; delete row.sourceRequest; delete row.normalizedSchoolName; delete row.normalizedLocation; delete row.normalizedAddress; delete row.sourceRequestNormalizedSchoolName; delete row.sourceRequestNormalizedLocation; return row; };
@@ -399,10 +441,86 @@ exports.schoolLogin = async (req, res) => {
       ? eligible.find((row) => String(row.school._id) === requestedSchoolId)
       : eligible[0];
     if (!membership) return res.status(403).json({ success: false, code: "SCHOOL_CONTEXT_FORBIDDEN", message: "The selected school is not an active membership." });
-    const token = jwt.sign({ id: user._id, authTokenVersion: Number(user.authTokenVersion || 0), edupaySchool: membership.school._id }, process.env.JWT_SECRET, { expiresIn: "12h" });
-    const schoolId = String(membership.school._id);
-    res.json({ success: true, token, schoolId, school: publicSchool(membership.school), role: membership.role, schoolMembership: { schoolId, role: membership.role, status: membership.status, schoolStatus: membership.school.status }, mustChangePassword: user.mustChangePassword === true, user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role } });
+    res.json(schoolSessionResponse(user, membership));
   } catch (error) { errorResponse(res, error); }
+};
+
+exports.schoolHandoffOptions = async (req, res) => {
+  try {
+    const eligible = await eligibleManagementMemberships(req.user._id);
+    return res.json({
+      success: true,
+      schools: eligible.map((row) => ({
+        schoolId: String(row.school._id),
+        schoolName: row.school.name,
+        role: row.role,
+        status: row.status,
+        schoolStatus: row.school.status,
+      })),
+    });
+  } catch (error) { return errorResponse(res, error); }
+};
+
+exports.createSchoolHandoff = async (req, res) => {
+  try {
+    const requestedSchoolId = String(req.body?.schoolId || "").trim();
+    if (!mongoose.isValidObjectId(requestedSchoolId)) {
+      return res.status(400).json({ success: false, code: "SCHOOL_CONTEXT_REQUIRED", message: "Select an approved school." });
+    }
+    const eligible = await eligibleManagementMemberships(req.user._id);
+    const membership = eligible.find((row) => String(row.school._id) === requestedSchoolId);
+    if (!membership) {
+      return res.status(403).json({ success: false, code: "SCHOOL_CONTEXT_FORBIDDEN", message: "The selected school is not an active management membership." });
+    }
+    const code = crypto.randomBytes(32).toString("base64url");
+    await SchoolHandoff.create({
+      codeHash: crypto.createHash("sha256").update(code).digest("hex"),
+      user: req.user._id,
+      school: membership.school._id,
+      expiresAt: new Date(Date.now() + SCHOOL_HANDOFF_TTL_MS),
+    });
+    res.cookie(SCHOOL_HANDOFF_COOKIE, code, { ...handoffCookieOptions(req), maxAge: SCHOOL_HANDOFF_TTL_MS });
+    return res.status(201).json({ success: true, portalUrl: "https://admin.servicepay.ng/school/" });
+  } catch (error) { return errorResponse(res, error); }
+};
+
+exports.consumeSchoolHandoff = async (req, res) => {
+  try {
+    const origin = String(req.headers.origin || "").trim().replace(/\/$/, "");
+    const previewOrigins = String(process.env.REPLIT_DOMAINS || "")
+      .split(",")
+      .map((host) => host.trim())
+      .filter(Boolean)
+      .map((host) => `https://${host}`);
+    if (origin && origin !== SCHOOL_PORTAL_ORIGIN && !previewOrigins.includes(origin)) {
+      clearHandoffCookie(req, res);
+      return res.status(403).json({ success: false, code: "SCHOOL_HANDOFF_ORIGIN_FORBIDDEN", message: "School Portal handoff origin is not allowed." });
+    }
+    const code = decodeURIComponent(readCookie(req, SCHOOL_HANDOFF_COOKIE));
+    clearHandoffCookie(req, res);
+    if (!code) return res.status(401).json({ success: false, code: "SCHOOL_HANDOFF_REQUIRED", message: "School Portal handoff required." });
+    const codeHash = crypto.createHash("sha256").update(code).digest("hex");
+    const handoff = await SchoolHandoff.findOneAndUpdate(
+      { codeHash, usedAt: null, expiresAt: { $gt: new Date() } },
+      { $set: { usedAt: new Date() } },
+      { new: true },
+    ).lean();
+    if (!handoff) return res.status(401).json({ success: false, code: "SCHOOL_HANDOFF_INVALID", message: "This School Portal handoff is invalid or has expired." });
+    const user = await User.findOne({ _id: handoff.user, status: "ACTIVE" }).select("+authTokenVersion");
+    const membership = await SchoolUser.findOne({
+      user: handoff.user,
+      school: handoff.school,
+      status: "ACTIVE",
+      role: { $in: [...SCHOOL_MANAGEMENT_ROLES] },
+    }).populate("school");
+    if (!user || !membership || !membership.school || membership.school.status !== "APPROVED" || !membership.school.active) {
+      return res.status(403).json({ success: false, code: "SCHOOL_HANDOFF_FORBIDDEN", message: "Approved active school management access is required." });
+    }
+    return res.json(schoolSessionResponse(user, membership));
+  } catch (error) {
+    clearHandoffCookie(req, res);
+    return errorResponse(res, error);
+  }
 };
 exports.createSchoolRequest = async (req, res) => {
   let normalizedSchoolName;

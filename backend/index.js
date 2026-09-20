@@ -177,7 +177,25 @@ const adminEdupayRoutes = require("./routes/adminEdupay.routes");
 const edupaySquadWebhookRoutes = require("./routes/edupaySquadWebhook.routes");
 
 app.use(helmet());
-app.use(cors());
+const productionCorsOrigins = new Set([
+  "https://servicepay.ng",
+  "https://www.servicepay.ng",
+  "https://admin.servicepay.ng",
+  ...String(process.env.REPLIT_DOMAINS || "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean)
+    .map((host) => `https://${host}`),
+]);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || productionCorsOrigins.has(origin.replace(/\/$/, ""))) {
+      return callback(null, true);
+    }
+    return callback(null, false);
+  },
+  credentials: true,
+}));
 // Must precede the global JSON parser so Squad HMAC covers the exact bytes.
 app.use("/api/edupay/webhooks/squad", edupaySquadWebhookRoutes);
 

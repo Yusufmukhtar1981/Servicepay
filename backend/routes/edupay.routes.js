@@ -12,6 +12,7 @@ const schoolUpload = (req, res, next) => {
 // Public/safe entry points.
 router.post("/schools/apply", schoolUpload, controller.applySchoolMultipartDirect);
 router.post("/school/auth/login", controller.schoolLogin);
+router.post("/school/handoff/consume", controller.consumeSchoolHandoff);
 // A school discovery request is non-financial onboarding and must remain
 // available while EduPay initiation is paused.
 router.post("/school-requests", ...customer, controller.createSchoolRequest);
@@ -22,6 +23,8 @@ router.get("/schools/:schoolId/fees", controller.listFees);
 router.get("/schools/:schoolId/catalogue", controller.schoolCatalogue);
 
 router.get("/dashboard", ...customer, controller.dashboard);
+router.get("/school/handoff/options", ...customer, controller.schoolHandoffOptions);
+router.post("/school/handoff", ...customer, controller.createSchoolHandoff);
 router.get("/children", ...customer, controller.listChildren);
 router.post("/children", ...customer, controller.createChild);
 router.patch("/children/:childId", ...customer, controller.updateChild);
