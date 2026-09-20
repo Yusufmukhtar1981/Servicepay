@@ -14,10 +14,12 @@ const School = models.School;
 const EduPayChild = models.Child;
 const fail = (res, e) => {
   if (e?.code === 11000) {
-    const field = Object.keys(e.keyPattern || {})[0];
-    const message = field === "staffId"
+    const fields = e.keyPattern || {};
+    const message = fields.staffId
       ? "Staff ID already exists in this school."
-      : field === "user"
+      : fields.studentId
+        ? "Admission number already exists in this school."
+      : fields.user
         ? "A teacher account already exists for this user in this school."
         : "This academic record already exists.";
     return res.status(409).json({ success: false, message });
@@ -198,6 +200,17 @@ const validateStudentReferences = async (rows, school) => {
     }
   }
 };
+const authorizeStudentClass = async (req, value) => {
+  if (!value) {
+    if (!isManager(req)) throw inputError("Select one of your assigned classes.");
+    return null;
+  }
+  const classLevel = await ensureOwned(EduPayClass, value, schoolId(req), "Class");
+  if (!isManager(req) && !(await teacherFor(req, classLevel._id))) {
+    throw inputError("You can only manage students in classes assigned to you.", 403);
+  }
+  return classLevel;
+};
 const validateRows = (rows) => {
   const seen = new Set(); const validRows = []; const invalidRows = []; const duplicates = [];
   rows.forEach((body, index) => {
@@ -229,6 +242,7 @@ exports.validateStudentImport = async (req, res) => {
     const referenceValid = [];
     for (const row of result.validRows) {
       try {
+        await authorizeStudentClass(req, row.data.classLevel || row.data.classId);
         await validateStudentReferences([row.data], schoolId(req));
         referenceValid.push(row);
       } catch (error) {
@@ -246,15 +260,28 @@ exports.validateStudentImport = async (req, res) => {
 };
 exports.commitStudentImport = async (req, res) => {
   try {
-    if (!manager(req, res)) return; const rows = Array.isArray(req.body.rows) ? req.body.rows : []; const result = validateRows(rows); if (result.invalidRows.length || result.duplicates.length) return res.status(422).json({ success: false, code: "IMPORT_VALIDATION_FAILED", ...result });
-    await validateStudentReferences(rows, schoolId(req)); const docs = rows.map((row) => studentPayload(row, schoolId(req), req.user._id)); const created = await EduPayStudent.insertMany(docs, { ordered: true }); await audit({ actor: req.user._id, action: "EDUPAY_STUDENTS_IMPORTED", entityType: "EduPayStudent", school: schoolId(req), metadata: { count: created.length }, req }); res.status(201).json({ success: true, students: created, count: created.length });
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    const result = validateRows(rows);
+    if (result.invalidRows.length || result.duplicates.length) return res.status(422).json({ success: false, code: "IMPORT_VALIDATION_FAILED", ...result });
+    for (const row of rows) await authorizeStudentClass(req, row.classLevel || row.classId);
+    await validateStudentReferences(rows, schoolId(req));
+    const ids = rows.map((row) => String(row.studentId || row.admissionNumber || "").trim().toUpperCase());
+    const existing = await EduPayStudent.find({ school: schoolId(req), studentId: { $in: ids } }).select("studentId").lean();
+    if (existing.length) return res.status(409).json({ success: false, message: "One or more admission numbers already exist in this school.", duplicates: existing.map((row) => ({ studentId: row.studentId, existing: true })) });
+    const docs = rows.map((row) => studentPayload(row, schoolId(req), req.user._id));
+    const created = await EduPayStudent.insertMany(docs, { ordered: true });
+    await audit({ actor: req.user._id, action: "EDUPAY_STUDENTS_IMPORTED", entityType: "EduPayStudent", school: schoolId(req), metadata: { count: created.length }, req });
+    res.status(201).json({ success: true, students: created, count: created.length });
   } catch (e) { fail(res, e); }
 };
-exports.createStudent = async (req, res) => { try { if (!manager(req, res)) return; await validateStudentReferences([req.body], schoolId(req)); const row = await EduPayStudent.create(studentPayload(req.body, schoolId(req), req.user._id)); res.status(201).json({ success: true, student: row }); } catch (e) { fail(res, e); } };
+exports.createStudent = async (req, res) => { try { await authorizeStudentClass(req, req.body.classLevel || req.body.classId); await validateStudentReferences([req.body], schoolId(req)); const row = await EduPayStudent.create(studentPayload(req.body, schoolId(req), req.user._id)); res.status(201).json({ success: true, student: row }); } catch (e) { fail(res, e); } };
 exports.updateStudent = async (req, res) => {
   try {
-    if (!manager(req, res)) return;
     const student = await ensureOwned(EduPayStudent, req.params.studentId, schoolId(req), "Student");
+    if (!isManager(req)) await authorizeStudentClass(req, student.classLevel);
+    if (req.body.classLevel !== undefined || req.body.classId !== undefined) {
+      await authorizeStudentClass(req, req.body.classLevel || req.body.classId);
+    }
     await validateStudentReferences([req.body], schoolId(req));
     for (const key of ["fullName", "gender", "dateOfBirth", "parent", "parentName", "parentPhone", "parentEmail", "admissionDate", "status"]) {
       if (req.body[key] !== undefined) student[key] = req.body[key] || null;

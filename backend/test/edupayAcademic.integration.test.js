@@ -203,6 +203,16 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   assert.equal(result.body.assignments.length, 0);
   const teacher = result.body.teacher;
 
+  result = await invoke("createStudent", request(teacherUser, school, "TEACHER", {
+    studentId: "NO-CLASS", fullName: "No Class Student",
+  }));
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.body.message, "Select one of your assigned classes.");
+  result = await invoke("createStudent", request(teacherUser, school, "TEACHER", {
+    studentId: "UNASSIGNED", fullName: "Unassigned Student", classLevel: classLevel._id,
+  }));
+  assert.equal(result.statusCode, 403);
+
   result = await invoke("assignTeacher", request(owner, school, "OWNER", {
     teacher: teacher._id, classLevel: classLevel._id, subject: subject._id,
   }));
@@ -309,11 +319,21 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   assert.equal(Number((await User.findById(inactiveUser._id).select("+authTokenVersion")).authTokenVersion), beforeInactiveSuspendVersion + 2);
   assert.equal((await User.findById(inactiveUser._id)).status, "BLOCKED");
 
-  result = await invoke("createStudent", request(owner, school, "OWNER", {
-    studentId: "S-001", fullName: "Student One", classLevel: classLevel._id, parent: parent._id,
+  result = await invoke("createStudent", request(teacherUser, school, "TEACHER", {
+    studentId: "S-001", fullName: "Student One", gender: "FEMALE",
+    classLevel: classLevel._id, parent: parent._id, parentName: "Parent One",
+    parentPhone: "08030000001", parentEmail: `parent-${stamp}@example.com`,
   }));
   assert.equal(result.statusCode, 201);
   const student = result.body.student;
+  assert.equal(student.parentName, "Parent One");
+  assert.equal(student.parentPhone, "08030000001");
+  assert.equal(student.parentEmail, `parent-${stamp}@example.com`);
+  result = await invoke("createStudent", request(teacherUser, school, "TEACHER", {
+    studentId: "S-001", fullName: "Duplicate Student", classLevel: classLevel._id,
+  }));
+  assert.equal(result.statusCode, 409);
+  assert.equal(result.body.message, "Admission number already exists in this school.");
   result = await invoke("createActivity", request(teacherUser, school, "TEACHER", {
     type: "ANNOUNCEMENT", title: "Class update", body: "Bring your workbook.", audience: "CLASS", classLevel: classLevel._id,
   }));
@@ -323,11 +343,48 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }));
   assert.equal(result.statusCode, 201);
   const otherClass = result.body.classLevel;
+  result = await invoke("updateStudent", request(teacherUser, school, "TEACHER", {
+    parentName: "Updated Parent",
+  }, { params: { studentId: student._id } }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.student.parentName, "Updated Parent");
+  result = await invoke("updateStudent", request(teacherUser, school, "TEACHER", {
+    classLevel: otherClass._id,
+  }, { params: { studentId: student._id } }));
+  assert.equal(result.statusCode, 403);
+  result = await invoke("createStudent", request(teacherUser, school, "TEACHER", {
+    studentId: "S-DENIED", fullName: "Denied Student", classLevel: otherClass._id,
+  }));
+  assert.equal(result.statusCode, 403);
+  assert.equal(result.body.message, "You can only manage students in classes assigned to you.");
   result = await invoke("createStudent", request(owner, school, "OWNER", {
     studentId: "S-002", fullName: "Student Two", classLevel: otherClass._id, parent: otherParent._id,
   }));
   assert.equal(result.statusCode, 201);
   const otherStudent = result.body.student;
+  result = await invoke("validateStudentImport", request(teacherUser, school, "TEACHER", {
+    rows: [
+      { studentId: "S-003", fullName: "Bulk Student", classLevel: classLevel._id },
+      { studentId: "S-DENIED-IMPORT", fullName: "Denied Import", classLevel: otherClass._id },
+    ],
+  }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.canCommit, false);
+  assert.equal(result.body.validRows.length, 1);
+  assert.equal(result.body.invalidRows.length, 1);
+  result = await invoke("commitStudentImport", request(teacherUser, school, "TEACHER", {
+    rows: [{ studentId: "S-DENIED-IMPORT", fullName: "Denied Import", classLevel: otherClass._id }],
+  }));
+  assert.equal(result.statusCode, 403);
+  result = await invoke("commitStudentImport", request(teacherUser, school, "TEACHER", {
+    rows: [{
+      studentId: "S-003", fullName: "Bulk Student", classLevel: classLevel._id,
+      parentName: "Bulk Parent", parentPhone: "08030000002",
+    }],
+  }));
+  assert.equal(result.statusCode, 201);
+  assert.equal(result.body.count, 1);
+  const bulkStudent = result.body.students[0];
   for (const activity of [
     { title: "School notice", audience: "SCHOOL" },
     { title: "Other class notice", audience: "CLASS", classLevel: otherClass._id },
@@ -340,7 +397,10 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }
   result = await invoke("listStudents", request(teacherUser, school, "TEACHER"));
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(result.body.students.map((row) => String(row._id)), [String(student._id)]);
+  assert.deepEqual(
+    new Set(result.body.students.map((row) => String(row._id))),
+    new Set([String(student._id), String(bulkStudent._id)]),
+  );
   result = await invoke("listStudents", request(teacherUser, school, "TEACHER", {}, { query: { classId: otherClass._id } }));
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.students.length, 0);
@@ -349,6 +409,13 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   assert.equal(result.body.activities.some((row) => row.title === "School notice"), true);
   assert.equal(result.body.activities.some((row) => row.title === "Class update"), true);
   assert.equal(result.body.activities.some((row) => row.title === "Other class notice" || row.title === "Other student notice"), false);
+
+  result = await invoke("attendanceRoster", request(teacherUser, school, "TEACHER", {}, {
+    query: { classId: classLevel._id },
+  }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.students.some((row) => String(row._id) === String(student._id)), true);
+  assert.equal(result.body.students.some((row) => String(row._id) === String(bulkStudent._id)), true);
 
   result = await invoke("submitAttendance", request(teacherUser, school, "TEACHER", {
     classId: classLevel._id,
