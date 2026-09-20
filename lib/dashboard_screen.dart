@@ -63,6 +63,7 @@ import 'servicepay_theme.dart';
 import 'services/customer_feature_config_service.dart';
 import 'services/announcement_service.dart';
 import 'services/reward_progress_service.dart';
+import 'services/session_store.dart';
 import 'widgets/announcement_widgets.dart';
 import 'edupay/edupay_screen.dart';
 import 'school_portal_handoff_client.dart';
@@ -211,6 +212,15 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<String?> getSavedAuthToken(
     SharedPreferences preferences,
   ) async {
+    final String? secureSessionToken = await SessionStore.readToken();
+    if (secureSessionToken != null && secureSessionToken.trim().isNotEmpty) {
+      String token = secureSessionToken.trim();
+      if (token.toLowerCase().startsWith('bearer ')) {
+        token = token.substring(7).trim();
+      }
+      if (token.isNotEmpty) return token;
+    }
+
     const List<String> tokenKeys = <String>[
       'auth_token',
       'token',
@@ -448,7 +458,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'School Portal',
+                  'SCHOOL PORTAL',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 17,
@@ -457,7 +467,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Manage students, teachers, attendance, results and school activities.',
+                  'Manage your school',
                   style: TextStyle(color: Color(0xFFE5F7ED), fontSize: 12),
                 ),
               ],

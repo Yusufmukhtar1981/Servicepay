@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servicepay_app/dashboard_screen.dart';
+import 'package:servicepay_app/services/session_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 http.Response _response(http.Request request, bool eligible) {
@@ -24,10 +25,16 @@ http.Response _response(http.Request request, bool eligible) {
 }
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({
-        'auth_token': 'customer-token',
-        'user_name': 'School Owner',
-      }));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({
+      'user_name': 'School Owner',
+    });
+    await SessionStore.clear();
+    await SessionStore.writeToken('customer-token');
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('auth_token'), isNull);
+    expect(await SessionStore.readToken(), 'customer-token');
+  });
 
   testWidgets('shows School Portal only for backend-approved memberships', (tester) async {
     await tester.pumpWidget(MaterialApp(
@@ -40,6 +47,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(find.byKey(const Key('customer-school-portal-card')), findsOneWidget);
+    expect(find.text('SCHOOL PORTAL'), findsOneWidget);
+    expect(find.text('Manage your school'), findsOneWidget);
   });
 
   testWidgets('hides School Portal without backend eligibility', (tester) async {
