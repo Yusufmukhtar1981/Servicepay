@@ -126,7 +126,7 @@ const validateRiderAccount = (
   }
 
   if (
-    rider.status !== "ACTIVE"
+    normalizeStatus(rider.status) !== "ACTIVE"
   ) {
     res.status(403).json({
       success: false,

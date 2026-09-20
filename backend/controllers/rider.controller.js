@@ -26,11 +26,18 @@ const normalizeAvailabilityStatus = (value) => {
     .toUpperCase();
 };
 
+const normalizeAccountValue = (value) =>
+  String(value || "").trim().toUpperCase();
+
 const requireDeliveryRider = async (req, res) => {
   const rider = await User.findById(req.user._id).select(
     "role status riderId"
   );
-  if (!rider || rider.role !== "DELIVERY_RIDER" || rider.status !== "ACTIVE") {
+  if (
+    !rider ||
+    normalizeAccountValue(rider.role) !== "DELIVERY_RIDER" ||
+    normalizeAccountValue(rider.status) !== "ACTIVE"
+  ) {
     res.status(403).json({ success: false, message: "Only active delivery riders can manage device registrations." });
     return null;
   }
@@ -137,7 +144,7 @@ exports.getMyRiderProfile = async (
     }
 
     if (
-      rider.role !== "DELIVERY_RIDER"
+      normalizeAccountValue(rider.role) !== "DELIVERY_RIDER"
     ) {
       return res.status(403).json({
         success: false,
@@ -342,7 +349,7 @@ exports.updateLocation = async (
     }
 
     if (
-      rider.role !== "DELIVERY_RIDER"
+      normalizeAccountValue(rider.role) !== "DELIVERY_RIDER"
     ) {
       return res.status(403).json({
         success: false,
@@ -352,7 +359,7 @@ exports.updateLocation = async (
     }
 
     if (
-      rider.status !== "ACTIVE"
+      normalizeAccountValue(rider.status) !== "ACTIVE"
     ) {
       return res.status(403).json({
         success: false,
@@ -497,7 +504,7 @@ exports.updateAvailability = async (
     }
 
     if (
-      rider.role !== "DELIVERY_RIDER"
+      normalizeAccountValue(rider.role) !== "DELIVERY_RIDER"
     ) {
       return res.status(403).json({
         success: false,
@@ -507,7 +514,7 @@ exports.updateAvailability = async (
     }
 
     if (
-      rider.status !== "ACTIVE"
+      normalizeAccountValue(rider.status) !== "ACTIVE"
     ) {
       return res.status(403).json({
         success: false,
@@ -625,7 +632,7 @@ exports.getRiderStatus = async (
     }
 
     if (
-      rider.role !== "DELIVERY_RIDER"
+      normalizeAccountValue(rider.role) !== "DELIVERY_RIDER"
     ) {
       return res.status(403).json({
         success: false,
