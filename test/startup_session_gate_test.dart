@@ -17,9 +17,11 @@ void main() {
   const secureStorageChannel =
       MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
 
-  setUp(() {
+  setUp(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(secureStorageChannel, (_) async => null);
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await SessionStore.clear();
   });
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -89,6 +91,42 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.byType(MainNavigation), findsOneWidget);
+    expect(find.text('Preparing your account…'), findsNothing);
+  });
+
+  testWidgets('legacy rider token restores and migrates after browser reopen',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'accessToken': 'legacy-rider-token',
+    });
+    final MockClient client = MockClient((http.Request request) async {
+      expect(request.headers['Authorization'], 'Bearer legacy-rider-token');
+      return http.Response(
+        jsonEncode(<String, Object>{
+          'success': true,
+          'user': <String, Object>{
+            '_id': 'rider-1',
+            'role': 'DELIVERY_RIDER',
+            'status': 'ACTIVE',
+          },
+        }),
+        200,
+      );
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StartupSessionGate(
+          client: client,
+          preferencesLoader: preferences,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(await SessionStore.readToken(), 'legacy-rider-token');
+    expect((await preferences()).getString('accessToken'), isNull);
     expect(find.text('Preparing your account…'), findsNothing);
   });
 

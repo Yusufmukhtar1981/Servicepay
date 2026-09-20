@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'rider_auth_session.dart';
 
 class RiderTransactionPinScreen extends StatefulWidget {
   const RiderTransactionPinScreen({super.key});
@@ -51,23 +52,8 @@ class _RiderTransactionPinScreenState extends State<RiderTransactionPinScreen> {
   }
 
   Future<String?> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final possibleKeys = <String>[
-      'auth_token',
-      'token',
-      'access_token',
-      'jwt_token',
-    ];
-
-    for (final key in possibleKeys) {
-      final value = prefs.getString(key);
-      if (value != null && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-    }
-
-    return null;
+    final String token = await RiderAuthSession.token();
+    return token.isEmpty ? null : token;
   }
 
   Map<String, String> _headers() {

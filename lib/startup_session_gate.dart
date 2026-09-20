@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'login_routing.dart';
 import 'login_screen.dart';
+import 'rider/rider_auth_session.dart';
 
 enum StartupSessionState {
   checking,
@@ -124,27 +125,25 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
     final int generation = ++_requestGeneration;
 
     try {
-      final SharedPreferences preferences = await widget
-          .preferencesLoader()
-          .timeout(widget.requestTimeout);
-      final String token = (await SessionStore.readToken())?.trim() ?? '';
+      final SharedPreferences preferences =
+          await widget.preferencesLoader().timeout(widget.requestTimeout);
+      final String token =
+          await RiderAuthSession.token(preferences: preferences);
       if (token.isEmpty) {
         _showLoggedOut();
         return;
       }
 
-      final http.Response response = await _client
-          .get(
-            Uri.parse('${StartupSessionGate.baseUrl}/auth/profile'),
-            headers: <String, String>{
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-          )
-          .timeout(widget.requestTimeout);
+      final http.Response response = await _client.get(
+        Uri.parse('${StartupSessionGate.baseUrl}/auth/profile'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(widget.requestTimeout);
 
       if (generation != _requestGeneration || !mounted) return;
-      if (response.statusCode == 401 || response.statusCode == 403) {
+      if (response.statusCode == 401) {
         await _clearLocalSession(preferences);
         _showLoggedOut();
         return;
@@ -175,8 +174,7 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
       await preferences.setString('user_status', status);
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
-        _authenticatedHome =
-            widget.authenticatedHomeOverride ??
+        _authenticatedHome = widget.authenticatedHomeOverride ??
             authenticatedHomeForLogin(
               role,
               mustChangePassword: profile['mustChangePassword'] == true,
@@ -208,9 +206,8 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
   Future<void> _signOut() async {
     _requestGeneration += 1;
     try {
-      final SharedPreferences preferences = await widget
-          .preferencesLoader()
-          .timeout(widget.requestTimeout);
+      final SharedPreferences preferences =
+          await widget.preferencesLoader().timeout(widget.requestTimeout);
       await _clearLocalSession(preferences);
     } catch (error) {
       debugPrint('Local session cleanup failed: $error');

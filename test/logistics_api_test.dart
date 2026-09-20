@@ -2,8 +2,58 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servicepay_app/logistics/logistics_api.dart';
+import 'package:servicepay_app/rider/rider_auth_session.dart';
+import 'package:servicepay_app/services/session_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await SessionStore.clear();
+  });
+
+  test('interstate migrates legacy rider token and sends bearer auth',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'accessToken': 'Bearer rider-interstate-token',
+    });
+    late http.Request captured;
+    final LogisticsApi api = LogisticsApi(
+      baseUrl: 'https://api.servicepay.ng/api',
+      client: MockClient((http.Request request) async {
+        captured = request;
+        return http.Response('{"shipments":[]}', 200);
+      }),
+    );
+
+    await api.list('rider', 'shipments');
+
+    expect(captured.headers['authorization'], 'Bearer rider-interstate-token');
+    expect(await RiderAuthSession.token(), 'rider-interstate-token');
+    expect((await SharedPreferences.getInstance()).getString('accessToken'),
+        isNull);
+  });
+
+  test('interstate clears rider tokens only on genuine 401', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'expired-rider-token',
+    });
+    final LogisticsApi api = LogisticsApi(
+      client: MockClient(
+        (_) async => http.Response('{"message":"Unauthorized"}', 401),
+      ),
+    );
+
+    await expectLater(
+      api.list('rider', 'shipments'),
+      throwsA(isA<LogisticsApiException>()),
+    );
+    expect(
+      (await SharedPreferences.getInstance()).getString('auth_token'),
+      isNull,
+    );
+  });
+
   test('lists only server-provided branch queue records', () async {
     late http.Request captured;
     final LogisticsApi api = LogisticsApi(
@@ -147,17 +197,23 @@ void main() {
       'expressEnabled': false,
     };
     expect(validateInterstateRoutePayload(route), isNull);
-    expect(validateInterstateRoutePayload(<String, dynamic>{
-      ...route,
-      'originBranchId': 'abuja',
-      'destinationBranchId': 'kano',
-      'name': 'Abuja to Kano',
-      'baseFare': 6500,
-    }), isNull);
-    expect(validateInterstateRoutePayload(
-        <String, dynamic>{...route, 'destinationBranchId': 'kano'}), contains('different'));
-    expect(validateInterstateRoutePayload(
-        <String, dynamic>{...route, 'baseFare': -1}), contains('non-negative'));
+    expect(
+        validateInterstateRoutePayload(<String, dynamic>{
+          ...route,
+          'originBranchId': 'abuja',
+          'destinationBranchId': 'kano',
+          'name': 'Abuja to Kano',
+          'baseFare': 6500,
+        }),
+        isNull);
+    expect(
+        validateInterstateRoutePayload(
+            <String, dynamic>{...route, 'destinationBranchId': 'kano'}),
+        contains('different'));
+    expect(
+        validateInterstateRoutePayload(
+            <String, dynamic>{...route, 'baseFare': -1}),
+        contains('non-negative'));
   });
 
   test('sends an allowed trip transition to the canonical admin endpoint',

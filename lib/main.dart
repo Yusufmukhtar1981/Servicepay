@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
+import 'login_screen.dart';
 import 'reset_password_screen.dart';
 import 'startup_session_gate.dart';
 import 'servicepay_theme.dart';
@@ -18,6 +19,7 @@ import 'edupay/edupay_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'rider/rider_delivery_alert_service.dart';
+import 'rider/rider_auth_session.dart';
 
 final GlobalKey<NavigatorState> servicePayNavigatorKey =
     GlobalKey<NavigatorState>();
@@ -70,9 +72,9 @@ Future<void> main() async {
     initializeServicePayServices()
         .timeout(const Duration(seconds: 5))
         .catchError((Object error, StackTrace stackTrace) {
-          debugPrint('ServicePay background startup failed: $error');
-          debugPrintStack(stackTrace: stackTrace);
-        }),
+      debugPrint('ServicePay background startup failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }),
   );
 }
 
@@ -94,8 +96,8 @@ Future<void> initializeServicePayServices() async {
             RiderDeliveryAlertService.handleOpenedMessage(message),
       );
 
-      final RemoteMessage? initialMessage = await FirebaseMessaging.instance
-          .getInitialMessage();
+      final RemoteMessage? initialMessage =
+          await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         await RiderDeliveryAlertService.handleOpenedMessage(initialMessage);
       }
@@ -216,8 +218,7 @@ class ServicePayApp extends StatelessWidget {
 
     final String token = currentUri.queryParameters['token']?.trim() ?? '';
 
-    final bool isResetPasswordLink =
-        path == '/reset-password' ||
+    final bool isResetPasswordLink = path == '/reset-password' ||
         path.endsWith('/reset-password/') ||
         resetMode == 'true' ||
         mode == 'reset-password';
@@ -237,8 +238,7 @@ class ServicePayApp extends StatelessWidget {
     }
 
     if (kIsWeb) {
-      final bool edupayEntry =
-          path == '/edupay' ||
+      final bool edupayEntry = path == '/edupay' ||
           path == '/edupay/' ||
           currentUri.queryParameters['entry']?.toLowerCase() == 'edupay';
       return WebLandingSessionGate(edupayEntry: edupayEntry);
@@ -248,6 +248,14 @@ class ServicePayApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RiderAuthSession.onUnauthorized = () {
+      servicePayNavigatorKey.currentState?.pushAndRemoveUntil<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const LoginScreen(),
+        ),
+        (_) => false,
+      );
+    };
     return MaterialApp(
       title: 'ServicePay',
       navigatorKey: servicePayNavigatorKey,
@@ -306,9 +314,8 @@ class _WebLandingSessionGateState extends State<WebLandingSessionGate> {
       return const PublicWebsiteScreen();
     }
     return StartupSessionGate(
-      authenticatedHomeOverride: widget.edupayEntry
-          ? const EduPayScreen()
-          : null,
+      authenticatedHomeOverride:
+          widget.edupayEntry ? const EduPayScreen() : null,
     );
   }
 }
