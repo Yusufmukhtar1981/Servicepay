@@ -4,6 +4,64 @@ import 'edupay_api.dart';
 import 'student_activity_center.dart';
 import 'academic_child_profile_screen.dart';
 
+bool _isPublishedEduPayAcademicRecord(dynamic value) {
+  if (value is! Map) return false;
+  final status = '${value['status'] ?? ''}'.trim().toUpperCase();
+  return status == 'ACTIVE' || status == 'UPCOMING';
+}
+
+String _academicRecordId(dynamic value) {
+  if (value is! Map) return '$value';
+  return '${value['_id'] ?? value['id'] ?? ''}';
+}
+
+/// Returns only school-published sessions that a parent may select.
+List<Map<String, dynamic>> eligibleEduPaySessions(dynamic sessions) {
+  if (sessions is! List) return const [];
+  final rows = sessions
+      .where(_isPublishedEduPayAcademicRecord)
+      .whereType<Map>()
+      .map((row) => Map<String, dynamic>.from(row))
+      .toList();
+  rows.sort((a, b) {
+    final aCurrent = a['isCurrent'] == true || a['isDefault'] == true;
+    final bCurrent = b['isCurrent'] == true || b['isDefault'] == true;
+    if (aCurrent != bCurrent) return aCurrent ? -1 : 1;
+    return '${a['name'] ?? ''}'.compareTo('${b['name'] ?? ''}');
+  });
+  return rows;
+}
+
+/// Returns only terms belonging to [sessionId], never terms from another
+/// school session. Closed/draft terms remain unavailable to parents.
+List<Map<String, dynamic>> eligibleEduPayTerms(
+  dynamic terms,
+  String sessionId,
+) {
+  if (terms is! List || sessionId.isEmpty) return const [];
+  return terms
+      .where(_isPublishedEduPayAcademicRecord)
+      .whereType<Map>()
+      .where((term) {
+        final relation = term['session'];
+        final relatedId = relation is Map
+            ? _academicRecordId(relation)
+            : '${relation ?? term['sessionId'] ?? ''}';
+        return relatedId == sessionId;
+      })
+      .map((row) => Map<String, dynamic>.from(row))
+      .toList();
+}
+
+Map<String, dynamic>? unambiguousCurrentEduPayOption(
+  List<Map<String, dynamic>> options,
+) {
+  final current = options
+      .where((row) => row['isCurrent'] == true || row['isDefault'] == true)
+      .toList();
+  return current.length == 1 ? current.single : null;
+}
+
 class EduPayScreen extends StatefulWidget {
   const EduPayScreen({super.key, this.api});
   final EduPayApi? api;
@@ -673,16 +731,39 @@ class _EduPayScreenState extends State<EduPayScreen> {
       _snack('The approved school-fee catalogue is unavailable. Try again.');
       return;
     }
+    final availableSessions =
+        eligibleEduPaySessions(_catalogueOptions(catalogue, 'sessions'));
+    if (availableSessions.isEmpty) {
+      _snack(
+        'No published academic sessions are available for ${_nameOf(school)} yet.',
+      );
+      return;
+    }
+    final currentSession = unambiguousCurrentEduPayOption(availableSessions);
     final session = await _selectOption(
-      _catalogueOptions(catalogue, 'sessions'),
+      availableSessions,
       'Choose a session',
       _nameOf,
+      preferred: currentSession,
     );
     if (session == null || !mounted) return;
-    final term = await _selectOption(
+    final sessionId = _idOf(session);
+    final availableTerms = eligibleEduPayTerms(
       _catalogueOptions(catalogue, 'terms'),
+      sessionId,
+    );
+    if (availableTerms.isEmpty) {
+      _snack(
+        'This school has not published fees for another term in ${_nameOf(session)} yet.',
+      );
+      return;
+    }
+    final currentTerm = unambiguousCurrentEduPayOption(availableTerms);
+    final term = await _selectOption(
+      availableTerms,
       'Choose a term',
       _nameOf,
+      preferred: currentTerm,
     );
     if (term == null || !mounted) return;
     final classLevel = await _selectOption(
@@ -881,13 +962,53 @@ class _EduPayScreenState extends State<EduPayScreen> {
   }
 
   Future<dynamic> _selectOption(
-    List<dynamic> options,
-    String title,
-    String Function(dynamic) label,
-  ) {
+      List<dynamic> options, String title, String Function(dynamic) label,
+      {dynamic preferred}) {
     if (options.isEmpty) {
       _snack('$title is not available yet.');
       return Future.value(null);
+    }
+    if (preferred != null) {
+      dynamic selected = preferred;
+      return showDialog<dynamic>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (_, setDialogState) => AlertDialog(
+            title: Text(title),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: options
+                    .map(
+                      (option) => RadioListTile<String>(
+                        value: _idOf(option),
+                        groupValue: _idOf(selected),
+                        title: Text(label(option)),
+                        subtitle: identical(option, preferred) ||
+                                _idOf(option) == _idOf(preferred)
+                            ? const Text('School current selection')
+                            : null,
+                        onChanged: (_) =>
+                            setDialogState(() => selected = option),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, selected),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     return showDialog<dynamic>(
       context: context,
