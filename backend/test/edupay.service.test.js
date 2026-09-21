@@ -8,6 +8,7 @@ const School = require("../models/edupaySchool.model");
 const { EduPayAcademicSession, EduPayTerm, EduPayClass } = require("../models/edupayAcademic.model");
 const Fee = require("../models/edupayFeeStructure.model");
 const Child = require("../models/edupayChild.model");
+const { EduPayStudent } = require("../models/edupayAcademicManagement.model");
 const Plan = require("../models/edupayPlan.model");
 const Settings = require("../models/edupaySettings.model");
 const AppSettings = require("../models/appSettings.model");
@@ -178,7 +179,7 @@ test("plan creation accepts an approved upcoming term but rejects closed academi
     body: { ...request.body, session: closedSession._id, term: closedTerm._id, feeStructure: closedFee._id },
   });
   assert.equal(rejected.statusCode, 400);
-  assert.match(rejected.body.message, /current approved school fee contract/i);
+  assert.equal(rejected.body.message, "Your school has not published the school fee for this term yet. Please contact the school or try again later.");
 });
 
 test("calculates the approved settlement snapshot exactly", async () => {
@@ -227,6 +228,38 @@ test("admin approval is the only path to an approved school", async () => {
 test("fee structures remain draft or pending until approval", async () => {
   const draft = await Fee.create({ school: school._id, session: session._id, term: term._id, classLevel: classLevel._id, amount: 200000, submittedBy: parent._id, status: "PENDING_APPROVAL" });
   assert.equal(draft.status, "PENDING_APPROVAL");
+});
+
+test("central fee review enforces pending transitions and malformed rejection", async () => {
+  const pending = await Fee.create({ school: school._id, session: session._id, term: term._id, classLevel: classLevel._id, amount: 210000, submittedBy: parent._id, status: "PENDING_APPROVAL" });
+  const missingNote = await invoke(edupayController.adminFeeAction, { params: { feeId: pending._id }, body: { action: "REJECT" }, user: { _id: parent._id } });
+  assert.equal(missingNote.statusCode, 400);
+  const approved = await invoke(edupayController.adminFeeAction, { params: { feeId: pending._id }, body: { action: "APPROVE" }, user: { _id: parent._id } });
+  assert.equal(approved.statusCode, 200);
+  assert.equal(approved.body.fee.status, "APPROVED");
+  const malformed = await Fee.create({ school: new mongoose.Types.ObjectId(), session: new mongoose.Types.ObjectId(), term: new mongoose.Types.ObjectId(), classLevel: new mongoose.Types.ObjectId(), amount: 1, submittedBy: parent._id, status: "PENDING_APPROVAL" });
+  const rejected = await invoke(edupayController.adminFeeAction, { params: { feeId: malformed._id }, body: { action: "REJECT", note: "Malformed references" }, user: { _id: parent._id } });
+  assert.equal(rejected.statusCode, 200);
+});
+
+test("fee publication rolls back when audit write fails", async () => {
+  const pending = await Fee.create({ school: school._id, session: session._id, term: term._id, classLevel: classLevel._id, amount: 210000, submittedBy: parent._id, status: "PENDING_APPROVAL" });
+  const Audit = require("../models/edupayAuditLog.model");
+  const original = Audit.create; Audit.create = async () => { throw new Error("audit unavailable"); };
+  try {
+    const result = await invoke(edupayController.adminFeeAction, { params: { feeId: pending._id }, body: { action: "APPROVE" }, user: { _id: parent._id } });
+    assert.equal(result.statusCode, 500);
+  } finally { Audit.create = original; }
+  assert.equal((await Fee.findById(pending._id)).status, "PENDING_APPROVAL");
+});
+
+test("parent plan rejects mismatched canonical enrollment class", async () => {
+  const enrolled = await EduPayStudent.create({ school: school._id, studentId: `STU-${Date.now()}`, fullName: "Enrolled", classLevel: classLevel._id, parent: parent._id, createdBy: parent._id });
+  const child = await Child.findOne({ parent: parent._id }); child.academicStudent = enrolled._id; child.academicStudentLinkStatus = "RESOLVED"; await child.save();
+  const other = await EduPayClass.create({ school: school._id, name: "JSS2" });
+  const result = await invoke(edupayController.createPlan, { user: { _id: parent._id }, body: { child: child._id, school: school._id, session: session._id, term: term._id, classLevel: other._id, feeStructure: fee._id, targetDate: new Date(Date.now() + 86400000 * 30), targetAmount: 100000 } });
+  assert.equal(result.statusCode, 400);
+  assert.match(result.body.message, /class does not match/i);
 });
 
 test("school fee resubmission clears stale review metadata", async () => {

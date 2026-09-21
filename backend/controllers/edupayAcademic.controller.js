@@ -85,11 +85,30 @@ const dateRange = (startsAt, endsAt) => {
   return { startsAt: start || undefined, endsAt: end || undefined };
 };
 const currentRequested = (body) => body.isCurrent === true || body.current === true || body.isDefault === true;
-const setCurrentSession = async (school, id, actor) => {
-  await EduPayAcademicSession.updateMany({ school, _id: { $ne: id }, isCurrent: true }, { $set: { isCurrent: false, updatedBy: actor } });
+const setCurrentSession = async (school, id, actor, dbSession = null) => {
+  const query = EduPayAcademicSession.updateMany({ school, _id: { $ne: id }, isCurrent: true }, { $set: { isCurrent: false, updatedBy: actor } });
+  if (dbSession) query.session(dbSession);
+  await query;
 };
-const setCurrentTerm = async (school, session, id, actor) => {
-  await EduPayTerm.updateMany({ school, session, _id: { $ne: id }, isCurrent: true }, { $set: { isCurrent: false, updatedBy: actor } });
+const setCurrentTerm = async (school, session, id, actor, dbSession = null) => {
+  const query = EduPayTerm.updateMany({ school, session, _id: { $ne: id }, isCurrent: true }, { $set: { isCurrent: false, updatedBy: actor } });
+  if (dbSession) query.session(dbSession);
+  await query;
+};
+const STANDARD_TERM_NAMES = ["First Term", "Second Term", "Third Term"];
+const ensureStandardTerms = async (school, session, actor, dbSession = null) => {
+  const terms = [];
+  for (const name of STANDARD_TERM_NAMES) {
+    const active = session.status === "ACTIVE" && name === "First Term";
+    const query = EduPayTerm.findOneAndUpdate(
+      { session: session._id, name },
+      { $setOnInsert: { school, session: session._id, name, status: active ? "ACTIVE" : "UPCOMING", isCurrent: active, updatedBy: actor } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    if (dbSession) query.session(dbSession);
+    terms.push(await query);
+  }
+  return terms;
 };
 const temporaryPassword = (value) => {
   const check = validateStrongPassword(String(value || ""));
@@ -205,6 +224,7 @@ exports.dashboard = async (req, res) => {
 };
 
 exports.createSession = async (req, res) => {
+  let dbSession;
   try {
     if (!(await manager(req, res))) return;
     const school = schoolId(req); const status = academicStatus(req.body.status);
@@ -212,27 +232,44 @@ exports.createSession = async (req, res) => {
     const dates = dateRange(req.body.startsAt, req.body.endsAt);
     const makeCurrent = currentRequested(req.body) || (status === "ACTIVE" && !(await EduPayAcademicSession.exists({ school, isCurrent: true })));
     if (makeCurrent && status !== "ACTIVE") throw inputError("Only an ACTIVE session can be current.");
-    if (makeCurrent) await setCurrentSession(school, null, req.user._id);
-    const row = await EduPayAcademicSession.create({ school, name: req.body.name, ...dates, status, isCurrent: makeCurrent, updatedBy: req.user._id });
-    await audit({ actor: req.user._id, action: "EDUPAY_SESSION_CREATED", entityType: "EduPayAcademicSession", entityId: row._id, school, req });
-    res.status(201).json({ success: true, session: row });
-  } catch (e) { fail(res, e); }
+    dbSession = await mongoose.startSession(); let row; let terms = [];
+    await dbSession.withTransaction(async () => {
+      if (makeCurrent) await setCurrentSession(school, null, req.user._id, dbSession);
+      row = await EduPayAcademicSession.findOneAndUpdate({ school, name: req.body.name },
+        { $setOnInsert: { school, name: req.body.name, ...dates, status, isCurrent: makeCurrent, updatedBy: req.user._id } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }).session(dbSession);
+      if (req.body.createStandardTerms === true) terms = await ensureStandardTerms(school, row, req.user._id, dbSession);
+      await audit({ actor: req.user._id, action: "EDUPAY_SESSION_CREATED", entityType: "EduPayAcademicSession", entityId: row._id, school, req, session: dbSession });
+    });
+    res.status(201).json({ success: true, session: row, terms });
+  } catch (e) { fail(res, e); } finally { if (dbSession) await dbSession.endSession(); }
 };
 exports.updateSession = async (req, res) => {
+  let dbSession;
   try {
-    if (!(await manager(req, res))) return; const row = await ensureOwned(EduPayAcademicSession, req.params.sessionId, schoolId(req), "Session");
-    const status = req.body.status === undefined ? row.status : academicStatus(req.body.status, row.status);
-    const dates = dateRange(req.body.startsAt === undefined ? row.startsAt : req.body.startsAt, req.body.endsAt === undefined ? row.endsAt : req.body.endsAt);
+    if (!(await manager(req, res))) return; const existing = await ensureOwned(EduPayAcademicSession, req.params.sessionId, schoolId(req), "Session");
+    const status = req.body.status === undefined ? existing.status : academicStatus(req.body.status, existing.status);
+    const dates = dateRange(req.body.startsAt === undefined ? existing.startsAt : req.body.startsAt, req.body.endsAt === undefined ? existing.endsAt : req.body.endsAt);
     const explicitCurrent = req.body.isCurrent !== undefined || req.body.current !== undefined || req.body.isDefault !== undefined;
-    const makeCurrent = explicitCurrent ? currentRequested(req.body) : (row.isCurrent === true && status === "ACTIVE");
-    if (explicitCurrent && makeCurrent && status !== "ACTIVE") throw inputError("Only an ACTIVE session can be current.");
-    if (makeCurrent) await setCurrentSession(schoolId(req), row._id, req.user._id);
-    if (req.body.name !== undefined) row.name = String(req.body.name).trim();
-    row.startsAt = dates.startsAt; row.endsAt = dates.endsAt; row.status = status; row.isCurrent = makeCurrent; row.updatedBy = req.user._id; await row.save();
+    const makeCurrent = explicitCurrent ? currentRequested(req.body) : (existing.isCurrent === true && status === "ACTIVE");
+    dbSession = await mongoose.startSession(); let row;
+    await dbSession.withTransaction(async () => {
+      row = await EduPayAcademicSession.findOne({ _id: req.params.sessionId, school: schoolId(req) }).session(dbSession);
+      if (!row) throw inputError("Session does not belong to this school.");
+      if (makeCurrent) {
+        const previous = await EduPayAcademicSession.find({ school: schoolId(req), _id: { $ne: row._id }, status: "ACTIVE", isCurrent: true }).select("_id").session(dbSession);
+        await EduPayAcademicSession.updateMany({ school: schoolId(req), _id: { $ne: row._id }, status: "ACTIVE", isCurrent: true }, { $set: { status: "CLOSED", isCurrent: false, updatedBy: req.user._id } }).session(dbSession);
+        if (previous.length) await EduPayTerm.updateMany({ school: schoolId(req), session: { $in: previous.map((x) => x._id) }, status: "ACTIVE" }, { $set: { status: "CLOSED", isCurrent: false, updatedBy: req.user._id } }).session(dbSession);
+        row.status = "ACTIVE";
+      } else row.status = status;
+      if (req.body.name !== undefined) row.name = String(req.body.name).trim();
+      row.startsAt = dates.startsAt; row.endsAt = dates.endsAt; row.isCurrent = makeCurrent; row.updatedBy = req.user._id; await row.save({ session: dbSession });
+    });
     res.json({ success: true, session: row });
-  } catch (e) { fail(res, e); }
+  } catch (e) { fail(res, e); } finally { if (dbSession) await dbSession.endSession(); }
 };
 exports.createTerm = async (req, res) => {
+  let dbSession;
   try {
     if (!(await manager(req, res))) return; const session = await ensureOwned(EduPayAcademicSession, req.body.session, schoolId(req), "Session");
     const status = academicStatus(req.body.status);
@@ -241,26 +278,41 @@ exports.createTerm = async (req, res) => {
     const dates = dateRange(req.body.startsAt, req.body.endsAt);
     const makeCurrent = currentRequested(req.body) || (status === "ACTIVE" && !(await EduPayTerm.exists({ school: schoolId(req), session: session._id, isCurrent: true })));
     if (makeCurrent && status !== "ACTIVE") throw inputError("Only an ACTIVE term can be current.");
-    if (makeCurrent) await setCurrentTerm(schoolId(req), session._id, null, req.user._id);
-    const row = await EduPayTerm.create({ school: schoolId(req), session: session._id, name, ...dates, status, isCurrent: makeCurrent, updatedBy: req.user._id });
+    dbSession = await mongoose.startSession(); let row;
+    await dbSession.withTransaction(async () => {
+      const parent = await EduPayAcademicSession.findOne({ _id: session._id, school: schoolId(req), status: "ACTIVE", isCurrent: true }).select("_id").session(dbSession);
+      if ((status === "ACTIVE" || makeCurrent) && !parent) throw inputError("ACTIVE/current terms require the current ACTIVE academic session.");
+      if (makeCurrent) await setCurrentTerm(schoolId(req), session._id, null, req.user._id, dbSession);
+      [row] = await EduPayTerm.create([{ school: schoolId(req), session: session._id, name, ...dates, status, isCurrent: makeCurrent, updatedBy: req.user._id }], { session: dbSession });
+    });
     res.status(201).json({ success: true, term: row });
-  } catch (e) { fail(res, e); }
+  } catch (e) { fail(res, e); } finally { if (dbSession) await dbSession.endSession(); }
 };
 exports.updateTerm = async (req, res) => {
+  let dbSession;
   try {
     if (!(await manager(req, res))) return;
     const school = schoolId(req);
-    const row = await ensureOwned(EduPayTerm, req.params.termId, school, "Term");
-    const status = req.body.status === undefined ? row.status : academicStatus(req.body.status, row.status);
-    const dates = dateRange(req.body.startsAt === undefined ? row.startsAt : req.body.startsAt, req.body.endsAt === undefined ? row.endsAt : req.body.endsAt);
+    const existing = await ensureOwned(EduPayTerm, req.params.termId, school, "Term");
+    const status = req.body.status === undefined ? existing.status : academicStatus(req.body.status, existing.status);
+    const dates = dateRange(req.body.startsAt === undefined ? existing.startsAt : req.body.startsAt, req.body.endsAt === undefined ? existing.endsAt : req.body.endsAt);
     const explicitCurrent = req.body.isCurrent !== undefined || req.body.current !== undefined || req.body.isDefault !== undefined;
-    const makeCurrent = explicitCurrent ? currentRequested(req.body) : (row.isCurrent === true && status === "ACTIVE");
-    if (explicitCurrent && makeCurrent && status !== "ACTIVE") throw inputError("Only an ACTIVE term can be current.");
-    if (makeCurrent) await setCurrentTerm(school, row.session, row._id, req.user._id);
-    if (req.body.name !== undefined) row.name = String(req.body.name).trim();
-    row.startsAt = dates.startsAt; row.endsAt = dates.endsAt; row.status = status; row.isCurrent = makeCurrent; row.updatedBy = req.user._id; await row.save();
+    const makeCurrent = explicitCurrent ? currentRequested(req.body) : (existing.isCurrent === true && status === "ACTIVE");
+    dbSession = await mongoose.startSession(); let row;
+    await dbSession.withTransaction(async () => {
+      row = await EduPayTerm.findOne({ _id: req.params.termId, school }).session(dbSession);
+      if (!row) throw inputError("Term does not belong to this school.");
+      if (makeCurrent) {
+        const parent = await EduPayAcademicSession.findOne({ _id: row.session, school, status: "ACTIVE", isCurrent: true }).select("_id").session(dbSession);
+        if (!parent) throw inputError("Only a term in the current ACTIVE session can be current.");
+        await EduPayTerm.updateMany({ school, _id: { $ne: row._id }, status: "ACTIVE" }, { $set: { status: "CLOSED", isCurrent: false, updatedBy: req.user._id } }).session(dbSession);
+        row.status = "ACTIVE";
+      } else row.status = status;
+      if (req.body.name !== undefined) row.name = String(req.body.name).trim();
+      row.startsAt = dates.startsAt; row.endsAt = dates.endsAt; row.isCurrent = makeCurrent; row.updatedBy = req.user._id; await row.save({ session: dbSession });
+    });
     res.json({ success: true, term: row });
-  } catch (e) { fail(res, e); }
+  } catch (e) { fail(res, e); } finally { if (dbSession) await dbSession.endSession(); }
 };
 exports.listAcademic = async (req, res) => {
   try {

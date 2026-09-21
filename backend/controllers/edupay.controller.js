@@ -231,7 +231,14 @@ exports.createChild = async (req, res) => {
   } catch (error) { errorResponse(res, error); }
 };
 exports.listChildren = async (req, res) => {
-  try { res.json({ success: true, children: await Child.find({ parent: req.user._id, status: "ACTIVE" }).populate("school").sort({ createdAt: -1 }).lean() }); } catch (error) { errorResponse(res, error); }
+  try {
+    const children = await Child.find({ parent: req.user._id, status: "ACTIVE" }).populate("school").sort({ createdAt: -1 }).lean();
+    const enriched = await Promise.all(children.map(async (child) => {
+      const student = await studentLink.academicStudentForChild(child);
+      return { ...child, enrollment: student ? { student: student._id, school: student.school, classLevel: student.classLevel, session: student.session || null, term: student.term || null } : null };
+    }));
+    res.json({ success: true, children: enriched });
+  } catch (error) { errorResponse(res, error); }
 };
 exports.updateChild = async (req, res) => {
   try {
@@ -250,14 +257,17 @@ exports.createPlan = async (req, res) => {
     const settings = await enabledForInitiation(res); if (!settings) return;
     ["child", "school", "session", "term", "classLevel", "feeStructure"].forEach((key) => ensureObjectId(req.body[key], key));
     const school = await School.findOne({ _id: req.body.school, status: "APPROVED", active: true }).select("_id").lean();
-    const [child, session, term, classLevel, fee] = await Promise.all([
+    const [child, session, term, requestedClassLevel] = await Promise.all([
       Child.findOne({ _id: req.body.child, parent: req.user._id, school: req.body.school, status: "ACTIVE" }),
       EduPayAcademicSession.findOne({ _id: req.body.session, school: req.body.school, status: { $in: ["ACTIVE", "UPCOMING"] } }),
       EduPayTerm.findOne({ _id: req.body.term, school: req.body.school, session: req.body.session, status: { $in: ["ACTIVE", "UPCOMING"] } }),
       EduPayClass.findOne({ _id: req.body.classLevel, school: req.body.school, status: "ACTIVE" }),
-      Fee.findOne({ _id: req.body.feeStructure, school: req.body.school, session: req.body.session, term: req.body.term, classLevel: req.body.classLevel, status: "APPROVED" }),
     ]);
-    if (!school || !child || !session || !term || !classLevel || !fee) return res.status(400).json({ success: false, message: "Child or current approved school fee contract not found." });
+    const academicStudent = child ? await studentLink.academicStudentForChild(child) : null;
+    if (academicStudent?.classLevel && String(academicStudent.classLevel) !== String(requestedClassLevel?._id)) return res.status(400).json({ success: false, message: "The selected class does not match the child's canonical enrollment." });
+    const classLevel = requestedClassLevel;
+    const fee = await Fee.findOne({ _id: req.body.feeStructure, school: req.body.school, session: req.body.session, term: req.body.term, classLevel: classLevel?._id, status: "APPROVED" });
+    if (!school || !child || !session || !term || !classLevel || !fee) return res.status(400).json({ success: false, message: "Your school has not published the school fee for this term yet. Please contact the school or try again later." });
     const targetDate = new Date(req.body.targetDate);
     if (Number.isNaN(targetDate.getTime()) || targetDate <= new Date()) return res.status(400).json({ success: false, message: "A future settlement date is required." });
     const days = Math.max(1, Math.ceil((targetDate - Date.now()) / 86400000));
@@ -871,19 +881,36 @@ const schoolAcademicDates = (startsAt, endsAt) => {
   }
   return { startsAt: start || undefined, endsAt: end || undefined };
 };
+const standardTermNames = ["First Term", "Second Term", "Third Term"];
+const createStandardTerms = async (school, session, actor, dbSession = null) => {
+  const rows = [];
+  for (const name of standardTermNames) {
+    const active = session.status === "ACTIVE" && name === "First Term";
+    const query = EduPayTerm.findOneAndUpdate({ session: session._id, name }, { $setOnInsert: { school, session: session._id, name, status: active ? "ACTIVE" : "UPCOMING", isCurrent: active, updatedBy: actor } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+    if (dbSession) query.session(dbSession);
+    rows.push(await query);
+  }
+  return rows;
+};
 exports.schoolCreateSession = async (req, res) => {
+  let dbSession;
   try {
     if (!(await enabledForInitiation(res))) return;
     const school = req.eduPaySchool._id; const status = schoolAcademicStatus(req.body.status);
     const requestedCurrent = req.body.isCurrent === true || req.body.current === true || req.body.isDefault === true;
     const isCurrent = requestedCurrent || (status === "ACTIVE" && !(await EduPayAcademicSession.exists({ school, isCurrent: true })));
     if (isCurrent && status !== "ACTIVE") return res.status(400).json({ success: false, message: "Only an ACTIVE session can be current." });
-    if (isCurrent) await EduPayAcademicSession.updateMany({ school, isCurrent: true }, { $set: { isCurrent: false } });
-    const row = await EduPayAcademicSession.create({ school, name: req.body.name, ...schoolAcademicDates(req.body.startsAt, req.body.endsAt), status, isCurrent });
-    res.status(201).json({ success: true, session: row });
-  } catch (error) { errorResponse(res, error); }
+    dbSession = await mongoose.startSession(); let row; let terms = [];
+    await dbSession.withTransaction(async () => {
+      if (isCurrent) await EduPayAcademicSession.updateMany({ school, isCurrent: true }, { $set: { isCurrent: false } }).session(dbSession);
+      row = await EduPayAcademicSession.findOneAndUpdate({ school, name: req.body.name }, { $setOnInsert: { school, name: req.body.name, ...schoolAcademicDates(req.body.startsAt, req.body.endsAt), status, isCurrent } }, { upsert: true, new: true, setDefaultsOnInsert: true }).session(dbSession);
+      if (req.body.createStandardTerms === true) terms = await createStandardTerms(school, row, req.user._id, dbSession);
+    });
+    res.status(201).json({ success: true, session: row, terms });
+  } catch (error) { errorResponse(res, error); } finally { if (dbSession) await dbSession.endSession(); }
 };
 exports.schoolCreateTerm = async (req, res) => {
+  let dbSession;
   try {
     if (!(await enabledForInitiation(res))) return;
     const school = req.eduPaySchool._id; const session = await EduPayAcademicSession.findOne({ _id: req.body.session, school });
@@ -892,10 +919,15 @@ exports.schoolCreateTerm = async (req, res) => {
     const requestedCurrent = req.body.isCurrent === true || req.body.current === true || req.body.isDefault === true;
     const isCurrent = requestedCurrent || (status === "ACTIVE" && !(await EduPayTerm.exists({ school, session: session._id, isCurrent: true })));
     if (isCurrent && status !== "ACTIVE") return res.status(400).json({ success: false, message: "Only an ACTIVE term can be current." });
-    if (isCurrent) await EduPayTerm.updateMany({ school, session: session._id, isCurrent: true }, { $set: { isCurrent: false } });
-    const row = await EduPayTerm.create({ school, session: session._id, name: req.body.name, ...schoolAcademicDates(req.body.startsAt, req.body.endsAt), status, isCurrent });
+    dbSession = await mongoose.startSession(); let row;
+    await dbSession.withTransaction(async () => {
+      const parent = await EduPayAcademicSession.findOne({ _id: session._id, school, status: "ACTIVE", isCurrent: true }).select("_id").session(dbSession);
+      if ((status === "ACTIVE" || isCurrent) && !parent) { const error = new Error("ACTIVE/current terms require the current ACTIVE academic session."); error.statusCode = 400; throw error; }
+      if (isCurrent) await EduPayTerm.updateMany({ school, session: session._id, isCurrent: true }, { $set: { isCurrent: false } }).session(dbSession);
+      [row] = await EduPayTerm.create([{ school, session: session._id, name: req.body.name, ...schoolAcademicDates(req.body.startsAt, req.body.endsAt), status, isCurrent }], { session: dbSession });
+    });
     res.status(201).json({ success: true, term: row });
-  } catch (error) { errorResponse(res, error); }
+  } catch (error) { errorResponse(res, error); } finally { if (dbSession) await dbSession.endSession(); }
 };
 exports.schoolCreateClass = async (req, res) => { try { if (!(await enabledForInitiation(res))) return; const row = await EduPayClass.create({ school: req.eduPaySchool._id, name: req.body.name }); res.status(201).json({ success: true, classLevel: row }); } catch (error) { errorResponse(res, error); } };
 exports.schoolCreateFee = async (req, res) => { try { if (!(await enabledForInitiation(res))) return; const amount = round(req.body.amount); if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ success: false, message: "A valid official fee amount is required." }); const [session, term, classLevel] = await Promise.all([EduPayAcademicSession.findOne({ _id: req.body.session, school: req.eduPaySchool._id }), EduPayTerm.findOne({ _id: req.body.term, school: req.eduPaySchool._id, session: req.body.session }), EduPayClass.findOne({ _id: req.body.classLevel, school: req.eduPaySchool._id })]); if (!session || !term || !classLevel) return res.status(400).json({ success: false, message: "Academic references must belong to this school." }); if (!["ACTIVE", "UPCOMING"].includes(session.status) || !["ACTIVE", "UPCOMING"].includes(term.status)) return res.status(400).json({ success: false, message: "Fees can only be configured for active or upcoming academic entries." }); const row = await Fee.create({ school: req.eduPaySchool._id, session: session._id, term: term._id, classLevel: classLevel._id, amount, submittedBy: req.user._id, status: "PENDING_APPROVAL" }); res.status(201).json({ success: true, fee: row }); } catch (error) { errorResponse(res, error); } };
@@ -1279,8 +1311,35 @@ exports.adminConfigureEduPayDuties = async (req, res) => {
 };
 exports.adminEligibleDutyUsers = async (req, res) => { try { const users = await User.find({ status: "ACTIVE", role: "HEAD_OFFICE" }).select("_id fullName role status").sort({ fullName: 1 }).lean(); res.json({ success: true, users: users.map((user) => ({ id: user._id, name: user.fullName, role: user.role, status: user.status })) }); } catch (error) { errorResponse(res, error); } };
 exports.adminRevokeEduPayDuty = async (req, res) => { try { const target = await User.findById(req.params.userId).select("_id status role"); if (!target) return res.status(404).json({ success: false, message: "Duty target user not found." }); if (target.status !== "ACTIVE" || target.role !== "HEAD_OFFICE") return res.status(422).json({ success: false, code: "EDUPAY_DUTY_TARGET_INELIGIBLE", message: "Duty targets must be active HEAD_OFFICE users." }); const session = await mongoose.startSession(); let assignment; try { await session.withTransaction(async () => { const previous = await EduPayDutyAssignment.findOne({ user: req.params.userId }).sort({ version: -1 }).session(session); if (!previous) { const error = new Error("EduPay duty assignment not found."); error.statusCode = 404; throw error; } [assignment] = await EduPayDutyAssignment.create([{ user: req.params.userId, permissions: previous.permissions, active: false, assignedBy: req.user._id, version: previous.version + 1, previousAssignment: previous._id }], { session }); await audit({ actor: req.user._id, action: "EDUPAY_DUTY_REVOKED", entityType: "EduPayDutyAssignment", entityId: assignment._id, metadata: { user: req.params.userId, version: assignment.version }, req, session }); }); } finally { await session.endSession(); } res.json({ success: true, assignment }); } catch (error) { errorResponse(res, error); } };
-exports.adminFees = async (req, res) => { try { const filter = req.params.feeId ? { _id: req.params.feeId } : {}; res.json({ success: true, fees: req.params.feeId ? await Fee.findOne(filter).lean() : await Fee.find({}).populate("school session term classLevel").sort({ createdAt: -1 }).lean() }); } catch (error) { errorResponse(res, error); } };
-exports.adminFeeAction = async (req, res) => { try { const fee = await Fee.findById(req.params.feeId); if (!fee) return res.status(404).json({ success: false, message: "Fee structure not found." }); const action = String(req.body.action || "").toUpperCase(); if (!["APPROVE", "REJECT"].includes(action)) return res.status(400).json({ success: false, message: "Unsupported fee action." }); fee.status = action === "APPROVE" ? "APPROVED" : "REJECTED"; fee.reviewedBy = req.user._id; fee.reviewedAt = new Date(); fee.reviewNote = req.body.note; await fee.save(); await audit({ actor: req.user._id, action: `EDUPAY_FEE_${action}`, entityType: "EduPayFeeStructure", entityId: fee._id, school: fee.school, req }); res.json({ success: true, fee }); } catch (error) { errorResponse(res, error); } };
+exports.adminFees = async (req, res) => { try { const filter = req.params.feeId ? { _id: req.params.feeId } : { status: String(req.query.status || "PENDING_APPROVAL").toUpperCase() }; res.json({ success: true, fees: req.params.feeId ? await Fee.findOne(filter).populate("school session term classLevel").lean() : await Fee.find(filter).populate("school session term classLevel").sort({ createdAt: -1 }).lean() }); } catch (error) { errorResponse(res, error); } };
+exports.adminFeeAction = async (req, res) => {
+  let dbSession;
+  try {
+    const action = String(req.body.action || "").toUpperCase();
+    if (!["APPROVE", "REJECT"].includes(action)) return res.status(400).json({ success: false, message: "Unsupported fee action." });
+    const note = String(req.body.note || "").trim();
+    if (action === "REJECT" && !note) return res.status(400).json({ success: false, message: "A rejection note is required." });
+    dbSession = await mongoose.startSession(); let fee;
+    await dbSession.withTransaction(async () => {
+      fee = await Fee.findById(req.params.feeId).session(dbSession);
+      if (!fee) { const e = new Error("Fee structure not found."); e.statusCode = 404; throw e; }
+      if (fee.status !== "PENDING_APPROVAL") { const e = new Error("Only pending fees can be approved or rejected."); e.statusCode = 409; throw e; }
+      if (action === "APPROVE") {
+        const [school, session, term, classLevel] = await Promise.all([
+          School.findOne({ _id: fee.school, status: "APPROVED", active: true }).select("_id").session(dbSession),
+          EduPayAcademicSession.findOne({ _id: fee.session, school: fee.school, status: { $in: ["ACTIVE", "UPCOMING"] } }).select("_id").session(dbSession),
+          EduPayTerm.findOne({ _id: fee.term, school: fee.school, session: fee.session, status: { $in: ["ACTIVE", "UPCOMING"] } }).select("_id").session(dbSession),
+          EduPayClass.findOne({ _id: fee.classLevel, school: fee.school, status: "ACTIVE" }).select("_id").session(dbSession),
+        ]);
+        if (!school || !session || !term || !classLevel) { const e = new Error("Fee academic references are no longer valid for this school."); e.statusCode = 409; throw e; }
+      }
+      fee.status = action === "APPROVE" ? "APPROVED" : "REJECTED"; fee.reviewedBy = req.user._id; fee.reviewedAt = new Date(); fee.reviewNote = note || "Approved for parent EduPay selection.";
+      await fee.save({ session: dbSession });
+      await audit({ actor: req.user._id, action: `EDUPAY_FEE_${action}`, entityType: "EduPayFeeStructure", entityId: fee._id, school: fee.school, req, session: dbSession });
+    });
+    res.json({ success: true, fee });
+  } catch (error) { errorResponse(res, error); } finally { if (dbSession) await dbSession.endSession(); }
+};
 const adminDate = (value) => { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date : null; };
 const adminObjectId = (value) => mongoose.isValidObjectId(value) ? value : null;
 exports.adminPlans = async (req, res) => { try {

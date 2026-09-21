@@ -9,7 +9,7 @@ const SchoolUser = require("../models/edupaySchoolUser.model");
 const edupayController = require("../controllers/edupay.controller");
 const authController = require("../controllers/auth.controller");
 const controller = require("../controllers/edupayAcademic.controller");
-const { EduPayClass } = require("../models/edupayAcademic.model");
+const { EduPayAcademicSession, EduPayTerm, EduPayClass } = require("../models/edupayAcademic.model");
 const { EduPaySubject, EduPayTeacherAssignment } = require("../models/edupayAcademicManagement.model");
 
 const uri = String(process.env.MONGODB_URI || "").trim();
@@ -209,6 +209,26 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }));
   assert.equal(result.statusCode, 201);
   const session = result.body.session;
+  result = await invoke("createSession", request(owner, school, "OWNER", {
+    name: "2027/2028", startsAt: "2027-09-01", endsAt: "2028-07-31", status: "UPCOMING", createStandardTerms: true,
+  }));
+  assert.equal(result.statusCode, 201);
+  const upcomingSession = result.body.session;
+  assert.deepEqual(result.body.terms.map((row) => row.name), ["First Term", "Second Term", "Third Term"]);
+  assert.ok(result.body.terms.every((row) => row.status === "UPCOMING" && row.isCurrent === false));
+  result = await invoke("createSession", request(owner, school, "OWNER", {
+    name: "2027/2028", status: "UPCOMING", createStandardTerms: true,
+  }));
+  assert.equal(result.statusCode, 201);
+  await EduPayTerm.deleteOne({ session: upcomingSession._id, name: "Third Term" });
+  result = await invoke("createSession", request(owner, school, "OWNER", {
+    name: "2027/2028", status: "UPCOMING", createStandardTerms: true,
+  }));
+  assert.equal(result.statusCode, 201);
+  assert.equal(await EduPayTerm.countDocuments({ session: upcomingSession._id }), 3);
+  const concurrent = await Promise.all([1, 2, 3].map(() => invoke("createSession", request(owner, school, "OWNER", { name: "2027/2028", status: "UPCOMING", createStandardTerms: true }))));
+  assert.ok(concurrent.every((row) => row.statusCode === 201));
+  assert.equal(await EduPayTerm.countDocuments({ session: upcomingSession._id }), 3);
   await EduPayClass.create({
     school: school._id,
     name: "Legacy   Nursery   One",
@@ -630,4 +650,25 @@ test("EduPay academic lifecycle and tenant isolation in isolated Mongo", { skip:
   }));
   assert.equal(crossSchool.statusCode, 400);
   assert.match(crossSchool.body.message, /does not belong to this school/);
+  result = await invoke("updateSession", request(owner, school, "OWNER", { isCurrent: true }, { params: { sessionId: upcomingSession._id } }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.session.status, "ACTIVE");
+  assert.equal((await EduPayAcademicSession.findById(session._id)).status, "CLOSED");
+  const upcomingFirstTerm = await EduPayTerm.findOne({ session: upcomingSession._id, name: "First Term" });
+  result = await invoke("updateTerm", request(owner, school, "OWNER", { isCurrent: true }, { params: { termId: upcomingFirstTerm._id } }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.term.status, "ACTIVE");
+  const invalidTerm = await EduPayTerm.findOne({ session: upcomingSession._id, name: "Second Term" });
+  result = await invoke("updateTerm", request(owner, school, "OWNER", { isCurrent: true }, { params: { termId: invalidTerm._id } }));
+  assert.equal(result.statusCode, 200);
+  const closedSession = await EduPayAcademicSession.create({ school: school._id, name: "2025/2026", status: "CLOSED" });
+  result = await invoke("createTerm", request(owner, school, "OWNER", { session: closedSession._id, name: "Bad Active", status: "ACTIVE" }));
+  assert.equal(result.statusCode, 400);
+  const nonCurrentSession = await EduPayAcademicSession.create({ school: school._id, name: "2028/2029", status: "UPCOMING" });
+  result = await invoke("createTerm", request(owner, school, "OWNER", { session: nonCurrentSession._id, name: "Bad Upcoming Active", status: "ACTIVE" }));
+  assert.equal(result.statusCode, 400);
+  const before = await EduPayTerm.countDocuments({ session: upcomingSession._id });
+  result = await invoke("createTerm", request(owner, school, "OWNER", { session: session._id, name: "Bad Current", status: "ACTIVE", isCurrent: true }));
+  assert.equal(result.statusCode, 400);
+  assert.equal(await EduPayTerm.countDocuments({ session: upcomingSession._id }), before);
 });
