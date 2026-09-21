@@ -50,17 +50,29 @@ class _EduPayScreenState extends State<EduPayScreen> {
         plans = values[1] as List;
         final financeChildren = values[2] as List;
         final academicChildren = values[7] as List;
-        final centerChildren = values[6] as List;
         final mergedChildren = <String, dynamic>{};
-        for (final child in [
-          ...financeChildren,
-          ...academicChildren,
-          ...centerChildren,
-        ]) {
+        String childKey(Map child) {
+          final school = child['school'];
+          final schoolId =
+              school is Map ? school['_id'] ?? school['id'] : school;
+          final admission = child['studentId'] ??
+              child['admissionNumber'] ??
+              child['student_id'];
+          final normalizedAdmission =
+              '${admission ?? ''}'.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+          if (schoolId != null &&
+              '$schoolId'.trim().isNotEmpty &&
+              normalizedAdmission.isNotEmpty) {
+            return 'school:$schoolId:student:$normalizedAdmission';
+          }
+          return 'id:${child['_id'] ?? child['id'] ?? child['studentId'] ?? child['student_id']}';
+        }
+
+        for (final child in [...financeChildren, ...academicChildren]) {
           if (child is Map) {
-            final key =
-                '${child['_id'] ?? child['id'] ?? child['studentId'] ?? child['student_id'] ?? child['fullName'] ?? child['name']}';
-            mergedChildren[key] = child;
+            // Deduplicate only by tenant-scoped admission identity or exact
+            // backend id. Never infer a relationship from a child's name.
+            mergedChildren[childKey(child)] = child;
           }
         }
         children = mergedChildren.values.toList();
@@ -92,17 +104,17 @@ class _EduPayScreenState extends State<EduPayScreen> {
       body: loading
           ? const _Skeleton()
           : error != null
-          ? _Error(message: error!, retry: load)
-          : IndexedStack(
-              index: tab,
-              children: [
-                _home(),
-                _plans(),
-                _children(),
-                _repayments(),
-                _history(),
-              ],
-            ),
+              ? _Error(message: error!, retry: load)
+              : IndexedStack(
+                  index: tab,
+                  children: [
+                    _home(),
+                    _plans(),
+                    _children(),
+                    _repayments(),
+                    _history(),
+                  ],
+                ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
         onDestinationSelected: (v) => setState(() => tab = v),
@@ -210,125 +222,134 @@ class _EduPayScreenState extends State<EduPayScreen> {
   }
 
   Widget _heroCard(Map<String, dynamic> s) => Container(
-    padding: const EdgeInsets.all(22),
-    decoration: BoxDecoration(
-      color: const Color(0xff0c6b51),
-      borderRadius: BorderRadius.circular(24),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Education savings',
-          style: TextStyle(color: Color(0xffc8eee0)),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: const Color(0xff0c6b51),
+          borderRadius: BorderRadius.circular(24),
         ),
-        const SizedBox(height: 8),
-        Text(
-          _money(s['totalEducationSavings']),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          '${s['activePlans'] ?? 0} active plans · ${s['outstandingRepayment'] == null ? 'No repayment due' : '${_money(s['outstandingRepayment'])} outstanding'}',
-          style: const TextStyle(color: Colors.white70),
-        ),
-      ],
-    ),
-  );
-  Widget _plans() => _listPage(
-    'My plans',
-    plans,
-    'No plans yet',
-    Icons.savings_outlined,
-    (p) => _planDetail(p),
-  );
-  Widget _children() => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      if (activityChildren.isNotEmpty) ...[
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle('Student Activity Center'),
-            TextButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => StudentActivityCenter(
-                    api: api,
-                    children: activityChildren,
-                  ),
-                ),
+            const Text(
+              'Education savings',
+              style: TextStyle(color: Color(0xffc8eee0)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _money(s['totalEducationSavings']),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
               ),
-              icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('Open'),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '${s['activePlans'] ?? 0} active plans · ${s['outstandingRepayment'] == null ? 'No repayment due' : '${_money(s['outstandingRepayment'])} outstanding'}',
+              style: const TextStyle(color: Colors.white70),
             ),
           ],
         ),
-        Card(
-          color: const Color(0xffe8f4ef),
-          child: ListTile(
-            leading: const Icon(
-              Icons.insights_outlined,
-              color: Color(0xff0c6b51),
+      );
+  Widget _plans() => _listPage(
+        'My plans',
+        plans,
+        'No plans yet',
+        Icons.savings_outlined,
+        (p) => _planDetail(p),
+      );
+  Widget _children() => ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          if (activityChildren.isNotEmpty) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _sectionTitle('Student Activity Center'),
+                TextButton.icon(
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StudentActivityCenter(
+                          api: api,
+                          children: activityChildren,
+                        ),
+                      ),
+                    );
+                    if (mounted) load();
+                  },
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Open'),
+                ),
+              ],
             ),
-            title: const Text('School updates for your children'),
-            subtitle: Text(
-              '${activityChildren.length} linked student${activityChildren.length == 1 ? '' : 's'} · attendance, results, assignments and activities',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    StudentActivityCenter(api: api, children: activityChildren),
+            Card(
+              color: const Color(0xffe8f4ef),
+              child: ListTile(
+                leading: const Icon(
+                  Icons.insights_outlined,
+                  color: Color(0xff0c6b51),
+                ),
+                title: const Text('School updates for your children'),
+                subtitle: Text(
+                  '${activityChildren.length} linked student${activityChildren.length == 1 ? '' : 's'} · attendance, results, assignments and activities',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StudentActivityCenter(
+                        api: api,
+                        children: activityChildren,
+                      ),
+                    ),
+                  );
+                  if (mounted) load();
+                },
               ),
             ),
+            const SizedBox(height: 14),
+          ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _sectionTitle('My children'),
+              IconButton(
+                onPressed: () => _initiationGuard(_newChild),
+                icon: const Icon(Icons.add_circle, color: Color(0xff0c6b51)),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 14),
-      ],
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _sectionTitle('My children'),
-          IconButton(
-            onPressed: () => _initiationGuard(_newChild),
-            icon: const Icon(Icons.add_circle, color: Color(0xff0c6b51)),
+          Card(
+            color: const Color(0xffeaf6f0),
+            child: ListTile(
+              leading:
+                  const Icon(Icons.search_outlined, color: Color(0xff0c6b51)),
+              title: const Text("Can't find your school?"),
+              subtitle: const Text(
+                'Tell Head Office which school you need. This does not start a plan.',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _requestSchool,
+            ),
           ),
+          if (children.isEmpty)
+            const _Empty(
+              'No child has been linked to your EduPay account yet.',
+              Icons.child_care_outlined,
+            ),
+          ...children.map((c) => _childTile(c as Map)),
         ],
-      ),
-      Card(
-        color: const Color(0xffeaf6f0),
-        child: ListTile(
-          leading: const Icon(Icons.search_outlined, color: Color(0xff0c6b51)),
-          title: const Text("Can't find your school?"),
-          subtitle: const Text(
-            'Tell Head Office which school you need. This does not start a plan.',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: _requestSchool,
-        ),
-      ),
-      if (children.isEmpty)
-        const _Empty(
-          'No child has been linked to your EduPay account yet.',
-          Icons.child_care_outlined,
-        ),
-      ...children.map((c) => _childTile(c as Map)),
-    ],
-  );
+      );
   Widget _repayments() => _listPage(
-    'Repayments',
-    repayments,
-    'No repayments',
-    Icons.receipt_long_outlined,
-    (r) => _repaymentDetail(r),
-  );
+        'Repayments',
+        repayments,
+        'No repayments',
+        Icons.receipt_long_outlined,
+        (r) => _repaymentDetail(r),
+      );
   Widget _history() {
     final nested = history['history'] is Map
         ? (history['history'] as Map).cast<String, dynamic>()
@@ -351,14 +372,15 @@ class _EduPayScreenState extends State<EduPayScreen> {
   }
 
   Widget _upcomingFee(Map fee) => Card(
-    margin: const EdgeInsets.only(top: 16),
-    child: ListTile(
-      leading: const Icon(Icons.event_available, color: Color(0xff0c6b51)),
-      title: const Text('Upcoming school fee'),
-      subtitle: Text('Settlement target · ${fee['targetDate'] ?? 'Not set'}'),
-      trailing: Text(_money(fee['amount'])),
-    ),
-  );
+        margin: const EdgeInsets.only(top: 16),
+        child: ListTile(
+          leading: const Icon(Icons.event_available, color: Color(0xff0c6b51)),
+          title: const Text('Upcoming school fee'),
+          subtitle:
+              Text('Settlement target · ${fee['targetDate'] ?? 'Not set'}'),
+          trailing: Text(_money(fee['amount'])),
+        ),
+      );
 
   bool get _enabled => (dash['settings'] as Map?)?['enabled'] == true;
 
@@ -378,23 +400,23 @@ class _EduPayScreenState extends State<EduPayScreen> {
     String empty,
     IconData icon,
     void Function(Map) tap,
-  ) => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      Text(
-        title,
-        style: Theme.of(
-          context,
-        ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-      ),
-      const SizedBox(height: 12),
-      if (data.isEmpty) _Empty(empty, icon),
-      ...data.map((x) => _planTile(x as Map, tap)),
-    ],
-  );
+  ) =>
+      ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          if (data.isEmpty) _Empty(empty, icon),
+          ...data.map((x) => _planTile(x as Map, tap)),
+        ],
+      );
   Widget _planTile(Map p, void Function(Map) tap) {
-    final child =
-        (p['child'] is Map ? p['child']['fullName'] : null) ??
+    final child = (p['child'] is Map ? p['child']['fullName'] : null) ??
         'School-fee plan';
     final school = p['school'] is Map ? p['school']['name'] : '';
     return Card(
@@ -417,21 +439,33 @@ class _EduPayScreenState extends State<EduPayScreen> {
   }
 
   Widget _childTile(Map c) => Card(
-    child: ListTile(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AcademicChildProfileScreen(api: api, child: c),
+        child: ListTile(
+          onTap: () async {
+            final id = [c['_id'], c['id']].firstWhere(
+              (value) => value != null && value.toString().trim().isNotEmpty,
+              orElse: () => null,
+            );
+            if (id == null) {
+              _snack(
+                  'This child does not have an authorized academic profile.');
+              return;
+            }
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AcademicChildProfileScreen(api: api, child: c),
+              ),
+            );
+            if (mounted) load();
+          },
+          leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+          title: Text('${c['fullName'] ?? 'Child'}'),
+          subtitle: Text(
+            c['school'] is Map ? '${c['school']['name']}' : 'School not listed',
+          ),
+          trailing: const Icon(Icons.chevron_right),
         ),
-      ),
-      leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-      title: Text('${c['fullName'] ?? 'Child'}'),
-      subtitle: Text(
-        c['school'] is Map ? '${c['school']['name']}' : 'School not listed',
-      ),
-      trailing: const Icon(Icons.chevron_right),
-    ),
-  );
+      );
   Future<void> _newChild() async {
     final activeSchools = _activeSchools();
     if (activeSchools.isEmpty) {
@@ -559,9 +593,8 @@ class _EduPayScreenState extends State<EduPayScreen> {
       _snack('This child has no active approved school selected.');
       return;
     }
-    final matchingSchools = activeSchools
-        .where((s) => _idOf(s) == childSchoolId)
-        .toList();
+    final matchingSchools =
+        activeSchools.where((s) => _idOf(s) == childSchoolId).toList();
     if (matchingSchools.isEmpty) {
       _snack('This child’s school is no longer active or approved.');
       return;
@@ -639,15 +672,15 @@ class _EduPayScreenState extends State<EduPayScreen> {
   }
 
   List<dynamic> _activeSchools() => schools.where((s) {
-    if (s is! Map) return false;
-    final status = '${s['status'] ?? ''}'.toUpperCase();
-    final verification = '${s['verificationStatus'] ?? ''}'.toUpperCase();
-    return s['active'] != false &&
-        s['approved'] != false &&
-        status != 'INACTIVE' &&
-        status != 'REJECTED' &&
-        verification != 'REJECTED';
-  }).toList();
+        if (s is! Map) return false;
+        final status = '${s['status'] ?? ''}'.toUpperCase();
+        final verification = '${s['verificationStatus'] ?? ''}'.toUpperCase();
+        return s['active'] != false &&
+            s['approved'] != false &&
+            status != 'INACTIVE' &&
+            status != 'REJECTED' &&
+            verification != 'REJECTED';
+      }).toList();
 
   List<dynamic> _catalogueOptions(
     Map<String, dynamic> catalogue,
@@ -655,13 +688,12 @@ class _EduPayScreenState extends State<EduPayScreen> {
     String? fallbackKey,
   }) {
     final nested = catalogue['catalogue'];
-    final value =
-        catalogue[key] ??
+    final value = catalogue[key] ??
         (nested is Map ? nested[key] : null) ??
         (fallbackKey == null
             ? null
             : catalogue[fallbackKey] ??
-                  (nested is Map ? nested[fallbackKey] : null));
+                (nested is Map ? nested[fallbackKey] : null));
     return value is List ? value : const [];
   }
 
@@ -852,18 +884,18 @@ class _EduPayScreenState extends State<EduPayScreen> {
   }
 
   Widget _action(String a, String b, IconData i, VoidCallback tap) => Card(
-    child: ListTile(
-      onTap: tap,
-      leading: Icon(i, color: const Color(0xff0c6b51)),
-      title: Text(a, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(b),
-      trailing: const Icon(Icons.chevron_right),
-    ),
-  );
+        child: ListTile(
+          onTap: tap,
+          leading: Icon(i, color: const Color(0xff0c6b51)),
+          title: Text(a, style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(b),
+          trailing: const Icon(Icons.chevron_right),
+        ),
+      );
   Widget _sectionTitle(String s) => Text(
-    s,
-    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-  );
+        s,
+        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+      );
 }
 
 class EduPayPlanDetail extends StatefulWidget {
@@ -886,14 +918,14 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
   String _statusLabel(String? raw) => raw == null
       ? 'Active'
       : raw
-            .toLowerCase()
-            .split('_')
-            .map(
-              (word) => word.isEmpty
-                  ? word
-                  : '${word[0].toUpperCase()}${word.substring(1)}',
-            )
-            .join(' ');
+          .toLowerCase()
+          .split('_')
+          .map(
+            (word) => word.isEmpty
+                ? word
+                : '${word[0].toUpperCase()}${word.substring(1)}',
+          )
+          .join(' ');
 
   String money(dynamic v) {
     final n = v is num ? v : double.tryParse('$v') ?? 0;
@@ -903,9 +935,8 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
   @override
   Widget build(BuildContext context) {
     final p = widget.data['plan'] as Map? ?? {};
-    final child = p['child'] is Map
-        ? p['child']['fullName']
-        : 'School-fee plan';
+    final child =
+        p['child'] is Map ? p['child']['fullName'] : 'School-fee plan';
     return Scaffold(
       appBar: AppBar(title: Text('$child')),
       body: ListView(
@@ -1061,12 +1092,12 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                     }
                   }
                 : () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'EduPay contributions are temporarily paused.',
+                      const SnackBar(
+                        content: Text(
+                          'EduPay contributions are temporarily paused.',
+                        ),
                       ),
                     ),
-                  ),
             icon: const Icon(Icons.add),
             label: const Text('Add money from wallet'),
           ),
@@ -1220,43 +1251,44 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
   }
 
   Widget _detailRow(String label, dynamic value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(color: Color(0xff60736b))),
-        const SizedBox(width: 12),
-        Flexible(
-          child: Text(
-            value is num || (value != null && double.tryParse('$value') != null)
-                ? money(value)
-                : '${value ?? 'Not set'}',
-            textAlign: TextAlign.end,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(color: Color(0xff60736b))),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                value is num ||
+                        (value != null && double.tryParse('$value') != null)
+                    ? money(value)
+                    : '${value ?? 'Not set'}',
+                textAlign: TextAlign.end,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
 class _Skeleton extends StatelessWidget {
   const _Skeleton();
   @override
   Widget build(BuildContext c) => ListView(
-    padding: const EdgeInsets.all(20),
-    children: List.generate(
-      6,
-      (i) => Container(
-        height: i == 0 ? 130 : 64,
-        margin: const EdgeInsets.only(bottom: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+        padding: const EdgeInsets.all(20),
+        children: List.generate(
+          6,
+          (i) => Container(
+            height: i == 0 ? 130 : 64,
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 class _Error extends StatelessWidget {
@@ -1265,24 +1297,24 @@ class _Error extends StatelessWidget {
   final VoidCallback retry;
   @override
   Widget build(BuildContext c) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.cloud_off_outlined,
-            size: 48,
-            color: Color(0xff0c6b51),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.cloud_off_outlined,
+                size: 48,
+                color: Color(0xff0c6b51),
+              ),
+              const SizedBox(height: 12),
+              Text(message, textAlign: TextAlign.center),
+              const SizedBox(height: 14),
+              FilledButton(onPressed: retry, child: const Text('Try again')),
+            ],
           ),
-          const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 14),
-          FilledButton(onPressed: retry, child: const Text('Try again')),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 }
 
 class _Empty extends StatelessWidget {
@@ -1291,19 +1323,19 @@ class _Empty extends StatelessWidget {
   final IconData icon;
   @override
   Widget build(BuildContext c) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 70),
-    child: Column(
-      children: [
-        Icon(icon, size: 50, color: const Color(0xff94b5a8)),
-        const SizedBox(height: 14),
-        Text(
-          text,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xff60736b)),
+        padding: const EdgeInsets.symmetric(vertical: 70),
+        child: Column(
+          children: [
+            Icon(icon, size: 50, color: const Color(0xff94b5a8)),
+            const SizedBox(height: 14),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xff60736b)),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
 class _Notice extends StatelessWidget {
@@ -1312,40 +1344,40 @@ class _Notice extends StatelessWidget {
   final bool warning;
   @override
   Widget build(BuildContext c) => Container(
-    padding: const EdgeInsets.all(15),
-    decoration: BoxDecoration(
-      color: warning ? const Color(0xfffff5df) : const Color(0xffe8f4ef),
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Row(
-      children: [
-        Icon(
-          warning ? Icons.info_outline : Icons.verified_outlined,
-          color: const Color(0xff0c6b51),
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: warning ? const Color(0xfffff5df) : const Color(0xffe8f4ef),
+          borderRadius: BorderRadius.circular(16),
         ),
-        const SizedBox(width: 10),
-        Expanded(child: Text(text)),
-      ],
-    ),
-  );
+        child: Row(
+          children: [
+            Icon(
+              warning ? Icons.info_outline : Icons.verified_outlined,
+              color: const Color(0xff0c6b51),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(text)),
+          ],
+        ),
+      );
 }
 
 Widget _metric(String label, String value, IconData icon) => Expanded(
-  child: Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: const Color(0xff0c6b51)),
-          const SizedBox(height: 7),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 11, color: Color(0xff60736b)),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 20, color: const Color(0xff0c6b51)),
+              const SizedBox(height: 7),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 11, color: Color(0xff60736b)),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-    ),
-  ),
-);
+    );
