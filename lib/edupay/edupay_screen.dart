@@ -62,6 +62,118 @@ Map<String, dynamic>? unambiguousCurrentEduPayOption(
   return current.length == 1 ? current.single : null;
 }
 
+String _eduPayRelationId(dynamic value) {
+  if (value is Map) {
+    return '${value['_id'] ?? value['id'] ?? value['schoolId'] ?? value['classId'] ?? ''}'.trim();
+  }
+  return '${value ?? ''}'.trim();
+}
+
+String eduPayEnrollmentSchoolId(dynamic child) {
+  if (child is! Map) return '';
+  final enrollment = child['enrollment'] is Map
+      ? child['enrollment'] as Map
+      : child['academicEnrollment'] is Map
+          ? child['academicEnrollment'] as Map
+          : child['studentEnrollment'] is Map
+              ? child['studentEnrollment'] as Map
+              : const {};
+  for (final value in [
+    enrollment['school'],
+    enrollment['schoolId'],
+    child['schoolId'],
+    child['school'],
+  ]) {
+    final id = _eduPayRelationId(value);
+    if (id.isNotEmpty) return id;
+  }
+  return '';
+}
+
+String eduPayEnrollmentClassId(dynamic child) {
+  if (child is! Map) return '';
+  final enrollment = child['enrollment'] is Map
+      ? child['enrollment'] as Map
+      : child['academicEnrollment'] is Map
+          ? child['academicEnrollment'] as Map
+          : child['studentEnrollment'] is Map
+              ? child['studentEnrollment'] as Map
+              : const {};
+  for (final value in [
+    enrollment['classLevel'],
+    enrollment['classLevelId'],
+    enrollment['class'],
+    enrollment['classId'],
+    enrollment['enrolledClass'],
+    child['classLevel'],
+    child['classLevelId'],
+  ]) {
+    final id = _eduPayRelationId(value);
+    if (id.isNotEmpty) return id;
+  }
+  return '';
+}
+
+Map<String, dynamic>? resolveEduPayEnrolledClass(dynamic child, dynamic classes) {
+  final classId = eduPayEnrollmentClassId(child);
+  if (classId.isEmpty || classes is! List) return null;
+  for (final value in classes.whereType<Map>()) {
+    if (_eduPayRelationId(value) == classId) return Map<String, dynamic>.from(value);
+  }
+  return null;
+}
+
+List<Map<String, dynamic>> mergeEduPayChildren(
+    dynamic financeChildren, dynamic academicChildren) {
+  if (financeChildren is! List) return const [];
+  final financeRows = financeChildren.whereType<Map>()
+      .map((row) => Map<String, dynamic>.from(row)).toList();
+  final byKey = <String, Map<String, dynamic>>{};
+  String keyFor(Map row) {
+    final school = row['school'];
+    final schoolId = school is Map ? school['_id'] ?? school['id'] : school;
+    final resolvedSchoolId = schoolId ?? row['schoolId'];
+    final admission = row['studentId'] ?? row['admissionNumber'] ?? row['student_id'];
+    final normalizedAdmission = '${admission ?? ''}'.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+    if (resolvedSchoolId != null && '$resolvedSchoolId'.trim().isNotEmpty && normalizedAdmission.isNotEmpty) {
+      return 'school:$resolvedSchoolId:student:$normalizedAdmission';
+    }
+    return 'id:${row['_id'] ?? row['id'] ?? row['studentId'] ?? row['student_id']}';
+  }
+  for (final row in financeRows) {
+    byKey[keyFor(row)] = row;
+  }
+  if (academicChildren is List) {
+    for (final academic in academicChildren.whereType<Map>()) {
+      final finance = byKey[keyFor(academic)];
+      if (finance == null) continue;
+      final academicEnrollment = academic['enrollment'];
+      if (academicEnrollment is Map) {
+        final existing = finance['enrollment'];
+        finance['enrollment'] = {
+          if (existing is Map) ...existing,
+          ...Map<String, dynamic>.from(academicEnrollment),
+        };
+      }
+      for (final field in [
+        'academicStudent',
+        'academicStudentId',
+        'classLevel',
+        'classLevelId',
+        'schoolId',
+      ]) {
+        if (finance[field] == null && academic[field] != null) {
+          finance[field] = academic[field];
+        }
+      }
+      if (finance['school'] == null && academic['school'] != null) {
+        finance['school'] = academic['school'];
+      }
+    }
+  }
+  return financeRows;
+}
+
 class EduPayScreen extends StatefulWidget {
   const EduPayScreen({super.key, this.api});
   final EduPayApi? api;
@@ -108,32 +220,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
         plans = values[1] as List;
         final financeChildren = values[2] as List;
         final academicChildren = values[7] as List;
-        final mergedChildren = <String, dynamic>{};
-        String childKey(Map child) {
-          final school = child['school'];
-          final schoolId =
-              school is Map ? school['_id'] ?? school['id'] : school;
-          final admission = child['studentId'] ??
-              child['admissionNumber'] ??
-              child['student_id'];
-          final normalizedAdmission =
-              '${admission ?? ''}'.replaceAll(RegExp(r'\s+'), '').toUpperCase();
-          if (schoolId != null &&
-              '$schoolId'.trim().isNotEmpty &&
-              normalizedAdmission.isNotEmpty) {
-            return 'school:$schoolId:student:$normalizedAdmission';
-          }
-          return 'id:${child['_id'] ?? child['id'] ?? child['studentId'] ?? child['student_id']}';
-        }
-
-        for (final child in [...financeChildren, ...academicChildren]) {
-          if (child is Map) {
-            // Deduplicate only by tenant-scoped admission identity or exact
-            // backend id. Never infer a relationship from a child's name.
-            mergedChildren[childKey(child)] = child;
-          }
-        }
-        children = mergedChildren.values.toList();
+        children = mergeEduPayChildren(financeChildren, academicChildren);
         repayments = values[3] as List;
         schools = values[4] as List;
         history = values[5] as Map<String, dynamic>;
@@ -710,8 +797,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
     final child = await _selectOption(children, 'Choose a child', _nameOf);
     if (child == null || !mounted) return;
     final activeSchools = _activeSchools();
-    final storedSchool = child is Map ? child['school'] : null;
-    final childSchoolId = storedSchool == null ? '' : _idOf(storedSchool);
+    final childSchoolId = eduPayEnrollmentSchoolId(child);
     if (childSchoolId.isEmpty) {
       _snack('This child has no active approved school selected.');
       return;
@@ -766,11 +852,16 @@ class _EduPayScreenState extends State<EduPayScreen> {
       preferred: currentTerm,
     );
     if (term == null || !mounted) return;
-    final classLevel = await _selectOption(
-      _catalogueOptions(catalogue, 'classes', fallbackKey: 'classLevels'),
-      'Choose a class level',
-      _nameOf,
-    );
+    final catalogueClasses =
+        _catalogueOptions(catalogue, 'classes', fallbackKey: 'classLevels');
+    final linkedClassId = eduPayEnrollmentClassId(child);
+    final linkedClass = resolveEduPayEnrolledClass(child, catalogueClasses);
+    if (linkedClassId.isNotEmpty && linkedClass == null) {
+      _snack('This child’s enrolled class is not available in the school catalogue. Please ask the school to update the enrollment.');
+      return;
+    }
+    final classLevel = linkedClass ??
+        await _selectOption(catalogueClasses, 'Choose a class level', _nameOf);
     if (classLevel == null || !mounted) return;
     final fees = await api.fees(
       '${school['_id'] ?? school['id']}',
@@ -779,7 +870,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
       classLevel: _idOf(classLevel),
     );
     if (!mounted || fees.isEmpty) {
-      _snack('No approved fee matches those catalogue selections.');
+      _snack('Your school has not published the school fee for this term yet. Please contact the school or try again later.');
       return;
     }
     final fee = await _selectOption(fees, 'Choose an approved fee', (v) {

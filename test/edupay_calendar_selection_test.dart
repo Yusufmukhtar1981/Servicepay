@@ -107,4 +107,107 @@ void main() {
     expect(schoolOne.single['id'], 'one-term');
     expect(schoolTwo.single['id'], 'other-term');
   });
+
+  test('resolves enrollment schoolId and classLevelId by exact IDs', () {
+    const child = {
+      'school': {'_id': 'legacy-school'},
+      'enrollment': {'schoolId': 'school-2', 'classLevelId': 'class-2'},
+    };
+    expect(eduPayEnrollmentSchoolId(child), 'school-2');
+    expect(eduPayEnrollmentClassId(child), 'class-2');
+    expect(
+      resolveEduPayEnrolledClass(child, [
+        {'_id': 'class-1', 'name': 'Primary 1'},
+        {'_id': 'class-2', 'name': 'Different display name'},
+      ])?['_id'],
+      'class-2',
+    );
+  });
+
+  test('legacy child without enrollment keeps class-picker fallback', () {
+    expect(eduPayEnrollmentSchoolId({'school': {'_id': 'school-1'}}), 'school-1');
+    expect(eduPayEnrollmentClassId({'school': {'_id': 'school-1'}}), isEmpty);
+    expect(
+      resolveEduPayEnrolledClass(
+        {'school': {'_id': 'school-1'}},
+        [
+          {'_id': 'class-1', 'name': 'Primary 1'}
+        ],
+      ),
+      isNull,
+    );
+  });
+
+  test('stale linked class never falls back to display-name matching', () {
+    const child = {
+      'enrollment': {'schoolId': 'school-1', 'classLevelId': 'missing-class'}
+    };
+    expect(eduPayEnrollmentClassId(child), 'missing-class');
+    expect(
+      resolveEduPayEnrolledClass(child, [
+        {'_id': 'class-1', 'name': 'Primary 1'}
+      ]),
+      isNull,
+    );
+  });
+
+  test('finance child identity survives academic enrollment merge', () {
+    final merged = mergeEduPayChildren(
+      [
+        {
+          '_id': 'finance-child-1',
+          'fullName': 'Ada Child',
+          'school': {'_id': 'school-1'},
+          'studentId': 'ST-1',
+        },
+      ],
+      [
+        {
+          '_id': 'academic-student-1',
+          'school': {'_id': 'school-1'},
+          'studentId': 'ST-1',
+          'enrollment': {
+            'schoolId': 'school-1',
+            'classLevelId': 'class-2',
+          },
+        },
+      ],
+    );
+    expect(merged, hasLength(1));
+    expect(merged.single['_id'], 'finance-child-1');
+    final payload = {
+      'child': merged.single['_id'],
+      'school': eduPayEnrollmentSchoolId(merged.single),
+      'classLevel': eduPayEnrollmentClassId(merged.single),
+    };
+    expect(payload, {
+      'child': 'finance-child-1',
+      'school': 'school-1',
+      'classLevel': 'class-2',
+    });
+  });
+
+  test('academic-only student rows are excluded from plan selection', () {
+    expect(
+      mergeEduPayChildren(
+        const [],
+        [
+          {
+            '_id': 'academic-only',
+            'schoolId': 'school-1',
+            'classLevelId': 'class-1',
+          }
+        ],
+      ),
+      isEmpty,
+    );
+  });
+
+  test('missing fee state preserves the exact safe parent message', () {
+    const message =
+        'Your school has not published the school fee for this term yet. '
+        'Please contact the school or try again later.';
+    expect(message, isNot(contains('No approved fee matches')));
+    expect(message, contains('Please contact the school or try again later.'));
+  });
 }
