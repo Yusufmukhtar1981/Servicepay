@@ -6,12 +6,30 @@ const Link = require("../models/edupayGuardianLink.model");
 const Notification = require("../models/notification.model");
 const AttendanceBatch = require("../models/edupayAttendanceBatch.model");
 const GuardianInvite = require("../models/edupayGuardianInvite.model");
+const { EduPayStudent, EduPayAttendance } = require("../models/edupayAcademicManagement.model");
+const { EduPayTerm } = require("../models/edupayAcademic.model");
 
 const TYPES = new Set(["ATTENDANCE", "RESULT", "ASSIGNMENT", "ACTIVITY", "CONDUCT", "ANNOUNCEMENT"]);
 const id = (value) => mongoose.isValidObjectId(value);
 const fail = (message, statusCode = 400) => { const e = new Error(message); e.statusCode = statusCode; return e; };
 const stable = (value) => Array.isArray(value) ? value.map(stable) : (value && typeof value === "object" ? Object.keys(value).sort().reduce((out, key) => { out[key] = stable(value[key]); return out; }, {}) : value);
 const payloadHash = (value) => crypto.createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
+const normalizeAdmission = (value) => String(value || "").trim().replace(/\s+/g, "").toUpperCase();
+const admissionPattern = (value) => {
+  const normalized = normalizeAdmission(value);
+  if (!normalized) return null;
+  const escaped = [...normalized].map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^\\s*${escaped.join("\\s*")}\\s*$`, "i");
+};
+
+async function academicStudentForChild(child) {
+  const school = child?.school?._id || child?.school;
+  const pattern = admissionPattern(child?.admissionNumber);
+  if (!school || !pattern) return null;
+  const matches = await EduPayStudent.find({ school, studentId: pattern, status: "ACTIVE" })
+    .populate("classLevel").limit(2).lean();
+  return matches.length === 1 ? matches[0] : null;
+}
 
 async function childForParent(userId, childId, schoolId) {
   if (!id(childId)) throw fail("Student is invalid.");
@@ -152,15 +170,63 @@ async function listForParent(req, childId, type) {
   }
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
   const skip = Math.max(0, Number(req.query.page || 1) - 1) * limit;
-  const [rows, total] = await Promise.all([
-    Record.find(query).sort({ eventDate: -1, createdAt: -1 }).skip(skip).limit(limit).lean(),
+  const academicStudent = await academicStudentForChild(child);
+  const mergesAcademicAttendance = academicStudent && (!recordType || recordType === "ATTENDANCE");
+  if (mergesAcademicAttendance && !recordType) query.recordType = { $ne: "ATTENDANCE" };
+  const activitySkip = mergesAcademicAttendance && !recordType ? 0 : skip;
+  const activityLimit = mergesAcademicAttendance && !recordType ? skip + limit : limit;
+  let [rows, total] = await Promise.all([
+    Record.find(query).sort({ eventDate: -1, createdAt: -1 }).skip(activitySkip).limit(activityLimit).lean(),
     Record.countDocuments(query),
   ]);
+  if (mergesAcademicAttendance) {
+    const academicQuery = { school: academicStudent.school, student: academicStudent._id };
+    const range = String(req.query.range || "").toLowerCase();
+    if (range === "today" || range === "week" || range === "month") {
+      const now = new Date();
+      const fromDate = range === "today"
+        ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        : range === "week"
+          ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)
+          : new Date(now.getFullYear(), now.getMonth(), 1);
+      const from = fromDate.toISOString().slice(0, 10);
+      academicQuery.date = { $gte: from };
+    }
+    if (range === "current-term" || range === "current_term") {
+      const currentTerm = await EduPayTerm.findOne({ school: academicQuery.school, status: "ACTIVE" }).sort({ startDate: -1, createdAt: -1 }).select("_id").lean();
+      if (currentTerm) academicQuery.term = currentTerm._id;
+    }
+    const academic = await EduPayAttendance.find(academicQuery)
+      .populate("classLevel", "name arm")
+      .populate("session", "name")
+      .populate("term", "name")
+      .sort({ date: -1, updatedAt: -1 }).limit(365).lean();
+    const mapped = academic.map((row) => ({
+      _id: row._id, recordType: "ATTENDANCE", eventDate: new Date(`${row.date}T00:00:00.000Z`),
+      status: "PUBLISHED", audience: "STUDENT", createdAt: row.createdAt, updatedAt: row.updatedAt,
+      academic: true,
+      payload: { status: row.status, date: row.date, eventDate: row.date, class: row.classLevel, session: row.session, term: row.term },
+    }));
+    // Academic attendance is authoritative: remove Activity Center attendance rows
+    // whenever a safe mapping exists, including corrections.
+    rows = rows.filter((row) => row.recordType !== "ATTENDANCE");
+    if (recordType === "ATTENDANCE") {
+      rows = mapped.slice(skip, skip + limit);
+      total = mapped.length;
+    }
+    else rows = [...rows, ...mapped];
+    rows.sort((a, b) => new Date(b.eventDate || b.createdAt) - new Date(a.eventDate || a.createdAt));
+    if (recordType !== "ATTENDANCE") {
+      rows = rows.slice(skip, skip + limit);
+      total += mapped.length;
+    }
+  }
   return { child, records: rows, page: Math.floor(skip / limit) + 1, limit, total };
 }
 
 async function summary(req, childId) {
-  const { child, records } = await listForParent(req, childId);
+  const summaryReq = { ...req, query: { ...(req.query || {}), limit: 365 } };
+  const { child, records } = await listForParent(summaryReq, childId);
   const attendance = records.filter((r) => r.recordType === "ATTENDANCE");
   const counts = attendance.reduce((out, row) => { const s = row.payload?.status || "PRESENT"; out[s] = (out[s] || 0) + 1; return out; }, {});
   return { child, attendanceToday: attendance.find((row) => new Date(row.eventDate).toDateString() === new Date().toDateString()) || null, attendance: counts, latestResult: records.find((r) => r.recordType === "RESULT") || null, records };

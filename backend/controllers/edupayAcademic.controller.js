@@ -12,7 +12,31 @@ const { models } = require("../services/edupay.service");
 const { validateStrongPassword } = require("../utils/passwordPolicy");
 const School = models.School;
 const EduPayChild = models.Child;
+const GuardianLink = require("../models/edupayGuardianLink.model");
 const normalizeLabel = (value) => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+const normalizeAdmission = (value) => String(value || "").trim().replace(/\s+/g, "").toUpperCase();
+const admissionPattern = (value) => {
+  const normalized = normalizeAdmission(value);
+  if (!normalized) return null;
+  const escaped = [...normalized].map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^\\s*${escaped.join("\\s*")}\\s*$`, "i");
+};
+const academicStudentForChild = async (child, populate = "") => {
+  const school = child?.school?._id || child?.school;
+  const pattern = admissionPattern(child?.admissionNumber);
+  if (!school || !pattern) return null;
+  let query = EduPayStudent.find({ school, studentId: pattern, status: "ACTIVE" }).limit(2);
+  if (populate) query = query.populate(populate);
+  const matches = await query.lean();
+  return matches.length === 1 ? matches[0] : null;
+};
+const linkedChildForStudent = async (student) => {
+  const school = student?.school?._id || student?.school;
+  const pattern = admissionPattern(student?.studentId);
+  if (!school || !pattern) return null;
+  const matches = await EduPayChild.find({ school, admissionNumber: pattern, status: "ACTIVE" }).limit(2).lean();
+  return matches.length === 1 ? matches[0] : null;
+};
 const educationLevel = (value) => {
   const level = String(value || "OTHER").trim().toUpperCase().replace(/\s+/g, "_");
   return ["EARLY_YEARS", "PRIMARY", "JUNIOR_SECONDARY", "SENIOR_SECONDARY", "OTHER"].includes(level) ? level : "OTHER";
@@ -588,30 +612,62 @@ exports.attendanceRoster = async (req, res) => { try { const classLevel = await 
 exports.submitAttendance = async (req, res) => {
   try {
     const school = schoolId(req); const classLevel = await ensureOwned(EduPayClass, req.body.classId, school, "Class"); const session = await ensureOwned(EduPayAcademicSession, req.body.session, school, "Session"); const term = await ensureOwned(EduPayTerm, req.body.term, school, "Term");
+    if (String(term.session) !== String(session._id)) return res.status(400).json({ success: false, message: "Term does not belong to the selected academic session." });
+    if (session.status !== "ACTIVE" || term.status !== "ACTIVE") return res.status(400).json({ success: false, message: "Attendance requires the active academic session and term." });
     const teacher = isManager(req) ? null : await teacherFor(req, classLevel._id);
     if (!isManager(req) && !teacher) return res.status(403).json({ success: false, message: "Teacher is not assigned to this class." });
     let rows = Array.isArray(req.body.records) ? req.body.records : [];
     const allStatus = String(req.body.markAllStatus || "").toUpperCase();
     const rosterQuery = { school, classLevel: classLevel._id, status: "ACTIVE" };
     if (allStatus && ["PRESENT", "ABSENT", "LATE", "EXCUSED"].includes(allStatus)) rows = (await EduPayStudent.find(rosterQuery).select("_id").lean()).map((student) => ({ student: student._id, status: allStatus }));
-    const students = await EduPayStudent.find({ ...rosterQuery, _id: { $in: rows.map((r) => r.student) } }).select("_id parent").lean(); const allowed = new Set(students.map((r) => String(r._id))); if (rows.some((r) => !allowed.has(String(r.student)) || !["PRESENT", "ABSENT", "LATE", "EXCUSED"].includes(r.status))) return res.status(400).json({ success: false, message: "Attendance contains an invalid student or status." });
+    rows = rows.map((row) => ({ ...row, status: String(row.status || "").toUpperCase() }));
+    const submittedStudents = rows.map((row) => String(row.student));
+    if (new Set(submittedStudents).size !== submittedStudents.length) return res.status(400).json({ success: false, message: "Attendance contains duplicate students." });
+    const students = await EduPayStudent.find({ ...rosterQuery, _id: { $in: rows.map((r) => r.student) } }).select("_id parent fullName studentId").lean(); const allowed = new Set(students.map((r) => String(r._id))); if (rows.some((r) => !allowed.has(String(r.student)) || !["PRESENT", "ABSENT", "LATE", "EXCUSED"].includes(r.status))) return res.status(400).json({ success: false, message: "Attendance contains an invalid student or status." });
     const date = String(req.body.date || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, message: "Attendance date must be YYYY-MM-DD." });
+    const dailyScope = { school, classLevel: classLevel._id, student: { $in: submittedStudents }, date };
+    const priorRows = await EduPayAttendance.find(dailyScope).select("_id student status").lean();
+    const priorByStudent = new Map();
+    for (const prior of priorRows) {
+      const studentKey = String(prior.student);
+      if (priorByStudent.has(studentKey)) return res.status(409).json({ success: false, message: "Duplicate attendance records require school administrator review." });
+      priorByStudent.set(studentKey, prior);
+    }
     const output = []; const corrections = [];
     for (const row of rows) {
-      const key = { school, classLevel: classLevel._id, student: row.student, date, session: session._id, term: term._id };
-      const existing = await EduPayAttendance.findOne(key).select("status").lean();
-      const update = { $set: { status: row.status, teacher: teacher?._id || null, updatedBy: req.user._id }, $setOnInsert: { ...key, createdBy: req.user._id } };
+      const dailyKey = { school, classLevel: classLevel._id, student: row.student, date };
+      const existing = priorByStudent.get(String(row.student)) || null;
+      const writeKey = existing ? { _id: existing._id, school } : dailyKey;
+      const update = { $set: { session: session._id, term: term._id, status: row.status, teacher: teacher?._id || null, updatedBy: req.user._id }, $setOnInsert: { ...dailyKey, createdBy: req.user._id } };
       if (existing) {
         update.$set.correctedAt = new Date();
         update.$set.correctedBy = req.user._id;
         if (existing.status !== row.status) corrections.push({ student: String(row.student), from: existing.status, to: row.status });
       }
-      output.push(await EduPayAttendance.findOneAndUpdate(key, update, { upsert: true, new: true, runValidators: true }));
+      try {
+        output.push(await EduPayAttendance.findOneAndUpdate(writeKey, update, { upsert: true, new: true, runValidators: true }));
+      } catch (writeError) {
+        if (writeError?.code !== 11000 || existing) throw writeError;
+        const concurrent = await EduPayAttendance.findOne({ ...dailyKey, session: session._id, term: term._id }).select("_id").lean();
+        if (!concurrent) throw writeError;
+        output.push(await EduPayAttendance.findOneAndUpdate({ _id: concurrent._id, school }, { $set: update.$set }, { new: true, runValidators: true }));
+      }
     }
     await audit({ actor: req.user._id, action: "EDUPAY_ATTENDANCE_SUBMITTED", entityType: "EduPayAttendance", school, metadata: { date, class: String(classLevel._id), count: output.length, corrections }, req });
     for (const row of output) {
       const student = students.find((candidate) => String(candidate._id) === String(row.student));
-      if ((row.status === "ABSENT" || row.status === "LATE") && student?.parent) Promise.resolve(notify(student.parent, `Attendance ${row.status}`, `Attendance was marked ${row.status}.`)).catch(() => {});
+      if (row.status === "ABSENT" || row.status === "LATE") {
+        const recipients = new Set(student?.parent ? [String(student.parent)] : []);
+        // Guardian notifications are deliberately best-effort and outside the write path.
+        try {
+          const child = await linkedChildForStudent(student);
+          if (child) {
+            recipients.add(String(child.parent));
+            (await GuardianLink.find({ school, child: child._id, status: "VERIFIED" }).select("parent").lean()).forEach((link) => recipients.add(String(link.parent)));
+          }
+        } catch (_) { /* notification lookup must never reject attendance */ }
+        for (const recipient of recipients) Promise.resolve(notify(recipient, `Attendance ${row.status}`, `${student?.fullName || "Your child"} was marked ${row.status}.`)).catch(() => {});
+      }
     }
     res.json({ success: true, records: output });
   } catch (e) { fail(res, e); }
@@ -732,12 +788,30 @@ exports.listActivities = async (req, res) => {
 };
 
 const parentChild = async (req) => {
-  let child = await EduPayStudent.findOne({ _id: req.params.childId, parent: req.user._id, school: { $exists: true }, status: "ACTIVE" }).populate("classLevel").lean();
-  if (!child && EduPayChild) {
-    const legacy = await EduPayChild.findOne({ _id: req.params.childId, parent: req.user._id, status: "ACTIVE" }).populate("school").lean();
-    if (legacy) child = { ...legacy, classLevel: null };
+  const requested = req.params.childId;
+  let student = await EduPayStudent.findOne({ _id: requested, status: "ACTIVE" }).populate("school classLevel").lean().catch(() => null);
+  if (student && String(student.parent || "") === String(req.user._id)) return { ...student, academicStudent: student };
+  if (student) {
+    const linkedChild = await linkedChildForStudent(student);
+    if (linkedChild) {
+      const directAccess = String(linkedChild.parent) === String(req.user._id);
+      const guardianAccess = directAccess ? false : await GuardianLink.exists({
+        school: linkedChild.school,
+        child: linkedChild._id,
+        parent: req.user._id,
+        status: "VERIFIED",
+      });
+      if (directAccess || guardianAccess) return { ...student, academicStudent: student };
+    }
   }
-  if (!child) { const e = new Error("Child not found."); e.statusCode = 404; throw e; } return child;
+  if (!EduPayChild) { const e = new Error("Child not found."); e.statusCode = 404; throw e; }
+  const direct = await EduPayChild.findOne({ _id: requested, parent: req.user._id, status: "ACTIVE" }).populate("school").lean().catch(() => null);
+  const linked = direct ? null : await GuardianLink.findOne({ child: requested, parent: req.user._id, status: "VERIFIED" }).lean().catch(() => null);
+  const legacy = direct || (linked ? await EduPayChild.findOne({ _id: requested, school: linked.school, status: "ACTIVE" }).populate("school").lean() : null);
+  if (!legacy) { const e = new Error("Child not found."); e.statusCode = 404; throw e; }
+  student = await academicStudentForChild(legacy, "school classLevel");
+  if (!student) { const e = new Error("Academic student mapping is unavailable."); e.statusCode = 404; throw e; }
+  return { ...legacy, classLevel: student.classLevel, academicStudent: student, school: student.school || school };
 };
 exports.parentAcademicChildren = async (req, res) => {
   try {
@@ -745,13 +819,51 @@ exports.parentAcademicChildren = async (req, res) => {
       parent: req.user._id,
       status: { $in: ["ACTIVE", "GRADUATED", "TRANSFERRED"] },
     }).populate("school", "name location").populate("classLevel", "name arm").sort({ fullName: 1 }).lean();
+    const direct = await EduPayChild.find({ parent: req.user._id, status: "ACTIVE" }).lean();
+    const links = await GuardianLink.find({ parent: req.user._id, status: "VERIFIED" }).select("child school").lean();
+    const legacyIds = [...new Set([
+      ...direct.map((row) => String(row._id)),
+      ...links.map((row) => String(row.child)),
+    ])];
+    if (legacyIds.length) {
+      const legacy = await EduPayChild.find({ _id: { $in: legacyIds }, status: "ACTIVE" }).lean();
+      const mapped = await Promise.all(legacy.map((row) =>
+        academicStudentForChild(row, [
+          { path: "school", select: "name location" },
+          { path: "classLevel", select: "name arm" },
+        ])
+      ));
+      const seen = new Set(children.map((row) => String(row._id)));
+      mapped.filter(Boolean).forEach((row) => { if (!seen.has(String(row._id))) { seen.add(String(row._id)); children.push(row); } });
+    }
+    children.sort((a, b) => String(a.fullName || "").localeCompare(String(b.fullName || "")));
     res.json({ success: true, children });
   } catch (e) { fail(res, e); }
 };
-exports.parentAttendance = async (req, res) => { try { const child = await parentChild(req); res.json({ success: true, child, attendance: await EduPayAttendance.find({ school: child.school, student: child._id }).sort({ date: -1 }).limit(365).lean() }); } catch (e) { fail(res, e); } };
-exports.parentResults = async (req, res) => { try { const child = await parentChild(req); const assessments = await EduPayAssessment.find({ school: child.school, classLevel: child.classLevel, status: "PUBLISHED" }).select("_id title session term subject grading").lean(); res.json({ success: true, child, results: await EduPayScore.find({ school: child.school, student: child._id, assessment: { $in: assessments.map((a) => a._id) }, status: "SUBMITTED" }).populate("assessment").sort({ createdAt: -1 }).lean() }); } catch (e) { fail(res, e); } };
-exports.parentActivities = async (req, res) => { try { const child = await parentChild(req); res.json({ success: true, child, activities: await EduPayAcademicActivity.find({ school: child.school, status: "PUBLISHED", $or: [{ audience: "SCHOOL" }, { audience: "CLASS", classLevel: child.classLevel }, { audience: "STUDENT", student: child._id }] }).sort({ eventDate: -1 }).lean() }); } catch (e) { fail(res, e); } };
-exports.parentTimetable = async (req, res) => { try { const child = await parentChild(req); res.json({ success: true, child, timetable: await EduPayTimetable.find({ school: child.school, classLevel: child.classLevel }).populate("subject teacher").sort({ day: 1, startsAt: 1 }).lean() }); } catch (e) { fail(res, e); } };
+exports.parentAttendance = async (req, res) => {
+  try {
+    const child = await parentChild(req); const student = child.academicStudent || child;
+    const query = { school: student.school?._id || student.school, student: student._id };
+    const range = String(req.query.range || "").toLowerCase(); const now = new Date(); let from = null;
+    if (range === "today") from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    else if (range === "week") from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    else if (range === "month") from = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (from) query.date = { $gte: from.toISOString().slice(0, 10) };
+    if (range === "current-term" || range === "current_term") {
+      const currentTerm = await EduPayTerm.findOne({ school: query.school, status: "ACTIVE" }).sort({ startDate: -1, createdAt: -1 }).select("_id").lean();
+      if (currentTerm) query.term = currentTerm._id;
+    }
+    const attendance = await EduPayAttendance.find(query)
+      .populate("classLevel", "name arm")
+      .populate("session", "name")
+      .populate("term", "name")
+      .sort({ date: -1, updatedAt: -1 }).limit(365).lean();
+    res.json({ success: true, child: student, attendance });
+  } catch (e) { fail(res, e); }
+};
+exports.parentResults = async (req, res) => { try { const child = await parentChild(req); const student = child.academicStudent || child; const school = student.school?._id || student.school; const assessments = await EduPayAssessment.find({ school, classLevel: student.classLevel, status: "PUBLISHED" }).select("_id title session term subject grading").lean(); res.json({ success: true, child: student, results: await EduPayScore.find({ school, student: student._id, assessment: { $in: assessments.map((a) => a._id) }, status: "SUBMITTED" }).populate("assessment").sort({ createdAt: -1 }).lean() }); } catch (e) { fail(res, e); } };
+exports.parentActivities = async (req, res) => { try { const child = await parentChild(req); const student = child.academicStudent || child; const school = student.school?._id || student.school; res.json({ success: true, child: student, activities: await EduPayAcademicActivity.find({ school, status: "PUBLISHED", $or: [{ audience: "SCHOOL" }, { audience: "CLASS", classLevel: student.classLevel }, { audience: "STUDENT", student: student._id }] }).sort({ eventDate: -1 }).lean() }); } catch (e) { fail(res, e); } };
+exports.parentTimetable = async (req, res) => { try { const child = await parentChild(req); const student = child.academicStudent || child; const school = student.school?._id || student.school; res.json({ success: true, child: student, timetable: await EduPayTimetable.find({ school, classLevel: student.classLevel }).populate("subject teacher").sort({ day: 1, startsAt: 1 }).lean() }); } catch (e) { fail(res, e); } };
 
 exports.adminAcademicOverview = async (req, res) => {
   try {
