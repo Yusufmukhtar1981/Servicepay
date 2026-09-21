@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,9 +10,11 @@ class _Client extends http.BaseClient {
   http.Request? last;
   int status = 200;
   dynamic response = {'success': true};
+  bool timeout = false;
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     last = request as http.Request;
+    if (timeout) throw TimeoutException('network timeout');
     return http.StreamedResponse(
       Stream.value(utf8.encode(jsonEncode(response))),
       status,
@@ -18,6 +22,9 @@ class _Client extends http.BaseClient {
     );
   }
 }
+
+String _contextForTest(String token) =>
+    sha256.convert(utf8.encode(token)).toString().substring(0, 24);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -36,6 +43,49 @@ void main() {
       'amount': 12500.0,
       'transactionPin': '4821',
     });
+  });
+
+  test('contribution reuses pending idempotency key after timeout', () async {
+    final client = _Client()..timeout = true;
+    final api = EduPayApi(client: client);
+    await expectLater(
+      api.contribute('plan-timeout', 12500, '4821'),
+      throwsA(isA<TimeoutException>()),
+    );
+    final firstKey = client.last!.headers['idempotency-key'];
+    client.timeout = false;
+    await api.contribute('plan-timeout', 12500, '4821');
+    expect(client.last!.headers['idempotency-key'], firstKey);
+    final prefs = await SharedPreferences.getInstance();
+    expect(
+      prefs.getString('edupay.pendingContribution.'
+          '${_contextForTest('test-token')}.plan-timeout.12500.00'),
+      isNull,
+    );
+  });
+
+  test('school-fee plan payload preserves savings preferences', () async {
+    final client = _Client();
+    final api = EduPayApi(client: client);
+    await api.createPlan({
+      'child': 'child-1',
+      'school': 'school-1',
+      'classLevel': 'class-1',
+      'session': 'session-1',
+      'term': 'term-1',
+      'feeStructure': 'fee-1',
+      'targetDate': '2027-01-01',
+      'targetAmount': 45000.0,
+      'savingFrequency': 'WEEKLY',
+      'preferredContributionAmount': 12500.0,
+    });
+    expect(client.last?.url.path, '/api/edupay/plans');
+    expect(jsonDecode(client.last!.body)['savingFrequency'], 'WEEKLY');
+    expect(jsonDecode(client.last!.body)['targetAmount'], 45000.0);
+    expect(
+        jsonDecode(client.last!.body)['preferredContributionAmount'], 12500.0);
+    expect(jsonDecode(client.last!.body).containsKey('recommendedContribution'),
+        false);
   });
 
   test('authenticated sponsor contribution uses token route and PIN', () async {

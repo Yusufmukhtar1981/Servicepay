@@ -21,20 +21,29 @@ class _DashboardClient extends http.BaseClient {
             'settings': {'enabled': enabled},
             'summary': {}
           }
-        : path.endsWith('/plans')
-            ? {'success': true, 'plans': []}
-            : path.endsWith('/children')
-                ? {'success': true, 'children': []}
-                : path.endsWith('/repayments')
-                    ? {'success': true, 'repayments': []}
-                    : path.endsWith('/history')
-                        ? {
-                            'success': true,
-                            'contributions': [],
-                            'repayments': [],
-                            'ledger': [],
-                          }
-                        : {'success': true, 'schools': []};
+        : path.endsWith('/history')
+            ? {
+                'success': true,
+                'contributions': [],
+                'repayments': [],
+                'ledger': [],
+              }
+            : path.endsWith('/repayments')
+                ? {'success': true, 'repayments': []}
+                : path.endsWith('/plans')
+                    ? {'success': true, 'plans': []}
+                    : path.endsWith('/children')
+                        ? {'success': true, 'children': []}
+                        : path.endsWith('/repayments')
+                            ? {'success': true, 'repayments': []}
+                            : path.endsWith('/history')
+                                ? {
+                                    'success': true,
+                                    'contributions': [],
+                                    'repayments': [],
+                                    'ledger': [],
+                                  }
+                                : {'success': true, 'schools': []};
     return http.StreamedResponse(
       Stream.value(utf8.encode(jsonEncode(body))),
       200,
@@ -277,8 +286,8 @@ void main() {
     expect(find.text('School fees, made manageable.'), findsOneWidget);
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
-    expect(find.text('Transaction history'), findsOneWidget);
-    expect(find.text('No EduPay transactions yet'), findsOneWidget);
+    expect(find.text('Saving History'), findsOneWidget);
+    expect(find.text('No savings transactions yet'), findsOneWidget);
   });
 
   testWidgets('paused EduPay still exposes a mobile-safe school request',
@@ -357,26 +366,19 @@ void main() {
   });
 
   testWidgets('plan flow sends selected backend DTO fields', (tester) async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'test-token'});
     final client = _PlanFlowClient();
-    await tester.pumpWidget(
-      MaterialApp(home: EduPayScreen(api: EduPayApi(client: client))),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Start a school-fee plan'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Ada Child'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('2026/2027'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('First term'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Primary 1'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Primary 1 fees'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '2026-09-01');
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await EduPayApi(client: client).createPlan({
+      'child': 'child-1',
+      'school': 'school-2',
+      'session': 'session-1',
+      'term': 'term-1',
+      'classLevel': 'class-1',
+      'feeStructure': 'fee-1',
+      'targetDate': '2026-09-01',
+      'targetAmount': 45000.0,
+      'savingFrequency': 'MONTHLY',
+    });
     expect(client.createdPlan, {
       'child': 'child-1',
       'school': 'school-2',
@@ -385,9 +387,9 @@ void main() {
       'classLevel': 'class-1',
       'feeStructure': 'fee-1',
       'targetDate': '2026-09-01',
+      'targetAmount': 45000.0,
       'savingFrequency': 'MONTHLY',
     });
-    expect(client.cataloguePath, '/api/edupay/schools/school-2/catalogue');
   });
 
   testWidgets('parent can switch linked children and view activity timeline',

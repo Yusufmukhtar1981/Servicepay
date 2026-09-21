@@ -1,5 +1,6 @@
 import '../services/session_store.dart';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,7 +10,7 @@ class EduPayApi {
   final http.Client _client;
 
   Future<String> _token() async {
-    final p = await SharedPreferences.getInstance();
+    await SharedPreferences.getInstance();
     return (await SessionStore.readToken()) ?? '';
   }
 
@@ -188,14 +189,36 @@ class EduPayApi {
     double amount,
     String pin, {
     String? idempotencyKey,
-  }) =>
-      _send(
+  }) async {
+    final canonicalAmount = amount.toStringAsFixed(2);
+    final context = await _authContext();
+    final prefs = await SharedPreferences.getInstance();
+    final storageKey =
+        'edupay.pendingContribution.$context.$id.$canonicalAmount';
+    final pending = prefs.getString(storageKey);
+    final key = pending ??
+        idempotencyKey ??
+        'edupay-${DateTime.now().microsecondsSinceEpoch}';
+    if (pending == null) await prefs.setString(storageKey, key);
+    try {
+      final result = await _send(
         'POST',
         '/plans/$id/contributions',
         body: {'amount': amount, 'transactionPin': pin},
-        idempotencyKey:
-            idempotencyKey ?? 'edupay-${DateTime.now().microsecondsSinceEpoch}',
-      );
+        idempotencyKey: key,
+      ).timeout(const Duration(seconds: 30));
+      await prefs.remove(storageKey);
+      return result;
+    } on EduPayException catch (e) {
+      if (e.code == 'IDEMPOTENCY_REPLAY' ||
+          e.code == 'DUPLICATE_CONTRIBUTION') {
+        await prefs.remove(storageKey);
+        return {'success': true, 'duplicate': true};
+      }
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> autosave(String id, Map<String, dynamic> data) =>
       _send('PATCH', '/plans/$id/autosave', body: data);
   Future<Map<String, dynamic>> invite(String id, String name) =>
@@ -215,7 +238,46 @@ class EduPayApi {
         idempotencyKey: idempotencyKey ??
             'edupay-sponsor-${DateTime.now().microsecondsSinceEpoch}',
       );
-  Future<Map<String, dynamic>> history() => _send('GET', '/history');
+  Future<Map<String, dynamic>> history() async {
+    final result = await _send('GET', '/history');
+    await _reconcilePending(result);
+    return result;
+  }
+
+  Future<String> _authContext() async {
+    final token = (await SessionStore.readToken()) ?? '';
+    if (token.isEmpty) return 'unauthenticated';
+    return sha256.convert(utf8.encode(token)).toString().substring(0, 24);
+  }
+
+  Future<void> _reconcilePending(Map<String, dynamic> result) async {
+    final prefs = await SharedPreferences.getInstance();
+    final rows = <dynamic>[];
+    void collect(dynamic value) {
+      if (value is List) rows.addAll(value);
+      if (value is Map) {
+        collect(value['savingHistory']);
+        collect(value['savings']);
+        collect(value['rows']);
+      }
+    }
+
+    collect(result);
+    for (final row in rows.whereType<Map>()) {
+      final key = row['idempotencyKey'] ?? row['clientReference'];
+      if (key is String && key.isNotEmpty) {
+        final keys = prefs
+            .getKeys()
+            .where((k) => k.startsWith('edupay.pendingContribution.'))
+            .toList();
+        for (final storageKey in keys) {
+          if (prefs.getString(storageKey) == key)
+            await prefs.remove(storageKey);
+        }
+      }
+    }
+  }
+
   Future<List<dynamic>> repayments() async =>
       (await _send('GET', '/repayments'))['repayments'] as List? ?? [];
   Future<Map<String, dynamic>> repay(

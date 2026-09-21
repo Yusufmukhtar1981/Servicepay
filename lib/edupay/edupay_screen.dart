@@ -168,6 +168,11 @@ class _EduPayScreenState extends State<EduPayScreen> {
             style: TextStyle(color: Color(0xff60736b)),
           ),
           const SizedBox(height: 22),
+          const Text(
+            'School Fees Savings',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
           _heroCard(s),
           const SizedBox(height: 18),
           Row(
@@ -252,7 +257,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
         ),
       );
   Widget _plans() => _listPage(
-        'My plans',
+        'School Fees Savings',
         plans,
         'No plans yet',
         Icons.savings_outlined,
@@ -354,20 +359,53 @@ class _EduPayScreenState extends State<EduPayScreen> {
     final nested = history['history'] is Map
         ? (history['history'] as Map).cast<String, dynamic>()
         : history;
-    final rows = <dynamic>[
-      ...(nested['ledger'] as List? ??
-          nested['ledgerEntries'] as List? ??
-          nested['transactions'] as List? ??
-          const []),
-      ...(nested['contributions'] as List? ?? const []),
-      ...(nested['repayments'] as List? ?? const []),
-    ];
-    return _listPage(
-      'Transaction history',
-      rows,
-      'No EduPay transactions yet',
-      Icons.history,
-      (row) => _receipt(row),
+    final rows = nested['savingHistory'] is List
+        ? nested['savingHistory'] as List
+        : const <dynamic>[];
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text(
+          'Saving History',
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+        if (rows.isEmpty)
+          const _Empty('No savings transactions yet', Icons.history),
+        ...rows.map((row) => _historyRow(row as Map)),
+      ],
+    );
+  }
+
+  Widget _historyRow(Map row) {
+    final child = row['child'] is Map
+        ? row['child']['fullName']
+        : row['childName'] ?? 'Linked child';
+    final school = row['school'] is Map
+        ? row['school']['name']
+        : row['schoolName'] ?? 'School';
+    final reference = row['businessReference'] ??
+        row['receiptId'] ??
+        row['reference'] ??
+        row['transactionReference'];
+    final date = row['createdAt'] ??
+        row['date'] ??
+        row['occurredAt'] ??
+        'Date unavailable';
+    return Card(
+      child: ListTile(
+        onTap: () => _receipt(row),
+        leading: const CircleAvatar(child: Icon(Icons.savings_outlined)),
+        title: Text(
+            _money(row['amount'] ?? row['amountContributed'] ?? row['value'])),
+        subtitle: Text(
+          '$child · $school\n$date\nReference: ${reference ?? 'Pending'}',
+        ),
+        isThreeLine: true,
+        trailing: Text(_statusLabel('${row['status'] ?? 'SUCCESSFUL'}')),
+      ),
     );
   }
 
@@ -419,20 +457,47 @@ class _EduPayScreenState extends State<EduPayScreen> {
     final child = (p['child'] is Map ? p['child']['fullName'] : null) ??
         'School-fee plan';
     final school = p['school'] is Map ? p['school']['name'] : '';
+    final target = number(p['targetAmount']);
+    final saved = number(p['amountSaved']);
+    final remaining = number(p['remaining']);
+    final progress = (number(p['progressPercent']) / 100).clamp(0.0, 1.0);
     return Card(
-      child: ListTile(
+      child: InkWell(
         onTap: () => tap(p),
-        leading: const CircleAvatar(
-          backgroundColor: Color(0xffdcefe8),
-          child: Icon(Icons.school, color: Color(0xff0c6b51)),
-        ),
-        title: Text('$child'),
-        subtitle: Text(
-          '${school ?? ''}\n${_statusLabel(p['status']?.toString())}',
-        ),
-        isThreeLine: true,
-        trailing: Text(
-          _money(p['officialFee'] ?? p['amountRemaining'] ?? p['totalAmount']),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: Color(0xffdcefe8),
+                    child: Icon(Icons.school, color: Color(0xff0c6b51)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '$child',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Text(_statusLabel(p['status']?.toString())),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${school ?? ''} · ${_money(saved)} saved of ${_money(target)}',
+              ),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: progress, minHeight: 7),
+              const SizedBox(height: 5),
+              Text(
+                '${number(p['progressPercent']).round()}% · ${_money(remaining)} remaining',
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -641,28 +706,138 @@ class _EduPayScreenState extends State<EduPayScreen> {
       return '${_nameOf(m)} · ${_money(m['amount'] ?? m['officialFee'])}';
     });
     if (fee == null || !mounted) return;
+    final officialFee = _number(fee['amount'] ?? fee['officialFee']);
+    if (officialFee <= 0) {
+      _snack('The approved school fee is not valid.');
+      return;
+    }
     final date = TextEditingController();
-    final ok = await _formDialog('Settle by', [
-      TextField(
-        controller: date,
-        decoration: const InputDecoration(
-          labelText: 'Target date (YYYY-MM-DD)',
+    final target = TextEditingController(text: officialFee.toStringAsFixed(2));
+    final preferred = TextEditingController();
+    String frequency = 'MONTHLY';
+    String? validation;
+    final details = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Create School Fees Savings plan'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Child: ${_nameOf(child)}'),
+                Text('School: ${_nameOf(school)}'),
+                const SizedBox(height: 8),
+                Text('Official school fee: ${_money(officialFee)}',
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: date,
+                  decoration: const InputDecoration(
+                    labelText: 'Due date (YYYY-MM-DD)',
+                  ),
+                  keyboardType: TextInputType.datetime,
+                ),
+                TextField(
+                  controller: target,
+                  decoration: const InputDecoration(
+                    labelText: 'Savings target',
+                    prefixText: '₦ ',
+                    helperText:
+                        'Must be greater than zero and no more than the official fee.',
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
+                TextField(
+                  controller: preferred,
+                  decoration: const InputDecoration(
+                    labelText: 'Preferred contribution (optional)',
+                    prefixText: '₦ ',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+                DropdownButtonFormField<String>(
+                  value: frequency,
+                  decoration: const InputDecoration(
+                    labelText: 'Contribution frequency',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'DAILY', child: Text('Daily')),
+                    DropdownMenuItem(value: 'WEEKLY', child: Text('Weekly')),
+                    DropdownMenuItem(value: 'MONTHLY', child: Text('Monthly')),
+                    DropdownMenuItem(
+                      value: 'FLEXIBLE',
+                      child: Text('Flexible / manual'),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => frequency = value ?? 'MONTHLY'),
+                ),
+                if (validation != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(validation!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final targetAmount = double.tryParse(target.text.trim());
+                if (date.text.trim().isEmpty) {
+                  setDialogState(() => validation = 'Enter a due date.');
+                  return;
+                }
+                if (targetAmount == null ||
+                    targetAmount <= 0 ||
+                    targetAmount > officialFee) {
+                  setDialogState(() => validation =
+                      'Savings target must be greater than zero and no more than the official fee.');
+                  return;
+                }
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Create plan'),
+            ),
+          ],
         ),
-        keyboardType: TextInputType.datetime,
       ),
-    ]);
-    if (ok == true && date.text.isNotEmpty) {
+    );
+    final dateValue = date.text.trim();
+    final targetValue = double.tryParse(target.text.trim());
+    final preferredValue = double.tryParse(preferred.text.trim());
+    date.dispose();
+    target.dispose();
+    preferred.dispose();
+    if (details == true && dateValue.isNotEmpty && targetValue != null) {
       try {
-        await api.createPlan({
+        final payload = <String, dynamic>{
           'child': _idOf(child),
           'school': _idOf(school),
           'session': _idOf(session),
           'term': _idOf(term),
           'classLevel': _idOf(classLevel),
           'feeStructure': fee['_id'],
-          'targetDate': date.text,
-          'savingFrequency': 'MONTHLY',
-        });
+          'targetDate': dateValue,
+          'targetAmount': targetValue,
+          'savingFrequency': frequency,
+        };
+        if (preferredValue != null && preferredValue > 0)
+          payload['preferredContributionAmount'] = preferredValue;
+        await api.createPlan(payload);
         load();
         _snack('Your EduPay plan is ready.');
       } catch (e) {
@@ -763,10 +938,17 @@ class _EduPayScreenState extends State<EduPayScreen> {
         ),
       ),
     ]);
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      amountController.dispose();
+      return;
+    }
     final pin = await _pinDialog('Confirm repayment');
-    if (pin == null) return;
+    if (pin == null) {
+      amountController.dispose();
+      return;
+    }
     final amount = double.tryParse(amountController.text);
+    amountController.dispose();
     if (amount == null) return;
     try {
       await api.repay(id, amount, pin);
@@ -778,7 +960,11 @@ class _EduPayScreenState extends State<EduPayScreen> {
   }
 
   Future<void> _receipt(Map row) async {
-    final reference = (row['_id'] ?? row['id'] ?? row['reference'])?.toString();
+    final reference = (row['receiptId'] ??
+            row['businessReference'] ??
+            row['transactionReference'] ??
+            row['reference'])
+        ?.toString();
     if (reference == null || reference.isEmpty) {
       _snack('This transaction does not have a receipt reference yet.');
       return;
@@ -847,7 +1033,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
       );
   Future<String?> _pinDialog(String title) async {
     final c = TextEditingController();
-    return showDialog<String>(
+    final result = await showDialog<String>(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(title),
@@ -870,6 +1056,8 @@ class _EduPayScreenState extends State<EduPayScreen> {
         ],
       ),
     );
+    c.dispose();
+    return result;
   }
 
   void _snack(String s) {
@@ -882,6 +1070,11 @@ class _EduPayScreenState extends State<EduPayScreen> {
     final n = v is num ? v : double.tryParse(v.toString()) ?? 0;
     return '₦${n.toStringAsFixed(2)}';
   }
+
+  double _number(dynamic v) =>
+      v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+
+  double number(dynamic v) => _number(v);
 
   Widget _action(String a, String b, IconData i, VoidCallback tap) => Card(
         child: ListTile(
@@ -915,28 +1108,44 @@ class EduPayPlanDetail extends StatefulWidget {
 }
 
 class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
-  String _statusLabel(String? raw) => raw == null
-      ? 'Active'
-      : raw
-          .toLowerCase()
-          .split('_')
-          .map(
-            (word) => word.isEmpty
-                ? word
-                : '${word[0].toUpperCase()}${word.substring(1)}',
-          )
-          .join(' ');
+  String _statusLabel(String? raw) {
+    final value = (raw ?? 'ACTIVE').toUpperCase();
+    final normalized = value == 'SAVING' || value == 'UPCOMING'
+        ? 'ACTIVE'
+        : value == 'READY_FOR_SETTLEMENT' ||
+                value == 'APPROVED' ||
+                value == 'PROCESSING'
+            ? 'ACTIVE'
+            : value == 'FAILED' || value == 'REVERSED' || value == 'DISPUTED'
+                ? 'CANCELLED'
+                : value;
+    return normalized
+        .toLowerCase()
+        .split('_')
+        .map(
+          (word) => word.isEmpty
+              ? word
+              : '${word[0].toUpperCase()}${word.substring(1)}',
+        )
+        .join(' ');
+  }
 
   String money(dynamic v) {
     final n = v is num ? v : double.tryParse('$v') ?? 0;
     return '₦${n.toStringAsFixed(2)}';
   }
 
+  double number(dynamic v) =>
+      v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+
   @override
   Widget build(BuildContext context) {
     final p = widget.data['plan'] as Map? ?? {};
     final child =
         p['child'] is Map ? p['child']['fullName'] : 'School-fee plan';
+    final saved = number(p['amountSaved']);
+    final remaining = number(p['remaining']);
+    final progress = (number(p['progressPercent']) / 100).clamp(0.0, 1.0);
     return Scaffold(
       appBar: AppBar(title: Text('$child')),
       body: ListView(
@@ -968,8 +1177,18 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                     ),
                   ),
                   const Divider(height: 28),
-                  Text('Status  ·  ${p['status'] ?? 'ACTIVE'}'),
-                  Text('Target date  ·  ${p['targetDate'] ?? 'Not set'}'),
+                  Text('Status  ·  ${_statusLabel(p['status']?.toString())}'),
+                  Text(
+                    'Due date  ·  ${p['targetDate'] ?? p['dueDate'] ?? 'Not set'}',
+                  ),
+                  const SizedBox(height: 12),
+                  LinearProgressIndicator(value: progress, minHeight: 8),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${number(p['progressPercent']).round()}% complete · ${money(saved)} saved · ${money(remaining)} remaining',
+                  ),
+                  if (p['nextContribution'] != null)
+                    Text('Next contribution · ${money(p['nextContribution'])}'),
                 ],
               ),
             ),
@@ -1008,6 +1227,8 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                     'Due date',
                     p['targetDate'] ?? p['dueDate'] ?? 'Not set',
                   ),
+                  if (p['nextContribution'] != null)
+                    Text('Next contribution · ${money(p['nextContribution'])}'),
                 ],
               ),
             ),
@@ -1041,7 +1262,22 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                         ],
                       ),
                     );
-                    if (ok != true) return;
+                    if (ok != true) {
+                      c.dispose();
+                      return;
+                    }
+                    final amount = double.tryParse(c.text.trim());
+                    c.dispose();
+                    if (amount == null || amount <= 0) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  'Enter a contribution greater than zero.')),
+                        );
+                      }
+                      return;
+                    }
                     final pin = await showDialog<String>(
                       context: context,
                       builder: (_) {
@@ -1059,18 +1295,22 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                           ),
                           actions: [
                             FilledButton(
-                              onPressed: () => Navigator.pop(context, p.text),
+                              onPressed: () {
+                                final value = p.text;
+                                p.dispose();
+                                Navigator.pop(context, value);
+                              },
                               child: const Text('Confirm'),
                             ),
                           ],
                         );
                       },
                     );
-                    final amount = double.tryParse(c.text);
-                    if (pin != null && amount != null) {
+                    if (pin != null && pin.length == 4) {
+                      final id = '${p['_id'] ?? p['id']}';
                       try {
                         await widget.api.contribute(
-                          '${p['_id'] ?? p['id']}',
+                          id,
                           amount,
                           pin,
                         );
@@ -1099,7 +1339,7 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                       ),
                     ),
             icon: const Icon(Icons.add),
-            label: const Text('Add money from wallet'),
+            label: const Text('Save Now'),
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
