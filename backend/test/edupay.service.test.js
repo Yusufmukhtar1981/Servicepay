@@ -79,6 +79,108 @@ test.beforeEach(async () => {
   await AppSettings.create({ fintechControl: { featureRegistry: { edupay: { enabled: true } } } });
 });
 
+test("academic catalogue supports three terms, current/upcoming sessions, and term-specific approved fees", async () => {
+  session.isCurrent = true;
+  await session.save();
+  const upcomingSession = await EduPayAcademicSession.create({
+    school: school._id, name: "2027/2028", status: "UPCOMING",
+  });
+  const closedSession = await EduPayAcademicSession.create({
+    school: school._id, name: "2025/2026", status: "CLOSED",
+  });
+  const second = await EduPayTerm.create({
+    school: school._id, session: session._id, name: "Second Term", status: "UPCOMING",
+  });
+  const third = await EduPayTerm.create({
+    school: school._id, session: session._id, name: "Third Term", status: "CLOSED",
+  });
+  const futureTerm = await EduPayTerm.create({
+    school: school._id, session: upcomingSession._id, name: "First Term", status: "UPCOMING",
+  });
+  await Fee.create({
+    school: school._id, session: session._id, term: second._id, classLevel: classLevel._id,
+    amount: 80000, submittedBy: parent._id, status: "APPROVED",
+  });
+  await Fee.create({
+    school: school._id, session: session._id, term: third._id, classLevel: classLevel._id,
+    amount: 70000, submittedBy: parent._id, status: "APPROVED",
+  });
+  await Fee.create({
+    school: school._id, session: upcomingSession._id, term: futureTerm._id, classLevel: classLevel._id,
+    amount: 90000, submittedBy: parent._id, status: "APPROVED",
+  });
+
+  const catalogue = await invoke(edupayController.schoolCatalogue, { params: { schoolId: school._id } });
+  assert.equal(catalogue.statusCode, 200);
+  assert.deepEqual(catalogue.body.sessions.map((row) => row.name).sort(), ["2026/2027", "2027/2028"]);
+  assert.ok(catalogue.body.sessions.find((row) => row.isCurrent === true));
+  assert.ok(catalogue.body.terms.every((row) => row.status === "ACTIVE" || row.status === "UPCOMING"));
+  assert.equal(catalogue.body.terms.some((row) => String(row._id) === String(third._id)), false);
+  assert.equal(catalogue.body.fees.length, 3);
+  assert.equal(catalogue.body.fees.some((row) => String(row.term?._id) === String(second._id)), true);
+  assert.equal(catalogue.body.fees.some((row) => String(row.term?._id) === String(futureTerm._id)), true);
+  assert.equal(catalogue.body.fees.some((row) => String(row.term?._id) === String(third._id)), false);
+  assert.equal(catalogue.body.sessions.some((row) => String(row._id) === String(closedSession._id)), false);
+  const upcomingFees = await invoke(edupayController.listFees, {
+    params: { schoolId: school._id },
+    query: {
+      session: upcomingSession._id,
+      term: futureTerm._id,
+      classLevel: classLevel._id,
+    },
+  });
+  assert.equal(upcomingFees.statusCode, 200);
+  assert.equal(upcomingFees.body.fees.length, 1);
+  assert.equal(String(upcomingFees.body.fees[0].term?._id), String(futureTerm._id));
+  const otherSchool = await School.create({ name: "Other Approved School", address: "Other", state: "Lagos", status: "APPROVED", active: true });
+  const otherCatalogue = await invoke(edupayController.schoolCatalogue, { params: { schoolId: otherSchool._id } });
+  assert.equal(otherCatalogue.statusCode, 200);
+  assert.equal(otherCatalogue.body.sessions.length, 0);
+  assert.equal(otherCatalogue.body.fees.length, 0);
+});
+
+test("plan creation accepts an approved upcoming term but rejects closed academic entries", async () => {
+  const upcomingSession = await EduPayAcademicSession.create({
+    school: school._id, name: "2027/2028", status: "UPCOMING",
+  });
+  const upcomingTerm = await EduPayTerm.create({
+    school: school._id, session: upcomingSession._id, name: "Second Term", status: "UPCOMING",
+  });
+  const upcomingFee = await Fee.create({
+    school: school._id, session: upcomingSession._id, term: upcomingTerm._id, classLevel: classLevel._id,
+    amount: 85000, submittedBy: parent._id, status: "APPROVED",
+  });
+  const child = await Child.findOne({ parent: parent._id });
+  const request = {
+    user: { _id: parent._id },
+    body: {
+      child: child._id, school: school._id, session: upcomingSession._id, term: upcomingTerm._id,
+      classLevel: classLevel._id, feeStructure: upcomingFee._id,
+      targetDate: new Date(Date.now() + 86400000 * 45), targetAmount: 85000,
+    },
+  };
+  const created = await invoke(edupayController.createPlan, request);
+  assert.equal(created.statusCode, 201);
+  assert.equal(String(created.body.plan.feeStructure), String(upcomingFee._id));
+
+  const closedSession = await EduPayAcademicSession.create({
+    school: school._id, name: "2025/2026", status: "CLOSED",
+  });
+  const closedTerm = await EduPayTerm.create({
+    school: school._id, session: closedSession._id, name: "Third Term", status: "CLOSED",
+  });
+  const closedFee = await Fee.create({
+    school: school._id, session: closedSession._id, term: closedTerm._id, classLevel: classLevel._id,
+    amount: 75000, submittedBy: parent._id, status: "APPROVED",
+  });
+  const rejected = await invoke(edupayController.createPlan, {
+    ...request,
+    body: { ...request.body, session: closedSession._id, term: closedTerm._id, feeStructure: closedFee._id },
+  });
+  assert.equal(rejected.statusCode, 400);
+  assert.match(rejected.body.message, /current approved school fee contract/i);
+});
+
 test("calculates the approved settlement snapshot exactly", async () => {
   const settings = await Settings.findOne();
   const snapshot = calculateSettlement({ officialFee: 200000, saved: 120000, settings });
@@ -125,6 +227,48 @@ test("admin approval is the only path to an approved school", async () => {
 test("fee structures remain draft or pending until approval", async () => {
   const draft = await Fee.create({ school: school._id, session: session._id, term: term._id, classLevel: classLevel._id, amount: 200000, submittedBy: parent._id, status: "PENDING_APPROVAL" });
   assert.equal(draft.status, "PENDING_APPROVAL");
+});
+
+test("school fee resubmission clears stale review metadata", async () => {
+  const rejected = await Fee.create({
+    school: school._id,
+    session: session._id,
+    term: term._id,
+    classLevel: classLevel._id,
+    amount: 210000,
+    submittedBy: parent._id,
+    status: "REJECTED",
+    reviewedBy: parent._id,
+    reviewedAt: new Date(),
+    reviewNote: "Previous rejection",
+  });
+  const resubmitted = await invoke(edupayController.schoolUpdateFee, {
+    params: { feeId: rejected._id },
+    body: { status: "PENDING_APPROVAL" },
+    user: { _id: parent._id },
+    eduPaySchool: school,
+  });
+  assert.equal(resubmitted.statusCode, 200);
+  assert.equal(resubmitted.body.fee.status, "PENDING_APPROVAL");
+  assert.equal(resubmitted.body.fee.reviewedBy, null);
+  assert.equal(resubmitted.body.fee.reviewedAt, null);
+  assert.equal(resubmitted.body.fee.reviewNote, "");
+
+  rejected.status = "REJECTED";
+  rejected.reviewedBy = parent._id;
+  rejected.reviewedAt = new Date();
+  rejected.reviewNote = "Rejected again";
+  await rejected.save();
+  const amountChanged = await invoke(edupayController.schoolUpdateFee, {
+    params: { feeId: rejected._id },
+    body: { amount: 220000, status: "RETIRED" },
+    user: { _id: parent._id },
+    eduPaySchool: school,
+  });
+  assert.equal(amountChanged.statusCode, 200);
+  assert.equal(amountChanged.body.fee.status, "PENDING_APPROVAL");
+  assert.equal(amountChanged.body.fee.amount, 220000);
+  assert.equal(amountChanged.body.fee.reviewNote, "");
 });
 
 test("child ownership is scoped to its parent", async () => {

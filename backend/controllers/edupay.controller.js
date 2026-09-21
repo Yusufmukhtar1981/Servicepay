@@ -192,7 +192,8 @@ exports.listFees = async (req, res) => {
     if (req.query.session) filter.session = req.query.session;
     if (req.query.term) filter.term = req.query.term;
     if (req.query.classLevel) filter.classLevel = req.query.classLevel;
-    const rows = await Fee.find(filter).populate({ path: "session", match: { status: "ACTIVE" } }).populate({ path: "term", match: { status: "ACTIVE" } }).populate({ path: "classLevel", match: { status: "ACTIVE" } }).sort({ createdAt: -1 }).lean();
+    const selectable = { $in: ["ACTIVE", "UPCOMING"] };
+    const rows = await Fee.find(filter).populate({ path: "session", match: { status: selectable } }).populate({ path: "term", match: { status: selectable } }).populate({ path: "classLevel", match: { status: "ACTIVE" } }).sort({ createdAt: -1 }).lean();
     res.json({ success: true, fees: rows.filter((row) => row.session && row.term && row.classLevel) });
   } catch (error) { errorResponse(res, error); }
 };
@@ -204,15 +205,16 @@ exports.schoolCatalogue = async (req, res) => {
     const school = await School.findOne({ _id: req.params.schoolId, status: "APPROVED", active: true }).select("name state").lean();
     if (!school) return res.status(404).json({ success: false, message: "Approved school not found." });
     const [sessions, terms, classes, fees] = await Promise.all([
-      EduPayAcademicSession.find({ school: school._id, status: "ACTIVE" }).sort({ startsAt: -1, name: 1 }).lean(),
-      EduPayTerm.find({ school: school._id, status: "ACTIVE" }).sort({ startsAt: 1, name: 1 }).lean(),
+      EduPayAcademicSession.find({ school: school._id, status: { $in: ["ACTIVE", "UPCOMING"] } }).sort({ isCurrent: -1, startsAt: -1, name: 1 }).lean(),
+      EduPayTerm.find({ school: school._id, status: { $in: ["ACTIVE", "UPCOMING"] } }).sort({ isCurrent: -1, startsAt: 1, name: 1 }).lean(),
       EduPayClass.find({ school: school._id, status: "ACTIVE" }).sort({ name: 1 }).lean(),
       Fee.find({ school: school._id, status: "APPROVED" }).populate("session term classLevel").sort({ createdAt: -1 }).lean(),
     ]);
     const sessionIds = new Set(sessions.map((row) => String(row._id)));
-    const termIds = new Set(terms.map((row) => String(row._id)));
+    const availableTerms = terms.filter((row) => sessionIds.has(String(row.session)));
+    const termIds = new Set(availableTerms.map((row) => String(row._id)));
     const classIds = new Set(classes.map((row) => String(row._id)));
-    res.json({ success: true, school, sessions, terms, classes, fees: fees.filter((fee) => sessionIds.has(String(fee.session?._id || fee.session)) && termIds.has(String(fee.term?._id || fee.term)) && classIds.has(String(fee.classLevel?._id || fee.classLevel))) });
+    res.json({ success: true, school, sessions, terms: availableTerms, classes, fees: fees.filter((fee) => sessionIds.has(String(fee.session?._id || fee.session)) && termIds.has(String(fee.term?._id || fee.term)) && classIds.has(String(fee.classLevel?._id || fee.classLevel))) });
   } catch (error) { errorResponse(res, error); }
 };
 
@@ -250,8 +252,8 @@ exports.createPlan = async (req, res) => {
     const school = await School.findOne({ _id: req.body.school, status: "APPROVED", active: true }).select("_id").lean();
     const [child, session, term, classLevel, fee] = await Promise.all([
       Child.findOne({ _id: req.body.child, parent: req.user._id, school: req.body.school, status: "ACTIVE" }),
-      EduPayAcademicSession.findOne({ _id: req.body.session, school: req.body.school, status: "ACTIVE" }),
-      EduPayTerm.findOne({ _id: req.body.term, school: req.body.school, session: req.body.session, status: "ACTIVE" }),
+      EduPayAcademicSession.findOne({ _id: req.body.session, school: req.body.school, status: { $in: ["ACTIVE", "UPCOMING"] } }),
+      EduPayTerm.findOne({ _id: req.body.term, school: req.body.school, session: req.body.session, status: { $in: ["ACTIVE", "UPCOMING"] } }),
       EduPayClass.findOne({ _id: req.body.classLevel, school: req.body.school, status: "ACTIVE" }),
       Fee.findOne({ _id: req.body.feeStructure, school: req.body.school, session: req.body.session, term: req.body.term, classLevel: req.body.classLevel, status: "APPROVED" }),
     ]);
@@ -854,10 +856,82 @@ exports.schoolSessions = async (req, res) => { try { const rows = await EduPayAc
 exports.schoolTerms = async (req, res) => { try { const rows = await EduPayTerm.find({ school: req.eduPaySchool._id }).populate({ path: "session", select: "_id name status startsAt endsAt", match: { school: req.eduPaySchool._id } }).sort({ createdAt: -1 }).lean(); res.json({ success: true, terms: rows.filter((row) => row.session) }); } catch (error) { errorResponse(res, error); } };
 exports.schoolClasses = async (req, res) => { try { const rows = await EduPayClass.find({ school: req.eduPaySchool._id }).sort({ name: 1 }).lean(); res.json({ success: true, classes: rows }); } catch (error) { errorResponse(res, error); } };
 exports.schoolFees = async (req, res) => { try { const rows = await Fee.find({ school: req.eduPaySchool._id }).populate({ path: "session", select: "_id name status startsAt endsAt", match: { school: req.eduPaySchool._id } }).populate({ path: "term", select: "_id name status session startsAt endsAt", match: { school: req.eduPaySchool._id } }).populate({ path: "classLevel", select: "_id name status", match: { school: req.eduPaySchool._id } }).sort({ createdAt: -1 }).lean(); res.json({ success: true, fees: rows.filter((row) => row.session && row.term && row.classLevel) }); } catch (error) { errorResponse(res, error); } };
-exports.schoolCreateSession = async (req, res) => { try { if (!(await enabledForInitiation(res))) return; const row = await EduPayAcademicSession.create({ school: req.eduPaySchool._id, name: req.body.name, startsAt: req.body.startsAt, endsAt: req.body.endsAt, status: "DRAFT" }); res.status(201).json({ success: true, session: row }); } catch (error) { errorResponse(res, error); } };
-exports.schoolCreateTerm = async (req, res) => { try { if (!(await enabledForInitiation(res))) return; const session = await EduPayAcademicSession.findOne({ _id: req.body.session, school: req.eduPaySchool._id }); if (!session) return res.status(400).json({ success: false, message: "Academic session does not belong to this school." }); const row = await EduPayTerm.create({ school: req.eduPaySchool._id, session: session._id, name: req.body.name, startsAt: req.body.startsAt, endsAt: req.body.endsAt, status: "DRAFT" }); res.status(201).json({ success: true, term: row }); } catch (error) { errorResponse(res, error); } };
+const schoolAcademicStatus = (value) => {
+  const status = String(value || "DRAFT").trim().toUpperCase();
+  if (!["DRAFT", "ACTIVE", "UPCOMING", "CLOSED"].includes(status)) {
+    const error = new Error("Academic status must be ACTIVE, UPCOMING, CLOSED, or legacy DRAFT.");
+    error.statusCode = 400; throw error;
+  }
+  return status;
+};
+const schoolAcademicDates = (startsAt, endsAt) => {
+  const start = startsAt ? new Date(startsAt) : null; const end = endsAt ? new Date(endsAt) : null;
+  if ((start && Number.isNaN(start.getTime())) || (end && Number.isNaN(end.getTime())) || (start && end && end < start)) {
+    const error = new Error("Academic dates are invalid."); error.statusCode = 400; throw error;
+  }
+  return { startsAt: start || undefined, endsAt: end || undefined };
+};
+exports.schoolCreateSession = async (req, res) => {
+  try {
+    if (!(await enabledForInitiation(res))) return;
+    const school = req.eduPaySchool._id; const status = schoolAcademicStatus(req.body.status);
+    const requestedCurrent = req.body.isCurrent === true || req.body.current === true || req.body.isDefault === true;
+    const isCurrent = requestedCurrent || (status === "ACTIVE" && !(await EduPayAcademicSession.exists({ school, isCurrent: true })));
+    if (isCurrent && status !== "ACTIVE") return res.status(400).json({ success: false, message: "Only an ACTIVE session can be current." });
+    if (isCurrent) await EduPayAcademicSession.updateMany({ school, isCurrent: true }, { $set: { isCurrent: false } });
+    const row = await EduPayAcademicSession.create({ school, name: req.body.name, ...schoolAcademicDates(req.body.startsAt, req.body.endsAt), status, isCurrent });
+    res.status(201).json({ success: true, session: row });
+  } catch (error) { errorResponse(res, error); }
+};
+exports.schoolCreateTerm = async (req, res) => {
+  try {
+    if (!(await enabledForInitiation(res))) return;
+    const school = req.eduPaySchool._id; const session = await EduPayAcademicSession.findOne({ _id: req.body.session, school });
+    if (!session) return res.status(400).json({ success: false, message: "Academic session does not belong to this school." });
+    const status = schoolAcademicStatus(req.body.status);
+    const requestedCurrent = req.body.isCurrent === true || req.body.current === true || req.body.isDefault === true;
+    const isCurrent = requestedCurrent || (status === "ACTIVE" && !(await EduPayTerm.exists({ school, session: session._id, isCurrent: true })));
+    if (isCurrent && status !== "ACTIVE") return res.status(400).json({ success: false, message: "Only an ACTIVE term can be current." });
+    if (isCurrent) await EduPayTerm.updateMany({ school, session: session._id, isCurrent: true }, { $set: { isCurrent: false } });
+    const row = await EduPayTerm.create({ school, session: session._id, name: req.body.name, ...schoolAcademicDates(req.body.startsAt, req.body.endsAt), status, isCurrent });
+    res.status(201).json({ success: true, term: row });
+  } catch (error) { errorResponse(res, error); }
+};
 exports.schoolCreateClass = async (req, res) => { try { if (!(await enabledForInitiation(res))) return; const row = await EduPayClass.create({ school: req.eduPaySchool._id, name: req.body.name }); res.status(201).json({ success: true, classLevel: row }); } catch (error) { errorResponse(res, error); } };
-exports.schoolCreateFee = async (req, res) => { try { if (!(await enabledForInitiation(res))) return; const [session, term, classLevel] = await Promise.all([EduPayAcademicSession.findOne({ _id: req.body.session, school: req.eduPaySchool._id }), EduPayTerm.findOne({ _id: req.body.term, school: req.eduPaySchool._id, session: req.body.session }), EduPayClass.findOne({ _id: req.body.classLevel, school: req.eduPaySchool._id })]); if (!session || !term || !classLevel) return res.status(400).json({ success: false, message: "Academic references must belong to this school." }); const row = await Fee.create({ school: req.eduPaySchool._id, session: session._id, term: term._id, classLevel: classLevel._id, amount: round(req.body.amount), submittedBy: req.user._id, status: "PENDING_APPROVAL" }); res.status(201).json({ success: true, fee: row }); } catch (error) { errorResponse(res, error); } };
+exports.schoolCreateFee = async (req, res) => { try { if (!(await enabledForInitiation(res))) return; const amount = round(req.body.amount); if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ success: false, message: "A valid official fee amount is required." }); const [session, term, classLevel] = await Promise.all([EduPayAcademicSession.findOne({ _id: req.body.session, school: req.eduPaySchool._id }), EduPayTerm.findOne({ _id: req.body.term, school: req.eduPaySchool._id, session: req.body.session }), EduPayClass.findOne({ _id: req.body.classLevel, school: req.eduPaySchool._id })]); if (!session || !term || !classLevel) return res.status(400).json({ success: false, message: "Academic references must belong to this school." }); if (!["ACTIVE", "UPCOMING"].includes(session.status) || !["ACTIVE", "UPCOMING"].includes(term.status)) return res.status(400).json({ success: false, message: "Fees can only be configured for active or upcoming academic entries." }); const row = await Fee.create({ school: req.eduPaySchool._id, session: session._id, term: term._id, classLevel: classLevel._id, amount, submittedBy: req.user._id, status: "PENDING_APPROVAL" }); res.status(201).json({ success: true, fee: row }); } catch (error) { errorResponse(res, error); } };
+exports.schoolUpdateFee = async (req, res) => {
+  try {
+    if (!(await enabledForInitiation(res))) return;
+    const row = await Fee.findOne({ _id: req.params.feeId, school: req.eduPaySchool._id });
+    if (!row) return res.status(404).json({ success: false, message: "Fee structure not found for this school." });
+    const [session, term] = await Promise.all([
+      EduPayAcademicSession.findOne({ _id: row.session, school: req.eduPaySchool._id }),
+      EduPayTerm.findOne({ _id: row.term, school: req.eduPaySchool._id, session: row.session }),
+    ]);
+    if (!session || !term || !["ACTIVE", "UPCOMING"].includes(session.status) || !["ACTIVE", "UPCOMING"].includes(term.status)) {
+      return res.status(400).json({ success: false, message: "Fees can only be updated for active or upcoming academic entries." });
+    }
+    if (req.body.status !== undefined) {
+      const status = String(req.body.status).toUpperCase();
+      if (!["DRAFT", "PENDING_APPROVAL", "RETIRED"].includes(status)) return res.status(400).json({ success: false, message: "School users may submit or retire fees; approval remains an administrative action." });
+      row.status = status;
+    }
+    if (req.body.amount !== undefined) {
+      const amount = round(req.body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ success: false, message: "A valid official fee amount is required." });
+      row.amount = amount;
+      row.status = "PENDING_APPROVAL";
+    }
+    if (row.status === "PENDING_APPROVAL") {
+      row.reviewedBy = null;
+      row.reviewedAt = null;
+      row.reviewNote = "";
+    }
+    row.submittedBy = row.submittedBy || req.user._id;
+    await row.save();
+    res.json({ success: true, fee: row });
+  } catch (error) { errorResponse(res, error); }
+};
 exports.schoolStudents = async (req, res) => { try { res.json({ success: true, students: await Child.find({ school: req.eduPaySchool._id }).select("fullName school status createdAt").lean() }); } catch (error) { errorResponse(res, error); } };
 exports.schoolSettlements = async (req, res) => { try { res.json({ success: true, settlements: await Settlement.find({ school: req.eduPaySchool._id }).populate("child plan").sort({ settlementDate: -1 }).lean() }); } catch (error) { errorResponse(res, error); } };
 exports.schoolReconciliation = async (req, res) => { try { const settlements = await Settlement.find({ school: req.eduPaySchool._id }).lean(); res.json({ success: true, reconciliation: { settled: settlements.filter((row) => row.status === "SETTLED").length, pending: settlements.filter((row) => !["SETTLED", "REVERSED"].includes(row.status)).length, gross: round(settlements.filter((row) => row.status === "SETTLED").reduce((sum, row) => sum + row.schoolGrossSettlement, 0)), net: round(settlements.filter((row) => row.status === "SETTLED").reduce((sum, row) => sum + row.schoolNetSettlement, 0)), commission: round(settlements.filter((row) => row.status === "SETTLED").reduce((sum, row) => sum + row.schoolCommissionAmount, 0)) } }); } catch (error) { errorResponse(res, error); } };

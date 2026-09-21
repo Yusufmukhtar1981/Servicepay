@@ -71,6 +71,26 @@ const inputError = (message, statusCode = 400) => {
   error.statusCode = statusCode;
   return error;
 };
+const ACADEMIC_STATUSES = new Set(["DRAFT", "ACTIVE", "UPCOMING", "CLOSED"]);
+const academicStatus = (value, fallback = "DRAFT") => {
+  const status = String(value || fallback).trim().toUpperCase();
+  if (!ACADEMIC_STATUSES.has(status)) throw inputError("Academic status must be ACTIVE, UPCOMING, CLOSED, or legacy DRAFT.");
+  return status;
+};
+const dateRange = (startsAt, endsAt) => {
+  const start = startsAt ? new Date(startsAt) : null;
+  const end = endsAt ? new Date(endsAt) : null;
+  if ((start && Number.isNaN(start.getTime())) || (end && Number.isNaN(end.getTime()))) throw inputError("Academic dates must be valid.");
+  if (start && end && end < start) throw inputError("Academic end date cannot precede its start date.");
+  return { startsAt: start || undefined, endsAt: end || undefined };
+};
+const currentRequested = (body) => body.isCurrent === true || body.current === true || body.isDefault === true;
+const setCurrentSession = async (school, id, actor) => {
+  await EduPayAcademicSession.updateMany({ school, _id: { $ne: id }, isCurrent: true }, { $set: { isCurrent: false, updatedBy: actor } });
+};
+const setCurrentTerm = async (school, session, id, actor) => {
+  await EduPayTerm.updateMany({ school, session, _id: { $ne: id }, isCurrent: true }, { $set: { isCurrent: false, updatedBy: actor } });
+};
 const temporaryPassword = (value) => {
   const check = validateStrongPassword(String(value || ""));
   if (!check.valid) { const e = new Error(check.message); e.statusCode = 400; throw e; }
@@ -187,9 +207,13 @@ exports.dashboard = async (req, res) => {
 exports.createSession = async (req, res) => {
   try {
     if (!(await manager(req, res))) return;
-    const school = schoolId(req); const status = String(req.body.status || "DRAFT").toUpperCase();
-    if (status === "ACTIVE") await EduPayAcademicSession.updateMany({ school, status: "ACTIVE" }, { $set: { status: "CLOSED", updatedBy: req.user._id } });
-    const row = await EduPayAcademicSession.create({ school, name: req.body.name, startsAt: req.body.startsAt, endsAt: req.body.endsAt, status });
+    const school = schoolId(req); const status = academicStatus(req.body.status);
+    if (!String(req.body.name || "").trim()) throw inputError("Session name is required.");
+    const dates = dateRange(req.body.startsAt, req.body.endsAt);
+    const makeCurrent = currentRequested(req.body) || (status === "ACTIVE" && !(await EduPayAcademicSession.exists({ school, isCurrent: true })));
+    if (makeCurrent && status !== "ACTIVE") throw inputError("Only an ACTIVE session can be current.");
+    if (makeCurrent) await setCurrentSession(school, null, req.user._id);
+    const row = await EduPayAcademicSession.create({ school, name: req.body.name, ...dates, status, isCurrent: makeCurrent, updatedBy: req.user._id });
     await audit({ actor: req.user._id, action: "EDUPAY_SESSION_CREATED", entityType: "EduPayAcademicSession", entityId: row._id, school, req });
     res.status(201).json({ success: true, session: row });
   } catch (e) { fail(res, e); }
@@ -197,18 +221,45 @@ exports.createSession = async (req, res) => {
 exports.updateSession = async (req, res) => {
   try {
     if (!(await manager(req, res))) return; const row = await ensureOwned(EduPayAcademicSession, req.params.sessionId, schoolId(req), "Session");
-    if (req.body.status === "ACTIVE") await EduPayAcademicSession.updateMany({ school: schoolId(req), status: "ACTIVE", _id: { $ne: row._id } }, { $set: { status: "CLOSED" } });
-    ["name", "startsAt", "endsAt", "status"].forEach((k) => { if (req.body[k] !== undefined) row[k] = req.body[k]; }); row.updatedBy = req.user._id; await row.save();
+    const status = req.body.status === undefined ? row.status : academicStatus(req.body.status, row.status);
+    const dates = dateRange(req.body.startsAt === undefined ? row.startsAt : req.body.startsAt, req.body.endsAt === undefined ? row.endsAt : req.body.endsAt);
+    const explicitCurrent = req.body.isCurrent !== undefined || req.body.current !== undefined || req.body.isDefault !== undefined;
+    const makeCurrent = explicitCurrent ? currentRequested(req.body) : (row.isCurrent === true && status === "ACTIVE");
+    if (explicitCurrent && makeCurrent && status !== "ACTIVE") throw inputError("Only an ACTIVE session can be current.");
+    if (makeCurrent) await setCurrentSession(schoolId(req), row._id, req.user._id);
+    if (req.body.name !== undefined) row.name = String(req.body.name).trim();
+    row.startsAt = dates.startsAt; row.endsAt = dates.endsAt; row.status = status; row.isCurrent = makeCurrent; row.updatedBy = req.user._id; await row.save();
     res.json({ success: true, session: row });
   } catch (e) { fail(res, e); }
 };
 exports.createTerm = async (req, res) => {
   try {
     if (!(await manager(req, res))) return; const session = await ensureOwned(EduPayAcademicSession, req.body.session, schoolId(req), "Session");
-    const status = String(req.body.status || "DRAFT").toUpperCase();
-    if (status === "ACTIVE") await EduPayTerm.updateMany({ school: schoolId(req), status: "ACTIVE" }, { $set: { status: "CLOSED" } });
-    const row = await EduPayTerm.create({ school: schoolId(req), session: session._id, name: req.body.name, startsAt: req.body.startsAt, endsAt: req.body.endsAt, status });
+    const status = academicStatus(req.body.status);
+    const name = String(req.body.name || "").trim();
+    if (!name) throw inputError("Term name is required.");
+    const dates = dateRange(req.body.startsAt, req.body.endsAt);
+    const makeCurrent = currentRequested(req.body) || (status === "ACTIVE" && !(await EduPayTerm.exists({ school: schoolId(req), session: session._id, isCurrent: true })));
+    if (makeCurrent && status !== "ACTIVE") throw inputError("Only an ACTIVE term can be current.");
+    if (makeCurrent) await setCurrentTerm(schoolId(req), session._id, null, req.user._id);
+    const row = await EduPayTerm.create({ school: schoolId(req), session: session._id, name, ...dates, status, isCurrent: makeCurrent, updatedBy: req.user._id });
     res.status(201).json({ success: true, term: row });
+  } catch (e) { fail(res, e); }
+};
+exports.updateTerm = async (req, res) => {
+  try {
+    if (!(await manager(req, res))) return;
+    const school = schoolId(req);
+    const row = await ensureOwned(EduPayTerm, req.params.termId, school, "Term");
+    const status = req.body.status === undefined ? row.status : academicStatus(req.body.status, row.status);
+    const dates = dateRange(req.body.startsAt === undefined ? row.startsAt : req.body.startsAt, req.body.endsAt === undefined ? row.endsAt : req.body.endsAt);
+    const explicitCurrent = req.body.isCurrent !== undefined || req.body.current !== undefined || req.body.isDefault !== undefined;
+    const makeCurrent = explicitCurrent ? currentRequested(req.body) : (row.isCurrent === true && status === "ACTIVE");
+    if (explicitCurrent && makeCurrent && status !== "ACTIVE") throw inputError("Only an ACTIVE term can be current.");
+    if (makeCurrent) await setCurrentTerm(school, row.session, row._id, req.user._id);
+    if (req.body.name !== undefined) row.name = String(req.body.name).trim();
+    row.startsAt = dates.startsAt; row.endsAt = dates.endsAt; row.status = status; row.isCurrent = makeCurrent; row.updatedBy = req.user._id; await row.save();
+    res.json({ success: true, term: row });
   } catch (e) { fail(res, e); }
 };
 exports.listAcademic = async (req, res) => {

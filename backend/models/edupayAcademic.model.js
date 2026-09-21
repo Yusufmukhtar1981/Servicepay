@@ -3,19 +3,23 @@ const sessionSchema = new mongoose.Schema({
   school: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySchool", required: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 80 },
   startsAt: Date, endsAt: Date,
-  status: { type: String, enum: ["DRAFT", "ACTIVE", "CLOSED"], default: "DRAFT", index: true },
+  status: { type: String, enum: ["DRAFT", "ACTIVE", "UPCOMING", "CLOSED"], default: "DRAFT", index: true },
+  isCurrent: { type: Boolean, default: false, index: true },
 }, { timestamps: true });
 sessionSchema.index({ school: 1, name: 1 }, { unique: true });
 sessionSchema.index({ school: 1, status: 1 }, { unique: true, partialFilterExpression: { status: "ACTIVE" } });
+sessionSchema.index({ school: 1, isCurrent: 1 }, { unique: true, partialFilterExpression: { isCurrent: true } });
 const termSchema = new mongoose.Schema({
   school: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySchool", required: true, index: true },
   session: { type: mongoose.Schema.Types.ObjectId, ref: "EduPayAcademicSession", required: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 80 },
   startsAt: Date, endsAt: Date,
-  status: { type: String, enum: ["DRAFT", "ACTIVE", "CLOSED"], default: "DRAFT" },
+  status: { type: String, enum: ["DRAFT", "ACTIVE", "UPCOMING", "CLOSED"], default: "DRAFT" },
+  isCurrent: { type: Boolean, default: false, index: true },
 }, { timestamps: true });
 termSchema.index({ session: 1, name: 1 }, { unique: true });
 termSchema.index({ school: 1, status: 1 }, { unique: true, partialFilterExpression: { status: "ACTIVE" } });
+termSchema.index({ school: 1, session: 1, isCurrent: 1 }, { unique: true, partialFilterExpression: { isCurrent: true } });
 const classSchema = new mongoose.Schema({
   school: { type: mongoose.Schema.Types.ObjectId, ref: "EduPaySchool", required: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 120 },
