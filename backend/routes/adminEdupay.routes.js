@@ -45,6 +45,7 @@ router.patch("/fees/:feeId", ...manage, controller.adminFeeAction);
 router.get("/parents", ...view, controller.adminPlans);
 router.get("/children", ...view, controller.adminPlans);
 router.get("/plans", ...view, controller.adminPlans);
+router.get("/plans/:planId/history", ...view, controller.adminPlanHistory);
 router.get("/repayments", ...view, controller.adminRepayments);
 router.get("/settlements", ...view, controller.adminSettlements);
 router.post("/plans/:planId/settlements", ...manage, controller.adminCreateSettlement);

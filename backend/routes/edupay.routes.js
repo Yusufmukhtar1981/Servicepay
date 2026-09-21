@@ -53,6 +53,7 @@ router.get("/school/students", ...schoolFinance, controller.schoolStudents);
 router.get("/school/settlements", ...schoolFinance, controller.schoolSettlements);
 router.get("/school/reconciliation", ...schoolFinance, controller.schoolReconciliation);
 router.get("/school/reports", ...schoolFinance, controller.schoolReport);
+router.get("/school/savings", ...schoolFinance, controller.schoolSavings);
 
 // Academic management is intentionally isolated from the existing finance
 // handlers above. Every endpoint still passes the existing school membership

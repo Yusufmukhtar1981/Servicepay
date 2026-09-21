@@ -75,7 +75,7 @@ async function createSettlement({ planId, actor, settlementDate, idempotencyKey,
   const session = await mongoose.startSession(); let settlement;
   try { await session.withTransaction(async () => {
     const command = prior || (await Command.create([{ key: idempotencyKey, owner: actor, command: "SETTLEMENT_CREATE", intentHash }], { session }))[0];
-    const plan = await Plan.findOne({ _id: planId, status: "SAVING" }).session(session); if (!plan) { const error = new Error("Plan must be SAVING to initiate settlement."); error.statusCode = 409; throw error; }
+     const plan = await Plan.findOne({ _id: planId, status: { $in: ["SAVING", "READY_FOR_SETTLEMENT"] } }).session(session); if (!plan) { const error = new Error("Plan must be SAVING or READY_FOR_SETTLEMENT to initiate settlement."); error.statusCode = 409; throw error; }
     const existing = await Settlement.findOne({ plan: plan._id }).session(session); if (existing) { if (existing.intentHash === intentHash) { settlement = existing; return; } const error = new Error("A settlement already exists for this plan."); error.statusCode = 409; throw error; }
     const saved = await availableSavings(plan._id, session); const settings = await getSettings(session);
     if (saved < Number(settings.minimumSavingsRequirement || 0)) { const error = new Error("Plan has not met the minimum savings requirement."); error.statusCode = 409; throw error; }
@@ -104,6 +104,12 @@ async function availableSavings(planId, session = null) {
   return round(Number(row?.credits || 0) - Number(row?.debits || 0));
 }
 async function createEduLedger({ parent, child, plan, direction, type, amount, openingBalance, reference: ref, idempotencyKey, source, metadata = {}, session }) {
+  let school = metadata.school || null;
+  if (!school) {
+    let planQuery = Plan.findById(plan).select("school");
+    if (session) planQuery = planQuery.session(session);
+    school = (await planQuery.lean())?.school || null;
+  }
   const closingBalance = round(direction === "CREDIT" ? openingBalance + amount : openingBalance - amount);
   if (closingBalance < 0) { const error = new Error("EduPay savings cannot become negative."); error.statusCode = 409; throw error; }
   let existingQuery = EduLedger.findOne({ idempotencyKey });
@@ -120,7 +126,7 @@ async function createEduLedger({ parent, child, plan, direction, type, amount, o
       throw error;
     }
   }
-  const [entry] = await EduLedger.create([{ parent, child, plan, direction, type, amount, openingBalance, closingBalance, reference: ref, idempotencyKey, source, metadata }], { session });
+  const [entry] = await EduLedger.create([{ parent, child, plan, school, direction, type, amount, openingBalance, closingBalance, reference: ref, idempotencyKey, source, metadata }], { session });
   return { entry, duplicate: false };
 }
 function assertIntent(existing, intentHash) {
@@ -146,7 +152,7 @@ async function contributeFromWallet({ userId, planId, amount, transactionPin, bi
     await session.withTransaction(async () => {
       const plan = await Plan.findOne({ _id: planId, parent: userId }).session(session);
       if (!plan) { const error = new Error("EduPay plan not found."); error.statusCode = 404; throw error; }
-      if (plan.status !== "SAVING") { const error = new Error("Only SAVING plans can receive contributions."); error.statusCode = 409; throw error; }
+      if (!["SAVING", "UPCOMING"].includes(plan.status)) { const error = new Error("Only active SAVING or UPCOMING plans can receive contributions."); error.statusCode = 409; throw error; }
       const before = await User.findById(userId).select("walletBalance").session(session);
       const updated = await User.findOneAndUpdate({ _id: userId, status: "ACTIVE", walletBalance: { $gte: value } }, { $inc: { walletBalance: -value } }, { new: true, session });
       if (!updated) { const error = new Error("Your wallet balance is insufficient."); error.statusCode = 400; throw error; }
@@ -184,7 +190,7 @@ async function contributeSponsorFromWallet({ sponsorId, tokenHash, amount, trans
   try {
     await session.withTransaction(async () => {
       const currentInvite = await EduPaySponsorInvite.findOne({ _id: invite._id, status: "ACTIVE", expiresAt: { $gt: new Date() } }).session(session);
-      const invitePlan = currentInvite ? await Plan.findOne({ _id: currentInvite.plan, status: "SAVING" }).session(session) : null;
+       const invitePlan = currentInvite ? await Plan.findOne({ _id: currentInvite.plan, status: { $in: ["SAVING", "UPCOMING"] } }).session(session) : null;
       if (!currentInvite || !invitePlan) { const error = new Error("Sponsor invite or plan is no longer active."); error.statusCode = 409; throw error; }
       const [before] = await User.find({ _id: sponsorId, status: "ACTIVE" }).select("walletBalance").session(session);
       if (!before || Number(before.walletBalance) < value) { const error = new Error("Your wallet balance is insufficient."); error.statusCode = 400; throw error; }
@@ -262,7 +268,7 @@ async function confirmSettlement({ settlementId, actor, transactionId, providerR
     await session.withTransaction(async () => {
       const settlement = await Settlement.findById(settlementId).session(session);
       if (!settlement) { const error = new Error("Settlement not found."); error.statusCode = 404; throw error; }
-      if (settlement.status === "SETTLED") { duplicate = true; result = settlement; return; }
+       if (settlement.status === "SETTLED") { const error = new Error("Settlement is already settled; only the original successful idempotent command may be replayed."); error.statusCode = 409; throw error; }
       if (settlement.status !== "PROCESSING") { const error = new Error("Settlement must be PROCESSING before confirmation."); error.statusCode = 409; throw error; }
       if (!priorCommand) await Command.create([{ key: idempotencyKey, owner: actor, command: "EDUPAY_SETTLEMENT_CONFIRM", intentHash }], { session });
       const payout = await Transaction.findOne({

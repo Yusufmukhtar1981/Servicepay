@@ -164,8 +164,13 @@ exports.dashboard = async (req, res) => {
       EduPayRepayment.find({ parent: req.user._id, status: { $in: ["ACTIVE", "PARTIALLY_PAID", "OVERDUE"] } }).lean(),
       Contribution.aggregate([{ $match: { parent: req.user._id, status: "SUCCESS" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
     ]);
-    const settings = await getSettings();
-    const feature = { effectiveEnabled: await evaluateEduPayReadiness() };
+    const [settings, appSettings, financiallyReady] = await Promise.all([
+      getSettings(),
+      require("../models/appSettings.model").findOne({}).lean(),
+      evaluateEduPayReadiness(),
+    ]);
+    const featureEnabled = appSettings?.fintechControl?.featureRegistry?.edupay?.enabled !== false;
+    const feature = { effectiveEnabled: financiallyReady && featureEnabled };
     const saved = round(contributions[0]?.total);
     const upcoming = plans.filter((plan) => !["SETTLED", "CANCELLED", "REVERSED"].includes(plan.status)).sort((a, b) => new Date(a.targetDate) - new Date(b.targetDate))[0] || null;
     res.json({ success: true, settings: { enabled: feature.effectiveEnabled, autosaveEnabled: settings.autosaveEnabled }, summary: { totalEducationSavings: saved, totalChildren: children, activePlans: plans.filter((p) => !["SETTLED", "CANCELLED", "REVERSED"].includes(p.status)).length, outstandingRepayment: round(repayments.reduce((sum, row) => sum + Number(row.amountRemaining || 0), 0)), upcomingSchoolFee: upcoming ? { amount: upcoming.officialFee, targetDate: upcoming.targetDate, saved: saved } : null }, plans });
@@ -254,23 +259,44 @@ exports.createPlan = async (req, res) => {
     const targetDate = new Date(req.body.targetDate);
     if (Number.isNaN(targetDate.getTime()) || targetDate <= new Date()) return res.status(400).json({ success: false, message: "A future settlement date is required." });
     const days = Math.max(1, Math.ceil((targetDate - Date.now()) / 86400000));
-    const frequency = String(req.body.savingFrequency || "MONTHLY").toUpperCase();
-    const periods = frequency === "DAILY" ? days : frequency === "WEEKLY" ? Math.ceil(days / 7) : Math.max(1, Math.ceil(days / 30));
-    const plan = await Plan.create({ parent: req.user._id, child: child._id, school: req.body.school, session: req.body.session, term: req.body.term, classLevel: req.body.classLevel, feeStructure: fee._id, officialFee: fee.amount, savingFrequency: frequency, targetDate, recommendedContribution: round(fee.amount / periods), autosave: { enabled: false } });
+    const requestedFrequency = String(req.body.savingFrequency || req.body.frequency || "MONTHLY").trim().toUpperCase();
+    const frequency = requestedFrequency === "MANUAL" ? "FLEXIBLE" : requestedFrequency;
+    if (!["DAILY", "WEEKLY", "MONTHLY", "FLEXIBLE", "CUSTOM"].includes(frequency)) return res.status(400).json({ success: false, message: "Choose a valid savings frequency." });
+    const targetInput = req.body.targetAmount ?? req.body.savingsTarget;
+    const targetAmount = targetInput === undefined ? round(fee.amount) : round(targetInput);
+    if (!Number.isFinite(targetAmount) || targetAmount <= 0 || targetAmount > Number(fee.amount)) return res.status(400).json({ success: false, message: "Savings target must be greater than zero and no more than the approved fee." });
+    const preferredSupplied = req.body.preferredContributionAmount !== undefined || req.body.contributionAmount !== undefined;
+    const preferred = req.body.preferredContributionAmount ?? req.body.contributionAmount;
+    const preferredContributionAmount = preferredSupplied ? round(preferred) : 0;
+    if (preferredSupplied && (!Number.isFinite(preferredContributionAmount) || preferredContributionAmount <= 0)) return res.status(400).json({ success: false, message: "Preferred contribution amount must be greater than zero." });
+    const periods = frequency === "DAILY" ? days : frequency === "WEEKLY" ? Math.ceil(days / 7) : frequency === "MONTHLY" ? Math.max(1, Math.ceil(days / 30)) : 1;
+    const plan = await Plan.create({ parent: req.user._id, child: child._id, school: req.body.school, session: req.body.session, term: req.body.term, classLevel: req.body.classLevel, feeStructure: fee._id, officialFee: fee.amount, targetAmount, savingFrequency: frequency, preferredContributionAmount, targetDate, recommendedContribution: preferredContributionAmount || round(targetAmount / periods), autosave: { enabled: false } });
     await audit({ actor: req.user._id, action: "EDUPAY_PLAN_CREATED", entityType: "EduPayPlan", entityId: plan._id, school: plan.school, req });
     await notify(req.user._id, "EduPay plan created", "Your school-fee savings plan is ready.");
     res.status(201).json({ success: true, plan });
   } catch (error) { errorResponse(res, error); }
 };
 exports.listPlans = async (req, res) => {
-  try { res.json({ success: true, plans: await Plan.find({ parent: req.user._id }).populate("child school session term classLevel feeStructure").sort({ createdAt: -1 }).lean() }); } catch (error) { errorResponse(res, error); }
+  try { const plans = await Plan.find({ parent: req.user._id }).populate("child school session term classLevel feeStructure").sort({ createdAt: -1 }).lean(); res.json({ success: true, plans: await reconcilePlans(plans) }); } catch (error) { errorResponse(res, error); }
+};
+const reconcilePlans = async (plans) => {
+  const ids = plans.map((row) => row._id);
+  const entries = await EduLedger.find({ plan: { $in: ids } }).sort({ createdAt: 1 }).lean();
+  const grouped = new Map();
+  entries.forEach((entry) => { const key = String(entry.plan); const row = grouped.get(key) || { saved: 0, history: [] }; row.saved = round(row.saved + (entry.direction === "CREDIT" ? entry.amount : -entry.amount)); row.history.push(entry); grouped.set(key, row); });
+  return plans.map((plan) => { const row = grouped.get(String(plan._id)) || { saved: 0, history: [] }; const target = Number(plan.targetAmount || plan.officialFee); const next = Number(plan.preferredContributionAmount || plan.recommendedContribution || 0); return { ...plan, targetAmount: target, amountSaved: row.saved, remaining: round(Math.max(0, target - row.saved)), progressPercent: target ? round(Math.min(100, row.saved / target * 100)) : 0, nextContribution: next, history: row.history.map((entry) => ({ ...entry, child: plan.child, school: plan.school, status: "SUCCESS" })) }; });
 };
 exports.getPlan = async (req, res) => {
   try {
     const plan = await Plan.findOne({ _id: req.params.planId, parent: req.user._id }).populate("child school session term classLevel feeStructure");
     if (!plan) return res.status(404).json({ success: false, message: "EduPay plan not found." });
     const [contributions, ledger, repayment, sponsors] = await Promise.all([Contribution.find({ plan: plan._id }).sort({ createdAt: -1 }).lean(), EduLedger.find({ plan: plan._id }).sort({ createdAt: 1 }).lean(), EduPayRepayment.findOne({ plan: plan._id }).lean(), EduPaySponsorContribution.find({ plan: plan._id }).sort({ createdAt: -1 }).lean()]);
-    res.json({ success: true, plan, contributions, ledger, repayment, sponsors });
+    const [reconciled] = await reconcilePlans([plan.toObject()]);
+    const savingHistory = contributions.filter((row) => row.status === "SUCCESS").map((row) => {
+      const matching = ledger.find((entry) => String(entry.reference || "").includes(String(row.reference)));
+      return { childName: plan.child?.fullName || null, schoolName: plan.school?.name || null, date: row.createdAt, amount: row.amount, businessReference: row.reference, status: row.status, source: matching?.source || row.type, type: matching?.type || row.type, openingBalance: matching?.openingBalance ?? null, closingBalance: matching?.closingBalance ?? null, receiptIdentifier: row.reference };
+    });
+    res.json({ success: true, plan: reconciled, contributions, ledger, history: reconciled.history, savingHistory, repayment, sponsors });
   } catch (error) { errorResponse(res, error); }
 };
 exports.contribute = async (req, res) => {
@@ -292,7 +318,32 @@ exports.autosave = async (req, res) => {
   } catch (error) { errorResponse(res, error); }
 };
 exports.history = async (req, res) => {
-  try { const plans = await Plan.find({ parent: req.user._id }).select("_id"); const ids = plans.map((p) => p._id); res.json({ success: true, contributions: await Contribution.find({ plan: { $in: ids } }).sort({ createdAt: -1 }).limit(200).lean(), ledger: await EduLedger.find({ plan: { $in: ids } }).sort({ createdAt: -1 }).limit(200).lean(), repayments: await EduPayRepayment.find({ parent: req.user._id }).sort({ createdAt: -1 }).lean() }); } catch (error) { errorResponse(res, error); }
+  try {
+    const plans = await Plan.find({ parent: req.user._id }).populate("child school").lean();
+    const planById = new Map(plans.map((plan) => [String(plan._id), plan]));
+    const ids = plans.map((plan) => plan._id);
+    const [contributions, ledger, repayments] = await Promise.all([
+      Contribution.find({ plan: { $in: ids }, status: "SUCCESS" }).sort({ createdAt: -1 }).limit(200).lean(),
+      EduLedger.find({ plan: { $in: ids } }).sort({ createdAt: -1 }).limit(200).lean(),
+      EduPayRepayment.find({ parent: req.user._id }).sort({ createdAt: -1 }).lean(),
+    ]);
+    const savingHistory = contributions.map((contribution) => {
+      const plan = planById.get(String(contribution.plan));
+      const entry = ledger.find((candidate) => String(candidate.reference || "").includes(String(contribution.reference)));
+      return {
+        date: contribution.createdAt,
+        amount: contribution.amount,
+        childName: plan?.child?.fullName || "Student",
+        schoolName: plan?.school?.name || "School",
+        businessReference: contribution.reference,
+        receiptIdentifier: contribution.reference,
+        status: contribution.status,
+        source: entry?.source || "WALLET",
+        type: entry?.type || contribution.type,
+      };
+    });
+    res.json({ success: true, savingHistory, repayments });
+  } catch (error) { errorResponse(res, error); }
 };
 
 exports.inviteSponsor = async (req, res) => {
@@ -811,6 +862,24 @@ exports.schoolStudents = async (req, res) => { try { res.json({ success: true, s
 exports.schoolSettlements = async (req, res) => { try { res.json({ success: true, settlements: await Settlement.find({ school: req.eduPaySchool._id }).populate("child plan").sort({ settlementDate: -1 }).lean() }); } catch (error) { errorResponse(res, error); } };
 exports.schoolReconciliation = async (req, res) => { try { const settlements = await Settlement.find({ school: req.eduPaySchool._id }).lean(); res.json({ success: true, reconciliation: { settled: settlements.filter((row) => row.status === "SETTLED").length, pending: settlements.filter((row) => !["SETTLED", "REVERSED"].includes(row.status)).length, gross: round(settlements.filter((row) => row.status === "SETTLED").reduce((sum, row) => sum + row.schoolGrossSettlement, 0)), net: round(settlements.filter((row) => row.status === "SETTLED").reduce((sum, row) => sum + row.schoolNetSettlement, 0)), commission: round(settlements.filter((row) => row.status === "SETTLED").reduce((sum, row) => sum + row.schoolCommissionAmount, 0)) } }); } catch (error) { errorResponse(res, error); } };
 exports.schoolReport = async (req, res) => { try { const [plans, settlements] = await Promise.all([Plan.find({ school: req.eduPaySchool._id }).lean(), Settlement.find({ school: req.eduPaySchool._id }).lean()]); res.json({ success: true, report: { plans: plans.length, settlements: settlements.length, totalOfficialFees: round(plans.reduce((sum, row) => sum + row.officialFee, 0)), totalSettledNet: round(settlements.filter((row) => row.status === "SETTLED").reduce((sum, row) => sum + row.schoolNetSettlement, 0)) } }); } catch (error) { errorResponse(res, error); } };
+exports.schoolSavings = async (req, res) => {
+  try {
+    const school = req.eduPaySchool._id;
+    const plans = await Plan.find({ school }).populate("child classLevel session term").sort({ createdAt: -1 }).lean();
+    const ids = plans.map((row) => row._id);
+    const ledger = await EduLedger.find({ plan: { $in: ids } }).sort({ createdAt: 1 }).lean();
+    const byPlan = new Map();
+    for (const entry of ledger) {
+      const key = String(entry.plan);
+      const row = byPlan.get(key) || { saved: 0, history: [] };
+      row.saved = round(row.saved + (entry.direction === "CREDIT" ? entry.amount : -entry.amount));
+      row.history.push({ amount: entry.amount, direction: entry.direction, type: entry.type, reference: entry.reference, status: "SUCCESS", source: entry.source, createdAt: entry.createdAt, openingBalance: entry.openingBalance, closingBalance: entry.closingBalance });
+      byPlan.set(key, row);
+    }
+    const rows = plans.map((plan) => { const value = byPlan.get(String(plan._id)) || { saved: 0, history: [] }; const target = Number(plan.targetAmount || plan.officialFee); return { planId: plan._id, student: plan.child?.fullName || null, child: plan.child?._id || null, className: plan.classLevel?.name || plan.child?.className || null, target, targetAmount: target, saved: value.saved, remaining: round(Math.max(0, target - value.saved)), progressPercent: target ? round(Math.min(100, value.saved / target * 100)) : 0, status: plan.status, targetDate: plan.targetDate, history: value.history }; });
+    res.json({ success: true, summary: { plans: rows.length, activePlans: rows.filter((row) => !["CANCELLED", "SETTLED", "COMPLETED"].includes(row.status)).length, totalTarget: round(rows.reduce((sum, row) => sum + row.target, 0)), totalSaved: round(rows.reduce((sum, row) => sum + row.saved, 0)), totalRemaining: round(rows.reduce((sum, row) => sum + row.remaining, 0)) }, plans: rows });
+  } catch (error) { errorResponse(res, error); }
+};
 
 exports.adminOverview = async (req, res) => { try { const [settings, parents, children, schools, plans, settlements, repayments, ledger] = await Promise.all([getSettings(), Plan.distinct("parent"), Child.countDocuments(), School.countDocuments(), Plan.countDocuments({ status: { $nin: ["CANCELLED"] } }), Settlement.find().lean(), EduPayRepayment.find({ status: { $in: ["ACTIVE", "PARTIALLY_PAID", "OVERDUE"] } }).lean(), EduLedger.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }])]); res.json({ success: true, settings, summary: { totalEduPayParents: parents.length, totalChildren: children, partnerSchools: schools, activePlans: plans, educationSavings: round(ledger[0]?.total), upcomingSettlements: settlements.filter((s) => !["SETTLED", "REVERSED"].includes(s.status)).length, completedSettlements: settlements.filter((s) => s.status === "SETTLED").length, outstandingRepayments: round(repayments.reduce((sum, r) => sum + r.amountRemaining, 0)), overdueRepayments: repayments.filter((r) => r.status === "OVERDUE").length, schoolCommissionRevenue: round(settlements.filter((s) => s.status === "SETTLED").reduce((sum, s) => sum + s.schoolCommissionAmount, 0)), parentChargeRevenue: round(settlements.filter((s) => s.status === "SETTLED").reduce((sum, s) => sum + s.parentChargeAmount, 0)) } }); } catch (error) { errorResponse(res, error); } };
 exports.adminReadiness = async (req, res) => { try { const modelEntries = Object.entries(EDUPAY_READINESS_MODELS); await EduPayDutyAssignment.init(); await Promise.all(modelEntries.filter(([, model]) => model?.init).map(([, model]) => model.init())); const indexes = {}; await Promise.all(modelEntries.filter(([, model]) => model?.collection?.listIndexes).map(async ([name, model]) => { indexes[name] = await model.collection.listIndexes().toArray(); })); const all = await EduPayDutyAssignment.find({}).sort({ user: 1, version: -1 }).lean(); const latest = new Map(); all.forEach((row) => { if (!latest.has(String(row.user))) latest.set(String(row.user), row); }); const eligible = new Set((await User.find({ _id: { $in: [...latest.keys()] }, status: "ACTIVE", role: "HEAD_OFFICE" }).select("_id").lean()).map((row) => String(row._id))); const current = [...latest.values()].filter((row) => row.active && eligible.has(String(row.user))); const holders = (permission) => new Set(current.filter((row) => row.permissions.includes(permission)).map((row) => String(row.user))); const manageUsers = holders("account.manage"); const verifyUsers = holders("account.verify"); const processUsers = holders("settlement.process"); const viableDutySeparation = [...manageUsers].some((manager) => [...verifyUsers].some((verifier) => verifier !== manager && [...processUsers].some((processor) => processor !== manager && processor !== verifier))); const settings = await getSettings(); const infrastructure = edupaySquad.payoutReadiness(); const payoutConfig = { provider: infrastructure.providerReady, accountEncryption: infrastructure.accountEncryptionReady, settlementMethod: ["DEDUCT_COMMISSION", "GROSS_AND_RECEIVABLE"].includes(settings.settlementMethod), rates: Number(settings.schoolCommissionRate) >= 0 && Number(settings.parentShortfallChargeRate) >= 0 }; payoutConfig.ready = payoutConfig.provider && payoutConfig.accountEncryption && payoutConfig.settlementMethod && payoutConfig.rates; const dutyCoverage = { manage: manageUsers.size, verify: verifyUsers.size, process: processUsers.size, viableDutySeparation, ready: viableDutySeparation }; const ready = payoutConfig.ready; res.json({ success: true, ready, eduPayActive: ready, customerInitiationEnabled: ready, dutyCoverage, payoutConfig: { ...infrastructure, ...payoutConfig }, checkedAt: new Date(), indexes }); } catch (error) { errorResponse(res, error); } };
@@ -1138,13 +1207,40 @@ exports.adminEligibleDutyUsers = async (req, res) => { try { const users = await
 exports.adminRevokeEduPayDuty = async (req, res) => { try { const target = await User.findById(req.params.userId).select("_id status role"); if (!target) return res.status(404).json({ success: false, message: "Duty target user not found." }); if (target.status !== "ACTIVE" || target.role !== "HEAD_OFFICE") return res.status(422).json({ success: false, code: "EDUPAY_DUTY_TARGET_INELIGIBLE", message: "Duty targets must be active HEAD_OFFICE users." }); const session = await mongoose.startSession(); let assignment; try { await session.withTransaction(async () => { const previous = await EduPayDutyAssignment.findOne({ user: req.params.userId }).sort({ version: -1 }).session(session); if (!previous) { const error = new Error("EduPay duty assignment not found."); error.statusCode = 404; throw error; } [assignment] = await EduPayDutyAssignment.create([{ user: req.params.userId, permissions: previous.permissions, active: false, assignedBy: req.user._id, version: previous.version + 1, previousAssignment: previous._id }], { session }); await audit({ actor: req.user._id, action: "EDUPAY_DUTY_REVOKED", entityType: "EduPayDutyAssignment", entityId: assignment._id, metadata: { user: req.params.userId, version: assignment.version }, req, session }); }); } finally { await session.endSession(); } res.json({ success: true, assignment }); } catch (error) { errorResponse(res, error); } };
 exports.adminFees = async (req, res) => { try { const filter = req.params.feeId ? { _id: req.params.feeId } : {}; res.json({ success: true, fees: req.params.feeId ? await Fee.findOne(filter).lean() : await Fee.find({}).populate("school session term classLevel").sort({ createdAt: -1 }).lean() }); } catch (error) { errorResponse(res, error); } };
 exports.adminFeeAction = async (req, res) => { try { const fee = await Fee.findById(req.params.feeId); if (!fee) return res.status(404).json({ success: false, message: "Fee structure not found." }); const action = String(req.body.action || "").toUpperCase(); if (!["APPROVE", "REJECT"].includes(action)) return res.status(400).json({ success: false, message: "Unsupported fee action." }); fee.status = action === "APPROVE" ? "APPROVED" : "REJECTED"; fee.reviewedBy = req.user._id; fee.reviewedAt = new Date(); fee.reviewNote = req.body.note; await fee.save(); await audit({ actor: req.user._id, action: `EDUPAY_FEE_${action}`, entityType: "EduPayFeeStructure", entityId: fee._id, school: fee.school, req }); res.json({ success: true, fee }); } catch (error) { errorResponse(res, error); } };
-exports.adminPlans = async (req, res) => { try { res.json({ success: true, plans: await Plan.find({}).populate("parent child school").sort({ createdAt: -1 }).limit(500).lean() }); } catch (error) { errorResponse(res, error); } };
+const adminDate = (value) => { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date : null; };
+const adminObjectId = (value) => mongoose.isValidObjectId(value) ? value : null;
+exports.adminPlans = async (req, res) => { try {
+  const filter = {}; for (const [key, field] of [["parent", "parent"], ["student", "child"], ["school", "school"]]) { if (req.query[key] && !adminObjectId(req.query[key])) return res.status(400).json({ success: false, message: `${key} filter is invalid.` }); if (adminObjectId(req.query[key])) filter[field] = req.query[key]; }
+  if (req.query.status) filter.status = String(req.query.status).trim().toUpperCase();
+  const from = adminDate(req.query.from || req.query.dateFrom); const to = adminDate(req.query.to || req.query.dateTo); if (from || to) filter.createdAt = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
+  let plans = await Plan.find(filter).populate("parent child school").sort({ createdAt: -1 }).limit(500).lean();
+  if (req.query.search) { const term = String(req.query.search).trim().toLowerCase(); plans = plans.filter((row) => [row.parent?.fullName, row.parent?.email, row.child?.fullName, row.school?.name].some((value) => String(value || "").toLowerCase().includes(term))); }
+  const saved = await EduLedger.aggregate([{ $match: { plan: { $in: plans.map((row) => row._id) } } }, { $group: { _id: "$plan", amount: { $sum: { $cond: [{ $eq: ["$direction", "CREDIT"] }, "$amount", { $multiply: ["$amount", -1] }] } } } }]);
+  const savedByPlan = new Map(saved.map((row) => [String(row._id), round(row.amount)]));
+  plans = plans.map((row) => { const target = Number(row.targetAmount || row.officialFee); const amountSaved = savedByPlan.get(String(row._id)) || 0; return { ...row, targetAmount: target, amountSaved, remaining: round(Math.max(0, target - amountSaved)), progressPercent: target ? round(Math.min(100, amountSaved / target * 100)) : 0 }; });
+  res.json({ success: true, plans, summary: { total: plans.length, active: plans.filter((row) => !["CANCELLED", "SETTLED", "COMPLETED"].includes(row.status)).length, completed: plans.filter((row) => ["SETTLED", "COMPLETED"].includes(row.status)).length, totalSaved: round(plans.reduce((sum, row) => sum + row.amountSaved, 0)) } });
+} catch (error) { errorResponse(res, error); } };
+exports.adminPlanHistory = async (req, res) => { try { const plan = await Plan.findById(req.params.planId).populate("parent child school").lean(); if (!plan) return res.status(404).json({ success: false, message: "Plan not found." }); const history = (await EduLedger.find({ plan: plan._id }).sort({ createdAt: 1 }).lean()).map((entry) => ({ ...entry, child: plan.child, school: plan.school, status: "SUCCESS" })); const target = Number(plan.targetAmount || plan.officialFee); const saved = round(history.reduce((sum, entry) => sum + (entry.direction === "CREDIT" ? entry.amount : -entry.amount), 0)); res.json({ success: true, plan: { ...plan, targetAmount: target, amountSaved: saved, remaining: round(Math.max(0, target - saved)), progressPercent: target ? round(Math.min(100, saved / target * 100)) : 0 }, history, contributions: await Contribution.find({ plan: plan._id }).sort({ createdAt: 1 }).lean() }); } catch (error) { errorResponse(res, error); } };
 exports.adminRepayments = async (req, res) => { try { res.json({ success: true, repayments: await EduPayRepayment.find({}).populate("parent child plan").sort({ createdAt: -1 }).limit(500).lean() }); } catch (error) { errorResponse(res, error); } };
 exports.adminSettlements = async (req, res) => { try { res.json({ success: true, settlements: await Settlement.find({}).populate("parent child school plan").sort({ createdAt: -1 }).limit(500).lean() }); } catch (error) { errorResponse(res, error); } };
 exports.adminSponsors = async (req, res) => { try { res.json({ success: true, invites: await EduPaySponsorInvite.find({}).sort({ createdAt: -1 }).limit(500).lean(), contributions: await EduPaySponsorContribution.find({}).sort({ createdAt: -1 }).limit(500).lean() }); } catch (error) { errorResponse(res, error); } };
-exports.adminTransactions = async (req, res) => { try { res.json({ success: true, contributions: await Contribution.find({}).sort({ createdAt: -1 }).limit(500).lean(), ledger: await EduLedger.find({}).sort({ createdAt: -1 }).limit(500).lean(), repaymentTransactions: await EduPayRepaymentTransaction.find({}).sort({ createdAt: -1 }).limit(500).lean() }); } catch (error) { errorResponse(res, error); } };
+exports.adminTransactions = async (req, res) => { try {
+  for (const key of ["plan", "school", "parent", "student"]) if (req.query[key] && !adminObjectId(req.query[key])) return res.status(400).json({ success: false, message: `${key} filter is invalid.` });
+  const from = adminDate(req.query.from || req.query.dateFrom); const to = adminDate(req.query.to || req.query.dateTo);
+  const dateFilter = from || to ? { createdAt: { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) } } : {};
+  const planRows = await Plan.find({ ...(adminObjectId(req.query.plan) ? { _id: req.query.plan } : {}), ...(adminObjectId(req.query.school) ? { school: req.query.school } : {}), ...(adminObjectId(req.query.parent) ? { parent: req.query.parent } : {}), ...(adminObjectId(req.query.student) ? { child: req.query.student } : {}) }).select("_id").lean();
+  const planIds = planRows.map((row) => row._id);
+  if ((req.query.plan || req.query.school || req.query.parent || req.query.student) && !planIds.length) return res.json({ success: true, contributions: [], ledger: [], repaymentTransactions: [], summary: { contributions: 0, ledger: 0, total: 0 } });
+  const contributionFilter = { ...dateFilter, ...(planIds.length ? { plan: { $in: planIds } } : {}) }; if (req.query.status) contributionFilter.status = String(req.query.status).toUpperCase();
+  let contributions = await Contribution.find(contributionFilter).sort({ createdAt: -1 }).limit(500).lean();
+  let ledger = await EduLedger.find({ ...dateFilter, ...(planIds.length ? { plan: { $in: planIds } } : {}) }).sort({ createdAt: -1 }).limit(500).lean();
+  if (req.query.search) { const term = String(req.query.search).toLowerCase(); contributions = contributions.filter((row) => String(row.reference || row.idempotencyKey || "").toLowerCase().includes(term)); ledger = ledger.filter((row) => String(row.reference || row.idempotencyKey || "").toLowerCase().includes(term)); }
+  const repaymentFilter = planIds.length ? { plan: { $in: planIds } } : ((req.query.plan || req.query.school || req.query.parent || req.query.student) ? { plan: { $in: [] } } : {});
+  const repayments = await EduPayRepayment.find(repaymentFilter).select("_id plan status principal amountRemaining amountPaid totalAmount dueDate").lean();
+  const repaymentTransactions = repayments.length ? await EduPayRepaymentTransaction.find({ repayment: { $in: repayments.map((row) => row._id) } }).sort({ createdAt: -1 }).limit(500).lean() : [];
+  res.json({ success: true, contributions, ledger, repaymentTransactions, repayments, summary: { contributions: contributions.length, ledger: ledger.length, repayments: repayments.length, repaymentTransactions: repaymentTransactions.length, total: round(ledger.reduce((sum, row) => sum + (row.direction === "CREDIT" ? row.amount : -row.amount), 0)) } });
+} catch (error) { errorResponse(res, error); } };
 exports.adminAudit = async (req, res) => { try { res.json({ success: true, audit: await require("../models/edupayAuditLog.model").find({}).populate("actor school").sort({ createdAt: -1 }).limit(500).lean() }); } catch (error) { errorResponse(res, error); } };
-exports.adminCreateSettlement = async (req, res) => { try { const settings = await getSettings(); const plan = await Plan.findById(req.params.planId); if (!plan) return res.status(404).json({ success: false, message: "Plan not found." }); if (!["SAVING", "READY_FOR_SETTLEMENT"].includes(plan.status)) return res.status(409).json({ success: false, message: "Plan is not ready for settlement initiation." }); if (await Settlement.findOne({ plan: plan._id })) return res.status(409).json({ success: false, message: "Settlement already exists for this plan." }); const saved = await availableSavings(plan._id); if (saved < Number(settings.minimumSavingsRequirement || 0)) return res.status(409).json({ success: false, message: "Plan has not met the minimum savings requirement." }); const settlementDate = req.body.settlementDate ? new Date(req.body.settlementDate) : new Date(); if (Number.isNaN(settlementDate.getTime()) || settlementDate < new Date() || settlementDate < new Date(plan.targetDate)) return res.status(400).json({ success: false, message: "Settlement date must be valid and no earlier than the plan target date." }); const snapshot = calculateSettlement({ officialFee: plan.officialFee, saved, settings, settlementDate }); const key = requireKey(req); if (!key) return res.status(400).json({ success: false, message: "Idempotency-Key is required." }); const intentHash = hash(JSON.stringify({ operation: "SETTLEMENT_CREATE", actor: String(req.user._id), resource: String(plan._id), settlementDate: settlementDate.toISOString(), saved })); const settlement = await Settlement.create({ ...snapshot, parent: plan.parent, child: plan.child, school: plan.school, plan: plan._id, reference: reference("EDU-SET"), idempotencyKey: key, intentHash, status: "ADMIN_REVIEW" }); await Plan.updateOne({ _id: plan._id }, { $set: { status: "ADMIN_REVIEW" } }); await audit({ actor: req.user._id, action: "EDUPAY_SETTLEMENT_CREATED", entityType: "EduPaySettlement", entityId: settlement._id, school: settlement.school, req }); res.status(201).json({ success: true, settlement }); } catch (error) { errorResponse(res, error); } };
 exports.adminCreateSettlement = async (req, res) => {
   try {
     const key = requireKey(req); if (!key) return res.status(400).json({ success: false, message: "Idempotency-Key is required." });

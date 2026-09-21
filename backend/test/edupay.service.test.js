@@ -28,6 +28,12 @@ const Command = require("../models/edupayCommand.model");
 const squad = require("../services/edupaySquad.service");
 const Audit = require("../models/edupayAuditLog.model");
 const { contributeFromWallet, contributeSponsorFromWallet, calculateSettlement, availableSavings, confirmSettlement, reverseSettlement } = require("../services/edupay.service");
+const edupayController = require("../controllers/edupay.controller");
+const invoke = async (handler, req) => {
+  const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  await handler(req, response);
+  return response;
+};
 
 let replica;
 let parent;
@@ -129,6 +135,27 @@ test("child ownership is scoped to its parent", async () => {
 test("plan binds the immutable official fee snapshot", async () => {
   assert.equal(plan.officialFee, fee.amount);
   assert.equal(String(plan.feeStructure), String(fee._id));
+});
+
+test("plans accept flexible/manual contribution preferences without changing legacy status", async () => {
+  plan.savingFrequency = "FLEXIBLE";
+  plan.preferredContributionAmount = 12500;
+  await plan.save();
+  const reloaded = await Plan.findById(plan._id).lean();
+  assert.equal(reloaded.savingFrequency, "FLEXIBLE");
+  assert.equal(reloaded.preferredContributionAmount, 12500);
+  assert.equal(reloaded.status, "SAVING");
+});
+
+test("school savings report is read-only and tenant-scoped", async () => {
+  await contributeFromWallet({ userId: parent._id, planId: plan._id, amount: 25000, transactionPin: "1234", idempotencyKey: "school-report" });
+  const result = await invoke(edupayController.schoolSavings, { eduPaySchool: school });
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.plans.length, 1);
+  assert.equal(result.body.plans[0].saved, 25000);
+  assert.equal(result.body.plans[0].remaining, 175000);
+  assert.equal(result.body.plans[0].history.length, 1);
+  assert.equal(result.body.plans[0].history[0].source, "WALLET");
 });
 
 test("partial savings are calculated from the dedicated ledger", async () => {
