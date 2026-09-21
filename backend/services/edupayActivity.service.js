@@ -8,28 +8,13 @@ const AttendanceBatch = require("../models/edupayAttendanceBatch.model");
 const GuardianInvite = require("../models/edupayGuardianInvite.model");
 const { EduPayStudent, EduPayAttendance } = require("../models/edupayAcademicManagement.model");
 const { EduPayTerm } = require("../models/edupayAcademic.model");
+const { academicStudentForChild } = require("./edupayStudentLink.service");
 
 const TYPES = new Set(["ATTENDANCE", "RESULT", "ASSIGNMENT", "ACTIVITY", "CONDUCT", "ANNOUNCEMENT"]);
 const id = (value) => mongoose.isValidObjectId(value);
 const fail = (message, statusCode = 400) => { const e = new Error(message); e.statusCode = statusCode; return e; };
 const stable = (value) => Array.isArray(value) ? value.map(stable) : (value && typeof value === "object" ? Object.keys(value).sort().reduce((out, key) => { out[key] = stable(value[key]); return out; }, {}) : value);
 const payloadHash = (value) => crypto.createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
-const normalizeAdmission = (value) => String(value || "").trim().replace(/\s+/g, "").toUpperCase();
-const admissionPattern = (value) => {
-  const normalized = normalizeAdmission(value);
-  if (!normalized) return null;
-  const escaped = [...normalized].map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return new RegExp(`^\\s*${escaped.join("\\s*")}\\s*$`, "i");
-};
-
-async function academicStudentForChild(child) {
-  const school = child?.school?._id || child?.school;
-  const pattern = admissionPattern(child?.admissionNumber);
-  if (!school || !pattern) return null;
-  const matches = await EduPayStudent.find({ school, studentId: pattern, status: "ACTIVE" })
-    .populate("classLevel").limit(2).lean();
-  return matches.length === 1 ? matches[0] : null;
-}
 
 async function childForParent(userId, childId, schoolId) {
   if (!id(childId)) throw fail("Student is invalid.");
@@ -170,7 +155,7 @@ async function listForParent(req, childId, type) {
   }
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
   const skip = Math.max(0, Number(req.query.page || 1) - 1) * limit;
-  const academicStudent = await academicStudentForChild(child);
+  const academicStudent = await academicStudentForChild(child, "classLevel");
   const mergesAcademicAttendance = academicStudent && (!recordType || recordType === "ATTENDANCE");
   if (mergesAcademicAttendance && !recordType) query.recordType = { $ne: "ATTENDANCE" };
   const activitySkip = mergesAcademicAttendance && !recordType ? 0 : skip;

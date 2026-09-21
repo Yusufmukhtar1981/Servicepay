@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const School = require("../models/edupaySchool.model");
+const SchoolUser = require("../models/edupaySchoolUser.model");
 const Child = require("../models/edupayChild.model");
 const Link = require("../models/edupayGuardianLink.model");
 const Notification = require("../models/notification.model");
@@ -45,6 +46,7 @@ test("academic attendance is visible through the parent activity-center path", {
     { school: school._id, session: session._id, name: "JSS 1", status: "ACTIVE" },
     { school: otherSchool._id, session: otherSession._id, name: "JSS 1", status: "ACTIVE" },
   ]);
+  await SchoolUser.create({ school: school._id, user: owner._id, role: "OWNER", status: "ACTIVE", createdBy: owner._id });
   const teacher = await EduPayTeacher.create({ school: school._id, user: teacherUser._id, staffId: `T-${stamp}`, fullName: teacherUser.fullName, createdBy: owner._id });
   await EduPayTeacherAssignment.create({ school: school._id, teacher: teacher._id, classLevel: classLevel._id, subject: new mongoose.Types.ObjectId(), createdBy: owner._id });
   const student = await EduPayStudent.create({ school: school._id, studentId: ` AD-${stamp} `, fullName: "Ada Student", classLevel: classLevel._id, parent: parent._id, createdBy: owner._id });
@@ -52,10 +54,13 @@ test("academic attendance is visible through the parent activity-center path", {
   const child = await Child.create({ school: school._id, admissionNumber: `ad-${stamp}`, fullName: student.fullName, parent: parent._id, createdBy: owner._id });
   const foreignChild = await Child.create({ school: otherSchool._id, admissionNumber: foreignStudent.studentId, fullName: foreignStudent.fullName, parent: unrelated._id, createdBy: owner._id });
   const missing = await Child.create({ school: school._id, admissionNumber: `missing-${stamp}`, fullName: "Unmapped Child", parent: parent._id, createdBy: owner._id });
+  const manualChild = await Child.create({ school: school._id, fullName: "Legacy Manual Student", parent: parent._id, createdBy: owner._id });
+  const manualStudent = await EduPayStudent.create({ school: school._id, studentId: `MANUAL-${stamp}`, fullName: manualChild.fullName, classLevel: classLevel._id, createdBy: owner._id });
   await Link.create({ school: school._id, child: child._id, parent: guardian._id, status: "VERIFIED", verifiedAt: new Date() });
   const schoolReq = (body) => ({ user: teacherUser, eduPaySchool: school, eduPaySchoolUser: { role: "TEACHER", user: teacherUser._id, school: school._id, status: "ACTIVE" }, body, query: {} });
   const submit = async (status) => invoke(academic.submitAttendance, schoolReq({ classId: classLevel._id, session: session._id, term: term._id, date: "2026-09-20", records: [{ student: student._id, status }] }));
   const parentReq = (user, childId) => ({ user, params: { childId }, query: {}, body: {} });
+  const managerReq = (body = {}) => ({ user: owner, eduPaySchool: school, eduPaySchoolUser: { role: "OWNER", user: owner._id, school: school._id, status: "ACTIVE" }, body, query: {} });
 
   const originalCreate = Notification.create;
   t.after(() => { Notification.create = originalCreate; });
@@ -91,6 +96,22 @@ test("academic attendance is visible through the parent activity-center path", {
   const noMapping = await invoke(activity.parentList, parentReq(parent, missing._id));
   assert.equal(noMapping.statusCode, 200);
   assert.equal(noMapping.body.records.some((row) => row.type === "ATTENDANCE"), false);
+  const linkList = await invoke(academic.listStudentLinkCandidates, managerReq());
+  assert.equal(linkList.statusCode, 200);
+  const manualLink = linkList.body.links.find((row) => row.childName === manualChild.fullName);
+  assert.ok(manualLink);
+  assert.equal(manualLink.candidates.length, 1);
+  assert.equal("_id" in manualLink, false);
+  assert.match(manualLink.parentDisplay, /Direct Parent/);
+  const manualResolution = await invoke(academic.resolveStudentLink, managerReq({
+    childToken: manualLink.childToken,
+    candidateToken: manualLink.candidates[0].candidateToken,
+  }));
+  assert.equal(manualResolution.statusCode, 200);
+  assert.equal("_id" in manualResolution.body.link, false);
+  assert.equal(String((await Child.findById(manualChild._id)).academicStudent), String(manualStudent._id));
+  const teacherList = await invoke(academic.listStudentLinkCandidates, schoolReq({}));
+  assert.equal(teacherList.statusCode, 403);
   const mismatch = await invoke(academic.submitAttendance, schoolReq({
     classId: classLevel._id,
     session: session._id,

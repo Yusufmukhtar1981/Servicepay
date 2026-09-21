@@ -68,6 +68,8 @@ router.post("/school/academic/subjects", ...school, academic.createSubject);
 router.post("/school/academic/subjects/batch", ...school, academic.createSubjectsBatch);
 router.put("/school/academic/classes/:classId/subjects", ...school, academic.replaceClassSubjects);
 router.get("/school/academic/students", ...school, academic.listStudents);
+router.get("/school/academic/student-links", ...school, academic.listStudentLinkCandidates);
+router.patch("/school/academic/student-links/resolve", ...school, academic.resolveStudentLink);
 router.post("/school/academic/students", ...school, academic.createStudent);
 router.patch("/school/academic/students/:studentId", ...school, academic.updateStudent);
 router.post("/school/academic/students/import/validate", ...school, academic.validateStudentImport);

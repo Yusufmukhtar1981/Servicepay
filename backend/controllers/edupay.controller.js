@@ -18,6 +18,7 @@ const edupaySquad = require("../services/edupaySquad.service");
 const { evaluateEduPayReadiness } = require("./featureControl.controller");
 const edupaySquadService = require("../services/edupaySquad.service");
 const { validateStrongPassword } = require("../utils/passwordPolicy");
+const studentLink = require("../services/edupayStudentLink.service");
 
 const SCHOOL_HANDOFF_COOKIE = "servicepay_school_handoff";
 const SCHOOL_HANDOFF_TTL_MS = 2 * 60 * 1000;
@@ -216,6 +217,8 @@ exports.createChild = async (req, res) => {
     const school = await School.findOne({ _id: req.body.school, status: "APPROVED", active: true });
     if (!school) return res.status(400).json({ success: false, message: "Only approved active schools may be selected." });
     const child = await Child.create({ parent: req.user._id, createdBy: req.user._id, fullName: req.body.fullName, dateOfBirth: req.body.dateOfBirth, gender: req.body.gender, photo: req.body.photo || null, admissionNumber: req.body.admissionNumber || null, className: req.body.className || null, arm: req.body.arm || null, academicSession: req.body.academicSession || null, term: req.body.term || null, school: school._id });
+    const academicStudent = await studentLink.academicStudentForChild(child);
+    if (academicStudent) await studentLink.persistLink(child, academicStudent, "ADMISSION", req.user._id);
     await audit({ actor: req.user._id, action: "EDUPAY_CHILD_CREATED", entityType: "EduPayChild", entityId: child._id, school: school._id, req });
     res.status(201).json({ success: true, child });
   } catch (error) { errorResponse(res, error); }
@@ -228,7 +231,10 @@ exports.updateChild = async (req, res) => {
     const child = await Child.findOne({ _id: req.params.childId, parent: req.user._id, status: "ACTIVE" });
     if (!child) return res.status(404).json({ success: false, message: "Child not found." });
     ["fullName", "dateOfBirth", "gender", "photo", "admissionNumber", "className", "arm", "academicSession", "term", "studentStatus"].forEach((key) => { if (req.body[key] !== undefined) child[key] = req.body[key]; });
-    await child.save(); res.json({ success: true, child });
+    await child.save();
+    const academicStudent = await studentLink.academicStudentForChild(child);
+    if (academicStudent) await studentLink.persistLink(child, academicStudent, "ADMISSION", req.user._id);
+    res.json({ success: true, child });
   } catch (error) { errorResponse(res, error); }
 };
 

@@ -13,30 +13,10 @@ const { validateStrongPassword } = require("../utils/passwordPolicy");
 const School = models.School;
 const EduPayChild = models.Child;
 const GuardianLink = require("../models/edupayGuardianLink.model");
+const studentLink = require("../services/edupayStudentLink.service");
 const normalizeLabel = (value) => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
-const normalizeAdmission = (value) => String(value || "").trim().replace(/\s+/g, "").toUpperCase();
-const admissionPattern = (value) => {
-  const normalized = normalizeAdmission(value);
-  if (!normalized) return null;
-  const escaped = [...normalized].map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return new RegExp(`^\\s*${escaped.join("\\s*")}\\s*$`, "i");
-};
-const academicStudentForChild = async (child, populate = "") => {
-  const school = child?.school?._id || child?.school;
-  const pattern = admissionPattern(child?.admissionNumber);
-  if (!school || !pattern) return null;
-  let query = EduPayStudent.find({ school, studentId: pattern, status: "ACTIVE" }).limit(2);
-  if (populate) query = query.populate(populate);
-  const matches = await query.lean();
-  return matches.length === 1 ? matches[0] : null;
-};
-const linkedChildForStudent = async (student) => {
-  const school = student?.school?._id || student?.school;
-  const pattern = admissionPattern(student?.studentId);
-  if (!school || !pattern) return null;
-  const matches = await EduPayChild.find({ school, admissionNumber: pattern, status: "ACTIVE" }).limit(2).lean();
-  return matches.length === 1 ? matches[0] : null;
-};
+const academicStudentForChild = studentLink.academicStudentForChild;
+const linkedChildForStudent = studentLink.linkedChildForStudent;
 const educationLevel = (value) => {
   const level = String(value || "OTHER").trim().toUpperCase().replace(/\s+/g, "_");
   return ["EARLY_YEARS", "PRIMARY", "JUNIOR_SECONDARY", "SENIOR_SECONDARY", "OTHER"].includes(level) ? level : "OTHER";
@@ -382,6 +362,85 @@ exports.listStudents = async (req, res) => {
     res.json({ success: true, students: await EduPayStudent.find(query).populate("classLevel").sort({ fullName: 1 }).lean() });
   } catch (e) { fail(res, e); }
 };
+const maskedParent = (parent) => {
+  if (!parent) return "Parent/Guardian not provided";
+  const phone = String(parent.phone || "");
+  const email = String(parent.email || "");
+  return [
+    parent.fullName || null,
+    phone ? `${phone.slice(0, 4)}••••${phone.slice(-2)}` : null,
+    email ? `${email.slice(0, 2)}••••${email.includes("@") ? email.slice(email.indexOf("@")) : ""}` : null,
+  ].filter(Boolean).join(" · ") || "Parent/Guardian not provided";
+};
+const linkDto = (child, student) => ({
+  childToken: studentLink.childToken(child, child.school),
+  childName: child.fullName,
+  className: child.className || null,
+  parentDisplay: maskedParent(child.parent),
+  linkStatus: "RESOLVED",
+  academicStudent: { studentId: student.studentId, fullName: student.fullName, className: student.classLevel ? [student.classLevel.name, student.classLevel.arm].filter(Boolean).join(" ") : null },
+  candidates: [],
+});
+exports.listStudentLinkCandidates = async (req, res) => {
+  try {
+    if (!(await manager(req, res))) return;
+    const school = schoolId(req);
+    const limit = 500;
+    const children = await EduPayChild.find({ school, status: "ACTIVE" })
+      .select("fullName firstName middleName lastName admissionNumber dateOfBirth className academicStudent academicStudentLinkStatus parent")
+      .populate("parent", "fullName phone email")
+      .populate("academicStudent", "studentId fullName classLevel status")
+      .sort({ fullName: 1 }).limit(limit + 1).lean();
+    const students = await EduPayStudent.find({ school, status: "ACTIVE" })
+      .select("studentId fullName firstName middleName lastName dateOfBirth classLevel parent parentPhone")
+      .populate("classLevel", "name arm").sort({ fullName: 1 }).limit(limit + 1).lean();
+    const truncated = children.length > limit || students.length > limit;
+    children.splice(limit); students.splice(limit);
+    const candidates = students.map((student) => ({
+      candidateToken: studentLink.candidateToken(student, school), studentId: student.studentId,
+      fullName: student.fullName, className: student.classLevel ? [student.classLevel.name, student.classLevel.arm].filter(Boolean).join(" ") : null,
+    }));
+    const links = children.map((child) => ({
+      childToken: studentLink.childToken(child, school), childName: child.fullName,
+      className: child.className || null,
+      parentDisplay: maskedParent(child.parent),
+      linkStatus: child.academicStudentLinkStatus || "UNRESOLVED",
+      academicStudent: child.academicStudent ? { studentId: child.academicStudent.studentId, fullName: child.academicStudent.fullName, className: child.academicStudent.classLevel ? [child.academicStudent.classLevel.name, child.academicStudent.classLevel.arm].filter(Boolean).join(" ") : null } : null,
+      candidates: candidates.filter((row) => {
+        const admission = studentLink.normalizeAdmission(child.admissionNumber);
+        const childName = normalizeLabel(child.fullName);
+        return (admission && studentLink.normalizeAdmission(row.studentId) === admission)
+          || (childName && normalizeLabel(row.fullName) === childName);
+      }).slice(0, 20),
+    }));
+    res.json({
+      success: true, links, summary: { returned: links.length, candidates: candidates.length, truncated,
+        message: truncated ? "Results were capped at 500 records. Refine the school data before resolving additional links." : null },
+    });
+  } catch (e) { fail(res, e); }
+};
+exports.resolveStudentLink = async (req, res) => {
+  try {
+    if (!(await manager(req, res))) return;
+    const school = schoolId(req);
+    const childPayload = req.body.childToken ? studentLink.verifyChildToken(req.body.childToken) : null;
+    const candidatePayload = req.body.candidateToken ? studentLink.verifyCandidateToken(req.body.candidateToken) : null;
+    if (!childPayload || !candidatePayload) return res.status(400).json({ success: false, message: "Signed child and candidate tokens are required." });
+    const childId = childPayload.childId;
+    const studentId = candidatePayload.studentId;
+    if ((childPayload && String(childPayload.schoolId) !== String(school)) || (candidatePayload && String(candidatePayload.schoolId) !== String(school))) {
+      return res.status(403).json({ success: false, message: "Student-link token does not belong to this school." });
+    }
+    const child = await EduPayChild.findOne({ _id: id(childId, "Child"), school, status: "ACTIVE" }).populate("parent", "fullName phone email");
+    const student = await EduPayStudent.findOne({ _id: id(studentId, "Student"), school, status: "ACTIVE" }).populate("classLevel", "name arm");
+    if (!child || !student) return res.status(404).json({ success: false, message: "Child or academic student not found." });
+    if (child.academicStudent && String(child.academicStudent) !== String(student._id)) {
+      return res.status(409).json({ success: false, message: "Child is already linked to another academic student." });
+    }
+    await studentLink.persistLink(child, student, "MANUAL", req.user._id, { strict: true });
+    res.json({ success: true, link: linkDto(child, student) });
+  } catch (e) { fail(res, e); }
+};
 exports.validateStudentImport = async (req, res) => {
   try {
     const result = validateRows(Array.isArray(req.body.rows) ? req.body.rows : []);
@@ -416,11 +475,12 @@ exports.commitStudentImport = async (req, res) => {
     if (existing.length) return res.status(409).json({ success: false, message: "One or more admission numbers already exist in this school.", duplicates: existing.map((row) => ({ studentId: row.studentId, existing: true })) });
     const docs = rows.map((row) => studentPayload(row, schoolId(req), req.user._id));
     const created = await EduPayStudent.insertMany(docs, { ordered: true });
+    for (const student of created) await studentLink.linkExactChildToStudent(student, req.user._id);
     await audit({ actor: req.user._id, action: "EDUPAY_STUDENTS_IMPORTED", entityType: "EduPayStudent", school: schoolId(req), metadata: { count: created.length }, req });
     res.status(201).json({ success: true, students: created, count: created.length });
   } catch (e) { fail(res, e); }
 };
-exports.createStudent = async (req, res) => { try { await authorizeStudentClass(req, req.body.classLevel || req.body.classId); await validateStudentReferences([req.body], schoolId(req)); const row = await EduPayStudent.create(studentPayload(req.body, schoolId(req), req.user._id)); res.status(201).json({ success: true, student: row }); } catch (e) { fail(res, e); } };
+exports.createStudent = async (req, res) => { try { await authorizeStudentClass(req, req.body.classLevel || req.body.classId); await validateStudentReferences([req.body], schoolId(req)); const row = await EduPayStudent.create(studentPayload(req.body, schoolId(req), req.user._id)); await studentLink.linkExactChildToStudent(row, req.user._id); res.status(201).json({ success: true, student: row }); } catch (e) { fail(res, e); } };
 exports.updateStudent = async (req, res) => {
   try {
     const student = await ensureOwned(EduPayStudent, req.params.studentId, schoolId(req), "Student");
@@ -435,6 +495,7 @@ exports.updateStudent = async (req, res) => {
     if (req.body.classLevel !== undefined || req.body.classId !== undefined) student.classLevel = req.body.classLevel || req.body.classId || null;
     student.updatedBy = req.user._id;
     await student.save();
+    await studentLink.linkExactChildToStudent(student, req.user._id);
     await audit({ actor: req.user._id, action: "EDUPAY_STUDENT_UPDATED", entityType: "EduPayStudent", entityId: student._id, school: schoolId(req), metadata: { status: student.status, classLevel: student.classLevel ? String(student.classLevel) : null }, req });
     res.json({ success: true, student });
   } catch (e) { fail(res, e); }
