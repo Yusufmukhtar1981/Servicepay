@@ -62,12 +62,28 @@ const loadStaffRole = async (req, res, next) => {
      * HEAD_OFFICE always has full access.
      */
     if (FULL_ACCESS_ROLE_NAMES.includes(rawRole) || role === "HEAD_OFFICE") {
+      const assignedRoleId =
+        req.user.staffRoleId?._id || req.user.staffRoleId || null;
+      const staffRole = assignedRoleId
+        ? await Role.findOne({
+            _id: assignedRoleId,
+            status: "ACTIVE",
+          }).lean()
+        : null;
+      const assignedPermissions = normalizePermissionList(
+        staffRole?.permissions || []
+      );
+
+      if (staffRole) req.staffRole = staffRole;
       req.staffAccess = {
         isHeadOffice: true,
         roleName: "HEAD_OFFICE",
         sourceRole: rawRole,
         department: "ADMINISTRATION",
-        permissions: ["*"],
+        // Head Office retains its established broad operational access.  An
+        // explicit assigned staff role is also loaded so protected financial
+        // controls can require their named, audited permission.
+        permissions: ["*", ...assignedPermissions],
         scope: { type: "GLOBAL" },
         hierarchyLevel: 100,
       };
