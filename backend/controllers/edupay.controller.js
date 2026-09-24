@@ -768,8 +768,10 @@ exports.stateManagerSchools = async (req, res) => {
     const manager = await User.findOne({ _id: req.user._id, role: "STATE_MANAGER", status: "ACTIVE", isDeleted: { $ne: true } }).select("_id").lean();
     if (!manager) return res.status(403).json({ success: false, code: "STATE_MANAGER_INACTIVE", message: "An active State Manager account is required." });
     const requests = await SchoolRequest.find({ stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
-    const schoolIds = requests.map((row) => row.school).filter(Boolean);
-    const schools = await School.find({ _id: { $in: schoolIds }, stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
+    // A school remains assigned to its State Manager even if its originating
+    // request is later archived, migrated, or has no request reference.  The
+    // assignment itself is authoritative for this scoped listing.
+    const schools = await School.find({ stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
     return res.json({ success: true, schools: schools.map(schoolAdminDto), requests: requests.map(schoolRequestDto) });
   } catch (error) { return errorResponse(res, error); }
 };
@@ -844,6 +846,9 @@ exports.adminSchoolRequestAction = async (req, res) => {
         request.rejectedBy = req.user._id;
         request.rejectionReason = rejectionReason;
       } else {
+        const isStateManagerOrigin = request.createdByRole === "STATE_MANAGER"
+          && request.stateManagerId
+          && String(request.stateManagerId) === String(request.createdBy || request.parent);
         const requester = await User.findById(request.parent)
           .select("_id status email phone")
           .session(session)
@@ -872,7 +877,8 @@ exports.adminSchoolRequestAction = async (req, res) => {
             || String(admittedSchool.sourceRequest || "") !== String(request._id)
             || admittedSchool.sourceRequestNormalizedSchoolName !== identity.schoolName
             || admittedSchool.sourceRequestNormalizedLocation !== identity.location
-            || String(admittedSchool.portalUser || "") !== String(requester._id)) {
+            || (!isStateManagerOrigin && String(admittedSchool.portalUser || "") !== String(requester._id))
+            || (isStateManagerOrigin && admittedSchool.portalUser)) {
             const error = new Error("School request is linked to a mismatched school.");
             error.statusCode = 409;
             error.code = "SCHOOL_REQUEST_LINK_MISMATCH";
@@ -888,7 +894,10 @@ exports.adminSchoolRequestAction = async (req, res) => {
             phone: request.contactPhone || null,
             status: "APPROVED",
             active: true,
-            portalUser: requester._id,
+            // State Manager origin is provenance, not portal ownership.  A
+            // representative must separately claim this school after
+            // verification; never turn the manager into a portal identity.
+            portalUser: isStateManagerOrigin ? null : requester._id,
             createdBy: request.createdBy || request.parent,
             createdByRole: request.createdByRole || null,
             stateManagerId: request.stateManagerId || null,
@@ -920,11 +929,13 @@ exports.adminSchoolRequestAction = async (req, res) => {
         admittedSchool.reviewedBy = req.user._id;
         admittedSchool.reviewedAt = new Date();
         await admittedSchool.save({ session });
-        await SchoolUser.updateOne(
-          { school: admittedSchool._id, user: requester._id },
-          { $set: { role: "ADMIN", status: "ACTIVE", invitedBy: req.user._id }, $setOnInsert: { school: admittedSchool._id, user: requester._id } },
-          { upsert: true, session }
-        );
+        if (!isStateManagerOrigin) {
+          await SchoolUser.updateOne(
+            { school: admittedSchool._id, user: requester._id },
+            { $set: { role: "ADMIN", status: "ACTIVE", invitedBy: req.user._id }, $setOnInsert: { school: admittedSchool._id, user: requester._id } },
+            { upsert: true, session }
+          );
+        }
         request.status = "APPROVED";
         request.approvedAt = new Date();
         request.approvedBy = req.user._id;

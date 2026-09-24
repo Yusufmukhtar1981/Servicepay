@@ -8,13 +8,14 @@ const controller = require("../controllers/edupay.controller");
 const User = require("../models/user.model");
 const School = require("../models/edupaySchool.model");
 const SchoolRequest = require("../models/edupaySchoolRequest.model");
+const SchoolUser = require("../models/edupaySchoolUser.model");
 const Audit = require("../models/edupayAuditLog.model");
 let mongo;
 
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(mongo.getUri(), { dbName: "edupay-state-manager" });
-  await Promise.all([User, School, SchoolRequest, Audit].map((model) => model.init()));
+  await Promise.all([User, School, SchoolRequest, SchoolUser, Audit].map((model) => model.init()));
 });
 test.after(async () => {
   await mongoose.disconnect();
@@ -28,6 +29,7 @@ test.beforeEach(async () => {
     User.collection.deleteMany({}),
     School.collection.deleteMany({}),
     SchoolRequest.collection.deleteMany({}),
+    SchoolUser.collection.deleteMany({}),
     Audit.collection.deleteMany({}),
   ]);
 });
@@ -81,7 +83,33 @@ test("state-manager onboarding enforces state scope, deduplicates, and links app
   const school = await School.findById(approved.body.request.schoolId).lean();
   assert.equal(school.status, "APPROVED");
   assert.equal(String(school.stateManagerId), String(manager._id));
+  assert.equal(school.portalUser, null);
+  assert.equal(await SchoolUser.countDocuments({ school: school._id, user: manager._id }), 0);
   const listed = await invoke(controller.stateManagerSchools, { user: manager.toObject() });
   assert.equal(listed.body.schools.length, 1);
   assert.equal(String(listed.body.schools[0].stateManagerId), String(manager._id));
+});
+
+test("state-manager school scope lists assignments directly, without request linkage", async () => {
+  const manager = await User.create({
+    fullName: "Assigned Manager",
+    phone: `082${Date.now()}`,
+    email: `assigned-${Date.now()}@test.invalid`,
+    password: "Password123!",
+    role: "STATE_MANAGER",
+    status: "ACTIVE",
+    state: "Lagos",
+  });
+  const school = await School.create({
+    name: "Direct Assignment Academy",
+    address: "Ikeja",
+    state: "Lagos",
+    status: "APPROVED",
+    active: true,
+    stateManagerId: manager._id,
+  });
+  const listed = await invoke(controller.stateManagerSchools, { user: manager.toObject() });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.schools.length, 1);
+  assert.equal(String(listed.body.schools[0]._id), String(school._id));
 });
