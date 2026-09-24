@@ -5,6 +5,7 @@ import 'services/biometric_auth_service.dart';
 import 'services/session_store.dart';
 import 'services/transaction_authorization_service.dart';
 import 'receipt_screen.dart';
+import 'widgets/saved_beneficiaries.dart';
 
 class DataScreen extends StatefulWidget {
   const DataScreen({super.key});
@@ -533,6 +534,12 @@ class _DataScreenState extends State<DataScreen> {
 
       if (success) {
         _pendingIdempotencyKey = null;
+        await SavedBeneficiaries.offerSave(
+          context: context,
+          phone: phone,
+          network: selectedNetwork,
+          serviceType: 'DATA',
+        );
         final String receiptPhone = phone;
         final String receiptNetwork = selectedNetwork;
 
@@ -904,6 +911,12 @@ class _DataScreenState extends State<DataScreen> {
                       ),
                     ),
                   ),
+                ),
+                const SizedBox(height: 10),
+                SavedBeneficiaries(
+                  phoneController: phoneController,
+                  network: selectedNetwork,
+                  serviceType: 'DATA',
                 ),
                 const SizedBox(
                   height: 14,

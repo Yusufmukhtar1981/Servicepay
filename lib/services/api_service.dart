@@ -8,6 +8,61 @@ class ApiService {
 
   static const Duration requestTimeout = Duration(seconds: 60);
 
+  static Future<List<Map<String, dynamic>>> getBeneficiaries({
+    String search = '',
+  }) async {
+    final token = await _getAuthToken();
+    final query = search.trim().isEmpty
+        ? ''
+        : '?search=${Uri.encodeQueryComponent(search.trim())}';
+    final response = await http.get(
+      Uri.parse('$baseUrl/customer/beneficiaries$query'),
+      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    ).timeout(requestTimeout);
+    final result = _handleResponse(response);
+    final raw = result['beneficiaries'];
+    return raw is List
+        ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  static Future<Map<String, dynamic>> saveBeneficiary({
+    required String phone,
+    required String name,
+    String network = '',
+    String serviceType = '',
+  }) async {
+    final token = await _getAuthToken();
+    final response = await http.post(
+      Uri.parse('$baseUrl/customer/beneficiaries'),
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'phone': phone.trim(), 'name': name.trim(), 'network': network.trim(), 'serviceType': serviceType}),
+    ).timeout(requestTimeout);
+    return _handleResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> updateBeneficiary({
+    required String id,
+    required String name,
+  }) async {
+    final token = await _getAuthToken();
+    final response = await http.patch(
+      Uri.parse('$baseUrl/customer/beneficiaries/$id'),
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'name': name.trim()}),
+    ).timeout(requestTimeout);
+    return _handleResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> deleteBeneficiary(String id) async {
+    final token = await _getAuthToken();
+    final response = await http.delete(
+      Uri.parse('$baseUrl/customer/beneficiaries/$id'),
+      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    ).timeout(requestTimeout);
+    return _handleResponse(response);
+  }
+
   static Future<Map<String, dynamic>> getDataPlans({
     required String network,
   }) async {

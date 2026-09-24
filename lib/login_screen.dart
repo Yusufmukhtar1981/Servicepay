@@ -65,6 +65,10 @@ class _LoginScreenState extends State<LoginScreen> {
         showMessage('Biometric sign in was cancelled or is unavailable.');
         return;
       }
+      // Keep profile/session state identical to a password login. In
+      // particular, role routing alone must never leave stale customer data
+      // in local storage after a biometric account switch.
+      await saveLoginData(result.token, result.user);
       final role = loginRoleFromResponse(result.user, result.user);
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -76,6 +80,10 @@ class _LoginScreenState extends State<LoginScreen> {
           (_) => false,
         );
       }
+    } catch (error) {
+      showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) setState(() => isLoading = false);
     }

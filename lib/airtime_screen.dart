@@ -4,6 +4,7 @@ import 'services/api_service.dart';
 import 'services/biometric_auth_service.dart';
 import 'services/session_store.dart';
 import 'services/transaction_authorization_service.dart';
+import 'widgets/saved_beneficiaries.dart';
 
 class AirtimeScreen extends StatefulWidget {
   const AirtimeScreen({super.key});
@@ -230,6 +231,12 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
       if (success) {
         showMessage(message);
+        await SavedBeneficiaries.offerSave(
+          context: context,
+          phone: phone,
+          network: selectedNetwork,
+          serviceType: 'AIRTIME',
+        );
 
         phoneController.clear();
         amountController.clear();
@@ -352,6 +359,12 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                ),
+                const SizedBox(height: 10),
+                SavedBeneficiaries(
+                  phoneController: phoneController,
+                  network: selectedNetwork,
+                  serviceType: 'AIRTIME',
                 ),
                 const SizedBox(height: 22),
                 const Text(

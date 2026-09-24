@@ -139,6 +139,24 @@ void main() {
   );
 
   test(
+    'biometric login accepts the production top-level user response',
+    () async {
+      final tokens = <String>[];
+      final result = await service(
+        credentials: FakeCredentials('old'),
+        tokens: tokens,
+        client: ReplyClient(
+          200,
+          '{"token":"token","credential":"next","user":{"id":"customer-1","role":"CUSTOMER"}}',
+        ),
+      ).login();
+      expect(result?.user['id'], 'customer-1');
+      expect(result?.user['role'], 'CUSTOMER');
+      expect(tokens, ['token']);
+    },
+  );
+
+  test(
     'cancel, unsupported hardware, and not enrolled use safe fallback',
     () async {
       final cancelled = FakeCredentials(

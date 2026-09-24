@@ -226,10 +226,19 @@ class BiometricAuthService {
     final token = (body['token'] ?? body['accessToken'] ?? data['token'] ?? '')
         .toString();
     if (token.isEmpty) return null;
-    await _sessionTokenWriter(token);
-    final user = data['user'] is Map
-        ? Map<String, dynamic>.from(data['user'])
+    // The production endpoint historically returned `user` at the top level,
+    // while newer adapters wrap it in `data`. Accept both shapes so biometric
+    // login establishes the same complete session as password login.
+    final rawUser = data['user'] is Map ? data['user'] : body['user'];
+    final user = rawUser is Map
+        ? Map<String, dynamic>.from(rawUser)
         : <String, dynamic>{};
+    if (user.isEmpty) {
+      // Never establish an authenticated local session from a malformed
+      // biometric response.
+      return null;
+    }
+    await _sessionTokenWriter(token);
     return BiometricAuthResult(token: token, user: user);
   }
 

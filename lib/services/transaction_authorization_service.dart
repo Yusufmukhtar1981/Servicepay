@@ -37,6 +37,25 @@ class TransactionAuthorizationService {
   final http.Client _client;
   static const baseUrl = BiometricAuthService.baseUrl;
 
+  /// Refresh the server-backed flag before falling back to PIN. The static
+  /// value is only an optimization for the current process; it is not an
+  /// authorization decision and is never trusted by the backend.
+  Future<bool> _refreshEnabled(String token) async {
+    try {
+      final settings = await _biometrics.settings(token);
+      final localId = await _biometrics.deviceId();
+      final enabled = settings != null &&
+          settings.transactionEnabled &&
+          localId != null &&
+          localId == settings.deviceId;
+      setTransactionBiometricsEnabled(enabled);
+      return enabled;
+    } catch (_) {
+      setTransactionBiometricsEnabled(false);
+      return false;
+    }
+  }
+
   /// Matches the backend canonical intent binding exactly.
   static String intentHash({
     required String operation,
@@ -79,15 +98,20 @@ class TransactionAuthorizationService {
     required Map<String, dynamic> requestBody,
     required String idempotencyKey,
   }) async {
-    if (!transactionBiometricsEnabled) {
-      return null;
-    }
     try {
+      if (!transactionBiometricsEnabled &&
+          !await _refreshEnabled(token)) {
+        return null;
+      }
       if (!await _biometrics.isEnrolled()) {
+        setTransactionBiometricsEnabled(false);
         return null;
       }
       final deviceId = await _biometrics.deviceId();
-      if (deviceId == null) return null;
+      if (deviceId == null) {
+        setTransactionBiometricsEnabled(false);
+        return null;
+      }
       final credential = await _biometrics.credentialAfterAuthentication();
       if (credential == null || credential.isEmpty) return null;
       final hash = intentHash(

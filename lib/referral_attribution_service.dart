@@ -140,6 +140,14 @@ class ReferralAttributionService {
       final data = body['data'] is Map
           ? Map<String, dynamic>.from(body['data'] as Map)
           : body;
+      if (response.statusCode >= 400 &&
+          response.statusCode < 500 &&
+          response.statusCode != 429) {
+        // A definitive client error means this code is not usable.  Do not
+        // fall back to an older cached attribution for an explicitly supplied
+        // link in this case.
+        return ReferralValidationResult.invalid(code);
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return ReferralValidationResult.unavailable(code);
       }

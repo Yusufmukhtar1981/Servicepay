@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
 import 'login_screen.dart';
@@ -203,11 +204,63 @@ class ServicePayStartupScreen extends StatelessWidget {
   }
 }
 
-class ServicePayApp extends StatelessWidget {
+class ServicePayApp extends StatefulWidget {
   const ServicePayApp({super.key});
 
+  @override
+  State<ServicePayApp> createState() => _ServicePayAppState();
+}
+
+class _ServicePayAppState extends State<ServicePayApp> {
+  static const MethodChannel _deepLinkChannel =
+      MethodChannel('ng.servicepay.app/deep_links');
+  static const EventChannel _deepLinkEvents =
+      EventChannel('ng.servicepay.app/deep_links/events');
+  Uri? _nativeInitialUri;
+  StreamSubscription<dynamic>? _deepLinkSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _readNativeInitialUri();
+    if (!kIsWeb) {
+      _deepLinkSubscription = _deepLinkEvents.receiveBroadcastStream().listen(
+        (dynamic value) => _handleNativeUri(value?.toString()),
+      );
+    }
+  }
+
+  Future<void> _readNativeInitialUri() async {
+    if (kIsWeb) return;
+    try {
+      final value = await _deepLinkChannel.invokeMethod<String>('initialUri');
+      _handleNativeUri(value);
+    } on PlatformException {
+      // Older builds have no deep-link channel; normal startup is unchanged.
+    } catch (_) {
+      // A malformed or unavailable platform link must not block login.
+    }
+  }
+
+  void _handleNativeUri(String? value) {
+    if (value == null || value.trim().isEmpty) return;
+    final uri = Uri.tryParse(value);
+    if (uri == null || !isServicePayRegistrationUri(uri)) return;
+    if (!mounted) {
+      _nativeInitialUri = uri;
+      return;
+    }
+    setState(() => _nativeInitialUri = uri);
+  }
+
+  @override
+  void dispose() {
+    _deepLinkSubscription?.cancel();
+    super.dispose();
+  }
+
   Widget getInitialScreen() {
-    final Uri currentUri = Uri.base;
+    final Uri currentUri = _nativeInitialUri ?? Uri.base;
 
     final String path = currentUri.path.toLowerCase();
 

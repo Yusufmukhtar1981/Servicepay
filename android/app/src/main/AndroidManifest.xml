@@ -42,6 +42,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+                 Referral registration links.  This is an ordinary deep-link
+                 filter (not autoVerify): verified App Links require the
+                 release signing certificate in /.well-known/assetlinks.json.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="servicepay.ng"
+                    android:pathPrefix="/register" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.servicepay.ng"
+                    android:pathPrefix="/register" />
+            </intent-filter>
+
         </activity>
 
         <!--

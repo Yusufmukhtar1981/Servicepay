@@ -11,6 +11,7 @@ import 'profile_screen.dart';
 import 'role_transactions_screen.dart';
 import 'role_commissions_screen.dart';
 import 'management_users_screen.dart';
+import 'edupay_school_management_screen.dart';
 import 'package:http/http.dart' as http;
 
 class RoleDashboardScreen extends StatefulWidget {
@@ -509,6 +510,12 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
                 const ManagementUsersScreen.agents(),
               );
             },
+          ),
+          _RoleMenuItem(
+            title: 'EduPay Schools',
+            subtitle: 'Register and track schools in your state',
+            icon: Icons.school_rounded,
+            onTap: () => openScreen(const EduPaySchoolManagementScreen()),
           ),
           _RoleMenuItem(
             title: 'State Commission',
