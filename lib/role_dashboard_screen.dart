@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'services/session_store.dart';
 import 'create_state_manager_screen.dart';
 import 'create_agent_screen.dart';
 import 'my_customers_screen.dart';
@@ -73,24 +74,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
   }
 
   Future<String?> getSavedAuthToken() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
-
-    const List<String> tokenKeys = [
-      'auth_token',
-      'token',
-      'access_token',
-      'admin_token',
-    ];
-
-    for (final String key in tokenKeys) {
-      final String? value = preferences.getString(key);
-
-      if (value != null && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-    }
-
-    return null;
+    return SessionStore.readToken();
   }
 
   int summaryInt(dynamic value) {

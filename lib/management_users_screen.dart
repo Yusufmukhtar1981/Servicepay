@@ -2,7 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'services/session_store.dart';
 
 class ManagementUsersScreen extends StatefulWidget {
   final String title;
@@ -50,24 +51,7 @@ class _ManagementUsersScreenState extends State<ManagementUsersScreen> {
   }
 
   Future<String?> getSavedAuthToken() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
-
-    const List<String> tokenKeys = [
-      'auth_token',
-      'token',
-      'access_token',
-      'admin_token',
-    ];
-
-    for (final String key in tokenKeys) {
-      final String? value = preferences.getString(key);
-
-      if (value != null && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-    }
-
-    return null;
+    return SessionStore.readToken();
   }
 
   Future<void> loadUsers({bool refresh = false}) async {
