@@ -163,7 +163,9 @@ test("downline transaction totals are full, pages are deterministic, and unrelat
   assert.equal(page.result.body.transactions.length, 1);
   const denied = response();
   await getDownlineTransactions({ user: zonal, query: {}, params: { transactionId: txs[2]._id.toString() } }, denied.res);
-  assert.equal(denied.result.status, 404);
+  // A valid but out-of-scope transaction is an authorization failure, not a
+  // missing-resource response; do not disclose whether the guessed ID exists.
+  assert.equal(denied.result.status, 403);
 });
 
 test("wallet adjustment posts immutable ledger, audit, and idempotent replay", async () => {

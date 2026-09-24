@@ -101,6 +101,14 @@ const userSchema = new mongoose.Schema(
       min: 0,
       select: false,
     },
+    // Serializes hierarchy mutations (promotion and child registration) on
+    // the owning manager document.
+    hierarchyVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+      select: false,
+    },
 
     /*
      * Internal ServicePay staff

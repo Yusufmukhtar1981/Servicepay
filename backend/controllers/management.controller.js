@@ -1,6 +1,8 @@
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const Commission = require("../models/commission.model");
+const mongoose = require("mongoose");
+const { getZonalScope } = require("../services/zonalScope.service");
 
 const normalizeText = (value) =>
   String(value || "").trim();
@@ -59,6 +61,19 @@ const managerRoot = (req) => {
 exports.getDownlineSummary = async (req, res) => {
   try {
     if (!managerRoot(req)) return res.status(403).json({ success: false, message: "A manager role is required." });
+    if (String(req.user.role).toUpperCase() === "ZONAL_MANAGER") {
+      const scope = await getZonalScope(req.user);
+      const customerIds = scope.customerIds.map((value) => new mongoose.Types.ObjectId(value));
+      const visibleIds = [...scope.stateManagerIds, ...scope.agentIds, ...scope.customerIds].map((value) => new mongoose.Types.ObjectId(value));
+      const transactionFilter = { customerId: { $in: customerIds } };
+      const [tx, totalTransactions, totals, users] = await Promise.all([
+        Transaction.find(transactionFilter).select("customerId amount serviceType status reference createdAt").sort({ createdAt: -1 }).limit(100).lean(),
+        Transaction.countDocuments(transactionFilter),
+        Transaction.aggregate([{ $match: transactionFilter }, { $group: { _id: null, value: { $sum: "$amount" } } }]),
+        User.find({ _id: { $in: visibleIds }, isDeleted: { $ne: true } }).select("-password -transactionPin -authTokenVersion").lean(),
+      ]);
+      return res.json({ success: true, scope: { role: "ZONAL_MANAGER", userId: req.user._id }, counts: { totalDownline: visibleIds.length, customers: scope.customerIds.length, transactions: totalTransactions, transactionValue: Number(totals[0]?.value || 0) }, users: users.map(publicUser), recentTransactions: tx });
+    }
     const rows = await descendantUsers(req.user);
     const customerIds = rows.filter((x) => x.role === "CUSTOMER").map((x) => x._id);
     const transactionFilter = { customerId: { $in: customerIds } };
@@ -82,6 +97,25 @@ exports.getDownlineSummary = async (req, res) => {
 exports.getDownlineTransactions = async (req, res) => {
   try {
     if (!managerRoot(req)) return res.status(403).json({ success: false, message: "A manager role is required." });
+    if (String(req.user.role).toUpperCase() === "ZONAL_MANAGER") {
+      const scope = await getZonalScope(req.user);
+      const ids = scope.customerIds.map((value) => new mongoose.Types.ObjectId(value));
+      const query = { customerId: { $in: ids } };
+      if (req.params.transactionId) {
+        if (!mongoose.Types.ObjectId.isValid(req.params.transactionId)) return res.status(403).json({ success: false, message: "Transaction is outside your downline scope." });
+        query._id = req.params.transactionId;
+        const transaction = await Transaction.findOne(query).lean();
+        if (!transaction) return res.status(403).json({ success: false, message: "Transaction is outside your downline scope." });
+        return res.json({ success: true, transaction });
+      }
+      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 25));
+      const [transactions, total] = await Promise.all([
+        Transaction.find(query).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+        Transaction.countDocuments(query),
+      ]);
+      return res.json({ success: true, transactions, page, limit, total, totalPages: Math.ceil(total / limit) });
+    }
     const rows = await descendantUsers(req.user);
     const ids = rows.filter((x) => x.role === "CUSTOMER").map((x) => x._id);
     const query = { customerId: { $in: ids } };
@@ -673,52 +707,55 @@ exports.createCustomer = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({
-      $or: duplicateConditions,
-    }).select("_id phone email");
+    const session = await mongoose.startSession();
+    let customer;
+    let actor;
+    try {
+      await session.withTransaction(async () => {
+        // Lock the parent hierarchy document first. A promotion updates this
+        // same document, so MongoDB retries one transaction rather than
+        // allowing a stale AGENT request to create an orphan.
+        actor = await User.findOneAndUpdate(
+          { _id: loggedInUser._id || loggedInUser.id, role: "AGENT", status: "ACTIVE", isDeleted: { $ne: true } },
+          { $inc: { hierarchyVersion: 1 } },
+          { session, new: true }
+        );
+        if (!actor) {
+          const error = new Error("Agent hierarchy changed; registration was rejected.");
+          error.statusCode = 409;
+          throw error;
+        }
+        const existingUser = await User.findOne({ $or: duplicateConditions }).session(session).select("_id phone email");
 
-    if (existingUser) {
-      const samePhone =
-        normalizePhone(existingUser.phone) ===
-        cleanPhone;
+        if (existingUser) {
+          const samePhone = normalizePhone(existingUser.phone) === cleanPhone;
+          const error = new Error(samePhone ? "A user with this phone number already exists." : "A user with this email address already exists.");
+          error.statusCode = 409;
+          throw error;
+        }
 
-      return res.status(409).json({
-        success: false,
-        message: samePhone
-          ? "A user with this phone number already exists."
-          : "A user with this email address already exists.",
+        customer = new User({
+          fullName: cleanFullName,
+          phone: cleanPhone,
+          email: cleanEmail || undefined,
+          password: cleanPassword,
+
+          role: "CUSTOMER",
+          status: "ACTIVE",
+
+          zone: actor.zone,
+          state: actor.state,
+          lga: cleanLga || normalizeText(actor.lga) || undefined,
+
+          zonalManagerId: actor.zonalManagerId || undefined,
+          stateManagerId: actor.stateManagerId || undefined,
+          agentId: actor._id,
+          walletBalance: 0,
+        });
+
+        await customer.save({ session });
       });
-    }
-
-    const customer = new User({
-      fullName: cleanFullName,
-      phone: cleanPhone,
-      email: cleanEmail || undefined,
-      password: cleanPassword,
-
-      role: "CUSTOMER",
-      status: "ACTIVE",
-
-      zone: normalizeText(loggedInUser.zone),
-      state: normalizeText(loggedInUser.state),
-      lga:
-        cleanLga ||
-        normalizeText(loggedInUser.lga) ||
-        undefined,
-
-      zonalManagerId:
-        loggedInUser.zonalManagerId || undefined,
-
-      stateManagerId:
-        loggedInUser.stateManagerId || undefined,
-
-      agentId:
-        loggedInUser._id || loggedInUser.id,
-
-      walletBalance: 0,
-    });
-
-    await customer.save();
+    } finally { await session.endSession(); }
 
     return res.status(201).json({
       success: true,
@@ -736,10 +773,10 @@ exports.createCustomer = async (req, res) => {
       });
     }
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message:
-        "Server error while creating Customer.",
+        error.statusCode ? error.message : "Server error while creating Customer.",
     });
   }
 };
@@ -1107,7 +1144,8 @@ exports.getRoleTransactions = async (req, res) => {
     }
 
     if (role === "ZONAL_MANAGER") {
-      query.zonalManagerId = loggedInUser._id;
+      const scope = await getZonalScope(loggedInUser);
+      query.customerId = { $in: scope.customerIds.map((value) => new mongoose.Types.ObjectId(value)) };
     }
 
     if (status !== "ALL") {

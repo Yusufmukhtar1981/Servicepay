@@ -35,6 +35,22 @@ const {
 );
 
 /*
+ * Zonal managers have a separate, scope-aware oversight surface.  In
+ * particular, do not let them fall through to the legacy delivery endpoints:
+ * those endpoints predate zonal scoping and either return all deliveries or
+ * accept an ID before applying a tenant check.
+ */
+const denyZonalManager = (req, res, next) => {
+  if (String(req.user?.role || "").toUpperCase() === "ZONAL_MANAGER") {
+    return res.status(403).json({
+      success: false,
+      message: "Use the zonal oversight delivery endpoint.",
+    });
+  }
+  return next();
+};
+
+/*
 |--------------------------------------------------------------------------
 | PUBLIC DELIVERY COVERAGE
 |--------------------------------------------------------------------------
@@ -104,12 +120,14 @@ router.get(
 router.post(
   "/pay/:id",
   protect,
+  denyZonalManager,
   payDeliveryFee
 );
 
 router.put(
   "/cancel/:id",
   protect,
+  denyZonalManager,
   cancelDelivery
 );
 
@@ -119,6 +137,7 @@ router.put(
 router.get(
   "/:id",
   protect,
+  denyZonalManager,
   getDeliveryById
 );
 
@@ -131,24 +150,28 @@ router.get(
 router.get(
   "/",
   protect,
+  denyZonalManager,
   getAllDeliveries
 );
 
 router.put(
   "/fee/:id",
   protect,
+  denyZonalManager,
   setDeliveryFee
 );
 
 router.put(
   "/status/:id",
   protect,
+  denyZonalManager,
   updateDeliveryStatus
 );
 
 router.put(
   "/payment/:id",
   protect,
+  denyZonalManager,
   updatePaymentStatus
 );
 
