@@ -25,10 +25,18 @@ Future<Map<String, dynamic>?> authorizeFeatureTransaction(
   TransactionAuthorizationService? authorizationService,
   BiometricAuthService? biometricService,
 }) async {
-  // Do not probe native capabilities or call the network on the legacy path.
-  // The settings screen is the sole authority that enables this chooser.
-  if (!(transactionBiometricsEnabled ??
-      TransactionAuthorizationService.transactionBiometricsEnabled)) {
+  final authorization = authorizationService ?? TransactionAuthorizationService();
+  var biometricEnabled = transactionBiometricsEnabled ??
+      TransactionAuthorizationService.transactionBiometricsEnabled;
+  // Process-local state is only an optimization. Refresh it from the server
+  // so enabled biometrics remain available after an app restart, while the
+  // actual credential remains gated by the platform prompt below.
+  if (!biometricEnabled && transactionBiometricsEnabled == null) {
+    biometricEnabled = await authorization.isTransactionAuthorizationEnabled(
+      token,
+    );
+  }
+  if (!biometricEnabled) {
     final pin = await showFeatureTransactionPinDialog(
       context,
       title: title,
@@ -37,7 +45,6 @@ Future<Map<String, dynamic>?> authorizeFeatureTransaction(
     return pin == null ? null : {'transactionPin': pin};
   }
   final biometrics = biometricService ?? BiometricAuthService();
-  final authorization = authorizationService ?? TransactionAuthorizationService();
   final enrolled = await biometrics.isEnrolled();
   final choice = await showDialog<String>(
     context: context,

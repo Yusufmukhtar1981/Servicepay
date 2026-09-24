@@ -540,6 +540,7 @@ class _DataScreenState extends State<DataScreen> {
           network: selectedNetwork,
           serviceType: 'DATA',
         );
+        if (!mounted) return;
         final String receiptPhone = phone;
         final String receiptNetwork = selectedNetwork;
 

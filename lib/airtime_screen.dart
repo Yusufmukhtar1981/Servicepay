@@ -237,6 +237,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
           network: selectedNetwork,
           serviceType: 'AIRTIME',
         );
+        if (!mounted) return;
 
         phoneController.clear();
         amountController.clear();

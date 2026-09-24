@@ -56,6 +56,12 @@ class TransactionAuthorizationService {
     }
   }
 
+  /// Returns the server-backed authorization state for this device without
+  /// reading the biometric credential. The credential is only requested after
+  /// the user chooses biometrics for a specific transaction.
+  Future<bool> isTransactionAuthorizationEnabled(String token) =>
+      _refreshEnabled(token);
+
   /// Matches the backend canonical intent binding exactly.
   static String intentHash({
     required String operation,

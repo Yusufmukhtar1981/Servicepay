@@ -21,6 +21,10 @@ class _EduPaySchoolManagementScreenState
   final lga = TextEditingController();
   final type = TextEditingController();
   final contact = TextEditingController();
+  final phone = TextEditingController();
+  final email = TextEditingController();
+  final registration = TextEditingController();
+  final representative = TextEditingController();
   bool loading = true;
   bool saving = false;
   String error = '';
@@ -34,7 +38,7 @@ class _EduPaySchoolManagementScreenState
 
   @override
   void dispose() {
-    for (final controller in [name, location, state, lga, type, contact]) {
+    for (final controller in [name, location, state, lga, type, contact, phone, email, registration, representative]) {
       controller.dispose();
     }
     super.dispose();
@@ -85,6 +89,9 @@ class _EduPaySchoolManagementScreenState
           'schoolName': name.text.trim(), 'location': location.text.trim(),
           'state': state.text.trim(), 'lga': lga.text.trim(),
           'schoolType': type.text.trim(), 'contactPerson': contact.text.trim(),
+          'phone': phone.text.trim(), 'email': email.text.trim(),
+          'registrationNumber': registration.text.trim(),
+          'authorizedRepresentative': representative.text.trim(),
         }),
       ).timeout(const Duration(seconds: 45));
       final body = jsonDecode(response.body);
@@ -92,7 +99,9 @@ class _EduPaySchoolManagementScreenState
           body is! Map || body['success'] != true) {
         throw Exception(body is Map ? body['message'] : 'Unable to register school.');
       }
-      name.clear(); location.clear(); state.clear(); lga.clear(); type.clear(); contact.clear();
+      for (final controller in [name, location, state, lga, type, contact, phone, email, registration, representative]) {
+        controller.clear();
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('School submitted. It is pending Head Office approval.')));
@@ -123,7 +132,10 @@ class _EduPaySchoolManagementScreenState
         const SizedBox(height: 16),
         Form(key: formKey, child: Column(children: [
           field(name, 'School name', required: true), field(location, 'Address / location', required: true),
-          field(state, 'State', required: true), field(lga, 'LGA'), field(type, 'School type'), field(contact, 'Contact person'),
+          field(state, 'State', required: true), field(lga, 'LGA', required: true), field(type, 'School type', required: true), field(contact, 'Contact person', required: true),
+          field(phone, 'School phone', required: true), field(email, 'School email', required: true),
+          field(registration, 'Registration number', required: true),
+          field(representative, 'Authorized representative', required: true),
           SizedBox(width: double.infinity, child: FilledButton(
             onPressed: saving ? null : createSchool,
             child: Text(saving ? 'Submitting...' : 'Submit for approval'))),
