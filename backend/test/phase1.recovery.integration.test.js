@@ -14,6 +14,7 @@ const { assignStaffRole } = require("../controllers/staffManagement.controller")
 const { loadStaffRole } = require("../middleware/staffPermission.middleware");
 const { searchCustomers: searchWalletCustomers } = require("../controllers/adminWalletAdjustment.controller");
 const { STAFF_PERMISSIONS: P } = require("../config/staffPermissions");
+const { loginUser, getProfile } = require("../controllers/auth.controller");
 
 let mongo;
 const admin = { _id: new mongoose.Types.ObjectId(), role: "HEAD_OFFICE", fullName: "Test Head Office" };
@@ -38,6 +39,47 @@ test.beforeEach(async () => {
     AdminAuditLog.collection.deleteMany({}),
     Role.deleteMany({}),
   ]);
+});
+
+test("Head Office login and profile expose only active assigned role permissions", async () => {
+  const role = await Role.create({
+    name: "PHASE1_FINANCE",
+    displayName: "Phase 1 Finance",
+    department: "FINANCE",
+    permissions: [P.WALLETS_ADJUST],
+    status: "ACTIVE",
+  });
+  const user = await User.create({
+    fullName: "Head Office",
+    phone: "08012345678",
+    email: "head-office@test.local",
+    password: "secret123",
+    role: "HEAD_OFFICE",
+    status: "ACTIVE",
+    staffRoleId: role._id,
+  });
+  const login = response();
+  await loginUser({
+    body: { email: user.email, password: "secret123" },
+    headers: {},
+  }, login.res);
+  assert.equal(login.result.status, 200);
+  assert.deepEqual(login.result.body.user.permissions, [P.WALLETS_ADJUST]);
+  assert.equal(login.result.body.user.staffRole.name, "PHASE1_FINANCE");
+
+  const profile = response();
+  await getProfile({ user: { _id: user._id } }, profile.res);
+  assert.equal(profile.result.status, 200);
+  assert.deepEqual(profile.result.body.user.permissions, [P.WALLETS_ADJUST]);
+
+  await Role.updateOne({ _id: role._id }, { status: "INACTIVE" });
+  const inactiveLogin = response();
+  await loginUser({
+    body: { email: user.email, password: "secret123" },
+    headers: {},
+  }, inactiveLogin.res);
+  assert.equal(inactiveLogin.result.status, 200);
+  assert.deepEqual(inactiveLogin.result.body.user.permissions, []);
 });
 
 test("Head Office creates a canonical Zonal Manager and promotion preserves identity", async () => {

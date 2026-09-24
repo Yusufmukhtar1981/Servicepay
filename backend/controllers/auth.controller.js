@@ -1209,6 +1209,18 @@ exports.loginUser = async (
       });
     }
 
+    // Protected Head Office controls require an active, explicitly assigned
+    // role. Return its permissions at login so the Admin UI matches the
+    // server's authorization decision; an inactive role grants nothing.
+    if (String(user.role || "").trim().toUpperCase() === "HEAD_OFFICE" &&
+        user.staffRoleId) {
+      await user.populate({
+        path: "staffRoleId",
+        match: { status: "ACTIVE" },
+        select: "name displayName department permissions status",
+      });
+    }
+
     if (await loginIsRestricted(user)) {
       await recordLoginSecurityEvent(req, {
         user,
@@ -1280,6 +1292,15 @@ exports.getProfile = async (
         success: false,
         message:
           "User account not found.",
+      });
+    }
+
+    if (String(user.role || "").trim().toUpperCase() === "HEAD_OFFICE" &&
+        user.staffRoleId) {
+      await user.populate({
+        path: "staffRoleId",
+        match: { status: "ACTIVE" },
+        select: "name displayName department permissions status",
       });
     }
 
