@@ -188,7 +188,6 @@ test("authorized Head Office role administrator can grant exact wallet permissio
     body: { roleId: role._id, preserveHeadOffice: true },
     params: { staffId: target._id },
     staffAccess: { isHeadOffice: true, permissions: [P.STAFF_ASSIGN_ROLE], hierarchyLevel: 100 },
-    staffRole: role,
     method: "PUT", originalUrl: "/api/staff-management/staff/" + target._id + "/head-office-role",
     headers: {},
   }, grant.res);
@@ -227,4 +226,31 @@ test("authorized Head Office role administrator can grant exact wallet permissio
     staffAccess: { isHeadOffice: false, permissions: [], hierarchyLevel: 20 },
   }, unauthorized.res);
   assert.equal(unauthorized.result.status, 403);
+  const selfGrant = response();
+  await assignStaffRole({
+    user: grantor,
+    body: { roleId: role._id, preserveHeadOffice: true },
+    params: { staffId: grantor._id },
+    staffAccess: { isHeadOffice: true, permissions: [], hierarchyLevel: 100 },
+  }, selfGrant.res);
+  assert.equal(selfGrant.result.status, 403);
+  const nonWalletRole = await Role.create({
+    name: "OPERATIONS_MANAGER",
+    displayName: "Operations Manager",
+    department: "OPERATIONS",
+    permissions: [P.STAFF_ASSIGN_ROLE],
+    hierarchyLevel: 30,
+    status: "ACTIVE",
+  });
+  const nonWallet = response();
+  await assignStaffRole({
+    user: grantor,
+    body: { roleId: nonWalletRole._id, preserveHeadOffice: true },
+    params: { staffId: (await User.create({
+      fullName: "Another HO", phone: "08012345804", email: "another-ho@test.local",
+      password: "secret123", role: "HEAD_OFFICE", status: "ACTIVE",
+    }))._id },
+    staffAccess: { isHeadOffice: true, permissions: [], hierarchyLevel: 100 },
+  }, nonWallet.res);
+  assert.equal(nonWallet.result.status, 403);
 });

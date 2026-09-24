@@ -10,6 +10,7 @@ const {
 
 const {
   STAFF_PERMISSION_CATALOG,
+  STAFF_PERMISSIONS,
   ROLE_HIERARCHY,
   validateStaffPermissions,
 } = require("../config/staffPermissions");
@@ -1119,13 +1120,21 @@ exports.assignStaffRole = async (req, res) => {
     if (!staff) {
       return res.status(404).json({ success: false, message: "Staff account was not found." });
     }
-    if (preservingHeadOffice &&
-        (String(req.user?.role || "").toUpperCase() !== "HEAD_OFFICE" ||
-         !req.staffRole?.permissions?.includes("staff.assign_role"))) {
-      return res.status(403).json({ success: false, code: "HEAD_OFFICE_ASSIGNMENT_REQUIRED", message: "Only authorized Head Office role administrators may assign permissions to Head Office accounts." });
-    }
     if (!role) {
       return res.status(400).json({ success: false, message: "The selected staff role is unavailable." });
+    }
+    if (preservingHeadOffice &&
+        (String(req.user?.role || "").toUpperCase() !== "HEAD_OFFICE" ||
+         (!req.staffAccess?.isHeadOffice &&
+          !req.staffRole?.permissions?.includes(STAFF_PERMISSIONS.STAFF_ASSIGN_ROLE)))) {
+      return res.status(403).json({ success: false, code: "HEAD_OFFICE_ASSIGNMENT_REQUIRED", message: "Only authorized Head Office role administrators may assign permissions to Head Office accounts." });
+    }
+    if (preservingHeadOffice && !(role.permissions || []).includes(STAFF_PERMISSIONS.WALLETS_ADJUST)) {
+      return res.status(403).json({
+        success: false,
+        code: "WALLET_PERMISSION_REQUIRED",
+        message: "The assigned active role must contain the wallets.adjust permission.",
+      });
     }
     const actorLevel = Number(req.staffAccess?.hierarchyLevel || 0);
     const currentLevel = Number(staff.staffRoleId?.hierarchyLevel || 20);
