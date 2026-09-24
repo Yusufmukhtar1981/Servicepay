@@ -64,16 +64,22 @@ exports.promoteRoleUser = async (req, res) => {
     req.get?.("Idempotency-Key") || req.body?.idempotencyKey ||
     `promotion:${req.params.userId}:${targetRole}`
   ).trim().slice(0, 160);
+  const expectedSourceRole = sourceByTarget[targetRole];
   try {
     if (!sourceByTarget[targetRole]) {
       return res.status(400).json({ success: false, message: "Only AGENT to STATE_MANAGER and STATE_MANAGER to ZONAL_MANAGER promotions are allowed." });
     }
     const prior = await AdminAuditLog.findOne({
       action: "USER_ROLE_UPDATED",
-      targetUserId: req.params.userId,
       "metadata.promotionKey": promotionKey,
     }).lean();
     if (prior) {
+      const metadata = prior.metadata || {};
+      if (String(metadata.targetUserId) !== String(req.params.userId) ||
+          metadata.sourceRole !== expectedSourceRole ||
+          metadata.targetRole !== targetRole) {
+        return res.status(409).json({ success: false, code: "IDEMPOTENCY_INTENT_CONFLICT", message: "This promotion key was already used for a different promotion." });
+      }
       const current = await User.findById(req.params.userId).select("_id role fullName").lean();
       return res.json({ success: true, duplicate: true, message: "This promotion was already processed.", user: current });
     }
@@ -82,10 +88,18 @@ exports.promoteRoleUser = async (req, res) => {
     try {
       await session.withTransaction(async () => {
         const replay = await AdminAuditLog.findOne({
-          action: "USER_ROLE_UPDATED", targetUserId: req.params.userId,
+          action: "USER_ROLE_UPDATED",
           "metadata.promotionKey": promotionKey,
         }).session(session).lean();
         if (replay) {
+          const metadata = replay.metadata || {};
+          if (String(metadata.targetUserId) !== String(req.params.userId) ||
+              metadata.sourceRole !== expectedSourceRole ||
+              metadata.targetRole !== targetRole) {
+            const error = new Error("This promotion key was already used for a different promotion.");
+            error.statusCode = 409;
+            throw error;
+          }
           updated = await User.findById(req.params.userId).session(session).select("_id role fullName");
           return;
         }
@@ -100,19 +114,30 @@ exports.promoteRoleUser = async (req, res) => {
           const previousStateManager = user.stateManagerId
             ? await User.findById(user.stateManagerId).session(session).select("_id zonalManagerId")
             : null;
-          user.zonalManagerId = previousStateManager?._id || user.zonalManagerId || null;
+          user.zonalManagerId = previousStateManager?.zonalManagerId || user.zonalManagerId || null;
           user.stateManagerId = null;
           user.agentId = null;
+          user.promotionParentId = previousStateManager?._id || null;
           const children = await User.find({ agentId: user._id, isDeleted: { $ne: true } }).session(session);
           for (const child of children) { child.stateManagerId = user._id; child.agentId = null; await child.save({ session }); }
         } else {
           user.zonalManagerId = null;
           user.stateManagerId = null;
+          user.promotionParentId = null;
           const children = await User.find({
-            $or: [{ stateManagerId: user._id }, { zonalManagerId: user._id }],
+            $or: [
+              { stateManagerId: user._id },
+              { zonalManagerId: user._id },
+              { promotionParentId: user._id },
+            ],
             isDeleted: { $ne: true },
           }).session(session);
-          for (const child of children) { child.zonalManagerId = user._id; child.stateManagerId = null; await child.save({ session }); }
+          for (const child of children) {
+            child.zonalManagerId = user._id;
+            child.stateManagerId = null;
+            child.promotionParentId = null;
+            await child.save({ session });
+          }
         }
         await user.save({ session });
         await AdminAuditLog.create([{
@@ -120,13 +145,29 @@ exports.promoteRoleUser = async (req, res) => {
           targetUserId: user._id, targetUserName: user.fullName, action: "USER_ROLE_UPDATED",
           reason: `Promoted ${previousRole} to ${targetRole}.`,
           previousData: { role: previousRole }, newData: { role: targetRole },
-          metadata: { promotion: true, promotionKey, sourceRole: previousRole, targetRole }, requestMethod: req.method, requestPath: req.originalUrl,
+          metadata: {
+            promotion: true, promotionKey, sourceRole: previousRole, targetRole,
+            targetUserId: String(user._id),
+          }, requestMethod: req.method, requestPath: req.originalUrl,
         }], { session });
         updated = user;
       });
     } finally { await session.endSession(); }
     return res.json({ success: true, message: `Account promoted to ${targetRole}.`, user: { id: updated._id, role: updated.role, fullName: updated.fullName } });
   } catch (error) {
+    if (error?.code === 11000 && error?.keyPattern?.["metadata.promotionKey"]) {
+      const replay = await AdminAuditLog.findOne({
+        action: "USER_ROLE_UPDATED",
+        "metadata.promotionKey": promotionKey,
+      }).lean();
+      const metadata = replay?.metadata || {};
+      if (replay && String(metadata.targetUserId) === String(req.params.userId) &&
+          metadata.sourceRole === expectedSourceRole && metadata.targetRole === targetRole) {
+        const current = await User.findById(req.params.userId).select("_id role fullName").lean();
+        return res.json({ success: true, duplicate: true, message: "This promotion was already processed.", user: current });
+      }
+      return res.status(409).json({ success: false, code: "IDEMPOTENCY_INTENT_CONFLICT", message: "This promotion key was already used for a different promotion." });
+    }
     return res.status(error.statusCode || 500).json({ success: false, message: error.statusCode ? error.message : "Unable to promote account." });
   }
 };

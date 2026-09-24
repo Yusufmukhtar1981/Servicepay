@@ -51,6 +51,7 @@ test("Head Office creates a canonical Zonal Manager and promotion preserves iden
   await promoteRoleUser(promotionRequest, promotion.res);
   assert.equal(promotion.result.status, undefined);
   assert.equal((await User.findById(agent._id)).role, "STATE_MANAGER");
+  assert.equal((await User.findById(agent._id)).zonalManagerId.toString(), zonal._id.toString());
   assert.equal((await User.findById(customer._id)).stateManagerId.toString(), agent._id.toString());
   const replay = response();
   await promoteRoleUser(promotionRequest, replay.res);
@@ -72,6 +73,19 @@ test("Head Office creates a canonical Zonal Manager and promotion preserves iden
   const oldManagerView = response();
   await getDownlineSummary({ user: zonal }, oldManagerView.res);
   assert.equal(oldManagerView.result.body.counts.totalDownline, 0);
+  const reusedStageKey = response();
+  await promoteRoleUser({
+    user: admin, params: { userId: state._id }, body: { targetRole: "ZONAL_MANAGER" },
+    get(name) { return name === "Idempotency-Key" ? "PROMOTE-AGENT-1" : undefined; },
+  }, reusedStageKey.res);
+  assert.equal(reusedStageKey.result.status, 409);
+  const otherAgent = await User.create({ fullName: "Other Agent", phone: "08012345689", email: "other-agent@test.local", password: "secret123", role: "AGENT", status: "ACTIVE", stateManagerId: state._id });
+  const reusedUserKey = response();
+  await promoteRoleUser({
+    user: admin, params: { userId: otherAgent._id }, body: { targetRole: "STATE_MANAGER" },
+    get(name) { return name === "Idempotency-Key" ? "PROMOTE-AGENT-1" : undefined; },
+  }, reusedUserKey.res);
+  assert.equal(reusedUserKey.result.status, 409);
 });
 
 test("downline transaction totals are full, pages are deterministic, and unrelated detail is denied", async () => {
@@ -113,6 +127,21 @@ test("wallet adjustment posts immutable ledger, audit, and idempotent replay", a
   assert.equal(replay.result.body.duplicate, true);
   assert.equal((await User.findById(customer._id)).walletBalance, 60);
   assert.equal(await AdminAuditLog.countDocuments({ action: "WALLET_DEBITED" }), 1);
+  const referenceConflict = response();
+  await adjustCustomerWallet({
+    user: admin,
+    body: { ...body, reference: "ADJ-DIFFERENT", idempotencyKey: body.idempotencyKey },
+    get(name) { return name === "Idempotency-Key" ? body.idempotencyKey : undefined; },
+  }, referenceConflict.res);
+  assert.equal(referenceConflict.result.status, 409);
+  assert.equal(referenceConflict.result.body.code, "IDEMPOTENCY_INTENT_CONFLICT");
+  const reasonConflict = response();
+  await adjustCustomerWallet({
+    user: admin,
+    body: { ...body, reason: "Different reason", idempotencyKey: body.idempotencyKey },
+    get(name) { return name === "Idempotency-Key" ? body.idempotencyKey : undefined; },
+  }, reasonConflict.res);
+  assert.equal(reasonConflict.result.status, 409);
   const insufficient = response();
   await adjustCustomerWallet({
     user: admin,

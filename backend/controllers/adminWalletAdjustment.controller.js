@@ -191,7 +191,9 @@ exports.adjustCustomerWallet = async (
     if (prior) {
       if (String(prior.user) !== String(customer._id) ||
           String(prior.direction) !== (action === "DEBIT" ? "DEBIT" : "CREDIT") ||
-          Number(prior.amount) !== amount) {
+          Number(prior.amount) !== amount ||
+          String(prior.reference || "") !== reference ||
+          String(prior.narration || "") !== reason) {
         await session.abortTransaction();
         return res.status(409).json({
           success: false,
@@ -209,7 +211,13 @@ exports.adjustCustomerWallet = async (
           id: current._id, fullName: current.fullName, phone: current.phone,
           email: current.email, walletBalance: Number(current.walletBalance || 0),
         },
-        adjustment: { action, amount, balanceAfter: Number(current.walletBalance || 0), reference },
+        adjustment: {
+          action,
+          amount: Number(prior.amount),
+          balanceAfter: Number(current.walletBalance || 0),
+          reference: prior.reference,
+          reason: prior.narration,
+        },
       });
     }
 

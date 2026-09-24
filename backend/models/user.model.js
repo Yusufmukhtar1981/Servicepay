@@ -261,6 +261,14 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Temporary lineage marker used to atomically re-parent promoted managers.
+    promotionParentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+
     /*
      * =====================================================
      * DELIVERY RIDER / SERVICEPAY KEKE
