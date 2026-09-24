@@ -903,7 +903,10 @@ exports.adminSchoolRequestAction = async (req, res) => {
             stateManagerId: request.stateManagerId || null,
             schoolType: request.schoolType || null,
             proprietorName: request.proprietorName || null,
-            registrationNumber: request.registrationNumber || null,
+            // The legacy unique sparse index includes explicit null values.
+            // Omit absent registration numbers so unrelated schools can be
+            // admitted without colliding on registrationNumber: null.
+            registrationNumber: String(request.registrationNumber || "").trim() || undefined,
             state: request.state || "Not specified",
             lga: request.lga || null,
             contactPerson: request.contactPerson || null,

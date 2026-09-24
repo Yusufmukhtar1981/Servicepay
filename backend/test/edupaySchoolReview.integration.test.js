@@ -215,10 +215,22 @@ test("school request approval and rejection are atomic, audited, and admit only 
     params: { requestId: candidate._id.toString() },
     body: { action: "APPROVE", representativeAuthorityConfirmed: true },
   })));
-  assert.ok(duplicateRace.every((response) => response.status === undefined || response.status === 409));
+  assert.equal(duplicateRace.filter((response) => response.status === undefined).length, 1);
+  assert.equal(duplicateRace.filter((response) => response.status === 409).length, 1);
   assert.equal(await School.countDocuments({
     sourceRequestNormalizedSchoolName: "CONCURRENT DUPLICATE ACADEMY",
     sourceRequestNormalizedLocation: "IBADAN",
+  }), 1);
+  const duplicateIds = [concurrentA._id, concurrentB._id];
+  assert.equal(await SchoolRequest.countDocuments({ _id: { $in: duplicateIds }, status: "APPROVED" }), 1);
+  assert.equal(await SchoolRequest.countDocuments({ _id: { $in: duplicateIds }, status: "PENDING_REVIEW" }), 1);
+  const admittedDuplicate = await School.findOne({
+    sourceRequestNormalizedSchoolName: "CONCURRENT DUPLICATE ACADEMY",
+    sourceRequestNormalizedLocation: "IBADAN",
+  }).lean();
+  assert.equal(await SchoolUser.countDocuments({ school: admittedDuplicate._id, role: "ADMIN" }), 1);
+  assert.equal(await Audit.countDocuments({
+    action: "EDUPAY_SCHOOL_REQUEST_APPROVED", entityId: { $in: duplicateIds },
   }), 1);
 
   const repeated = await invoke(controller.adminSchoolRequestAction, {
