@@ -189,6 +189,8 @@ class EduPayApi {
     double amount,
     String pin, {
     String? idempotencyKey,
+    String? biometricGrant,
+    String? deviceId,
   }) async {
     final canonicalAmount = amount.toStringAsFixed(2);
     final context = await _authContext();
@@ -204,7 +206,12 @@ class EduPayApi {
       final result = await _send(
         'POST',
         '/plans/$id/contributions',
-        body: {'amount': amount, 'transactionPin': pin},
+        body: {
+          'amount': amount,
+          if (pin.isNotEmpty) 'transactionPin': pin,
+          if (biometricGrant != null) 'biometricGrant': biometricGrant,
+          if (deviceId != null) 'deviceId': deviceId,
+        },
         idempotencyKey: key,
       ).timeout(const Duration(seconds: 30));
       await prefs.remove(storageKey);
@@ -230,11 +237,18 @@ class EduPayApi {
     double amount,
     String pin, {
     String? idempotencyKey,
+    String? biometricGrant,
+    String? deviceId,
   }) =>
       _send(
         'POST',
         '/sponsor/$token/contribute',
-        body: {'amount': amount, 'transactionPin': pin},
+        body: {
+          'amount': amount,
+          if (pin.isNotEmpty) 'transactionPin': pin,
+          if (biometricGrant != null) 'biometricGrant': biometricGrant,
+          if (deviceId != null) 'deviceId': deviceId,
+        },
         idempotencyKey: idempotencyKey ??
             'edupay-sponsor-${DateTime.now().microsecondsSinceEpoch}',
       );
@@ -285,11 +299,18 @@ class EduPayApi {
     double amount,
     String pin, {
     String? idempotencyKey,
+    String? biometricGrant,
+    String? deviceId,
   }) =>
       _send(
         'POST',
         '/repayments/$id/payments',
-        body: {'amount': amount, 'transactionPin': pin},
+        body: {
+          'amount': amount,
+          if (pin.isNotEmpty) 'transactionPin': pin,
+          if (biometricGrant != null) 'biometricGrant': biometricGrant,
+          if (deviceId != null) 'deviceId': deviceId,
+        },
         idempotencyKey: idempotencyKey ??
             'edupay-repay-${DateTime.now().microsecondsSinceEpoch}',
       );

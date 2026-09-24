@@ -20,6 +20,15 @@ class TransactionAuthorizationService {
   static const groupWalletContribution = 'GROUP_WALLET_CONTRIBUTION';
   static const organizationPayment = 'ORGANIZATION_PAYMENT';
   static const treasuryWithdrawal = 'ORGANIZATION_TREASURY_WITHDRAWAL';
+  static const bankTransfer = 'BANK_TRANSFER';
+  static const trustFund = 'TRUST_FUND';
+  static const trustRelease = 'TRUST_RELEASE';
+  static const interstatePayment = 'INTERSTATE_PAYMENT';
+  static const interstateAdjustment = 'INTERSTATE_ADJUSTMENT';
+  static const edupayContribution = 'EDUPAY_CONTRIBUTION';
+  static const edupaySponsorContribution = 'EDUPAY_SPONSOR_CONTRIBUTION';
+  static const edupayRepayment = 'EDUPAY_REPAYMENT';
+
   /// Populated only by the security settings screen after a successful
   /// server response for this device. Payments must remain PIN-only otherwise.
   static bool transactionBiometricsEnabled = false;
@@ -31,8 +40,8 @@ class TransactionAuthorizationService {
   TransactionAuthorizationService({
     BiometricAuthService? biometrics,
     http.Client? client,
-  }) : _biometrics = biometrics ?? BiometricAuthService(),
-       _client = client ?? http.Client();
+  })  : _biometrics = biometrics ?? BiometricAuthService(),
+        _client = client ?? http.Client();
   final BiometricAuthService _biometrics;
   final http.Client _client;
   static const baseUrl = BiometricAuthService.baseUrl;
@@ -105,8 +114,7 @@ class TransactionAuthorizationService {
     required String idempotencyKey,
   }) async {
     try {
-      if (!transactionBiometricsEnabled &&
-          !await _refreshEnabled(token)) {
+      if (!transactionBiometricsEnabled && !await _refreshEnabled(token)) {
         return null;
       }
       if (!await _biometrics.isEnrolled()) {

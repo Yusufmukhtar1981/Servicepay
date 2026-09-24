@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'feature_transaction_pin_dialog.dart';
+import 'services/session_store.dart';
+import 'services/transaction_authorization_service.dart';
 
 class BankTransferScreen extends StatefulWidget {
   const BankTransferScreen({super.key});
@@ -670,14 +673,6 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
 
     final double amount = double.parse(amountController.text.trim());
 
-    final String? pin = await requestTransactionPin(
-      amount: amount,
-    );
-
-    if (pin == null || !mounted) {
-      return;
-    }
-
     setState(() {
       isTransferring = true;
     });
@@ -717,7 +712,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
     }
 
     try {
-      final String? token = await getSavedAuthToken();
+      final String? token = await SessionStore.readToken();
 
       if (token == null || token.isEmpty) {
         showMessage(
@@ -725,6 +720,24 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
         );
         return;
       }
+      if (!mounted) return;
+      final authorization = await authorizeFeatureTransaction(
+        context,
+        token: token,
+        operation: TransactionAuthorizationService.bankTransfer,
+        requestBody: <String, dynamic>{
+          'bankCode': selectedBankCode,
+          'bankName': selectedBankName,
+          'accountNumber': verifiedAccountNumber,
+          'accountName': verifiedAccountName,
+          'amount': amount,
+          'narration': narrationController.text.trim(),
+          'clientRequestId': _clientRequestId,
+        },
+        idempotencyKey: _clientRequestId!,
+        title: 'Confirm bank transfer',
+      );
+      if (authorization == null || !mounted) return;
 
       final http.Response response = await http
           .post(
@@ -742,7 +755,12 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
               'accountName': verifiedAccountName,
               'amount': amount,
               'narration': narrationController.text.trim(),
-              'pin': pin,
+              if (authorization['transactionPin'] != null)
+                'pin': authorization['transactionPin'],
+              if (authorization['biometricGrant'] != null)
+                'biometricGrant': authorization['biometricGrant'],
+              if (authorization['deviceId'] != null)
+                'deviceId': authorization['deviceId'],
               'clientRequestId': _clientRequestId,
             }),
           )

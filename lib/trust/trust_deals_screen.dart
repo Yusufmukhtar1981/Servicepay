@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'trust_api_service.dart';
+import '../feature_transaction_pin_dialog.dart';
+import '../services/session_store.dart';
+import '../services/transaction_authorization_service.dart';
 import 'trust_models.dart';
 
 class TrustDealsScreen extends StatefulWidget {
@@ -241,36 +244,34 @@ class _TrustDealDetailScreenState extends State<TrustDealDetailScreen> {
   }
 
   Future<void> _fund() async {
-    final TextEditingController pin = TextEditingController();
-    final bool? approved = await showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-                title: const Text('Authorize funding'),
-                content: TextField(
-                    controller: pin,
-                    obscureText: true,
-                    keyboardType: TextInputType.number,
-                    decoration:
-                        const InputDecoration(labelText: 'Transaction PIN')),
-                actions: <Widget>[
-                  TextButton(
-                      onPressed: () => Navigator.pop(c, false),
-                      child: const Text('Cancel')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(c, true),
-                      child: const Text('Fund deal'))
-                ]));
-    if (approved == true) {
+    final token = await SessionStore.readToken();
+    if (token == null || token.isEmpty) return;
+    if (!mounted) return;
+    final key = 'trust-fund-${DateTime.now().microsecondsSinceEpoch}';
+    final authorization = await authorizeFeatureTransaction(
+      context,
+      token: token,
+      operation: TransactionAuthorizationService.trustFund,
+      requestBody: <String, dynamic>{},
+      idempotencyKey: key,
+      title: 'Authorize funding',
+    );
+    if (authorization != null) {
       setState(() => _working = true);
       try {
-        final v = await TrustApiService.fundDeal(_deal.id, pin.text);
+        final v = await TrustApiService.fundDeal(
+          _deal.id,
+          authorization['transactionPin']?.toString() ?? '',
+          biometricGrant: authorization['biometricGrant']?.toString(),
+          deviceId: authorization['deviceId']?.toString(),
+          idempotencyKey: key,
+        );
         if (mounted) setState(() => _deal = v);
       } catch (e) {
         if (mounted) _notice(context, e.toString());
       }
       if (mounted) setState(() => _working = false);
     }
-    pin.dispose();
   }
 
   @override

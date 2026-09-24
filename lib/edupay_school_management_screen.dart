@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'services/session_store.dart';
 
 class EduPaySchoolManagementScreen extends StatefulWidget {
   const EduPaySchoolManagementScreen({super.key});
@@ -44,13 +44,12 @@ class _EduPaySchoolManagementScreenState
     super.dispose();
   }
 
-  Future<String?> token() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final key in ['auth_token', 'token', 'access_token', 'jwt_token']) {
-      final value = prefs.getString(key);
-      if (value != null && value.trim().isNotEmpty) return value.trim();
+  Future<String> token() async {
+    final value = (await SessionStore.readToken())?.trim();
+    if (value == null || value.isEmpty) {
+      throw Exception('Your session has expired. Please sign in again.');
     }
-    return null;
+    return value;
   }
 
   Future<void> loadSchools() async {

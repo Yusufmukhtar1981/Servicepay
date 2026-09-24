@@ -3,6 +3,8 @@ import 'package:share_plus/share_plus.dart';
 import 'edupay_api.dart';
 import 'student_activity_center.dart';
 import 'academic_child_profile_screen.dart';
+import '../feature_transaction_pin_dialog.dart';
+import '../services/session_store.dart';
 
 bool _isPublishedEduPayAcademicRecord(dynamic value) {
   if (value is! Map) return false;
@@ -64,7 +66,8 @@ Map<String, dynamic>? unambiguousCurrentEduPayOption(
 
 String _eduPayRelationId(dynamic value) {
   if (value is Map) {
-    return '${value['_id'] ?? value['id'] ?? value['schoolId'] ?? value['classId'] ?? ''}'.trim();
+    return '${value['_id'] ?? value['id'] ?? value['schoolId'] ?? value['classId'] ?? ''}'
+        .trim();
   }
   return '${value ?? ''}'.trim();
 }
@@ -114,11 +117,13 @@ String eduPayEnrollmentClassId(dynamic child) {
   return '';
 }
 
-Map<String, dynamic>? resolveEduPayEnrolledClass(dynamic child, dynamic classes) {
+Map<String, dynamic>? resolveEduPayEnrolledClass(
+    dynamic child, dynamic classes) {
   final classId = eduPayEnrollmentClassId(child);
   if (classId.isEmpty || classes is! List) return null;
   for (final value in classes.whereType<Map>()) {
-    if (_eduPayRelationId(value) == classId) return Map<String, dynamic>.from(value);
+    if (_eduPayRelationId(value) == classId)
+      return Map<String, dynamic>.from(value);
   }
   return null;
 }
@@ -126,20 +131,27 @@ Map<String, dynamic>? resolveEduPayEnrolledClass(dynamic child, dynamic classes)
 List<Map<String, dynamic>> mergeEduPayChildren(
     dynamic financeChildren, dynamic academicChildren) {
   if (financeChildren is! List) return const [];
-  final financeRows = financeChildren.whereType<Map>()
-      .map((row) => Map<String, dynamic>.from(row)).toList();
+  final financeRows = financeChildren
+      .whereType<Map>()
+      .map((row) => Map<String, dynamic>.from(row))
+      .toList();
   final byKey = <String, Map<String, dynamic>>{};
   String keyFor(Map row) {
     final school = row['school'];
     final schoolId = school is Map ? school['_id'] ?? school['id'] : school;
     final resolvedSchoolId = schoolId ?? row['schoolId'];
-    final admission = row['studentId'] ?? row['admissionNumber'] ?? row['student_id'];
-    final normalizedAdmission = '${admission ?? ''}'.replaceAll(RegExp(r'\s+'), '').toUpperCase();
-    if (resolvedSchoolId != null && '$resolvedSchoolId'.trim().isNotEmpty && normalizedAdmission.isNotEmpty) {
+    final admission =
+        row['studentId'] ?? row['admissionNumber'] ?? row['student_id'];
+    final normalizedAdmission =
+        '${admission ?? ''}'.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+    if (resolvedSchoolId != null &&
+        '$resolvedSchoolId'.trim().isNotEmpty &&
+        normalizedAdmission.isNotEmpty) {
       return 'school:$resolvedSchoolId:student:$normalizedAdmission';
     }
     return 'id:${row['_id'] ?? row['id'] ?? row['studentId'] ?? row['student_id']}';
   }
+
   for (final row in financeRows) {
     byKey[keyFor(row)] = row;
   }
@@ -857,7 +869,8 @@ class _EduPayScreenState extends State<EduPayScreen> {
     final linkedClassId = eduPayEnrollmentClassId(child);
     final linkedClass = resolveEduPayEnrolledClass(child, catalogueClasses);
     if (linkedClassId.isNotEmpty && linkedClass == null) {
-      _snack('This child’s enrolled class is not available in the school catalogue. Please ask the school to update the enrollment.');
+      _snack(
+          'This child’s enrolled class is not available in the school catalogue. Please ask the school to update the enrollment.');
       return;
     }
     final classLevel = linkedClass ??
@@ -870,7 +883,8 @@ class _EduPayScreenState extends State<EduPayScreen> {
       classLevel: _idOf(classLevel),
     );
     if (!mounted || fees.isEmpty) {
-      _snack('Your school has not published the school fee for this term yet. Please contact the school or try again later.');
+      _snack(
+          'Your school has not published the school fee for this term yet. Please contact the school or try again later.');
       return;
     }
     final fee = await _selectOption(fees, 'Choose an approved fee', (v) {
@@ -1154,16 +1168,30 @@ class _EduPayScreenState extends State<EduPayScreen> {
       amountController.dispose();
       return;
     }
-    final pin = await _pinDialog('Confirm repayment');
-    if (pin == null) {
-      amountController.dispose();
-      return;
-    }
     final amount = double.tryParse(amountController.text);
     amountController.dispose();
     if (amount == null) return;
+    final token = await SessionStore.readToken();
+    if (token == null || token.isEmpty) return;
+    final key = 'edupay-repay-${DateTime.now().microsecondsSinceEpoch}';
+    final authorization = await authorizeFeatureTransaction(
+      context,
+      token: token,
+      operation: 'EDUPAY_REPAYMENT',
+      requestBody: <String, dynamic>{'amount': amount},
+      idempotencyKey: key,
+      title: 'Confirm repayment',
+    );
+    if (authorization == null) return;
     try {
-      await api.repay(id, amount, pin);
+      await api.repay(
+        id,
+        amount,
+        authorization['transactionPin']?.toString() ?? '',
+        idempotencyKey: key,
+        biometricGrant: authorization['biometricGrant']?.toString(),
+        deviceId: authorization['deviceId']?.toString(),
+      );
       load();
       _snack('Payment submitted successfully.');
     } catch (e) {
@@ -1490,41 +1518,29 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                       }
                       return;
                     }
-                    final pin = await showDialog<String>(
-                      context: context,
-                      builder: (_) {
-                        final p = TextEditingController();
-                        return AlertDialog(
-                          title: const Text('Confirm contribution'),
-                          content: TextField(
-                            controller: p,
-                            obscureText: true,
-                            maxLength: 4,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Transaction PIN',
-                            ),
-                          ),
-                          actions: [
-                            FilledButton(
-                              onPressed: () {
-                                final value = p.text;
-                                p.dispose();
-                                Navigator.pop(context, value);
-                              },
-                              child: const Text('Confirm'),
-                            ),
-                          ],
-                        );
-                      },
+                    final token = await SessionStore.readToken();
+                    if (token == null || token.isEmpty) return;
+                    final id = '${p['_id'] ?? p['id']}';
+                    final key =
+                        'edupay-contribute-${DateTime.now().microsecondsSinceEpoch}';
+                    final authorization = await authorizeFeatureTransaction(
+                      context,
+                      token: token,
+                      operation: 'EDUPAY_CONTRIBUTION',
+                      requestBody: <String, dynamic>{'amount': amount},
+                      idempotencyKey: key,
+                      title: 'Confirm contribution',
                     );
-                    if (pin != null && pin.length == 4) {
-                      final id = '${p['_id'] ?? p['id']}';
+                    if (authorization != null) {
                       try {
                         await widget.api.contribute(
                           id,
                           amount,
-                          pin,
+                          authorization['transactionPin']?.toString() ?? '',
+                          idempotencyKey: key,
+                          biometricGrant:
+                              authorization['biometricGrant']?.toString(),
+                          deviceId: authorization['deviceId']?.toString(),
                         );
                         widget.onChanged();
                         if (mounted)

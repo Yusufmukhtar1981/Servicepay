@@ -72,11 +72,20 @@ class TrustApiService {
               payload: payload),
           'deal');
 
-  static Future<TrustDeal> fundDeal(String id, String pin) async => _deal(
-      await _request('POST',
-          Uri.parse('$baseUrl/trust/deals/${Uri.encodeComponent(id)}/fund'),
-          payload: <String, dynamic>{'transactionPin': pin}),
-      'deal');
+  static Future<TrustDeal> fundDeal(String id, String pin,
+          {String? biometricGrant,
+          String? deviceId,
+          String? idempotencyKey}) async =>
+      _deal(
+          await _request('POST',
+              Uri.parse('$baseUrl/trust/deals/${Uri.encodeComponent(id)}/fund'),
+              payload: <String, dynamic>{
+                if (pin.isNotEmpty) 'transactionPin': pin,
+                if (biometricGrant != null) 'biometricGrant': biometricGrant,
+                if (deviceId != null) 'deviceId': deviceId,
+              },
+              idempotencyKey: idempotencyKey),
+          'deal');
 
   static Future<TrustDeal> dealAction(String id, String action,
           {Map<String, dynamic>? payload}) async =>
@@ -127,6 +136,7 @@ class TrustApiService {
     String method,
     Uri uri, {
     Map<String, dynamic>? payload,
+    String? idempotencyKey,
   }) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     String? token;
@@ -154,7 +164,8 @@ class TrustApiService {
       'Accept': 'application/json',
       'Authorization': 'Bearer $token',
       if (payload != null) 'Content-Type': 'application/json',
-      if (method != 'GET') 'Idempotency-Key': _idempotencyKey(),
+      if (method != 'GET')
+        'Idempotency-Key': idempotencyKey ?? _idempotencyKey(),
     };
     final String? encoded = payload == null ? null : jsonEncode(payload);
     final http.Response response = method == 'GET'

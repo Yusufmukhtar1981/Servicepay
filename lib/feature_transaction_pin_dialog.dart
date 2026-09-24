@@ -25,7 +25,8 @@ Future<Map<String, dynamic>?> authorizeFeatureTransaction(
   TransactionAuthorizationService? authorizationService,
   BiometricAuthService? biometricService,
 }) async {
-  final authorization = authorizationService ?? TransactionAuthorizationService();
+  final authorization =
+      authorizationService ?? TransactionAuthorizationService();
   var biometricEnabled = transactionBiometricsEnabled ??
       TransactionAuthorizationService.transactionBiometricsEnabled;
   // Process-local state is only an optimization. Refresh it from the server
