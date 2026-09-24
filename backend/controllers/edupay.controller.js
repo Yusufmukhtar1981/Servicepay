@@ -685,6 +685,60 @@ exports.createSchoolRequest = async (req, res) => {
     return errorResponse(res, error);
   }
 };
+
+// State-manager onboarding deliberately creates the existing SchoolRequest
+// record. Approval therefore remains exclusively in the existing Head Office
+// workflow and no catalogue-visible school is created prematurely.
+exports.stateManagerCreateSchool = async (req, res) => {
+  try {
+    if (String(req.user?.role || "").toUpperCase() !== "STATE_MANAGER") {
+      return res.status(403).json({ success: false, message: "State Manager access required." });
+    }
+    const body = req.body || {};
+    const required = ["schoolName", "location", "state"];
+    if (required.some((key) => !String(body[key] || "").trim())) {
+      return res.status(400).json({ success: false, code: "SCHOOL_FIELDS_REQUIRED", message: "School name, location and state are required." });
+    }
+    const schoolName = String(body.schoolName).trim();
+    const location = String(body.location).trim();
+    const normalizedSchoolName = normalizeRequestText(schoolName);
+    const normalizedLocation = normalizeRequestText(location);
+    const existing = await SchoolRequest.findOne({
+      stateManagerId: req.user._id,
+      normalizedSchoolName,
+      normalizedLocation,
+      status: { $in: ["PENDING_REVIEW", "CONTACTED"] },
+    });
+    if (existing) return res.status(409).json({ success: false, code: "ACTIVE_SCHOOL_REQUEST_EXISTS", message: "You already submitted this school for approval.", request: schoolRequestDto(existing) });
+    const request = await SchoolRequest.create({
+      parent: req.user._id,
+      createdBy: req.user._id,
+      createdByRole: "STATE_MANAGER",
+      stateManagerId: req.user._id,
+      schoolName, normalizedSchoolName, location, normalizedLocation,
+      contactPhone: String(body.phone || body.contactPhone || "").trim() || null,
+      schoolType: String(body.schoolType || "").trim() || null,
+      proprietorName: String(body.proprietorName || "").trim() || null,
+      registrationNumber: String(body.registrationNumber || "").trim() || null,
+      state: String(body.state).trim(),
+      lga: String(body.lga || "").trim() || null,
+      contactPerson: String(body.contactPerson || "").trim() || null,
+      email: String(body.email || "").trim().toLowerCase() || null,
+    });
+    await audit({ actor: req.user._id, action: "EDUPAY_STATE_MANAGER_SCHOOL_CREATED", entityType: "EduPaySchoolRequest", entityId: request._id, metadata: { stateManagerId: String(req.user._id) }, req });
+    return res.status(201).json({ success: true, request: schoolRequestDto(request) });
+  } catch (error) { return errorResponse(res, error); }
+};
+
+exports.stateManagerSchools = async (req, res) => {
+  try {
+    if (String(req.user?.role || "").toUpperCase() !== "STATE_MANAGER") return res.status(403).json({ success: false, message: "State Manager access required." });
+    const requests = await SchoolRequest.find({ stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
+    const schoolIds = requests.map((row) => row.school).filter(Boolean);
+    const schools = await School.find({ _id: { $in: schoolIds }, stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
+    return res.json({ success: true, schools: schools.map(schoolAdminDto), requests: requests.map(schoolRequestDto) });
+  } catch (error) { return errorResponse(res, error); }
+};
 exports.adminSchoolRequests = async (req, res) => {
   try {
     const status = String(req.query.status || "").toUpperCase();
@@ -801,6 +855,16 @@ exports.adminSchoolRequestAction = async (req, res) => {
             status: "APPROVED",
             active: true,
             portalUser: requester._id,
+            createdBy: request.createdBy || request.parent,
+            createdByRole: request.createdByRole || null,
+            stateManagerId: request.stateManagerId || null,
+            schoolType: request.schoolType || null,
+            proprietorName: request.proprietorName || null,
+            registrationNumber: request.registrationNumber || null,
+            state: request.state || "Not specified",
+            lga: request.lga || null,
+            contactPerson: request.contactPerson || null,
+            email: request.email || null,
             normalizedSchoolName: identity.schoolName,
             normalizedLocation: identity.location,
             normalizedAddress: identity.location,

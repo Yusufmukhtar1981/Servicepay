@@ -2,6 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const controller = require("../controllers/edupay.controller");
 const { customer, school, schoolManager, schoolFinance, headOffice } = require("../middleware/edupay.middleware");
+const { protect } = require("../middleware/auth.middleware");
 const academic = require("../controllers/edupayAcademic.controller");
 const router = express.Router();
 const schoolUpload = (req, res, next) => {
@@ -16,6 +17,8 @@ router.post("/school/handoff/consume", controller.consumeSchoolHandoff);
 // A school discovery request is non-financial onboarding and must remain
 // available while EduPay initiation is paused.
 router.post("/school-requests", ...customer, controller.createSchoolRequest);
+router.post("/state-manager/schools", protect, controller.stateManagerCreateSchool);
+router.get("/state-manager/schools", protect, controller.stateManagerSchools);
 router.get("/sponsor/:token", controller.sponsorView);
 router.post("/sponsor/:token/contribute", ...customer, controller.sponsorContribute);
 router.get("/schools", controller.listSchools);

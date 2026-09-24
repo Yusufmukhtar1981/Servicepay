@@ -259,6 +259,10 @@ app.use(
   "/api/clubkonnect",
   clubkonnectRoutes
 );
+app.use(
+  "/api/customer/beneficiaries",
+  require("./routes/customerBeneficiary.routes")
+);
 
 app.use(
   "/api/auth",
