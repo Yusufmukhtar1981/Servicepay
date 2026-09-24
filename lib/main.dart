@@ -218,6 +218,7 @@ class _ServicePayAppState extends State<ServicePayApp> {
       EventChannel('ng.servicepay.app/deep_links/events');
   Uri? _nativeInitialUri;
   StreamSubscription<dynamic>? _deepLinkSubscription;
+  bool _registrationRouteOpening = false;
 
   @override
   void initState() {
@@ -246,11 +247,31 @@ class _ServicePayAppState extends State<ServicePayApp> {
     if (value == null || value.trim().isEmpty) return;
     final uri = Uri.tryParse(value);
     if (uri == null || !isServicePayRegistrationUri(uri)) return;
-    if (!mounted) {
-      _nativeInitialUri = uri;
-      return;
-    }
-    setState(() => _nativeInitialUri = uri);
+    _nativeInitialUri = uri;
+    if (!mounted) return;
+
+    // A warm app already has a Navigator stack. Rebuilding MaterialApp.home
+    // does not leave the current screen, so explicitly push registration.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _registrationRouteOpening) return;
+      final navigator = servicePayNavigatorKey.currentState;
+      if (navigator == null) {
+        setState(() {});
+        return;
+      }
+      _registrationRouteOpening = true;
+      navigator
+          .push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => RegisterScreen(
+            initialReferralCode: ReferralCodeNormalizer.fromUri(uri),
+          ),
+        ),
+      )
+          .whenComplete(() {
+        _registrationRouteOpening = false;
+      });
+    });
   }
 
   @override
