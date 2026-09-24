@@ -22,6 +22,17 @@ test("Phase 1 exposes protected wallet adjustment with exact permission", () => 
   assert.ok(routes(adminRoutes).some((x) => x.path === "/wallet-adjustment/customers" && x.methods.includes("get")));
 });
 
+test("wallet adjustment history is a protected, scoped read-only route", () => {
+  const layer = adminRoutes.stack.find((entry) =>
+    entry.route?.path === "/wallet-adjustment/customers/:customerId/history" &&
+    entry.route.methods.get
+  );
+  assert.ok(layer);
+  const handlers = layer.route.stack.map((entry) => String(entry.handle));
+  assert.ok(handlers.some((handler) => handler.includes("requireExactWalletPermission")));
+  assert.equal(layer.route.stack.length, 5);
+});
+
 test("wallet operations deny an ungranted Head Office account", async () => {
   const layer = adminRoutes.stack.find((entry) =>
     entry.route?.path === "/wallet-adjustment/customers" &&

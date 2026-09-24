@@ -73,6 +73,83 @@ exports.searchCustomers = async (req, res) => {
   }
 };
 
+/*
+ * Read-only history for one customer.  This deliberately queries the
+ * immutable ledger rather than audit logs or transactions: wallet adjustments
+ * are the only records exposed by this endpoint.
+ */
+exports.getCustomerWalletAdjustmentHistory = async (req, res) => {
+  const role = cleanRole(req.user?.role);
+  if (role !== "HEAD_OFFICE") {
+    return res.status(403).json({
+      success: false,
+      message: "Only Head Office can view customer wallet adjustment history.",
+    });
+  }
+
+  const target = req.scopedTargetUser;
+  if (!target || String(target.role || "").toUpperCase() !== "CUSTOMER") {
+    return res.status(400).json({
+      success: false,
+      message: "Wallet adjustment history is available for customer accounts only.",
+    });
+  }
+
+  const requestedPage = Number.parseInt(req.query?.page, 10);
+  const requestedLimit = Number.parseInt(req.query?.limit, 10);
+  const page = Number.isFinite(requestedPage) && requestedPage > 0
+    ? requestedPage
+    : 1;
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(requestedLimit, 50)
+    : 50;
+  const filter = {
+    user: target._id,
+    service: "WALLET_ADJUSTMENT",
+  };
+
+  try {
+    const [total, entries] = await Promise.all([
+      LedgerEntry.countDocuments(filter),
+      LedgerEntry.find(filter)
+        .select("_id reference amount direction narration openingBalance closingBalance createdAt metadata.actorId")
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      history: entries.map((entry) => ({
+        id: entry._id,
+        reference: entry.reference,
+        amount: Number(entry.amount),
+        direction: entry.direction,
+        narration: entry.narration || "",
+        balanceBefore: Number(entry.openingBalance),
+        balanceAfter: Number(entry.closingBalance),
+        date: entry.createdAt,
+        ...(entry.metadata?.actorId
+          ? { actorId: entry.metadata.actorId }
+          : {}),
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Admin wallet adjustment history error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load customer wallet adjustment history.",
+    });
+  }
+};
+
 exports.adjustCustomerWallet = async (
   req,
   res

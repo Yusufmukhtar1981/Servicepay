@@ -60,6 +60,7 @@ const adminReferralController = require("../controllers/adminReferral.controller
 const {
   adjustCustomerWallet,
   searchCustomers: searchWalletCustomers,
+  getCustomerWalletAdjustmentHistory,
 } = require("../controllers/adminWalletAdjustment.controller");
 
 const router = express.Router();
@@ -367,6 +368,14 @@ router.post("/transaction-intelligence/transactions/:transactionId/requery", pro
 router.post("/transaction-intelligence/export.csv", protect, loadStaffRole, requirePermission(P.TRANSACTION_INTELLIGENCE_EXPORT), transactionIntelligenceController.exportTransactions);
 router.get("/wallet-adjustment/customers", protect, loadStaffRole, requireExactWalletPermission, searchWalletCustomers);
 router.post("/wallet-adjustment", protect, loadStaffRole, requireExactWalletPermission, adjustCustomerWallet);
+router.get(
+  "/wallet-adjustment/customers/:customerId/history",
+  protect,
+  loadStaffRole,
+  requireExactWalletPermission,
+  requireTargetUserScope("customerId", "_id role zone state businessPartnerProfile businessPartnerId"),
+  getCustomerWalletAdjustmentHistory
+);
 
 const fraudRiskView = [
   protect,
