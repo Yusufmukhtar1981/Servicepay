@@ -1119,7 +1119,9 @@ exports.assignStaffRole = async (req, res) => {
     if (!staff) {
       return res.status(404).json({ success: false, message: "Staff account was not found." });
     }
-    if (preservingHeadOffice && String(req.user?.role || "").toUpperCase() !== "HEAD_OFFICE") {
+    if (preservingHeadOffice &&
+        (String(req.user?.role || "").toUpperCase() !== "HEAD_OFFICE" ||
+         !req.staffRole?.permissions?.includes("staff.assign_role"))) {
       return res.status(403).json({ success: false, code: "HEAD_OFFICE_ASSIGNMENT_REQUIRED", message: "Only authorized Head Office role administrators may assign permissions to Head Office accounts." });
     }
     if (!role) {

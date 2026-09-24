@@ -188,6 +188,7 @@ test("authorized Head Office role administrator can grant exact wallet permissio
     body: { roleId: role._id, preserveHeadOffice: true },
     params: { staffId: target._id },
     staffAccess: { isHeadOffice: true, permissions: [P.STAFF_ASSIGN_ROLE], hierarchyLevel: 100 },
+    staffRole: role,
     method: "PUT", originalUrl: "/api/staff-management/staff/" + target._id + "/head-office-role",
     headers: {},
   }, grant.res);
