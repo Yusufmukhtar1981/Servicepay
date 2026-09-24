@@ -16,6 +16,8 @@ router.get(
   controller.getRoleUsers
 );
 
+router.post("/zonal-managers", protect, controller.createZonalManager);
+
 router.get(
   "/:userId",
   protect,
@@ -27,6 +29,8 @@ router.put(
   protect,
   controller.updateRoleUserStatus
 );
+
+router.post("/:userId/promote", protect, controller.promoteRoleUser);
 
 router.delete(
   "/:userId",

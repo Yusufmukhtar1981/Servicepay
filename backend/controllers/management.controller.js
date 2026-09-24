@@ -25,6 +25,63 @@ const publicUser = (user) => ({
   createdAt: user.createdAt,
 });
 
+const descendantUsers = async (root) => {
+  const rootId = root?._id || root?.id;
+  const seen = new Set([String(rootId)]);
+  let frontier = [rootId];
+  const rows = [];
+  while (frontier.length && rows.length < 10000) {
+    const children = await User.find({
+      isDeleted: { $ne: true },
+      $or: [
+        { zonalManagerId: { $in: frontier } },
+        { stateManagerId: { $in: frontier } },
+        { agentId: { $in: frontier } },
+      ],
+    }).select("-password -transactionPin").lean();
+    frontier = [];
+    for (const child of children) {
+      const id = String(child._id);
+      if (seen.has(id)) continue;
+      seen.add(id); rows.push(child); frontier.push(child._id);
+    }
+  }
+  return rows;
+};
+
+const managerRoot = (req) => {
+  const role = normalizeText(req.user?.role).toUpperCase();
+  return ["ZONAL_MANAGER", "STATE_MANAGER", "AGENT"].includes(role) ? role : null;
+};
+
+exports.getDownlineSummary = async (req, res) => {
+  try {
+    if (!managerRoot(req)) return res.status(403).json({ success: false, message: "A manager role is required." });
+    const rows = await descendantUsers(req.user);
+    const customerIds = rows.filter((x) => x.role === "CUSTOMER").map((x) => x._id);
+    const tx = await Transaction.find({ customerId: { $in: customerIds } }).select("customerId amount serviceType status reference createdAt").sort({ createdAt: -1 }).limit(100).lean();
+    return res.json({
+      success: true,
+      scope: { role: String(req.user.role).toUpperCase(), userId: req.user._id },
+      counts: { totalDownline: rows.length, customers: customerIds.length, transactions: tx.length, transactionValue: tx.reduce((sum, x) => sum + Number(x.amount || 0), 0) },
+      users: rows, recentTransactions: tx,
+    });
+  } catch (error) { console.error("Downline summary error:", error); return res.status(500).json({ success: false, message: "Unable to load downline summary." }); }
+};
+
+exports.getDownlineTransactions = async (req, res) => {
+  try {
+    if (!managerRoot(req)) return res.status(403).json({ success: false, message: "A manager role is required." });
+    const rows = await descendantUsers(req.user);
+    const ids = rows.filter((x) => x.role === "CUSTOMER").map((x) => x._id);
+    const query = { customerId: { $in: ids } };
+    if (req.params.transactionId) query._id = req.params.transactionId;
+    const transactions = await Transaction.find(query).sort({ createdAt: -1 }).limit(req.params.transactionId ? 1 : 100).lean();
+    if (req.params.transactionId && !transactions.length) return res.status(404).json({ success: false, message: "Transaction is outside your downline scope." });
+    return res.json({ success: true, transactions });
+  } catch (error) { return res.status(500).json({ success: false, message: "Unable to load downline transactions." }); }
+};
+
 exports.createStateManager = async (req, res) => {
   try {
     const loggedInUser = req.user;

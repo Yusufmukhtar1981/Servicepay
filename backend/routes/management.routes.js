@@ -14,6 +14,8 @@ const {
   getAgentTransactions,
   getRoleTransactions,
   getRoleCommissions,
+  getDownlineSummary,
+  getDownlineTransactions,
 } = require(
   "../controllers/management.controller"
 );
@@ -65,5 +67,9 @@ router.get(
   "/role-commissions",
   getRoleCommissions
 );
+
+router.get("/downline/summary", getDownlineSummary);
+router.get("/downline/transactions", getDownlineTransactions);
+router.get("/downline/transactions/:transactionId", getDownlineTransactions);
 
 module.exports = router;

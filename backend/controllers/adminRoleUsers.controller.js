@@ -1,4 +1,6 @@
 const User = require("../models/user.model");
+const mongoose = require("mongoose");
+const AdminAuditLog = require("../models/adminAuditLog.model");
 
 const ALLOWED_ROLES = [
   "ZONAL_MANAGER",
@@ -23,6 +25,80 @@ const ensureHeadOffice = (req, res) => {
   }
 
   return true;
+};
+
+exports.createZonalManager = async (req, res) => {
+  try {
+    if (!ensureHeadOffice(req, res)) return;
+    const { fullName, phone, email, password, zone } = req.body || {};
+    const cleanPhone = String(phone || "").replace(/\s+/g, "").trim();
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    if (!String(fullName || "").trim() || !/^\d{11}$/.test(cleanPhone) || String(password || "").length < 6 || !String(zone || "").trim()) {
+      return res.status(400).json({ success: false, message: "Full name, valid 11-digit phone, password (6+), and zone are required." });
+    }
+    const exists = await User.findOne({ $or: [{ phone: cleanPhone }, ...(cleanEmail ? [{ email: cleanEmail }] : [])] }).select("_id");
+    if (exists) return res.status(409).json({ success: false, message: "Phone number or email address already exists." });
+    const user = await User.create({
+      fullName: String(fullName).trim(), phone: cleanPhone, email: cleanEmail || undefined,
+      password: String(password), role: "ZONAL_MANAGER", status: "ACTIVE", zone: String(zone).trim(),
+    });
+    await AdminAuditLog.create({
+      actorId: req.user._id, actorRole: "HEAD_OFFICE", actorName: req.user.fullName || "",
+      targetUserId: user._id, targetUserName: user.fullName, action: "USER_CREATED",
+      reason: "Created canonical Zonal Manager.", metadata: { role: "ZONAL_MANAGER", zone: user.zone },
+      requestMethod: req.method, requestPath: req.originalUrl,
+    });
+    return res.status(201).json({ success: true, user: { id: user._id, fullName: user.fullName, phone: user.phone, email: user.email || "", role: user.role, status: user.status, zone: user.zone } });
+  } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ success: false, message: "Phone number or email address already exists." });
+    console.error("Admin create zonal manager error:", error);
+    return res.status(500).json({ success: false, message: "Unable to create Zonal Manager." });
+  }
+};
+
+exports.promoteRoleUser = async (req, res) => {
+  if (!ensureHeadOffice(req, res)) return;
+  const targetRole = String(req.body?.targetRole || "").trim().toUpperCase();
+  const allowed = { AGENT: "STATE_MANAGER", STATE_MANAGER: "ZONAL_MANAGER" };
+  try {
+    if (!allowed[targetRole] || !["STATE_MANAGER", "ZONAL_MANAGER"].includes(targetRole)) {
+      return res.status(400).json({ success: false, message: "Only AGENT to STATE_MANAGER and STATE_MANAGER to ZONAL_MANAGER promotions are allowed." });
+    }
+    const session = await mongoose.startSession();
+    let updated;
+    try {
+      await session.withTransaction(async () => {
+        const user = await User.findOne({ _id: req.params.userId, role: { $in: Object.keys(allowed) }, isDeleted: { $ne: true } }).session(session);
+        if (!user || allowed[user.role] !== targetRole) {
+          const error = new Error("The account is not eligible for this promotion.");
+          error.statusCode = 409; throw error;
+        }
+        const previousRole = user.role;
+        user.role = targetRole;
+        if (targetRole === "STATE_MANAGER") {
+          user.agentId = null;
+          const children = await User.find({ agentId: user._id, isDeleted: { $ne: true } }).session(session);
+          for (const child of children) { child.stateManagerId = user._id; child.agentId = null; await child.save({ session }); }
+        } else {
+          user.stateManagerId = null;
+          const children = await User.find({ stateManagerId: user._id, isDeleted: { $ne: true } }).session(session);
+          for (const child of children) { child.zonalManagerId = user._id; child.stateManagerId = null; await child.save({ session }); }
+        }
+        await user.save({ session });
+        await AdminAuditLog.create([{
+          actorId: req.user._id, actorRole: "HEAD_OFFICE", actorName: req.user.fullName || "",
+          targetUserId: user._id, targetUserName: user.fullName, action: "USER_ROLE_UPDATED",
+          reason: `Promoted ${previousRole} to ${targetRole}.`,
+          previousData: { role: previousRole }, newData: { role: targetRole },
+          metadata: { promotion: true }, requestMethod: req.method, requestPath: req.originalUrl,
+        }], { session });
+        updated = user;
+      });
+    } finally { await session.endSession(); }
+    return res.json({ success: true, message: `Account promoted to ${targetRole}.`, user: { id: updated._id, role: updated.role, fullName: updated.fullName } });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ success: false, message: error.statusCode ? error.message : "Unable to promote account." });
+  }
 };
 
 /*

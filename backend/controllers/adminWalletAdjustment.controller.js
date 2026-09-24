@@ -4,6 +4,8 @@ const User = require("../models/user.model");
 const AdminAuditLog = require(
   "../models/adminAuditLog.model"
 );
+const LedgerEntry = require("../models/ledgerEntry.model");
+const { postDebit, postCredit } = require("../services/ledger.service");
 
 const cleanRole = (value = "") =>
   String(value)
@@ -74,6 +76,14 @@ exports.adjustCustomerWallet = async (
     const reason = String(
       req.body.reason || ""
     ).trim();
+    const reference = String(
+      req.body.reference || ""
+    ).trim();
+    const idempotencyKey = String(
+      req.get?.("Idempotency-Key") ||
+      req.body.idempotencyKey ||
+      ""
+    ).trim().slice(0, 128);
 
     if (!identifier) {
       return res.status(400).json({
@@ -112,6 +122,13 @@ exports.adjustCustomerWallet = async (
           "Enter a clear reason containing at least 5 characters.",
       });
     }
+    if (!reference || !idempotencyKey) {
+      return res.status(400).json({
+        success: false,
+        code: "REFERENCE_AND_IDEMPOTENCY_REQUIRED",
+        message: "A unique reference and idempotency key are required.",
+      });
+    }
 
     session.startTransaction();
 
@@ -128,6 +145,39 @@ exports.adjustCustomerWallet = async (
         success: false,
         message:
           "Customer account was not found.",
+      });
+    }
+    if (String(customer.role || "").toUpperCase() !== "CUSTOMER") {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Wallet adjustments can target customer accounts only.",
+      });
+    }
+
+    const prior = await LedgerEntry.findOne({ idempotencyKey }).session(session);
+    if (prior) {
+      if (String(prior.user) !== String(customer._id) ||
+          String(prior.direction) !== (action === "DEBIT" ? "DEBIT" : "CREDIT") ||
+          Number(prior.amount) !== amount) {
+        await session.abortTransaction();
+        return res.status(409).json({
+          success: false,
+          code: "IDEMPOTENCY_INTENT_CONFLICT",
+          message: "This idempotency key was already used for a different wallet adjustment.",
+        });
+      }
+      const current = await User.findById(customer._id).session(session).lean();
+      await session.commitTransaction();
+      return res.status(200).json({
+        success: true,
+        duplicate: true,
+        message: "This wallet adjustment was already processed.",
+        customer: {
+          id: current._id, fullName: current.fullName, phone: current.phone,
+          email: current.email, walletBalance: Number(current.walletBalance || 0),
+        },
+        adjustment: { action, amount, balanceAfter: Number(current.walletBalance || 0), reference },
       });
     }
 
@@ -196,6 +246,21 @@ exports.adjustCustomerWallet = async (
           ?.walletBalance || 0
       );
 
+    const ledgerArgs = {
+      userId: customer._id,
+      amount,
+      openingBalance: balanceBefore,
+      closingBalance: balanceAfter,
+      service: "WALLET_ADJUSTMENT",
+      reference,
+      idempotencyKey,
+      narration: reason,
+      metadata: { adjustmentType: action, actorId: String(req.user._id) },
+      session,
+    };
+    if (action === "DEBIT") await postDebit(ledgerArgs);
+    else await postCredit(ledgerArgs);
+
     await AdminAuditLog.create(
       [
         {
@@ -239,6 +304,8 @@ exports.adjustCustomerWallet = async (
             amount,
             adjustmentType:
               action,
+            reference,
+            idempotencyKey,
           },
 
           requestMethod:
@@ -289,6 +356,8 @@ exports.adjustCustomerWallet = async (
         balanceBefore,
         balanceAfter,
         reason,
+        reference,
+        idempotencyKey,
       },
     });
   } catch (error) {
@@ -303,12 +372,12 @@ exports.adjustCustomerWallet = async (
       error
     );
 
-    return res.status(500).json({
+    return res.status(error?.code === 11000 ? 409 : (error?.statusCode || 500)).json({
       success: false,
       message:
-        "Unable to adjust customer wallet.",
-      error:
-        error.message,
+        error?.code === 11000
+          ? "This wallet adjustment reference has already been used."
+          : (error?.statusCode ? error.message : "Unable to adjust customer wallet."),
     });
   } finally {
     await session.endSession();

@@ -57,8 +57,20 @@ const riderWalletAdminController = require("../controllers/adminRiderWallet.cont
 const adminAccessLog = require("../middleware/adminAccessLog.middleware");
 const privacyRequestController = require("../controllers/privacyRequest.controller");
 const adminReferralController = require("../controllers/adminReferral.controller");
+const { adjustCustomerWallet } = require("../controllers/adminWalletAdjustment.controller");
 
 const router = express.Router();
+function requireExactWalletPermission(req, res, next) {
+  const permissions = req.staffAccess?.permissions || [];
+  if (!permissions.includes(P.WALLETS_ADJUST) && !permissions.includes("wallets.adjust")) {
+    return res.status(403).json({
+      success: false,
+      message: "The wallets.adjust permission is required for this protected action.",
+      requiredPermission: P.WALLETS_ADJUST,
+    });
+  }
+  return next();
+}
 router.use(adminAccessLog);
 // SVP access is deliberately isolated to /api/svp.  A permission assigned to
 // an SVP must never make an existing administrative route reachable.
@@ -350,6 +362,7 @@ router.get("/transaction-intelligence/transactions/:transactionId", ...transacti
 router.get("/transaction-intelligence/transactions/:transactionId/timeline", ...transactionIntelligenceView, transactionIntelligenceController.getTransactionTimeline);
 router.post("/transaction-intelligence/transactions/:transactionId/requery", protect, loadStaffRole, requirePermission(P.TRANSACTION_INTELLIGENCE_REQUERY), transactionIntelligenceController.requeryTransaction);
 router.post("/transaction-intelligence/export.csv", protect, loadStaffRole, requirePermission(P.TRANSACTION_INTELLIGENCE_EXPORT), transactionIntelligenceController.exportTransactions);
+router.post("/wallet-adjustment", protect, loadStaffRole, requireExactWalletPermission, adjustCustomerWallet);
 
 const fraudRiskView = [
   protect,
