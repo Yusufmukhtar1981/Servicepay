@@ -74,7 +74,7 @@ exports.getDownlineSummary = async (req, res) => {
       success: true,
       scope: { role: String(req.user.role).toUpperCase(), userId: req.user._id },
       counts: { totalDownline: rows.length, customers: customerIds.length, transactions: totalTransactions, transactionValue: Number(totals[0]?.value || 0) },
-      users: rows, recentTransactions: tx,
+      users: rows.map(publicUser), recentTransactions: tx,
     });
   } catch (error) { console.error("Downline summary error:", error); return res.status(500).json({ success: false, message: "Unable to load downline summary." }); }
 };

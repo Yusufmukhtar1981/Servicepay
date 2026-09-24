@@ -103,6 +103,11 @@ test("downline transaction totals are full, pages are deterministic, and unrelat
   await getDownlineSummary({ user: zonal }, summary.res);
   assert.equal(summary.result.body.counts.transactions, 2);
   assert.equal(summary.result.body.counts.transactionValue, 30);
+  for (const user of summary.result.body.users) {
+    for (const forbidden of ["dateOfBirth", "address", "virtualAccount", "nin", "walletBalance", "password", "transactionPin", "bankDetails"]) {
+      assert.equal(Object.prototype.hasOwnProperty.call(user, forbidden), false, `summary leaked ${forbidden}`);
+    }
+  }
   const page = response();
   await getDownlineTransactions({ user: zonal, query: { page: "2", limit: "1" }, params: {} }, page.res);
   assert.equal(page.result.body.total, 2);

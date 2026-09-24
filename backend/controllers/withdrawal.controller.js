@@ -4,6 +4,7 @@ const User = require("../models/user.model");
 const WithdrawalRequest = require(
   "../models/withdrawalRequest.model"
 );
+const WithdrawalPayoutClaim = require("../models/withdrawalPayoutClaim.model");
 const AppSettings = require(
   "../models/appSettings.model"
 );
@@ -31,6 +32,24 @@ const getIdempotencyKey = (req) =>
   )
     .trim()
     .slice(0, 128);
+
+const normalizeWithdrawalIntent = ({
+  amount,
+  bankName,
+  accountNumber,
+  accountName,
+}) => ({
+  amount: Math.round(Number(amount) * 100) / 100,
+  bankName: String(bankName || "").trim().toUpperCase(),
+  accountNumber: String(accountNumber || "").trim(),
+  accountName: String(accountName || "").trim().replace(/\s+/g, " ").toUpperCase(),
+});
+
+const withdrawalIntentMatches = (item, intent) =>
+  normalizeWithdrawalIntent(item).amount === intent.amount &&
+  normalizeWithdrawalIntent(item).bankName === intent.bankName &&
+  normalizeWithdrawalIntent(item).accountNumber === intent.accountNumber &&
+  normalizeWithdrawalIntent(item).accountName === intent.accountName;
 
 const getWithdrawalLimits = async () => {
   const settings =
@@ -179,6 +198,18 @@ exports.createWithdrawal = async (
           }).session(session);
 
         if (existing) {
+          const intent = normalizeWithdrawalIntent({
+            amount,
+            bankName,
+            accountNumber,
+            accountName,
+          });
+          if (!withdrawalIntentMatches(existing, intent)) {
+            const error = new Error("This idempotency key was already used for different withdrawal details.");
+            error.statusCode = 409;
+            error.code = "IDEMPOTENCY_INTENT_CONFLICT";
+            throw error;
+          }
           const duplicateUser =
             await User.findById(userId)
               .select(
@@ -336,6 +367,20 @@ exports.createWithdrawal = async (
         });
 
       if (existing) {
+        const rawAmount = Number(req.body?.amount);
+        const intent = normalizeWithdrawalIntent({
+          amount: rawAmount,
+          bankName: req.body?.bankName,
+          accountNumber: req.body?.accountNumber,
+          accountName: req.body?.accountName,
+        });
+        if (!withdrawalIntentMatches(existing, intent)) {
+          return res.status(409).json({
+            success: false,
+            code: "IDEMPOTENCY_INTENT_CONFLICT",
+            message: "This idempotency key was already used for different withdrawal details.",
+          });
+        }
         const user =
           await User.findById(
             getUserId(req)
@@ -478,6 +523,17 @@ exports.approveWithdrawal = async (
       });
     }
 
+    const providerStatus = String(
+      req.body?.providerStatus || req.body?.payoutStatus || ""
+    ).trim().toUpperCase();
+    if (providerStatus && providerStatus !== "SUCCESSFUL" && providerStatus !== "SUCCESS") {
+      return res.status(409).json({
+        success: false,
+        code: "PAYOUT_NOT_CONFIRMED",
+        message: "Withdrawal cannot be approved without authoritative provider success or valid manual settlement evidence.",
+      });
+    }
+
     await session.withTransaction(
       async () => {
         const item =
@@ -493,6 +549,32 @@ exports.approveWithdrawal = async (
 
           error.statusCode = 404;
           throw error;
+        }
+
+        const duplicateReference = await WithdrawalRequest.findOne({
+          _id: { $ne: item._id },
+          payoutReference,
+          status: "APPROVED",
+        }).session(session).select("_id reference");
+        if (duplicateReference) {
+          const error = new Error("This payout reference has already finalized another withdrawal.");
+          error.statusCode = 409;
+          error.code = "DUPLICATE_PAYOUT_REFERENCE";
+          throw error;
+        }
+        try {
+          await WithdrawalPayoutClaim.create([{
+            payoutReference,
+            withdrawalId: item._id,
+          }], { session });
+        } catch (claimError) {
+          if (claimError?.code === 11000) {
+            const error = new Error("This payout reference has already finalized another withdrawal.");
+            error.statusCode = 409;
+            error.code = "DUPLICATE_PAYOUT_REFERENCE";
+            throw error;
+          }
+          throw claimError;
         }
 
         const updatedUser =
@@ -558,6 +640,7 @@ exports.approveWithdrawal = async (
       .status(error.statusCode || 500)
       .json({
         success: false,
+        code: error.code || "WITHDRAWAL_APPROVAL_FAILED",
         message:
           error.message ||
           "Unable to approve withdrawal.",

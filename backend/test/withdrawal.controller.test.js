@@ -7,6 +7,7 @@ const User = require("../models/user.model");
 const WithdrawalRequest = require("../models/withdrawalRequest.model");
 const LedgerEntry = require("../models/ledgerEntry.model");
 const AppSettings = require("../models/appSettings.model");
+const WithdrawalPayoutClaim = require("../models/withdrawalPayoutClaim.model");
 const {
   createWithdrawal,
   myWithdrawals,
@@ -22,6 +23,7 @@ const models = [
   WithdrawalRequest,
   LedgerEntry,
   AppSettings,
+  WithdrawalPayoutClaim,
 ];
 
 let mongo;
@@ -154,6 +156,50 @@ test("creation holds funds once and an idempotent retry cannot double debit", as
   assert.equal(storedUser.withdrawalLockedBalance, 300);
   assert.equal(await WithdrawalRequest.countDocuments(), 1);
   assert.equal(await LedgerEntry.countDocuments(), 1);
+});
+
+test("withdrawal idempotency rejects changed destination intent", async () => {
+  const customer = await createUser();
+  const first = await requestWithdrawal(customer, "withdrawal-intent-conflict");
+  assert.equal(first.status, 201);
+  const changed = await requestWithdrawal(customer, "withdrawal-intent-conflict", {
+    amount: 301,
+    accountNumber: "9876543210",
+    accountName: "Another Recipient",
+    bankName: "Another Bank",
+  });
+  assert.equal(changed.status, 409);
+  assert.equal(changed.body.code, "IDEMPOTENCY_INTENT_CONFLICT");
+  assert.equal(await WithdrawalRequest.countDocuments(), 1);
+});
+
+test("duplicate payout references and uncertain provider status cannot approve withdrawals", async () => {
+  const firstCustomer = await createUser();
+  const secondCustomer = await createUser();
+  const admin = await createUser({ role: "HEAD_OFFICE", walletBalance: 0 });
+  const first = await requestWithdrawal(firstCustomer, "withdrawal-payout-one");
+  const firstApproval = await call(approveWithdrawal, {
+    user: admin,
+    params: { id: String(first.body.withdrawal._id) },
+    body: { adminNote: "Manual settlement evidence.", payoutReference: "UNIQUE-PAYOUT-1" },
+  });
+  assert.equal(firstApproval.status, 200);
+  const second = await requestWithdrawal(secondCustomer, "withdrawal-payout-two");
+  const duplicate = await call(approveWithdrawal, {
+    user: admin,
+    params: { id: String(second.body.withdrawal._id) },
+    body: { adminNote: "Manual settlement evidence.", payoutReference: "UNIQUE-PAYOUT-1" },
+  });
+  assert.equal(duplicate.status, 409);
+  assert.equal(duplicate.body.code, "DUPLICATE_PAYOUT_REFERENCE");
+  const uncertain = await call(approveWithdrawal, {
+    user: admin,
+    params: { id: String(second.body.withdrawal._id) },
+    body: { payoutReference: "UNIQUE-PAYOUT-2", providerStatus: "PROCESSING" },
+  });
+  assert.equal(uncertain.status, 409);
+  assert.equal(uncertain.body.code, "PAYOUT_NOT_CONFIRMED");
+  assert.equal((await WithdrawalRequest.findById(second.body.withdrawal._id)).status, "PENDING");
 });
 
 test("the same client key from different customers creates separate ledger debits", async () => {
