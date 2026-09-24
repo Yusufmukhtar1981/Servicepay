@@ -13,6 +13,7 @@ import 'role_transactions_screen.dart';
 import 'role_commissions_screen.dart';
 import 'management_users_screen.dart';
 import 'edupay_school_management_screen.dart';
+import 'zonal_management_screen.dart';
 import 'package:http/http.dart' as http;
 
 class RoleDashboardScreen extends StatefulWidget {
@@ -550,9 +551,51 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             icon: Icons.manage_accounts_rounded,
             onTap: () {
               openScreen(
-                const ManagementUsersScreen.stateManagers(),
+                ZonalManagementScreen(initialSection: 'state-managers'),
               );
             },
+          ),
+          _RoleMenuItem(
+            title: 'Aggregators',
+            subtitle: 'Aggregators operating in your zone',
+            icon: Icons.groups_rounded,
+            onTap: () => openScreen(ZonalManagementScreen(initialSection: 'aggregators')),
+          ),
+          _RoleMenuItem(
+            title: 'Customers',
+            subtitle: 'Customers served across your zone',
+            icon: Icons.people_alt_rounded,
+            onTap: () => openScreen(ZonalManagementScreen(initialSection: 'customers')),
+          ),
+          _RoleMenuItem(
+            title: 'Delivery',
+            subtitle: 'Zone delivery activity and status',
+            icon: Icons.local_shipping_rounded,
+            onTap: () => openScreen(ZonalManagementScreen(initialSection: 'delivery')),
+          ),
+          _RoleMenuItem(
+            title: 'EduPay',
+            subtitle: 'Schools and EduPay activity in your zone',
+            icon: Icons.school_rounded,
+            onTap: () => openScreen(ZonalManagementScreen(initialSection: 'edupay')),
+          ),
+          _RoleMenuItem(
+            title: 'Empowerment',
+            subtitle: 'Empowerment programmes in your zone',
+            icon: Icons.volunteer_activism_rounded,
+            onTap: () => openScreen(ZonalManagementScreen(initialSection: 'empowerment')),
+          ),
+          _RoleMenuItem(
+            title: 'Organizations',
+            subtitle: 'Organizations registered in your zone',
+            icon: Icons.business_rounded,
+            onTap: () => openScreen(ZonalManagementScreen(initialSection: 'organizations')),
+          ),
+          _RoleMenuItem(
+            title: 'Zone Overview',
+            subtitle: 'Scoped counts and operational summaries',
+            icon: Icons.dashboard_customize_rounded,
+            onTap: () => openScreen(ZonalManagementScreen()),
           ),
           _RoleMenuItem(
             title: 'Zonal Commission',
@@ -571,11 +614,6 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             onTap: () {
               openScreen(const RoleTransactionsScreen());
             },
-          ),
-          _RoleMenuItem(
-            title: 'Zone Performance',
-            subtitle: 'Monitor states, aggregators and customers',
-            icon: Icons.query_stats_rounded,
           ),
         ];
 
