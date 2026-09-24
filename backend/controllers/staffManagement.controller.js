@@ -1107,14 +1107,20 @@ exports.assignStaffRole = async (req, res) => {
         message: "You cannot change your own staff role.",
       });
     }
+    const preservingHeadOffice = req.body?.preserveHeadOffice === true;
     const [staff, role] = await Promise.all([
-      User.findOne({ _id: req.params.staffId, isStaff: true, role: "STAFF" })
+      User.findOne(preservingHeadOffice
+        ? { _id: req.params.staffId, role: "HEAD_OFFICE", isDeleted: { $ne: true } }
+        : { _id: req.params.staffId, isStaff: true, role: "STAFF" })
         .select("+authTokenVersion")
         .populate("staffRoleId", "name hierarchyLevel permissions"),
       Role.findOne({ _id: req.body?.roleId, status: "ACTIVE" }),
     ]);
     if (!staff) {
       return res.status(404).json({ success: false, message: "Staff account was not found." });
+    }
+    if (preservingHeadOffice && String(req.user?.role || "").toUpperCase() !== "HEAD_OFFICE") {
+      return res.status(403).json({ success: false, code: "HEAD_OFFICE_ASSIGNMENT_REQUIRED", message: "Only authorized Head Office role administrators may assign permissions to Head Office accounts." });
     }
     if (!role) {
       return res.status(400).json({ success: false, message: "The selected staff role is unavailable." });

@@ -64,7 +64,7 @@ const {
 
 const router = express.Router();
 function requireExactWalletPermission(req, res, next) {
-  const permissions = req.staffAccess?.permissions || [];
+  const permissions = req.staffRole?.permissions || [];
   if (!permissions.includes(P.WALLETS_ADJUST) && !permissions.includes("wallets.adjust")) {
     return res.status(403).json({
       success: false,

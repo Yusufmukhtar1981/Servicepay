@@ -5,10 +5,15 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const User = require("../models/user.model");
 const LedgerEntry = require("../models/ledgerEntry.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
+const Role = require("../models/role.model");
 const Transaction = require("../models/transaction.model");
 const { createZonalManager, promoteRoleUser } = require("../controllers/adminRoleUsers.controller");
 const { adjustCustomerWallet } = require("../controllers/adminWalletAdjustment.controller");
 const { getDownlineTransactions, getDownlineSummary } = require("../controllers/management.controller");
+const { assignStaffRole } = require("../controllers/staffManagement.controller");
+const { loadStaffRole } = require("../middleware/staffPermission.middleware");
+const { searchCustomers: searchWalletCustomers } = require("../controllers/adminWalletAdjustment.controller");
+const { STAFF_PERMISSIONS: P } = require("../config/staffPermissions");
 
 let mongo;
 const admin = { _id: new mongoose.Types.ObjectId(), role: "HEAD_OFFICE", fullName: "Test Head Office" };
@@ -23,7 +28,7 @@ const response = () => {
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(mongo.getUri(), { dbName: "phase1-recovery" });
-  await Promise.all([User.init(), LedgerEntry.init(), AdminAuditLog.init()]);
+  await Promise.all([User.init(), LedgerEntry.init(), AdminAuditLog.init(), Role.init()]);
 });
 test.after(async () => { await mongoose.disconnect(); await mongo.stop(); });
 test.beforeEach(async () => {
@@ -31,6 +36,7 @@ test.beforeEach(async () => {
     User.deleteMany({}),
     LedgerEntry.collection.deleteMany({}),
     AdminAuditLog.collection.deleteMany({}),
+    Role.deleteMany({}),
   ]);
 });
 
@@ -156,4 +162,68 @@ test("wallet adjustment posts immutable ledger, audit, and idempotent replay", a
   }, insufficient.res);
   assert.equal(insufficient.result.status, 400);
   assert.equal((await User.findById(customer._id)).walletBalance, 60);
+});
+
+test("authorized Head Office role administrator can grant exact wallet permission to another Head Office", async () => {
+  const role = await Role.create({
+    name: "FINANCE_MANAGER",
+    displayName: "Finance Manager",
+    department: "FINANCE",
+    permissions: [P.WALLETS_ADJUST, P.STAFF_ASSIGN_ROLE],
+    hierarchyLevel: 30,
+    status: "ACTIVE",
+  });
+  const grantor = await User.create({
+    fullName: "Authorized HO", phone: "08012345801", email: "grantor@test.local",
+    password: "secret123", role: "HEAD_OFFICE", status: "ACTIVE",
+    staffRoleId: role._id,
+  });
+  const target = await User.create({
+    fullName: "Designated HO", phone: "08012345802", email: "target@test.local",
+    password: "secret123", role: "HEAD_OFFICE", status: "ACTIVE",
+  });
+  const grant = response();
+  await assignStaffRole({
+    user: grantor,
+    body: { roleId: role._id, preserveHeadOffice: true },
+    params: { staffId: target._id },
+    staffAccess: { isHeadOffice: true, permissions: [P.STAFF_ASSIGN_ROLE], hierarchyLevel: 100 },
+    method: "PUT", originalUrl: "/api/staff-management/staff/" + target._id + "/head-office-role",
+    headers: {},
+  }, grant.res);
+  assert.equal(grant.result.status, 200);
+  const freshTarget = await User.findById(target._id);
+  const loaded = response();
+  const loadedRequest = { user: freshTarget };
+  let loadedTarget;
+  await loadStaffRole(loadedRequest, loaded.res, () => { loadedTarget = true; });
+  assert.equal(loadedTarget, true);
+  assert.equal(loadedRequest.staffRole.permissions.includes(P.WALLETS_ADJUST), true);
+  assert.equal(freshTarget.role, "HEAD_OFFICE");
+  const customer = await User.create({
+    fullName: "Synthetic Customer", phone: "08012345803", email: "synthetic@test.local",
+    password: "secret123", role: "CUSTOMER", status: "ACTIVE", walletBalance: 100,
+  });
+  const search = response();
+  await searchWalletCustomers({ user: freshTarget, staffRole: loadedRequest.staffRole, query: { search: "Synthetic" } }, search.res);
+  assert.equal(search.result.status, undefined);
+  assert.equal(search.result.body.customers[0].balance, 100);
+  const adjustment = response();
+  await adjustCustomerWallet({
+    user: freshTarget,
+    body: { identifier: customer.phone, action: "CREDIT", amount: 25, reason: "Finance correction", reference: "HO-ROLE-ADJUST-1" },
+    get(name) { return name === "Idempotency-Key" ? "HO-ROLE-ADJUST-1" : undefined; },
+    method: "POST", originalUrl: "/api/admin/wallet-adjustment",
+  }, adjustment.res);
+  assert.equal(adjustment.result.status, 200);
+  assert.equal((await User.findById(customer._id)).walletBalance, 125);
+  assert.equal(await AdminAuditLog.countDocuments({ action: "STAFF_ROLE_ASSIGNED", targetUserId: target._id }), 1);
+  const unauthorized = response();
+  await assignStaffRole({
+    user: { _id: new mongoose.Types.ObjectId(), role: "STATE_MANAGER" },
+    body: { roleId: role._id, preserveHeadOffice: true },
+    params: { staffId: target._id },
+    staffAccess: { isHeadOffice: false, permissions: [], hierarchyLevel: 20 },
+  }, unauthorized.res);
+  assert.equal(unauthorized.result.status, 403);
 });

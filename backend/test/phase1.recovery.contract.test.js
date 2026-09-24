@@ -22,6 +22,20 @@ test("Phase 1 exposes protected wallet adjustment with exact permission", () => 
   assert.ok(routes(adminRoutes).some((x) => x.path === "/wallet-adjustment/customers" && x.methods.includes("get")));
 });
 
+test("wallet operations deny an ungranted Head Office account", async () => {
+  const layer = adminRoutes.stack.find((entry) =>
+    entry.route?.path === "/wallet-adjustment/customers" &&
+    entry.route.methods.get
+  );
+  const guard = layer.route.stack.find((entry) => String(entry.handle).includes("requireExactWalletPermission")).handle;
+  const result = await new Promise((resolve) => guard(
+    { staffRole: { permissions: [] } },
+    { status(code) { this.code = code; return this; }, json(body) { resolve({ code: this.code, body }); } },
+    () => resolve({ code: 200 })
+  ));
+  assert.equal(result.code, 403);
+});
+
 test("Phase 1 exposes canonical Zonal creation and idempotent promotion routes", () => {
   const entries = routes(roleRoutes);
   assert.ok(entries.some((x) => x.path === "/zonal-managers" && x.methods.includes("post")));

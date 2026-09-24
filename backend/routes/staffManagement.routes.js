@@ -146,4 +146,23 @@ router.put(
   assignStaffRole
 );
 
+router.put(
+  "/staff/:staffId/head-office-role",
+  requirePermission(P.STAFF_ASSIGN_ROLE),
+  (req, res, next) => {
+    if (String(req.user?.role || "").toUpperCase() !== "HEAD_OFFICE" ||
+        !req.staffRole ||
+        !Array.isArray(req.staffRole.permissions) ||
+        !req.staffRole.permissions.includes(P.STAFF_ASSIGN_ROLE)) {
+      return res.status(403).json({
+        success: false,
+        code: "HEAD_OFFICE_ROLE_ADMIN_REQUIRED",
+        message: "An explicitly assigned active role administrator permission is required.",
+      });
+    }
+    req.body = { ...req.body, preserveHeadOffice: true };
+    return assignStaffRole(req, res, next);
+  }
+);
+
 module.exports = router;
