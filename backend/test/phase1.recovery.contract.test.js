@@ -19,6 +19,7 @@ test("Phase 1 exposes protected wallet adjustment with exact permission", () => 
   const layer = adminRoutes.stack.find((x) => x.route?.path === "/wallet-adjustment");
   assert.ok(layer.route.stack.some((entry) => String(entry.handle).includes("requireExactWalletPermission")));
   assert.equal(P.WALLETS_ADJUST, "wallets.adjust");
+  assert.ok(routes(adminRoutes).some((x) => x.path === "/wallet-adjustment/customers" && x.methods.includes("get")));
 });
 
 test("Phase 1 exposes canonical Zonal creation and idempotent promotion routes", () => {

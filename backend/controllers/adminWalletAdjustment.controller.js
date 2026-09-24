@@ -41,6 +41,38 @@ const findCustomer = async (
   }).session(session);
 };
 
+exports.searchCustomers = async (req, res) => {
+  const search = String(req.query?.search || "").trim();
+  if (search.length < 2) {
+    return res.status(400).json({ success: false, message: "Search must contain at least 2 characters." });
+  }
+  const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  try {
+    const customers = await User.find({
+      role: "CUSTOMER",
+      isDeleted: { $ne: true },
+      $or: [
+        { fullName: { $regex: escaped, $options: "i" } },
+        { phone: { $regex: escaped, $options: "i" } },
+        { email: { $regex: escaped, $options: "i" } },
+      ],
+    }).select("_id fullName phone email walletBalance").sort({ fullName: 1 }).limit(25).lean();
+    return res.json({
+      success: true,
+      customers: customers.map((customer) => ({
+        id: customer._id,
+        fullName: customer.fullName || "",
+        phone: customer.phone || "",
+        email: customer.email || "",
+        balance: Number(customer.walletBalance || 0),
+      })),
+    });
+  } catch (error) {
+    console.error("Admin wallet customer search error:", error);
+    return res.status(500).json({ success: false, message: "Unable to search customer accounts." });
+  }
+};
+
 exports.adjustCustomerWallet = async (
   req,
   res

@@ -301,6 +301,10 @@ adminAuditLogSchema.pre("save", function () {
   adminAuditLogSchema.pre(operation, { document: false, query: true }, denyAuditMutation);
 });
 adminAuditLogSchema.pre("deleteOne", { document: true, query: false }, denyAuditMutation);
+adminAuditLogSchema.index(
+  { "metadata.promotionKey": 1 },
+  { unique: true, sparse: true, name: "uniq_promotion_idempotency_key" }
+);
 
 module.exports = mongoose.model(
   "AdminAuditLog",

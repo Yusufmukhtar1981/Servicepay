@@ -27,17 +27,19 @@ const publicUser = (user) => ({
 
 const descendantUsers = async (root) => {
   const rootId = root?._id || root?.id;
+  const rootRole = normalizeText(root?.role).toUpperCase();
   const seen = new Set([String(rootId)]);
   let frontier = [rootId];
   const rows = [];
   while (frontier.length && rows.length < 10000) {
+    const parentLinks = rootRole === "ZONAL_MANAGER"
+      ? [{ zonalManagerId: { $in: frontier } }, { stateManagerId: { $in: frontier } }, { agentId: { $in: frontier } }]
+      : rootRole === "STATE_MANAGER"
+        ? [{ stateManagerId: { $in: frontier } }, { agentId: { $in: frontier } }]
+        : [{ agentId: { $in: frontier } }];
     const children = await User.find({
       isDeleted: { $ne: true },
-      $or: [
-        { zonalManagerId: { $in: frontier } },
-        { stateManagerId: { $in: frontier } },
-        { agentId: { $in: frontier } },
-      ],
+      $or: parentLinks,
     }).select("-password -transactionPin").lean();
     frontier = [];
     for (const child of children) {
@@ -59,11 +61,19 @@ exports.getDownlineSummary = async (req, res) => {
     if (!managerRoot(req)) return res.status(403).json({ success: false, message: "A manager role is required." });
     const rows = await descendantUsers(req.user);
     const customerIds = rows.filter((x) => x.role === "CUSTOMER").map((x) => x._id);
-    const tx = await Transaction.find({ customerId: { $in: customerIds } }).select("customerId amount serviceType status reference createdAt").sort({ createdAt: -1 }).limit(100).lean();
+    const transactionFilter = { customerId: { $in: customerIds } };
+    const [tx, totalTransactions, totals] = await Promise.all([
+      Transaction.find(transactionFilter).select("customerId amount serviceType status reference createdAt").sort({ createdAt: -1 }).limit(100).lean(),
+      Transaction.countDocuments(transactionFilter),
+      Transaction.aggregate([
+        { $match: transactionFilter },
+        { $group: { _id: null, value: { $sum: "$amount" } } },
+      ]),
+    ]);
     return res.json({
       success: true,
       scope: { role: String(req.user.role).toUpperCase(), userId: req.user._id },
-      counts: { totalDownline: rows.length, customers: customerIds.length, transactions: tx.length, transactionValue: tx.reduce((sum, x) => sum + Number(x.amount || 0), 0) },
+      counts: { totalDownline: rows.length, customers: customerIds.length, transactions: totalTransactions, transactionValue: Number(totals[0]?.value || 0) },
       users: rows, recentTransactions: tx,
     });
   } catch (error) { console.error("Downline summary error:", error); return res.status(500).json({ success: false, message: "Unable to load downline summary." }); }
@@ -75,10 +85,31 @@ exports.getDownlineTransactions = async (req, res) => {
     const rows = await descendantUsers(req.user);
     const ids = rows.filter((x) => x.role === "CUSTOMER").map((x) => x._id);
     const query = { customerId: { $in: ids } };
-    if (req.params.transactionId) query._id = req.params.transactionId;
-    const transactions = await Transaction.find(query).sort({ createdAt: -1 }).limit(req.params.transactionId ? 1 : 100).lean();
-    if (req.params.transactionId && !transactions.length) return res.status(404).json({ success: false, message: "Transaction is outside your downline scope." });
-    return res.json({ success: true, transactions });
+    if (req.params.transactionId) {
+      if (!require("mongoose").Types.ObjectId.isValid(req.params.transactionId)) {
+        return res.status(404).json({ success: false, message: "Transaction is outside your downline scope." });
+      }
+      query._id = req.params.transactionId;
+      const transaction = await Transaction.findOne(query).lean();
+      if (!transaction) return res.status(404).json({ success: false, message: "Transaction is outside your downline scope." });
+      return res.json({ success: true, transaction });
+    }
+    const page = Math.max(1, Number.parseInt(req.query.page || "1", 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit || "25", 10) || 25));
+    const [transactions, total, totals] = await Promise.all([
+      Transaction.find(query).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      Transaction.countDocuments(query),
+      Transaction.aggregate([{ $match: query }, { $group: { _id: null, value: { $sum: "$amount" } } }]),
+    ]);
+    return res.json({
+      success: true,
+      transactions,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      totals: { count: total, value: Number(totals[0]?.value || 0) },
+    });
   } catch (error) { return res.status(500).json({ success: false, message: "Unable to load downline transactions." }); }
 };
 

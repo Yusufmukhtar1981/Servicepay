@@ -57,7 +57,10 @@ const riderWalletAdminController = require("../controllers/adminRiderWallet.cont
 const adminAccessLog = require("../middleware/adminAccessLog.middleware");
 const privacyRequestController = require("../controllers/privacyRequest.controller");
 const adminReferralController = require("../controllers/adminReferral.controller");
-const { adjustCustomerWallet } = require("../controllers/adminWalletAdjustment.controller");
+const {
+  adjustCustomerWallet,
+  searchCustomers: searchWalletCustomers,
+} = require("../controllers/adminWalletAdjustment.controller");
 
 const router = express.Router();
 function requireExactWalletPermission(req, res, next) {
@@ -362,6 +365,7 @@ router.get("/transaction-intelligence/transactions/:transactionId", ...transacti
 router.get("/transaction-intelligence/transactions/:transactionId/timeline", ...transactionIntelligenceView, transactionIntelligenceController.getTransactionTimeline);
 router.post("/transaction-intelligence/transactions/:transactionId/requery", protect, loadStaffRole, requirePermission(P.TRANSACTION_INTELLIGENCE_REQUERY), transactionIntelligenceController.requeryTransaction);
 router.post("/transaction-intelligence/export.csv", protect, loadStaffRole, requirePermission(P.TRANSACTION_INTELLIGENCE_EXPORT), transactionIntelligenceController.exportTransactions);
+router.get("/wallet-adjustment/customers", protect, loadStaffRole, requireExactWalletPermission, searchWalletCustomers);
 router.post("/wallet-adjustment", protect, loadStaffRole, requireExactWalletPermission, adjustCustomerWallet);
 
 const fraudRiskView = [

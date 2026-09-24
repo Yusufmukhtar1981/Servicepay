@@ -59,29 +59,59 @@ exports.createZonalManager = async (req, res) => {
 exports.promoteRoleUser = async (req, res) => {
   if (!ensureHeadOffice(req, res)) return;
   const targetRole = String(req.body?.targetRole || "").trim().toUpperCase();
-  const allowed = { AGENT: "STATE_MANAGER", STATE_MANAGER: "ZONAL_MANAGER" };
+  const sourceByTarget = { STATE_MANAGER: "AGENT", ZONAL_MANAGER: "STATE_MANAGER" };
+  const promotionKey = String(
+    req.get?.("Idempotency-Key") || req.body?.idempotencyKey ||
+    `promotion:${req.params.userId}:${targetRole}`
+  ).trim().slice(0, 160);
   try {
-    if (!allowed[targetRole] || !["STATE_MANAGER", "ZONAL_MANAGER"].includes(targetRole)) {
+    if (!sourceByTarget[targetRole]) {
       return res.status(400).json({ success: false, message: "Only AGENT to STATE_MANAGER and STATE_MANAGER to ZONAL_MANAGER promotions are allowed." });
+    }
+    const prior = await AdminAuditLog.findOne({
+      action: "USER_ROLE_UPDATED",
+      targetUserId: req.params.userId,
+      "metadata.promotionKey": promotionKey,
+    }).lean();
+    if (prior) {
+      const current = await User.findById(req.params.userId).select("_id role fullName").lean();
+      return res.json({ success: true, duplicate: true, message: "This promotion was already processed.", user: current });
     }
     const session = await mongoose.startSession();
     let updated;
     try {
       await session.withTransaction(async () => {
-        const user = await User.findOne({ _id: req.params.userId, role: { $in: Object.keys(allowed) }, isDeleted: { $ne: true } }).session(session);
-        if (!user || allowed[user.role] !== targetRole) {
+        const replay = await AdminAuditLog.findOne({
+          action: "USER_ROLE_UPDATED", targetUserId: req.params.userId,
+          "metadata.promotionKey": promotionKey,
+        }).session(session).lean();
+        if (replay) {
+          updated = await User.findById(req.params.userId).session(session).select("_id role fullName");
+          return;
+        }
+        const user = await User.findOne({ _id: req.params.userId, role: sourceByTarget[targetRole], isDeleted: { $ne: true } }).session(session);
+        if (!user) {
           const error = new Error("The account is not eligible for this promotion.");
           error.statusCode = 409; throw error;
         }
         const previousRole = user.role;
         user.role = targetRole;
         if (targetRole === "STATE_MANAGER") {
+          const previousStateManager = user.stateManagerId
+            ? await User.findById(user.stateManagerId).session(session).select("_id zonalManagerId")
+            : null;
+          user.zonalManagerId = previousStateManager?._id || user.zonalManagerId || null;
+          user.stateManagerId = null;
           user.agentId = null;
           const children = await User.find({ agentId: user._id, isDeleted: { $ne: true } }).session(session);
           for (const child of children) { child.stateManagerId = user._id; child.agentId = null; await child.save({ session }); }
         } else {
+          user.zonalManagerId = null;
           user.stateManagerId = null;
-          const children = await User.find({ stateManagerId: user._id, isDeleted: { $ne: true } }).session(session);
+          const children = await User.find({
+            $or: [{ stateManagerId: user._id }, { zonalManagerId: user._id }],
+            isDeleted: { $ne: true },
+          }).session(session);
           for (const child of children) { child.zonalManagerId = user._id; child.stateManagerId = null; await child.save({ session }); }
         }
         await user.save({ session });
@@ -90,7 +120,7 @@ exports.promoteRoleUser = async (req, res) => {
           targetUserId: user._id, targetUserName: user.fullName, action: "USER_ROLE_UPDATED",
           reason: `Promoted ${previousRole} to ${targetRole}.`,
           previousData: { role: previousRole }, newData: { role: targetRole },
-          metadata: { promotion: true }, requestMethod: req.method, requestPath: req.originalUrl,
+          metadata: { promotion: true, promotionKey, sourceRole: previousRole, targetRole }, requestMethod: req.method, requestPath: req.originalUrl,
         }], { session });
         updated = user;
       });
