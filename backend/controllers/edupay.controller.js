@@ -694,13 +694,6 @@ exports.stateManagerCreateSchool = async (req, res) => {
     if (String(req.user?.role || "").toUpperCase() !== "STATE_MANAGER") {
       return res.status(403).json({ success: false, message: "State Manager access required." });
     }
-    const manager = await User.findOne({
-      _id: req.user._id,
-      role: "STATE_MANAGER",
-      status: "ACTIVE",
-      isDeleted: { $ne: true },
-    }).select("_id state zone").lean();
-    if (!manager) return res.status(403).json({ success: false, code: "STATE_MANAGER_INACTIVE", message: "An active State Manager account is required." });
     const body = req.body || {};
     // This is the deliberately safe, non-portal school-request contract.
     // It collects the identity fields needed by the existing approval flow,
@@ -709,6 +702,13 @@ exports.stateManagerCreateSchool = async (req, res) => {
     if (required.some((key) => !String(body[key] || "").trim())) {
       return res.status(400).json({ success: false, code: "SCHOOL_FIELDS_REQUIRED", message: "Complete school identity and representative information is required." });
     }
+    const manager = await User.findOne({
+      _id: req.user._id,
+      role: "STATE_MANAGER",
+      status: "ACTIVE",
+      isDeleted: { $ne: true },
+    }).select("_id state zone").lean();
+    if (!manager) return res.status(403).json({ success: false, code: "STATE_MANAGER_INACTIVE", message: "An active State Manager account is required." });
     const schoolName = String(body.schoolName).trim();
     const location = String(body.location).trim();
     const requestedState = String(body.state).trim();
@@ -765,6 +765,8 @@ exports.stateManagerCreateSchool = async (req, res) => {
 exports.stateManagerSchools = async (req, res) => {
   try {
     if (String(req.user?.role || "").toUpperCase() !== "STATE_MANAGER") return res.status(403).json({ success: false, message: "State Manager access required." });
+    const manager = await User.findOne({ _id: req.user._id, role: "STATE_MANAGER", status: "ACTIVE", isDeleted: { $ne: true } }).select("_id").lean();
+    if (!manager) return res.status(403).json({ success: false, code: "STATE_MANAGER_INACTIVE", message: "An active State Manager account is required." });
     const requests = await SchoolRequest.find({ stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
     const schoolIds = requests.map((row) => row.school).filter(Boolean);
     const schools = await School.find({ _id: { $in: schoolIds }, stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
