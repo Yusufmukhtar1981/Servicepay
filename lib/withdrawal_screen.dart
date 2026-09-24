@@ -349,6 +349,9 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
 
     final token = await getToken();
     if (token == null) {
+      if (mounted) {
+        setState(() => isAwaitingPin = false);
+      }
       showMessage('Your login session was not found.');
       return;
     }
