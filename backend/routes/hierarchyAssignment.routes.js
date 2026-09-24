@@ -1,0 +1,11 @@
+const express = require("express");
+const controller = require("../controllers/hierarchyAssignment.controller");
+const { protect, adminOnly } = require("../middleware/auth.middleware");
+const { loadStaffRole, requireExplicitPermission } = require("../middleware/staffPermission.middleware");
+const { STAFF_PERMISSIONS: P } = require("../config/staffPermissions");
+const router = express.Router();
+const guard = [protect, adminOnly("HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"), loadStaffRole, requireExplicitPermission(P.HIERARCHY_MANAGE)];
+router.get("/users", ...guard, controller.listUsers);
+router.post("/assignments", ...guard, controller.assign);
+router.get("/history", ...guard, controller.history);
+module.exports = router;

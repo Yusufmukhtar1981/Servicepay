@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
@@ -139,7 +140,6 @@ const servicePayVerifyRegistrationNin = async (nin) => {
   }
 
   let response;
-
   try {
     response = await axios.post(
       `${SERVICEPAY_ONBOARDING_PREMBLY_BASE_URL}/verification/vnin`,
@@ -318,14 +318,22 @@ const isReferralCodeCollision = (error) => {
 
 const createCustomerWithUniqueReferralCode = async (
   customerData,
-  fullName
+  fullName,
+  session = null
 ) => {
   for (let attempt = 0; attempt < 10; attempt += 1) {
+    const referralCode = buildReferralCode(fullName);
+    // MongoDB aborts a transaction after a duplicate-key write; never issue
+    // a second insert in the same transaction after a referral collision.
+    if (session && await User.exists({ referralCode }).session(session)) {
+      continue;
+    }
     try {
-      return await User.create({
+      const created = await User.create([{
         ...customerData,
-        referralCode: buildReferralCode(fullName),
-      });
+        referralCode,
+      }], session ? { session } : undefined);
+      return created[0];
     } catch (error) {
       /*
        * The unique index is the final authority under concurrent
@@ -333,6 +341,11 @@ const createCustomerWithUniqueReferralCode = async (
        * duplicate errors must retain their normal failure behavior.
        */
       if (isReferralCodeCollision(error)) {
+        if (session) {
+          const collision = new Error("Unable to reserve a unique referral code in this registration transaction.");
+          collision.statusCode = 503;
+          throw collision;
+        }
         continue;
       }
 
@@ -716,7 +729,8 @@ exports.registerUser = async (
     }
   }
 
-
+  let registrationSession = null;
+  let registrationParent = null;
   try {
     const {
       fullName,
@@ -864,7 +878,33 @@ exports.registerUser = async (
       });
     }
 
- const user = await createCustomerWithUniqueReferralCode({
+  const suppliedHierarchyIds = [zonalManagerId, stateManagerId, agentId]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (suppliedHierarchyIds.length) {
+    if (!mongoose.Types.ObjectId.isValid(agentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid active Aggregator is required for hierarchy assignment.",
+      });
+    }
+    registrationSession = await mongoose.startSession();
+    await registrationSession.startTransaction();
+    registrationParent = await User.findOneAndUpdate(
+      { _id: agentId, role: "AGENT", status: "ACTIVE", isDeleted: { $ne: true } },
+      { $inc: { hierarchyVersion: 1 } },
+      { session: registrationSession, new: true }
+    ).lean();
+    if (!registrationParent || !registrationParent.zone || !registrationParent.state ||
+        !registrationParent.zonalManagerId || !registrationParent.stateManagerId ||
+        (zonalManagerId && String(zonalManagerId) !== String(registrationParent.zonalManagerId)) ||
+        (stateManagerId && String(stateManagerId) !== String(registrationParent.stateManagerId))) {
+      const conflict = new Error("The supplied hierarchy parent is stale or outside its active lineage.");
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+  }
+  const user = await createCustomerWithUniqueReferralCode({
       
       // SERVICEPAY_REGISTRATION_NIN_METADATA
       ninNumberMasked:
@@ -908,10 +948,12 @@ fullName: cleanFullName,
       transactionPin: servicePayRegistrationPin || undefined,
 
       zone:
+        registrationParent?.zone ||
         String(zone || "").trim() ||
         undefined,
 
       state:
+        registrationParent?.state ||
         String(state || "").trim() ||
         undefined,
 
@@ -920,15 +962,23 @@ fullName: cleanFullName,
         undefined,
 
       zonalManagerId:
+        registrationParent?.zonalManagerId ||
         zonalManagerId || undefined,
 
       stateManagerId:
+        registrationParent?.stateManagerId ||
         stateManagerId || undefined,
 
       agentId:
+        registrationParent?._id ||
         agentId || undefined,
       ...referralAttribution,
-    }, cleanFullName);
+    }, cleanFullName, registrationSession);
+    if (registrationSession) {
+      await registrationSession.commitTransaction();
+      await registrationSession.endSession();
+      registrationSession = null;
+    }
 
     return res.status(201).json({
       success: true,
@@ -938,6 +988,11 @@ fullName: cleanFullName,
       user: formatUser(user),
     });
   } catch (error) {
+    if (registrationSession) {
+      try { await registrationSession.abortTransaction(); } catch (_) {}
+      await registrationSession.endSession();
+      registrationSession = null;
+    }
     console.error(
       "Register error:",
       error
@@ -970,6 +1025,13 @@ fullName: cleanFullName,
         message:
           validationMessage ||
           "Invalid registration information.",
+      });
+    }
+
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
       });
     }
 

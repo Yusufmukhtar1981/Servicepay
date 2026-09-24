@@ -44,6 +44,10 @@ const transactionSchema =
         ref: "User",
         default: null,
       },
+      // Present on new records, including transactions made by customers
+      // without a manager. Older records lack this timestamp and retain the
+      // legacy reporting fallback only until their custody is reconciled.
+      hierarchyCapturedAt: { type: Date },
 
       serviceType: {
         type: String,
@@ -159,6 +163,11 @@ transactionSchema.index({
   customerId: 1,
   createdAt: -1,
 });
+// Historical manager reports use these snapshot keys after a reporting-line
+// change; without them a zonal overview can scan the whole transaction ledger.
+transactionSchema.index({ zonalManagerId: 1, hierarchyCapturedAt: 1, createdAt: -1 });
+transactionSchema.index({ stateManagerId: 1, hierarchyCapturedAt: 1, createdAt: -1 });
+transactionSchema.index({ agentId: 1, hierarchyCapturedAt: 1, createdAt: -1 });
 transactionSchema.index({ branchId: 1, createdAt: -1 });
 transactionSchema.index({ createdAt: -1 });
 
@@ -232,10 +241,26 @@ const guardRewardMutation = async function () {
   }
 };
 
-transactionSchema.pre("save", function () {
+transactionSchema.pre("save", async function () {
   if (!this.isNew && IMMUTABLE_REWARD_SERVICES.has(String(this.serviceType || "").toUpperCase())) {
     throw immutableRewardError();
   }
+  if (!this.isNew) return;
+  this.hierarchyCapturedAt = new Date();
+  // Most payment services create a Transaction without denormalized manager
+  // fields. Freeze the customer's reporting line when the record is created
+  // instead of allowing a later reassignment to rewrite its apparent owner.
+  // Respect callers which supplied a historical snapshot themselves.
+  if (this.agentId || this.stateManagerId || this.zonalManagerId) return;
+  const User = require("./user.model");
+  const customer = await User.findById(this.customerId)
+    .select("agentId stateManagerId zonalManagerId")
+    .session(this.$session())
+    .lean();
+  if (!customer) throw new Error("Cannot record a transaction for a missing customer.");
+  this.agentId = customer.agentId || null;
+  this.stateManagerId = customer.stateManagerId || null;
+  this.zonalManagerId = customer.zonalManagerId || null;
 });
 ["updateOne", "updateMany", "findOneAndUpdate", "replaceOne", "findOneAndReplace",
   "deleteOne", "deleteMany", "findOneAndDelete"].forEach((operation) => {

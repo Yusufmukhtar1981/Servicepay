@@ -2421,10 +2421,45 @@ exports.createAdminUser = async (
         creator._id;
     }
 
-    const createdUser =
-      await User.create(
-        userData
-      );
+    // Parent lineage and insertion must share one transaction.  This closes
+    // the move/create race without changing the account role semantics.
+    const parentId = requestedRole === "STATE_MANAGER"
+      ? userData.zonalManagerId
+      : requestedRole === "AGENT"
+        ? userData.stateManagerId
+        : null;
+    let createdUser;
+    if (parentId) {
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const parentRole = requestedRole === "STATE_MANAGER" ? "ZONAL_MANAGER" : "STATE_MANAGER";
+          const parent = await User.findOneAndUpdate(
+            { _id: parentId, role: parentRole, status: "ACTIVE", isDeleted: { $ne: true } },
+            { $inc: { hierarchyVersion: 1 } },
+            { session, new: true }
+          );
+          if (!parent || !parent.zone || (parentRole === "STATE_MANAGER" && !parent.state)) {
+            const conflict = new Error("The selected hierarchy parent changed; please retry.");
+            conflict.statusCode = 409;
+            throw conflict;
+          }
+          userData.zone = parent.zone;
+          if (requestedRole === "STATE_MANAGER") {
+            userData.zonalManagerId = parent._id;
+          } else {
+            userData.state = parent.state;
+            userData.zonalManagerId = parent.zonalManagerId || null;
+            userData.stateManagerId = parent._id;
+          }
+          [createdUser] = await User.create([userData], { session });
+        });
+      } finally {
+        await session.endSession();
+      }
+    } else {
+      [createdUser] = await User.create([userData]);
+    }
 
     const safeUser =
       await User.findById(

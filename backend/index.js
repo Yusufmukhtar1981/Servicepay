@@ -82,6 +82,7 @@ const adminCommunicationsRoutes = require(
 const adminRoutes = require(
   "./routes/admin.routes"
 );
+const hierarchyAssignmentRoutes = require("./routes/hierarchyAssignment.routes");
 const kekeFareSettingRoutes = require("./routes/kekeFareSetting.routes");
 const adminKekeFareSettingRoutes = require("./routes/adminKekeFareSetting.routes");
 const kekeRideRoutes = require("./routes/kekeRide.routes");
@@ -380,6 +381,7 @@ app.use('/api/admin/cards', adminCardRoutes);
 
 // ServicePay management routes
 app.use('/api/management', managementRoutes);
+app.use("/api/admin/hierarchy", hierarchyAssignmentRoutes);
 
 
 /* ServicePay Rider API */

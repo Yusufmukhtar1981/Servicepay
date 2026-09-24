@@ -2,6 +2,21 @@ const User = require("../models/user.model");
 const mongoose = require("mongoose");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 
+const lockHierarchyUsers = async (ids, session) => {
+  for (const id of [...new Set(ids.filter(Boolean).map(String))].sort()) {
+    const locked = await User.updateOne(
+      { _id: id, isDeleted: { $ne: true } },
+      { $inc: { hierarchyVersion: 1 } },
+      { session }
+    );
+    if (locked.modifiedCount !== 1) {
+      const conflict = new Error("The hierarchy changed during promotion; please retry.");
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+  }
+};
+
 const ALLOWED_ROLES = [
   "ZONAL_MANAGER",
   "STATE_MANAGER",
@@ -108,6 +123,23 @@ exports.promoteRoleUser = async (req, res) => {
           const error = new Error("The account is not eligible for this promotion.");
           error.statusCode = 409; throw error;
         }
+        const affected = targetRole === "STATE_MANAGER"
+          ? await User.find({ agentId: user._id, isDeleted: { $ne: true } }).session(session).select("_id").lean()
+          : await User.find({
+              $or: [{ stateManagerId: user._id }, { zonalManagerId: user._id }, { promotionParentId: user._id }],
+              isDeleted: { $ne: true },
+            }).session(session).select("_id").lean();
+        await lockHierarchyUsers([
+          user._id, user.agentId, user.stateManagerId, user.zonalManagerId,
+          ...affected.map((child) => child._id),
+        ], session);
+        const refreshed = await User.findById(user._id).session(session);
+        if (!refreshed) {
+          const conflict = new Error("The hierarchy target changed during promotion; please retry.");
+          conflict.statusCode = 409;
+          throw conflict;
+        }
+        user.$set(refreshed.toObject());
         const previousRole = user.role;
         user.role = targetRole;
         if (targetRole === "STATE_MANAGER") {

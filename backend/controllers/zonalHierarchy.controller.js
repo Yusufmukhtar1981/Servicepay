@@ -18,6 +18,20 @@ const pageArgs = (q) => ({
 });
 const forbidden = (res) => res.status(403).json({ success: false, message: "Resource is outside your zonal scope." });
 const allowedRole = (section) => ({ "state-managers": "STATE_MANAGER", aggregators: "AGENT", customers: "CUSTOMER" }[section]);
+const lockHierarchyUsers = async (ids, session) => {
+  for (const id of [...new Set(ids.filter(Boolean).map(String))].sort()) {
+    const locked = await User.updateOne(
+      { _id: id, isDeleted: { $ne: true } },
+      { $inc: { hierarchyVersion: 1 } },
+      { session }
+    );
+    if (locked.modifiedCount !== 1) {
+      const conflict = new Error("The hierarchy changed during promotion; please retry.");
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+  }
+};
 
 exports.list = async (req, res) => {
   try {
@@ -103,10 +117,6 @@ exports.promote = async (req, res) => {
         return;
       }
       const actor = await User.findOne({ _id: req.user._id, role: "ZONAL_MANAGER", status: "ACTIVE", isDeleted: { $ne: true }, zone: { $exists: true, $ne: "" } }).session(session);
-      if (actor) {
-        actor.hierarchyVersion = (actor.hierarchyVersion || 0) + 1;
-        await actor.save({ session });
-      }
       const parentRef = req.body?.stateManagerId;
       const smFilter = { role: "STATE_MANAGER", zone: actor?.zone, zonalManagerId: actor?._id, status: "ACTIVE", isDeleted: { $ne: true } };
       if (mongoose.Types.ObjectId.isValid(parentRef)) smFilter._id = parentRef;
@@ -116,6 +126,19 @@ exports.promote = async (req, res) => {
       if (!actor || !sm || !target || target.zonalManagerId.toString() !== actor._id.toString() ||
         target.state !== sm.state || target.stateManagerId.toString() !== sm._id.toString()) { const e = new Error("Aggregator is not eligible for this zonal promotion."); e.statusCode = 403; throw e; }
       const children = await User.find({ role: "CUSTOMER", agentId: target._id, isDeleted: { $ne: true } }).session(session).lean();
+      await lockHierarchyUsers([
+        actor?._id, sm?._id, target?._id, target?.stateManagerId,
+        ...children.map((child) => child._id),
+      ], session);
+      const refreshedActor = await User.findById(actor?._id).session(session);
+      const refreshedTarget = await User.findById(target?._id).session(session);
+      if (!refreshedActor || !refreshedTarget) {
+        const error = new Error("The hierarchy changed during promotion; please retry.");
+        error.statusCode = 409;
+        throw error;
+      }
+      actor.$set(refreshedActor.toObject());
+      target.$set(refreshedTarget.toObject());
       const validChildren = children.filter((child) => child.zone === actor.zone && child.state === target.state &&
         String(child.zonalManagerId) === String(actor._id) && String(child.stateManagerId) === String(target.stateManagerId));
       if (validChildren.length !== children.length) { const e = new Error("Aggregator has contradictory child lineage; promotion was not applied."); e.statusCode = 409; throw e; }

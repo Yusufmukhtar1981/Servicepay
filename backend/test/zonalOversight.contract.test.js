@@ -81,7 +81,7 @@ test("zonal oversight lists and details all four sections from the authorized zo
   assert.notEqual(filters.delivery.customerId.$in.includes(foreign), true);
 });
 
-test("overview counts transactions by customer ownership only", async (t) => {
+test("overview accepts captured manager history, but scopes legacy transactions by current customer", async (t) => {
   const service = require("../services/zonalScope.service");
   const User = require("../models/user.model");
   const Transaction = require("../models/transaction.model");
@@ -122,8 +122,12 @@ test("overview counts transactions by customer ownership only", async (t) => {
   await controller.getOverview({ user: { _id: manager } }, { json(value) { Object.assign(response, value); } }, assert.fail);
   assert.equal(response.transactions, 7);
   assert.deepEqual(response.deliverySummary, { total: 6, pending: 1, inProgress: 2, completed: 1, failed: 1, cancelled: 1, totalValue: 9000 });
-  assert.deepEqual(transactionFilter, { customerId: { $in: [customer] } });
-  assert.equal("$or" in transactionFilter, false, "stale manager references must not authorize transactions");
+  assert.deepEqual(transactionFilter, { $or: [
+    { zonalManagerId: manager, hierarchyCapturedAt: { $ne: null } },
+    { hierarchyCapturedAt: null, customerId: { $in: [customer] } },
+  ] });
+  assert.equal(JSON.stringify(transactionFilter).includes(String(staleManager)), false,
+    "unverified historical manager references must not authorize transactions");
 });
 
 test("pending EduPay requests are state-manager scoped and deduplicated", async (t) => {

@@ -21,6 +21,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("USERS_SUSPEND", "users.suspend", "USERS", "Suspend users", "Suspend or reactivate users within scope.", "PRIVILEGED"),
   permission("USERS_BLOCK", "users.block", "USERS", "Block users", "Block users within scope.", "CRITICAL"),
   permission("USERS_DELETE", "users.delete", "USERS", "Safely delete users", "Disable an account while preserving financial records.", "CRITICAL"),
+  permission("HIERARCHY_MANAGE", "hierarchy.manage", "USERS", "Manage hierarchy assignments", "Assign and reassign operational reporting relationships without changing user roles.", "CRITICAL"),
   permission("PRIVACY_VIEW", "privacy.view", "PRIVACY", "View privacy requests", "View customer privacy and account-deletion requests."),
   permission("PRIVACY_MANAGE", "privacy.manage", "PRIVACY", "Manage privacy requests", "Review and resolve customer privacy and account-deletion requests.", "CRITICAL"),
   permission("CUSTOMER360_VIEW", "customer360.view", "CUSTOMER_360", "View Customer 360", "Search customers and view the safe Customer 360 profile."),

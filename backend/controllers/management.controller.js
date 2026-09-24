@@ -65,7 +65,10 @@ exports.getDownlineSummary = async (req, res) => {
       const scope = await getZonalScope(req.user);
       const customerIds = scope.customerIds.map((value) => new mongoose.Types.ObjectId(value));
       const visibleIds = [...scope.stateManagerIds, ...scope.agentIds, ...scope.customerIds].map((value) => new mongoose.Types.ObjectId(value));
-      const transactionFilter = { customerId: { $in: customerIds } };
+      const transactionFilter = { $or: [
+        { zonalManagerId: req.user._id, hierarchyCapturedAt: { $ne: null } },
+        { hierarchyCapturedAt: null, customerId: { $in: customerIds } },
+      ] };
       const [tx, totalTransactions, totals, users] = await Promise.all([
         Transaction.find(transactionFilter).select("customerId amount serviceType status reference createdAt").sort({ createdAt: -1 }).limit(100).lean(),
         Transaction.countDocuments(transactionFilter),
@@ -76,7 +79,11 @@ exports.getDownlineSummary = async (req, res) => {
     }
     const rows = await descendantUsers(req.user);
     const customerIds = rows.filter((x) => x.role === "CUSTOMER").map((x) => x._id);
-    const transactionFilter = { customerId: { $in: customerIds } };
+    const lineageField = String(req.user.role).toUpperCase() === "STATE_MANAGER" ? "stateManagerId" : "agentId";
+    const transactionFilter = { $or: [
+      { [lineageField]: req.user._id, hierarchyCapturedAt: { $ne: null } },
+      { hierarchyCapturedAt: null, customerId: { $in: customerIds } },
+    ] };
     const [tx, totalTransactions, totals] = await Promise.all([
       Transaction.find(transactionFilter).select("customerId amount serviceType status reference createdAt").sort({ createdAt: -1 }).limit(100).lean(),
       Transaction.countDocuments(transactionFilter),
@@ -100,7 +107,10 @@ exports.getDownlineTransactions = async (req, res) => {
     if (String(req.user.role).toUpperCase() === "ZONAL_MANAGER") {
       const scope = await getZonalScope(req.user);
       const ids = scope.customerIds.map((value) => new mongoose.Types.ObjectId(value));
-      const query = { customerId: { $in: ids } };
+      const query = { $or: [
+        { zonalManagerId: req.user._id, hierarchyCapturedAt: { $ne: null } },
+        { hierarchyCapturedAt: null, customerId: { $in: ids } },
+      ] };
       if (req.params.transactionId) {
         if (!mongoose.Types.ObjectId.isValid(req.params.transactionId)) return res.status(403).json({ success: false, message: "Transaction is outside your downline scope." });
         query._id = req.params.transactionId;
@@ -118,7 +128,11 @@ exports.getDownlineTransactions = async (req, res) => {
     }
     const rows = await descendantUsers(req.user);
     const ids = rows.filter((x) => x.role === "CUSTOMER").map((x) => x._id);
-    const query = { customerId: { $in: ids } };
+    const lineageField = String(req.user.role).toUpperCase() === "STATE_MANAGER" ? "stateManagerId" : "agentId";
+    const query = { $or: [
+      { [lineageField]: req.user._id, hierarchyCapturedAt: { $ne: null } },
+      { hierarchyCapturedAt: null, customerId: { $in: ids } },
+    ] };
     if (req.params.transactionId) {
       if (!require("mongoose").Types.ObjectId.isValid(req.params.transactionId)) {
         return res.status(404).json({ success: false, message: "Transaction is outside your downline scope." });
@@ -233,42 +247,29 @@ exports.createStateManager = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({
-      $or: duplicateConditions,
-    }).select("_id phone email");
-
-    if (existingUser) {
-      const samePhone =
-        normalizePhone(existingUser.phone) ===
-        cleanPhone;
-
-      return res.status(409).json({
-        success: false,
-        message: samePhone
-          ? "A user with this phone number already exists."
-          : "A user with this email address already exists.",
+    const session = await mongoose.startSession();
+    let stateManager;
+    try {
+      await session.withTransaction(async () => {
+        const actor = await User.findOneAndUpdate(
+          { _id: loggedInUser._id || loggedInUser.id, role: "ZONAL_MANAGER", status: "ACTIVE", isDeleted: { $ne: true } },
+          { $inc: { hierarchyVersion: 1 } }, { session, new: true }
+        );
+        if (!actor) throw Object.assign(new Error("Zonal Manager hierarchy changed; registration was rejected."), { statusCode: 409 });
+        const existingUser = await User.findOne({ $or: duplicateConditions }).session(session).select("_id phone email");
+        if (existingUser) {
+          const samePhone = normalizePhone(existingUser.phone) === cleanPhone;
+          throw Object.assign(new Error(samePhone ? "A user with this phone number already exists." : "A user with this email address already exists."), { statusCode: 409 });
+        }
+        stateManager = new User({
+          fullName: cleanFullName, phone: cleanPhone, email: cleanEmail || undefined,
+          password: cleanPassword, role: "STATE_MANAGER", status: "ACTIVE",
+          zone: normalizeText(actor.zone), state: cleanState, lga: cleanLga || undefined,
+          zonalManagerId: actor._id,
+        });
+        await stateManager.save({ session });
       });
-    }
-
-    const stateManager = new User({
-      fullName: cleanFullName,
-      phone: cleanPhone,
-      email: cleanEmail || undefined,
-      password: cleanPassword,
-      role: "STATE_MANAGER",
-      status: "ACTIVE",
-
-      // Zonal Manager's zone cannot be changed
-      // from the frontend request.
-      zone: normalizeText(loggedInUser.zone),
-      state: cleanState,
-      lga: cleanLga || undefined,
-
-      zonalManagerId:
-        loggedInUser._id || loggedInUser.id,
-    });
-
-    await stateManager.save();
+    } finally { await session.endSession(); }
 
     return res.status(201).json({
       success: true,
@@ -290,7 +291,7 @@ exports.createStateManager = async (req, res) => {
       });
     }
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message:
         "Server error while creating State Manager.",
@@ -475,43 +476,31 @@ exports.createAgent = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({
-      $or: duplicateConditions,
-    }).select("_id phone email");
-
-    if (existingUser) {
-      const samePhone =
-        normalizePhone(existingUser.phone) ===
-        cleanPhone;
-
-      return res.status(409).json({
-        success: false,
-        message: samePhone
-          ? "A user with this phone number already exists."
-          : "A user with this email address already exists.",
+    const session = await mongoose.startSession();
+    let agent;
+    try {
+      await session.withTransaction(async () => {
+        const actor = await User.findOneAndUpdate(
+          { _id: loggedInUser._id || loggedInUser.id, role: "STATE_MANAGER", status: "ACTIVE", isDeleted: { $ne: true } },
+          { $inc: { hierarchyVersion: 1 } }, { session, new: true }
+        );
+        if (!actor || !actor.zonalManagerId || !actor.zone || !actor.state) {
+          throw Object.assign(new Error("State Manager hierarchy changed; registration was rejected."), { statusCode: 409 });
+        }
+        const existingUser = await User.findOne({ $or: duplicateConditions }).session(session).select("_id phone email");
+        if (existingUser) {
+          const samePhone = normalizePhone(existingUser.phone) === cleanPhone;
+          throw Object.assign(new Error(samePhone ? "A user with this phone number already exists." : "A user with this email address already exists."), { statusCode: 409 });
+        }
+        agent = new User({
+          fullName: cleanFullName, phone: cleanPhone, email: cleanEmail || undefined,
+          password: cleanPassword, role: "AGENT", status: "ACTIVE",
+          zone: actor.zone, state: actor.state, lga: cleanLga || undefined,
+          zonalManagerId: actor.zonalManagerId, stateManagerId: actor._id,
+        });
+        await agent.save({ session });
       });
-    }
-
-    const agent = new User({
-      fullName: cleanFullName,
-      phone: cleanPhone,
-      email: cleanEmail || undefined,
-      password: cleanPassword,
-      role: "AGENT",
-      status: "ACTIVE",
-
-      zone: normalizeText(loggedInUser.zone),
-      state: normalizeText(loggedInUser.state),
-      lga: cleanLga || undefined,
-
-      zonalManagerId:
-        loggedInUser.zonalManagerId || undefined,
-
-      stateManagerId:
-        loggedInUser._id || loggedInUser.id,
-    });
-
-    await agent.save();
+    } finally { await session.endSession(); }
 
     return res.status(201).json({
       success: true,
@@ -529,7 +518,7 @@ exports.createAgent = async (req, res) => {
       });
     }
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message:
         "Server error while creating Agent.",
@@ -919,32 +908,11 @@ exports.getAgentTransactions = async (req, res) => {
       .select("_id fullName phone email")
       .lean();
 
-    const customerIds = customers.map(
-      (customer) => customer._id
-    );
-
-    if (customerIds.length === 0) {
-      return res.status(200).json({
-        success: true,
-        summary: {
-          totalTransactions: 0,
-          successfulTransactions: 0,
-          pendingTransactions: 0,
-          failedTransactions: 0,
-          totalAmount: 0,
-        },
-        transactions: [],
-        pagination: {
-          page,
-          limit,
-          total: 0,
-          totalPages: 0,
-        },
-      });
-    }
-
     const transactionQuery = {
-      customerId: { $in: customerIds },
+      $or: [
+        { agentId: loggedInUser._id, hierarchyCapturedAt: { $ne: null } },
+        { hierarchyCapturedAt: null, customerId: { $in: customers.map((customer) => customer._id) } },
+      ],
     };
 
     if (status !== "ALL") {
@@ -1000,7 +968,10 @@ exports.getAgentTransactions = async (req, res) => {
       Transaction.aggregate([
         {
           $match: {
-            customerId: { $in: customerIds },
+            $or: [
+              { agentId: loggedInUser._id, hierarchyCapturedAt: { $ne: null } },
+              { hierarchyCapturedAt: null, customerId: { $in: customers.map((customer) => customer._id) } },
+            ],
           },
         },
         {
@@ -1145,7 +1116,10 @@ exports.getRoleTransactions = async (req, res) => {
 
     if (role === "ZONAL_MANAGER") {
       const scope = await getZonalScope(loggedInUser);
-      query.customerId = { $in: scope.customerIds.map((value) => new mongoose.Types.ObjectId(value)) };
+      query.$or = [
+        { zonalManagerId: loggedInUser._id, hierarchyCapturedAt: { $ne: null } },
+        { hierarchyCapturedAt: null, customerId: { $in: scope.customerIds.map((value) => new mongoose.Types.ObjectId(value)) } },
+      ];
     }
 
     if (status !== "ALL") {

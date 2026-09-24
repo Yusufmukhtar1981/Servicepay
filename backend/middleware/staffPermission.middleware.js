@@ -227,6 +227,19 @@ const requirePermission = (permission) => {
   };
 };
 
+// Protected controls must not treat the Head Office wildcard as consent. The
+// operation is available only when the active assigned Staff Role explicitly
+// grants the named permission (while preserving wildcard behavior elsewhere).
+const requireExplicitPermission = (permission) => (req, res, next) => {
+  const needed = normalizeStaffPermission(permission);
+  const granted = normalizePermissionList(req.staffRole?.permissions || []);
+  if (!needed) return res.status(500).json({ success: false, message: "Required permission was not configured." });
+  if (!granted.includes(needed)) {
+    return res.status(403).json({ success: false, message: "You do not have permission to perform this action.", requiredPermission: needed });
+  }
+  return next();
+};
+
 const requireAnyPermission = (...permissions) => {
   const needed = permissions
     .flat()
@@ -424,6 +437,7 @@ module.exports = {
   STAFF_PERMISSIONS,
   loadStaffRole,
   requirePermission,
+  requireExplicitPermission,
   requireAnyPermission,
   hasPermission,
   scopeFilterFor,

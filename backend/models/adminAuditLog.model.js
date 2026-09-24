@@ -55,6 +55,7 @@ const adminAuditLogSchema =
           "WALLET_CREDITED",
           "WALLET_DEBITED",
           "USER_CREATED",
+           "HIERARCHY_ASSIGNMENT_UPDATED",
           "KYC_STATUS_UPDATED",
           "SERVICE_SETTING_UPDATED",
           "SYSTEM_SETTING_UPDATED",
@@ -304,6 +305,10 @@ adminAuditLogSchema.pre("deleteOne", { document: true, query: false }, denyAudit
 adminAuditLogSchema.index(
   { "metadata.promotionKey": 1 },
   { unique: true, sparse: true, name: "uniq_promotion_idempotency_key" }
+);
+adminAuditLogSchema.index(
+  { "metadata.hierarchyRequestId": 1 },
+  { unique: true, sparse: true, name: "uniq_hierarchy_request_id" }
 );
 
 module.exports = mongoose.model(

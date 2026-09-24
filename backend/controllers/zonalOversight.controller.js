@@ -22,10 +22,13 @@ const scopeQuery = (scope) => {
   const customerIds = idList(scope && scope.customerIds);
   return { stateManagerIds, agentIds, customerIds };
 };
-// Transactions are customer-owned records.  Manager/agent references are
-// historical denormalized metadata and must never broaden a zone.
-const transactionQuery = (scope) => ({
-  customerId: { $in: scope.customerIds },
+// Only post-capture manager snapshots can establish historical ownership.
+// Legacy references are unverified; scope those records by current customer.
+const transactionQuery = (scope, zonalManagerId) => ({
+  $or: [
+    { zonalManagerId, hierarchyCapturedAt: { $ne: null } },
+    { hierarchyCapturedAt: null, customerId: { $in: scope.customerIds } },
+  ],
 });
 const deliverySummary = (scope) => Delivery.aggregate([
   // Aggregation does not perform Mongoose's normal ObjectId casting.
@@ -124,7 +127,7 @@ exports.getOverview = async (req, res, next) => {
       User.countDocuments({ _id: { $in: scope.stateManagerIds }, role: "STATE_MANAGER" }),
       User.countDocuments({ _id: { $in: scope.agentIds }, role: { $in: ["AGENT", "AGGREGATOR"] } }),
       User.countDocuments({ _id: { $in: scope.customerIds }, role: "CUSTOMER" }),
-      Transaction.countDocuments(transactionQuery(scope)),
+      Transaction.countDocuments(transactionQuery(scope, req.user._id)),
       Delivery.countDocuments({ customerId: { $in: scope.customerIds } }),
       // EduPay overview counts each authorized persisted school plus each
       // still-pending request, excluding requests already linked to a school.
