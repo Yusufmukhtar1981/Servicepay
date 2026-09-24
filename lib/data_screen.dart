@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'services/api_service.dart';
-import 'services/biometric_auth_service.dart';
-import 'services/session_store.dart';
-import 'services/transaction_authorization_service.dart';
 import 'receipt_screen.dart';
 import 'widgets/saved_beneficiaries.dart';
 
@@ -35,8 +32,6 @@ class _DataScreenState extends State<DataScreen> {
 
   bool isLoadingPlans = true;
   bool isBuyingData = false;
-  final TransactionAuthorizationService _authorization =
-      TransactionAuthorizationService();
   String? _pendingIdempotencyKey;
 
   String plansError = '';
@@ -409,32 +404,10 @@ class _DataScreenState extends State<DataScreen> {
     try {
       final String idempotencyKey = _pendingIdempotencyKey ??=
           'data-${DateTime.now().microsecondsSinceEpoch}';
-      final Map<String, dynamic> authorizationBody = {
-        'network': selectedNetwork,
-        'phone': phone,
-        'planCode': code,
-        'amount': price,
-        'idempotencyKey': idempotencyKey,
-      };
-      final String? token = await SessionStore.readToken();
-      String? biometricGrant;
-      if (token != null && token.isNotEmpty) {
-        final BiometricDeviceSettings? settings =
-            await BiometricAuthService().settings(token);
-        if (settings?.transactionEnabled == true) {
-          biometricGrant = await _authorization.authorizeTransaction(
-            token: token,
-            operation: 'DATA_PURCHASE',
-            requestBody: authorizationBody,
-            idempotencyKey: idempotencyKey,
-          );
-        }
-      }
       String transactionPin = '';
-      if (biometricGrant == null) {
-        final TextEditingController transactionPinController =
-            TextEditingController();
-        final String? enteredPin = await showDialog<String>(
+      final TextEditingController transactionPinController =
+          TextEditingController();
+      final String? enteredPin = await showDialog<String>(
           context: context,
           barrierDismissible: false,
           builder: (dialogContext) {
@@ -471,16 +444,14 @@ class _DataScreenState extends State<DataScreen> {
           },
         );
 
-        transactionPinController.dispose();
-        transactionPin = enteredPin ?? '';
-      }
+      transactionPinController.dispose();
+      transactionPin = enteredPin ?? '';
 
-      if (biometricGrant == null && transactionPin.isEmpty) {
+      if (transactionPin.isEmpty) {
         return;
       }
 
-      if (biometricGrant == null &&
-          !RegExp(r'^\d{4}$').hasMatch(transactionPin)) {
+      if (!RegExp(r'^\d{4}$').hasMatch(transactionPin)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -500,8 +471,6 @@ class _DataScreenState extends State<DataScreen> {
         // Backward compatibility only.
         // Backend now determines real selling price.
         amount: price,
-        biometricGrant: biometricGrant,
-        deviceId: await BiometricAuthService().deviceId(),
         idempotencyKey: idempotencyKey,
       );
 
