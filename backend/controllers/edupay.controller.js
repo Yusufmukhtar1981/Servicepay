@@ -694,15 +694,46 @@ exports.stateManagerCreateSchool = async (req, res) => {
     if (String(req.user?.role || "").toUpperCase() !== "STATE_MANAGER") {
       return res.status(403).json({ success: false, message: "State Manager access required." });
     }
+    const manager = await User.findOne({
+      _id: req.user._id,
+      role: "STATE_MANAGER",
+      status: "ACTIVE",
+      isDeleted: { $ne: true },
+    }).select("_id state zone").lean();
+    if (!manager) return res.status(403).json({ success: false, code: "STATE_MANAGER_INACTIVE", message: "An active State Manager account is required." });
     const body = req.body || {};
-    const required = ["schoolName", "location", "state"];
+    // This is the deliberately safe, non-portal school-request contract.
+    // It collects the identity fields needed by the existing approval flow,
+    // without accepting portal passwords, bank details, or private assets.
+    const required = ["schoolName", "location", "state", "schoolType", "lga", "contactPerson", "phone", "email", "registrationNumber", "authorizedRepresentative"];
     if (required.some((key) => !String(body[key] || "").trim())) {
-      return res.status(400).json({ success: false, code: "SCHOOL_FIELDS_REQUIRED", message: "School name, location and state are required." });
+      return res.status(400).json({ success: false, code: "SCHOOL_FIELDS_REQUIRED", message: "Complete school identity and representative information is required." });
     }
     const schoolName = String(body.schoolName).trim();
     const location = String(body.location).trim();
+    const requestedState = String(body.state).trim();
+    if (!manager.state || requestedState.toUpperCase() !== String(manager.state).trim().toUpperCase()) {
+      return res.status(403).json({ success: false, code: "STATE_SCOPE_FORBIDDEN", message: "A State Manager may only register schools in their assigned state." });
+    }
     const normalizedSchoolName = normalizeRequestText(schoolName);
     const normalizedLocation = normalizeRequestText(location);
+    const email = String(body.email).trim().toLowerCase();
+    const phone = String(body.phone).trim();
+    const registrationNumber = String(body.registrationNumber).trim().toUpperCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !/^\d{10,15}$/.test(phone)) {
+      return res.status(400).json({ success: false, code: "SCHOOL_CONTACT_INVALID", message: "A valid email and phone number are required." });
+    }
+    const duplicate = await School.findOne({
+      $or: [
+        { normalizedRegistrationNumber: registrationNumber },
+        { normalizedEmail: email },
+        { normalizedPhone: phone },
+      ],
+      status: { $in: activeSchoolStatuses },
+    }).select("_id").lean();
+    if (duplicate || await findAuthoritativeSchoolIdentity({ schoolName, location })) {
+      return res.status(409).json({ success: false, code: "ACTIVE_APPLICATION_EXISTS", message: "An active school application already exists." });
+    }
     const existing = await SchoolRequest.findOne({
       stateManagerId: req.user._id,
       normalizedSchoolName,
@@ -716,14 +747,15 @@ exports.stateManagerCreateSchool = async (req, res) => {
       createdByRole: "STATE_MANAGER",
       stateManagerId: req.user._id,
       schoolName, normalizedSchoolName, location, normalizedLocation,
-      contactPhone: String(body.phone || body.contactPhone || "").trim() || null,
-      schoolType: String(body.schoolType || "").trim() || null,
+      contactPhone: phone,
+      schoolType: String(body.schoolType).trim(),
       proprietorName: String(body.proprietorName || "").trim() || null,
-      registrationNumber: String(body.registrationNumber || "").trim() || null,
-      state: String(body.state).trim(),
-      lga: String(body.lga || "").trim() || null,
-      contactPerson: String(body.contactPerson || "").trim() || null,
-      email: String(body.email || "").trim().toLowerCase() || null,
+      registrationNumber,
+      state: requestedState,
+      lga: String(body.lga).trim(),
+      contactPerson: String(body.contactPerson).trim(),
+      email,
+      authorizedRepresentative: String(body.authorizedRepresentative).trim(),
     });
     await audit({ actor: req.user._id, action: "EDUPAY_STATE_MANAGER_SCHOOL_CREATED", entityType: "EduPaySchoolRequest", entityId: request._id, metadata: { stateManagerId: String(req.user._id) }, req });
     return res.status(201).json({ success: true, request: schoolRequestDto(request) });
@@ -865,6 +897,7 @@ exports.adminSchoolRequestAction = async (req, res) => {
             lga: request.lga || null,
             contactPerson: request.contactPerson || null,
             email: request.email || null,
+            authorizedRepresentative: request.authorizedRepresentative || null,
             normalizedSchoolName: identity.schoolName,
             normalizedLocation: identity.location,
             normalizedAddress: identity.location,
@@ -875,6 +908,12 @@ exports.adminSchoolRequestAction = async (req, res) => {
         } else {
           admittedSchool.status = "APPROVED";
           admittedSchool.active = true;
+        }
+        if (request.createdByRole === "STATE_MANAGER") {
+          admittedSchool.createdBy = request.createdBy || request.parent;
+          admittedSchool.createdByRole = "STATE_MANAGER";
+          admittedSchool.stateManagerId = request.stateManagerId || request.createdBy || request.parent;
+          admittedSchool.authorizedRepresentative = request.authorizedRepresentative || admittedSchool.authorizedRepresentative || null;
         }
         admittedSchool.reviewedBy = req.user._id;
         admittedSchool.reviewedAt = new Date();

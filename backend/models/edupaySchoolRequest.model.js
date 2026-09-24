@@ -20,6 +20,7 @@ const schema = new mongoose.Schema({
   lga: { type: String, trim: true, maxlength: 80, default: null },
   contactPerson: { type: String, trim: true, maxlength: 160, default: null },
   email: { type: String, trim: true, lowercase: true, maxlength: 180, default: null },
+  authorizedRepresentative: { type: String, trim: true, maxlength: 180, default: null },
   schoolName: { type: String, required: true, trim: true, maxlength: 180 },
   normalizedSchoolName: { type: String, required: true, immutable: true },
   location: { type: String, required: true, trim: true, maxlength: 240 },
