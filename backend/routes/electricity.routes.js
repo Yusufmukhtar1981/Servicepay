@@ -16,6 +16,8 @@ const electricityController = require(
   "../controllers/electricity.controller"
 );
 
+const { electricityProviderEnabled } = require("../middleware/providerRouting.middleware");
+
 const router = express.Router();
 
 /*
@@ -99,6 +101,7 @@ router.post(
   "/verify-meter",
   protect,
   electricityEnabled,
+  electricityProviderEnabled,
   electricityController.verifyMeter
 );
 
@@ -114,6 +117,7 @@ router.post(
   requireNoRestriction("BLOCK_BILL_PURCHASES", "BLOCK_WALLET_DEBIT"),
   requireSpendableBalance,
   electricityEnabled,
+  electricityProviderEnabled,
   electricityController.payElectricity
 );
 

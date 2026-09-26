@@ -2,10 +2,14 @@ const express = require("express");
 const { protect, adminOnly } = require("../middleware/auth.middleware");
 const controller = require("../controllers/fintechOperations.controller");
 const adminController = require("../controllers/adminFintechOperations.controller");
+const providerManagementController = require("../controllers/providerManagement.controller");
 
 const router = express.Router();
 router.use(protect, adminOnly("HEAD_OFFICE"));
 router.get("/catalog", controller.catalog);
+router.route("/provider-management")
+  .get(providerManagementController.getProviderManagement)
+  .patch(providerManagementController.patchProviderManagement);
 router.route("/cases").get(controller.listCases).post(controller.createCase);
 router.route("/cases/:id").get(controller.getCase).patch(controller.updateCase);
 router.route("/risk-alerts").get(controller.listAlerts).post(controller.createAlert);

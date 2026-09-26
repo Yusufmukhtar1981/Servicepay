@@ -7,6 +7,7 @@ const Transaction = require(
   "../models/transaction.model"
 );
 const { authorizeTransaction } = require("../services/biometric.service");
+const { ensureProviderCanRouteElectricity } = require("../services/providerManagement.service");
 
 const ELECTRICITY_PAYMENT_URL =
   "https://www.nellobytesystems.com/APIElectricityV1.asp";
@@ -769,6 +770,9 @@ exports.payElectricity = async (
       idempotencyKey: req.get?.("Idempotency-Key") || req.body?.idempotencyKey || req.body?.reference,
     });
 
+    // Recheck the Admin provider state before creating a wallet debit.
+    await ensureProviderCanRouteElectricity();
+
     const reference =
       generateReference();
 
@@ -1199,6 +1203,10 @@ exports.payElectricity = async (
       error.response?.data ||
         error.message
     );
+
+    if (error?.code === "ELECTRICITY_PROVIDER_UNAVAILABLE") {
+      return res.status(503).json({ success: false, code: error.code, message: error.message });
+    }
 
     if (error?.statusCode && [
       "INVALID_TRANSACTION_PIN",
