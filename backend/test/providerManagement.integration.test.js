@@ -178,6 +178,12 @@ test("Airtime and Data truthfully identify the wired ClubKonnect defaults withou
     });
     assert.equal(legacyTransaction.providerReference, "");
     assert.equal(legacyTransaction.providerStatus, "UNKNOWN");
+    legacyTransaction.providerReference = "synthetic-provider-reference";
+    legacyTransaction.providerStatus = "SUCCESS";
+    await legacyTransaction.save();
+    const reloadedTransaction = await Transaction.findById(legacyTransaction._id);
+    assert.equal(reloadedTransaction.providerReference, "synthetic-provider-reference");
+    assert.equal(reloadedTransaction.providerStatus, "SUCCESS");
   } finally {
     if (oldUserId === undefined) delete process.env.CLUBKONNECT_USER_ID;
     else process.env.CLUBKONNECT_USER_ID = oldUserId;

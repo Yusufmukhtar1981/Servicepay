@@ -87,6 +87,10 @@ const transactionSchema =
         default: null,
       },
 
+      // Optional provider evidence; old transactions remain valid without these fields.
+      providerReference: { type: String, trim: true, default: "" },
+      providerStatus: { type: String, default: "UNKNOWN" },
+
       phone: {
         type: String,
         trim: true,
