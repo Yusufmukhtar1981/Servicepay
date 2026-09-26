@@ -10,6 +10,13 @@ const providerStateSchema = new mongoose.Schema({
 }, { _id: false });
 
 const providerManagementConfigSchema = new mongoose.Schema({
+  // The built-in _id index is always unique, even if autoIndex is disabled
+  // in production. A service must never have two competing routing records.
+  _id: {
+    type: String,
+    enum: ["ELECTRICITY", "CABLE"],
+    required: true,
+  },
   service: {
     type: String,
     enum: ["ELECTRICITY", "CABLE"],

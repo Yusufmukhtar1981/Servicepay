@@ -25,6 +25,7 @@ const DEFAULTS = {
 };
 
 const defaultServiceConfig = (service) => new ProviderManagementConfig({
+  _id: service,
   service,
   ...DEFAULTS[service],
 });

@@ -86,6 +86,7 @@ test("persists safe service matrix defaults and audits mutations", async () => {
 
     // A fresh database read proves the value is persisted rather than held in process memory.
     const persisted = await ProviderManagementConfig.findOne({ service: "ELECTRICITY" }).lean();
+    assert.equal(persisted._id, "ELECTRICITY", "service identity must use Mongo's built-in unique _id");
     assert.equal(persisted.providerStates.find((p) => p.provider === "NELLOBYTES").enabled, false);
     assert.equal(persisted.primaryProvider, "NELLOBYTES");
   } finally {
