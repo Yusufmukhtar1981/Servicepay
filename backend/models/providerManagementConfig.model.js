@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const providerStateSchema = new mongoose.Schema({
   provider: {
     type: String,
-    enum: ["NELLOBYTES", "TELECOM_ABODE"],
+    enum: ["CLUBKONNECT", "NELLOBYTES", "TELECOM_ABODE"],
     required: true,
   },
   enabled: { type: Boolean, required: true, default: false },
@@ -14,24 +14,24 @@ const providerManagementConfigSchema = new mongoose.Schema({
   // in production. A service must never have two competing routing records.
   _id: {
     type: String,
-    enum: ["ELECTRICITY", "CABLE"],
+    enum: ["AIRTIME", "DATA", "ELECTRICITY", "CABLE"],
     required: true,
   },
   service: {
     type: String,
-    enum: ["ELECTRICITY", "CABLE"],
+    enum: ["AIRTIME", "DATA", "ELECTRICITY", "CABLE"],
     required: true,
     unique: true,
     index: true,
   },
   primaryProvider: {
     type: String,
-    enum: ["NELLOBYTES", "TELECOM_ABODE", null],
+    enum: ["CLUBKONNECT", "NELLOBYTES", "TELECOM_ABODE", null],
     default: null,
   },
   fallbackProvider: {
     type: String,
-    enum: ["NELLOBYTES", "TELECOM_ABODE", null],
+    enum: ["CLUBKONNECT", "NELLOBYTES", "TELECOM_ABODE", null],
     default: null,
   },
   providerStates: { type: [providerStateSchema], default: [] },

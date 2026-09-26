@@ -5,6 +5,7 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
 const ProviderManagementConfig = require("../models/providerManagementConfig.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
+const Transaction = require("../models/transaction.model");
 const { getProviderManagement, patchProviderManagement } = require("../controllers/providerManagement.controller");
 const { electricityProviderEnabled } = require("../middleware/providerRouting.middleware");
 const { adminOnly } = require("../middleware/auth.middleware");
@@ -42,7 +43,7 @@ const patch = (body) => invoke(patchProviderManagement, makeRequest(body));
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(mongo.getUri(), { dbName: "provider-management-tests" });
-  await Promise.all([ProviderManagementConfig.init(), AdminAuditLog.init()]);
+  await Promise.all([ProviderManagementConfig.init(), AdminAuditLog.init(), Transaction.init()]);
 });
 
 test.after(async () => {
@@ -58,8 +59,12 @@ test("persists safe service matrix defaults and audits mutations", async () => {
   try {
     const first = await invoke(getProviderManagement, makeRequest({}, "HEAD_OFFICE", "GET"));
     assert.equal(first.status, 200);
+    const airtime = first.body.data.items.find((item) => item.service === "AIRTIME");
+    const data = first.body.data.items.find((item) => item.service === "DATA");
     const electricity = first.body.data.items.find((item) => item.service === "ELECTRICITY");
     const cable = first.body.data.items.find((item) => item.service === "CABLE");
+    assert.ok(airtime);
+    assert.ok(data);
     assert.equal(electricity.primaryProvider, "NELLOBYTES");
     assert.equal(electricity.fallbackSupported, false);
     assert.equal(electricity.currentProvider, "NELLOBYTES");
@@ -83,6 +88,14 @@ test("persists safe service matrix defaults and audits mutations", async () => {
     assert.equal(String(changed.body.data.updatedBy), String(actorId));
     assert.equal(await ProviderManagementConfig.countDocuments(), 1, "only the service being changed is persisted");
     assert.equal(await AdminAuditLog.countDocuments({ action: "FINTECH_OPERATION" }), 1);
+    const audit = await AdminAuditLog.findOne({ action: "FINTECH_OPERATION" }).lean();
+    assert.equal(String(audit.actorId), String(actorId));
+    assert.equal(audit.actorRole, "HEAD_OFFICE");
+    assert.ok(audit.createdAt);
+    assert.equal(audit.metadata.service, "ELECTRICITY");
+    assert.equal(audit.metadata.action, "disable");
+    assert.equal(audit.previousData.currentProvider, "NELLOBYTES");
+    assert.equal(audit.newData.currentProvider, null);
 
     // A fresh database read proves the value is persisted rather than held in process memory.
     const persisted = await ProviderManagementConfig.findOne({ service: "ELECTRICITY" }).lean();
@@ -94,6 +107,76 @@ test("persists safe service matrix defaults and audits mutations", async () => {
     else process.env.NELLOBYTES_USERID = oldUserId;
     if (oldApiKey === undefined) delete process.env.NELLOBYTES_APIKEY;
     else process.env.NELLOBYTES_APIKEY = oldApiKey;
+  }
+});
+
+test("Airtime and Data truthfully identify the wired ClubKonnect defaults without changing purchase routing", async () => {
+  const oldUserId = process.env.CLUBKONNECT_USER_ID;
+  const oldApiKey = process.env.CLUBKONNECT_API_KEY;
+  process.env.CLUBKONNECT_USER_ID = "test-clubkonnect-user";
+  process.env.CLUBKONNECT_API_KEY = "test-clubkonnect-key";
+  try {
+    const result = await invoke(getProviderManagement, makeRequest({}, "HEAD_OFFICE", "GET"));
+    assert.equal(result.status, 200);
+    for (const service of ["AIRTIME", "DATA"]) {
+      const config = result.body.data.items.find((item) => item.service === service);
+      assert.equal(config.primaryProvider, "CLUBKONNECT");
+      assert.equal(config.currentProvider, "CLUBKONNECT");
+      assert.equal(config.fallbackProvider, null);
+      assert.equal(config.fallbackSupported, false);
+      const legacy = config.providers.find((provider) => provider.provider === "CLUBKONNECT");
+      const telecomAbode = config.providers.find((provider) => provider.provider === "TELECOM_ABODE");
+      assert.equal(legacy.enabled, true);
+      assert.equal(legacy.available, true);
+      assert.equal(telecomAbode.enabled, false);
+      assert.equal(telecomAbode.available, false);
+
+      const disable = await patch({ service, action: "disable", provider: "CLUBKONNECT" });
+      assert.equal(disable.status, 409);
+      assert.equal(disable.body.code, "ROUTING_CONTROL_UNAVAILABLE");
+      const select = await patch({ service, action: "setPrimary", provider: "TELECOM_ABODE" });
+      assert.equal(select.status, 409);
+      assert.equal(select.body.code, "TELECOM_ABODE_PURCHASES_LOCKED");
+      const enable = await patch({ service, action: "enable", provider: "TELECOM_ABODE" });
+      assert.equal(enable.status, 409);
+      assert.equal(enable.body.code, "TELECOM_ABODE_PURCHASES_LOCKED");
+    }
+    const responseJson = JSON.stringify(result.body);
+    assert.equal(responseJson.includes(process.env.CLUBKONNECT_USER_ID), false);
+    assert.equal(responseJson.includes(process.env.CLUBKONNECT_API_KEY), false);
+    assert.equal(
+      await ProviderManagementConfig.countDocuments({ service: { $in: ["AIRTIME", "DATA"] } }),
+      0,
+      "GET and rejected actions do not persist Airtime/Data defaults",
+    );
+
+    process.env.CLUBKONNECT_USER_ID = " \t ";
+    process.env.CLUBKONNECT_API_KEY = " \t ";
+    const unconfigured = await invoke(getProviderManagement, makeRequest({}, "HEAD_OFFICE", "GET"));
+    for (const service of ["AIRTIME", "DATA"]) {
+      const config = unconfigured.body.data.items.find((item) => item.service === service);
+      assert.equal(config.primaryProvider, "CLUBKONNECT");
+      assert.equal(config.currentProvider, null);
+      const legacy = config.providers.find((provider) => provider.provider === "CLUBKONNECT");
+      assert.equal(legacy.enabled, true);
+      assert.equal(legacy.available, false);
+      assert.match(legacy.reason, /credentials are not configured/i);
+    }
+
+    const legacyTransaction = await Transaction.create({
+      reference: "legacy-airtime-provider-management",
+      customerId: actorId,
+      serviceType: "AIRTIME",
+      amount: 100,
+      status: "SUCCESSFUL",
+    });
+    assert.equal(legacyTransaction.providerReference, "");
+    assert.equal(legacyTransaction.providerStatus, "UNKNOWN");
+  } finally {
+    if (oldUserId === undefined) delete process.env.CLUBKONNECT_USER_ID;
+    else process.env.CLUBKONNECT_USER_ID = oldUserId;
+    if (oldApiKey === undefined) delete process.env.CLUBKONNECT_API_KEY;
+    else process.env.CLUBKONNECT_API_KEY = oldApiKey;
   }
 });
 
@@ -149,7 +232,7 @@ test("Telecom Abode remains locked even with an API key and fallback fails close
     assert.equal(unknown.status, 400);
     const extra = await patch({ service: "ELECTRICITY", action: "disable", provider: "NELLOBYTES", arbitrary: true });
     assert.equal(extra.status, 400);
-    const cableEnable = await patch({ service: "CABLE", action: "enable", provider: "NELLOBYTES" });
+    const cableEnable = await patch({ service: "CABLE", action: "enable", provider: "CLUBKONNECT" });
     assert.equal(cableEnable.status, 409);
     assert.equal(cableEnable.body.code, "CABLE_PURCHASE_UNAVAILABLE");
 

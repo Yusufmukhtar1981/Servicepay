@@ -33,7 +33,7 @@ exports.patchProviderManagement = async (req, res) => {
   const action = typeof body.action === "string" ? body.action.trim() : "";
   const provider = typeof body.provider === "string" ? body.provider.trim().toUpperCase() : "";
   if (!Object.hasOwn(DEFAULTS, service)) {
-    return fail(res, 400, "INVALID_SERVICE", "Service must be ELECTRICITY or CABLE.");
+    return fail(res, 400, "INVALID_SERVICE", "Service must be AIRTIME, DATA, ELECTRICITY, or CABLE.");
   }
   if (!["enable", "disable", "setPrimary", "setFallback"].includes(action)) {
     return fail(res, 400, "INVALID_ACTION", "Action must be enable, disable, setPrimary, or setFallback.");
@@ -60,6 +60,11 @@ exports.patchProviderManagement = async (req, res) => {
   if (service === "CABLE") {
     return fail(res, 409, "CABLE_PURCHASE_UNAVAILABLE",
       "Cable purchasing is unavailable: no cable purchase route or provider adapter is implemented.");
+  }
+  if (["AIRTIME", "DATA"].includes(service) &&
+      !(provider === "TELECOM_ABODE" && action === "disable")) {
+    return fail(res, 409, "ROUTING_CONTROL_UNAVAILABLE",
+      `${service} purchases are currently hard-wired to ClubKonnect. Provider control changes are locked until the purchase route has an atomic management gate.`);
   }
 
   let updated;
