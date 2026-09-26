@@ -61,7 +61,7 @@ const getStatusValue = (data) => {
 
 const normalizePurchaseStatus = (data) => {
   const status = getStatusValue(data);
-  if (status === "SUCCESSFUL") return "SUCCESSFUL";
+  if (status === "SUCCESSFUL") return "SUCCESS";
   if (status === "PENDING") return "PENDING";
   if (status === "FAILED") return "FAILED";
   return null;
@@ -144,32 +144,52 @@ const normalizeValidation = (data) => {
   });
 };
 
-const normalizePurchase = (data, { service, meterType }) => {
-  const status = normalizePurchaseStatus(data);
-  if (!status || !data || typeof data !== "object" || Array.isArray(data)) {
+const normalizePurchase = (data, { service, meterType, servicepayReference }) => {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
     throw new TelecomAbodeError("Telecom Abode purchase response had no unambiguous status.", {
       code: "INVALID_PROVIDER_RESPONSE",
     });
   }
+  const providerStatus = getStatusValue(data);
+  if (providerStatus === "AMBIGUOUS") {
+    throw new TelecomAbodeError("Telecom Abode purchase response had conflicting statuses.", {
+      code: "INVALID_PROVIDER_RESPONSE",
+    });
+  }
+  const status = normalizePurchaseStatus(data) || "UNKNOWN";
   const providerRequestId = typeof data["request-id"] === "string"
     ? data["request-id"].trim()
     : "";
-  if (status === "SUCCESSFUL" && !providerRequestId) {
+  if (status === "SUCCESS" && !providerRequestId) {
     return {
       status: "PENDING",
+      provider: "TELECOM_ABODE",
       service,
+      servicepayReference,
       reason: "MISSING_PROVIDER_CORRELATION",
     };
   }
-  const result = { status, service };
+  const result = {
+    provider: "TELECOM_ABODE",
+    service,
+    servicepayReference,
+    status,
+    ...((data.status ?? data.Status) === undefined
+      ? {}
+      : { rawProviderStatus: data.status ?? data.Status }),
+  };
   if (typeof data.message === "string" && data.message.trim()) {
     result.message = data.message.trim();
+    result.providerMessage = data.message.trim();
   }
-  if (providerRequestId) result.requestId = providerRequestId;
+  if (providerRequestId) {
+    result.requestId = providerRequestId;
+    result.providerReference = providerRequestId;
+  }
   if (typeof data.amount === "string" || typeof data.amount === "number") {
     result.amount = String(data.amount);
   }
-  if (service === "electricity" && meterType === "prepaid" &&
+  if (status === "SUCCESS" && service === "electricity" && meterType === "prepaid" &&
       typeof data.token === "string" && data.token.trim()) {
     result.token = data.token.trim();
     result.transactionData = { token: result.token };
@@ -178,22 +198,31 @@ const normalizePurchase = (data, { service, meterType }) => {
 };
 
 const normalizeTransaction = (data) => {
-  const status = normalizePurchaseStatus(data);
-  if (!status) {
-    throw new TelecomAbodeError("Telecom Abode transaction response had no recognized status.", {
-      code: "INVALID_PROVIDER_RESPONSE",
-    });
-  }
-  const result = { status };
+  const status = normalizePurchaseStatus(data) || "UNKNOWN";
+  const rawProviderStatus = data.status ?? data.Status;
+  const result = {
+    provider: "TELECOM_ABODE",
+    status,
+    ...(rawProviderStatus === undefined ? {} : { rawProviderStatus }),
+  };
   for (const field of ["request-id", "amount", "new_balance", "token", "service"]) {
     const value = data[field];
     if (typeof value === "string" || typeof value === "number") {
       result[field === "request-id" ? "requestId" : field === "new_balance" ? "newBalance" : field] =
         String(value);
+      if (field === "request-id") result.providerReference = String(value);
     }
   }
   if (typeof data.message === "string" && data.message.trim()) {
     result.message = data.message.trim();
+    result.providerMessage = data.message.trim();
+  } else {
+    const providerMessage = [data.api_response, data.response]
+      .find((value) => typeof value === "string" && value.trim());
+    if (providerMessage) result.providerMessage = providerMessage.trim();
+  }
+  if (typeof data.token === "string" && data.token.trim()) {
+    result.meterToken = data.token.trim();
   }
   return result;
 };
@@ -203,7 +232,6 @@ const createTelecomAbodeService = ({
   transport = axios,
   baseUrl = DEFAULT_BASE_URL,
   timeout = DEFAULT_TIMEOUT_MS,
-  enablePurchases = false,
 } = {}) => {
   const verifiedCustomers = new Set();
   const submittedRequestIds = new Set();
@@ -251,12 +279,14 @@ const createTelecomAbodeService = ({
   };
 
   const ensurePurchasesEnabled = () => {
-    if (!enablePurchases) {
-      throw new TelecomAbodeError(
-        "Telecom Abode purchases are disabled until duplicate-request and provider requery safety are verified.",
-        { statusCode: 503, code: "PURCHASES_DISABLED" }
-      );
-    }
+    // No option, environment variable, or caller may unlock provider purchases.
+    // The adapter is currently scaffolding only: provider request correlation,
+    // authoritative query semantics, and financial dispatch safety are not
+    // verified, so purchase methods must remain permanently fail-closed here.
+    throw new TelecomAbodeError(
+      "Telecom Abode purchases are locked until provider contracts and financial safeguards are verified.",
+      { statusCode: 503, code: "PURCHASES_DISABLED" }
+    );
   };
 
   const claimRequestId = (requestId) => {
@@ -341,7 +371,11 @@ const createTelecomAbodeService = ({
         "request-id": normalizedRequestId,
       },
     });
-    return normalizePurchase(response, { service: "electricity", meterType });
+    return normalizePurchase(response, {
+      service: "electricity",
+      meterType,
+      servicepayReference: normalizedRequestId,
+    });
   };
 
   const validateCable = async ({ cable, iuc } = {}) => {
@@ -375,7 +409,10 @@ const createTelecomAbodeService = ({
         "request-id": normalizedRequestId,
       },
     });
-    return normalizePurchase(response, { service: "cable" });
+    return normalizePurchase(response, {
+      service: "cable",
+      servicepayReference: normalizedRequestId,
+    });
   };
 
   const getTransactionByRequestId = async (requestId) => {
@@ -416,5 +453,6 @@ const defaultService = createTelecomAbodeService();
 module.exports = {
   TelecomAbodeError,
   createTelecomAbodeService,
+  normalizePurchase,
   ...defaultService,
 };

@@ -74,17 +74,100 @@ const hasClubKonnectCredentials = () => Boolean(
   String(process.env.CLUBKONNECT_API_KEY || "").trim()
 );
 
+const telecomAbodeServicesWithAdapter = new Set(["ELECTRICITY", "CABLE"]);
+
+const getProviderCapabilities = (service, provider) => {
+  const telecomAbode = provider === "TELECOM_ABODE";
+  const adapterImplemented = telecomAbode
+    ? telecomAbodeServicesWithAdapter.has(service)
+    : (provider === "CLUBKONNECT" && ["AIRTIME", "DATA"].includes(service)) ||
+      (provider === "NELLOBYTES" && service === "ELECTRICITY");
+  const credentialsConfigured = telecomAbode
+    ? Boolean(String(process.env.TELECOM_ABODE_API_KEY || "").trim())
+    : provider === "CLUBKONNECT"
+      ? hasClubKonnectCredentials()
+      : provider === "NELLOBYTES"
+        ? hasLegacyElectricityCredentials()
+        : false;
+
+  // The Telecom Abode catalog/validation APIs exist, but no live catalog is
+  // cached or verified here. Incumbent integrations likewise have no common
+  // catalog contract exposed through this management service.
+  const catalogAvailable = false;
+  // TA purchase entry points are intentionally hard-locked regardless of the
+  // API key or an adapter caller's options. Existing incumbent routes remain
+  // the only purchase-capable paths.
+  const purchaseSupported = !telecomAbode && adapterImplemented;
+  // TA's base transaction collection has no documented single-reference
+  // lookup semantics, and the webhook has no verified sender authentication.
+  const querySupported = false;
+  const webhookSupported = false;
+  const webhookVerified = false;
+  const financialSafetyVerified = false;
+  const productionReady = adapterImplemented && credentialsConfigured &&
+    catalogAvailable && purchaseSupported && querySupported &&
+    webhookSupported && webhookVerified && financialSafetyVerified;
+
+  const readinessReasons = [];
+  if (!adapterImplemented) {
+    readinessReasons.push(`No ${provider} adapter is implemented for ${service}.`);
+  }
+  if (!credentialsConfigured) {
+    readinessReasons.push(`${provider} credentials are not configured.`);
+  }
+  if (!catalogAvailable) {
+    readinessReasons.push("A verified, available service catalog is not established.");
+  }
+  if (!purchaseSupported) {
+    readinessReasons.push(telecomAbode
+      ? "Telecom Abode purchases are locked; request-ID mapping and production financial safeguards are unverified."
+      : `No ${provider} purchase route is implemented for ${service}.`);
+  }
+  if (!querySupported) {
+    readinessReasons.push(telecomAbode
+      ? "Telecom Abode's authoritative single-transaction query contract is undocumented."
+      : "A verified transaction-query capability is not established.");
+  }
+  if (!webhookSupported) {
+    readinessReasons.push(telecomAbode
+      ? "Webhook updates are disabled because sender authentication is undocumented."
+      : "A verified webhook processing capability is not established.");
+  }
+  if (!webhookVerified) {
+    readinessReasons.push("Webhook sender verification is not established.");
+  }
+  if (!financialSafetyVerified) {
+    readinessReasons.push("Provider-specific financial dispatch and settlement safety is not verified.");
+  }
+
+  return {
+    adapterImplemented,
+    credentialsConfigured,
+    catalogAvailable,
+    purchaseSupported,
+    querySupported,
+    webhookSupported,
+    webhookVerified,
+    financialSafetyVerified,
+    productionReady,
+    readinessReasons,
+  };
+};
+
 const isAvailable = (service, provider) => {
-  if (service === "ELECTRICITY" && provider === "NELLOBYTES") {
-    return hasLegacyElectricityCredentials();
-  }
-  if (["AIRTIME", "DATA"].includes(service) && provider === "CLUBKONNECT") {
-    return hasClubKonnectCredentials();
-  }
-  return false;
+  const capabilities = getProviderCapabilities(service, provider);
+  // Availability is an existing route's operational eligibility, not the
+  // stronger productionReady assessment for a newly introduced provider.
+  return capabilities.adapterImplemented &&
+    capabilities.credentialsConfigured &&
+    capabilities.purchaseSupported;
 };
 
 const unavailableReason = (service, provider) => {
+  const capabilities = getProviderCapabilities(service, provider);
+  if (provider === "TELECOM_ABODE") {
+    return capabilities.readinessReasons.join(" ");
+  }
   if (service === "CABLE") {
     return "No cable purchase route or provider adapter is implemented; cable purchases are unavailable.";
   }
@@ -98,9 +181,6 @@ const unavailableReason = (service, provider) => {
       ? null
       : "ClubKonnect credentials are not configured.";
   }
-  if (provider === "TELECOM_ABODE") {
-    return "Telecom Abode purchasing is locked until financial contracts and production safeguards are verified.";
-  }
   if (service === "AIRTIME" || service === "DATA") {
     return "ClubKonnect is the existing purchase route; Telecom Abode is unavailable.";
   }
@@ -111,11 +191,14 @@ const serializeConfig = (config) => {
   const service = config.service;
   const providers = SERVICE_PROVIDERS[service].map((provider) => {
     const state = config.providerStates.find((item) => item.provider === provider);
+    const capabilities = getProviderCapabilities(service, provider);
     const available = isAvailable(service, provider);
     return {
       provider,
       enabled: Boolean(state?.enabled),
       available,
+      capabilities,
+      readinessReasons: capabilities.readinessReasons,
       reason: available ? null : unavailableReason(service, provider),
     };
   });
@@ -171,6 +254,7 @@ module.exports = {
   getServiceConfig,
   getOrCreateServiceConfigForMutation,
   isAvailable,
+  getProviderCapabilities,
   readProviderManagementMatrix,
   serializeConfig,
   ensureProviderCanRouteElectricity,
