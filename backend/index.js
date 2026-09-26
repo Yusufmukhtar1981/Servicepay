@@ -45,6 +45,9 @@ const { reconcileEduPaySchoolAssets } = require("./controllers/edupay.controller
 const paystackRoutes = require(
   "./routes/paystack.routes"
 );
+const telecomAbodeWebhookRoutes = require(
+  "./routes/telecomAbodeWebhook.routes"
+);
 const riderRoutes = require("./routes/rider.routes");
 
 const clubkonnectRoutes = require(
@@ -239,6 +242,9 @@ function sendServiceVersion(req, res) {
 app.get("/", sendServiceHealth);
 app.get("/version", sendServiceVersion);
 app.get("/api/version", sendServiceVersion);
+// Keep the public provider callback reachable without granting unsigned
+// notifications authority to change a transaction or wallet.
+app.use("/api/webhooks/telecom-abode", telecomAbodeWebhookRoutes);
 
 
 /*
