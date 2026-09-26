@@ -6,6 +6,7 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const ProviderManagementConfig = require("../models/providerManagementConfig.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 const Transaction = require("../models/transaction.model");
+const User = require("../models/user.model");
 const { getProviderManagement, patchProviderManagement } = require("../controllers/providerManagement.controller");
 const { electricityProviderEnabled } = require("../middleware/providerRouting.middleware");
 const { adminOnly } = require("../middleware/auth.middleware");
@@ -163,9 +164,14 @@ test("Airtime and Data truthfully identify the wired ClubKonnect defaults withou
       assert.match(legacy.reason, /credentials are not configured/i);
     }
 
+    const customer = await User.create({
+      fullName: "Provider Management Test Customer",
+      phone: `080${new mongoose.Types.ObjectId().toString().slice(-8)}`,
+      password: "provider-management-test-password",
+    });
     const legacyTransaction = await Transaction.create({
       reference: "legacy-airtime-provider-management",
-      customerId: actorId,
+      customerId: customer._id,
       serviceType: "AIRTIME",
       amount: 100,
       status: "SUCCESSFUL",
