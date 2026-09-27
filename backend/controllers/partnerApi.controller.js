@@ -7,6 +7,10 @@ const PartnerTransaction = require("../models/partnerTransaction.model");
 const PartnerAuditLog = require("../models/partnerAuditLog.model");
 const DataPriceOverride = require("../models/dataPriceOverride.model");
 const { hasPartnerPermission } = require("../middleware/partnerAuth.middleware");
+const {
+  getServiceConfig,
+  isAvailable,
+} = require("../services/providerManagement.service");
 
 const AIRTIME_URL = "https://www.nellobytesystems.com/APIAirtimeV1.asp";
 const DATA_URL = "https://www.nellobytesystems.com/APIDatabundleV1.asp";
@@ -143,6 +147,23 @@ const providerOrderId = (data) =>
 
 const providerRequestId = (data) =>
   String(field(data, ["requestid", "request_id", "requestreference", "request_reference"]) || "").trim().slice(0, 250);
+
+const ensurePartnerDataProvider = async () => {
+  const config = await getServiceConfig("DATA");
+  const provider = String(config.primaryProvider || "").toUpperCase();
+  const state = config.providerStates.find((item) => item.provider === provider);
+  if (
+    provider !== "CLUBKONNECT" ||
+    !state?.enabled ||
+    !isAvailable("DATA", provider)
+  ) {
+    const error = new Error(
+      "Partner DATA API does not support the currently selected primary provider.",
+    );
+    error.statusCode = 503;
+    throw error;
+  }
+};
 
 const sanitizeProviderPayload = (value, depth = 0) => {
   if (depth > 4 || value === null || value === undefined) return value ?? null;
@@ -441,6 +462,9 @@ const finalizeProviderSuccess = async ({ transaction, providerResponse }) => {
 const purchase = async (req, res, service) => {
   let reservation;
   try {
+    if (service === "DATA") {
+      await ensurePartnerDataProvider();
+    }
     const requestKey = idempotencyKey(req);
     if (!requestKey || requestKey.length > 120) {
       return res.status(400).json({ success: false, message: "A valid Idempotency-Key header is required." });
@@ -592,6 +616,7 @@ exports.buyData = (req, res) => purchase(req, res, "DATA");
 
 exports.getDataPlans = async (req, res) => {
   try {
+    await ensurePartnerDataProvider();
     const network = normalizeNetwork(req.params.network);
     if (!network) return res.status(400).json({ success: false, message: "Select MTN, Glo, Airtel or 9mobile." });
     const providerCredentials = credentials();

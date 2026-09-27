@@ -4,6 +4,7 @@ const {
   buyAirtime,
   buyData,
   getDataPlans,
+  getDataReconciliationQueue,
 } = require(
   "../controllers/clubkonnect.controller"
 );
@@ -20,6 +21,13 @@ const {
 } = require(
   "../middleware/auth.middleware"
 );
+const {
+  loadStaffRole,
+} = require("../middleware/staffPermission.middleware");
+const {
+  STAFF_PERMISSIONS: P,
+  normalizeStaffPermission,
+} = require("../config/staffPermissions");
 const {
   requireNoRestriction,
   requireSpendableBalance,
@@ -50,6 +58,22 @@ const headOfficeOnly = (
   next();
 };
 
+const requireExplicitFinanceView = (req, res, next) => {
+  const required = normalizeStaffPermission(P.FINANCE_VIEW);
+  const permissions = new Set(
+    (req.staffAccess?.permissions || [])
+      .map(normalizeStaffPermission)
+      .filter(Boolean),
+  );
+  if (!required || !permissions.has(required)) {
+    return res.status(403).json({
+      success: false,
+      message: "Explicit finance view permission is required.",
+    });
+  }
+  return next();
+};
+
 router.get(
   "/data-plans/:network",
   protect,
@@ -72,6 +96,14 @@ router.post(
   requireSpendableBalance,
   require("../middleware/transactionPin.middleware").requireTransactionPin,
   buyData
+);
+
+router.get(
+  "/admin/data-reconciliation",
+  protect,
+  loadStaffRole,
+  requireExplicitFinanceView,
+  getDataReconciliationQueue
 );
 
 router.get(

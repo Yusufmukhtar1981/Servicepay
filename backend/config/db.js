@@ -1,5 +1,6 @@
 const fixCardRequestReferenceIndex = require('../scripts/fixCardRequestReferenceIndex');
 const migrateOrganizationMembers = require("../scripts/migrateOrganizationMembers");
+const ensureTransactionIdempotencyIndex = require("../scripts/ensureTransactionIdempotencyIndex");
 const mongoose = require("mongoose");
 
 const connectDB = async () => {
@@ -15,6 +16,7 @@ const connectDB = async () => {
 
     await fixCardRequestReferenceIndex();
     await migrateOrganizationMembers();
+    await ensureTransactionIdempotencyIndex(connection.connection.db);
 
     console.log(
       `MongoDB connected: ${connection.connection.host}`

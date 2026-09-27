@@ -5,6 +5,19 @@ const DataPriceOverride = require(
 const clubkonnectController = require(
   "./clubkonnect.controller"
 );
+const { getServiceConfig } = require("../services/providerManagement.service");
+
+const requireClubKonnectDataPrimary = async (res) => {
+  const config = await getServiceConfig("DATA");
+  if (config.primaryProvider !== "CLUBKONNECT") {
+    res.status(409).json({
+      success: false,
+      message: "Data pricing overrides are scoped to ClubKonnect and are unavailable while another DATA provider is primary.",
+    });
+    return false;
+  }
+  return true;
+};
 
 const normalizeNetwork = (value = "") => {
   const v = String(value)
@@ -28,6 +41,7 @@ const normalizeNetwork = (value = "") => {
 
 exports.getAdminDataPricing = async (req, res) => {
   try {
+    if (!(await requireClubKonnectDataPrimary(res))) return;
     const networkCode = normalizeNetwork(
       req.params.network
     );
@@ -128,6 +142,7 @@ exports.saveDataSellingPrice = async (
   res
 ) => {
   try {
+    if (!(await requireClubKonnectDataPrimary(res))) return;
     const networkCode = normalizeNetwork(
       req.params.network
     );

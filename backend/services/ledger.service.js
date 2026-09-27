@@ -55,6 +55,7 @@ const postLedgerEntry = async ({
   idempotencyKey,
   transactionId = null,
   relatedUser = null,
+  reversalOf = null,
   narration = "",
   metadata = {},
   session = null,
@@ -182,6 +183,7 @@ const postLedgerEntry = async ({
       finalIdempotencyKey,
     transactionId,
     relatedUser,
+    reversalOf,
     narration:
       String(narration || "").trim(),
     metadata:
@@ -355,6 +357,7 @@ const reverseLedgerEntry = async ({
         original.transactionId,
       relatedUser:
         original.relatedUser,
+      reversalOf: original._id,
       narration:
         narration ||
         `Reversal of ledger entry ${original._id}`,

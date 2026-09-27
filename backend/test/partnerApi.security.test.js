@@ -7,6 +7,7 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const Partner = require("../models/partner.model");
 const PartnerTransaction = require("../models/partnerTransaction.model");
 const PartnerAuditLog = require("../models/partnerAuditLog.model");
+const ProviderManagementConfig = require("../models/providerManagementConfig.model");
 const partnerController = require("../controllers/partner.controller");
 const partnerApiController = require("../controllers/partnerApi.controller");
 const partnerTransactionsController = require("../controllers/partnerTransactions.controller");
@@ -18,7 +19,7 @@ const {
 
 let mongo;
 let sequence = 0;
-const models = [Partner, PartnerTransaction, PartnerAuditLog];
+const models = [Partner, PartnerTransaction, PartnerAuditLog, ProviderManagementConfig];
 
 const hash = (value) =>
   crypto.createHash("sha256").update(value).digest("hex");
@@ -129,6 +130,39 @@ test.after(async () => {
 
 test.beforeEach(async () => {
   await Promise.all(models.map((model) => model.deleteMany({})));
+});
+
+test("Partner DATA API fails closed when Telecom Abode is the selected primary", async () => {
+  const partner = await createPartner({ permissions: ["DATA"] });
+  await ProviderManagementConfig.create({
+    _id: "DATA",
+    service: "DATA",
+    primaryProvider: "TELECOM_ABODE",
+    fallbackProvider: null,
+    providerStates: [
+      { provider: "CLUBKONNECT", enabled: true },
+      { provider: "TELECOM_ABODE", enabled: true },
+    ],
+  });
+  const purchase = await call(partnerApiController.buyData, {
+    partner,
+    body: {
+      network: "MTN",
+      phone: "08012345678",
+      planCode: "77",
+      amount: 150,
+      reference: "partner-ta-data-unsupported",
+    },
+    headers: { "idempotency-key": "partner-ta-data-unsupported" },
+  });
+  const plans = await call(partnerApiController.getDataPlans, {
+    partner,
+    params: { network: "MTN" },
+  });
+  assert.equal(purchase.status, 503);
+  assert.match(purchase.body.message, /currently selected primary provider/i);
+  assert.equal(plans.status, 503);
+  assert.equal(await PartnerTransaction.countDocuments({ partnerId: partner._id }), 0);
 });
 
 test("partner authentication accepts valid credentials and blocks suspended access without status leakage", async () => {

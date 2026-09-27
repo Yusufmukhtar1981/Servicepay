@@ -1,4 +1,5 @@
 const axios = require("axios");
+const Transaction = require("../models/transaction.model");
 
 const DEFAULT_BASE_URL = "https://telecomabode.com.ng/api";
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -73,6 +74,141 @@ const getCollection = (data, collectionName) => {
   if (Array.isArray(data[collectionName])) return data[collectionName];
   if (Array.isArray(data.data)) return data.data;
   return null;
+};
+
+const DATA_NETWORK_NAMES = Object.freeze(["MTN", "Airtel", "Glo", "9mobile"]);
+const DATA_NETWORK_ALIASES = Object.freeze({
+  ETISALAT: "9MOBILE",
+  T2MOBILE: "9MOBILE",
+  T2: "9MOBILE",
+});
+const normalizeNetworkName = (value) =>
+  typeof value === "string" ? value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
+
+const normalizeDataNetworks = (data) => {
+  if (!Array.isArray(data) || data.length !== DATA_NETWORK_NAMES.length) {
+    throw new TelecomAbodeError("Telecom Abode returned an incomplete or invalid data network list.", {
+      code: "INVALID_PROVIDER_RESPONSE",
+    });
+  }
+
+  const expectedNames = new Map(DATA_NETWORK_NAMES.map((name) => [normalizeNetworkName(name), name]));
+  const ids = new Set();
+  const names = new Set();
+  const networks = data.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new TelecomAbodeError("Telecom Abode returned an invalid data network entry.", {
+        code: "INVALID_PROVIDER_RESPONSE",
+      });
+    }
+    const id = item.id;
+    const key = normalizeNetworkName(item.network);
+    const name = expectedNames.get(key);
+    if (!Number.isSafeInteger(id) || id <= 0 || !name || ids.has(id) || names.has(key)) {
+      throw new TelecomAbodeError("Telecom Abode returned ambiguous data network mappings.", {
+        code: "INVALID_PROVIDER_RESPONSE",
+      });
+    }
+    ids.add(id);
+    names.add(key);
+    return { id, network: name };
+  });
+
+  if (names.size !== expectedNames.size || [...expectedNames.keys()].some((name) => !names.has(name))) {
+    throw new TelecomAbodeError("Telecom Abode returned an incomplete data network mapping.", {
+      code: "INVALID_PROVIDER_RESPONSE",
+    });
+  }
+  return networks;
+};
+
+const normalizeDataPlans = (data, dataNetworks) => {
+  if (!Array.isArray(dataNetworks) || dataNetworks.length !== DATA_NETWORK_NAMES.length) {
+    throw new TelecomAbodeError("Validated Telecom Abode data network metadata is required.", {
+      code: "INVALID_PROVIDER_RESPONSE",
+    });
+  }
+  const networkByName = new Map(dataNetworks.map((network) => [
+    normalizeNetworkName(network.network),
+    network,
+  ]));
+  for (const [alias, canonical] of Object.entries(DATA_NETWORK_ALIASES)) {
+    const network = networkByName.get(canonical);
+    if (network) networkByName.set(alias, network);
+  }
+  const status = getStatusValue(data);
+  if (status !== null && status !== "SUCCESSFUL") {
+    throw new TelecomAbodeError("Telecom Abode did not return data plans.", {
+      code: "PROVIDER_REJECTED",
+    });
+  }
+  const collection = Array.isArray(data?.data_plans)
+    ? data.data_plans
+    : Array.isArray(data?.dataPlans)
+      ? data.dataPlans
+      : getCollection(data, "plans");
+  if (!collection || collection.length === 0) {
+    throw new TelecomAbodeError("Telecom Abode returned no unambiguous data plans.", {
+      code: "INVALID_PROVIDER_RESPONSE",
+    });
+  }
+
+  const ids = new Set();
+  return collection.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new TelecomAbodeError("Telecom Abode returned an invalid data plan entry.", {
+        code: "INVALID_PROVIDER_RESPONSE",
+      });
+    }
+
+    const rawId = item.plan_id;
+    const id = typeof rawId === "string" && /^\d+$/.test(rawId.trim())
+      ? Number(rawId.trim())
+      : rawId;
+    const networkValue = normalizeNetworkName(item.network);
+    const network = networkByName.get(networkValue);
+    const datasize = typeof item.datasize === "string" ? item.datasize.trim() : "";
+    const day = typeof item.day === "string" || typeof item.day === "number"
+      ? String(item.day).trim()
+      : "";
+    const type = typeof item.type === "string" ? item.type.trim() : "";
+    const rawPrice = item.price;
+    const priceText = typeof rawPrice === "number"
+      ? String(rawPrice)
+      : typeof rawPrice === "string"
+        ? rawPrice.trim()
+        : "";
+    const price = /^[0-9]+(?:\.[0-9]+)?$/.test(priceText) ? Number(priceText) : NaN;
+
+    if (
+      !Number.isSafeInteger(id) ||
+      id <= 0 ||
+      ids.has(id) ||
+      !network ||
+      !datasize ||
+      !day ||
+      !type ||
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      throw new TelecomAbodeError("Telecom Abode returned an ambiguous data plan entry.", {
+        code: "INVALID_PROVIDER_RESPONSE",
+      });
+    }
+    ids.add(id);
+    return {
+      id: String(id),
+      code: String(id),
+      name: `${datasize} ${type} - ${day}`,
+      price,
+      providerPrice: price,
+      networkId: network.id,
+      network: network.network,
+      type,
+      datasize,
+      day,
+    };
+  });
 };
 
 const normalizeNamedItems = (data, itemLabel) => {
@@ -197,6 +333,80 @@ const normalizePurchase = (data, { service, meterType, servicepayReference }) =>
   return result;
 };
 
+const buildDataPurchasePayload = ({
+  network,
+  phone,
+  plan,
+  request_id,
+  planMetadata,
+} = {}) => {
+  if (!Number.isSafeInteger(network) || network <= 0) {
+    fail("network must be a positive provider network integer.");
+  }
+  const recipientPhone = requiredText(phone, "phone");
+  if (!Number.isSafeInteger(plan) || plan <= 0) {
+    fail("plan must be a positive integer.");
+  }
+  const requestId = requiredText(request_id, "request-id");
+  if (!planMetadata || typeof planMetadata !== "object" || Array.isArray(planMetadata)) {
+    fail("Provider plan metadata is required to verify network and plan identifiers.");
+  }
+
+  const metadataPlanId = typeof planMetadata.plan_id === "string" && /^\d+$/.test(planMetadata.plan_id.trim())
+    ? Number(planMetadata.plan_id.trim())
+    : planMetadata.plan_id;
+  if (
+    !Number.isSafeInteger(metadataPlanId) ||
+    metadataPlanId !== plan ||
+    Object.prototype.hasOwnProperty.call(planMetadata, "networkCode") ||
+    !Number.isSafeInteger(planMetadata.network) ||
+    planMetadata.network <= 0 ||
+    planMetadata.network !== network
+  ) {
+    fail("network and plan must match the provider's documented plan metadata.");
+  }
+
+  return {
+    network,
+    phone: recipientPhone,
+    plan,
+    "request-id": requestId,
+  };
+};
+
+const normalizeDataPurchaseResponse = (data, { requestId, servicepayReference = requestId } = {}) => {
+  const expectedRequestId = requiredText(requestId, "request-id");
+  const providerRequestId = data && typeof data === "object" && !Array.isArray(data) &&
+    typeof data["request-id"] === "string"
+    ? data["request-id"].trim()
+    : "";
+  if (providerRequestId && providerRequestId !== expectedRequestId) {
+    return {
+      provider: "TELECOM_ABODE",
+      service: "data",
+      servicepayReference,
+      status: "PENDING",
+      reason: "PROVIDER_REFERENCE_MISMATCH",
+      requestId: expectedRequestId,
+      providerReference: providerRequestId,
+    };
+  }
+  if (!providerRequestId && ["SUCCESS", "FAILED"].includes(normalizePurchaseStatus(data))) {
+    return {
+      provider: "TELECOM_ABODE",
+      service: "data",
+      servicepayReference,
+      status: "PENDING",
+      reason: "MISSING_PROVIDER_CORRELATION",
+      requestId: expectedRequestId,
+    };
+  }
+  return normalizePurchase(data, {
+    service: "data",
+    servicepayReference,
+  });
+};
+
 const normalizeTransaction = (data) => {
   const status = normalizePurchaseStatus(data) || "UNKNOWN";
   const rawProviderStatus = data.status ?? data.Status;
@@ -230,11 +440,13 @@ const normalizeTransaction = (data) => {
 const createTelecomAbodeService = ({
   apiKey,
   transport = axios,
+  transactionModel = Transaction,
   baseUrl = DEFAULT_BASE_URL,
   timeout = DEFAULT_TIMEOUT_MS,
 } = {}) => {
   const verifiedCustomers = new Set();
   const submittedRequestIds = new Set();
+  const dataPlanMetadata = new Map();
 
   const request = async ({ method, endpoint, data }) => {
     const key = String(apiKey === undefined ? process.env.TELECOM_ABODE_API_KEY || "" : apiKey).trim();
@@ -278,13 +490,9 @@ const createTelecomAbodeService = ({
     return response.data;
   };
 
-  const ensurePurchasesEnabled = () => {
-    // No option, environment variable, or caller may unlock provider purchases.
-    // The adapter is currently scaffolding only: provider request correlation,
-    // authoritative query semantics, and financial dispatch safety are not
-    // verified, so purchase methods must remain permanently fail-closed here.
+  const ensurePurchasesEnabled = (service) => {
     throw new TelecomAbodeError(
-      "Telecom Abode purchases are locked until provider contracts and financial safeguards are verified.",
+      "Telecom Abode purchases are locked for this service.",
       { statusCode: 503, code: "PURCHASES_DISABLED" }
     );
   };
@@ -325,6 +533,26 @@ const createTelecomAbodeService = ({
     );
   };
 
+  const getDataNetworks = async () => normalizeDataNetworks(
+    await request({ method: "GET", endpoint: "/get-networks?service=data" })
+  );
+
+  const getDataPlans = async () => {
+    dataPlanMetadata.clear();
+    const networks = await getDataNetworks();
+    const plans = normalizeDataPlans(
+      await request({ method: "GET", endpoint: "/data_plans" }),
+      networks
+    );
+    for (const plan of plans) {
+      dataPlanMetadata.set(Number(plan.id), {
+        plan_id: Number(plan.id),
+        network: plan.networkId,
+      });
+    }
+    return plans;
+  };
+
   const validateMeter = async ({ disco, meter_number, meter_type } = {}) => {
     const providerId = requiredId(disco, "disco");
     const meterNumber = requiredText(meter_number, "meter_number");
@@ -350,7 +578,7 @@ const createTelecomAbodeService = ({
     amount,
     request_id,
   } = {}) => {
-    ensurePurchasesEnabled();
+    ensurePurchasesEnabled("ELECTRICITY");
     const providerId = requiredId(disco, "disco");
     const meterNumber = requiredText(meter_number, "meter_number");
     const meterType = typeof meter_type === "string" ? meter_type.trim().toLowerCase() : "";
@@ -393,7 +621,7 @@ const createTelecomAbodeService = ({
   };
 
   const purchaseCable = async ({ cable, iuc, cable_plan, request_id } = {}) => {
-    ensurePurchasesEnabled();
+    ensurePurchasesEnabled("CABLE");
     const providerId = requiredId(cable, "cable");
     const customerIuc = requiredText(iuc, "iuc");
     const plan = requiredText(cable_plan, "cable_plan");
@@ -411,6 +639,57 @@ const createTelecomAbodeService = ({
     });
     return normalizePurchase(response, {
       service: "cable",
+      servicepayReference: normalizedRequestId,
+    });
+  };
+
+  const purchaseData = async ({
+    network,
+    phone,
+    plan,
+    request_id,
+    transactionId,
+  } = {}) => {
+    const planId = typeof plan === "string" && /^\d+$/.test(plan.trim()) ? Number(plan.trim()) : plan;
+    const authoritativePlanMetadata = dataPlanMetadata.get(planId);
+    const payload = buildDataPurchasePayload({
+      network,
+      phone,
+      plan: planId,
+      request_id,
+      planMetadata: authoritativePlanMetadata,
+    });
+    // Consuming the durable claim is a single MongoDB CAS, not a read followed
+    // by an HTTP call. Two workers must never send the same paid request.
+    const durableClaim = await transactionModel.findOneAndUpdate({
+      _id: transactionId,
+      reference: payload["request-id"],
+      providerRequestId: payload["request-id"],
+      serviceType: "DATA",
+      provider: "TELECOM_ABODE",
+      phone: payload.phone,
+      "providerResponse.providerNetworkId": payload.network,
+      "providerResponse.providerPlanId": payload.plan,
+      status: "PENDING",
+      dispatchStatus: "CLAIMED",
+      dispatchClaimedAt: { $ne: null },
+    }, {
+      $set: { dispatchStatus: "SENDING", dispatchStartedAt: new Date() },
+    }, { new: true });
+    if (!durableClaim) {
+      throw new TelecomAbodeError(
+        "Telecom Abode DATA dispatch requires a persisted one-shot dispatch claim.",
+        { statusCode: 409, code: "DURABLE_DISPATCH_CLAIM_REQUIRED" }
+      );
+    }
+    const normalizedRequestId = claimRequestId(request_id);
+    const response = await request({
+      method: "POST",
+      endpoint: "/data",
+      data: payload,
+    });
+    return normalizeDataPurchaseResponse(response, {
+      requestId: normalizedRequestId,
       servicepayReference: normalizedRequestId,
     });
   };
@@ -440,10 +719,13 @@ const createTelecomAbodeService = ({
   return {
     getElectricityProviders,
     getCableProviders,
+    getDataNetworks,
+    getDataPlans,
     validateMeter,
     purchaseElectricity,
     validateCable,
     purchaseCable,
+    purchaseData,
     getTransactionByRequestId,
   };
 };
@@ -454,5 +736,7 @@ module.exports = {
   TelecomAbodeError,
   createTelecomAbodeService,
   normalizePurchase,
+  buildDataPurchasePayload,
+  normalizeDataPurchaseResponse,
   ...defaultService,
 };

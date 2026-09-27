@@ -48,10 +48,10 @@ exports.patchProviderManagement = async (req, res) => {
     return fail(res, 400, "INVALID_ENABLED_VALUE", "The disable action requires enabled=false.");
   }
 
-  // No database state, even with a configured API key, can unlock TA purchases.
-  if (provider === "TELECOM_ABODE" && action !== "disable") {
+  // Only DATA has a product-bound quote and durable paid dispatch.
+  if (provider === "TELECOM_ABODE" && service !== "DATA" && action !== "disable") {
     return fail(res, 409, "TELECOM_ABODE_PURCHASES_LOCKED",
-      "Telecom Abode purchases cannot be enabled or selected until financial contracts and production safeguards are verified.");
+      "Telecom Abode can provide read-only DATA plans, but purchases cannot be enabled or selected until customer pricing and provider recovery are verified.");
   }
   if (action === "setFallback") {
     return fail(res, 409, "FALLBACK_ROUTING_UNSUPPORTED",
@@ -61,8 +61,7 @@ exports.patchProviderManagement = async (req, res) => {
     return fail(res, 409, "CABLE_PURCHASE_UNAVAILABLE",
       "Cable purchasing is unavailable: no cable purchase route or provider adapter is implemented.");
   }
-  if (["AIRTIME", "DATA"].includes(service) &&
-      !(provider === "TELECOM_ABODE" && action === "disable")) {
+  if (service === "AIRTIME") {
     return fail(res, 409, "ROUTING_CONTROL_UNAVAILABLE",
       `${service} purchases are currently hard-wired to ClubKonnect. Provider control changes are locked until the purchase route has an atomic management gate.`);
   }
@@ -77,6 +76,11 @@ exports.patchProviderManagement = async (req, res) => {
         previous = serializeConfig(current);
         const state = current.providerStates.find((item) => item.provider === provider);
         if (!state) throw Object.assign(new Error("Provider is not configured for this service."), { statusCode: 400 });
+        if (service === "DATA" && action === "disable" && current.primaryProvider === provider) {
+          throw Object.assign(new Error("Select another enabled DATA primary before disabling this provider."), {
+            statusCode: 409, code: "PRIMARY_PROVIDER_REQUIRED",
+          });
+        }
 
         if ((action === "enable" || action === "setPrimary") && !isAvailable(service, provider)) {
           throw Object.assign(new Error("Provider is unavailable and cannot be enabled or selected."), {

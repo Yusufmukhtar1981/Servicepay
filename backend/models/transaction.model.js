@@ -89,7 +89,28 @@ const transactionSchema =
 
       // Optional provider evidence; old transactions remain valid without these fields.
       providerReference: { type: String, trim: true, default: "" },
+      providerRequestId: { type: String, trim: true, default: "" },
       providerStatus: { type: String, default: "UNKNOWN" },
+      // DATA purchase admission and provider dispatch are separately durable.
+      // These optional fields are intentionally absent on legacy transactions.
+      idempotencyKey: { type: String, trim: true, default: undefined },
+      dispatchStatus: {
+        type: String,
+        enum: ["READY", "CLAIMED", "SENDING", "UNKNOWN", "SUCCEEDED", "FAILED", "REFUNDED"],
+        default: null,
+      },
+      dispatchClaimedAt: { type: Date, default: null },
+      dispatchStartedAt: { type: Date, default: null },
+      debitLedgerEntryId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "LedgerEntry",
+        default: null,
+      },
+      reversalLedgerEntryId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "LedgerEntry",
+        default: null,
+      },
 
       phone: {
         type: String,
@@ -167,6 +188,16 @@ transactionSchema.index({
   customerId: 1,
   createdAt: -1,
 });
+transactionSchema.index(
+  { customerId: 1, serviceType: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    name: "uniq_customer_service_idempotency_key",
+    partialFilterExpression: {
+      idempotencyKey: { $type: "string" },
+    },
+  },
+);
 // Historical manager reports use these snapshot keys after a reporting-line
 // change; without them a zonal overview can scan the whole transaction ledger.
 transactionSchema.index({ zonalManagerId: 1, hierarchyCapturedAt: 1, createdAt: -1 });

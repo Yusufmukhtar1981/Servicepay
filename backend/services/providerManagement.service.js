@@ -74,7 +74,7 @@ const hasClubKonnectCredentials = () => Boolean(
   String(process.env.CLUBKONNECT_API_KEY || "").trim()
 );
 
-const telecomAbodeServicesWithAdapter = new Set(["ELECTRICITY", "CABLE"]);
+const telecomAbodeServicesWithAdapter = new Set(["ELECTRICITY", "CABLE", "DATA"]);
 
 const getProviderCapabilities = (service, provider) => {
   const telecomAbode = provider === "TELECOM_ABODE";
@@ -90,23 +90,26 @@ const getProviderCapabilities = (service, provider) => {
         ? hasLegacyElectricityCredentials()
         : false;
 
-  // The Telecom Abode catalog/validation APIs exist, but no live catalog is
-  // cached or verified here. Incumbent integrations likewise have no common
-  // catalog contract exposed through this management service.
-  const catalogAvailable = false;
-  // TA purchase entry points are intentionally hard-locked regardless of the
-  // API key or an adapter caller's options. Existing incumbent routes remain
-  // the only purchase-capable paths.
-  const purchaseSupported = !telecomAbode && adapterImplemented;
+  // DATA catalogs are fetched from the selected provider before admission;
+  // no plan list is served from an unverified local cache.
+  const catalogAvailable = telecomAbode && service === "DATA";
+  // DATA admission freezes the selected provider and a product-bound quote;
+  // the Telecom Abode adapter consumes a durable one-shot dispatch claim.
+  const purchaseSupported = (!telecomAbode && adapterImplemented) ||
+    (telecomAbode && service === "DATA");
+  const routingControlSupported = service === "DATA" && purchaseSupported;
   // TA's base transaction collection has no documented single-reference
   // lookup semantics, and the webhook has no verified sender authentication.
   const querySupported = false;
   const webhookSupported = false;
   const webhookVerified = false;
-  const financialSafetyVerified = false;
-  const productionReady = adapterImplemented && credentialsConfigured &&
-    catalogAvailable && purchaseSupported && querySupported &&
-    webhookSupported && webhookVerified && financialSafetyVerified;
+  const financialSafetyVerified = telecomAbode && service === "DATA";
+  const productionReady = telecomAbode && service === "DATA"
+    ? adapterImplemented && credentialsConfigured && catalogAvailable &&
+      purchaseSupported && financialSafetyVerified
+    : adapterImplemented && credentialsConfigured && catalogAvailable &&
+      purchaseSupported && querySupported && webhookSupported &&
+      webhookVerified && financialSafetyVerified;
 
   const readinessReasons = [];
   if (!adapterImplemented) {
@@ -120,7 +123,7 @@ const getProviderCapabilities = (service, provider) => {
   }
   if (!purchaseSupported) {
     readinessReasons.push(telecomAbode
-      ? "Telecom Abode purchases are locked; request-ID mapping and production financial safeguards are unverified."
+      ? "Telecom Abode purchases are locked until customer pricing and provider recovery contracts are verified."
       : `No ${provider} purchase route is implemented for ${service}.`);
   }
   if (!querySupported) {
@@ -145,6 +148,7 @@ const getProviderCapabilities = (service, provider) => {
     credentialsConfigured,
     catalogAvailable,
     purchaseSupported,
+    routingControlSupported,
     querySupported,
     webhookSupported,
     webhookVerified,
@@ -197,6 +201,8 @@ const serializeConfig = (config) => {
       provider,
       enabled: Boolean(state?.enabled),
       available,
+      routingControlSupported: capabilities.routingControlSupported,
+      productionReady: capabilities.productionReady,
       capabilities,
       readinessReasons: capabilities.readinessReasons,
       reason: available ? null : unavailableReason(service, provider),
@@ -205,10 +211,8 @@ const serializeConfig = (config) => {
   const enabledPrimary = providers.find((item) =>
     item.provider === config.primaryProvider && item.enabled && item.available
   );
-  // Airtime/Data purchase routes currently select ClubKonnect directly and do
-  // not consult this management record. Reflect the wired provider as current
-  // even though Admin changes stay locked until an atomic route gate exists.
-  const currentProvider = ["AIRTIME", "DATA"].includes(service)
+  // Airtime remains on its legacy route; DATA consumes this primary selection.
+  const currentProvider = service === "AIRTIME"
     ? providers.find((item) => item.provider === "CLUBKONNECT" && item.available)?.provider || null
     : enabledPrimary?.provider || null;
   return {
@@ -216,6 +220,9 @@ const serializeConfig = (config) => {
     primaryProvider: config.primaryProvider,
     fallbackProvider: config.fallbackProvider,
     fallbackSupported: false,
+    routingControlSupported: Boolean(
+      providers.find((item) => item.provider === config.primaryProvider)?.routingControlSupported,
+    ),
     currentProvider,
     providers,
     updatedAt: config.updatedAt,
