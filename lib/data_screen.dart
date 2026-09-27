@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'services/api_service.dart';
+import 'services/data_purchase_intent.dart';
 import 'receipt_screen.dart';
 import 'widgets/saved_beneficiaries.dart';
 
@@ -32,7 +33,7 @@ class _DataScreenState extends State<DataScreen> {
 
   bool isLoadingPlans = true;
   bool isBuyingData = false;
-  String? _pendingIdempotencyKey;
+  final DataPurchaseIntent _purchaseIntent = DataPurchaseIntent();
 
   String plansError = '';
 
@@ -336,114 +337,111 @@ class _DataScreenState extends State<DataScreen> {
       return;
     }
 
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            'Confirm Data Purchase',
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                getBundleSize(plan),
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(name),
-              const SizedBox(height: 14),
-              Text(
-                'Network: $selectedNetwork',
-              ),
-              Text(
-                'Phone: $phone',
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '₦${formatAmount(price)}',
-                style: const TextStyle(
-                  color: primaryGreen,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.pop(
-                dialogContext,
-                false,
-              ),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(
-                dialogContext,
-                true,
-              ),
-              child: const Text('Buy Data'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
+    final String network = selectedNetwork;
+    // Claim the whole confirmation flow, not just the network call: two taps
+    // must never open two independent Buy dialogs.
     setState(() {
       isBuyingData = true;
     });
-
     try {
-      final String idempotencyKey = _pendingIdempotencyKey ??=
-          'data-${DateTime.now().microsecondsSinceEpoch}';
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text(
+              'Confirm Data Purchase',
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  getBundleSize(plan),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(name),
+                const SizedBox(height: 14),
+                Text(
+                  'Network: $selectedNetwork',
+                ),
+                Text(
+                  'Phone: $phone',
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '₦${formatAmount(price)}',
+                  style: const TextStyle(
+                    color: primaryGreen,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  false,
+                ),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  true,
+                ),
+                child: const Text('Buy Data'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true || !mounted) return;
       String transactionPin = '';
       final TextEditingController transactionPinController =
           TextEditingController();
       final String? enteredPin = await showDialog<String>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) {
-            return AlertDialog(
-              title: const Text('Enter Transaction PIN'),
-              content: TextField(
-                controller: transactionPinController,
-                autofocus: true,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                decoration: const InputDecoration(
-                  labelText: '4-digit PIN',
-                  hintText: '••••',
-                  counterText: '',
-                  border: OutlineInputBorder(),
-                ),
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Enter Transaction PIN'),
+            content: TextField(
+              controller: transactionPinController,
+              autofocus: true,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              decoration: const InputDecoration(
+                labelText: '4-digit PIN',
+                hintText: '••••',
+                counterText: '',
+                border: OutlineInputBorder(),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop(
-                      transactionPinController.text.trim(),
-                    );
-                  },
-                  child: const Text('Confirm'),
-                ),
-              ],
-            );
-          },
-        );
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(
+                    transactionPinController.text.trim(),
+                  );
+                },
+                child: const Text('Confirm'),
+              ),
+            ],
+          );
+        },
+      );
 
       transactionPinController.dispose();
       transactionPin = enteredPin ?? '';
@@ -463,9 +461,16 @@ class _DataScreenState extends State<DataScreen> {
         return;
       }
 
+      final String idempotencyKey = await _purchaseIntent.keyForSubmission(
+        network: network,
+        phone: phone,
+        planCode: code,
+        price: price,
+        productQuote: productQuote,
+      );
       final Map<String, dynamic> result = await ApiService.buyData(
         transactionPin: transactionPin,
-        network: selectedNetwork,
+        network: network,
         phone: phone,
         planCode: code,
         productQuote: productQuote,
@@ -475,8 +480,6 @@ class _DataScreenState extends State<DataScreen> {
         amount: price,
         idempotencyKey: idempotencyKey,
       );
-
-      if (!mounted) return;
 
       final bool success = result['success'] == true;
 
@@ -489,13 +492,27 @@ class _DataScreenState extends State<DataScreen> {
       final String reference = result['reference']?.toString() ?? '';
 
       final String status = result['status']?.toString().toUpperCase() ?? '';
+      final int httpStatus =
+          result['httpStatus'] is int ? result['httpStatus'] as int : 0;
+      if (success ||
+          status == 'REFUNDED' ||
+          status == 'REVERSED' ||
+          (status == 'FAILED' && result['dispatchStatus'] == 'REFUNDED') ||
+          (httpStatus >= 400 &&
+              httpStatus < 500 &&
+              httpStatus != 409 &&
+              reference.isEmpty)) {
+        // A definitive pre-dispatch rejection has no transaction reference.
+        // Timeouts, 5xx responses, PENDING and key conflicts stay unresolved.
+        await _purchaseIntent.finish(idempotencyKey);
+      }
+      if (!mounted) return;
 
       if (status == 'PENDING') {
         message = 'Your transaction is being processed. Please do not retry '
             'with a new request. Its final status must be confirmed.';
       }
       if (!success && (status == 'REFUNDED' || status == 'REVERSED')) {
-        _pendingIdempotencyKey = null;
         message = '$message Your wallet has been refunded.';
       }
 
@@ -509,16 +526,15 @@ class _DataScreenState extends State<DataScreen> {
       );
 
       if (success) {
-        _pendingIdempotencyKey = null;
         await SavedBeneficiaries.offerSave(
           context: context,
           phone: phone,
-          network: selectedNetwork,
+          network: network,
           serviceType: 'DATA',
         );
         if (!mounted) return;
         final String receiptPhone = phone;
-        final String receiptNetwork = selectedNetwork;
+        final String receiptNetwork = network;
 
         final String receiptPlan = result['planName']?.toString() ??
             result['plan_name']?.toString() ??
