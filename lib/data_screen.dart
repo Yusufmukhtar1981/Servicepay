@@ -326,6 +326,7 @@ class _DataScreenState extends State<DataScreen> {
     final String name = getPlanName(plan);
 
     final double price = parseAmount(plan['price']);
+    final String? productQuote = plan['productQuote']?.toString();
 
     if (code.isEmpty || price <= 0) {
       showMessage(
@@ -467,6 +468,7 @@ class _DataScreenState extends State<DataScreen> {
         network: selectedNetwork,
         phone: phone,
         planCode: code,
+        productQuote: productQuote,
 
         // Backward compatibility only.
         // Backend now determines real selling price.
@@ -488,7 +490,12 @@ class _DataScreenState extends State<DataScreen> {
 
       final String status = result['status']?.toString().toUpperCase() ?? '';
 
-      if (!success && status == 'REFUNDED') {
+      if (status == 'PENDING') {
+        message = 'Your transaction is being processed. Please do not retry '
+            'with a new request. Its final status must be confirmed.';
+      }
+      if (!success && (status == 'REFUNDED' || status == 'REVERSED')) {
+        _pendingIdempotencyKey = null;
         message = '$message Your wallet has been refunded.';
       }
 

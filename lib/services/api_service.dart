@@ -138,6 +138,7 @@ class ApiService {
     String? biometricGrant,
     String? deviceId,
     String? idempotencyKey,
+    String? productQuote,
   }) async {
     final String token = await _getAuthToken();
 
@@ -158,6 +159,8 @@ class ApiService {
             'phone': phone.trim(),
             'planCode': planCode.trim(),
             'amount': amount,
+            if (productQuote != null && productQuote.isNotEmpty)
+              'productQuote': productQuote,
             if (transactionPin.isNotEmpty) 'transactionPin': transactionPin,
             if (biometricGrant != null) 'biometricGrant': biometricGrant,
             if (deviceId != null) 'deviceId': deviceId,
