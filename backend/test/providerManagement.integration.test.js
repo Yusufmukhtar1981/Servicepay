@@ -308,3 +308,62 @@ test("concurrent toggles remain atomic and leave one audited persisted state", a
     else process.env.NELLOBYTES_APIKEY = oldApiKey;
   }
 });
+
+test("first DATA enable creates and audits configuration when the collection is missing", async () => {
+  const oldUserId = process.env.CLUBKONNECT_USER_ID;
+  const oldApiKey = process.env.CLUBKONNECT_API_KEY;
+  const oldTelecomKey = process.env.TELECOM_ABODE_API_KEY;
+  const originalStartSession = mongoose.startSession;
+  process.env.CLUBKONNECT_USER_ID = "test-clubkonnect-user";
+  process.env.CLUBKONNECT_API_KEY = "test-clubkonnect-key";
+  process.env.TELECOM_ABODE_API_KEY = "test-telecom-abode-key";
+  try {
+    await ProviderManagementConfig.collection.drop();
+    // Some production Mongo configurations reject implicit namespace creation
+    // inside an already-started multi-document transaction.
+    mongoose.startSession = async function (...args) {
+      const session = await originalStartSession.apply(this, args);
+      const originalWithTransaction = session.withTransaction.bind(session);
+      session.withTransaction = async (...transactionArgs) => {
+        const existing = await mongoose.connection.db.listCollections(
+          { name: ProviderManagementConfig.collection.name }, { nameOnly: true },
+        ).toArray();
+        if (!existing.length) throw new Error("Cannot create a namespace inside this transaction");
+        return originalWithTransaction(...transactionArgs);
+      };
+      return session;
+    };
+    const auditCount = await AdminAuditLog.countDocuments();
+    const enabled = await patch({
+      service: "DATA",
+      provider: "TELECOM_ABODE",
+      action: "enable",
+    });
+    assert.equal(enabled.status, 200);
+    assert.equal(enabled.body.data.primaryProvider, "CLUBKONNECT");
+    assert.equal(enabled.body.data.currentProvider, "CLUBKONNECT");
+    assert.equal(enabled.body.data.providers.find((p) => p.provider === "TELECOM_ABODE").enabled, true);
+    const persisted = await ProviderManagementConfig.findOne({ service: "DATA" }).lean();
+    assert.equal(persisted.primaryProvider, "CLUBKONNECT");
+    assert.equal(persisted.providerStates.find((p) => p.provider === "TELECOM_ABODE").enabled, true);
+    assert.equal(await ProviderManagementConfig.countDocuments(), 1);
+    assert.equal(await AdminAuditLog.countDocuments(), auditCount + 1);
+    const audit = await AdminAuditLog.findOne({ "metadata.service": "DATA", "metadata.provider": "TELECOM_ABODE", "metadata.action": "enable" })
+      .sort({ createdAt: -1 }).lean();
+    assert.equal(String(audit.actorId), String(actorId));
+    assert.equal(audit.previousData.primaryProvider, "CLUBKONNECT");
+    assert.equal(audit.newData.primaryProvider, "CLUBKONNECT");
+    assert.equal(audit.newData.providers.find((p) => p.provider === "TELECOM_ABODE").enabled, true);
+    const refreshed = await invoke(getProviderManagement, makeRequest({}, "HEAD_OFFICE", "GET"));
+    assert.equal(refreshed.body.data.items.find((item) => item.service === "DATA").providers
+      .find((p) => p.provider === "TELECOM_ABODE").enabled, true);
+  } finally {
+    mongoose.startSession = originalStartSession;
+    if (oldUserId === undefined) delete process.env.CLUBKONNECT_USER_ID;
+    else process.env.CLUBKONNECT_USER_ID = oldUserId;
+    if (oldApiKey === undefined) delete process.env.CLUBKONNECT_API_KEY;
+    else process.env.CLUBKONNECT_API_KEY = oldApiKey;
+    if (oldTelecomKey === undefined) delete process.env.TELECOM_ABODE_API_KEY;
+    else process.env.TELECOM_ABODE_API_KEY = oldTelecomKey;
+  }
+});

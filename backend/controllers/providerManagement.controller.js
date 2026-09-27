@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const AdminAuditLog = require("../models/adminAuditLog.model");
+const ProviderManagementConfig = require("../models/providerManagementConfig.model");
 const {
   DEFAULTS,
   SERVICE_PROVIDERS,
@@ -66,6 +67,23 @@ exports.patchProviderManagement = async (req, res) => {
       `${service} purchases are currently hard-wired to ClubKonnect. Provider control changes are locked until the purchase route has an atomic management gate.`);
   }
 
+  // The first DATA enable must not implicitly create a Mongo namespace from
+  // inside the configuration-and-audit transaction. Collection creation is
+  // structural only; the provider state and audit still commit together below.
+  if (service === "DATA" && provider === "TELECOM_ABODE" && action === "enable") {
+    try {
+      await ProviderManagementConfig.createCollection();
+    } catch (error) {
+      if (error.code !== 48) {
+        console.error("Provider management storage initialization failed", {
+          name: error.name, code: error.code, codeName: error.codeName,
+        });
+        return fail(res, 500, "PROVIDER_MANAGEMENT_UPDATE_FAILED",
+          "Unable to update provider configuration; no unaudited change was accepted.");
+      }
+    }
+  }
+
   let updated;
   let previous;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -122,6 +140,9 @@ exports.patchProviderManagement = async (req, res) => {
       // the losing transaction retries against the now-persisted config.
       if (error.code === 11000 && attempt < 2) continue;
       if (error.statusCode) return fail(res, error.statusCode, error.code || "PROVIDER_MANAGEMENT_REJECTED", error.message);
+      console.error("Provider management transaction failed", {
+        name: error.name, code: error.code, codeName: error.codeName,
+      });
       return fail(res, 500, "PROVIDER_MANAGEMENT_UPDATE_FAILED", "Unable to update provider configuration; no unaudited change was accepted.");
     } finally {
       await session.endSession();
