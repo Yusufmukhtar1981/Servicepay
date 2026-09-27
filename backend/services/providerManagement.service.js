@@ -1,4 +1,5 @@
 const ProviderManagementConfig = require("../models/providerManagementConfig.model");
+const AppSettings = require("../models/appSettings.model");
 
 const SERVICE_PROVIDERS = {
   AIRTIME: ["CLUBKONNECT", "TELECOM_ABODE"],
@@ -50,6 +51,13 @@ const defaultServiceConfig = (service) => new ProviderManagementConfig({
 
 // Customer request guards and GET requests must never create operational state.
 const getServiceConfig = async (service, session = null) => {
+  if (service === "DATA") {
+    let settingsQuery = AppSettings.findOne({ key: "GLOBAL_SETTINGS" })
+      .select("dataProviderManagement");
+    if (session) settingsQuery = settingsQuery.session(session);
+    const data = (await settingsQuery)?.dataProviderManagement;
+    if (data) return { service, ...data };
+  }
   let query = ProviderManagementConfig.findOne({ service });
   if (session) query = query.session(session);
   return (await query) || defaultServiceConfig(service);

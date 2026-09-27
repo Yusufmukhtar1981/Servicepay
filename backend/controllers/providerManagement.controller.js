@@ -1,9 +1,10 @@
 const mongoose = require("mongoose");
 const AdminAuditLog = require("../models/adminAuditLog.model");
-const ProviderManagementConfig = require("../models/providerManagementConfig.model");
+const AppSettings = require("../models/appSettings.model");
 const {
   DEFAULTS,
   SERVICE_PROVIDERS,
+  getServiceConfig,
   getOrCreateServiceConfigForMutation,
   isAvailable,
   readProviderManagementMatrix,
@@ -67,30 +68,25 @@ exports.patchProviderManagement = async (req, res) => {
       `${service} purchases are currently hard-wired to ClubKonnect. Provider control changes are locked until the purchase route has an atomic management gate.`);
   }
 
-  // The first DATA enable must not implicitly create a Mongo namespace from
-  // inside the configuration-and-audit transaction. Collection creation is
-  // structural only; the provider state and audit still commit together below.
-  if (service === "DATA" && provider === "TELECOM_ABODE" && action === "enable") {
-    try {
-      await ProviderManagementConfig.createCollection();
-    } catch (error) {
-      if (error.code !== 48) {
-        console.error("Provider management storage initialization failed", {
-          name: error.name, code: error.code, codeName: error.codeName,
-        });
-        return fail(res, 500, "PROVIDER_MANAGEMENT_UPDATE_FAILED",
-          "Unable to update provider configuration; no unaudited change was accepted.");
-      }
-    }
-  }
-
   let updated;
   let previous;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
-        const current = await getOrCreateServiceConfigForMutation(service, session);
+        const initial = service === "DATA"
+          ? await getServiceConfig(service, session)
+          : await getOrCreateServiceConfigForMutation(service, session);
+        const current = service === "DATA" ? {
+          service,
+          primaryProvider: initial.primaryProvider,
+          fallbackProvider: initial.fallbackProvider,
+          providerStates: initial.providerStates.map((item) => ({
+            provider: item.provider, enabled: item.enabled,
+          })),
+          updatedBy: initial.updatedBy,
+          updatedAt: initial.updatedAt,
+        } : initial;
         previous = serializeConfig(current);
         const state = current.providerStates.find((item) => item.provider === provider);
         if (!state) throw Object.assign(new Error("Provider is not configured for this service."), { statusCode: 400 });
@@ -116,7 +112,24 @@ exports.patchProviderManagement = async (req, res) => {
           current.primaryProvider = provider;
         }
         current.updatedBy = actorId(req);
-        await current.save({ session });
+        if (service === "DATA") {
+          const settings = await AppSettings.getGlobalSettings({ session });
+          current.updatedAt = new Date();
+          const result = await AppSettings.updateOne(
+            { _id: settings._id },
+            { $set: { dataProviderManagement: {
+              primaryProvider: current.primaryProvider,
+              fallbackProvider: current.fallbackProvider,
+              providerStates: current.providerStates,
+              updatedBy: current.updatedBy,
+              updatedAt: current.updatedAt,
+            } } },
+            { session, timestamps: false, runValidators: true },
+          );
+          if (result.matchedCount !== 1) throw new Error("Global settings are unavailable.");
+        } else {
+          await current.save({ session });
+        }
         updated = serializeConfig(current);
 
         await AdminAuditLog.create([{

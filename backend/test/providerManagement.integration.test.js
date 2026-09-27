@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
 const ProviderManagementConfig = require("../models/providerManagementConfig.model");
+const AppSettings = require("../models/appSettings.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
@@ -44,7 +45,8 @@ const patch = (body) => invoke(patchProviderManagement, makeRequest(body));
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(mongo.getUri(), { dbName: "provider-management-tests" });
-  await Promise.all([ProviderManagementConfig.init(), AdminAuditLog.init(), Transaction.init()]);
+  await Promise.all([ProviderManagementConfig.init(), AdminAuditLog.init(), Transaction.init(), AppSettings.init()]);
+  await AppSettings.getGlobalSettings();
 });
 
 test.after(async () => {
@@ -158,7 +160,9 @@ test("DATA provider controls are available while Airtime remains locked", async 
         assert.equal(blocked.status, 409);
         assert.equal(blocked.body.code, "PRIMARY_PROVIDER_REQUIRED");
         // Restore the default configuration for the legacy-default assertions.
-        await ProviderManagementConfig.deleteOne({ service: "DATA" });
+        await AppSettings.updateOne(
+          { key: "GLOBAL_SETTINGS" }, { $unset: { dataProviderManagement: "" } },
+        );
       } else {
         assert.equal(enable.status, 409);
         assert.equal(enable.body.code, "TELECOM_ABODE_PURCHASES_LOCKED");
@@ -313,26 +317,17 @@ test("first DATA enable creates and audits configuration when the collection is 
   const oldUserId = process.env.CLUBKONNECT_USER_ID;
   const oldApiKey = process.env.CLUBKONNECT_API_KEY;
   const oldTelecomKey = process.env.TELECOM_ABODE_API_KEY;
-  const originalStartSession = mongoose.startSession;
+  const originalCreateCollection = ProviderManagementConfig.createCollection;
   process.env.CLUBKONNECT_USER_ID = "test-clubkonnect-user";
   process.env.CLUBKONNECT_API_KEY = "test-clubkonnect-key";
   process.env.TELECOM_ABODE_API_KEY = "test-telecom-abode-key";
   try {
     await ProviderManagementConfig.collection.drop();
-    // Some production Mongo configurations reject implicit namespace creation
-    // inside an already-started multi-document transaction.
-    mongoose.startSession = async function (...args) {
-      const session = await originalStartSession.apply(this, args);
-      const originalWithTransaction = session.withTransaction.bind(session);
-      session.withTransaction = async (...transactionArgs) => {
-        const existing = await mongoose.connection.db.listCollections(
-          { name: ProviderManagementConfig.collection.name }, { nameOnly: true },
-        ).toArray();
-        if (!existing.length) throw new Error("Cannot create a namespace inside this transaction");
-        return originalWithTransaction(...transactionArgs);
-      };
-      return session;
+    ProviderManagementConfig.createCollection = async () => {
+      throw new Error("Collection quota exceeded: provider configuration cannot create a namespace");
     };
+    const before = await invoke(getProviderManagement, makeRequest({}, "HEAD_OFFICE", "GET"));
+    const otherServices = JSON.stringify(before.body.data.items.filter((item) => item.service !== "DATA"));
     const auditCount = await AdminAuditLog.countDocuments();
     const enabled = await patch({
       service: "DATA",
@@ -343,10 +338,15 @@ test("first DATA enable creates and audits configuration when the collection is 
     assert.equal(enabled.body.data.primaryProvider, "CLUBKONNECT");
     assert.equal(enabled.body.data.currentProvider, "CLUBKONNECT");
     assert.equal(enabled.body.data.providers.find((p) => p.provider === "TELECOM_ABODE").enabled, true);
-    const persisted = await ProviderManagementConfig.findOne({ service: "DATA" }).lean();
+    const persisted = (await AppSettings.findOne({ key: "GLOBAL_SETTINGS" }).lean()).dataProviderManagement;
     assert.equal(persisted.primaryProvider, "CLUBKONNECT");
     assert.equal(persisted.providerStates.find((p) => p.provider === "TELECOM_ABODE").enabled, true);
-    assert.equal(await ProviderManagementConfig.countDocuments(), 1);
+    assert.equal(
+      (await mongoose.connection.db.listCollections(
+        { name: ProviderManagementConfig.collection.name }, { nameOnly: true },
+      ).toArray()).length, 0,
+      "DATA enable must not create a new collection",
+    );
     assert.equal(await AdminAuditLog.countDocuments(), auditCount + 1);
     const audit = await AdminAuditLog.findOne({ "metadata.service": "DATA", "metadata.provider": "TELECOM_ABODE", "metadata.action": "enable" })
       .sort({ createdAt: -1 }).lean();
@@ -357,8 +357,13 @@ test("first DATA enable creates and audits configuration when the collection is 
     const refreshed = await invoke(getProviderManagement, makeRequest({}, "HEAD_OFFICE", "GET"));
     assert.equal(refreshed.body.data.items.find((item) => item.service === "DATA").providers
       .find((p) => p.provider === "TELECOM_ABODE").enabled, true);
+    assert.equal(
+      JSON.stringify(refreshed.body.data.items.filter((item) => item.service !== "DATA")),
+      otherServices,
+      "no other service or provider configuration changed",
+    );
   } finally {
-    mongoose.startSession = originalStartSession;
+    ProviderManagementConfig.createCollection = originalCreateCollection;
     if (oldUserId === undefined) delete process.env.CLUBKONNECT_USER_ID;
     else process.env.CLUBKONNECT_USER_ID = oldUserId;
     if (oldApiKey === undefined) delete process.env.CLUBKONNECT_API_KEY;
@@ -366,4 +371,25 @@ test("first DATA enable creates and audits configuration when the collection is 
     if (oldTelecomKey === undefined) delete process.env.TELECOM_ABODE_API_KEY;
     else process.env.TELECOM_ABODE_API_KEY = oldTelecomKey;
   }
+});
+
+test("DATA provider changes roll back when the audit write fails", async () => {
+  const before = (await AppSettings.findOne({ key: "GLOBAL_SETTINGS" }).lean()).dataProviderManagement;
+  const auditCount = await AdminAuditLog.countDocuments();
+  const originalCreate = AdminAuditLog.create;
+  AdminAuditLog.create = async () => {
+    throw new Error("Simulated audit storage failure");
+  };
+  try {
+    const rejected = await patch({
+      service: "DATA", provider: "TELECOM_ABODE", action: "disable",
+    });
+    assert.equal(rejected.status, 500);
+    assert.equal(rejected.body.code, "PROVIDER_MANAGEMENT_UPDATE_FAILED");
+  } finally {
+    AdminAuditLog.create = originalCreate;
+  }
+  const after = (await AppSettings.findOne({ key: "GLOBAL_SETTINGS" }).lean()).dataProviderManagement;
+  assert.deepEqual(after, before, "unaudited provider changes must never persist");
+  assert.equal(await AdminAuditLog.countDocuments(), auditCount);
 });

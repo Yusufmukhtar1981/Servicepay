@@ -687,6 +687,13 @@ const appSettingsSchema =
         required: true,
       },
 
+      // DATA provider routing lives in the existing settings singleton so a
+      // new collection is not required on collection-limited Atlas clusters.
+      dataProviderManagement: {
+        type: mongoose.Schema.Types.Mixed,
+        default: undefined,
+      },
+
       applicationName: {
         type: String,
         trim: true,
