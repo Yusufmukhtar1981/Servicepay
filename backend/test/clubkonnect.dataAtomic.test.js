@@ -514,6 +514,40 @@ test("same customer retry key admits and dispatches only once under concurrent r
   assert.ok(results.some((result) => result.status === 200 || result.status === 202));
 });
 
+test("a reused DATA key rejects a different phone, network or plan without another debit", async () => {
+  const user = await makeUser();
+  const key = "fingerprint-conflict-key";
+  const first = await invoke(user, purchaseBody(), { idempotencyKey: key });
+  assert.equal(first.status, 200);
+
+  for (const changed of [
+    { phone: "08098765432" },
+    { network: "Airtel" },
+    { planCode: "plan-2" },
+  ]) {
+    const conflict = await invoke(user, { ...purchaseBody(), ...changed }, { idempotencyKey: key });
+    assert.equal(conflict.status, 409);
+    assert.match(conflict.body.message, /already used for a different data purchase/i);
+  }
+  assert.equal(await Transaction.countDocuments({ customerId: user._id, serviceType: "DATA" }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, service: "DATA", direction: "DEBIT" }), 1);
+  assert.equal(await User.findById(user._id).then((record) => record.walletBalance), 400);
+  assert.equal(dataRequestCount, 1);
+});
+
+test("a new DATA key intentionally buys the same plan a second time", async () => {
+  const user = await makeUser();
+  const first = await invoke(user, purchaseBody(), { idempotencyKey: "first-intent-key" });
+  const second = await invoke(user, purchaseBody(), { idempotencyKey: "second-intent-key" });
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.notEqual(first.body.reference, second.body.reference);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id, serviceType: "DATA" }), 2);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, service: "DATA", direction: "DEBIT" }), 2);
+  assert.equal(await User.findById(user._id).then((record) => record.walletBalance), 300);
+  assert.equal(dataRequestCount, 2);
+});
+
 test("timeout stays pending and a retry never resends or refunds", async () => {
   const user = await makeUser();
   const timeout = new Error("socket timed out");
