@@ -9,6 +9,8 @@ process.env.CLUBKONNECT_API_KEY = "mock-key";
 process.env.JWT_SECRET = "mock-data-plan-quote-signing-secret";
 
 const controller = require("../controllers/clubkonnect.controller");
+const adminTransactionRequeryController = require("../controllers/adminTransactionRequery.controller");
+const adminRoutes = require("../routes/admin.routes");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const LedgerEntry = require("../models/ledgerEntry.model");
@@ -37,8 +39,10 @@ let telecomAbodePurchase;
 let telecomCatalogCount;
 let telecomPurchaseCount;
 let telecomPurchaseResponse;
+let telecomPurchaseHttpStatus;
 let originalTelecomGetDataPlans;
 let originalTelecomPurchaseData;
+let originalTelecomGetTransactionByRequestId;
 let originalTelecomApiKey;
 let sequence = 0;
 
@@ -155,7 +159,7 @@ const configureTelecomAbode = async () => {
       const data = typeof telecomPurchaseResponse === "function"
         ? telecomPurchaseResponse(config.data["request-id"])
         : telecomPurchaseResponse || { status: "success", "request-id": config.data["request-id"] };
-      return { status: 200, data };
+      return { status: telecomPurchaseHttpStatus, data };
     },
   });
   telecomAbode.getDataPlans = async () => {
@@ -192,6 +196,7 @@ test.before(async () => {
   axiosGet = axios.get;
   originalTelecomGetDataPlans = telecomAbode.getDataPlans;
   originalTelecomPurchaseData = telecomAbode.purchaseData;
+  originalTelecomGetTransactionByRequestId = telecomAbode.getTransactionByRequestId;
   originalTelecomApiKey = process.env.TELECOM_ABODE_API_KEY;
 });
 
@@ -199,6 +204,7 @@ test.after(async () => {
   axios.get = axiosGet;
   telecomAbode.getDataPlans = originalTelecomGetDataPlans;
   telecomAbode.purchaseData = originalTelecomPurchaseData;
+  telecomAbode.getTransactionByRequestId = originalTelecomGetTransactionByRequestId;
   if (originalTelecomApiKey === undefined) delete process.env.TELECOM_ABODE_API_KEY;
   else process.env.TELECOM_ABODE_API_KEY = originalTelecomApiKey;
   await mongoose.disconnect();
@@ -225,9 +231,11 @@ test.beforeEach(async () => {
   plansUnavailable = false;
   telecomCatalogCount = 0;
   telecomPurchaseCount = 0;
+  telecomPurchaseHttpStatus = 200;
   telecomPurchaseResponse = null;
   telecomAbode.getDataPlans = originalTelecomGetDataPlans;
   telecomAbode.purchaseData = originalTelecomPurchaseData;
+  telecomAbode.getTransactionByRequestId = originalTelecomGetTransactionByRequestId;
   axios.get = async (url, config) => {
     if (url.includes("DatabundlePlansV2")) {
       plansRequestCount += 1;
@@ -390,6 +398,25 @@ const telecomQuoteFor = async (user) => {
   return response.body.plans[0].productQuote;
 };
 
+const createUnresolvedTelecomPurchase = async () => {
+  const user = await makeUser();
+  await configureTelecomAbode();
+  telecomPurchaseResponse = new Error("mock timeout");
+  const quote = await telecomQuoteFor(user);
+  const result = await invoke(user, telecomPurchaseBody(quote), {
+    idempotencyKey: `telecom-reconcile-${++sequence}`,
+  });
+  const transaction = await Transaction.findOne({
+    customerId: user._id,
+    serviceType: "DATA",
+    provider: "TELECOM_ABODE",
+  });
+  assert.equal(result.status, 202);
+  assert.equal(transaction.status, "PENDING");
+  assert.equal(transaction.dispatchStatus, "UNKNOWN");
+  return { user, transaction };
+};
+
 for (const [scenario, providerReply, expectedStatus, expectedBalance] of [
   ["success", null, "SUCCESSFUL", 350],
   ["explicit failure", (id) => ({ status: "failed", "request-id": id }), "FAILED", 500],
@@ -420,6 +447,208 @@ for (const [scenario, providerReply, expectedStatus, expectedBalance] of [
       expectedStatus === "FAILED" ? 1 : 0);
   });
 }
+
+test("Telecom Abode HTTP 400 retains safe evidence without refunding or resending", async () => {
+  const user = await makeUser();
+  await configureTelecomAbode();
+  telecomPurchaseHttpStatus = 400;
+  telecomPurchaseResponse = (requestId) => ({
+    status: "failed",
+    code: "INVALID_PLAN",
+    "request-id": requestId,
+    message: "Private beneficiary 08012345678 and token secret",
+  });
+  const quote = await telecomQuoteFor(user);
+  const body = telecomPurchaseBody(quote);
+  const first = await invoke(user, body, { idempotencyKey: "ta-http-400" });
+  assert.equal(first.status, 202);
+  const transaction = await Transaction.findOne({ customerId: user._id, serviceType: "DATA" });
+  assert.equal(transaction.status, "PENDING");
+  assert.equal(transaction.dispatchStatus, "UNKNOWN");
+  assert.equal(transaction.providerResponse.httpStatus, 400);
+  assert.equal(transaction.providerResponse.responseEvidence.status, "failed");
+  assert.equal(transaction.providerResponse.responseEvidence.code, "INVALID_PLAN");
+  assert.equal(transaction.providerResponse.responseEvidence.requestIdMatches, true);
+  assert.doesNotMatch(JSON.stringify(transaction.providerResponse), /08012345678|token secret/);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "DEBIT" }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 0);
+  const retry = await invoke(user, body, { idempotencyKey: "ta-http-400" });
+  assert.equal(retry.status, 202);
+  assert.equal(retry.body.reference, first.body.reference);
+  assert.equal(telecomPurchaseCount, 1);
+  assert.equal(await User.findById(user._id).then((row) => row.walletBalance), 350);
+});
+
+const invokeTelecomAbodeReconciliation = (reference) =>
+  invokeHandler(adminTransactionRequeryController.reconcileTelecomAbodeDataTransaction, {
+    params: { reference },
+  });
+
+test("Telecom Abode status query reconciles a correlated PENDING DATA purchase to SUCCESS once", async () => {
+  const { user, transaction } = await createUnresolvedTelecomPurchase();
+  let queryCount = 0;
+  telecomAbode.getTransactionByRequestId = async (requestId) => {
+    queryCount += 1;
+    assert.equal(requestId, transaction.providerRequestId);
+    return {
+      status: "SUCCESS",
+      rawProviderStatus: "successful",
+      requestId,
+      providerReference: requestId,
+      service: "data",
+    };
+  };
+
+  const reconciled = await invokeTelecomAbodeReconciliation(transaction.reference);
+  const repeated = await invokeTelecomAbodeReconciliation(transaction.reference);
+  const current = await Transaction.findById(transaction._id);
+
+  assert.equal(reconciled.status, 200);
+  assert.equal(reconciled.body.status, "SUCCESSFUL");
+  assert.equal(current.status, "SUCCESSFUL");
+  assert.equal(current.dispatchStatus, "SUCCEEDED");
+  assert.equal(current.providerReference, transaction.providerRequestId);
+  assert.equal(current.providerResponse.reconciliation.source, "TELECOM_ABODE_STATUS_QUERY");
+  assert.equal(repeated.status, 409);
+  assert.equal(queryCount, 1);
+  assert.equal(telecomPurchaseCount, 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "DEBIT" }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 0);
+  assert.equal(await User.findById(user._id).then((row) => row.walletBalance), 350);
+});
+
+test("correlated Telecom Abode status-query failure refunds exactly once under concurrency", async () => {
+  const { user, transaction } = await createUnresolvedTelecomPurchase();
+  let queryCount = 0;
+  telecomAbode.getTransactionByRequestId = async (requestId) => {
+    queryCount += 1;
+    return {
+      status: "FAILED",
+      rawProviderStatus: "failed",
+      requestId,
+      providerReference: requestId,
+      service: "data",
+    };
+  };
+
+  const results = await Promise.all([
+    invokeTelecomAbodeReconciliation(transaction.reference),
+    invokeTelecomAbodeReconciliation(transaction.reference),
+  ]);
+  const current = await Transaction.findById(transaction._id);
+
+  assert.ok(results.every((result) => result.status === 200 && result.body.status === "FAILED"));
+  assert.equal(current.status, "FAILED");
+  assert.equal(current.dispatchStatus, "REFUNDED");
+  assert.equal(current.providerReference, transaction.providerRequestId);
+  assert.equal(queryCount, 2);
+  assert.equal(telecomPurchaseCount, 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "DEBIT" }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 1);
+  assert.equal(await User.findById(user._id).then((row) => row.walletBalance), 500);
+});
+
+test("provider 404, pending, mismatched and contradictory Telecom Abode status remain unresolved", async () => {
+  const { user, transaction } = await createUnresolvedTelecomPurchase();
+  const requestId = transaction.providerRequestId;
+  const untrustedReplies = [
+    async () => { const error = new Error("not found"); error.code = "TRANSACTION_NOT_FOUND"; throw error; },
+    async () => ({
+      status: "SUCCESS", rawProviderStatus: "success",
+      requestId: "another-order", providerReference: "another-order",
+    }),
+    async () => ({
+      status: "PENDING", rawProviderStatus: "processing",
+      requestId, providerReference: requestId,
+    }),
+    async () => ({
+      status: "SUCCESS", rawProviderStatus: "FAILED",
+      requestId, providerReference: requestId,
+    }),
+    async () => ({
+      status: "SUCCESS", rawProviderStatus: "success",
+      providerMessage: "Order failed during delivery.",
+      requestId, providerReference: requestId,
+    }),
+    async () => ({
+      status: "SUCCESS", rawProviderStatus: "success",
+      amount: String(Number(transaction.providerResponse.providerPrice) + 1),
+      requestId, providerReference: requestId,
+    }),
+    async () => ({
+      status: "UNKNOWN", rawProviderStatus: "unrecognized",
+      requestId, providerReference: requestId,
+    }),
+  ];
+  for (const getStatus of untrustedReplies) {
+    telecomAbode.getTransactionByRequestId = getStatus;
+    const result = await invokeTelecomAbodeReconciliation(transaction.reference);
+    assert.equal(result.status, 202);
+    assert.equal(result.body.outcome, "UNKNOWN");
+    const current = await Transaction.findById(transaction._id);
+    assert.equal(current.status, "PENDING");
+    assert.equal(current.dispatchStatus, "UNKNOWN");
+    assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 0);
+  }
+  assert.equal(telecomPurchaseCount, 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "DEBIT" }), 1);
+  assert.equal(await User.findById(user._id).then((row) => row.walletBalance), 350);
+});
+
+test("Telecom Abode reconciliation refuses READY, CLAIMED and SENDING dispatches", async () => {
+  const { transaction } = await createUnresolvedTelecomPurchase();
+  let queryCount = 0;
+  telecomAbode.getTransactionByRequestId = async () => {
+    queryCount += 1;
+    return { status: "SUCCESS" };
+  };
+  for (const dispatchStatus of ["READY", "CLAIMED", "SENDING"]) {
+    await Transaction.updateOne(
+      { _id: transaction._id },
+      { $set: { dispatchStatus } },
+    );
+    const result = await invokeTelecomAbodeReconciliation(transaction.reference);
+    assert.equal(result.status, 409);
+    assert.equal(result.body.outcome, "NOT_ELIGIBLE");
+  }
+  assert.equal(queryCount, 0);
+  assert.equal(telecomPurchaseCount, 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "DEBIT" }), 1);
+});
+
+test("Telecom Abode reconciliation POST route is Head Office and exact-finance protected", async () => {
+  const path = "/transactions/:reference/reconcile/telecom-abode-data";
+  const route = adminRoutes.stack.find((layer) => layer.route?.path === path)?.route;
+  assert.ok(route);
+  assert.equal(route.methods.post, true);
+  assert.equal(route.stack.at(-1).handle, adminTransactionRequeryController.reconcileTelecomAbodeDataTransaction);
+  assert.ok(route.stack.length >= 5);
+
+  let roleDeniedStatus;
+  route.stack[1].handle(
+    { user: { _id: "customer", role: "CUSTOMER" } },
+    { status(code) { roleDeniedStatus = code; return this; }, json() {} },
+    () => assert.fail("non-Head-Office role must be rejected"),
+  );
+  assert.equal(roleDeniedStatus, 403);
+
+  let deniedStatus;
+  const financePermissionGuard = route.stack.at(-2).handle;
+  const denied = financePermissionGuard(
+    { staffRole: { permissions: [] } },
+    { status(code) { deniedStatus = code; return this; }, json() {} },
+    () => assert.fail("missing finance permission must be rejected"),
+  );
+  await denied;
+  assert.equal(deniedStatus, 403);
+  let allowed = false;
+  financePermissionGuard(
+    { staffRole: { permissions: [P.FINANCE_RECONCILE] } },
+    { status() { return this; }, json() {} },
+    () => { allowed = true; },
+  );
+  assert.equal(allowed, true);
+});
 
 test("concurrent enabled Telecom Abode customer submissions dispatch and debit only once", async () => {
   const user = await makeUser();

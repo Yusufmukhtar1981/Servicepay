@@ -1,6 +1,9 @@
 const Transaction = require("../models/transaction.model");
 const BankTransfer = require("../models/bankTransfer.model");
 const bankTransferController = require("./bankTransfer.controller");
+const {
+  createTelecomAbodeDataReconciliationService,
+} = require("../services/telecomAbodeDataReconciliation.service");
 
 /**
  * HEAD OFFICE central ServicePay transaction lookup/requery.
@@ -99,6 +102,36 @@ exports.adminRequeryTransaction = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Unable to query this transaction right now.",
+    });
+  }
+};
+
+exports.reconcileTelecomAbodeDataTransaction = async (req, res) => {
+  const reference = String(req.params?.reference || "").trim();
+  if (!reference || reference.length > 128) {
+    return res.status(400).json({
+      success: false,
+      outcome: "INVALID_REFERENCE",
+    });
+  }
+
+  try {
+    const result = await createTelecomAbodeDataReconciliationService()
+      .reconcileByReference(reference);
+    return res.status(result.httpStatus).json({
+      success: result.body.outcome === "SUCCESS",
+      ...result.body,
+    });
+  } catch (error) {
+    // Do not log provider bodies, beneficiary data or credentials here.
+    console.error("TELECOM ABODE DATA RECONCILIATION ERROR:", {
+      name: error?.name || "Error",
+      code: error?.code || "RECONCILIATION_ERROR",
+    });
+    return res.status(503).json({
+      success: false,
+      outcome: "UNKNOWN",
+      message: "The purchase remains unresolved. No new purchase request was sent.",
     });
   }
 };

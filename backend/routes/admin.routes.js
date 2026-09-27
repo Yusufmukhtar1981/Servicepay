@@ -75,6 +75,20 @@ function requireExactWalletPermission(req, res, next) {
   }
   return next();
 }
+function requireExactFinanceReconcilePermission(req, res, next) {
+  const permissions = (req.staffRole?.permissions || []).map((value) =>
+    String(value).trim().toLowerCase(),
+  );
+  const required = String(P.FINANCE_RECONCILE).trim().toLowerCase();
+  if (!required || !permissions.includes(required)) {
+    return res.status(403).json({
+      success: false,
+      message: "The finance.reconcile permission is required for this protected action.",
+      requiredPermission: P.FINANCE_RECONCILE,
+    });
+  }
+  return next();
+}
 router.use(adminAccessLog);
 // SVP access is deliberately isolated to /api/svp.  A permission assigned to
 // an SVP must never make an existing administrative route reachable.
@@ -349,6 +363,7 @@ router.patch("/riders/:id/wallet", protect, adminOnly(...HEAD_OFFICE_ROLES), rid
 router.get("/rider-withdrawal-control", protect, adminOnly(...HEAD_OFFICE_ROLES), riderWalletAdminController.getWithdrawalControl);
 router.patch("/rider-withdrawal-control", protect, adminOnly(...HEAD_OFFICE_ROLES), riderWalletAdminController.updateWithdrawalControl);
 
+router.post("/transactions/:reference/reconcile/telecom-abode-data", protect, adminOnly("HEAD_OFFICE"), loadStaffRole, requireExactFinanceReconcilePermission, adminTransactionRequeryController.reconcileTelecomAbodeDataTransaction);
 router.post("/transaction-requery", protect, loadStaffRole, requirePermission(P.TRANSACTIONS_REQUERY), adminTransactionRequeryController.adminRequeryTransaction);
 router.get("/bank-reconciliation", protect, loadStaffRole, requirePermission(P.FINANCE_RECONCILE), adminBankReconciliationController.listBankReconciliation);
 

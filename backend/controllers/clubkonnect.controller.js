@@ -1586,6 +1586,8 @@ exports.buyData = async (req, res) => {
         });
       }
     } catch (providerError) {
+      const httpError = providerError.code === "PROVIDER_HTTP_ERROR" &&
+        Number.isInteger(providerError.statusCode);
       await Transaction.updateOne(
         {
           _id: transaction._id,
@@ -1602,6 +1604,12 @@ exports.buyData = async (req, res) => {
               planCode: selectedPlan,
               outcome: "UNKNOWN",
               message: providerError.message,
+              ...(httpError ? {
+                httpStatus: providerError.statusCode,
+                ...(providerError.providerEvidence
+                  ? { responseEvidence: providerError.providerEvidence }
+                  : {}),
+              } : {}),
             },
           },
         },

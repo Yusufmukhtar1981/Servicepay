@@ -5,13 +5,105 @@ const DEFAULT_BASE_URL = "https://telecomabode.com.ng/api";
 const DEFAULT_TIMEOUT_MS = 30000;
 
 class TelecomAbodeError extends Error {
-  constructor(message, { statusCode = 502, code = "TELECOM_ABODE_ERROR" } = {}) {
+  constructor(message, { statusCode = 502, code = "TELECOM_ABODE_ERROR", providerEvidence } = {}) {
     super(message);
     this.name = "TelecomAbodeError";
     this.statusCode = statusCode;
     this.code = code;
+    if (providerEvidence) this.providerEvidence = providerEvidence;
   }
 }
+
+const MAX_PROVIDER_EVIDENCE_LENGTH = 1200;
+const MAX_PROVIDER_MESSAGE_LENGTH = 320;
+const STATUS_WORDS = new Set([
+  "success", "successful", "pending", "processing", "failed", "failure", "error",
+]);
+
+const sanitizeProviderText = (value, configuredKey) => {
+  let text = String(value);
+  // Redact the configured credential before any truncation, including when
+  // the provider echoes it without a header/key label.
+  if (configuredKey) {
+    text = text.split(configuredKey).join("[REDACTED_PROVIDER_KEY]");
+    const encodedKey = encodeURIComponent(configuredKey);
+    if (encodedKey !== configuredKey) {
+      text = text.split(encodedKey).join("[REDACTED_PROVIDER_KEY]");
+    }
+  }
+  return text
+    .slice(0, 1000)
+    .replace(/\bBearer\s+\S+/gi, "Bearer [REDACTED]")
+    .replace(/\bToken\s+\S+/gi, "Token [REDACTED]")
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "[REDACTED]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]")
+    .replace(/\b[A-Za-z0-9_-]*secret[A-Za-z0-9_-]*\b/gi, "[REDACTED]")
+    .replace(/(?<!\d)(?:\+?234|0)(?:[ -]?\d){9,10}(?!\d)/g, "[REDACTED_PHONE]")
+    .replace(/\b(api[_ -]?key|access[_ -]?token|refresh[_ -]?token|token|password|secret|authorization)\b(\s*[:=]\s*)["']?[^,\s}"']+/gi, "$1$2[REDACTED]")
+    .replace(/\b(?:[A-F0-9]{32,}|[A-Za-z0-9_-]{80,})\b/gi, "[REDACTED_VALUE]")
+    .slice(0, MAX_PROVIDER_MESSAGE_LENGTH);
+};
+
+const safeHttpEvidence = (body, requestId, configuredKey) => {
+  let parsed = body;
+  let bodyType = "json";
+  if (typeof body === "string") {
+    const text = body.slice(0, 4096);
+    if (!text.trim()) {
+      parsed = null;
+      bodyType = "empty";
+    } else {
+      try {
+        parsed = JSON.parse(text);
+      } catch (_) {
+        parsed = null;
+        bodyType = "text";
+      }
+    }
+  } else if (body === undefined || body === null || body === "") {
+    parsed = null;
+    bodyType = "empty";
+  } else if (typeof body !== "object" || Array.isArray(body)) {
+    bodyType = "other";
+    parsed = null;
+  }
+
+  const evidence = { bodyType };
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const status = parsed.status ?? parsed.Status;
+    if (typeof status === "string" && STATUS_WORDS.has(status.trim().toLowerCase())) {
+      evidence.status = status.trim().slice(0, 24);
+    }
+
+    const code = parsed.code ?? parsed.errorCode ?? parsed.error_code;
+    if (typeof code === "number" && Number.isSafeInteger(code)) {
+      evidence.code = code;
+    } else if (typeof code === "string") {
+      const normalizedCode = sanitizeProviderText(code, configuredKey);
+      if (normalizedCode && normalizedCode.length <= 64) evidence.code = normalizedCode;
+    }
+
+    const message = parsed.message ?? parsed.error_description ?? parsed.error;
+    if (typeof message === "string") {
+      evidence.message = sanitizeProviderText(message, configuredKey);
+    }
+
+    const echoedReference =
+      parsed["request-id"] ?? parsed.request_id ?? parsed.requestId ??
+      parsed.providerReference ?? parsed.reference;
+    if (typeof echoedReference === "string") {
+      evidence.reference = sanitizeProviderText(echoedReference, configuredKey).slice(0, 128);
+      evidence.requestIdMatches = echoedReference.trim() === String(requestId || "").trim();
+    }
+  } else if (typeof body === "string" && body.trim()) {
+    evidence.message = sanitizeProviderText(body, configuredKey);
+  }
+
+  if (JSON.stringify(evidence).length > MAX_PROVIDER_EVIDENCE_LENGTH) {
+    evidence.message = (evidence.message || "").slice(0, 120);
+  }
+  return evidence;
+};
 
 const fail = (message, statusCode = 400, code = "INVALID_ARGUMENT") => {
   throw new TelecomAbodeError(message, { statusCode, code });
@@ -407,32 +499,33 @@ const normalizeDataPurchaseResponse = (data, { requestId, servicepayReference = 
   });
 };
 
-const normalizeTransaction = (data) => {
+const normalizeTransaction = (data, configuredKey) => {
   const status = normalizePurchaseStatus(data) || "UNKNOWN";
   const rawProviderStatus = data.status ?? data.Status;
   const result = {
     provider: "TELECOM_ABODE",
     status,
-    ...(rawProviderStatus === undefined ? {} : { rawProviderStatus }),
+    ...(typeof rawProviderStatus === "string" && STATUS_WORDS.has(rawProviderStatus.toLowerCase())
+      ? { rawProviderStatus: rawProviderStatus.slice(0, 24) }
+      : {}),
   };
-  for (const field of ["request-id", "amount", "new_balance", "token", "service"]) {
+  for (const field of ["request-id", "amount", "service"]) {
     const value = data[field];
     if (typeof value === "string" || typeof value === "number") {
-      result[field === "request-id" ? "requestId" : field === "new_balance" ? "newBalance" : field] =
-        String(value);
-      if (field === "request-id") result.providerReference = String(value);
+      if (field === "request-id") {
+        result.requestId = sanitizeProviderText(value, configuredKey).slice(0, 128);
+        result.providerReference = result.requestId;
+      } else if (field === "amount" && /^[0-9]+(?:\.[0-9]+)?$/.test(String(value))) {
+        result.amount = String(value).slice(0, 32);
+      } else if (field === "service" && /^[a-zA-Z _-]{1,32}$/.test(String(value))) {
+        result.service = String(value);
+      }
     }
   }
-  if (typeof data.message === "string" && data.message.trim()) {
-    result.message = data.message.trim();
-    result.providerMessage = data.message.trim();
-  } else {
-    const providerMessage = [data.api_response, data.response]
-      .find((value) => typeof value === "string" && value.trim());
-    if (providerMessage) result.providerMessage = providerMessage.trim();
-  }
-  if (typeof data.token === "string" && data.token.trim()) {
-    result.meterToken = data.token.trim();
+  const providerMessage = [data.message, data.api_response, data.response]
+    .find((value) => typeof value === "string" && value.trim());
+  if (providerMessage) {
+    result.providerMessage = sanitizeProviderText(providerMessage, configuredKey);
   }
   return result;
 };
@@ -447,9 +540,11 @@ const createTelecomAbodeService = ({
   const verifiedCustomers = new Set();
   const submittedRequestIds = new Set();
   const dataPlanMetadata = new Map();
+  const configuredApiKey = () =>
+    String(apiKey === undefined ? process.env.TELECOM_ABODE_API_KEY || "" : apiKey).trim();
 
   const request = async ({ method, endpoint, data }) => {
-    const key = String(apiKey === undefined ? process.env.TELECOM_ABODE_API_KEY || "" : apiKey).trim();
+    const key = configuredApiKey();
     if (!key) {
       throw new TelecomAbodeError("Telecom Abode API key is not configured.", {
         statusCode: 503,
@@ -485,6 +580,7 @@ const createTelecomAbodeService = ({
       throw new TelecomAbodeError(`Telecom Abode request failed with HTTP ${response.status}.`, {
         statusCode: response.status,
         code: "PROVIDER_HTTP_ERROR",
+        providerEvidence: safeHttpEvidence(response.data, data?.["request-id"], key),
       });
     }
     return response.data;
@@ -696,24 +792,40 @@ const createTelecomAbodeService = ({
 
   const getTransactionByRequestId = async (requestId) => {
     const targetRequestId = requiredText(requestId, "request-id");
-    const data = await request({ method: "GET", endpoint: "/transactions" });
-    const transactions = getCollection(data, "transactions");
-    if (!transactions) {
+    let data;
+    try {
+      data = await request({
+        method: "GET",
+        endpoint: `/transaction/${encodeURIComponent(targetRequestId)}`,
+      });
+    } catch (error) {
+      if (error.statusCode === 404 && error.code === "PROVIDER_HTTP_ERROR") {
+        throw new TelecomAbodeError(
+          "Telecom Abode did not find this transaction; its delivery outcome remains unknown.",
+          { statusCode: 404, code: "TRANSACTION_NOT_FOUND", providerEvidence: error.providerEvidence },
+        );
+      }
+      throw error;
+    }
+    const providerRequestId = data && typeof data === "object" && !Array.isArray(data) &&
+      typeof data["request-id"] === "string"
+      ? data["request-id"].trim()
+      : "";
+    if (!providerRequestId || providerRequestId !== targetRequestId) {
       throw new TelecomAbodeError(
-        "Telecom Abode did not return an explicit transaction collection; a transaction query parameter is undocumented.",
-        { statusCode: 501, code: "TRANSACTION_QUERY_UNDOCUMENTED" }
+        providerRequestId
+          ? "Telecom Abode returned a different transaction reference."
+          : "Telecom Abode transaction response omitted its request-id.",
+        {
+          statusCode: 502,
+          code: providerRequestId
+            ? "TRANSACTION_REFERENCE_MISMATCH"
+            : "MISSING_TRANSACTION_REFERENCE",
+          providerEvidence: safeHttpEvidence(data, targetRequestId, configuredApiKey()),
+        },
       );
     }
-    const matches = transactions.filter((item) =>
-      item && typeof item === "object" && item["request-id"] === targetRequestId
-    );
-    if (matches.length !== 1) {
-      throw new TelecomAbodeError(
-        matches.length ? "Telecom Abode returned ambiguous matching transactions." : "No exact request-id match was returned.",
-        { statusCode: matches.length ? 502 : 404, code: matches.length ? "AMBIGUOUS_TRANSACTION" : "TRANSACTION_NOT_FOUND" }
-      );
-    }
-    return normalizeTransaction(matches[0]);
+    return normalizeTransaction(data, configuredApiKey());
   };
 
   return {

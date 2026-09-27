@@ -232,41 +232,64 @@ test("pure purchase normalizer only retains prepaid electricity tokens", () => {
   assert.equal("transactionData" in postpaid, false);
 });
 
-test("transaction lookup performs a bare GET and selects only one exact request-id match", async () => {
+test("transaction lookup uses the documented encoded GET and exact reference correlation", async () => {
+  const target = "REQ /one";
   const { service, calls } = setup(() => response({
     status: "success",
-    transactions: [
-      { "request-id": "prefix-REQ-1-suffix", status: "success", token: "wrong" },
-      { "request-id": "REQ-1", status: "success", amount: 2000, token: "1234" },
-    ],
+    "request-id": target,
+    amount: 2000,
+    token: "must-never-escape-a-status-lookup",
   }));
-  assert.deepEqual(await service.getTransactionByRequestId("REQ-1"), {
+  assert.deepEqual(await service.getTransactionByRequestId(target), {
     provider: "TELECOM_ABODE",
     status: "SUCCESS",
     rawProviderStatus: "success",
-    requestId: "REQ-1",
-    providerReference: "REQ-1",
+    requestId: target,
+    providerReference: target,
     amount: "2000",
-    token: "1234",
-    meterToken: "1234",
   });
+  assert.equal(calls.length, 1);
   assert.equal(calls[0].method, "GET");
-  assert.equal(calls[0].url, "https://telecomabode.com.ng/api/transactions");
-  assert.equal("params" in calls[0], false);
+  assert.equal(
+    calls[0].url,
+    `https://telecomabode.com.ng/api/transaction/${encodeURIComponent(target)}`,
+  );
+  assert.equal(calls[0].data, undefined);
 });
 
-test("transaction status lookup fails closed for absent collections and duplicate exact matches", async () => {
-  const single = setup(() => response({ status: "success", "request-id": "REQ-1" })).service;
-  await assert.rejects(single.getTransactionByRequestId("REQ-1"), {
-    code: "TRANSACTION_QUERY_UNDOCUMENTED",
+test("transaction lookup rejects missing or mismatched references", async () => {
+  const mismatch = setup(() => response({
+    status: "success",
+    "request-id": "OTHER-REQUEST",
+  }));
+  await assert.rejects(mismatch.service.getTransactionByRequestId("REQ-1"), {
+    code: "TRANSACTION_REFERENCE_MISMATCH",
+    statusCode: 502,
   });
-  const duplicate = setup(() => response([
-    { status: "success", "request-id": "REQ-1" },
-    { status: "failed", "request-id": "REQ-1" },
-  ])).service;
-  await assert.rejects(duplicate.getTransactionByRequestId("REQ-1"), {
-    code: "AMBIGUOUS_TRANSACTION",
+  assert.equal(mismatch.calls.length, 1);
+  assert.equal(mismatch.calls[0].method, "GET");
+
+  const missing = setup(() => response({ status: "success" }));
+  await assert.rejects(missing.service.getTransactionByRequestId("REQ-1"), {
+    code: "MISSING_TRANSACTION_REFERENCE",
+    statusCode: 502,
   });
+  assert.equal(missing.calls.length, 1);
+  assert.equal(missing.calls[0].method, "GET");
+});
+
+test("documented transaction lookup 404 is not-found, never a purchase failure", async () => {
+  const { service, calls } = setup(() => response(
+    { message: "Transaction not found", token: "never-retain-this" },
+    404,
+  ));
+  await assert.rejects(service.getTransactionByRequestId("REQ-404"), {
+    code: "TRANSACTION_NOT_FOUND",
+    statusCode: 404,
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "GET");
+  assert.match(calls[0].url, /\/transaction\/REQ-404$/);
 });
 
 test("transaction lookup normalizes explicit statuses and leaves unknown statuses unresolved", async () => {
@@ -275,11 +298,11 @@ test("transaction lookup normalizes explicit statuses and leaves unknown statuse
     ["pending", "PENDING"],
     ["failed", "FAILED"],
   ]) {
-    const { service } = setup(() => response([{
+    const { service } = setup(() => response({
       "request-id": "REQ-STATUS",
       status: rawStatus,
       api_response: "provider status text",
-    }]));
+    }));
     const transaction = await service.getTransactionByRequestId("REQ-STATUS");
     assert.equal(transaction.status, normalizedStatus);
     assert.equal(transaction.rawProviderStatus, rawStatus);
@@ -287,10 +310,10 @@ test("transaction lookup normalizes explicit statuses and leaves unknown statuse
     assert.equal(transaction.providerReference, "REQ-STATUS");
   }
 
-  const unknown = setup(() => response([{
+  const unknown = setup(() => response({
     "request-id": "REQ-UNKNOWN",
     status: "processing_unknown",
-  }])).service;
+  })).service;
   const unresolved = await unknown.getTransactionByRequestId("REQ-UNKNOWN");
   assert.equal(unresolved.status, "UNKNOWN");
   assert.equal(unresolved.providerReference, "REQ-UNKNOWN");
@@ -298,16 +321,115 @@ test("transaction lookup normalizes explicit statuses and leaves unknown statuse
 
 test("provider errors do not expose raw responses or credentials", async () => {
   const secret = "never-expose-this-api-key";
-  const privateResponse = "private provider response containing customer details";
   const service = createTelecomAbodeService({
     apiKey: secret,
-    transport: async () => response({ status: "success", message: privateResponse }, 500),
+    transport: async () => response({
+      status: "failed",
+      code: "INVALID_PLAN",
+      message: "Plan rejection for 08012345678 and customer@example.com Bearer very-secret-value",
+      token: "very-secret-value",
+      headers: { Authorization: secret },
+    }, 500),
   });
   await assert.rejects(service.getElectricityProviders, (error) => {
     assert.equal(error.code, "PROVIDER_HTTP_ERROR");
     assert.doesNotMatch(error.message, new RegExp(secret));
-    assert.doesNotMatch(error.message, new RegExp(privateResponse));
     assert.equal("providerResponse" in error, false);
+    const evidence = JSON.stringify(error.providerEvidence);
+    assert.doesNotMatch(evidence, new RegExp(secret));
+    assert.doesNotMatch(evidence, /very-secret-value|08012345678|customer@example.com/);
+    assert.match(evidence, /Plan rejection/);
+    return true;
+  });
+});
+
+test("non-2xx errors preserve bounded JSON, text, empty, and malformed body evidence", async () => {
+  const cases = [
+    {
+      body: {
+        status: "failed",
+        code: "INVALID_PLAN",
+        "request-id": "REQ-400",
+        message: "Plan rejected for 08012345678 and customer@example.com",
+        token: "do-not-retain",
+        headers: { Authorization: "Bearer do-not-retain" },
+      },
+      expectedStatus: 400,
+      expectedBodyType: "json",
+    },
+    {
+      body: "Plan rejected for 08012345678. token=do-not-retain",
+      expectedStatus: 400,
+      expectedBodyType: "text",
+    },
+    { body: "", expectedStatus: 400, expectedBodyType: "empty" },
+    { body: null, expectedStatus: 500, expectedBodyType: "empty" },
+    {
+      body: "{ malformed JSON for 08012345678",
+      expectedStatus: 500,
+      expectedBodyType: "text",
+    },
+  ];
+  for (const { body, expectedStatus, expectedBodyType } of cases) {
+    const service = createTelecomAbodeService({
+      apiKey: "mock-key",
+      transport: async () => response(body, expectedStatus),
+    });
+    await assert.rejects(service.getElectricityProviders, (error) => {
+      assert.equal(error.statusCode, expectedStatus);
+      assert.equal(error.code, "PROVIDER_HTTP_ERROR");
+      assert.equal(error.providerEvidence.bodyType, expectedBodyType);
+      const evidence = JSON.stringify(error.providerEvidence);
+      assert.ok(evidence.length <= 1200);
+      assert.doesNotMatch(evidence, /do-not-retain|08012345678|customer@example\.com|Authorization/);
+      assert.match(error.message, new RegExp(`HTTP ${expectedStatus}`));
+      if (expectedBodyType === "empty") assert.equal(error.providerEvidence.message, undefined);
+      if (body && typeof body === "object" && body.status === "failed") {
+        assert.equal(error.providerEvidence.status, "failed");
+        assert.equal(error.providerEvidence.code, "INVALID_PLAN");
+        assert.equal(error.providerEvidence.reference, "REQ-400");
+        assert.equal(error.providerEvidence.requestIdMatches, false);
+        assert.match(error.providerEvidence.message, /Plan rejected/);
+      }
+      return true;
+    });
+  }
+});
+
+test("common non-2xx status codes retain the exact provider HTTP status", async () => {
+  for (const status of [401, 403, 404, 409, 422, 429, 500]) {
+    const service = createTelecomAbodeService({
+      apiKey: "mock-key",
+      transport: async () => response({ error: "rejected" }, status),
+    });
+    await assert.rejects(service.getElectricityProviders, (error) => {
+      assert.equal(error.statusCode, status);
+      assert.equal(error.code, "PROVIDER_HTTP_ERROR");
+      assert.equal(error.providerEvidence.message, "rejected");
+      return true;
+    });
+  }
+});
+
+test("configured provider key is redacted from error message, code, and reference", async () => {
+  const configuredKey = "TA-Configured-Key-Example-101";
+  const service = createTelecomAbodeService({
+    apiKey: configuredKey,
+    transport: async () => response({
+      code: `REJECTED-${configuredKey}`,
+      reference: `PROVIDER-${configuredKey}`,
+      message: `Provider rejected ${configuredKey} because the plan is unavailable`,
+    }, 400),
+  });
+
+  await assert.rejects(service.getElectricityProviders, (error) => {
+    assert.equal(error.statusCode, 400);
+    const serializedEvidence = JSON.stringify(error.providerEvidence);
+    assert.doesNotMatch(serializedEvidence, new RegExp(configuredKey));
+    assert.doesNotMatch(error.message, new RegExp(configuredKey));
+    assert.match(error.providerEvidence.message, /REDACTED_PROVIDER_KEY/);
+    assert.match(error.providerEvidence.code, /REDACTED_PROVIDER_KEY/);
+    assert.match(error.providerEvidence.reference, /REDACTED_PROVIDER_KEY/);
     return true;
   });
 });

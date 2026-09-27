@@ -76,6 +76,7 @@ const analyzeProviderFailure = (providerResponse, expectedReference) => {
     "RequestID",
     "request_id",
     "requestId",
+    "request-id",
     "clientRequestId",
     "client_request_id",
     "clientReference",
@@ -99,6 +100,7 @@ const refundFailedDataPurchase = async ({
   transactionId,
   providerResponse,
   httpStatus,
+  verifiedStatusQuery = false,
 }) => {
   if (!(httpStatus >= 200 && httpStatus < 300)) {
     return { status: "NOT_ELIGIBLE" };
@@ -115,6 +117,10 @@ const refundFailedDataPurchase = async ({
     return { status: "NOT_ELIGIBLE" };
   }
 
+  const isVerifiedTelecomStatusQuery =
+    verifiedStatusQuery &&
+    initial.provider === "TELECOM_ABODE" &&
+    initial.dispatchStatus === "UNKNOWN";
   const dispatchReference = initial.providerRequestId || initial.reference;
   const evidence = analyzeProviderFailure(providerResponse, dispatchReference);
   if (
@@ -137,7 +143,9 @@ const refundFailedDataPurchase = async ({
           serviceType: "DATA",
           provider: initial.provider,
           status: "PENDING",
-          dispatchStatus: initial.provider === "TELECOM_ABODE" ? "SENDING" : "CLAIMED",
+           dispatchStatus: isVerifiedTelecomStatusQuery
+             ? "UNKNOWN"
+             : initial.provider === "TELECOM_ABODE" ? "SENDING" : "CLAIMED",
           dispatchClaimedAt: { $ne: null },
         },
         {
@@ -214,8 +222,10 @@ const refundFailedDataPurchase = async ({
         idempotencyKey: `DATA:${claimed.reference}:REVERSAL:CREDIT`,
         narration: "ClubKonnect DATA purchase refund",
         metadata: {
-          provider: "CLUBKONNECT",
-          reason: "Correlated explicit terminal provider failure",
+          provider: claimed.provider,
+          reason: isVerifiedTelecomStatusQuery
+            ? "Correlated explicit terminal failure from provider status query"
+            : "Correlated explicit terminal provider failure",
           providerReference: evidence.correlatedReference,
         },
         session,
