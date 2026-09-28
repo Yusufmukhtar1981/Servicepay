@@ -28,6 +28,17 @@ const user = (role, suffix, fields = {}) => ({
 });
 
 test("hierarchy route requires explicit assigned-role permission", async () => {
+  const roleRoutes = require("../routes/adminRoleUsers.routes");
+  const assignmentRoute = roleRoutes.stack.find((layer) => layer.route?.path === "/hierarchy-assignments")?.route;
+  assert.ok(assignmentRoute);
+  assert.equal(assignmentRoute.stack[2].name, "loadStaffRole");
+  const roleRoutePermission = assignmentRoute.stack[3].handle;
+  const routeDenied = await new Promise((resolve) => {
+    const response = { status(code) { this.code = code; return this; }, json(body) { this.body = body; resolve(this); } };
+    roleRoutePermission({ staffRole: { permissions: [] } }, response, () => resolve({ admitted: true }));
+  });
+  assert.equal(routeDenied.code, 403);
+  assert.equal(routeDenied.body.requiredPermission, STAFF_PERMISSIONS.HIERARCHY_MANAGE);
   const middleware = requireExplicitPermission(STAFF_PERMISSIONS.HIERARCHY_MANAGE);
   const invokeGuard = (staffRole) => new Promise((resolve) => {
     const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; resolve(this); } };

@@ -23,6 +23,7 @@ const {
   reconcileReferralReward,
   enqueueReferralRewardEvent,
 } = require("../services/referralReward.service");
+const { withParentFence } = require("../services/hierarchyFence.service");
 
 exports.getAdminExecutiveDashboard = getExecutiveDashboard;
 exports.getAdminDashboardTargets = getDashboardTargets;
@@ -151,11 +152,13 @@ exports.getAvailableRiders = async (req, res) => {
     if (!delivery) {
       return res.status(404).json({ success: false, message: "Delivery was not found." });
     }
-    const assignable = delivery.status === "PENDING" && !delivery.assignedRiderId;
+    const assignable = Boolean(delivery.branchId) &&
+      delivery.status === "PENDING" &&
+      !delivery.assignedRiderId;
     const riders = assignable
       ? await User.find({
           role: "DELIVERY_RIDER",
-          branchId: delivery.branchId || null,
+          branchId: delivery.branchId,
           status: "ACTIVE",
           riderVerificationStatus: "VERIFIED",
           availabilityStatus: "ONLINE",
@@ -190,6 +193,12 @@ exports.assignRiderToDelivery = async (req, res) => {
   if (!scopedDelivery) {
     return res.status(404).json({ success: false, message: "Delivery was not found." });
   }
+  if (!scopedDelivery.branchId) {
+    return res.status(409).json({
+      success: false,
+      message: "A branch assignment is required before assigning a rider.",
+    });
+  }
   const session = await mongoose.startSession();
   let rider;
   let delivery;
@@ -198,7 +207,7 @@ exports.assignRiderToDelivery = async (req, res) => {
       rider = await User.findOne({
         _id: riderId,
         role: "DELIVERY_RIDER",
-        branchId: scopedDelivery.branchId || null,
+        branchId: scopedDelivery.branchId,
         status: "ACTIVE",
         riderVerificationStatus: "VERIFIED",
         availabilityStatus: "ONLINE",
@@ -981,6 +990,12 @@ exports.reassignRiderToDelivery = async (req, res) => {
       const current = await Delivery.findOne({ _id: deliveryId, ...deliveryBranchFilter(req) })
         .select("branchId status assignedRiderId riderAcceptedAt").session(session).lean();
       if (!current) throw Object.assign(new Error("Delivery was not found."), { statusCode: 404 });
+      if (!current.branchId) {
+        throw Object.assign(
+          new Error("A branch assignment is required before assigning a rider."),
+          { statusCode: 409 }
+        );
+      }
       if (current.status !== "ASSIGNED" || !current.assignedRiderId || current.riderAcceptedAt) {
         throw Object.assign(new Error("Only an unaccepted assigned delivery can be reassigned."), { statusCode: 409 });
       }
@@ -2421,52 +2436,43 @@ exports.createAdminUser = async (
         creator._id;
     }
 
-    // Parent lineage and insertion must share one transaction.  This closes
-    // the move/create race without changing the account role semantics.
+    let createdUser;
+    let safeUser;
+    const parentRole = requestedRole === "STATE_MANAGER"
+      ? "ZONAL_MANAGER"
+      : requestedRole === "AGENT"
+        ? "STATE_MANAGER"
+        : null;
     const parentId = requestedRole === "STATE_MANAGER"
       ? userData.zonalManagerId
       : requestedRole === "AGENT"
         ? userData.stateManagerId
         : null;
-    let createdUser;
     if (parentId) {
-      const session = await mongoose.startSession();
-      try {
-        await session.withTransaction(async () => {
-          const parentRole = requestedRole === "STATE_MANAGER" ? "ZONAL_MANAGER" : "STATE_MANAGER";
-          const parent = await User.findOneAndUpdate(
-            { _id: parentId, role: parentRole, status: "ACTIVE", isDeleted: { $ne: true } },
-            { $inc: { hierarchyVersion: 1 } },
-            { session, new: true }
-          );
-          if (!parent || !parent.zone || (parentRole === "STATE_MANAGER" && !parent.state)) {
-            const conflict = new Error("The selected hierarchy parent changed; please retry.");
-            conflict.statusCode = 409;
-            throw conflict;
-          }
-          userData.zone = parent.zone;
-          if (requestedRole === "STATE_MANAGER") {
-            userData.zonalManagerId = parent._id;
-          } else {
-            userData.state = parent.state;
-            userData.zonalManagerId = parent.zonalManagerId || null;
-            userData.stateManagerId = parent._id;
-          }
-          [createdUser] = await User.create([userData], { session });
-        });
-      } finally {
-        await session.endSession();
-      }
+      await withParentFence(parentId, parentRole, async (parent, lineage, session) => {
+        userData.zone = lineage.zone;
+        if (requestedRole === "STATE_MANAGER") {
+          userData.zonalManagerId = parent._id;
+          userData.stateManagerId = null;
+          userData.agentId = null;
+        } else {
+          userData.state = lineage.state;
+          userData.zonalManagerId = lineage.zonalManagerId;
+          userData.stateManagerId = parent._id;
+          userData.agentId = null;
+        }
+        [createdUser] = await User.create([userData], { session });
+        safeUser = await User.findById(createdUser._id)
+          .select("-password")
+          .session(session)
+          .lean();
+      });
     } else {
       [createdUser] = await User.create([userData]);
-    }
-
-    const safeUser =
-      await User.findById(
-        createdUser._id
-      )
+      safeUser = await User.findById(createdUser._id)
         .select("-password")
         .lean();
+    }
 
     return res.status(201).json({
       success: true,
@@ -2481,6 +2487,13 @@ exports.createAdminUser = async (
       },
     });
   } catch (error) {
+    if (error?.status) {
+      return res.status(error.status).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
     console.error(
       "Create admin user error:",
       error

@@ -17,6 +17,18 @@ const deliverySchema =
         unique: true,
         index: true,
       },
+      idempotencyKey: {
+        type: String,
+        trim: true,
+        maxlength: 128,
+        default: null,
+        select: false,
+      },
+      idempotencyFingerprint: {
+        type: String,
+        select: false,
+        default: null,
+      },
 
       /*
        * Pickup state and destination state are
@@ -338,6 +350,15 @@ deliverySchema.index({
   status: 1,
   createdAt: -1,
 });
+deliverySchema.index(
+  { customerId: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: { $type: "string" },
+    },
+  }
+);
 
 /*
  * State delivery and coverage reporting.

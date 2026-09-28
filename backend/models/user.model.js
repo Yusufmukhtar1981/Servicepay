@@ -109,6 +109,11 @@ const userSchema = new mongoose.Schema(
       min: 0,
       select: false,
     },
+    hierarchyCapturePending: {
+      type: [{ type: String }],
+      default: undefined,
+      select: false,
+    },
 
     /*
      * Internal ServicePay staff

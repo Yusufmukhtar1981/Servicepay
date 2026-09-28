@@ -29,10 +29,63 @@ const generateDeliveryPaymentReference = () => {
   return `DELIVERY-${Date.now()}-${randomCode}`;
 };
 
+const hasDeliveryIdempotencyIndex = async () => {
+  try {
+    const indexes = await Delivery.collection.indexes();
+    return indexes.some((index) =>
+      index.unique === true &&
+      Object.keys(index.key || {}).length === 2 &&
+      index.key?.customerId === 1 &&
+      index.key?.idempotencyKey === 1 &&
+      Object.keys(index.partialFilterExpression || {}).length === 1 &&
+      Object.keys(index.partialFilterExpression?.idempotencyKey || {}).length === 1 &&
+      index.partialFilterExpression?.idempotencyKey?.$type === "string"
+    );
+  } catch {
+    return false;
+  }
+};
+
 // Customer ya kirkiri delivery request
 // ServicePay Delivery: fixed ₦1,500 automatic wallet charge.
 exports.createDelivery = async (req, res) => {
   const session = await mongoose.startSession();
+  let idempotencyKey = "";
+  let requestFingerprint = "";
+  const returnExistingRequest = async (existing) => {
+    if (existing.idempotencyFingerprint !== requestFingerprint) {
+      return res.status(409).json({
+        success: false,
+        code: "DELIVERY_IDEMPOTENCY_KEY_REUSED",
+        message:
+          "This delivery request key was already used for different details. Check your delivery history before submitting another request.",
+      });
+    }
+
+    const [currentUser, transaction] = await Promise.all([
+      User.findById(existing.customerId).select("walletBalance").lean(),
+      Transaction.findOne({
+        serviceType: "DELIVERY",
+        "providerResponse.deliveryId": existing._id,
+      }).lean(),
+    ]);
+    const deliveryResponse = { ...existing };
+    delete deliveryResponse.idempotencyKey;
+    delete deliveryResponse.idempotencyFingerprint;
+    return res.status(200).json({
+      success: true,
+      duplicate: true,
+      message: "This delivery request has already been submitted.",
+      delivery: deliveryResponse,
+      transaction,
+      walletBalance: Number(currentUser?.walletBalance || 0),
+      payment: {
+        status: existing.paymentStatus,
+        amount: Number(existing.deliveryFee || 0),
+        reference: transaction?.reference || null,
+      },
+    });
+  };
 
   try {
     const {
@@ -84,9 +137,75 @@ exports.createDelivery = async (req, res) => {
       ).trim() ||
       "Delivery item";
 
+    const headerIdempotencyKey = String(
+      req.get?.("Idempotency-Key") || req.headers?.["idempotency-key"] || ""
+    ).trim();
+    const bodyIdempotencyKey = String(req.body?.idempotencyKey || "").trim();
+    if (headerIdempotencyKey && bodyIdempotencyKey &&
+        headerIdempotencyKey !== bodyIdempotencyKey) {
+      return res.status(400).json({
+        success: false,
+        message: "Conflicting delivery idempotency keys were supplied.",
+      });
+    }
+    idempotencyKey = headerIdempotencyKey || bodyIdempotencyKey;
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) {
+      return res.status(400).json({
+        success: false,
+        code: "DELIVERY_IDEMPOTENCY_KEY_REQUIRED",
+        message: "A valid Idempotency-Key is required for delivery requests.",
+      });
+    }
+    if (!(await hasDeliveryIdempotencyIndex())) {
+      return res.status(503).json({
+        success: false,
+        code: "DELIVERY_IDEMPOTENCY_INDEX_NOT_READY",
+        message:
+          "Delivery requests are temporarily unavailable while safe retry protection is being prepared.",
+      });
+    }
+
+    const normalizedPickupState =
+      req.deliveryCoverage?.pickupStateCode ||
+      (pickupState ? String(pickupState).trim().toUpperCase() : null);
+    const normalizedDeliveryState =
+      req.deliveryCoverage?.deliveryStateCode ||
+      (deliveryState ? String(deliveryState).trim().toUpperCase() : null);
+    requestFingerprint = crypto
+      .createHash("sha256")
+      .update(JSON.stringify({
+        pickupState: normalizedPickupState,
+        deliveryState: normalizedDeliveryState,
+        pickupAddress: String(pickupAddress).trim(),
+        deliveryAddress: String(deliveryAddress).trim(),
+        senderName: String(senderName).trim(),
+        senderPhone: String(senderPhone).trim(),
+        receiverName: String(receiverName).trim(),
+        receiverPhone: String(receiverPhone).trim(),
+        packageName: normalizedPackageName,
+        packageDescription: String(packageDescription || "").trim(),
+        packageWeight: parsedWeight,
+      }))
+      .digest("hex");
+
+    const existingRequest = await Delivery.findOne({
+      customerId: req.user._id,
+      idempotencyKey,
+    }).select("+idempotencyFingerprint").lean();
+    if (existingRequest) return await returnExistingRequest(existingRequest);
+
     const deliveryFee = 1500;
 
     session.startTransaction();
+
+    const concurrentRequest = await Delivery.findOne({
+      customerId: req.user._id,
+      idempotencyKey,
+    }).select("+idempotencyFingerprint").session(session).lean();
+    if (concurrentRequest) {
+      await session.abortTransaction();
+      return await returnExistingRequest(concurrentRequest);
+    }
 
     /*
      * Atomic wallet debit.
@@ -120,7 +239,7 @@ exports.createDelivery = async (req, res) => {
         await User.findById(
           req.user._id
         ).select(
-          "walletBalance status"
+          "walletBalance status branchId"
         );
 
       if (!currentUser) {
@@ -142,6 +261,7 @@ exports.createDelivery = async (req, res) => {
         });
       }
 
+
       return res.status(400).json({
         success: false,
         code:
@@ -155,6 +275,29 @@ exports.createDelivery = async (req, res) => {
             currentUser.walletBalance || 0
           ),
       });
+    }
+
+    // Unbranched customers are dispatched only by a validated, live pickup
+    // state with a verified, online rider in that state. Never debit an order
+    // which cannot be shown to any rider, or infer a branch from an address.
+    if (!updatedUser.branchId) {
+      const coveredState = req.deliveryCoverage?.pickupStateCode;
+      const riderAvailable = coveredState && await User.exists({
+        role: "DELIVERY_RIDER",
+        status: "ACTIVE",
+        riderVerificationStatus: "VERIFIED",
+        availabilityStatus: "ONLINE",
+        branchId: null,
+        riderState: { $regex: `^${coveredState}$`, $options: "i" },
+      }).session(session);
+      if (!riderAvailable) {
+        await session.abortTransaction();
+        return res.status(409).json({
+          success: false,
+          code: "DELIVERY_RIDER_UNAVAILABLE",
+          message: "No verified rider is available for this pickup state. Choose a live pickup state with a rider or try again later. Your wallet was not charged.",
+        });
+      }
     }
 
     const trackingNumber =
@@ -178,32 +321,14 @@ exports.createDelivery = async (req, res) => {
             branchId: updatedUser.branchId || null,
 
             trackingNumber,
+            idempotencyKey,
+            idempotencyFingerprint: requestFingerprint,
 
             pickupState:
-              req.deliveryCoverage
-                ?.pickupStateCode ||
-              (
-                pickupState
-                  ? String(
-                      pickupState
-                    )
-                      .trim()
-                      .toUpperCase()
-                  : null
-              ),
+              normalizedPickupState,
 
             deliveryState:
-              req.deliveryCoverage
-                ?.deliveryStateCode ||
-              (
-                deliveryState
-                  ? String(
-                      deliveryState
-                    )
-                      .trim()
-                      .toUpperCase()
-                  : null
-              ),
+              normalizedDeliveryState,
 
             pickupAddress:
               String(
@@ -334,13 +459,13 @@ exports.createDelivery = async (req, res) => {
                 "PAID",
 
               deliveryFee:
-                1500,
+                deliveryFee,
 
               riderShare:
-                600,
+                Number((deliveryFee * 0.4).toFixed(2)),
 
               servicepayShare:
-                900,
+                Number((deliveryFee * 0.6).toFixed(2)),
             },
           },
         ],
@@ -351,13 +476,16 @@ exports.createDelivery = async (req, res) => {
 
     await session.commitTransaction();
 
+    const deliveryResponse = delivery.toObject();
+    delete deliveryResponse.idempotencyKey;
+    delete deliveryResponse.idempotencyFingerprint;
     return res.status(201).json({
       success: true,
 
       message:
         "Delivery request submitted successfully. ₦1,500 has been deducted from your wallet.",
 
-      delivery,
+      delivery: deliveryResponse,
 
       transaction:
         transactions[0],
@@ -382,6 +510,29 @@ exports.createDelivery = async (req, res) => {
       session.inTransaction()
     ) {
       await session.abortTransaction();
+    }
+
+    const concurrentRequestConflict =
+      error?.code === 11000 ||
+      error?.code === 112 ||
+      error?.hasErrorLabel?.("TransientTransactionError");
+    if (concurrentRequestConflict && idempotencyKey) {
+      let existingRequest = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        existingRequest = await Delivery.findOne({
+          customerId: req.user._id,
+          idempotencyKey,
+        }).select("+idempotencyFingerprint").lean();
+        if (existingRequest) break;
+        await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+      }
+      if (existingRequest) return await returnExistingRequest(existingRequest);
+      return res.status(503).json({
+        success: false,
+        code: "DELIVERY_REQUEST_RESULT_UNKNOWN",
+        message:
+          "The delivery request is still being confirmed. Retry with the same Idempotency-Key.",
+      });
     }
 
     console.error(
@@ -411,6 +562,7 @@ exports.getMyDeliveries = async (req, res) => {
         "assignedRiderId",
         "fullName phone email"
       )
+      .select("+idempotencyKey")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -479,11 +631,20 @@ exports.getDeliveryById = async (req, res) => {
 
     const isAdmin = [
       "HEAD_OFFICE",
-      "ZONAL_MANAGER",
+      "ADMIN",
+      "SUPER_ADMIN",
+      "HEAD_OFFICE_ADMIN",
       "STATE_MANAGER",
     ].includes(userRole);
 
-    if (!isOwner && !isAdmin) {
+    const isScopedManager = userRole === "STATE_MANAGER" &&
+      Boolean(await User.exists({
+        _id: customerId,
+        role: "CUSTOMER",
+        stateManagerId: req.user._id,
+        isDeleted: { $ne: true },
+      }));
+    if (!isOwner && (!isAdmin || (userRole === "STATE_MANAGER" && !isScopedManager))) {
       return res.status(403).json({
         success: false,
         message:
@@ -938,6 +1099,15 @@ exports.getAllDeliveries = async (
     } = req.query;
 
     const filter = {};
+    if (req.user.role === "STATE_MANAGER") {
+      filter.customerId = {
+        $in: await User.find({
+          role: "CUSTOMER",
+          stateManagerId: req.user._id,
+          isDeleted: { $ne: true },
+        }).distinct("_id"),
+      };
+    }
 
     if (status) {
       filter.status =
@@ -1142,8 +1312,19 @@ exports.updateDeliveryStatus = async (
     let delivery;
     try {
       await sourceSession.withTransaction(async () => {
-        delivery = await Delivery.findByIdAndUpdate(
-          req.params.id,
+        const scope = req.user.role === "STATE_MANAGER"
+          ? {
+              customerId: {
+                $in: await User.find({
+                  role: "CUSTOMER",
+                  stateManagerId: req.user._id,
+                  isDeleted: { $ne: true },
+                }).session(sourceSession).distinct("_id"),
+              },
+            }
+          : {};
+        delivery = await Delivery.findOneAndUpdate(
+          { _id: req.params.id, ...scope },
           updateData,
           {
             new: true,

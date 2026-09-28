@@ -121,7 +121,8 @@ const loadAssignment = async (req, session) => {
   const parentId = oid(req.body?.parentId);
   if (!userId || !parentId) throw error(400, "Valid userId and parentId are required.");
   if (userId.equals(parentId)) throw error(400, "A user cannot be assigned to itself.");
-  const target = await User.findOne({ _id: userId, ...active }).session(session);
+  const target = await User.findOne({ _id: userId, ...active })
+    .session(session).select("+hierarchyCapturePending");
   const parent = await User.findOne({ _id: parentId, ...active }).session(session);
   if (!target || !parent) throw error(404, "The active hierarchy user or parent was not found.");
   const expected = TARGET_PARENT[target.role];
@@ -158,14 +159,25 @@ const subtree = async (target, session) => {
         ...(agentIds.length ? [{ agentId: { $in: agentIds } }] : []),
         { stateManagerId: target._id, agentId: null },
       ],
-    }).session(session).lean();
+    }).session(session).select("+hierarchyCapturePending").lean();
     return { agents, customers };
   }
-  if (target.role === "AGENT") return { agents: [], customers: await User.find({ ...retained, role: "CUSTOMER", agentId: target._id }).session(session).lean() };
+  if (target.role === "AGENT") return {
+    agents: [],
+    customers: await User.find({ ...retained, role: "CUSTOMER", agentId: target._id })
+      .session(session).select("+hierarchyCapturePending").lean(),
+  };
   return { agents: [], customers: [] };
 };
 
 exports.assign = async (req, res) => {
+  if (String(req.user?.role || "").toUpperCase() !== "HEAD_OFFICE") {
+    return res.status(403).json({
+      success: false,
+      code: "HEAD_OFFICE_REQUIRED",
+      message: "Only Head Office can reassign hierarchy users.",
+    });
+  }
   const requestId = String(req.body?.requestId || "").trim().slice(0, 160);
   const reason = String(req.body?.reason || "").trim();
   if (!requestId) return res.status(400).json({ success: false, message: "requestId is required." });
@@ -174,6 +186,11 @@ exports.assign = async (req, res) => {
   if (!expectedTargetId) return res.status(400).json({ success: false, message: "A valid userId is required." });
   const requestedParentId = oid(req.body?.parentId);
   if (!requestedParentId) return res.status(400).json({ success: false, message: "A valid parentId is required." });
+  const hasExpectedParent = Object.prototype.hasOwnProperty.call(req.body || {}, "expectedParentId");
+  const expectedParent = req.body?.expectedParentId == null ? null : oid(req.body.expectedParentId);
+  if (hasExpectedParent && req.body.expectedParentId != null && !expectedParent) {
+    return res.status(400).json({ success: false, message: "Invalid expectedParentId." });
+  }
   try {
     await ensureHierarchyRequestIndex();
   } catch (indexError) {
@@ -193,6 +210,9 @@ exports.assign = async (req, res) => {
   const expectedTarget = await User.findOne({ _id: expectedTargetId, ...active }).select("_id role zonalManagerId stateManagerId agentId").lean();
   if (!expectedTarget) return res.status(404).json({ success: false, message: "The active hierarchy user was not found." });
   const expectedParentId = parentFor(expectedTarget);
+  if (hasExpectedParent && String(expectedParentId || "") !== String(expectedParent || "")) {
+    return res.status(409).json({ success: false, code: "HIERARCHY_PARENT_CHANGED", message: "This reporting line changed since you opened it. Refresh and review it before assigning." });
+  }
   const session = await mongoose.startSession();
   let result;
   try {
@@ -215,6 +235,14 @@ exports.assign = async (req, res) => {
       const lockIds = [target._id, parent._id, previousParentId, parent.zonalManagerId, parent.stateManagerId,
         ...tree.agents.map((x) => x._id), ...tree.customers.map((x) => x._id)].filter(Boolean);
       await lock(lockIds, session);
+      if (target.hierarchyCapturePending?.length ||
+          tree.customers.some((customer) => customer.hierarchyCapturePending?.length)) {
+        throw error(
+          409,
+          "A transaction hierarchy snapshot is still in progress. Retry this assignment.",
+          "HIERARCHY_TRANSACTION_IN_PROGRESS"
+        );
+      }
       if (same) {
         result = { duplicate: true, targetId: target._id, affectedCount: 0 };
         await AdminAuditLog.create([{

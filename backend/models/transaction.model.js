@@ -281,21 +281,69 @@ transactionSchema.pre("save", async function () {
     throw immutableRewardError();
   }
   if (!this.isNew) return;
-  this.hierarchyCapturedAt = new Date();
-  // Most payment services create a Transaction without denormalized manager
-  // fields. Freeze the customer's reporting line when the record is created
-  // instead of allowing a later reassignment to rewrite its apparent owner.
-  // Respect callers which supplied a historical snapshot themselves.
-  if (this.agentId || this.stateManagerId || this.zonalManagerId) return;
+  if (this.reversedTransactionId) {
+    const original = await this.constructor.findById(this.reversedTransactionId)
+      .select("agentId stateManagerId zonalManagerId hierarchyCapturedAt")
+      .session(this.$session())
+      .lean();
+    if (!original) {
+      throw new Error("Cannot capture hierarchy for a reversal without its original transaction.");
+    }
+    this.agentId = original.agentId || null;
+    this.stateManagerId = original.stateManagerId || null;
+    this.zonalManagerId = original.zonalManagerId || null;
+    if (original.hierarchyCapturedAt) this.hierarchyCapturedAt = new Date();
+    return;
+  }
   const User = require("./user.model");
-  const customer = await User.findById(this.customerId)
+  const captureToken = new mongoose.Types.ObjectId().toString();
+  const session = this.$session();
+  const customer = await User.findOneAndUpdate({
+    _id: this.customerId,
+  }, {
+    $inc: { hierarchyVersion: 1 },
+    $addToSet: { hierarchyCapturePending: captureToken },
+  }, {
+    returnDocument: "after",
+    ...(session ? { session } : {}),
+    timestamps: false,
+  })
     .select("agentId stateManagerId zonalManagerId")
-    .session(this.$session())
     .lean();
-  if (!customer) throw new Error("Cannot record a transaction for a missing customer.");
+  if (!customer) throw new Error("Cannot capture hierarchy for a missing transaction customer.");
+  this.$locals.hierarchyCaptureToken = captureToken;
   this.agentId = customer.agentId || null;
   this.stateManagerId = customer.stateManagerId || null;
   this.zonalManagerId = customer.zonalManagerId || null;
+  this.hierarchyCapturedAt = new Date();
+});
+const releaseHierarchyCapture = async (transaction) => {
+  const token = transaction?.$locals?.hierarchyCaptureToken;
+  if (!token) return;
+  const User = require("./user.model");
+  const session = transaction.$session();
+  await User.updateOne(
+    { _id: transaction.customerId },
+    { $pull: { hierarchyCapturePending: token } },
+    { ...(session ? { session } : {}), timestamps: false },
+  );
+  delete transaction.$locals.hierarchyCaptureToken;
+};
+
+transactionSchema.post("save", async function () {
+  try {
+    await releaseHierarchyCapture(this);
+  } catch (error) {
+    console.error("Unable to release hierarchy snapshot fence:", error.message);
+  }
+});
+
+transactionSchema.post("save", function (error, transaction, next) {
+  releaseHierarchyCapture(transaction)
+    .catch((releaseError) => {
+      console.error("Unable to release hierarchy snapshot fence:", releaseError.message);
+    })
+    .finally(() => next(error));
 });
 ["updateOne", "updateMany", "findOneAndUpdate", "replaceOne", "findOneAndReplace",
   "deleteOne", "deleteMany", "findOneAndDelete"].forEach((operation) => {

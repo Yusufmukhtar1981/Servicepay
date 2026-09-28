@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { randomUUID } = require("crypto");
 
 const User = require("../models/user.model");
 const Delivery = require("../models/delivery.model");
@@ -125,9 +126,7 @@ const validateRiderAccount = (
     return false;
   }
 
-  if (
-    normalizeStatus(rider.status) !== "ACTIVE"
-  ) {
+  if (rider.status !== "ACTIVE") {
     res.status(403).json({
       success: false,
       message:
@@ -200,6 +199,7 @@ exports.getRiderDeliveries =
 
       const [
         deliveries,
+        availableDeliveries,
         totalAssigned,
         activeDeliveries,
         completedDeliveries,
@@ -223,6 +223,31 @@ exports.getRiderDeliveries =
             createdAt: -1,
           })
           .lean(),
+
+        rider.availabilityStatus === "ONLINE" &&
+            rider.riderVerificationStatus === "VERIFIED" &&
+            (rider.branchId || rider.riderState)
+          ? Delivery.find({
+              ...(rider.branchId
+                ? { branchId: rider.branchId }
+                : {
+                    branchId: null,
+                    pickupState: String(rider.riderState).trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_"),
+                  }),
+              status: "PENDING",
+              paymentStatus: "PAID",
+              $or: [
+                { assignedRiderId: null },
+                { assignedRiderId: { $exists: false } },
+              ],
+            })
+              .select(
+                "_id trackingNumber pickupState deliveryState pickupAddress deliveryAddress packageName packageDescription packageWeight deliveryFee createdAt"
+              )
+              .sort({ createdAt: 1 })
+              .limit(100)
+              .lean()
+          : Promise.resolve([]),
 
         Delivery.countDocuments({
           assignedRiderId:
@@ -267,6 +292,10 @@ exports.getRiderDeliveries =
 
         data: {
           deliveries,
+          availableDeliveries: availableDeliveries.map((delivery) => ({
+            ...delivery,
+            availableToClaim: true,
+          })),
 
           summary: {
             totalAssigned,
@@ -275,10 +304,15 @@ exports.getRiderDeliveries =
             completed:
               completedDeliveries,
             pendingAcceptance,
+            availableToClaim: availableDeliveries.length,
           },
         },
 
         deliveries,
+        availableDeliveries: availableDeliveries.map((delivery) => ({
+          ...delivery,
+          availableToClaim: true,
+        })),
       });
     } catch (error) {
       console.error(
@@ -338,7 +372,7 @@ exports.getRiderDeliveryDetails =
         });
       }
 
-      const delivery =
+      let delivery =
         await Delivery.findOne({
           _id: deliveryId,
 
@@ -460,64 +494,150 @@ exports.acceptRiderDelivery =
         });
       }
 
-      const delivery =
-        await Delivery.findOne({
-          _id: deliveryId,
+      const session = await mongoose.startSession();
+      let delivery = null;
+      try {
+        await session.withTransaction(async () => {
+          const now = new Date();
+          const assignedDelivery = await Delivery.findOneAndUpdate(
+            {
+              _id: deliveryId,
+              assignedRiderId: rider._id,
+              status: "ASSIGNED",
+            },
+            {
+              $set: {
+                status: "ACCEPTED",
+                acceptedAt: now,
+                riderAcceptedAt: now,
+                riderRejectedAt: null,
+                riderRejectionReason: "",
+              },
+            },
+            { new: true, session }
+          );
 
-          assignedRiderId:
-            rider._id,
-        });
+          if (assignedDelivery) {
+            const updatedRider = await User.findOneAndUpdate(
+              {
+                _id: rider._id,
+                role: "DELIVERY_RIDER",
+                status: "ACTIVE",
+              },
+              {
+                $set: { availabilityStatus: "BUSY" },
+                $inc: { totalAcceptedDeliveries: 1 },
+              },
+              { new: true, session }
+            );
+            if (!updatedRider) {
+              throw Object.assign(
+                new Error("The active Delivery Rider account was not found."),
+                { statusCode: 409 }
+              );
+            }
+            delivery = assignedDelivery;
+            return;
+          }
 
-      if (!delivery) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "This delivery was not found or is not assigned to you.",
+          if (rider.availabilityStatus !== "ONLINE") {
+            throw Object.assign(
+              new Error("Go online before accepting an available delivery."),
+              { statusCode: 409 }
+            );
+          }
+          if (!rider.branchId && !rider.riderState) {
+            throw Object.assign(
+              new Error("A verified rider state or branch is required to claim an available delivery."),
+              { statusCode: 403 }
+            );
+          }
+
+          const claimedDelivery = await Delivery.findOneAndUpdate(
+            {
+              _id: deliveryId,
+              ...(rider.branchId
+                ? { branchId: rider.branchId }
+                : {
+                    branchId: null,
+                    pickupState: String(rider.riderState).trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_"),
+                  }),
+              status: "PENDING",
+              paymentStatus: "PAID",
+              $or: [
+                { assignedRiderId: null },
+                { assignedRiderId: { $exists: false } },
+              ],
+            },
+            {
+              $set: {
+                assignedRiderId: rider._id,
+                riderName: rider.fullName || "",
+                riderPhone: rider.phone || "",
+                assignedBy: rider._id,
+                assignedAt: now,
+                assignmentEventId: randomUUID(),
+                riderAcceptedAt: now,
+                acceptedAt: now,
+                riderRejectedAt: null,
+                riderRejectionReason: "",
+                status: "ACCEPTED",
+              },
+            },
+            { new: true, runValidators: true, session }
+          );
+          if (!claimedDelivery) {
+            throw Object.assign(
+              new Error("This delivery is no longer available to accept."),
+              { statusCode: 409 }
+            );
+          }
+
+          const updatedRider = await User.findOneAndUpdate(
+            {
+              _id: rider._id,
+              role: "DELIVERY_RIDER",
+              status: "ACTIVE",
+              riderVerificationStatus: "VERIFIED",
+              availabilityStatus: "ONLINE",
+            },
+            {
+              $set: { availabilityStatus: "BUSY" },
+              $inc: {
+                totalAssignedDeliveries: 1,
+                totalAcceptedDeliveries: 1,
+              },
+            },
+            { new: true, session }
+          );
+          if (!updatedRider) {
+            throw Object.assign(
+              new Error("The Delivery Rider is no longer available."),
+              { statusCode: 409 }
+            );
+          }
+          delivery = claimedDelivery;
         });
+      } catch (error) {
+        if (Number.isInteger(error.statusCode)) {
+          return res.status(error.statusCode).json({
+            success: false,
+            message: error.message,
+          });
+        }
+        if (
+          error?.code === 112 ||
+          error?.hasErrorLabel?.("TransientTransactionError")
+        ) {
+          return res.status(409).json({
+            success: false,
+            message: "This delivery was accepted by another request. Refresh the list.",
+          });
+        }
+        throw error;
+      } finally {
+        await session.endSession();
       }
-
-      if (
-        delivery.status !==
-        "ASSIGNED"
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            `This delivery cannot be accepted because its current status is ${delivery.status}.`,
-        });
-      }
-
-      const now =
-        new Date();
-
-      delivery.status =
-        "ACCEPTED";
-
-      delivery.acceptedAt =
-        now;
-
-      delivery.riderAcceptedAt =
-        now;
-
-      delivery.riderRejectedAt =
-        null;
-
-      delivery.riderRejectionReason =
-        "";
-
-      await delivery.save();
-
-      rider.totalAcceptedDeliveries =
-        Number(
-          rider
-            .totalAcceptedDeliveries ||
-            0
-        ) + 1;
-
-      rider.availabilityStatus =
-        "BUSY";
-
-      await rider.save();
 
       const updatedDelivery =
         await populateDelivery(
@@ -819,10 +939,13 @@ exports.updateRiderDeliveryStatus =
         allowedTransitions[
           delivery.status
         ];
+      let isCompletionRetry =
+        delivery.status === "DELIVERED" &&
+        requestedStatus === "DELIVERED";
 
       if (
-        expectedNextStatus !==
-        requestedStatus
+        !isCompletionRetry &&
+        expectedNextStatus !== requestedStatus
       ) {
         return res.status(400).json({
           success: false,
@@ -836,46 +959,79 @@ exports.updateRiderDeliveryStatus =
       const now =
         new Date();
 
-      delivery.status =
-        requestedStatus;
+      if (requestedStatus === "DELIVERED") {
+        if (!isCompletionRetry) {
+          const sourceSession = await mongoose.startSession();
+          let completedDelivery = null;
+          try {
+            await sourceSession.withTransaction(async () => {
+              completedDelivery = await Delivery.findOneAndUpdate(
+                {
+                  _id: delivery._id,
+                  assignedRiderId: rider._id,
+                  status: "IN_TRANSIT",
+                },
+                {
+                  $set: {
+                    status: "DELIVERED",
+                    deliveredAt: now,
+                  },
+                },
+                { new: true, runValidators: true, session: sourceSession }
+              );
+              if (completedDelivery) {
+                await enqueueReferralRewardEvent({
+                  referredCustomerId: delivery.customerId,
+                  sourceType: "DELIVERY",
+                  sourceId: delivery._id,
+                  session: sourceSession,
+                });
+              }
+            });
+          } finally {
+            await sourceSession.endSession();
+          }
 
-      if (
-        requestedStatus ===
-        "PICKED_UP"
-      ) {
-        delivery.pickedUpAt =
-          now;
-      }
-
-      if (
-        requestedStatus ===
-        "IN_TRANSIT"
-      ) {
-        delivery.inTransitAt =
-          now;
-      }
-
-      if (
-        requestedStatus ===
-        "DELIVERED"
-      ) {
-        delivery.deliveredAt =
-          now;
-      }
-
-      const sourceSession = await mongoose.startSession();
-      try {
-        await sourceSession.withTransaction(async () => {
-          await delivery.save({ session: sourceSession });
-          await enqueueReferralRewardEvent({
-            referredCustomerId: delivery.customerId,
-            sourceType: "DELIVERY",
-            sourceId: delivery._id,
-            session: sourceSession,
+          if (completedDelivery) {
+            delivery = completedDelivery;
+          } else {
+            const latestDelivery = await Delivery.findOne({
+              _id: delivery._id,
+              assignedRiderId: rider._id,
+            });
+            if (latestDelivery?.status !== "DELIVERED") {
+              return res.status(409).json({
+                success: false,
+                message:
+                  "This delivery was updated by another request. Refresh the delivery status.",
+              });
+            }
+            delivery = latestDelivery;
+            isCompletionRetry = true;
+          }
+        }
+      } else {
+        delivery.status = requestedStatus;
+        if (requestedStatus === "PICKED_UP") {
+          delivery.pickedUpAt = now;
+        }
+        if (requestedStatus === "IN_TRANSIT") {
+          delivery.inTransitAt = now;
+        }
+        const sourceSession = await mongoose.startSession();
+        try {
+          await sourceSession.withTransaction(async () => {
+            await delivery.save({ session: sourceSession });
+            await enqueueReferralRewardEvent({
+              referredCustomerId: delivery.customerId,
+              sourceType: "DELIVERY",
+              sourceId: delivery._id,
+              session: sourceSession,
+            });
           });
-        });
-      } finally {
-        await sourceSession.endSession();
+        } finally {
+          await sourceSession.endSession();
+        }
       }
 
       let commissionResult = {
@@ -889,16 +1045,13 @@ exports.updateRiderDeliveryStatus =
         requestedStatus ===
         "DELIVERED"
       ) {
-        rider.totalCompletedDeliveries =
-          Number(
-            rider
-              .totalCompletedDeliveries ||
-              0
-          ) + 1;
-
         rider.availabilityStatus =
           "ONLINE";
 
+        if (!isCompletionRetry) {
+          rider.totalCompletedDeliveries =
+            Number(rider.totalCompletedDeliveries || 0) + 1;
+        }
         await rider.save();
 
         commissionResult =

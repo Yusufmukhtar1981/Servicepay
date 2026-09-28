@@ -30,8 +30,19 @@ const {
 
 const {
   protect,
+  adminOnly,
 } = require(
   "../middleware/auth.middleware"
+);
+const requireDeliveryAdmin = adminOnly(
+  "HEAD_OFFICE",
+  "ADMIN",
+  "SUPER_ADMIN",
+  "HEAD_OFFICE_ADMIN",
+  "STATE_MANAGER"
+);
+const requireHeadOfficeDeliveryAdmin = adminOnly(
+  "HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN"
 );
 
 /*
@@ -150,28 +161,28 @@ router.get(
 router.get(
   "/",
   protect,
-  denyZonalManager,
+  requireDeliveryAdmin,
   getAllDeliveries
 );
 
 router.put(
   "/fee/:id",
   protect,
-  denyZonalManager,
+  requireHeadOfficeDeliveryAdmin,
   setDeliveryFee
 );
 
 router.put(
   "/status/:id",
   protect,
-  denyZonalManager,
+  requireDeliveryAdmin,
   updateDeliveryStatus
 );
 
 router.put(
   "/payment/:id",
   protect,
-  denyZonalManager,
+  requireHeadOfficeDeliveryAdmin,
   updatePaymentStatus
 );
 

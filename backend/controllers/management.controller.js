@@ -3,6 +3,7 @@ const Transaction = require("../models/transaction.model");
 const Commission = require("../models/commission.model");
 const mongoose = require("mongoose");
 const { getZonalScope } = require("../services/zonalScope.service");
+const { withParentFence } = require("../services/hierarchyFence.service");
 
 const normalizeText = (value) =>
   String(value || "").trim();
@@ -247,29 +248,32 @@ exports.createStateManager = async (req, res) => {
       });
     }
 
-    const session = await mongoose.startSession();
     let stateManager;
-    try {
-      await session.withTransaction(async () => {
-        const actor = await User.findOneAndUpdate(
-          { _id: loggedInUser._id || loggedInUser.id, role: "ZONAL_MANAGER", status: "ACTIVE", isDeleted: { $ne: true } },
-          { $inc: { hierarchyVersion: 1 } }, { session, new: true }
-        );
-        if (!actor) throw Object.assign(new Error("Zonal Manager hierarchy changed; registration was rejected."), { statusCode: 409 });
-        const existingUser = await User.findOne({ $or: duplicateConditions }).session(session).select("_id phone email");
+    await withParentFence(
+      loggedInUser._id || loggedInUser.id,
+      "ZONAL_MANAGER",
+      async (parent, lineage, session) => {
+        const existingUser = await User.findOne({ $or: duplicateConditions })
+          .session(session).select("_id phone email");
         if (existingUser) {
           const samePhone = normalizePhone(existingUser.phone) === cleanPhone;
           throw Object.assign(new Error(samePhone ? "A user with this phone number already exists." : "A user with this email address already exists."), { statusCode: 409 });
         }
         stateManager = new User({
-          fullName: cleanFullName, phone: cleanPhone, email: cleanEmail || undefined,
-          password: cleanPassword, role: "STATE_MANAGER", status: "ACTIVE",
-          zone: normalizeText(actor.zone), state: cleanState, lga: cleanLga || undefined,
-          zonalManagerId: actor._id,
+          fullName: cleanFullName,
+          phone: cleanPhone,
+          email: cleanEmail || undefined,
+          password: cleanPassword,
+          role: "STATE_MANAGER",
+          status: "ACTIVE",
+          zone: lineage.zone,
+          state: cleanState,
+          lga: cleanLga || undefined,
+          zonalManagerId: parent._id,
         });
         await stateManager.save({ session });
-      });
-    } finally { await session.endSession(); }
+      },
+    );
 
     return res.status(201).json({
       success: true,
@@ -278,6 +282,13 @@ exports.createStateManager = async (req, res) => {
       stateManager: publicUser(stateManager),
     });
   } catch (error) {
+    if (error?.status || error?.statusCode) {
+      return res.status(error.status || error.statusCode).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
     console.error(
       "createStateManager error:",
       error
@@ -476,31 +487,33 @@ exports.createAgent = async (req, res) => {
       });
     }
 
-    const session = await mongoose.startSession();
     let agent;
-    try {
-      await session.withTransaction(async () => {
-        const actor = await User.findOneAndUpdate(
-          { _id: loggedInUser._id || loggedInUser.id, role: "STATE_MANAGER", status: "ACTIVE", isDeleted: { $ne: true } },
-          { $inc: { hierarchyVersion: 1 } }, { session, new: true }
-        );
-        if (!actor || !actor.zonalManagerId || !actor.zone || !actor.state) {
-          throw Object.assign(new Error("State Manager hierarchy changed; registration was rejected."), { statusCode: 409 });
-        }
-        const existingUser = await User.findOne({ $or: duplicateConditions }).session(session).select("_id phone email");
+    await withParentFence(
+      loggedInUser._id || loggedInUser.id,
+      "STATE_MANAGER",
+      async (parent, lineage, session) => {
+        const existingUser = await User.findOne({ $or: duplicateConditions })
+          .session(session).select("_id phone email");
         if (existingUser) {
           const samePhone = normalizePhone(existingUser.phone) === cleanPhone;
           throw Object.assign(new Error(samePhone ? "A user with this phone number already exists." : "A user with this email address already exists."), { statusCode: 409 });
         }
         agent = new User({
-          fullName: cleanFullName, phone: cleanPhone, email: cleanEmail || undefined,
-          password: cleanPassword, role: "AGENT", status: "ACTIVE",
-          zone: actor.zone, state: actor.state, lga: cleanLga || undefined,
-          zonalManagerId: actor.zonalManagerId, stateManagerId: actor._id,
+          fullName: cleanFullName,
+          phone: cleanPhone,
+          email: cleanEmail || undefined,
+          password: cleanPassword,
+          role: "AGENT",
+          status: "ACTIVE",
+          zone: lineage.zone,
+          state: lineage.state,
+          lga: cleanLga || undefined,
+          zonalManagerId: lineage.zonalManagerId,
+          stateManagerId: parent._id,
         });
         await agent.save({ session });
-      });
-    } finally { await session.endSession(); }
+      },
+    );
 
     return res.status(201).json({
       success: true,
@@ -508,6 +521,13 @@ exports.createAgent = async (req, res) => {
       agent: publicUser(agent),
     });
   } catch (error) {
+    if (error?.status || error?.statusCode) {
+      return res.status(error.status || error.statusCode).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
     console.error("createAgent error:", error);
 
     if (error?.code === 11000) {
@@ -696,26 +716,13 @@ exports.createCustomer = async (req, res) => {
       });
     }
 
-    const session = await mongoose.startSession();
     let customer;
-    let actor;
-    try {
-      await session.withTransaction(async () => {
-        // Lock the parent hierarchy document first. A promotion updates this
-        // same document, so MongoDB retries one transaction rather than
-        // allowing a stale AGENT request to create an orphan.
-        actor = await User.findOneAndUpdate(
-          { _id: loggedInUser._id || loggedInUser.id, role: "AGENT", status: "ACTIVE", isDeleted: { $ne: true } },
-          { $inc: { hierarchyVersion: 1 } },
-          { session, new: true }
-        );
-        if (!actor) {
-          const error = new Error("Agent hierarchy changed; registration was rejected.");
-          error.statusCode = 409;
-          throw error;
-        }
-        const existingUser = await User.findOne({ $or: duplicateConditions }).session(session).select("_id phone email");
-
+    await withParentFence(
+      loggedInUser._id || loggedInUser.id,
+      "AGENT",
+      async (actor, lineage, session) => {
+        const existingUser = await User.findOne({ $or: duplicateConditions })
+          .session(session).select("_id phone email");
         if (existingUser) {
           const samePhone = normalizePhone(existingUser.phone) === cleanPhone;
           const error = new Error(samePhone ? "A user with this phone number already exists." : "A user with this email address already exists.");
@@ -732,19 +739,19 @@ exports.createCustomer = async (req, res) => {
           role: "CUSTOMER",
           status: "ACTIVE",
 
-          zone: actor.zone,
-          state: actor.state,
+          zone: lineage.zone,
+          state: lineage.state,
           lga: cleanLga || normalizeText(actor.lga) || undefined,
 
-          zonalManagerId: actor.zonalManagerId || undefined,
-          stateManagerId: actor.stateManagerId || undefined,
+          zonalManagerId: lineage.zonalManagerId,
+          stateManagerId: lineage.stateManagerId,
           agentId: actor._id,
           walletBalance: 0,
         });
 
         await customer.save({ session });
-      });
-    } finally { await session.endSession(); }
+      },
+    );
 
     return res.status(201).json({
       success: true,
@@ -759,6 +766,14 @@ exports.createCustomer = async (req, res) => {
         success: false,
         message:
           "Phone number or email address already exists.",
+      });
+    }
+
+    if (error?.status || error?.statusCode) {
+      return res.status(error.status || error.statusCode).json({
+        success: false,
+        code: error.code,
+        message: error.message,
       });
     }
 
