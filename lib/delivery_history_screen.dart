@@ -112,6 +112,20 @@ class _DeliveryHistoryScreenState
                     )
                     .toList()
                 : <Map<String, dynamic>>[];
+        const pendingIdempotencyPreferencePrefix =
+            'delivery_pending_idempotency_key_v1';
+        final userId = preferences.getString('user_id')?.trim() ?? '';
+        final pendingIdempotencyPreferenceKey =
+            '$pendingIdempotencyPreferencePrefix-${userId.isEmpty ? 'default' : userId}';
+        final pendingIdempotencyKey =
+            preferences.getString(pendingIdempotencyPreferenceKey);
+        if (pendingIdempotencyKey != null &&
+            parsedDeliveries.any(
+              (delivery) =>
+                  delivery['idempotencyKey'] == pendingIdempotencyKey,
+            )) {
+          await preferences.remove(pendingIdempotencyPreferenceKey);
+        }
 
         if (!mounted) {
           return;
@@ -569,6 +583,11 @@ class _DeliveryHistoryScreenState
         parseAmount(
       delivery['deliveryFee'],
     );
+    final rider = delivery['assignedRiderId'] is Map
+        ? Map<String, dynamic>.from(delivery['assignedRiderId'] as Map)
+        : <String, dynamic>{};
+    final riderName = rider['fullName']?.toString().trim() ?? '';
+    final riderPhone = rider['phone']?.toString().trim() ?? '';
 
     final isPaying =
         payingDeliveryIds.contains(id);
@@ -721,6 +740,20 @@ class _DeliveryHistoryScreenState
                         ?.toString() ??
                     '-',
           ),
+          if (riderName.isNotEmpty)
+            buildSmallRow(
+              icon: Icons.local_shipping_outlined,
+              label: 'Delivery Rider',
+              value: riderPhone.isEmpty
+                  ? riderName
+                  : '$riderName · $riderPhone',
+            )
+          else if (status == 'PENDING' && paymentStatus == 'PAID')
+            buildSmallRow(
+              icon: Icons.hourglass_top_rounded,
+              label: 'Rider assignment',
+              value: 'Waiting for a rider to accept',
+            ),
           buildSmallRow(
             icon: Icons.payments_outlined,
             label: 'Delivery Fee',

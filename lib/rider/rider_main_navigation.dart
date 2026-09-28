@@ -637,6 +637,8 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
   late final Animation<double> pulseAnimation;
 
   List<Map<String, dynamic>> deliveries = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> availableDeliveries =
+      <Map<String, dynamic>>[];
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -775,6 +777,10 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
           RiderApi.listFromDynamic(
         root['deliveries'] ?? data['deliveries'],
       );
+      final List<Map<String, dynamic>> loadedAvailableDeliveries =
+          RiderApi.listFromDynamic(
+        root['availableDeliveries'] ?? data['availableDeliveries'],
+      );
 
       if (!mounted) {
         return;
@@ -782,6 +788,7 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
 
       setState(() {
         deliveries = loadedDeliveries;
+        availableDeliveries = loadedAvailableDeliveries;
 
         isLoading = false;
 
@@ -1047,6 +1054,8 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
     ).toUpperCase();
 
     final bool isAssigned = status.contains('ASSIGN');
+    final bool canClaim =
+        status == 'PENDING' && delivery['availableToClaim'] == true;
 
     final Widget card = Card(
       elevation: isAssigned ? 6 : 1,
@@ -1196,7 +1205,33 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
 
     Widget actionArea = const SizedBox.shrink();
 
-    if (isAssigned) {
+    if (canClaim) {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(
+          12,
+          0,
+          12,
+          14,
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () async {
+              await performAction(
+                delivery: delivery,
+                action: 'ACCEPT',
+              );
+            },
+            icon: const Icon(
+              Icons.check_rounded,
+            ),
+            label: const Text(
+              'Accept Available Delivery',
+            ),
+          ),
+        ),
+      );
+    } else if (isAssigned) {
       actionArea = Padding(
         padding: const EdgeInsets.fromLTRB(
           12,
@@ -1331,25 +1366,56 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
           ),
         ),
       );
+    } else if (status == 'DELIVERED' &&
+        RiderApi.text(delivery['paymentStatus']).toUpperCase() == 'PAID' &&
+        delivery['riderCommissionCredited'] != true) {
+      actionArea = Padding(
+        padding: const EdgeInsets.fromLTRB(
+          12,
+          0,
+          12,
+          14,
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              await performAction(
+                delivery: delivery,
+                action: 'STATUS',
+                status: 'DELIVERED',
+              );
+            },
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
+            label: const Text(
+              'Retry Commission Confirmation',
+            ),
+          ),
+        ),
+      );
     }
 
     final Widget tappableCard = InkWell(
       borderRadius: BorderRadius.circular(18),
-      onTap: () async {
-        final NavigatorState navigator = Navigator.of(context);
-        final String deliveryId = RiderApi.text(delivery['_id']);
-        if (deliveryId.isNotEmpty) {
-          await RiderDeliveryAlertService.cancel(deliveryId);
-        }
-        if (!navigator.mounted) return;
-        await navigator.push(
-          MaterialPageRoute<void>(
-            builder: (_) => RiderDeliveryDetailsPage(
-              delivery: delivery,
-            ),
-          ),
-        );
-      },
+      onTap: canClaim
+          ? null
+          : () async {
+              final NavigatorState navigator = Navigator.of(context);
+              final String deliveryId = RiderApi.text(delivery['_id']);
+              if (deliveryId.isNotEmpty) {
+                await RiderDeliveryAlertService.cancel(deliveryId);
+              }
+              if (!navigator.mounted) return;
+              await navigator.push(
+                MaterialPageRoute<void>(
+                  builder: (_) => RiderDeliveryDetailsPage(
+                    delivery: delivery,
+                  ),
+                ),
+              );
+            },
       child: card,
     );
 
@@ -1507,18 +1573,39 @@ class _RiderDeliveriesScreenState extends State<RiderDeliveriesScreen>
                       const SizedBox(
                         height: 16,
                       ),
-                      if (deliveries.isEmpty)
+                      if (availableDeliveries.isNotEmpty) ...[
+                        const Text(
+                          'Available deliveries',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ...availableDeliveries.map(buildDeliveryCard),
+                        const SizedBox(height: 14),
+                      ],
+                      if (deliveries.isEmpty && availableDeliveries.isEmpty)
                         const RiderEmptyScreen(
                           title: 'No Deliveries',
                           message:
-                              'Your assigned delivery jobs will appear here.',
+                              'No available requests or assigned delivery jobs right now.',
                           icon: Icons.local_shipping_outlined,
                           showAppBar: false,
                         )
-                      else
+                      else if (deliveries.isNotEmpty) ...[
+                        const Text(
+                          'Your assigned deliveries',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
                         ...deliveries.map(
                           buildDeliveryCard,
                         ),
+                      ],
                       const SizedBox(
                         height: 30,
                       ),

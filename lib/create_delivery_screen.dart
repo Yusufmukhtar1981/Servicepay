@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/session_store.dart';
 import 'servicepay_theme.dart';
 
 class CreateDeliveryScreen extends StatefulWidget {
@@ -21,6 +23,8 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
   static const Color primaryBlue = ServicePayColors.brandDeep;
 
   static const Color primaryGreen = ServicePayColors.brand;
+  static const String pendingIdempotencyPreferencePrefix =
+      'delivery_pending_idempotency_key_v1';
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -49,6 +53,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
   String profilePhone = '';
   String profileAddress = '';
   bool useProfileDetails = false;
+  String? pendingIdempotencyKey;
 
   @override
   void initState() {
@@ -74,7 +79,55 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
   }
 
   Future<void> loadInitialInformation() async {
-    await loadProfileDetails();
+    await Future.wait<void>([
+      loadProfileDetails(),
+      loadDeliveryCoverage(),
+    ]);
+  }
+
+  Future<String> getDeliveryIdempotencyKey() async {
+    if (pendingIdempotencyKey != null &&
+        pendingIdempotencyKey!.isNotEmpty) {
+      return pendingIdempotencyKey!;
+    }
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final String idempotencyPreferenceKey =
+        _idempotencyPreferenceKey(preferences);
+    final String? storedKey = preferences
+        .getString(idempotencyPreferenceKey)
+        ?.trim();
+    if (storedKey != null &&
+        RegExp(r'^[A-Za-z0-9._:-]{16,128}$').hasMatch(storedKey)) {
+      pendingIdempotencyKey = storedKey;
+      return storedKey;
+    }
+
+    final Random random = Random.secure();
+    final String generatedKey = List<int>.generate(
+      24,
+      (_) => random.nextInt(256),
+    )
+        .map((int byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    await preferences.setString(
+      idempotencyPreferenceKey,
+      generatedKey,
+    );
+    pendingIdempotencyKey = generatedKey;
+    return generatedKey;
+  }
+
+  Future<void> clearDeliveryIdempotencyKey() async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.remove(
+      _idempotencyPreferenceKey(preferences),
+    );
+    pendingIdempotencyKey = null;
+  }
+
+  String _idempotencyPreferenceKey(SharedPreferences preferences) {
+    final String userId = preferences.getString('user_id')?.trim() ?? '';
+    return '$pendingIdempotencyPreferencePrefix-${userId.isEmpty ? 'default' : userId}';
   }
 
   Map<String, dynamic> mapFromDynamic(
@@ -136,32 +189,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
   }
 
   Future<String> getSavedToken() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
-
-    const List<String> tokenKeys = [
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in tokenKeys) {
-      String token = preferences.getString(key)?.trim() ?? '';
-
-      if (token.toLowerCase().startsWith(
-            'bearer ',
-          )) {
-        token = token.substring(7).trim();
-      }
-
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    return '';
+    return (await SessionStore.readToken())?.trim() ?? '';
   }
 
   Future<void> loadProfileDetails() async {
@@ -518,6 +546,9 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     if (!(formKey.currentState?.validate() ?? false)) {
       return;
     }
+    if (!validateSelectedStates()) {
+      return;
+    }
 
     final String token = await getSavedToken();
 
@@ -534,6 +565,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     });
 
     try {
+      final String idempotencyKey = await getDeliveryIdempotencyKey();
       final http.Response response = await http
           .post(
             Uri.parse(
@@ -543,8 +575,11 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
+              'Idempotency-Key': idempotencyKey,
             },
             body: jsonEncode({
+              'pickupState': selectedPickupStateCode,
+              'deliveryState': selectedDeliveryStateCode,
               'pickupAddress': pickupController.text.trim(),
               'deliveryAddress': deliveryController.text.trim(),
               'senderName': senderNameController.text.trim(),
@@ -562,6 +597,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final Map<String, dynamic> root = decodeResponse(response);
+        await clearDeliveryIdempotencyKey();
 
         final Map<String, dynamic> delivery = mapFromDynamic(
           root['delivery'] ??
@@ -665,6 +701,12 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
         }
       } else {
         final String message = getErrorMessage(response);
+        if (response.statusCode >= 400 &&
+            response.statusCode < 500 &&
+            response.statusCode != 408 &&
+            response.statusCode != 409) {
+          await clearDeliveryIdempotencyKey();
+        }
 
         showMessage(
           message,
@@ -847,7 +889,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
             );
           },
         ).toList(),
-        onChanged: isLoading
+        onChanged: isLoading || isLoadingCoverage || coverageError.isNotEmpty
             ? null
             : (String? value) {
                 if (value == null || value.isEmpty) {
@@ -1192,6 +1234,22 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                     ),
                     activeColor: primaryBlue,
                   ),
+                ),
+                buildSectionTitle(
+                  'Delivery Coverage',
+                ),
+                buildCoverageLoadingCard(),
+                buildStateDropdown(
+                  label: 'Pickup State',
+                  selectedValue: selectedPickupStateCode,
+                  icon: Icons.location_on_outlined,
+                  pickup: true,
+                ),
+                buildStateDropdown(
+                  label: 'Destination State',
+                  selectedValue: selectedDeliveryStateCode,
+                  icon: Icons.flag_outlined,
+                  pickup: false,
                 ),
                 buildSectionTitle(
                   'Pickup Details',

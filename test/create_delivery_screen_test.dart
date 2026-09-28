@@ -16,7 +16,8 @@ void main() {
           home: CreateDeliveryScreen(),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('Create Delivery Request'), findsOneWidget);
       expect(find.text('Use my profile details'), findsOneWidget);
@@ -34,8 +35,8 @@ void main() {
       expect(find.text('₦1,500'), findsOneWidget);
       expect(find.text('Request Delivery'), findsOneWidget);
 
-      expect(find.text('Pickup State'), findsNothing);
-      expect(find.text('Destination State'), findsNothing);
+      expect(find.text('Pickup State'), findsOneWidget);
+      expect(find.text('Destination State'), findsOneWidget);
       expect(find.text('Package Name'), findsNothing);
       expect(find.text('Package Weight in KG'), findsNothing);
     },
@@ -55,7 +56,8 @@ void main() {
           home: CreateDeliveryScreen(),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       await tester.tap(find.text('Use my profile details'));
       await tester.pump();

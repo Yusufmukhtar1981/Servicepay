@@ -3,7 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'services/session_store.dart';
 
 class CreateStateManagerScreen extends StatefulWidget {
   const CreateStateManagerScreen({super.key});
@@ -47,26 +48,7 @@ class _CreateStateManagerScreenState extends State<CreateStateManagerScreen> {
   }
 
   Future<String?> getSavedToken() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
-
-    const List<String> tokenKeys = [
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in tokenKeys) {
-      final String? value = preferences.getString(key);
-
-      if (value != null && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-    }
-
-    return null;
+    return SessionStore.readToken();
   }
 
   void showMessage(

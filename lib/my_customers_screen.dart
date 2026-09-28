@@ -3,9 +3,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'create_customer_screen.dart';
+import 'services/session_store.dart';
 
 class MyCustomersScreen extends StatefulWidget {
   const MyCustomersScreen({super.key});
@@ -38,26 +38,7 @@ class _MyCustomersScreenState extends State<MyCustomersScreen> {
   }
 
   Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    const keys = [
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final key in keys) {
-      final value = prefs.getString(key);
-
-      if (value != null && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-    }
-
-    return null;
+    return SessionStore.readToken();
   }
 
   Future<void> loadCustomers() async {
