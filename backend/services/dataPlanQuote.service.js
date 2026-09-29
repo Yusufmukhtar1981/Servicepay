@@ -14,6 +14,7 @@ const signingKey = () => {
 const planIdentity = (plan) => ({
   planId: String(plan.code),
   networkId: plan.networkId == null ? null : Number(plan.networkId),
+  providerPlanId: plan.providerPlanId == null ? null : Number(plan.providerPlanId),
   name: String(plan.name || ""),
   size: String(plan.datasize || ""),
   type: String(plan.type || ""),

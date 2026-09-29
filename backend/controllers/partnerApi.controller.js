@@ -7,10 +7,6 @@ const PartnerTransaction = require("../models/partnerTransaction.model");
 const PartnerAuditLog = require("../models/partnerAuditLog.model");
 const DataPriceOverride = require("../models/dataPriceOverride.model");
 const { hasPartnerPermission } = require("../middleware/partnerAuth.middleware");
-const {
-  getServiceConfig,
-  isAvailable,
-} = require("../services/providerManagement.service");
 
 const AIRTIME_URL = "https://www.nellobytesystems.com/APIAirtimeV1.asp";
 const DATA_URL = "https://www.nellobytesystems.com/APIDatabundleV1.asp";
@@ -149,20 +145,11 @@ const providerRequestId = (data) =>
   String(field(data, ["requestid", "request_id", "requestreference", "request_reference"]) || "").trim().slice(0, 250);
 
 const ensurePartnerDataProvider = async () => {
-  const config = await getServiceConfig("DATA");
-  const provider = String(config.primaryProvider || "").toUpperCase();
-  const state = config.providerStates.find((item) => item.provider === provider);
-  if (
-    provider !== "CLUBKONNECT" ||
-    !state?.enabled ||
-    !isAvailable("DATA", provider)
-  ) {
-    const error = new Error(
-      "Partner DATA API does not support the currently selected primary provider.",
-    );
-    error.statusCode = 503;
-    throw error;
-  }
+  const error = new Error(
+    "Partner DATA purchases are temporarily unavailable until a provider-specific atomic pricing and dispatch path is verified.",
+  );
+  error.statusCode = 503;
+  throw error;
 };
 
 const sanitizeProviderPayload = (value, depth = 0) => {

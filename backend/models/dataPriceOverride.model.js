@@ -34,6 +34,12 @@ const dataPriceOverrideSchema =
         min: 0.01,
       },
 
+      pricingVersion: {
+        type: Number,
+        min: 0,
+        default: 0,
+      },
+
       active: {
         type: Boolean,
         default: true,

@@ -11,18 +11,18 @@ const crypto = require("crypto");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const DataPriceOverride = require("../models/dataPriceOverride.model");
+const {
+  getCatalog,
+  getPricedCatalog,
+} = require("../services/telecomAbodeDataCatalog.service");
 const { distributeCommission } = require("../services/commission.service");
 const {
   reconcileReferralReward,
   enqueueReferralRewardEvent,
 } = require("../services/referralReward.service");
 const {
-  refundFailedDataPurchase,
-} = require("../services/clubkonnectDataFailure.service");
-const {
   getServiceConfig,
   isAvailable,
-  getProviderCapabilities,
 } = require("../services/providerManagement.service");
 const telecomAbode = require("../services/telecomAbode.service");
 const {
@@ -31,8 +31,6 @@ const {
 } = require("../services/dataPlanQuote.service");
 
 const AIRTIME_URL = "https://www.nellobytesystems.com/APIAirtimeV1.asp";
-
-const DATA_URL = "https://www.nellobytesystems.com/APIDatabundleV1.asp";
 
 const DATA_PLANS_URL =
   "https://www.nellobytesystems.com/APIDatabundlePlansV2.asp";
@@ -649,84 +647,7 @@ exports.getDataPlans = async (req, res) => {
       });
     }
 
-    const providerConfig = await getServiceConfig("DATA");
-    const requestedProvider = String(req.query.provider || "").trim().toUpperCase();
-    if (requestedProvider && !["CLUBKONNECT", "TELECOM_ABODE"].includes(requestedProvider)) {
-      return res.status(400).json({
-        success: false,
-        message: "Unsupported DATA catalog provider.",
-      });
-    }
-    const provider = requestedProvider || String(providerConfig.primaryProvider || "").toUpperCase();
-    const providerState = providerConfig.providerStates.find(
-      (item) => item.provider === provider,
-    );
-    const telecomAbodeCatalogReadOnly =
-      provider === "TELECOM_ABODE" &&
-      getProviderCapabilities("DATA", provider).credentialsConfigured;
-    if (
-      !telecomAbodeCatalogReadOnly &&
-      (!providerState?.enabled || !isAvailable("DATA", provider))
-    ) {
-      return res.status(503).json({
-        success: false,
-        message: "Data plans are unavailable because no enabled, available primary provider is configured.",
-      });
-    }
-
-    let plans;
-    if (provider === "TELECOM_ABODE") {
-      const catalog = await telecomAbode.getDataPlans();
-      plans = catalog
-        .filter((plan) => normalizeNetwork(plan.network) === networkCode)
-        .map((plan) => ({
-          ...plan,
-          provider,
-          planProvider: provider,
-          sellingPrice: Number(plan.price),
-        }));
-    } else {
-      const credentials = getCredentials();
-      if (!credentials.valid) {
-        return res.status(503).json({
-          success: false,
-          message: "ClubKonnect credentials are not configured on the server.",
-        });
-      }
-      const providerPlans = await fetchNormalizedDataPlans(networkCode, credentials);
-      const overrides = await DataPriceOverride.find({
-        networkCode,
-        active: true,
-      }).lean();
-      const overrideMap = new Map(overrides.map((item) => [String(item.planCode), item]));
-      plans = providerPlans.map((plan) => {
-        const override = overrideMap.get(String(plan.code));
-        const sellingPrice =
-          override && Number(override.sellingPrice) > 0
-            ? Number(override.sellingPrice)
-            : Number(plan.price);
-        return {
-          ...plan,
-          provider,
-          planProvider: provider,
-          price: sellingPrice,
-          sellingPrice,
-        };
-      });
-    }
-
-    if (req.user?._id) {
-      plans = plans.map((plan) => ({
-        ...plan,
-        productQuote: issueDataPlanQuote({
-          customerId: req.user._id,
-          provider,
-          network: networkCode,
-          plan,
-          price: Number(plan.sellingPrice),
-        }),
-      }));
-    }
+    const plans = await getPricedCatalog(networkCode);
 
     return res.status(200).json({
       success: true,
@@ -740,7 +661,30 @@ exports.getDataPlans = async (req, res) => {
           ],
       },
       count: plans.length,
-      plans,
+      plans: plans.map((plan) => ({
+        id: plan.code,
+        code: plan.code,
+        name: plan.name,
+        price: plan.sellingPrice,
+        sellingPrice: plan.sellingPrice,
+        planProvider: "TELECOM_ABODE",
+        ...(process.env.JWT_SECRET
+          ? {
+              productQuote: issueDataPlanQuote({
+                customerId: req.user._id,
+                provider: "TELECOM_ABODE",
+                network: networkCode,
+                plan: {
+                  code: plan.code,
+                  name: plan.name,
+                  networkId: plan.providerNetworkId,
+                  providerPlanId: plan.providerPlanId,
+                },
+                price: plan.sellingPrice,
+              }),
+            }
+          : {}),
+      })),
     });
   } catch (error) {
     console.error(
@@ -748,11 +692,9 @@ exports.getDataPlans = async (req, res) => {
       error
     );
 
-    return res.status(error.statusCode || 500).json({
+    return res.status(503).json({
       success: false,
-      message:
-        "Unable to retrieve data plans.",
-      error: error.statusCode ? error.message : "Data plan catalog retrieval failed.",
+      message: "Data plans are currently unavailable.",
     });
   }
 };
@@ -1040,6 +982,7 @@ const getDataProviderSignals = (data) => {
     "responseCode",
     "code",
     "message",
+    "providerMessage",
   ].map((key) =>
     String(readObjectField(parsed, [key]) || "")
       .trim()
@@ -1154,6 +1097,7 @@ exports.buyData = async (req, res) => {
     selectedPlan,
     requestedPlanProvider,
     requestedQuote,
+    requestedAmount,
   ) => {
     const original = existing.providerResponse || {};
     const frozenProvider = String(existing.provider || original.provider || "CLUBKONNECT").toUpperCase();
@@ -1163,7 +1107,9 @@ exports.buyData = async (req, res) => {
       String(original.planCode || "") !== String(selectedPlan) ||
       (requestedPlanProvider && requestedPlanProvider !== frozenProvider) ||
       (requestedQuote !== null && requestedQuote !== undefined &&
-        Number(original.quotedPrice) !== requestedQuote)
+        Number(original.quotedPrice) !== requestedQuote) ||
+      (requestedAmount !== null && requestedAmount !== undefined &&
+        Number(existing.amount) !== requestedAmount)
     ) {
       return res.status(409).json({
         success: false,
@@ -1208,17 +1154,63 @@ exports.buyData = async (req, res) => {
         providerResponse: original.response || original,
       });
     }
+    if (existing.status === "FAILED" && frozenProvider === "TELECOM_ABODE") {
+      const currentCustomer = await User.findById(existing.customerId)
+        .select("walletBalance")
+        .lean();
+      return res.status(422).json({
+        success: false,
+        message: "The provider reported failure. The wallet debit is held for manual review; do not retry.",
+        reference: existing.reference,
+        status: "FAILED",
+        walletDebitHeld: true,
+        walletBalance: currentCustomer?.walletBalance || 0,
+      });
+    }
     return pendingResponse(existing);
   };
 
   try {
     const { network, phone, planCode, dataPlan } = req.body;
+    const rawPlanOverrideFields = [
+      "providerPlanId",
+      "provider_plan_id",
+      "plan_id",
+      "plan",
+      "networkId",
+      "network_id",
+      "providerNetworkId",
+      "provider_network_id",
+      "data_plan",
+      "dataPlanId",
+      "data_plan_id",
+      "providerPlan",
+      "provider_plan",
+      "providerNetwork",
+      "provider_network",
+    ];
+    if (rawPlanOverrideFields.some((field) =>
+      Object.prototype.hasOwnProperty.call(req.body, field))) {
+      return res.status(400).json({
+        success: false,
+        message: "Provider-specific plan and network IDs are not accepted; use the ServicePay plan code.",
+      });
+    }
     const networkCode = normalizeNetwork(network);
     const mobileNumber = normalizePhone(phone);
     const selectedPlan = String(planCode || dataPlan || "").trim();
     const requestedPlanProvider = String(req.body.planProvider || "").trim().toUpperCase();
     const productQuote = req.body.productQuote;
+    const hasProductQuote = Object.prototype.hasOwnProperty.call(req.body, "productQuote");
     const requestedQuoteValue = req.body.quotedPrice;
+    const requestedAmountValue = req.body.amount;
+    const requestedAmount =
+      requestedAmountValue === undefined || requestedAmountValue === null || requestedAmountValue === ""
+        ? null
+        : typeof requestedAmountValue === "number" ||
+            (typeof requestedAmountValue === "string" && /^[0-9]+(?:\.[0-9]+)?$/.test(requestedAmountValue.trim()))
+          ? Number(requestedAmountValue)
+          : NaN;
     const requestedQuote =
       requestedQuoteValue === undefined || requestedQuoteValue === null || requestedQuoteValue === ""
         ? null
@@ -1281,6 +1273,7 @@ exports.buyData = async (req, res) => {
         selectedPlan,
         requestedPlanProvider,
         requestedQuote,
+        requestedAmount,
       );
     }
 
@@ -1302,6 +1295,12 @@ exports.buyData = async (req, res) => {
         message: "Data purchases are unavailable because the configured primary provider is disabled or unavailable.",
       });
     }
+    if (selectedProvider !== "TELECOM_ABODE") {
+      return res.status(503).json({
+        success: false,
+        message: "DATA purchases require the Telecom Abode provider.",
+      });
+    }
     if (
       requestedPlanProvider &&
       requestedPlanProvider !== selectedProvider
@@ -1311,85 +1310,59 @@ exports.buyData = async (req, res) => {
         message: "The selected plan belongs to a different provider. Refresh the data plans.",
       });
     }
-    if (selectedProvider === "TELECOM_ABODE" && !productQuote) {
-      return res.status(409).json({
-        success: false,
-        message: "Refresh the Data plans and select a current product quote.",
-      });
-    }
-
-    let providerPlan;
-    let credentials = null;
-    if (selectedProvider === "TELECOM_ABODE") {
-      const providerPlans = await telecomAbode.getDataPlans();
-      providerPlan = providerPlans.find(
-        (plan) =>
-          String(plan.code) === selectedPlan &&
-          normalizeNetwork(plan.network) === networkCode,
-      );
-    } else {
-      credentials = getCredentials();
-      if (!credentials.valid) {
-        return res.status(503).json({
-          success: false,
-          message: "ClubKonnect credentials are not configured on the server.",
-        });
-      }
-      const providerPlans = await fetchNormalizedDataPlans(networkCode, credentials);
-      providerPlan = providerPlans.find((plan) => String(plan.code) === selectedPlan);
-    }
-    if (!providerPlan) {
+    const catalogPlan = (await getCatalog(networkCode)).find(
+      (plan) => plan.code === selectedPlan,
+    );
+    if (!catalogPlan) {
       return res.status(400).json({
         success: false,
         message: "The selected data plan is no longer available. Please refresh and try again.",
       });
     }
 
-    const providerPrice = Number(providerPlan.price);
-    let dataAmount = providerPrice;
-    if (selectedProvider === "CLUBKONNECT") {
-      const override = await DataPriceOverride.findOne({
-        networkCode,
-        planCode: selectedPlan,
-        active: true,
-      }).lean();
-      dataAmount =
-        override && Number(override.sellingPrice) > 0
-          ? Number(override.sellingPrice)
-          : providerPrice;
-    }
+    const providerPlan = {
+      ...catalogPlan,
+      id: catalogPlan.providerPlanId,
+      networkId: catalogPlan.providerNetworkId,
+    };
+    const providerPrice = Number(catalogPlan.price);
+    const override = await DataPriceOverride.findOne({
+      networkCode,
+      planCode: selectedPlan,
+      active: true,
+    }).lean();
+    const dataAmount = Number(override?.sellingPrice);
     if (!Number.isFinite(dataAmount) || dataAmount <= 0) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
-        message: "A valid data plan amount is required.",
+        message: "This Data plan has no active ServicePay selling price.",
       });
     }
-    if (productQuote && !verifyDataPlanQuote(productQuote, {
+    if (hasProductQuote && (!process.env.JWT_SECRET || !verifyDataPlanQuote(productQuote, {
       customerId: req.user._id,
       provider: selectedProvider,
       network: networkCode,
       plan: providerPlan,
       price: dataAmount,
-    })) {
+    }))) {
       return res.status(409).json({
         success: false,
         message: "The selected Data plan changed or its quote expired. Refresh the plans before purchasing.",
       });
     }
-    if (selectedProvider === "TELECOM_ABODE") {
-      if (requestedQuote !== null && (!Number.isFinite(requestedQuote) || requestedQuote !== dataAmount)) {
-        return res.status(409).json({
-          success: false,
-          message: "The quoted Telecom Abode plan price is missing or no longer matches the current provider catalog.",
-        });
-      }
-    } else if (
+    if (
       requestedQuote !== null &&
       (!Number.isFinite(requestedQuote) || requestedQuote !== dataAmount)
     ) {
       return res.status(409).json({
         success: false,
         message: "The quoted data plan price no longer matches the current server price.",
+      });
+    }
+    if (req.body.amount !== undefined && Number(req.body.amount) !== dataAmount) {
+      return res.status(409).json({
+        success: false,
+        message: "The supplied Data amount does not match the current ServicePay selling price.",
       });
     }
 
@@ -1412,8 +1385,26 @@ exports.buyData = async (req, res) => {
     const session = await mongoose.startSession();
     let admissionFailure = null;
     let admissionRejected = false;
+    let admissionPriceChanged = false;
     try {
       await session.withTransaction(async () => {
+        admissionPriceChanged = false;
+        const currentPrice = await DataPriceOverride.findOneAndUpdate({
+          networkCode,
+          planCode: selectedPlan,
+          active: true,
+          sellingPrice: dataAmount,
+        }, {
+          $inc: { pricingVersion: 1 },
+        }, {
+          new: true,
+          session,
+          timestamps: false,
+        }).lean();
+        if (!currentPrice) {
+          admissionPriceChanged = true;
+          return;
+        }
         customer = await User.findOneAndUpdate(
           {
             _id: req.user._id,
@@ -1456,9 +1447,8 @@ exports.buyData = async (req, res) => {
               provider: selectedProvider,
               network: networkCode,
               planCode: selectedPlan,
-              ...(selectedProvider === "TELECOM_ABODE"
-                ? { providerNetworkId: providerPlan.networkId, providerPlanId: Number(providerPlan.id) }
-                : {}),
+              providerNetworkId: providerPlan.networkId,
+              providerPlanId: Number(providerPlan.id),
               planName: providerPlan.name,
               providerPrice,
               quotedPrice: dataAmount,
@@ -1507,6 +1497,7 @@ exports.buyData = async (req, res) => {
             selectedPlan,
             requestedPlanProvider,
             requestedQuote,
+            requestedAmount,
           );
         }
       }
@@ -1515,6 +1506,12 @@ exports.buyData = async (req, res) => {
       await session.endSession();
     }
 
+    if (admissionPriceChanged) {
+      return res.status(409).json({
+        success: false,
+        message: "The ServicePay selling price changed. Refresh the Data plans.",
+      });
+    }
     if (admissionRejected) {
       if (!admissionFailure?._id) {
         return res.status(404).json({
@@ -1556,35 +1553,20 @@ exports.buyData = async (req, res) => {
     }
     transaction = claimed;
     dispatchClaimed = true;
-    const activeDispatchStatus = selectedProvider === "TELECOM_ABODE" ? "SENDING" : "CLAIMED";
+    const activeDispatchStatus = "SENDING";
 
     let providerResult;
     try {
-      if (selectedProvider === "TELECOM_ABODE") {
-        providerResult = {
-          status: 200,
-          data: await telecomAbode.purchaseData({
-            network: providerPlan.networkId,
-            phone: mobileNumber,
-            plan: Number(providerPlan.id),
-            request_id: transaction.providerRequestId,
-            transactionId: transaction._id,
-          }),
-        };
-      } else {
-        providerResult = await axios.get(DATA_URL, {
-          params: {
-            UserID: credentials.userId,
-            APIKey: credentials.apiKey,
-            MobileNetwork: networkCode,
-            DataPlan: selectedPlan,
-            MobileNumber: mobileNumber,
-            RequestID: transaction.providerRequestId,
-          },
-          timeout: 45000,
-          validateStatus: () => true,
-        });
-      }
+      providerResult = {
+        data: await telecomAbode.purchaseData({
+          network: providerPlan.networkId,
+          phone: mobileNumber,
+          plan: Number(providerPlan.id),
+          request_id: transaction.providerRequestId,
+          transactionId: transaction._id,
+        }),
+      };
+      providerResult.status = providerResult.data.httpStatus || 200;
     } catch (providerError) {
       const httpError = providerError.code === "PROVIDER_HTTP_ERROR" &&
         Number.isInteger(providerError.statusCode);
@@ -1631,7 +1613,18 @@ exports.buyData = async (req, res) => {
 
     const httpSuccess = providerResult.status >= 200 && providerResult.status < 300;
     const providerSignals = getDataProviderSignals(providerResponse);
-    const outcome = httpSuccess
+    const outcome = selectedProvider === "TELECOM_ABODE"
+      ? (httpSuccess ||
+          (providerResult.status === 422 && providerResponse.status === "FAILED")) &&
+        providerResponse.documentedDataStatus === true &&
+        providerResponse.service === "data" &&
+        providerResponse.requestId === transaction.providerRequestId &&
+        providerResponse.contradictory !== true &&
+        !providerSignals.contradictory &&
+        ["SUCCESS", "FAILED"].includes(providerResponse.status)
+        ? providerResponse.status
+        : "UNKNOWN"
+      : httpSuccess
       ? providerSignals.contradictory
         ? "UNKNOWN"
         : providerSignals.succeeded
@@ -1642,37 +1635,45 @@ exports.buyData = async (req, res) => {
       : "UNKNOWN";
     if (outcome !== "SUCCESS") {
       if (outcome === "FAILED") {
-        const refundResult = await refundFailedDataPurchase({
-          transactionId: transaction._id,
-          providerResponse,
-          httpStatus: providerResult.status,
-        });
-        if (refundResult.status === "REFUNDED") {
-          return res.status(400).json({
-            success: false,
-            message: getProviderMessage(providerResponse),
-            reference: transaction.reference,
-            status: "REFUNDED",
-            walletBalance: refundResult.walletBalance,
-            providerResponse,
-          });
-        }
-        if (refundResult.status === "NOT_CLAIMED") {
-          const current = refundResult.transaction ||
-            await Transaction.findById(transaction._id);
-          if (current && current.status !== "PENDING") {
-            return returnExisting(current, networkCode, mobileNumber, selectedPlan);
-          }
-          return pendingResponse(current || transaction, customer.walletBalance);
-        }
-        // An uncorrelated or contradictory failure signal is not refundable.
-        // Leave dispatch in UNKNOWN so a later trusted reconciliation is needed.
-        const pending = await Transaction.findById(transaction._id);
-        if (!pending || pending.status !== "PENDING") {
-          return pending
-            ? returnExisting(pending, networkCode, mobileNumber, selectedPlan)
+        const failed = await Transaction.findOneAndUpdate(
+          {
+            _id: transaction._id,
+            status: "PENDING",
+            dispatchStatus: activeDispatchStatus,
+          },
+          {
+            $set: {
+              status: "FAILED",
+              dispatchStatus: "FAILED",
+              providerStatus: "FAILED",
+              providerReference: transaction.providerRequestId,
+              providerResponse: {
+                ...transaction.providerResponse,
+                network: networkCode,
+                planCode: selectedPlan,
+                response: providerResponse,
+                httpStatus: providerResult.status,
+                outcome: "FAILED",
+                refundStatus: "NOT_AUTOMATED",
+              },
+            },
+          },
+          { new: true },
+        );
+        if (!failed) {
+          const current = await Transaction.findById(transaction._id);
+          return current
+            ? returnExisting(current, networkCode, mobileNumber, selectedPlan)
             : pendingResponse(transaction, customer.walletBalance);
         }
+        return res.status(422).json({
+          success: false,
+          message: "The provider reported failure. The wallet debit is held for manual review; do not retry.",
+          reference: failed.reference,
+          status: "FAILED",
+          walletDebitHeld: true,
+          walletBalance: customer.walletBalance,
+        });
       }
 
       await Transaction.updateOne(
@@ -1824,12 +1825,23 @@ exports.getDataReconciliationQueue = async (req, res) => {
     const transactions = await Transaction.find({
       serviceType: "DATA",
       provider: { $in: ["CLUBKONNECT", "TELECOM_ABODE"] },
-      status: "PENDING",
-      dispatchStatus: { $in: ["READY", "CLAIMED", "SENDING", "UNKNOWN", "FAILED"] },
+      $or: [
+        {
+          status: "PENDING",
+          dispatchStatus: { $in: ["READY", "CLAIMED", "SENDING", "UNKNOWN", "FAILED"] },
+        },
+        {
+          provider: "TELECOM_ABODE",
+          status: "FAILED",
+          dispatchStatus: "FAILED",
+          debitLedgerEntryId: { $ne: null },
+          reversalLedgerEntryId: null,
+        },
+      ],
     })
       .sort({ createdAt: 1, _id: 1 })
       .limit(limit)
-      .select("_id reference customerId phone amount provider providerRequestId providerResponse providerStatus dispatchStatus dispatchClaimedAt createdAt")
+      .select("_id reference customerId phone amount provider providerRequestId providerResponse providerStatus status dispatchStatus dispatchClaimedAt debitLedgerEntryId createdAt")
       .lean();
 
     return res.status(200).json({
@@ -1845,6 +1857,10 @@ exports.getDataReconciliationQueue = async (req, res) => {
         network: transaction.providerResponse?.network || null,
         planCode: transaction.providerResponse?.planCode || null,
         providerStatus: transaction.providerStatus || "UNKNOWN",
+        status: transaction.status,
+        walletDebitHeld: transaction.provider === "TELECOM_ABODE" &&
+          transaction.status === "FAILED" && transaction.dispatchStatus === "FAILED" &&
+          Boolean(transaction.debitLedgerEntryId),
         providerMessage: String(
           readObjectField(
             transaction.providerResponse?.response || transaction.providerResponse,

@@ -101,8 +101,8 @@ const getProviderCapabilities = (service, provider) => {
   // DATA catalogs are fetched from the selected provider before admission;
   // no plan list is served from an unverified local cache.
   const catalogAvailable = telecomAbode && service === "DATA";
-  // DATA admission freezes the selected provider and a product-bound quote;
-  // the Telecom Abode adapter consumes a durable one-shot dispatch claim.
+  // DATA admission verifies the current ServicePay price; Telecom Abode
+  // dispatch consumes a durable one-shot claim.
   const purchaseSupported = (!telecomAbode && adapterImplemented) ||
     (telecomAbode && service === "DATA");
   const routingControlSupported = service === "DATA" && purchaseSupported;

@@ -134,6 +134,12 @@ test.beforeEach(async () => {
 
 test("Partner DATA API fails closed when Telecom Abode is the selected primary", async () => {
   const partner = await createPartner({ permissions: ["DATA"] });
+  const originalGet = axios.get;
+  let providerCalls = 0;
+  axios.get = async () => {
+    providerCalls += 1;
+    throw new Error("Partner DATA provider transport must remain unused.");
+  };
   await ProviderManagementConfig.create({
     _id: "DATA",
     service: "DATA",
@@ -144,25 +150,33 @@ test("Partner DATA API fails closed when Telecom Abode is the selected primary",
       { provider: "TELECOM_ABODE", enabled: true },
     ],
   });
-  const purchase = await call(partnerApiController.buyData, {
-    partner,
-    body: {
-      network: "MTN",
-      phone: "08012345678",
-      planCode: "77",
-      amount: 150,
-      reference: "partner-ta-data-unsupported",
-    },
-    headers: { "idempotency-key": "partner-ta-data-unsupported" },
-  });
-  const plans = await call(partnerApiController.getDataPlans, {
-    partner,
-    params: { network: "MTN" },
-  });
-  assert.equal(purchase.status, 503);
-  assert.match(purchase.body.message, /currently selected primary provider/i);
-  assert.equal(plans.status, 503);
-  assert.equal(await PartnerTransaction.countDocuments({ partnerId: partner._id }), 0);
+  try {
+    const purchase = await call(partnerApiController.buyData, {
+      partner,
+      body: {
+        network: "MTN",
+        phone: "08012345678",
+        planCode: "77",
+        amount: 150,
+        reference: "partner-ta-data-unsupported",
+      },
+      headers: { "idempotency-key": "partner-ta-data-unsupported" },
+    });
+    const plans = await call(partnerApiController.getDataPlans, {
+      partner,
+      params: { network: "MTN" },
+    });
+    assert.equal(purchase.status, 503);
+    assert.match(purchase.body.message, /Partner DATA purchases are temporarily unavailable/i);
+    assert.equal(plans.status, 503);
+    assert.equal(plans.body.message, "Unable to retrieve data plans.");
+    assert.equal("error" in plans.body, false);
+    assert.equal(await PartnerTransaction.countDocuments({ partner: partner._id, service: "DATA" }), 0);
+    assert.equal((await Partner.findById(partner._id)).walletBalance, 5000);
+    assert.equal(providerCalls, 0);
+  } finally {
+    axios.get = originalGet;
+  }
 });
 
 test("partner authentication accepts valid credentials and blocks suspended access without status leakage", async () => {
@@ -322,7 +336,7 @@ test("provider transport uncertainty remains processing and does not refund the 
   }
 });
 
-test("purchase requests include the stable internal RequestID for Airtime and Data", async () => {
+test("Airtime retains its RequestID while Partner DATA fails closed without dispatch", async () => {
   await withProviderCredentials(async () => {
     const originalGet = axios.get;
     const calls = [];
@@ -333,13 +347,21 @@ test("purchase requests include the stable internal RequestID for Airtime and Da
     };
     try {
       const partner = await createPartner({ permissions: ["AIRTIME", "DATA"] });
-      await call(partnerApiController.buyAirtime, { partner, headers: { "idempotency-key": "airtime-request-id" },
+      const airtime = await call(partnerApiController.buyAirtime, { partner, headers: { "idempotency-key": "airtime-request-id" },
         body: { network: "MTN", phone: "08030000000", amount: 100 } });
-      await call(partnerApiController.buyData, { partner, headers: { "idempotency-key": "data-request-id" },
+      const data = await call(partnerApiController.buyData, { partner, headers: { "idempotency-key": "data-request-id" },
         body: { network: "MTN", phone: "08030000000", planCode: "PLAN1" } });
-      const purchases = calls.filter(({ url }) => /APIAirtime|APIDatabundleV1/.test(url));
-      assert.equal(purchases.length, 2);
-      for (const purchase of purchases) assert.match(purchase.params.RequestID, /^SPP-/);
+      const airtimePurchases = calls.filter(({ url }) => /APIAirtimeV1/.test(url));
+      const dataPurchases = calls.filter(({ url }) => /APIDatabundleV1/.test(url));
+      assert.equal(airtime.status, 201);
+      assert.equal(data.status, 503);
+      assert.match(data.body.message, /Partner DATA purchases are temporarily unavailable/i);
+      assert.equal(airtimePurchases.length, 1);
+      assert.match(airtimePurchases[0].params.RequestID, /^SPP-/);
+      assert.equal(dataPurchases.length, 0);
+      assert.equal(await PartnerTransaction.countDocuments({ partner: partner._id, service: "AIRTIME" }), 1);
+      assert.equal(await PartnerTransaction.countDocuments({ partner: partner._id, service: "DATA" }), 0);
+      assert.equal((await Partner.findById(partner._id)).walletBalance, 4900);
     } finally { axios.get = originalGet; }
   });
 });

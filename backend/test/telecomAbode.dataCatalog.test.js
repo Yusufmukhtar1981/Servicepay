@@ -118,10 +118,37 @@ test("Telecom Abode DATA dispatch consumes a durable claim; other paid services 
     planMetadata: { plan_id: 17, network: 2 },
   }), { code: "INVALID_ARGUMENT" });
 
-  assert.equal(normalizeDataPurchaseResponse({
+  const unpairedSuccess = normalizeDataPurchaseResponse({
     status: "success",
     "request-id": "SP-DATA-2",
-  }, { requestId: "SP-DATA-2" }).status, "SUCCESS");
+  }, { requestId: "SP-DATA-2" });
+  assert.equal(unpairedSuccess.status, "PENDING");
+  assert.equal(unpairedSuccess.documentedDataStatus, false);
+  const pairedSuccess = normalizeDataPurchaseResponse({
+    status: "success",
+    Status: "successful",
+    "request-id": "SP-DATA-2",
+  }, { requestId: "SP-DATA-2" });
+  assert.equal(pairedSuccess.status, "SUCCESS");
+  assert.equal(pairedSuccess.documentedDataStatus, true);
+  const contradictorySuccess = normalizeDataPurchaseResponse({
+    status: "success",
+    Status: "successful",
+    "request-id": "SP-DATA-3",
+    message: "Request accepted for processing",
+    api_response: "Transaction REJECTED test-provider-secret",
+  }, {
+    requestId: "SP-DATA-3",
+    configuredKey: "test-provider-secret",
+  });
+  assert.equal(contradictorySuccess.status, "SUCCESS");
+  assert.equal(contradictorySuccess.documentedDataStatus, true);
+  assert.equal(contradictorySuccess.contradictory, true);
+  assert.match(contradictorySuccess.providerMessage, /message: Request accepted for processing/);
+  assert.match(contradictorySuccess.providerMessage, /api_response: Transaction REJECTED/);
+  assert.equal(contradictorySuccess.providerMessageSignals.failure, true);
+  assert.doesNotMatch(contradictorySuccess.providerMessage, /test-provider-secret/);
+  assert.ok(contradictorySuccess.providerMessage.length <= 320);
   assert.deepEqual(normalizeDataPurchaseResponse({
     status: "success",
     "request-id": "OTHER-ID",
@@ -130,6 +157,7 @@ test("Telecom Abode DATA dispatch consumes a durable claim; other paid services 
     service: "data",
     servicepayReference: "SP-DATA-2",
     status: "PENDING",
+    documentedDataStatus: false,
     reason: "PROVIDER_REFERENCE_MISMATCH",
     requestId: "SP-DATA-2",
     providerReference: "OTHER-ID",

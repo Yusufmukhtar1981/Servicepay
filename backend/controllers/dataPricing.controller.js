@@ -2,22 +2,7 @@ const DataPriceOverride = require(
   "../models/dataPriceOverride.model"
 );
 
-const clubkonnectController = require(
-  "./clubkonnect.controller"
-);
-const { getServiceConfig } = require("../services/providerManagement.service");
-
-const requireClubKonnectDataPrimary = async (res) => {
-  const config = await getServiceConfig("DATA");
-  if (config.primaryProvider !== "CLUBKONNECT") {
-    res.status(409).json({
-      success: false,
-      message: "Data pricing overrides are scoped to ClubKonnect and are unavailable while another DATA provider is primary.",
-    });
-    return false;
-  }
-  return true;
-};
+const { getCatalog } = require("../services/telecomAbodeDataCatalog.service");
 
 const normalizeNetwork = (value = "") => {
   const v = String(value)
@@ -41,7 +26,6 @@ const normalizeNetwork = (value = "") => {
 
 exports.getAdminDataPricing = async (req, res) => {
   try {
-    if (!(await requireClubKonnectDataPrimary(res))) return;
     const networkCode = normalizeNetwork(
       req.params.network
     );
@@ -53,30 +37,7 @@ exports.getAdminDataPricing = async (req, res) => {
       });
     }
 
-    const fetchPlans =
-      clubkonnectController.fetchNormalizedDataPlans;
-
-    if (typeof fetchPlans !== "function") {
-      return res.status(500).json({
-        success: false,
-        message:
-          "Data pricing helper is not available yet.",
-      });
-    }
-
-    const credentials = {
-      userId: String(
-        process.env.CLUBKONNECT_USER_ID || ""
-      ).trim(),
-      apiKey: String(
-        process.env.CLUBKONNECT_API_KEY || ""
-      ).trim(),
-    };
-
-    const providerPlans = await fetchPlans(
-      networkCode,
-      credentials
-    );
+    const providerPlans = await getCatalog(networkCode);
 
     const overrides =
       await DataPriceOverride.find({
@@ -91,29 +52,31 @@ exports.getAdminDataPricing = async (req, res) => {
     );
 
     const plans = providerPlans.map((plan) => {
-      const providerPrice = Number(
-        plan.price || 0
-      );
+      const providerPrice = Number(plan.price);
 
       const override = overrideMap.get(
         String(plan.code)
       );
 
-      const sellingPrice =
-        override &&
-        Number(override.sellingPrice) > 0
-          ? Number(override.sellingPrice)
-          : providerPrice;
+      const configuredPrice = Number(override?.sellingPrice);
+      const priced = override?.active === true &&
+        Number.isFinite(configuredPrice) && configuredPrice > 0;
+      const sellingPrice = priced ? configuredPrice : null;
 
       return {
         code: plan.code,
         name: plan.name,
         networkCode,
+        provider: "TELECOM_ABODE",
+        ambiguousIdentity: plan.ambiguousIdentity,
+        providerPlanId: plan.providerPlanId,
         providerPrice,
         sellingPrice,
-        margin: Number(
-          (sellingPrice - providerPrice).toFixed(2)
-        ),
+        priced,
+        active: priced,
+        margin: priced
+          ? Number((sellingPrice - providerPrice).toFixed(2))
+          : null,
       };
     });
 
@@ -142,7 +105,6 @@ exports.saveDataSellingPrice = async (
   res
 ) => {
   try {
-    if (!(await requireClubKonnectDataPrimary(res))) return;
     const networkCode = normalizeNetwork(
       req.params.network
     );
@@ -168,30 +130,7 @@ exports.saveDataSellingPrice = async (
       });
     }
 
-    const fetchPlans =
-      clubkonnectController.fetchNormalizedDataPlans;
-
-    if (typeof fetchPlans !== "function") {
-      return res.status(500).json({
-        success: false,
-        message:
-          "Data pricing helper is unavailable.",
-      });
-    }
-
-    const credentials = {
-      userId: String(
-        process.env.CLUBKONNECT_USER_ID || ""
-      ).trim(),
-      apiKey: String(
-        process.env.CLUBKONNECT_API_KEY || ""
-      ).trim(),
-    };
-
-    const providerPlans = await fetchPlans(
-      networkCode,
-      credentials
-    );
+    const providerPlans = await getCatalog(networkCode);
 
     const plan = providerPlans.find(
       (item) =>
@@ -217,14 +156,16 @@ exports.saveDataSellingPrice = async (
           planCode,
         },
         {
-          networkCode,
-          planCode,
-          planName: plan.name || "",
-          providerPrice,
-          sellingPrice,
-          active: true,
-          updatedBy:
-            req.user?._id || null,
+          $set: {
+            networkCode,
+            planCode,
+            planName: plan.name || "",
+            providerPrice,
+            sellingPrice,
+            active: true,
+            updatedBy: req.user?._id || null,
+          },
+          $inc: { pricingVersion: 1 },
         },
         {
           upsert: true,

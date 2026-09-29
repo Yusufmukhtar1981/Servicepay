@@ -3,6 +3,9 @@ const Transaction = require("../models/transaction.model");
 
 const DEFAULT_BASE_URL = "https://telecomabode.com.ng/api";
 const DEFAULT_TIMEOUT_MS = 30000;
+// Preserve the isolated adapter's existing `plan` field. Provider documentation
+// conflicts with examples that use `plan_id`; the authoritative field remains
+// unconfirmed and must not be represented as verified.
 
 class TelecomAbodeError extends Error {
   constructor(message, { statusCode = 502, code = "TELECOM_ABODE_ERROR", providerEvidence } = {}) {
@@ -17,7 +20,7 @@ class TelecomAbodeError extends Error {
 const MAX_PROVIDER_EVIDENCE_LENGTH = 1200;
 const MAX_PROVIDER_MESSAGE_LENGTH = 320;
 const STATUS_WORDS = new Set([
-  "success", "successful", "pending", "processing", "failed", "failure", "error",
+  "success", "successful", "pending", "processing", "fail", "failed", "failure", "error",
 ]);
 
 const sanitizeProviderText = (value, configuredKey) => {
@@ -142,7 +145,7 @@ const getStatusValue = (data) => {
     const text = typeof value === "string" ? value.trim().toLowerCase() : "";
     if (text === "success" || text === "successful") return "SUCCESSFUL";
     if (text === "pending" || text === "processing") return "PENDING";
-    if (text === "failed" || text === "failure") return "FAILED";
+    if (text === "fail" || text === "failed" || text === "failure") return "FAILED";
     if (text === "error") return "ERROR";
     return text;
   });
@@ -158,6 +161,13 @@ const normalizePurchaseStatus = (data) => {
   if (status === "PENDING") return "PENDING";
   if (status === "FAILED") return "FAILED";
   return null;
+};
+
+const documentedDataOutcome = (data) => {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "PENDING";
+  if (data.status === "success" && data.Status === "successful") return "SUCCESS";
+  if (data.status === "fail" && data.Status === "failed") return "FAILED";
+  return "PENDING";
 };
 
 const getCollection = (data, collectionName) => {
@@ -466,8 +476,23 @@ const buildDataPurchasePayload = ({
   };
 };
 
-const normalizeDataPurchaseResponse = (data, { requestId, servicepayReference = requestId } = {}) => {
+const normalizeDataPurchaseResponse = (
+  data,
+  { requestId, servicepayReference = requestId, configuredKey = "" } = {},
+) => {
   const expectedRequestId = requiredText(requestId, "request-id");
+  if (data && typeof data.service === "string" &&
+      data.service.trim().toLowerCase() !== "data") {
+    return {
+      provider: "TELECOM_ABODE",
+      service: "data",
+      servicepayReference,
+      status: "PENDING",
+      documentedDataStatus: false,
+      reason: "PROVIDER_SERVICE_MISMATCH",
+      requestId: expectedRequestId,
+    };
+  }
   const providerRequestId = data && typeof data === "object" && !Array.isArray(data) &&
     typeof data["request-id"] === "string"
     ? data["request-id"].trim()
@@ -478,6 +503,7 @@ const normalizeDataPurchaseResponse = (data, { requestId, servicepayReference = 
       service: "data",
       servicepayReference,
       status: "PENDING",
+      documentedDataStatus: false,
       reason: "PROVIDER_REFERENCE_MISMATCH",
       requestId: expectedRequestId,
       providerReference: providerRequestId,
@@ -489,22 +515,68 @@ const normalizeDataPurchaseResponse = (data, { requestId, servicepayReference = 
       service: "data",
       servicepayReference,
       status: "PENDING",
+      documentedDataStatus: false,
       reason: "MISSING_PROVIDER_CORRELATION",
       requestId: expectedRequestId,
     };
   }
-  return normalizePurchase(data, {
+  const documentedOutcome = documentedDataOutcome(data);
+  const providerMessages = [
+    ["message", data?.message],
+    ["api_response", data?.api_response],
+    ["response", data?.response],
+    ["response_description", data?.response_description],
+    ["responseDescription", data?.responseDescription],
+    ["error_description", data?.error_description],
+    ["error", data?.error],
+  ]
+    .filter(([, value]) => typeof value === "string" && value.trim())
+    .map(([field, value]) => ({
+      field,
+      text: sanitizeProviderText(value, configuredKey),
+    }));
+  const messageSignalsFailure = providerMessages.some(({ text }) =>
+    /\b(FAILED|FAILURE|ERROR|INVALID|REJECTED|DECLINED|CANCELLED|CANCELED)\b/i.test(text),
+  );
+  const messageSignalsSuccess = providerMessages.some(({ text }) =>
+    /\b(SUCCESS|SUCCESSFUL|COMPLETED)\b/i.test(text),
+  );
+  const contradictory =
+    (messageSignalsFailure && messageSignalsSuccess) ||
+    (documentedOutcome === "SUCCESS" && messageSignalsFailure) ||
+    (documentedOutcome === "FAILED" && messageSignalsSuccess);
+  return {
+    provider: "TELECOM_ABODE",
     service: "data",
     servicepayReference,
-  });
+    status: providerRequestId ? documentedOutcome : "PENDING",
+    documentedDataStatus: Boolean(providerRequestId && documentedOutcome !== "PENDING"),
+    requestId: expectedRequestId,
+    ...(providerRequestId ? { providerReference: providerRequestId } : {}),
+    ...(providerMessages.length
+      ? {
+          providerMessage: providerMessages
+            .map(({ field, text }) => `${field}: ${text}`)
+            .join(" | ")
+            .slice(0, MAX_PROVIDER_MESSAGE_LENGTH),
+          providerMessageSignals: {
+            success: messageSignalsSuccess,
+            failure: messageSignalsFailure,
+          },
+        }
+      : {}),
+    ...(contradictory ? { contradictory: true } : {}),
+  };
 };
 
 const normalizeTransaction = (data, configuredKey) => {
-  const status = normalizePurchaseStatus(data) || "UNKNOWN";
+  const status = documentedDataOutcome(data);
   const rawProviderStatus = data.status ?? data.Status;
   const result = {
     provider: "TELECOM_ABODE",
+    service: typeof data.service === "string" ? data.service.trim().toLowerCase() : null,
     status,
+    documentedDataStatus: status !== "PENDING",
     ...(typeof rawProviderStatus === "string" && STATUS_WORDS.has(rawProviderStatus.toLowerCase())
       ? { rawProviderStatus: rawProviderStatus.slice(0, 24) }
       : {}),
@@ -543,7 +615,7 @@ const createTelecomAbodeService = ({
   const configuredApiKey = () =>
     String(apiKey === undefined ? process.env.TELECOM_ABODE_API_KEY || "" : apiKey).trim();
 
-  const request = async ({ method, endpoint, data }) => {
+  const request = async ({ method, endpoint, data, returnDataHttpResponse = false }) => {
     const key = configuredApiKey();
     if (!key) {
       throw new TelecomAbodeError("Telecom Abode API key is not configured.", {
@@ -577,13 +649,23 @@ const createTelecomAbodeService = ({
       });
     }
     if (response.status < 200 || response.status >= 300) {
+      // HTTP 422 is final only for the documented, fully correlated DATA
+      // failure pair. Every other non-2xx response remains unknown.
+      if (returnDataHttpResponse && endpoint === "/data" &&
+          response.status === 422 &&
+          documentedDataOutcome(response.data) === "FAILED" &&
+          response.data?.["request-id"] === data?.["request-id"]) {
+        return { body: response.data, httpStatus: response.status };
+      }
       throw new TelecomAbodeError(`Telecom Abode request failed with HTTP ${response.status}.`, {
         statusCode: response.status,
         code: "PROVIDER_HTTP_ERROR",
         providerEvidence: safeHttpEvidence(response.data, data?.["request-id"], key),
       });
     }
-    return response.data;
+    return returnDataHttpResponse
+      ? { body: response.data, httpStatus: response.status }
+      : response.data;
   };
 
   const ensurePurchasesEnabled = (service) => {
@@ -783,11 +865,16 @@ const createTelecomAbodeService = ({
       method: "POST",
       endpoint: "/data",
       data: payload,
+      returnDataHttpResponse: true,
     });
-    return normalizeDataPurchaseResponse(response, {
-      requestId: normalizedRequestId,
-      servicepayReference: normalizedRequestId,
-    });
+    return {
+      ...normalizeDataPurchaseResponse(response.body, {
+        requestId: normalizedRequestId,
+        servicepayReference: normalizedRequestId,
+        configuredKey: configuredApiKey(),
+      }),
+      httpStatus: response.httpStatus,
+    };
   };
 
   const getTransactionByRequestId = async (requestId) => {

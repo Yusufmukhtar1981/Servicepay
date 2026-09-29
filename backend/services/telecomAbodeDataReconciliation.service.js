@@ -1,7 +1,6 @@
 const Transaction = require("../models/transaction.model");
 const LedgerEntry = require("../models/ledgerEntry.model");
 const telecomAbode = require("./telecomAbode.service");
-const { refundFailedDataPurchase } = require("./clubkonnectDataFailure.service");
 
 const UNKNOWN_RESULT = Object.freeze({
   outcome: "UNKNOWN",
@@ -12,7 +11,6 @@ const createTelecomAbodeDataReconciliationService = ({
   transactionModel = Transaction,
   getTransactionByRequestId = (requestId) =>
     telecomAbode.getTransactionByRequestId(requestId),
-  refundPurchase = refundFailedDataPurchase,
 } = {}) => {
   const reconcileByReference = async (reference) => {
     const transaction = await transactionModel.findOne({ reference }).lean();
@@ -64,9 +62,9 @@ const createTelecomAbodeDataReconciliationService = ({
       String(result.requestId || "").trim() !== transaction.providerRequestId ||
       (result.provider &&
         String(result.provider).trim().toUpperCase() !== "TELECOM_ABODE") ||
-      (result.providerReference &&
-        String(result.providerReference).trim() !== transaction.providerRequestId) ||
-      (result.service && String(result.service).trim().toLowerCase() !== "data") ||
+      String(result.providerReference || "").trim() !== transaction.providerRequestId ||
+      String(result.service || "").trim().toLowerCase() !== "data" ||
+      result.documentedDataStatus !== true ||
       !["SUCCESS", "FAILED", "PENDING", "UNKNOWN"].includes(result.status)
     ) {
       return {
@@ -146,13 +144,40 @@ const createTelecomAbodeDataReconciliationService = ({
     }
 
     if (result.status === "FAILED") {
-      const refund = await refundPurchase({
-        transactionId: transaction._id,
-        providerResponse: evidence,
-        httpStatus: 200,
-        verifiedStatusQuery: true,
-      });
-      if (refund.status !== "REFUNDED") {
+      const failed = await transactionModel.findOneAndUpdate(
+        {
+          _id: transaction._id,
+          reference: transaction.reference,
+          providerRequestId: transaction.providerRequestId,
+          serviceType: "DATA",
+          provider: "TELECOM_ABODE",
+          status: "PENDING",
+          dispatchStatus: "UNKNOWN",
+          dispatchClaimedAt: { $ne: null },
+          debitLedgerEntryId: { $ne: null },
+        },
+        {
+          $set: {
+            status: "FAILED",
+            dispatchStatus: "FAILED",
+            providerStatus: "FAILED",
+            providerReference: transaction.providerRequestId,
+            providerResponse: {
+              ...(transaction.providerResponse || {}),
+              reconciliation: {
+                source: "TELECOM_ABODE_STATUS_QUERY",
+                httpStatus: 200,
+                outcome: "FAILED",
+                requestIdMatches: true,
+                refundStatus: "NOT_AUTOMATED",
+                response: evidence,
+              },
+            },
+          },
+        },
+        { new: true },
+      );
+      if (!failed) {
         const current = await transactionModel.findById(transaction._id).lean();
         return {
           httpStatus: current?.status === "FAILED" ? 200 : 202,
@@ -161,7 +186,7 @@ const createTelecomAbodeDataReconciliationService = ({
             status: current?.status || "PENDING",
             dispatchStatus: current?.dispatchStatus || "UNKNOWN",
             ...(current?.status === "FAILED"
-              ? { reference: current.reference }
+              ? { reference: current.reference, walletDebitHeld: true }
               : {}),
           },
         };
@@ -171,9 +196,9 @@ const createTelecomAbodeDataReconciliationService = ({
         body: {
           outcome: "FAILED",
           status: "FAILED",
-          dispatchStatus: "REFUNDED",
-          reference: refund.transaction.reference,
-          walletBalance: refund.walletBalance,
+          dispatchStatus: "FAILED",
+          reference: failed.reference,
+          walletDebitHeld: true,
         },
       };
     }

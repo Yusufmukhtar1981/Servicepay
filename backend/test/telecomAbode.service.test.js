@@ -236,6 +236,8 @@ test("transaction lookup uses the documented encoded GET and exact reference cor
   const target = "REQ /one";
   const { service, calls } = setup(() => response({
     status: "success",
+    Status: "successful",
+    service: "data",
     "request-id": target,
     amount: 2000,
     token: "must-never-escape-a-status-lookup",
@@ -244,6 +246,8 @@ test("transaction lookup uses the documented encoded GET and exact reference cor
     provider: "TELECOM_ABODE",
     status: "SUCCESS",
     rawProviderStatus: "success",
+    documentedDataStatus: true,
+    service: "data",
     requestId: target,
     providerReference: target,
     amount: "2000",
@@ -293,29 +297,37 @@ test("documented transaction lookup 404 is not-found, never a purchase failure",
 });
 
 test("transaction lookup normalizes explicit statuses and leaves unknown statuses unresolved", async () => {
-  for (const [rawStatus, normalizedStatus] of [
-    ["success", "SUCCESS"],
-    ["pending", "PENDING"],
-    ["failed", "FAILED"],
+  for (const [rawStatus, pairedStatus, normalizedStatus] of [
+    ["success", "successful", "SUCCESS"],
+    ["pending", "processing", "PENDING"],
+    ["fail", "failed", "FAILED"],
   ]) {
     const { service } = setup(() => response({
       "request-id": "REQ-STATUS",
       status: rawStatus,
+      Status: pairedStatus,
+      service: "data",
       api_response: "provider status text",
     }));
     const transaction = await service.getTransactionByRequestId("REQ-STATUS");
     assert.equal(transaction.status, normalizedStatus);
     assert.equal(transaction.rawProviderStatus, rawStatus);
+    assert.equal(transaction.documentedDataStatus, normalizedStatus !== "PENDING");
+    assert.equal(transaction.service, "data");
     assert.equal(transaction.providerMessage, "provider status text");
     assert.equal(transaction.providerReference, "REQ-STATUS");
   }
 
   const unknown = setup(() => response({
     "request-id": "REQ-UNKNOWN",
-    status: "processing_unknown",
+    status: "pending",
+    Status: "processing",
+    service: "data",
   })).service;
   const unresolved = await unknown.getTransactionByRequestId("REQ-UNKNOWN");
-  assert.equal(unresolved.status, "UNKNOWN");
+  assert.equal(unresolved.status, "PENDING");
+  assert.equal(unresolved.documentedDataStatus, false);
+  assert.equal(unresolved.service, "data");
   assert.equal(unresolved.providerReference, "REQ-UNKNOWN");
 });
 

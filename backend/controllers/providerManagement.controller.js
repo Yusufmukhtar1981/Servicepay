@@ -50,7 +50,7 @@ exports.patchProviderManagement = async (req, res) => {
     return fail(res, 400, "INVALID_ENABLED_VALUE", "The disable action requires enabled=false.");
   }
 
-  // Only DATA has a product-bound quote and durable paid dispatch.
+  // DATA alone has a Telecom Abode adapter and durable paid dispatch.
   if (provider === "TELECOM_ABODE" && service !== "DATA" && action !== "disable") {
     return fail(res, 409, "TELECOM_ABODE_PURCHASES_LOCKED",
       "Telecom Abode can provide read-only DATA plans, but purchases cannot be enabled or selected until customer pricing and provider recovery are verified.");

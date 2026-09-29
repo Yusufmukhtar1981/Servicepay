@@ -47,11 +47,11 @@ const headOfficeOnly = (
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
 
-  if (role !== "HEAD_OFFICE") {
+  if (!["HEAD_OFFICE", "ADMIN"].includes(role)) {
     return res.status(403).json({
       success: false,
       message:
-        "Head Office access only.",
+        "Head Office or Admin access only.",
     });
   }
 
