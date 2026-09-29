@@ -1,13 +1,18 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const express = require("express");
+const http = require("node:http");
+const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const axios = require("axios");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
+delete process.env.MONGODB_URI;
 process.env.JWT_SECRET = "focused-telecom-data-test-signing-key";
 
 const customerController = require("../controllers/clubkonnect.controller");
 const dataPricingController = require("../controllers/dataPricing.controller");
+const clubkonnectRouter = require("../routes/clubkonnect.routes");
 const telecomAbode = require("../services/telecomAbode.service");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
@@ -18,13 +23,14 @@ const {
   servicepayPlanCode,
 } = require("../services/telecomAbodeDataCatalog.service");
 
-const PROVIDER_PLAN_ID = 77;
+const PROVIDER_PLAN_ID = 186;
 const PROVIDER_NETWORK_ID = 1;
-const PROVIDER_COST = 150;
-const SERVICEPAY_PRICE = 200;
-const PLAN_NAME = "1GB SME - 30 days";
-const PLAN_CODE = servicepayPlanCode("01", PLAN_NAME);
+const PROVIDER_COST = 50;
+const SERVICEPAY_PRICE = 55;
+const PLAN_NAME = "100MB HOT - 4";
+const PLAN_CODE = "DATA-MTN-6fb9d2d599ad73385503";
 const CUSTOMER_PHONE = "08012345678";
+assert.equal(servicepayPlanCode("01", PLAN_NAME), PLAN_CODE);
 
 let replicaSet;
 let originalGetDataPlans;
@@ -34,6 +40,7 @@ let sequence = 0;
 let dispatchCalls = 0;
 let clubKonnectCalls = 0;
 let nextProviderOutcome = "SUCCESS";
+let dispatchedRequests = [];
 
 const invoke = async (handler, req) => {
   const result = {};
@@ -58,6 +65,36 @@ const makeUser = () => User.create({
   role: "CUSTOMER",
   status: "ACTIVE",
   walletBalance: 1000,
+});
+
+const postJson = (server, path, { token, key, body }) => new Promise((resolve, reject) => {
+  const address = server.address();
+  const payload = JSON.stringify(body);
+  const request = http.request({
+    hostname: "127.0.0.1",
+    port: address.port,
+    path,
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(payload),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(key ? { "x-idempotency-key": key } : {}),
+    },
+  }, (response) => {
+    let responseBody = "";
+    response.setEncoding("utf8");
+    response.on("data", (chunk) => { responseBody += chunk; });
+    response.on("end", () => {
+      try {
+        resolve({ status: response.statusCode, body: JSON.parse(responseBody) });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+  request.on("error", reject);
+  request.end(payload);
 });
 
 const purchase = (user, {
@@ -159,6 +196,7 @@ test.beforeEach(async () => {
   });
   dispatchCalls = 0;
   clubKonnectCalls = 0;
+  dispatchedRequests = [];
   nextProviderOutcome = "SUCCESS";
   axios.get = async () => {
     clubKonnectCalls += 1;
@@ -179,6 +217,10 @@ test.beforeEach(async () => {
     assert.equal(request.phone, CUSTOMER_PHONE);
     assert.equal(request.plan, PROVIDER_PLAN_ID);
     assert.match(request.request_id, /^DATA-/);
+    const storedBeforeDispatch = await Transaction.findById(request.transactionId).lean();
+    assert.ok(storedBeforeDispatch, "transaction must be stored before mock dispatch");
+    assert.equal(storedBeforeDispatch.reference, request.request_id);
+    assert.equal(storedBeforeDispatch.providerRequestId, request.request_id);
     const claimed = await Transaction.findOneAndUpdate({
       _id: request.transactionId,
       reference: request.request_id,
@@ -194,6 +236,7 @@ test.beforeEach(async () => {
     }, { new: true });
     assert.ok(claimed, "mock dispatch must consume the durable one-shot claim");
     dispatchCalls += 1;
+    dispatchedRequests.push({ ...request });
 
     if (nextProviderOutcome instanceof Error) throw nextProviderOutcome;
     if (nextProviderOutcome === "FAILED") {
@@ -243,6 +286,93 @@ test.beforeEach(async () => {
       httpStatus: 200,
     };
   };
+});
+
+test("HTTP DATA route authenticates, verifies PIN, persists correlation before dispatch, and replays idempotently", async () => {
+  const user = await makeUser();
+  user.setTransactionPin("2468");
+  await user.save();
+  await addCanonicalPrice();
+
+  const app = express();
+  app.use(express.json());
+  app.use("/api/clubkonnect", clubkonnectRouter);
+  const server = http.createServer(app);
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const key = "http-route-live-mtn-hot-4";
+    const body = {
+      network: "MTN",
+      phone: CUSTOMER_PHONE,
+      planCode: PLAN_CODE,
+      amount: SERVICEPAY_PRICE,
+      transactionPin: "2468",
+    };
+    const unauthorized = await postJson(server, "/api/clubkonnect/data", { key, body });
+    assert.equal(unauthorized.status, 401);
+    assert.equal(dispatchCalls, 0);
+
+    const token = jwt.sign({
+      id: user._id.toString(),
+      authTokenVersion: 0,
+    }, process.env.JWT_SECRET);
+    const response = await postJson(server, "/api/clubkonnect/data", { token, key, body });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.status, "SUCCESSFUL");
+    assert.match(response.body.reference, /^DATA-/);
+    assert.equal(dispatchCalls, 1);
+    assert.equal(dispatchedRequests.length, 1);
+    assert.equal(dispatchedRequests[0].request_id, response.body.reference);
+    assert.equal(dispatchedRequests[0].network, 1);
+    assert.equal(typeof dispatchedRequests[0].network, "number");
+    assert.equal(dispatchedRequests[0].plan, 186);
+    assert.equal(typeof dispatchedRequests[0].plan, "number");
+
+    const transaction = await Transaction.findOne({
+      customerId: user._id,
+      serviceType: "DATA",
+    });
+    assert.ok(transaction);
+    assert.equal(transaction.reference, response.body.reference);
+    assert.equal(transaction.providerRequestId, response.body.reference);
+    assert.equal(transaction.provider, "TELECOM_ABODE");
+    assert.equal(transaction.amount, 55);
+    assert.equal(transaction.providerResponse.providerPrice, 50);
+
+    const debit = await LedgerEntry.findOne({
+      transactionId: transaction._id,
+      direction: "DEBIT",
+    });
+    assert.ok(debit);
+    assert.equal(debit.amount, 55);
+    assert.equal(await LedgerEntry.countDocuments({
+      transactionId: transaction._id,
+      direction: "DEBIT",
+    }), 1);
+    assert.equal(await User.findById(user._id).then((row) => row.walletBalance), 945);
+
+    const replay = await postJson(server, "/api/clubkonnect/data", { token, key, body });
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.reference, response.body.reference);
+    assert.equal(dispatchCalls, 1);
+    assert.equal(await Transaction.countDocuments({
+      customerId: user._id,
+      serviceType: "DATA",
+    }), 1);
+    assert.equal(await LedgerEntry.countDocuments({
+      user: user._id,
+      service: "DATA",
+      direction: "DEBIT",
+    }), 1);
+    assert.equal(await User.findById(user._id).then((row) => row.walletBalance), 945);
+    assert.equal(clubKonnectCalls, 0);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 test("Admin and customer see canonical ServicePay code and exact Admin price, not provider cost", async () => {
