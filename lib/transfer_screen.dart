@@ -689,10 +689,7 @@ class _TransferScreenState extends State<TransferScreen> {
       final SharedPreferences preferences =
           await SharedPreferences.getInstance();
 
-      final String token = preferences.getString(
-            'auth_token',
-          ) ??
-          '';
+      final String token = (await SessionStore.readToken()) ?? '';
 
       if (token.trim().isEmpty) {
         showMessage(
