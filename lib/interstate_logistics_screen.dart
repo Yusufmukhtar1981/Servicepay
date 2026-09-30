@@ -4,8 +4,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'services/session_store.dart';
 import 'servicepay_theme.dart';
 import 'transaction_pin_dialog.dart';
 
@@ -117,20 +117,10 @@ class _LogisticsApi {
   static const Duration _timeout = Duration(seconds: 35);
 
   static Future<String> token() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    for (final String key in <String>[
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt'
-    ]) {
-      String value = prefs.getString(key)?.trim() ?? '';
-      if (value.toLowerCase().startsWith('bearer '))
-        value = value.substring(7).trim();
-      if (value.isNotEmpty) return value;
-    }
+    final String value = (await SessionStore.readToken() ?? '')
+        .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '')
+        .trim();
+    if (value.isNotEmpty) return value;
     throw StateError('Your login session has expired. Please sign in again.');
   }
 
@@ -205,6 +195,9 @@ class _LogisticsApiException implements Exception {
 
 /// Canonical response and request adapters kept public for contract tests.
 abstract final class InterstateLogisticsContracts {
+  /// Exercises the same session source used by authenticated route requests.
+  static Future<String> sessionToken() => _LogisticsApi.token();
+
   static Map<String, dynamic> quote(dynamic response) =>
       _LogisticsApi.map(response is Map ? response['quote'] : null);
 
