@@ -9,6 +9,9 @@ const LedgerEntry = require("../models/ledgerEntry.model");
 const AppSettings = require("../models/appSettings.model");
 const WithdrawalPayoutClaim = require("../models/withdrawalPayoutClaim.model");
 const {
+  clearWithdrawalIndexReadinessCache,
+} = require("../services/withdrawalIndexReadiness.service");
+const {
   createWithdrawal,
   myWithdrawals,
   approveWithdrawal,
@@ -124,6 +127,8 @@ test.beforeEach(async () => {
   await Promise.all(
     models.map((model) => model.collection.deleteMany({}))
   );
+  clearWithdrawalIndexReadinessCache();
+  await AppSettings.create({ key: "GLOBAL_SETTINGS" });
 });
 
 test("creation holds funds once and an idempotent retry cannot double debit", async () => {
@@ -181,14 +186,26 @@ test("duplicate payout references and uncertain provider status cannot approve w
   const firstApproval = await call(approveWithdrawal, {
     user: admin,
     params: { id: String(first.body.withdrawal._id) },
-    body: { adminNote: "Manual settlement evidence.", payoutReference: "UNIQUE-PAYOUT-1" },
+    body: {
+      adminNote: "Transfer completed.",
+      payoutReference: "UNIQUE-PAYOUT-1",
+      manualPaymentConfirmed: true,
+      expectedAmount: first.body.withdrawal.amount,
+      expectedAccountNumber: first.body.withdrawal.accountNumber,
+    },
   });
   assert.equal(firstApproval.status, 200);
   const second = await requestWithdrawal(secondCustomer, "withdrawal-payout-two");
   const duplicate = await call(approveWithdrawal, {
     user: admin,
     params: { id: String(second.body.withdrawal._id) },
-    body: { adminNote: "Manual settlement evidence.", payoutReference: "UNIQUE-PAYOUT-1" },
+    body: {
+      adminNote: "Transfer completed.",
+      payoutReference: "UNIQUE-PAYOUT-1",
+      manualPaymentConfirmed: true,
+      expectedAmount: second.body.withdrawal.amount,
+      expectedAccountNumber: second.body.withdrawal.accountNumber,
+    },
   });
   assert.equal(duplicate.status, 409);
   assert.equal(duplicate.body.code, "DUPLICATE_PAYOUT_REFERENCE");
@@ -199,7 +216,250 @@ test("duplicate payout references and uncertain provider status cannot approve w
   });
   assert.equal(uncertain.status, 409);
   assert.equal(uncertain.body.code, "PAYOUT_NOT_CONFIRMED");
+  const contradictory = await call(approveWithdrawal, {
+    user: admin,
+    params: { id: String(second.body.withdrawal._id) },
+    body: {
+      payoutReference: "UNIQUE-PAYOUT-3",
+      providerStatus: "PROCESSING",
+      manualPaymentConfirmed: true,
+      expectedAmount: second.body.withdrawal.amount,
+      expectedAccountNumber: second.body.withdrawal.accountNumber,
+    },
+  });
+  assert.equal(contradictory.status, 409);
+  assert.equal(contradictory.body.code, "PAYOUT_NOT_CONFIRMED");
+  const conflictingFields = await call(approveWithdrawal, {
+    user: admin,
+    params: { id: String(second.body.withdrawal._id) },
+    body: {
+      payoutReference: "UNIQUE-PAYOUT-4",
+      providerStatus: "SUCCESSFUL",
+      payoutStatus: "PROCESSING",
+      manualPaymentConfirmed: true,
+      expectedAmount: second.body.withdrawal.amount,
+      expectedAccountNumber: second.body.withdrawal.accountNumber,
+    },
+  });
+  assert.equal(conflictingFields.status, 409);
+  assert.equal(conflictingFields.body.code, "PAYOUT_NOT_CONFIRMED");
   assert.equal((await WithdrawalRequest.findById(second.body.withdrawal._id)).status, "PENDING");
+});
+
+test("two fractional holds can both be approved without losing a locked cent", async () => {
+  const customer = await createUser({ walletBalance: 1000 });
+  const admin = await createUser({ role: "HEAD_OFFICE", walletBalance: 0 });
+  const first = await requestWithdrawal(customer, "fractional-approve-1", { amount: 300.1 });
+  const second = await requestWithdrawal(customer, "fractional-approve-2", { amount: 300.2 });
+
+  for (const [created, payoutReference] of [
+    [first, "FRACTIONAL-APPROVE-1"],
+    [second, "FRACTIONAL-APPROVE-2"],
+  ]) {
+    const approved = await call(approveWithdrawal, {
+      user: admin,
+      params: { id: String(created.body.withdrawal._id) },
+      body: {
+        payoutReference,
+        manualPaymentConfirmed: true,
+        expectedAmount: created.body.withdrawal.amount,
+        expectedAccountNumber: created.body.withdrawal.accountNumber,
+      },
+    });
+    assert.equal(approved.status, 200);
+  }
+
+  const stored = await User.findById(customer._id);
+  assert.equal(stored.walletBalance, 399.7);
+  assert.equal(stored.withdrawalLockedBalance, 0);
+});
+
+test("fractional withdrawal refunds restore exact cents across multiple rejections", async () => {
+  const customer = await createUser({ walletBalance: 1000 });
+  const admin = await createUser({ role: "HEAD_OFFICE", walletBalance: 0 });
+  const first = await requestWithdrawal(customer, "fractional-refund-1", { amount: 300.1 });
+  const second = await requestWithdrawal(customer, "fractional-refund-2", { amount: 300.2 });
+
+  for (const created of [first, second]) {
+    const rejected = await call(rejectWithdrawal, {
+      user: admin,
+      params: { id: String(created.body.withdrawal._id) },
+      body: { adminNote: "Refund requested." },
+    });
+    assert.equal(rejected.status, 200);
+  }
+
+  const stored = await User.findById(customer._id);
+  assert.equal(stored.walletBalance, 1000);
+  assert.equal(stored.withdrawalLockedBalance, 0);
+  assert.equal(
+    await LedgerEntry.countDocuments({
+      user: customer._id,
+      service: "WITHDRAWAL_REFUND",
+    }),
+    2
+  );
+});
+
+test("concurrent identical withdrawal keys debit once and tolerate a lazy settings duplicate race", async () => {
+  const customer = await createUser({ walletBalance: 1000 });
+  const originalGetSettings = AppSettings.getGlobalSettings;
+  let injectDuplicate = true;
+  AppSettings.getGlobalSettings = async function (...args) {
+    if (injectDuplicate) {
+      injectDuplicate = false;
+      const error = new Error("Concurrent singleton creation.");
+      error.code = 11000;
+      throw error;
+    }
+    return originalGetSettings.apply(this, args);
+  };
+  let responses;
+  try {
+    responses = await Promise.all([
+      requestWithdrawal(customer, "concurrent-same-key"),
+      requestWithdrawal(customer, "concurrent-same-key"),
+    ]);
+  } finally {
+    AppSettings.getGlobalSettings = originalGetSettings;
+  }
+
+  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 201]);
+  const stored = await User.findById(customer._id);
+  assert.equal(stored.walletBalance, 700);
+  assert.equal(stored.withdrawalLockedBalance, 300);
+  assert.equal(await WithdrawalRequest.countDocuments({ user: customer._id }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ user: customer._id }), 1);
+});
+
+test("approve-versus-reject finalizes one withdrawal exactly once", async () => {
+  const customer = await createUser({ walletBalance: 1000 });
+  const admin = await createUser({ role: "HEAD_OFFICE", walletBalance: 0 });
+  const created = await requestWithdrawal(customer, "approve-reject-race", { amount: 300.1 });
+  const params = { id: String(created.body.withdrawal._id) };
+
+  const [approval, rejection] = await Promise.all([
+    call(approveWithdrawal, {
+      user: admin,
+      params,
+      body: {
+        payoutReference: "APPROVE-REJECT-RACE",
+        manualPaymentConfirmed: true,
+        expectedAmount: created.body.withdrawal.amount,
+        expectedAccountNumber: created.body.withdrawal.accountNumber,
+      },
+    }),
+    call(rejectWithdrawal, { user: admin, params }),
+  ]);
+  assert.equal([approval, rejection].filter((response) => response.status === 200).length, 1);
+  const storedRequest = await WithdrawalRequest.findById(created.body.withdrawal._id);
+  const storedUser = await User.findById(customer._id);
+  assert.ok(["APPROVED", "REJECTED"].includes(storedRequest.status));
+  assert.equal(storedUser.withdrawalLockedBalance, 0);
+  if (storedRequest.status === "APPROVED") {
+    assert.equal(storedUser.walletBalance, 699.9);
+    assert.equal(await LedgerEntry.countDocuments({ user: customer._id }), 1);
+  } else {
+    assert.equal(storedUser.walletBalance, 1000);
+    assert.equal(await LedgerEntry.countDocuments({ user: customer._id }), 2);
+  }
+});
+
+test("concurrent approvals cannot claim the same payout reference", async () => {
+  const customerA = await createUser();
+  const customerB = await createUser();
+  const admin = await createUser({ role: "HEAD_OFFICE", walletBalance: 0 });
+  const first = await requestWithdrawal(customerA, "payout-race-a");
+  const second = await requestWithdrawal(customerB, "payout-race-b");
+  const approve = (created) => call(approveWithdrawal, {
+    user: admin,
+    params: { id: String(created.body.withdrawal._id) },
+    body: {
+      payoutReference: "CONCURRENT-UNIQUE-PAYOUT",
+      manualPaymentConfirmed: true,
+      expectedAmount: created.body.withdrawal.amount,
+      expectedAccountNumber: created.body.withdrawal.accountNumber,
+    },
+  });
+
+  const responses = await Promise.all([approve(first), approve(second)]);
+  assert.equal(responses.filter((response) => response.status === 200).length, 1);
+  assert.equal(responses.filter((response) =>
+    response.status === 409 &&
+    response.body.code === "DUPLICATE_PAYOUT_REFERENCE"
+  ).length, 1);
+  assert.equal(
+    await WithdrawalPayoutClaim.countDocuments({
+      payoutReference: "CONCURRENT-UNIQUE-PAYOUT",
+    }),
+    1
+  );
+});
+
+test("transaction failures roll back request holds, payout claims, refunds, and ledgers", async () => {
+  const customer = await createUser({ walletBalance: 1000 });
+  const secondCustomer = await createUser({ walletBalance: 1000 });
+  const admin = await createUser({ role: "HEAD_OFFICE", walletBalance: 0 });
+  const originalSave = WithdrawalRequest.prototype.save;
+  WithdrawalRequest.prototype.save = async function (...args) {
+    if (this.debitLedgerEntry) {
+      throw new Error("Injected request persistence failure.");
+    }
+    return originalSave.apply(this, args);
+  };
+  let failedCreate;
+  try {
+    failedCreate = await requestWithdrawal(customer, "injected-create-failure", { amount: 300.1 });
+  } finally {
+    WithdrawalRequest.prototype.save = originalSave;
+  }
+  assert.equal(failedCreate.status, 500);
+  assert.equal((await User.findById(customer._id)).walletBalance, 1000);
+  assert.equal((await User.findById(customer._id)).withdrawalLockedBalance, 0);
+  assert.equal(await LedgerEntry.countDocuments({ user: customer._id }), 0);
+  assert.equal(await WithdrawalRequest.countDocuments({ user: customer._id }), 0);
+
+  const forApproval = await requestWithdrawal(customer, "injected-approval-failure", { amount: 300.1 });
+  const forRejection = await requestWithdrawal(secondCustomer, "injected-rejection-failure", { amount: 300.2 });
+  WithdrawalRequest.prototype.save = async function (...args) {
+    if (this.status === "APPROVED" || this.status === "REJECTED") {
+      throw new Error("Injected finalization persistence failure.");
+    }
+    return originalSave.apply(this, args);
+  };
+  let approvalFailure;
+  let rejectionFailure;
+  try {
+    approvalFailure = await call(approveWithdrawal, {
+      user: admin,
+      params: { id: String(forApproval.body.withdrawal._id) },
+      body: {
+        payoutReference: "INJECTED-APPROVAL-FAILURE",
+        manualPaymentConfirmed: true,
+        expectedAmount: forApproval.body.withdrawal.amount,
+        expectedAccountNumber: forApproval.body.withdrawal.accountNumber,
+      },
+    });
+    rejectionFailure = await call(rejectWithdrawal, {
+      user: admin,
+      params: { id: String(forRejection.body.withdrawal._id) },
+    });
+  } finally {
+    WithdrawalRequest.prototype.save = originalSave;
+  }
+
+  assert.equal(approvalFailure.status, 500);
+  assert.equal(rejectionFailure.status, 500);
+  assert.equal((await WithdrawalRequest.findById(forApproval.body.withdrawal._id)).status, "PENDING");
+  assert.equal((await WithdrawalRequest.findById(forRejection.body.withdrawal._id)).status, "PENDING");
+  assert.equal((await User.findById(customer._id)).walletBalance, 699.9);
+  assert.equal((await User.findById(customer._id)).withdrawalLockedBalance, 300.1);
+  assert.equal((await User.findById(secondCustomer._id)).walletBalance, 699.8);
+  assert.equal((await User.findById(secondCustomer._id)).withdrawalLockedBalance, 300.2);
+  assert.equal(await WithdrawalPayoutClaim.countDocuments(), 0);
+  assert.equal(await LedgerEntry.countDocuments({ service: "WITHDRAWAL_REFUND" }), 0);
+  assert.equal(await LedgerEntry.countDocuments({ user: customer._id }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ user: secondCustomer._id }), 1);
 });
 
 test("the same client key from different customers creates separate ledger debits", async () => {
@@ -333,6 +593,9 @@ test("approval consumes only locked funds and cannot debit the wallet again", as
     body: {
       adminNote: "Paid after finance review.",
       payoutReference: "BANK-PAYOUT-001",
+      manualPaymentConfirmed: true,
+      expectedAmount: created.body.withdrawal.amount,
+      expectedAccountNumber: created.body.withdrawal.accountNumber,
     },
   });
   assert.equal(approved.status, 200);
@@ -350,6 +613,9 @@ test("approval consumes only locked funds and cannot debit the wallet again", as
     },
     body: {
       payoutReference: "BANK-PAYOUT-001",
+      manualPaymentConfirmed: true,
+      expectedAmount: created.body.withdrawal.amount,
+      expectedAccountNumber: created.body.withdrawal.accountNumber,
     },
   });
   assert.equal(repeated.status, 404);
@@ -388,6 +654,107 @@ test("approval requires payout proof before consuming locked funds", async () =>
   assert.equal(storedUser.walletBalance, 700);
   assert.equal(storedUser.withdrawalLockedBalance, 300);
   assert.equal(storedRequest.status, "PENDING");
+});
+
+test("manual approval requires matching explicit confirmation and persists authenticated evidence", async () => {
+  const customer = await createUser();
+  const admin = await createUser({ role: "HEAD_OFFICE", walletBalance: 0 });
+  const created = await requestWithdrawal(customer, "withdrawal-manual-evidence");
+  const params = { id: String(created.body.withdrawal._id) };
+
+  const mismatched = await call(approveWithdrawal, {
+    user: admin,
+    params,
+    body: {
+      payoutReference: "MANUAL-PAYOUT-1",
+      manualPaymentConfirmed: true,
+      expectedAmount: 301,
+      expectedAccountNumber: created.body.withdrawal.accountNumber,
+    },
+  });
+  assert.equal(mismatched.status, 409);
+  assert.equal(mismatched.body.code, "PAYOUT_DETAILS_MISMATCH");
+
+  const wrongAccount = await call(approveWithdrawal, {
+    user: admin,
+    params,
+    body: {
+      payoutReference: "MANUAL-PAYOUT-2",
+      manualPaymentConfirmed: true,
+      expectedAmount: created.body.withdrawal.amount,
+      expectedAccountNumber: "9876543210",
+    },
+  });
+  assert.equal(wrongAccount.status, 409);
+  assert.equal(wrongAccount.body.code, "PAYOUT_DETAILS_MISMATCH");
+
+  const uncertain = await call(approveWithdrawal, {
+    user: admin,
+    params,
+    body: {
+      payoutReference: "MANUAL-PAYOUT-3",
+      providerStatus: "SUCCESS",
+    },
+  });
+  assert.equal(uncertain.status, 409);
+  assert.equal(uncertain.body.code, "PAYOUT_NOT_CONFIRMED");
+  const notConfirmed = await call(approveWithdrawal, {
+    user: admin,
+    params,
+    body: {
+      payoutReference: "MANUAL-PAYOUT-4",
+      providerStatus: "SUCCESS",
+      manualPaymentConfirmed: false,
+      expectedAmount: created.body.withdrawal.amount,
+      expectedAccountNumber: created.body.withdrawal.accountNumber,
+    },
+  });
+  assert.equal(notConfirmed.status, 409);
+  assert.equal(notConfirmed.body.code, "PAYOUT_NOT_CONFIRMED");
+
+  const approved = await call(approveWithdrawal, {
+    user: admin,
+    params,
+    body: {
+      payoutReference: "MANUAL-PAYOUT-5",
+      manualPaymentConfirmed: true,
+      expectedAmount: created.body.withdrawal.amount,
+      expectedAccountNumber: created.body.withdrawal.accountNumber,
+      actor: String(customer._id),
+    },
+  });
+  assert.equal(approved.status, 200);
+  const stored = await WithdrawalRequest.findById(created.body.withdrawal._id);
+  assert.equal(stored.manualPayoutEvidence.method, "MANUAL_BANK_TRANSFER");
+  assert.equal(stored.manualPayoutEvidence.confirmed, true);
+  assert.equal(String(stored.manualPayoutEvidence.actor), String(admin._id));
+  assert.ok(stored.manualPayoutEvidence.confirmedAt instanceof Date);
+  assert.equal(stored.manualPayoutEvidence.amount, created.body.withdrawal.amount);
+  assert.equal(stored.manualPayoutEvidence.bankName, created.body.withdrawal.bankName);
+  assert.equal(stored.manualPayoutEvidence.accountNumber, created.body.withdrawal.accountNumber);
+  assert.equal(stored.manualPayoutEvidence.accountName, created.body.withdrawal.accountName);
+  assert.equal(stored.manualPayoutEvidence.payoutReference, "MANUAL-PAYOUT-5");
+
+  stored.manualPayoutEvidence.actor = customer._id;
+  await stored.save();
+  const immutableEvidence = await WithdrawalRequest.findById(created.body.withdrawal._id);
+  assert.equal(String(immutableEvidence.manualPayoutEvidence.actor), String(admin._id));
+});
+
+test("atomic spendable-balance predicate preserves holds across concurrent withdrawals", async () => {
+  const customer = await createUser({ walletBalance: 10000 });
+  customer.walletHeldBalance = 4000;
+  await customer.save();
+
+  const [first, second] = await Promise.all([
+    requestWithdrawal(customer, "withdrawal-concurrent-a", { amount: 4000 }),
+    requestWithdrawal(customer, "withdrawal-concurrent-b", { amount: 4000 }),
+  ]);
+  assert.deepEqual([first.status, second.status].sort(), [201, 400]);
+  const stored = await User.findById(customer._id);
+  assert.equal(stored.walletBalance - stored.walletHeldBalance, 2000);
+  assert.equal(await WithdrawalRequest.countDocuments({ user: customer._id }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ user: customer._id }), 1);
 });
 
 test("rejection returns held funds once and records a refund ledger credit", async () => {

@@ -5,7 +5,6 @@ const {
 } = require("../middleware/auth.middleware");
 const {
   requireNoRestriction,
-  requireSpendableBalance,
 } = require("../middleware/accountRestriction.middleware");
 
 const controller = require(
@@ -36,13 +35,18 @@ router.use(protect);
 router.post(
   "/request",
   requireNoRestriction("BLOCK_WITHDRAWALS", "BLOCK_WALLET_DEBIT"),
-  requireSpendableBalance,
   controller.createWithdrawal
 );
 
 router.get(
   "/my",
   controller.myWithdrawals
+);
+
+router.get(
+  "/admin/readiness",
+  requireHeadOffice,
+  controller.withdrawalAdminReadiness
 );
 
 router.get(

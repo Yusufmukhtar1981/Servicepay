@@ -71,13 +71,18 @@ test("Head Office hierarchy assignments are transactional, scoped, idempotent, a
     user("STATE_MANAGER", "A", { zone: "NORTH_A", state: "KANO" }),
     user("STATE_MANAGER", "B", { zone: "NORTH_A", state: "KANO" }),
     user("AGENT", "A", { zone: "NORTH_A", state: "KANO" }),
-    user("CUSTOMER", "A", { zone: "NORTH_A", state: "KANO", walletBalance: 77, referredBy: null }),
+    user("CUSTOMER", "A", {
+      zone: "NORTH_A", state: "KANO", walletBalance: 77, walletHeldBalance: 12,
+      withdrawalLockedBalance: 6, kycVerified: true, referredBy: null,
+    }),
   ]);
   const directCustomer = await User.create(user("CUSTOMER", "DIRECT", {
-    zone: "NORTH_A", state: "KANO", walletBalance: 88, stateManagerId: null, agentId: null,
+    zone: "NORTH_A", state: "KANO", walletBalance: 88, walletHeldBalance: 15,
+    withdrawalLockedBalance: 7, kycVerified: true, stateManagerId: null, agentId: null,
   }));
   const blockedCustomer = await User.create(user("CUSTOMER", "BLOCKED", {
     zone: "NORTH_A", state: "KANO", status: "SUSPENDED",
+    walletBalance: 99, walletHeldBalance: 21, withdrawalLockedBalance: 10, kycVerified: true,
     zonalManagerId: zonalA._id, stateManagerId: stateA._id, agentId: agentA._id,
   }));
   const zonalOtherZone = await User.create(user("ZONAL_MANAGER", "OTHER", { zone: "NORTH_B" }));
@@ -114,14 +119,24 @@ test("Head Office hierarchy assignments are transactional, scoped, idempotent, a
   assert.equal(String(movedAgent.zonalManagerId), String(zonalB._id));
   assert.equal(String(movedCustomer.zonalManagerId), String(zonalB._id));
   assert.equal(movedCustomer.walletBalance, 77);
+  assert.equal(movedCustomer.walletHeldBalance, 12);
+  assert.equal(movedCustomer.withdrawalLockedBalance, 6);
+  assert.equal(movedCustomer.kycVerified, true);
   const movedDirectCustomer = await User.findById(directCustomer._id).lean();
   assert.equal(String(movedDirectCustomer.zonalManagerId), String(zonalB._id));
   assert.equal(String(movedDirectCustomer.stateManagerId), String(stateA._id));
   assert.equal(movedDirectCustomer.agentId, null);
   assert.equal(movedDirectCustomer.walletBalance, 88);
+  assert.equal(movedDirectCustomer.walletHeldBalance, 15);
+  assert.equal(movedDirectCustomer.withdrawalLockedBalance, 7);
+  assert.equal(movedDirectCustomer.kycVerified, true);
   const movedBlockedCustomer = await User.findById(blockedCustomer._id).lean();
   assert.equal(movedBlockedCustomer.status, "SUSPENDED");
   assert.equal(String(movedBlockedCustomer.zonalManagerId), String(zonalB._id));
+  assert.equal(movedBlockedCustomer.walletBalance, 99);
+  assert.equal(movedBlockedCustomer.walletHeldBalance, 21);
+  assert.equal(movedBlockedCustomer.withdrawalLockedBalance, 10);
+  assert.equal(movedBlockedCustomer.kycVerified, true);
   const statesInZone = await invoke(controller.listUsers, {
     query: { role: "STATE_MANAGER", parentId: String(zonalB._id) },
   });
@@ -176,6 +191,9 @@ test("Head Office hierarchy assignments are transactional, scoped, idempotent, a
   assert.equal(String(afterCustomer.agentId), String(agentA._id));
   assert.equal(String(afterCustomer.stateManagerId), String(stateB._id));
   assert.equal(afterCustomer.walletBalance, 77);
+  assert.equal(afterCustomer.walletHeldBalance, 12);
+  assert.equal(afterCustomer.withdrawalLockedBalance, 6);
+  assert.equal(afterCustomer.kycVerified, true);
   const historicalAfterAgentMove = await Transaction.findOne({ reference: "HIERARCHY-HISTORICAL-1" }).lean();
   assert.deepEqual(
     [historicalAfterAgentMove.agentId, historicalAfterAgentMove.stateManagerId, historicalAfterAgentMove.zonalManagerId].map(String),
@@ -225,6 +243,10 @@ test("Head Office hierarchy assignments are transactional, scoped, idempotent, a
   assert.equal(raced.filter((response) => response.status === 409).length, 1);
   const racedCustomer = await User.findById(customerA._id).lean();
   assert.ok([String(agentB._id), String(agentC._id)].includes(String(racedCustomer.agentId)));
+  assert.equal(racedCustomer.walletBalance, 77);
+  assert.equal(racedCustomer.walletHeldBalance, 12);
+  assert.equal(racedCustomer.withdrawalLockedBalance, 6);
+  assert.equal(racedCustomer.kycVerified, true);
   // Simulate a legacy record saved before the creation hook existed.
   await Transaction.collection.insertOne({
     reference: "HIERARCHY-UNATTRIBUTED-1", customerId: customerA._id,

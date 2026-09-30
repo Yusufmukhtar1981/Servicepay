@@ -1,5 +1,28 @@
 const mongoose = require("mongoose");
 
+const manualPayoutEvidenceSchema = new mongoose.Schema(
+  {
+    method: {
+      type: String,
+      enum: ["MANUAL_BANK_TRANSFER"],
+      immutable: true,
+    },
+    confirmed: { type: Boolean, immutable: true },
+    actor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      immutable: true,
+    },
+    confirmedAt: { type: Date, immutable: true },
+    amount: { type: Number, immutable: true },
+    bankName: { type: String, immutable: true },
+    accountNumber: { type: String, immutable: true },
+    accountName: { type: String, immutable: true },
+    payoutReference: { type: String, immutable: true },
+  },
+  { _id: false, strict: true }
+);
+
 const withdrawalRequestSchema =
   new mongoose.Schema(
     {
@@ -69,6 +92,10 @@ const withdrawalRequestSchema =
         type: String,
         default: "",
         trim: true,
+      },
+
+      manualPayoutEvidence: {
+        type: manualPayoutEvidenceSchema,
       },
 
       balanceAfter: {

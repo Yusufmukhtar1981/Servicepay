@@ -13,6 +13,9 @@ const {
   postCredit,
 } = require("../services/ledger.service");
 const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("../services/biometric.service");
+const {
+  getWithdrawalIndexReadiness,
+} = require("../services/withdrawalIndexReadiness.service");
 
 const getUserId = (req) =>
   req.user?._id ||
@@ -51,9 +54,51 @@ const withdrawalIntentMatches = (item, intent) =>
   normalizeWithdrawalIntent(item).accountNumber === intent.accountNumber &&
   normalizeWithdrawalIntent(item).accountName === intent.accountName;
 
+const toCents = (amount) =>
+  Math.round((Number(amount) + Number.EPSILON) * 100);
+
+const fromCents = (cents) =>
+  Math.round(Number(cents)) / 100;
+
+const centsExpression = (field) => ({
+  $round: [
+    {
+      $multiply: [
+        {
+          $ifNull: [`$${field}`, 0],
+        },
+        100,
+      ],
+    },
+    0,
+  ],
+});
+
+const ensureWithdrawalIndexes = async (res) => {
+  const readiness = await getWithdrawalIndexReadiness();
+  if (!readiness.ready) {
+    res.status(503).json({
+      success: false,
+      code: "WITHDRAWAL_INDEXES_NOT_READY",
+      message: "Withdrawal processing is temporarily unavailable because required database indexes could not be verified.",
+      readiness,
+    });
+    return false;
+  }
+  return true;
+};
+
 const getWithdrawalLimits = async () => {
-  const settings =
-    await AppSettings.getGlobalSettings();
+  let settings;
+  try {
+    settings = await AppSettings.getGlobalSettings();
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    settings = await AppSettings.findOne({
+      key: "GLOBAL_SETTINGS",
+    });
+    if (!settings) throw error;
+  }
   const limits =
     settings?.transactionLimits || {};
 
@@ -85,6 +130,8 @@ exports.createWithdrawal = async (
   try {
     let result = null;
     const userId = getUserId(req);
+    if (!(await ensureWithdrawalIndexes(res))) return;
+
     // PIN admission maintains durable security state outside financial
     // transactions. Verify before opening the wallet transaction so its
     // reservation cannot be rolled back or cause a transaction retry loop.
@@ -247,19 +294,49 @@ exports.createWithdrawal = async (
           await User.findOneAndUpdate(
             {
               _id: user._id,
-              walletBalance: {
-                $gte: amount,
+              $expr: {
+                $gte: [
+                  {
+                    $subtract: [
+                      centsExpression("walletBalance"),
+                      centsExpression("walletHeldBalance"),
+                    ],
+                  },
+                  amountInKobo,
+                ],
               },
             },
-            {
-              $inc: {
-                walletBalance: -amount,
-                withdrawalLockedBalance:
-                  amount,
+            [
+              {
+                $set: {
+                  walletBalance: {
+                    $divide: [
+                      {
+                        $subtract: [
+                          centsExpression("walletBalance"),
+                          amountInKobo,
+                        ],
+                      },
+                      100,
+                    ],
+                  },
+                  withdrawalLockedBalance: {
+                    $divide: [
+                      {
+                        $add: [
+                          centsExpression("withdrawalLockedBalance"),
+                          amountInKobo,
+                        ],
+                      },
+                      100,
+                    ],
+                  },
+                },
               },
-            },
+            ],
             {
-              new: true,
+              returnDocument: "after",
+              updatePipeline: true,
               session,
             }
           );
@@ -300,9 +377,7 @@ exports.createWithdrawal = async (
             userId: user._id,
             amount,
             openingBalance:
-              Number(
-                debited.walletBalance
-              ) + amount,
+              fromCents(toCents(debited.walletBalance) + amountInKobo),
             closingBalance:
               debited.walletBalance,
             service:
@@ -498,6 +573,31 @@ exports.adminWithdrawals = async (
   }
 };
 
+exports.withdrawalAdminReadiness = async (
+  _req,
+  res
+) => {
+  try {
+    const readiness = await getWithdrawalIndexReadiness({
+      forceRefresh: true,
+    });
+    return res
+      .status(readiness.ready ? 200 : 503)
+      .json({
+        success: readiness.ready,
+        readiness,
+      });
+  } catch (_) {
+    return res.status(503).json({
+      success: false,
+      readiness: {
+        ready: false,
+        error: "Unable to verify required withdrawal indexes.",
+      },
+    });
+  }
+};
+
 exports.approveWithdrawal = async (
   req,
   res
@@ -523,16 +623,42 @@ exports.approveWithdrawal = async (
       });
     }
 
-    const providerStatus = String(
-      req.body?.providerStatus || req.body?.payoutStatus || ""
-    ).trim().toUpperCase();
-    if (providerStatus && providerStatus !== "SUCCESSFUL" && providerStatus !== "SUCCESS") {
+    const expectedAmount = Number(req.body?.expectedAmount);
+    const expectedAmountInCents = Math.round(expectedAmount * 100);
+    const expectedAccountNumber = String(
+      req.body?.expectedAccountNumber || ""
+    ).trim();
+    const payoutStatuses = [
+      req.body?.providerStatus,
+      req.body?.payoutStatus,
+    ].map((status) => String(status || "").trim().toUpperCase())
+      .filter(Boolean);
+    if (
+      payoutStatuses.some(
+        (status) => !["SUCCESS", "SUCCESSFUL"].includes(status)
+      )
+    ) {
       return res.status(409).json({
         success: false,
         code: "PAYOUT_NOT_CONFIRMED",
-        message: "Withdrawal cannot be approved without authoritative provider success or valid manual settlement evidence.",
+        message: "A conflicting or uncertain payout status cannot be manually approved.",
       });
     }
+    if (
+      req.body?.manualPaymentConfirmed !== true ||
+      !Number.isFinite(expectedAmount) ||
+      !Number.isSafeInteger(expectedAmountInCents) ||
+      Math.abs(expectedAmount * 100 - expectedAmountInCents) > 1e-8 ||
+      !/^\d{10}$/.test(expectedAccountNumber)
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: "PAYOUT_NOT_CONFIRMED",
+        message: "Confirm the completed manual bank transfer and provide the expected amount and beneficiary account number.",
+      });
+    }
+
+    if (!(await ensureWithdrawalIndexes(res))) return;
 
     await session.withTransaction(
       async () => {
@@ -548,6 +674,18 @@ exports.approveWithdrawal = async (
           );
 
           error.statusCode = 404;
+          throw error;
+        }
+
+        if (
+          expectedAmountInCents !== Math.round(Number(item.amount) * 100) ||
+          expectedAccountNumber !== item.accountNumber
+        ) {
+          const error = new Error(
+            "Confirmed payout amount and beneficiary account must match the pending withdrawal."
+          );
+          error.statusCode = 409;
+          error.code = "PAYOUT_DETAILS_MISMATCH";
           throw error;
         }
 
@@ -577,22 +715,38 @@ exports.approveWithdrawal = async (
           throw claimError;
         }
 
+        const amountInCents = toCents(item.amount);
         const updatedUser =
           await User.findOneAndUpdate(
             {
               _id: item.user,
-              withdrawalLockedBalance: {
-                $gte: item.amount,
+              $expr: {
+                $gte: [
+                  centsExpression("withdrawalLockedBalance"),
+                  amountInCents,
+                ],
               },
             },
-            {
-              $inc: {
-                withdrawalLockedBalance:
-                  -item.amount,
+            [
+              {
+                $set: {
+                  withdrawalLockedBalance: {
+                    $divide: [
+                      {
+                        $subtract: [
+                          centsExpression("withdrawalLockedBalance"),
+                          amountInCents,
+                        ],
+                      },
+                      100,
+                    ],
+                  },
+                },
               },
-            },
+            ],
             {
-              new: true,
+              returnDocument: "after",
+              updatePipeline: true,
               session,
             }
           );
@@ -616,6 +770,24 @@ exports.approveWithdrawal = async (
           ).trim();
         item.payoutReference =
           payoutReference;
+        const evidence = {
+          method: "MANUAL_BANK_TRANSFER",
+          confirmed: true,
+          actor: getUserId(req),
+          confirmedAt: new Date(),
+          amount: item.amount,
+          bankName: item.bankName,
+          accountNumber: item.accountNumber,
+          accountName: item.accountName,
+          payoutReference,
+        };
+        for (const [field, value] of Object.entries(evidence)) {
+          item.set(
+            `manualPayoutEvidence.${field}`,
+            value,
+            { overwriteImmutable: true }
+          );
+        }
 
         await item.save({
           session,
@@ -636,6 +808,13 @@ exports.approveWithdrawal = async (
       ...result,
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        code: "DUPLICATE_PAYOUT_REFERENCE",
+        message: "This payout reference has already finalized another withdrawal.",
+      });
+    }
     return res
       .status(error.statusCode || 500)
       .json({
@@ -659,6 +838,7 @@ exports.rejectWithdrawal = async (
 
   try {
     let result = null;
+    if (!(await ensureWithdrawalIndexes(res))) return;
 
     await session.withTransaction(
       async () => {
@@ -677,24 +857,49 @@ exports.rejectWithdrawal = async (
           throw error;
         }
 
+        const amountInCents = toCents(item.amount);
         const updatedUser =
           await User.findOneAndUpdate(
             {
               _id: item.user,
-              withdrawalLockedBalance: {
-                $gte: item.amount,
+              $expr: {
+                $gte: [
+                  centsExpression("withdrawalLockedBalance"),
+                  amountInCents,
+                ],
               },
             },
-            {
-              $inc: {
-                withdrawalLockedBalance:
-                  -item.amount,
-                walletBalance:
-                  item.amount,
+            [
+              {
+                $set: {
+                  withdrawalLockedBalance: {
+                    $divide: [
+                      {
+                        $subtract: [
+                          centsExpression("withdrawalLockedBalance"),
+                          amountInCents,
+                        ],
+                      },
+                      100,
+                    ],
+                  },
+                  walletBalance: {
+                    $divide: [
+                      {
+                        $add: [
+                          centsExpression("walletBalance"),
+                          amountInCents,
+                        ],
+                      },
+                      100,
+                    ],
+                  },
+                },
               },
-            },
+            ],
             {
-              new: true,
+              returnDocument: "after",
+              updatePipeline: true,
               session,
             }
           );
@@ -713,11 +918,9 @@ exports.rejectWithdrawal = async (
             userId: item.user,
             amount: item.amount,
             openingBalance:
-              Number(
-                updatedUser.walletBalance
-              ) - item.amount,
+              fromCents(toCents(updatedUser.walletBalance) - amountInCents),
             closingBalance:
-              updatedUser.walletBalance,
+              fromCents(toCents(updatedUser.walletBalance)),
             service:
               "WITHDRAWAL_REFUND",
             reference:

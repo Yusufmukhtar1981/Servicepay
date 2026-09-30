@@ -130,14 +130,17 @@ test("State Manager reassignment cascades downline and preserves transaction sna
   const [customer, directCustomer, suspendedCustomer] = await User.create([
     makeUser("CUSTOMER", "A", {
       zone: "NORTH", state: "KANO", zonalManagerId: zonalA._id,
-      stateManagerId: state._id, agentId: agent._id,
+      stateManagerId: state._id, agentId: agent._id, walletBalance: 500,
+      walletHeldBalance: 40, withdrawalLockedBalance: 25, kycVerified: true,
     }),
     makeUser("CUSTOMER", "DIRECT", {
       zone: "NORTH", state: "KANO", zonalManagerId: zonalA._id, stateManagerId: state._id,
+      walletBalance: 250, walletHeldBalance: 30, withdrawalLockedBalance: 15, kycVerified: true,
     }),
     makeUser("CUSTOMER", "SUSPENDED", {
       zone: "NORTH", state: "KANO", status: "SUSPENDED",
       zonalManagerId: zonalA._id, stateManagerId: state._id, agentId: agent._id,
+      walletBalance: 125, walletHeldBalance: 20, withdrawalLockedBalance: 10, kycVerified: true,
     }),
   ]);
   const prior = await Transaction.create({
@@ -158,6 +161,18 @@ test("State Manager reassignment cascades downline and preserves transaction sna
     assert.equal(String(saved.zonalManagerId), String(zonalB._id));
     assert.equal(saved.zone, "NORTH");
     assert.equal(saved.state, "KANO");
+  }
+  for (const [userId, walletBalance, walletHeldBalance, withdrawalLockedBalance] of [
+    [customer._id, 500, 40, 25],
+    [directCustomer._id, 250, 30, 15],
+    [suspendedCustomer._id, 125, 20, 10],
+  ]) {
+    const saved = await User.findById(userId).lean();
+    assert.equal(saved.role, "CUSTOMER");
+    assert.equal(saved.walletBalance, walletBalance);
+    assert.equal(saved.walletHeldBalance, walletHeldBalance);
+    assert.equal(saved.withdrawalLockedBalance, withdrawalLockedBalance);
+    assert.equal(saved.kycVerified, true);
   }
   assert.equal((await User.findById(state._id)).stateManagerId, null);
   assert.equal((await User.findById(agent._id)).agentId, null);
@@ -184,7 +199,8 @@ test("Aggregator and Customer moves preserve old snapshots and capture new linea
   ]);
   const customer = await User.create(makeUser("CUSTOMER", "A", {
     zone: "NORTH", state: "KANO", zonalManagerId: zonal._id,
-    stateManagerId: stateA._id, agentId: agentA._id,
+    stateManagerId: stateA._id, agentId: agentA._id, walletBalance: 500,
+    walletHeldBalance: 40, withdrawalLockedBalance: 25, kycVerified: true,
   }));
   const before = await Transaction.create({
     reference: "SAFETY-AGENT-BEFORE", customerId: customer._id,
@@ -199,7 +215,12 @@ test("Aggregator and Customer moves preserve old snapshots and capture new linea
     serviceType: "AIRTIME", amount: 200, status: "SUCCESSFUL",
   });
   assert.equal(String(afterAgentMove.stateManagerId), String(stateB._id));
-  assert.equal(String((await User.findById(customer._id)).stateManagerId), String(stateB._id));
+  const afterAgentCustomer = await User.findById(customer._id).lean();
+  assert.equal(String(afterAgentCustomer.stateManagerId), String(stateB._id));
+  assert.equal(afterAgentCustomer.walletBalance, 500);
+  assert.equal(afterAgentCustomer.walletHeldBalance, 40);
+  assert.equal(afterAgentCustomer.withdrawalLockedBalance, 25);
+  assert.equal(afterAgentCustomer.kycVerified, true);
   assert.equal(String((await Transaction.findById(before._id)).stateManagerId), String(stateA._id));
 
   const beforeCustomerMove = await Transaction.create({
@@ -210,7 +231,12 @@ test("Aggregator and Customer moves preserve old snapshots and capture new linea
     customer, agentB, "safety-customer-move",
   ));
   assert.equal(moveCustomer.body.success, true, JSON.stringify(moveCustomer.body));
-  assert.equal(String((await User.findById(customer._id)).agentId), String(agentB._id));
+  const afterCustomerMove = await User.findById(customer._id).lean();
+  assert.equal(String(afterCustomerMove.agentId), String(agentB._id));
+  assert.equal(afterCustomerMove.walletBalance, 500);
+  assert.equal(afterCustomerMove.walletHeldBalance, 40);
+  assert.equal(afterCustomerMove.withdrawalLockedBalance, 25);
+  assert.equal(afterCustomerMove.kycVerified, true);
   const newLine = await Transaction.create({
     reference: "SAFETY-CUSTOMER-AFTER", customerId: customer._id,
     serviceType: "AIRTIME", amount: 225, status: "SUCCESSFUL",
