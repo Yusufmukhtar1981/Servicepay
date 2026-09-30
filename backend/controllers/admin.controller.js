@@ -11,9 +11,6 @@ const {
   firebaseDiagnosticStatus,
 } = require("../services/riderDeliveryAlert.service");
 const {
-  creditRiderCommissionIfEligible,
-} = require("../services/riderCommission.service");
-const {
   getExecutiveDashboard,
    getDashboardTargets,
    updateDashboardTargets,
@@ -1586,6 +1583,7 @@ exports.updateDeliveryStatus = async (
 };
 
 exports.updateDeliveryPrice = async (req, res) => {
+  let sourceSession;
   try {
     const deliveryId = String(req.params.id || "").trim();
     if (!mongoose.Types.ObjectId.isValid(deliveryId)) {
@@ -1597,89 +1595,205 @@ exports.updateDeliveryPrice = async (req, res) => {
     if (deliveryFee === null) {
       return res.status(400).json({ success: false, message: "Enter a valid delivery price." });
     }
-    const paymentStatus = String(req.body?.paymentStatus ?? "UNPAID").trim().toUpperCase();
-    if (!PAYMENT_STATUSES.includes(paymentStatus)) {
-      return res.status(400).json({ success: false, message: "Invalid payment status.", allowedPaymentStatuses: PAYMENT_STATUSES });
-    }
-    const commissionType = String(
-      req.body?.riderCommissionType ?? req.body?.commissionType ?? "PERCENTAGE"
-    ).trim().toUpperCase();
-    const commissionValue = toValidAmount(
-      req.body?.riderCommissionValue ?? req.body?.commissionValue ?? 80
+    const hasPaymentStatus = Object.prototype.hasOwnProperty.call(
+      req.body || {},
+      "paymentStatus"
     );
-    if (!COMMISSION_TYPES.includes(commissionType) || commissionValue === null ||
-        (commissionType === "PERCENTAGE" && commissionValue > 100) ||
-        (commissionType === "FIXED" && commissionValue > deliveryFee)) {
-      return res.status(400).json({ success: false, message: "Invalid Rider commission configuration." });
+    const requestedPaymentStatus = hasPaymentStatus
+      ? String(req.body.paymentStatus).trim().toUpperCase()
+      : null;
+    if (hasPaymentStatus && !PAYMENT_STATUSES.includes(requestedPaymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment status.",
+        allowedPaymentStatuses: PAYMENT_STATUSES,
+      });
     }
-    const delivery = await Delivery.findOne({
-      _id: deliveryId,
-      ...deliveryBranchFilter(req),
-    });
-    if (!delivery) {
-      return res.status(404).json({ success: false, message: "Delivery was not found." });
-    }
-    if (delivery.riderCommissionCredited && (
-      Number(delivery.deliveryFee) !== deliveryFee ||
-      delivery.riderCommissionType !== commissionType ||
-      Number(delivery.riderCommissionValue) !== commissionValue
-    )) {
-      return res.status(400).json({ success: false, message: "The delivery price or commission cannot be changed after Rider commission has been credited." });
-    }
-    const previousDeliveryFee = Number(delivery.deliveryFee || 0);
-    delivery.deliveryFee = deliveryFee;
-    delivery.paymentStatus = paymentStatus;
-    delivery.riderCommissionType = commissionType;
-    delivery.riderCommissionValue = commissionValue;
-    delivery.paidAt = paymentStatus === "PAID" ? (delivery.paidAt || new Date()) : null;
-    delivery.refundedAt = paymentStatus === "REFUNDED" ? (delivery.refundedAt || new Date()) : null;
-    if (req.body?.adminNote !== undefined) delivery.adminNote = String(req.body.adminNote ?? "").trim();
-    const calculation = delivery.calculateCommission();
-    if (!delivery.riderCommissionCredited) delivery.riderCommissionStatus = "PENDING";
-    const sourceSession = await mongoose.startSession();
+    let updatedDelivery = null;
+    let previousDeliveryFee = 0;
+    let calculation = null;
+    let shouldReconcileReferralReward = false;
+    const fail = (statusCode, code, message) => {
+      throw Object.assign(new Error(message), { statusCode, code });
+    };
+    sourceSession = await mongoose.startSession();
     try {
       await sourceSession.withTransaction(async () => {
-        await delivery.save({ session: sourceSession });
-        await enqueueReferralRewardEvent({
-          referredCustomerId: delivery.customerId,
-          sourceType: "DELIVERY",
-          sourceId: delivery._id,
-          session: sourceSession,
-        });
+        updatedDelivery = null;
+        previousDeliveryFee = 0;
+        calculation = null;
+        shouldReconcileReferralReward = false;
+        const delivery = await Delivery.findOne({
+          _id: deliveryId,
+          ...deliveryBranchFilter(req),
+        }).session(sourceSession);
+        if (!delivery) {
+          fail(404, "DELIVERY_NOT_FOUND", "Delivery was not found.");
+        }
+        if (hasPaymentStatus && requestedPaymentStatus !== delivery.paymentStatus) {
+          fail(
+            409,
+            "DELIVERY_PAYMENT_STATUS_REQUIRES_LEDGER",
+            "Delivery payment status can only change through an authoritative payment or refund reconciliation."
+          );
+        }
+        const commissionType = String(
+          req.body?.riderCommissionType ??
+            req.body?.commissionType ??
+            delivery.riderCommissionType ??
+            "PERCENTAGE"
+        ).trim().toUpperCase();
+        const commissionValue = toValidAmount(
+          req.body?.riderCommissionValue ??
+            req.body?.commissionValue ??
+            delivery.riderCommissionValue ??
+            80
+        );
+        if (!COMMISSION_TYPES.includes(commissionType) || commissionValue === null ||
+            (commissionType === "PERCENTAGE" && commissionValue > 100) ||
+            (commissionType === "FIXED" && commissionValue > deliveryFee)) {
+          fail(400, "INVALID_DELIVERY_COMMISSION", "Invalid Rider commission configuration.");
+        }
+        const hasExplicitPercentageValue =
+          Object.prototype.hasOwnProperty.call(req.body || {}, "riderCommissionValue") ||
+          Object.prototype.hasOwnProperty.call(req.body || {}, "commissionValue");
+        const configuredPercentage = commissionType === "PERCENTAGE" &&
+          (hasExplicitPercentageValue || delivery.riderCommissionPercentageConfigured === true);
+        const percentageConfigurationChanged =
+          Boolean(delivery.riderCommissionPercentageConfigured) !== configuredPercentage;
+        const priceOrSplitChanged =
+          Number(delivery.deliveryFee) !== deliveryFee ||
+          delivery.riderCommissionType !== commissionType ||
+          Number(delivery.riderCommissionValue) !== commissionValue ||
+          percentageConfigurationChanged;
+        if (delivery.paymentStatus === "PAID" && priceOrSplitChanged) {
+          fail(
+            400,
+            "PAID_DELIVERY_PRICE_LOCKED",
+            "The price or Rider split cannot be changed after a delivery has been paid."
+          );
+        }
+        if (priceOrSplitChanged && delivery.paymentStatus !== "UNPAID") {
+          fail(
+            409,
+            "DELIVERY_FEE_EDIT_CONFLICT",
+            "The delivery fee can only be changed while the delivery remains unpaid."
+          );
+        }
+        if (delivery.riderCommissionCredited && priceOrSplitChanged) {
+          fail(
+            400,
+            "DELIVERY_COMMISSION_ALREADY_CREDITED",
+            "The delivery price or commission cannot be changed after Rider commission has been credited."
+          );
+        }
+
+        const unchangedDeliveryFee = delivery.deliveryFee;
+        previousDeliveryFee = Number(unchangedDeliveryFee || 0);
+        const update = {};
+        if (priceOrSplitChanged || delivery.paymentStatus === "UNPAID") {
+          delivery.deliveryFee = deliveryFee;
+          delivery.riderCommissionType = commissionType;
+          delivery.riderCommissionValue = commissionValue;
+          delivery.riderCommissionPercentageConfigured = configuredPercentage;
+          if (priceOrSplitChanged) delivery.pricingType = "CUSTOM";
+          calculation = delivery.calculateCommission();
+          update.deliveryFee = delivery.deliveryFee;
+          update.riderCommissionType = delivery.riderCommissionType;
+          update.riderCommissionValue = delivery.riderCommissionValue;
+          update.riderCommissionPercentageConfigured =
+            delivery.riderCommissionPercentageConfigured;
+          update.riderCommissionAmount = calculation.riderCommissionAmount;
+          update.servicepayProfit = calculation.servicepayProfit;
+          update.commissionCalculatedAt = delivery.commissionCalculatedAt;
+          if (!delivery.riderCommissionCredited) {
+            update.riderCommissionStatus = "PENDING";
+          }
+          if (priceOrSplitChanged) update.pricingType = "CUSTOM";
+          shouldReconcileReferralReward = true;
+        }
+        if (req.body?.adminNote !== undefined) {
+          update.adminNote = String(req.body.adminNote ?? "").trim();
+        }
+        if (!Object.keys(update).length) {
+          updatedDelivery = delivery;
+          return;
+        }
+
+        const updated = await Delivery.findOneAndUpdate(
+          {
+            _id: delivery._id,
+            ...deliveryBranchFilter(req),
+            paymentStatus: priceOrSplitChanged ? "UNPAID" : delivery.paymentStatus,
+            deliveryFee: unchangedDeliveryFee,
+            status: delivery.status,
+          },
+          { $set: update },
+          { new: true, runValidators: true, session: sourceSession }
+        );
+        if (!updated) {
+          fail(
+            409,
+            "DELIVERY_FEE_EDIT_CONFLICT",
+            "The delivery payment or fee changed while this edit was being saved. Refresh and try again."
+          );
+        }
+        updatedDelivery = updated;
+        if (shouldReconcileReferralReward) {
+          await enqueueReferralRewardEvent({
+            referredCustomerId: delivery.customerId,
+            sourceType: "DELIVERY",
+            sourceId: delivery._id,
+            session: sourceSession,
+          });
+        }
       });
     } finally {
       await sourceSession.endSession();
     }
-    await reconcileReferralReward({
-      referredCustomerId: delivery.customerId,
-      sourceType: "DELIVERY",
-      sourceId: delivery._id,
-    });
-    const commission = await creditRiderCommissionIfEligible({
-      deliveryId: delivery._id,
-      riderId: delivery.assignedRiderId,
-    });
-    const updatedDelivery = await findAdminDeliveryForResponse(req, delivery._id);
+    if (shouldReconcileReferralReward) {
+      await reconcileReferralReward({
+        referredCustomerId: updatedDelivery.customerId,
+        sourceType: "DELIVERY",
+        sourceId: updatedDelivery._id,
+      });
+    }
+    const responseDelivery = await findAdminDeliveryForResponse(req, updatedDelivery._id);
+    const commission = {
+      credited: false,
+      amount: 0,
+      servicepayProfit: calculation?.servicepayProfit ??
+        Number(responseDelivery.servicepayProfit || 0),
+      reason: "PRICE_EDIT_DOES_NOT_CREDIT_COMMISSION",
+    };
     return res.json({
       success: true,
       message: "Delivery price and Rider commission updated successfully.",
       data: {
-        delivery: updatedDelivery,
+        delivery: responseDelivery,
         previousDeliveryFee,
         currentDeliveryFee: deliveryFee,
-        riderCommissionAmount: calculation.riderCommissionAmount,
-        servicepayProfit: calculation.servicepayProfit,
+        riderCommissionAmount: calculation?.riderCommissionAmount ??
+          Number(responseDelivery.riderCommissionAmount || 0),
+        servicepayProfit: calculation?.servicepayProfit ??
+          Number(responseDelivery.servicepayProfit || 0),
         commission,
       },
-      delivery: updatedDelivery,
+      delivery: responseDelivery,
     });
   } catch (error) {
     console.error("Update delivery price error:", error);
-    return res.status(error?.name === "ValidationError" ? 400 : 500).json({
+    const status = error?.statusCode ||
+      (error?.name === "ValidationError" ? 400 :
+        (error?.code === 112 || error?.code === 251 ||
+          error?.hasErrorLabel?.("TransientTransactionError") ? 409 : 500));
+    return res.status(status).json({
       success: false,
-      message: error?.name === "ValidationError"
-        ? "Invalid delivery price or commission information."
-        : "Failed to update delivery price.",
+      ...(error?.code && typeof error.code === "string" ? { code: error.code } : {}),
+      message: error?.message ||
+        (error?.name === "ValidationError"
+          ? "Invalid delivery price or commission information."
+          : "Failed to update delivery price."),
     });
   }
 };

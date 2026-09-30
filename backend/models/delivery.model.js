@@ -120,6 +120,12 @@ const deliverySchema =
         min: 0,
       },
 
+      pricingType: {
+        type: String,
+        enum: ["STANDARD", "CUSTOM"],
+        default: "CUSTOM",
+      },
+
       paymentStatus: {
         type: String,
         enum: [
@@ -163,6 +169,16 @@ const deliverySchema =
         type: Number,
         default: 80,
         min: 0,
+      },
+
+      /*
+       * Older CUSTOM percentage deliveries intentionally retain the
+       * historical 40% calculation. Set this only when an Admin explicitly
+       * configures a percentage split for this delivery.
+       */
+      riderCommissionPercentageConfigured: {
+        type: Boolean,
+        default: false,
       },
 
       /*
@@ -421,12 +437,19 @@ deliverySchema.methods.calculateCommission =
 
     let riderCommissionAmount = 0;
 
-    if (
+    if (this.pricingType === "STANDARD") {
+      riderCommissionAmount =
+        deliveryFee *
+        this.constructor.STANDARD_RIDER_SHARE_RATE;
+    } else if (
       this.riderCommissionType ===
       "FIXED"
     ) {
       riderCommissionAmount =
         commissionValue;
+    } else if (this.riderCommissionPercentageConfigured === true) {
+      riderCommissionAmount =
+        deliveryFee * commissionValue / 100;
     } else {
       riderCommissionAmount = deliveryFee * 0.40;
     }
@@ -471,6 +494,9 @@ deliverySchema.methods.calculateCommission =
         this.servicepayProfit,
     };
   };
+
+deliverySchema.statics.STANDARD_DELIVERY_FEE = 2000;
+deliverySchema.statics.STANDARD_RIDER_SHARE_RATE = 0.30;
 
 module.exports = mongoose.model(
   "Delivery",

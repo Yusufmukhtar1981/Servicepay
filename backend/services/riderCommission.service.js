@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const User = require("../models/user.model");
 const Delivery = require("../models/delivery.model");
+const Transaction = require("../models/transaction.model");
 const RiderWalletLedger = require("../models/riderWalletLedger.model");
 
 /*
@@ -12,8 +13,8 @@ const RiderWalletLedger = require("../models/riderWalletLedger.model");
 | Commission is credited only when:
 |
 | 1. Delivery status is DELIVERED
-| 2. Delivery has a valid delivery fee
-| 3. A rider is assigned
+| 2. Payment is PAID with an exact successful Delivery transaction
+| 3. Delivery has a valid fee and an assigned Rider
 | 4. Commission has not been credited before
 |
 | MongoDB transaction prevents duplicate credit.
@@ -56,6 +57,11 @@ const creditRiderCommissionIfEligible =
           ) {
             result.reason =
               "DELIVERY_NOT_COMPLETED";
+            return;
+          }
+
+          if (delivery.paymentStatus !== "PAID") {
+            result.reason = "DELIVERY_NOT_PAID";
             return;
           }
 
@@ -120,6 +126,19 @@ const creditRiderCommissionIfEligible =
             return;
           }
 
+          const paymentTransaction = await Transaction.findOne({
+            customerId: delivery.customerId,
+            serviceType: "DELIVERY",
+            status: "SUCCESSFUL",
+            amount: deliveryFee,
+            "providerResponse.deliveryId": delivery._id,
+          }).session(session).lean();
+
+          if (!paymentTransaction) {
+            result.reason = "DELIVERY_PAYMENT_TRANSACTION_NOT_FOUND";
+            return;
+          }
+
           /*
            * Calculate and lock commission
            * using the model method.
@@ -166,7 +185,10 @@ const creditRiderCommissionIfEligible =
                 },
 
                 status: "DELIVERED",
-
+                paymentStatus: "PAID",
+                deliveryFee,
+                customerId: delivery.customerId,
+                assignedRiderId: delivery.assignedRiderId,
               },
               {
                 $set: {

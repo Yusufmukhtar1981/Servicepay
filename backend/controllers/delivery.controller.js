@@ -194,7 +194,7 @@ exports.createDelivery = async (req, res) => {
     }).select("+idempotencyFingerprint").lean();
     if (existingRequest) return await returnExistingRequest(existingRequest);
 
-    const deliveryFee = 1500;
+    const deliveryFee = Delivery.STANDARD_DELIVERY_FEE;
 
     session.startTransaction();
 
@@ -209,7 +209,7 @@ exports.createDelivery = async (req, res) => {
 
     /*
      * Atomic wallet debit.
-     * If wallet is below ₦1,500, MongoDB updates nothing.
+     * Only the unheld wallet amount can be spent.
      */
     const updatedUser =
       await User.findOneAndUpdate(
@@ -218,6 +218,17 @@ exports.createDelivery = async (req, res) => {
           status: "ACTIVE",
           walletBalance: {
             $gte: deliveryFee,
+          },
+          $expr: {
+            $gte: [
+              {
+                $subtract: [
+                  "$walletBalance",
+                  { $ifNull: ["$walletHeldBalance", 0] },
+                ],
+              },
+              deliveryFee,
+            ],
           },
         },
         {
@@ -239,7 +250,7 @@ exports.createDelivery = async (req, res) => {
         await User.findById(
           req.user._id
         ).select(
-          "walletBalance status branchId"
+          "walletBalance walletHeldBalance status branchId"
         );
 
       if (!currentUser) {
@@ -267,13 +278,18 @@ exports.createDelivery = async (req, res) => {
         code:
           "INSUFFICIENT_WALLET_BALANCE",
         message:
-          "Insufficient wallet balance. You need ₦1,500 to request a delivery. Please fund your wallet and try again.",
+          "Insufficient spendable wallet balance to request a delivery. Please fund your wallet and try again.",
         requiredAmount:
           deliveryFee,
         walletBalance:
           Number(
             currentUser.walletBalance || 0
           ),
+        spendableBalance: Math.max(
+          Number(currentUser.walletBalance || 0) -
+            Number(currentUser.walletHeldBalance || 0),
+          0
+        ),
       });
     }
 
@@ -372,7 +388,16 @@ exports.createDelivery = async (req, res) => {
               parsedWeight,
 
             deliveryFee:
-              1500,
+              deliveryFee,
+
+            pricingType:
+              "STANDARD",
+
+            riderCommissionType:
+              "PERCENTAGE",
+
+            riderCommissionValue:
+              30,
 
             paymentStatus:
               "PAID",
@@ -391,6 +416,8 @@ exports.createDelivery = async (req, res) => {
 
     const delivery =
       created[0];
+    const deliverySplit = delivery.calculateCommission();
+    await delivery.save({ session });
 
     /*
      * Record the automatic wallet debit.
@@ -438,10 +465,11 @@ exports.createDelivery = async (req, res) => {
             zonalManagerCommission: 0,
 
             /*
-             * Final company/rider split is locked
-             * when delivery is completed.
+             * Snapshot the standard Rider and company shares
+             * with the authoritative wallet charge.
              */
-            servicepayProfit: 0,
+            servicepayProfit:
+              deliverySplit.servicepayProfit,
 
             status:
               "SUCCESSFUL",
@@ -462,10 +490,10 @@ exports.createDelivery = async (req, res) => {
                 deliveryFee,
 
               riderShare:
-                Number((deliveryFee * 0.4).toFixed(2)),
+                deliverySplit.riderCommissionAmount,
 
               servicepayShare:
-                Number((deliveryFee * 0.6).toFixed(2)),
+                deliverySplit.servicepayProfit,
             },
           },
         ],
@@ -483,7 +511,7 @@ exports.createDelivery = async (req, res) => {
       success: true,
 
       message:
-        "Delivery request submitted successfully. ₦1,500 has been deducted from your wallet.",
+        `Delivery request submitted successfully. ₦${deliveryFee.toLocaleString()} has been deducted from your wallet.`,
 
       delivery: deliveryResponse,
 
@@ -500,7 +528,7 @@ exports.createDelivery = async (req, res) => {
           "PAID",
 
         amount:
-          1500,
+          deliveryFee,
 
         reference,
       },
@@ -836,6 +864,17 @@ exports.payDeliveryFee = async (req, res) => {
           walletBalance: {
             $gte: deliveryFee,
           },
+          $expr: {
+            $gte: [
+              {
+                $subtract: [
+                  "$walletBalance",
+                  { $ifNull: ["$walletHeldBalance", 0] },
+                ],
+              },
+              deliveryFee,
+            ],
+          },
         },
         {
           $inc: {
@@ -854,7 +893,7 @@ exports.payDeliveryFee = async (req, res) => {
 
       const currentUser =
         await User.findById(req.user._id)
-          .select("walletBalance status");
+          .select("walletBalance walletHeldBalance status");
 
       if (!currentUser) {
         return res.status(404).json({
@@ -876,14 +915,23 @@ exports.payDeliveryFee = async (req, res) => {
 
       return res.status(400).json({
         success: false,
+        code: "INSUFFICIENT_SPENDABLE_BALANCE",
         message:
-          "Insufficient wallet balance. Please fund your wallet and try again.",
+          "Insufficient spendable wallet balance. Please fund your wallet and try again.",
         walletBalance:
           Number(
             currentUser.walletBalance || 0
           ),
+        spendableBalance: Math.max(
+          Number(currentUser.walletBalance || 0) -
+            Number(currentUser.walletHeldBalance || 0),
+          0
+        ),
       });
     }
+
+    const deliverySplit = delivery.calculateCommission();
+    await delivery.save({ session });
 
     const reference =
       generateDeliveryPaymentReference();
@@ -914,7 +962,8 @@ exports.payDeliveryFee = async (req, res) => {
             agentCommission: 0,
             stateManagerCommission: 0,
             zonalManagerCommission: 0,
-            servicepayProfit: 0,
+            servicepayProfit:
+              deliverySplit.servicepayProfit,
             status: "SUCCESSFUL",
             providerResponse: {
               deliveryId: delivery._id,
@@ -922,6 +971,11 @@ exports.payDeliveryFee = async (req, res) => {
                 delivery.trackingNumber,
               packageName:
                 delivery.packageName,
+              deliveryFee,
+              riderShare:
+                deliverySplit.riderCommissionAmount,
+              servicepayShare:
+                deliverySplit.servicepayProfit,
               paymentStatus: "PAID",
             },
           },
@@ -1185,6 +1239,7 @@ exports.setDeliveryFee = async (
   req,
   res
 ) => {
+  let session;
   try {
     const deliveryFee = 1500;
 
@@ -1199,51 +1254,67 @@ exports.setDeliveryFee = async (
       });
     }
 
-    const existingDelivery =
-      await Delivery.findById(
+    const fail = (statusCode, code, message) => {
+      throw Object.assign(new Error(message), { statusCode, code });
+    };
+    session = await mongoose.startSession();
+    let updatedDelivery = null;
+    await session.withTransaction(async () => {
+      const existingDelivery = await Delivery.findById(
         req.params.id
+      ).session(session);
+
+      if (!existingDelivery) {
+        fail(404, "DELIVERY_NOT_FOUND", "Delivery request not found.");
+      }
+      if (existingDelivery.paymentStatus !== "UNPAID") {
+        fail(
+          409,
+          "PAID_DELIVERY_PRICE_LOCKED",
+          "The price of a paid delivery cannot be changed."
+        );
+      }
+      if (existingDelivery.status === "CANCELLED") {
+        fail(400, "DELIVERY_CANCELLED", "A cancelled delivery cannot be priced.");
+      }
+      if (Number(existingDelivery.deliveryFee) === deliveryFee) {
+        updatedDelivery = existingDelivery;
+        return;
+      }
+
+      updatedDelivery = await Delivery.findOneAndUpdate(
+        {
+          _id: existingDelivery._id,
+          paymentStatus: "UNPAID",
+          deliveryFee: existingDelivery.deliveryFee,
+          status: existingDelivery.status,
+        },
+        {
+          $set: {
+            deliveryFee,
+            pricingType: "CUSTOM",
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
       );
-
-    if (!existingDelivery) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Delivery request not found.",
-      });
-    }
-
-    if (
-      existingDelivery.paymentStatus ===
-      "PAID"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "The price of a paid delivery cannot be changed.",
-      });
-    }
-
-    if (
-      existingDelivery.status ===
-      "CANCELLED"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "A cancelled delivery cannot be priced.",
-      });
-    }
-
-    existingDelivery.deliveryFee =
-      deliveryFee;
-
-    await existingDelivery.save();
+      if (!updatedDelivery) {
+        fail(
+          409,
+          "DELIVERY_FEE_EDIT_CONFLICT",
+          "The delivery payment or fee changed while this edit was being saved. Refresh and try again."
+        );
+      }
+    });
 
     return res.status(200).json({
       success: true,
       message:
         "Delivery fee updated successfully.",
-      delivery: existingDelivery,
+      delivery: updatedDelivery,
     });
   } catch (error) {
     console.error(
@@ -1251,12 +1322,18 @@ exports.setDeliveryFee = async (
       error
     );
 
-    return res.status(500).json({
+    const status = error?.statusCode ||
+      (error?.code === 112 || error?.code === 251 ||
+        error?.hasErrorLabel?.("TransientTransactionError") ? 409 : 500);
+    return res.status(status).json({
       success: false,
       message:
         "Unable to update delivery fee.",
+      code: error?.code,
       error: error.message,
     });
+  } finally {
+    if (session) await session.endSession();
   }
 };
 
@@ -1389,100 +1466,10 @@ exports.updatePaymentStatus = async (
   req,
   res
 ) => {
-  try {
-    const paymentStatus = String(
-      req.body.paymentStatus || ""
-    ).toUpperCase();
-
-    const allowedPaymentStatuses = [
-      "UNPAID",
-      "PAID",
-      "REFUNDED",
-    ];
-
-    if (
-      !allowedPaymentStatuses.includes(
-        paymentStatus
-      )
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Invalid payment status.",
-      });
-    }
-
-    const sourceSession = await mongoose.startSession();
-    let delivery;
-    try {
-      await sourceSession.withTransaction(async () => {
-        delivery = await Delivery.findByIdAndUpdate(
-          req.params.id,
-          {
-            paymentStatus,
-            paidAt:
-              paymentStatus === "PAID"
-                ? new Date()
-                : null,
-            refundedAt:
-              paymentStatus === "REFUNDED"
-                ? new Date()
-                : null,
-          },
-          {
-            new: true,
-            runValidators: true,
-            session: sourceSession,
-          }
-        );
-        if (delivery) {
-          await enqueueReferralRewardEvent({
-            referredCustomerId: delivery.customerId,
-            sourceType: "DELIVERY",
-            sourceId: delivery._id,
-            session: sourceSession,
-          });
-        }
-      });
-    } finally {
-      await sourceSession.endSession();
-    }
-
-    if (!delivery) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Delivery request not found.",
-      });
-    }
-
-    try {
-      await reconcileReferralReward({
-        referredCustomerId: delivery.customerId,
-        sourceType: "DELIVERY",
-        sourceId: delivery._id,
-      });
-    } catch (error) {
-      console.error("DELIVERY_REFERRAL_REWARD_ERROR:", error.message);
-    }
-
-    return res.status(200).json({
-      success: true,
-      message:
-        "Payment status updated successfully.",
-      delivery,
-    });
-  } catch (error) {
-    console.error(
-      "Update payment status error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to update payment status.",
-      error: error.message,
-    });
-  }
+  return res.status(409).json({
+    success: false,
+    code: "DELIVERY_PAYMENT_STATUS_REQUIRES_LEDGER",
+    message:
+      "Delivery payment status cannot be edited directly. Record the payment, refund, or reconciliation through its authoritative financial flow.",
+  });
 };

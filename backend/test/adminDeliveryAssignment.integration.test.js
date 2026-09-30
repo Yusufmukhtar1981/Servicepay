@@ -117,19 +117,28 @@ test.beforeEach(async () => {
 
 test("available-riders returns only verified online riders and a stable empty list", async () => {
   const headOffice = await createUser("HEAD_OFFICE");
-  const customer = await createUser("CUSTOMER");
-  const delivery = await createDelivery(customer);
+  const branch = await Branch.create({
+    code: "AR",
+    name: "Assignment Riders",
+    status: "ACTIVE",
+    createdBy: headOffice._id,
+  });
+  const customer = await createUser("CUSTOMER", { branchId: branch._id });
+  const delivery = await createDelivery(customer, { branchId: branch._id });
   const available = await createUser("DELIVERY_RIDER", {
+    branchId: branch._id,
     riderId: "SP-RIDER-000001",
     riderVerificationStatus: "VERIFIED",
     availabilityStatus: "ONLINE",
   });
   await createUser("DELIVERY_RIDER", {
+    branchId: branch._id,
     riderId: "SP-RIDER-000002",
     riderVerificationStatus: "VERIFIED",
     availabilityStatus: "OFFLINE",
   });
   await createUser("DELIVERY_RIDER", {
+    branchId: branch._id,
     riderId: "SP-RIDER-000003",
     riderVerificationStatus: "PENDING",
     availabilityStatus: "ONLINE",
@@ -218,9 +227,17 @@ test("available-riders only returns eligible riders from the delivery branch", a
 });
 
 test("legacy admin authorization can load available riders", async () => {
-  const customer = await createUser("CUSTOMER");
-  const delivery = await createDelivery(customer);
+  const branchCreator = await createUser("HEAD_OFFICE");
+  const branch = await Branch.create({
+    code: "AL",
+    name: "Legacy Assignment",
+    status: "ACTIVE",
+    createdBy: branchCreator._id,
+  });
+  const customer = await createUser("CUSTOMER", { branchId: branch._id });
+  const delivery = await createDelivery(customer, { branchId: branch._id });
   await createUser("DELIVERY_RIDER", {
+    branchId: branch._id,
     riderId: "SP-RIDER-000004",
     riderVerificationStatus: "VERIFIED",
     availabilityStatus: "ONLINE",
@@ -246,9 +263,16 @@ test("legacy admin authorization can load available riders", async () => {
 
 test("assignment persists once, appears on the rider dashboard, and dispatches an alert", async () => {
   const headOffice = await createUser("HEAD_OFFICE");
-  const customer = await createUser("CUSTOMER");
-  const delivery = await createDelivery(customer);
+  const branch = await Branch.create({
+    code: "AP",
+    name: "Assignment Persistence",
+    status: "ACTIVE",
+    createdBy: headOffice._id,
+  });
+  const customer = await createUser("CUSTOMER", { branchId: branch._id });
+  const delivery = await createDelivery(customer, { branchId: branch._id });
   const rider = await createUser("DELIVERY_RIDER", {
+    branchId: branch._id,
     riderId: "SP-RIDER-000005",
     riderVerificationStatus: "VERIFIED",
     availabilityStatus: "ONLINE",
@@ -327,15 +351,23 @@ test("assignment persists once, appears on the rider dashboard, and dispatches a
 
 test("concurrent assignment attempts produce one winner and one alert", async () => {
   const headOffice = await createUser("HEAD_OFFICE");
-  const customer = await createUser("CUSTOMER");
-  const delivery = await createDelivery(customer);
+  const branch = await Branch.create({
+    code: "AC",
+    name: "Assignment Concurrency",
+    status: "ACTIVE",
+    createdBy: headOffice._id,
+  });
+  const customer = await createUser("CUSTOMER", { branchId: branch._id });
+  const delivery = await createDelivery(customer, { branchId: branch._id });
   const riders = await Promise.all([
     createUser("DELIVERY_RIDER", {
+      branchId: branch._id,
       riderId: "SP-RIDER-RACE-A",
       riderVerificationStatus: "VERIFIED",
       availabilityStatus: "ONLINE",
     }),
     createUser("DELIVERY_RIDER", {
+      branchId: branch._id,
       riderId: "SP-RIDER-RACE-B",
       riderVerificationStatus: "VERIFIED",
       availabilityStatus: "ONLINE",
