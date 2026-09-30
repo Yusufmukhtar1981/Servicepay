@@ -18,6 +18,18 @@ const { calculateInterstateQuote } = require("../services/interstatePricing.serv
 const { sendDeliveryOtp } = require("../services/logisticsSms.service");
 const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("../services/biometric.service");
 
+// Admission middleware is not atomic with a wallet debit. Preserve held funds
+// at the actual update that spends the customer's balance.
+const spendableWalletFilter = (amount) => ({
+  walletBalance: { $gte: amount },
+  $expr: {
+    $gte: [
+      { $subtract: ["$walletBalance", { $ifNull: ["$walletHeldBalance", 0] }] },
+      amount,
+    ],
+  },
+});
+
 const staffRoles = ["HEAD_OFFICE", "ZONAL_MANAGER", "STATE_MANAGER", "BRANCH_MANAGER", "STAFF"];
 const transitions = {
   AWAITING_PICKUP: ["PICKUP_ASSIGNED", "RECEIVED_AT_ORIGIN_HUB", "CANCELLED"],
@@ -200,11 +212,11 @@ exports.pay = async (req, res) => {
     const route = await LogisticsRoute.findOne(activeRouteFilter({ _id: shipment.routeId })).session(session);
     if (!route || shipment.quote.routeVersion !== String(route.updatedAt.getTime())) throw Object.assign(new Error("Route pricing changed. Request a new quote before payment."), { status: 409, code: "QUOTE_STALE" });
     shipment.paymentIdempotencyKey = key; shipment.trackingNumber = tracking(); shipment.paymentStatus = "PAID"; shipment.paidAt = new Date(); shipment.status = "PAID";
-    const user = await User.findOneAndUpdate({ _id: req.user._id, status: "ACTIVE", walletBalance: { $gte: shipment.quote.total } }, { $inc: { walletBalance: -shipment.quote.total, totalTransactions: 1 } }, { new: true, session });
+    const user = await User.findOneAndUpdate({ _id: req.user._id, status: "ACTIVE", ...spendableWalletFilter(shipment.quote.total) }, { $inc: { walletBalance: -shipment.quote.total, totalTransactions: 1 } }, { new: true, session });
     if (!user) throw Object.assign(new Error("Insufficient wallet balance."), { status: 400 });
     const [transaction] = await Transaction.create([{ reference: ref(), customerId: user._id, branchId: shipment.originBranchId, agentId: user.agentId || null, stateManagerId: user.stateManagerId || null, zonalManagerId: user.zonalManagerId || null, serviceType: "INTERSTATE_LOGISTICS", provider: "SERVICEPAY_LOGISTICS", phone: shipment.receiver.phone, amount: shipment.quote.total, status: "SUCCESSFUL", providerResponse: { shipmentId: shipment._id, trackingNumber: shipment.trackingNumber, paymentMode: "WALLET" } }], { session });
     shipment.paymentTransactionId = transaction._id; await shipment.save({ session });
-    await History.create([{ shipmentId: shipment._id, status: "PAID", actorId: req.user._id, actorRole: req.user.role, branchId: shipment.originBranchId, note: "Wallet payment successful" }, { shipmentId: shipment._id, status: "AWAITING_PICKUP", actorId: req.user._id, actorRole: req.user.role, branchId: shipment.originBranchId }], { session });
+    await History.create([{ shipmentId: shipment._id, status: "PAID", actorId: req.user._id, actorRole: req.user.role, branchId: shipment.originBranchId, note: "Wallet payment successful" }, { shipmentId: shipment._id, status: "AWAITING_PICKUP", actorId: req.user._id, actorRole: req.user.role, branchId: shipment.originBranchId }], { session, ordered: true });
     shipment.status = "AWAITING_PICKUP"; await shipment.save({ session }); await session.commitTransaction();
     await Notification.create({ userId: user._id, title: "Interstate shipment paid", message: `Your shipment ${shipment.trackingNumber} has been paid for.`, type: "DELIVERY", action: "DELIVERY", referenceId: shipment._id, referenceType: "INTERSTATE_SHIPMENT", reference: shipment.trackingNumber, relatedStatus: shipment.status, dedupeKey: `interstate-paid-${shipment._id}` });
     return res.json({ success: true, data: shipment, shipment, transaction, walletBalance: user.walletBalance });
@@ -260,13 +272,14 @@ exports.paySupplement = async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const key = String(req.get("Idempotency-Key") || req.body.idempotencyKey || "").trim() || `shipment-supplement:${req.params.id}`;
-    const shipment = await Shipment.findOne({ _id: req.params.id, customerId: req.user._id, status: "ADDITIONAL_PAYMENT_REQUIRED" }).session(session);
+    const shipment = await Shipment.findOne({ _id: req.params.id, customerId: req.user._id }).session(session);
     if (!shipment) return res.status(404).json({ success: false, message: "No additional payment is due for this shipment." });
-    await authorizeTransaction({ userId: req.user._id, body: req.body, operation: BIOMETRIC_OPERATIONS.INTERSTATE_ADJUSTMENT, idempotencyKey: key });
     const adjustment = shipment.priceAdjustments[shipment.priceAdjustments.length - 1];
     if (adjustment?.settlementTransactionId) return res.json({ success: true, idempotent: true, data: shipment, shipment });
+    if (shipment.status !== "ADDITIONAL_PAYMENT_REQUIRED") return res.status(404).json({ success: false, message: "No additional payment is due for this shipment." });
+    await authorizeTransaction({ userId: req.user._id, body: req.body, operation: BIOMETRIC_OPERATIONS.INTERSTATE_ADJUSTMENT, idempotencyKey: key });
     const amount = Number(adjustment?.difference || 0); if (amount <= 0) return res.status(409).json({ success: false, message: "Invalid supplemental adjustment." });
-    session.startTransaction(); const user = await User.findOneAndUpdate({ _id: req.user._id, status: "ACTIVE", walletBalance: { $gte: amount } }, { $inc: { walletBalance: -amount, totalTransactions: 1 } }, { new: true, session }); if (!user) throw Object.assign(new Error("Insufficient wallet balance."), { status: 400 });
+    session.startTransaction(); const user = await User.findOneAndUpdate({ _id: req.user._id, status: "ACTIVE", ...spendableWalletFilter(amount) }, { $inc: { walletBalance: -amount, totalTransactions: 1 } }, { new: true, session }); if (!user) throw Object.assign(new Error("Insufficient wallet balance."), { status: 400 });
     const [transaction] = await Transaction.create([{ reference: `${ref()}-ADJ`, customerId: user._id, branchId: shipment.originBranchId, serviceType: "INTERSTATE_LOGISTICS", provider: "SERVICEPAY_LOGISTICS", phone: shipment.receiver.phone, amount, status: "SUCCESSFUL", providerResponse: { shipmentId: shipment._id, type: "WEIGHT_ADJUSTMENT", idempotencyKey: key } }], { session });
     adjustment.settlementTransactionId = transaction._id; shipment.status = "VERIFIED_AT_ORIGIN_HUB"; await shipment.save({ session }); await History.create([{ shipmentId: shipment._id, status: shipment.status, actorId: req.user._id, actorRole: req.user.role, branchId: shipment.originBranchId, note: "Additional weight payment settled" }], { session }); await session.commitTransaction();
     res.json({ success: true, data: shipment, shipment, transaction, walletBalance: user.walletBalance });

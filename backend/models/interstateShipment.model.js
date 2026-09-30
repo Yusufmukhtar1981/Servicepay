@@ -23,7 +23,7 @@ const shipmentSchema = new mongoose.Schema({
   status: { type: String, enum: ["DRAFT", "AWAITING_PAYMENT", "PAID", "AWAITING_PICKUP", "PICKUP_ASSIGNED", "PICKED_UP", "RECEIVED_AT_ORIGIN_HUB", "ADDITIONAL_PAYMENT_REQUIRED", "REFUND_REVIEW_REQUIRED", "VERIFIED_AT_ORIGIN_HUB", "READY_FOR_INTERSTATE_DISPATCH", "IN_TRANSIT", "ARRIVED_AT_DESTINATION_HUB", "DESTINATION_HUB_VERIFIED", "OUT_FOR_DELIVERY", "READY_FOR_COLLECTION", "DELIVERY_ATTEMPTED", "DELIVERED", "FAILED_DELIVERY", "RETURN_INITIATED", "RETURN_IN_TRANSIT", "RETURNED", "CANCELLED"], default: "DRAFT", index: true },
   paymentStatus: { type: String, enum: ["UNPAID", "PAID", "REFUNDED"], default: "UNPAID", index: true },
   paymentTransactionId: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null },
-  paymentIdempotencyKey: { type: String, default: null },
+  paymentIdempotencyKey: { type: String },
   assignedRiderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
   transportTripId: { type: mongoose.Schema.Types.ObjectId, ref: "TransportTrip", default: null, index: true },
   deliveryOtpId: { type: mongoose.Schema.Types.ObjectId, ref: "ShipmentDeliveryOtp", default: null },
@@ -34,5 +34,12 @@ const shipmentSchema = new mongoose.Schema({
 shipmentSchema.index({ customerId: 1, createdAt: -1 });
 shipmentSchema.index({ originBranchId: 1, status: 1, createdAt: -1 });
 shipmentSchema.index({ destinationBranchId: 1, status: 1, createdAt: -1 });
-shipmentSchema.index({ paymentIdempotencyKey: 1 }, { unique: true, sparse: true });
+shipmentSchema.index(
+  { paymentIdempotencyKey: 1 },
+  {
+    name: "paymentIdempotencyKey_1_string_unique",
+    unique: true,
+    partialFilterExpression: { paymentIdempotencyKey: { $type: "string" } },
+  },
+);
 module.exports = mongoose.model("InterstateShipment", shipmentSchema);

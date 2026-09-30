@@ -471,6 +471,7 @@ console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 async function startServer() {
   // Do not bind until required startup data safety work is complete.
   await connectDB();
+  await require("./services/interstateShipmentIndexMigration.service").migrate();
   reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {});
   const edupayAssetReconcileTimer = setInterval(() => reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {}), 60 * 60 * 1000);
   edupayAssetReconcileTimer.unref?.();
