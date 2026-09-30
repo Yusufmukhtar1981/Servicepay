@@ -641,7 +641,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                     height: 14,
                   ),
                   const Text(
-                    'Delivery Fee: ₦1,500',
+                    'Delivery Fee: ₦2,000',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: primaryBlue,
@@ -1320,7 +1320,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     trailing: Text(
-                      '₦1,500',
+                      '₦2,000',
                       style: TextStyle(
                         color: primaryGreen,
                         fontSize: 17,
@@ -1371,7 +1371,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                 ),
                 const Center(
                   child: Text(
-                    'A fixed delivery fee of ₦1,500 will be debited from your wallet.',
+                    'A fixed delivery fee of ₦2,000 will be debited from your wallet.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,

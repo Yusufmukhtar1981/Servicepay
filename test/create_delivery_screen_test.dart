@@ -32,7 +32,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Delivery Fee'), findsOneWidget);
-      expect(find.text('₦1,500'), findsOneWidget);
+      expect(find.text('₦2,000'), findsOneWidget);
       expect(find.text('Request Delivery'), findsOneWidget);
 
       expect(find.text('Pickup State'), findsOneWidget);
