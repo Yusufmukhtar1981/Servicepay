@@ -44,7 +44,8 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
   void initState() {
     super.initState();
     checkoutIdempotencyKey =
-        'marketplace-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
+        // A web JavaScript bit shift wraps at 32 bits, so 1 << 32 becomes zero.
+        'marketplace-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(0x100000000)}';
     _loadSavedCustomerDetails();
   }
 

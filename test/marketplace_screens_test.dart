@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:servicepay_app/marketplace/marketplace_cart_screen.dart';
+import 'package:servicepay_app/marketplace/marketplace_cart_store.dart';
 import 'package:servicepay_app/marketplace/marketplace_checkout_screen.dart';
 import 'package:servicepay_app/marketplace/marketplace_my_orders_screen.dart';
 import 'package:servicepay_app/marketplace/marketplace_seller_orders_screen.dart';
 
 void main() {
   setUp(() {
+    MarketplaceCartStore.clear();
     SharedPreferences.setMockInitialValues(<String, Object>{
       'auth_token': 'test-token',
       'user_name': 'Marketplace Customer',
@@ -29,6 +32,26 @@ void main() {
     );
     await tester.pump();
   }
+
+  testWidgets('cart opens a visible checkout without submitting an order', (
+    tester,
+  ) async {
+    MarketplaceCartStore.add(<String, dynamic>{
+      '_id': 'test-product',
+      'title': 'Test product',
+      'price': 500,
+    });
+    addTearDown(MarketplaceCartStore.clear);
+
+    await pumpMarketplaceScreen(tester, const MarketplaceCartScreen());
+    await tester.ensureVisible(find.text('Proceed to Checkout'));
+    await tester.tap(find.text('Proceed to Checkout'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Checkout'), findsOneWidget);
+    expect(find.text('Delivery Information'), findsOneWidget);
+    expect(MarketplaceCartStore.items.value.single['title'], 'Test product');
+  });
 
   testWidgets('checkout requires a four-digit wallet transaction PIN', (
     tester,
