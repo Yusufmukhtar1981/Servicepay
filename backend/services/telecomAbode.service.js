@@ -471,7 +471,7 @@ const buildDataPurchasePayload = ({
   return {
     network,
     phone: recipientPhone,
-    plan,
+    plan_id: plan,
     "request-id": requestId,
   };
 };
@@ -847,7 +847,7 @@ const createTelecomAbodeService = ({
       provider: "TELECOM_ABODE",
       phone: payload.phone,
       "providerResponse.providerNetworkId": payload.network,
-      "providerResponse.providerPlanId": payload.plan,
+      "providerResponse.providerPlanId": payload.plan_id,
       status: "PENDING",
       dispatchStatus: "CLAIMED",
       dispatchClaimedAt: { $ne: null },

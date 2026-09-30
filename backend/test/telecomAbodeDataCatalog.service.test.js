@@ -128,7 +128,7 @@ test("signed Telecom Abode quote binds provider plan id and canonical selling pr
   }), false);
 });
 
-test("DATA adapter retains isolated plan field and settles only documented correlated pairs", () => {
+test("DATA adapter sends plan_id only and settles only documented correlated pairs", () => {
   const payload = buildDataPurchasePayload({
     network: 1,
     phone: "08012345678",
@@ -139,9 +139,10 @@ test("DATA adapter retains isolated plan field and settles only documented corre
   assert.deepEqual(payload, {
     network: 1,
     phone: "08012345678",
-    plan: 77,
+    plan_id: 77,
     "request-id": "DATA-TEST-1",
   });
+  assert.equal(Object.hasOwn(payload, "plan"), false);
 
   const success = normalizeDataPurchaseResponse({
     status: "success",
