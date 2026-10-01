@@ -141,8 +141,10 @@ test("DATA adapter sends documented plan and settles only documented correlated 
     phone: "08012345678",
     plan: 77,
     "request-id": "DATA-TEST-1",
+    bypass: false,
   });
   assert.equal(Object.hasOwn(payload, "plan_id"), false);
+  assert.equal(typeof payload.bypass, "boolean");
 
   const success = normalizeDataPurchaseResponse({
     status: "success",

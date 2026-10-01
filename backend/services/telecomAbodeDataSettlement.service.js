@@ -122,6 +122,11 @@ const createTelecomAbodeDataSettlementService = ({
     if (source !== "WEBHOOK" && evidence.documentedDataStatus !== true) {
       return { status: "NOT_ELIGIBLE" };
     }
+    // HTTP 202 means accepted, not final. A later verified webhook can still
+    // settle the original request, but a request/lookup 202 cannot do so.
+    if (source !== "WEBHOOK" && evidence.httpStatus === 202) {
+      return { status: "NOT_ELIGIBLE" };
+    }
     if (source === "WEBHOOK" && evidence.verifiedSource !== true) {
       return { status: "NOT_ELIGIBLE" };
     }

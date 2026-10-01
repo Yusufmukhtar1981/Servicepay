@@ -109,6 +109,7 @@ test("Telecom Abode DATA dispatch consumes a durable claim; other paid services 
     phone: "08012345678",
     plan: 17,
     "request-id": "SP-DATA-1",
+    bypass: false,
   });
   assert.throws(() => buildDataPurchasePayload({
     network: 1,
@@ -217,9 +218,11 @@ test("Telecom Abode DATA dispatch consumes a durable claim; other paid services 
     phone: "08012345678",
     plan: 17,
     "request-id": "SP-DATA-READY",
+    bypass: false,
   });
   assert.equal(Object.hasOwn(ready.calls[2].data, "plan_id"), false);
-  assert.equal(Object.hasOwn(ready.calls[2].data, "bypass"), false);
+  assert.equal(ready.calls[2].data.bypass, false);
+  assert.equal(typeof ready.calls[2].data.bypass, "boolean");
   assert.equal(Object.hasOwn(ready.calls[2].data, "ported"), false);
 
   await assert.rejects(ready.service.purchaseElectricity({

@@ -1697,7 +1697,8 @@ exports.buyData = async (req, res) => {
         : "UNKNOWN",
     });
 
-    const httpSuccess = providerResult.status >= 200 && providerResult.status < 300;
+    const httpSuccess = providerResult.status >= 200 && providerResult.status < 300 &&
+      providerResult.status !== 202;
     const providerSignals = getDataProviderSignals(providerResponse);
     const outcome = selectedProvider === "TELECOM_ABODE"
       ? (httpSuccess ||

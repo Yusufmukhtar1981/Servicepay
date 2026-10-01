@@ -36,12 +36,14 @@ test("DATA purchase payload uses the documented plan wire key and preserves corr
       phone: "08012345678",
       plan: 77,
       "request-id": "DATA-CONTRACT-REQUEST-1",
+      bypass: false,
     },
     {
       network: 2,
       phone: "08012345678",
       plan: 77,
       "request-id": "DATA-CONTRACT-REQUEST-2",
+      bypass: false,
     },
   ]);
   for (const payload of requests) {
@@ -50,6 +52,8 @@ test("DATA purchase payload uses the documented plan wire key and preserves corr
     assert.equal(Number.isSafeInteger(payload.plan), true);
     assert.equal(typeof payload["request-id"], "string");
     assert.equal(Object.hasOwn(payload, "plan_id"), false);
+    assert.equal(payload.bypass, false);
+    assert.equal(typeof payload.bypass, "boolean");
   }
 });
 

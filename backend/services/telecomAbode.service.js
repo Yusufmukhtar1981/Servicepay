@@ -485,6 +485,9 @@ const buildDataPurchasePayload = ({
     phone: recipientPhone,
     plan,
     "request-id": requestId,
+    // The live DATA endpoint requires bypass or ported_number. Normal
+    // purchases must not bypass carrier validation or send string booleans.
+    bypass: false,
   };
 };
 
@@ -935,12 +938,19 @@ const createTelecomAbodeService = ({
       data: payload,
       returnDataHttpResponse: true,
     });
+    const normalized = normalizeDataPurchaseResponse(response.body, {
+      requestId: normalizedRequestId,
+      servicepayReference: normalizedRequestId,
+      configuredKey: configuredApiKey(),
+    });
     return {
-      ...normalizeDataPurchaseResponse(response.body, {
-        requestId: normalizedRequestId,
-        servicepayReference: normalizedRequestId,
-        configuredKey: configuredApiKey(),
-      }),
+      ...normalized,
+      ...(response.httpStatus === 202 ? {
+        status: "PENDING",
+        documentedDataStatus: false,
+        reportedProviderStatus: normalized.status,
+        reason: "PROVIDER_HTTP_ACCEPTED_NOT_TERMINAL",
+      } : {}),
       httpStatus: response.httpStatus,
     };
   };
@@ -949,10 +959,22 @@ const createTelecomAbodeService = ({
     const targetRequestId = requiredText(requestId, "request-id");
     let data;
     try {
-      data = await request({
+      const response = await request({
         method: "GET",
         endpoint: `/transaction/${encodeURIComponent(targetRequestId)}`,
+        returnDataHttpResponse: true,
       });
+      if (response.httpStatus === 202) {
+        throw new TelecomAbodeError(
+          "Telecom Abode transaction lookup is pending; no terminal outcome is established.",
+          {
+            statusCode: 202,
+            code: "TRANSACTION_HTTP_PENDING",
+            providerEvidence: safeHttpEvidence(response.body, targetRequestId, configuredApiKey()),
+          },
+        );
+      }
+      data = response.body;
     } catch (error) {
       if (error.statusCode === 404 && error.code === "PROVIDER_HTTP_ERROR") {
         throw new TelecomAbodeError(

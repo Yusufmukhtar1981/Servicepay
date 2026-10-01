@@ -183,7 +183,9 @@ const configureTelecomAbode = async ({ price = 150, sellingPrice = price } = {})
         dataRequestCount += 1;
         assert.equal(config.method, "POST");
         assert.equal(config.headers.Authorization, `Token ${TELECOM_API_KEY}`);
-        assert.deepEqual(Object.keys(config.data).sort(), ["network", "phone", "plan", "request-id"].sort());
+        assert.deepEqual(Object.keys(config.data).sort(), ["bypass", "network", "phone", "plan", "request-id"].sort());
+        assert.equal(config.data.bypass, false);
+        assert.equal(typeof config.data.bypass, "boolean");
         assert.equal(config.data.network, 1);
         assert.equal(config.data.plan, 77);
         assert.equal(config.data.phone, "08012345678");
@@ -524,6 +526,41 @@ for (const [scenario, providerReply, expectedStatus, expectedBalance] of [
   });
 }
 
+for (const providerStatus of ["SUCCESS", "FAILED"]) {
+  test(`HTTP 202 ${providerStatus} cannot settle, refund, award commission or dispatch twice`, async () => {
+    const user = await makeUser();
+    await configureTelecomAbode();
+    telecomPurchaseHttpStatus = 202;
+    const adapter = telecomAbode.purchaseData;
+    // Simulate a future adapter regression: the controller must independently
+    // reject an HTTP 202 even if the adapter supplies a correlated terminal label.
+    telecomAbode.purchaseData = async request => ({
+      ...await adapter(request),
+      status: providerStatus,
+      documentedDataStatus: true,
+    });
+    const quote = await telecomQuoteFor(user);
+    const body = telecomPurchaseBody(quote);
+    const key = `ta-http-202-${providerStatus}`;
+    const first = await invoke(user, body, { idempotencyKey: key });
+    assert.equal(first.status, 202);
+    const tx = await Transaction.findOne({ customerId: user._id, serviceType: "DATA" });
+    assert.equal(tx.status, "PENDING");
+    assert.equal(tx.dispatchStatus, "UNKNOWN");
+    assert.equal(tx.providerResponse.httpStatus, 202);
+    assert.equal(tx.providerRequestId, tx.reference);
+    assert.equal(await LedgerEntry.countDocuments({ transactionId: tx._id, direction: "DEBIT" }), 1);
+    assert.equal(await LedgerEntry.countDocuments({ transactionId: tx._id, direction: "CREDIT" }), 0);
+    assert.equal(await Commission.countDocuments({ transactionId: tx._id }), 0);
+    assert.equal((await User.findById(user._id)).walletBalance, 350);
+    const repeated = await invoke(user, body, { idempotencyKey: key });
+    assert.equal(repeated.status, 202);
+    assert.equal(repeated.body.reference, first.body.reference);
+    assert.equal(telecomPurchaseCount, 1);
+    assert.equal((await User.findById(user._id)).walletBalance, 350);
+  });
+}
+
 test("Telecom Abode HTTP 400 retains safe evidence without refunding or resending", async () => {
   const user = await makeUser();
   await configureTelecomAbode();
@@ -594,6 +631,38 @@ test("Telecom Abode status query reconciles a correlated PENDING DATA purchase t
   assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 0);
   assert.equal(await User.findById(user._id).then((row) => row.walletBalance), 350);
 });
+
+for (const reported of ["success", "failed"]) {
+  test(`historical UNKNOWN real-adapter HTTP 202 ${reported} lookup preserves money and the complete transaction`, async () => {
+    const { user, transaction } = await createUnresolvedTelecomPurchase();
+    const before = await Transaction.findById(transaction._id).lean();
+    const walletBefore = (await User.findById(user._id)).walletBalance;
+    let lookups = 0;
+    const readOnlyAdapter = createTelecomAbodeService({
+      apiKey: TELECOM_API_KEY,
+      transport: async config => {
+        lookups++;
+        assert.equal(config.method, "GET", "historical recovery must never dispatch a purchase");
+        assert.equal(config.url,
+          "https://telecomabode.com.ng/api/transaction/" + transaction.providerRequestId);
+        return { status: 202, data: {
+          service: "data", status: reported, "request-id": transaction.providerRequestId,
+        } };
+      },
+    });
+    telecomAbode.getTransactionByRequestId = readOnlyAdapter.getTransactionByRequestId;
+    const result = await invokeTelecomAbodeReconciliation(transaction.reference);
+    assert.equal(result.status, 202);
+    assert.equal(lookups, 1);
+    assert.equal(telecomPurchaseCount, 1);
+    const after = await Transaction.findById(transaction._id).lean();
+    assert.deepEqual(after, before);
+    assert.equal((await User.findById(user._id)).walletBalance, walletBefore);
+    assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "DEBIT" }), 1);
+    assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 0);
+    assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 0);
+  });
+}
 
 test("correlated Telecom Abode status-query failure refunds exactly once under concurrency", async () => {
   const { user, transaction } = await createUnresolvedTelecomPurchase();
