@@ -242,6 +242,9 @@ function sendServiceVersion(req, res) {
 app.get("/", sendServiceHealth);
 app.get("/version", sendServiceVersion);
 app.get("/api/version", sendServiceVersion);
+
+// Temporary authenticated read-only ingress inspection; hard-expires in router.
+app.use("/api/internal/diagnostics/telecom-abode-proxy", require("./routes/telecomAbodeWebhookProxyDiagnostic.routes"));
 // Keep the public provider callback reachable without granting unsigned
 // notifications authority to change a transaction or wallet.
 app.use("/api/webhooks/telecom-abode", telecomAbodeWebhookRoutes);
