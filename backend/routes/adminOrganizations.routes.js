@@ -32,6 +32,14 @@ const criticalGate = (...permissions) => (req, res, next) => {
   return loadStaffRole(req, res, () => requireAnyPermission(...permissions)(req, res, next));
 };
 const statusGate = async (req, res, next) => {
+  if (["AGENT", "STATE_MANAGER", "ZONAL_MANAGER"].includes(
+    String(req.user?.role || "").trim().toUpperCase()
+  )) {
+    return res.status(403).json({
+      success: false,
+      message: "Organization tenant status management is not available to hierarchy managers.",
+    });
+  }
   const target = String(req.body?.status || "").toUpperCase();
   const organization = await Organization.findById(req.params.id).select("status").lean();
   if (!organization) {

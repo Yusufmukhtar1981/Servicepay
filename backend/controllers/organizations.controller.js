@@ -22,8 +22,17 @@ const requireOrg = async (req, exactPermission, operational = true) => {
     operational
   );
 };
-const adminScope = (req) => svc.platform(req) || Boolean(req.staffAccess?.isHeadOffice || req.staffAccess);
-const documentsAdminScope = (req) => svc.platform(req) || hasPermission(req.staffAccess, "organizations.documents.view");
+const adminScope = (req) =>
+  svc.platform(req) ||
+  (!svc.isHierarchyManager(req.user) &&
+    Boolean(req.staffAccess?.isHeadOffice || req.staffAccess));
+const operationalAdminReadScope = (req) =>
+  adminScope(req) ||
+  (svc.isHierarchyManager(req.user) && Boolean(req.staffAccess));
+const documentsAdminScope = (req) =>
+  !svc.isHierarchyManager(req.user) &&
+  (svc.platform(req) ||
+    hasPermission(req.staffAccess, "organizations.documents.view"));
 const publicProjection = "name slug code type description logo.url logo.mimeType status registrationFee annualFee";
 const safeOrganization = (organization) => svc.safeOrganization(organization);
 const DOCUMENT_STORAGE_UNAVAILABLE = "Secure document storage is temporarily unavailable. Please retry.";
@@ -108,6 +117,12 @@ const validateApplication = async (organization, input) => {
 };
 
 exports.create = async (req, res) => { try { return res.status(201).json({ success: true, organization: await svc.makeOrganization(req) }); } catch (e) { return fail(res, e.status || 500, e.message); } };
+exports.managedCreateOrganization = async (req, res) => {
+  if (String(req.user?.role || "").trim().toUpperCase() !== "AGENT") {
+    return fail(res, 403, "Only an Aggregator can create a managed organization.");
+  }
+  return exports.create(req, res);
+};
 exports.mine = async (req, res) => { const [owned, memberships] = await Promise.all([Organization.find({ createdBy: req.user._id }).sort({ createdAt: -1 }).lean(), OrganizationMember.find({ user: req.user._id }).populate("organization", "name slug code type status contact.name contact.address").sort({ createdAt: -1 }).lean()]); return ok(res, { organizations: owned.map((organization) => ({ ...organization, canManage: true, allowedToManage: true })), memberships }); };
 exports.explore = async (req, res) => { const q = String(req.query.search || "").trim(); const filter = { status: "VERIFIED", ...(q ? { $or: [{ name: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }, { code: q.toUpperCase() }] } : {}) }; return ok(res, { organizations: (await Organization.find(filter).select(publicProjection).limit(50).lean()).map((o) => ({ ...o, _id: o._id, id: String(o._id), verified: true })) }); };
 exports.getCustomerOrganization = async (req, res) => { const org = await Organization.findOne({ _id: req.params.id, status: "VERIFIED" }).select("name slug code type description logo registrationFee annualFee renewalCycle status").lean(); if (!org) return fail(res, 404, "Organization not found."); const membership = await OrganizationMember.findOne({ organization: org._id, user: req.user._id }).select("membershipNumber year status joinedAt").lean(); const fields = await OrganizationCustomField.find({ organization: org._id, active: true }).select("key label type required options").lean(); const logo = org.logo?.mimeType && /^https:\/\//.test(org.logo?.url || "") ? org.logo.url : null; return ok(res, { organization: { _id: org._id, id: String(org._id), name: org.name, slug: org.slug, code: org.code, type: org.type, description: org.description, logo, verified: true, registrationFee: org.registrationFee, annualFee: org.annualFee, renewalCycle: org.renewalCycle, customFields: fields }, membership }); };
@@ -232,10 +247,97 @@ exports.adminSuspend = async (req, res) => {
 };
 exports.dues = async (req, res) => { const org = await Organization.findOne({ _id: req.params.id, status: { $in: ["VERIFIED", "APPROVED"] } }); if (!org) return fail(res, 404, "Organization not found."); const member = await OrganizationMember.findOne({ organization: org._id, user: req.user._id }); if (!member) return fail(res, 403, "Membership required."); return ok(res, { dues: await OrganizationFeeAssignment.find({ organization: org._id, member: member._id }).populate("fee", "name description frequency").lean() }); };
 exports.payments = async (req, res) => { const org = await Organization.findOne({ _id: req.params.id, status: { $in: ["VERIFIED", "APPROVED"] } }); if (!org) return fail(res, 404, "Organization not found."); const member = await OrganizationMember.findOne({ organization: org._id, user: req.user._id }); if (!member) return fail(res, 403, "Membership required."); return ok(res, { payments: await OrganizationPayment.find({ organization: org._id, member: member._id, payer: req.user._id }).sort({ createdAt: -1 }).lean() }); };
- exports.adminList = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const filter = {}; if (req.query.status) filter.status = String(req.query.status).toUpperCase(); if (req.query.search) { const search = String(req.query.search).trim().slice(0, 100); const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); filter.$or = [{ name: new RegExp(escaped, "i") }, { code: search.toUpperCase() }]; } return ok(res, { organizations: await Organization.find(filter).sort({ createdAt: -1 }).limit(200).lean() }); };
-exports.adminSummary = async (req, res) => { if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required."); const [counts, members, collections] = await Promise.all([Organization.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]), OrganizationMember.countDocuments({}), OrganizationPayment.aggregate([{ $match: { status: "SUCCESS" } }, { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }])]); const byStatus = Object.fromEntries(counts.map((x) => [x._id, x.count])); return ok(res, { summary: { total: counts.reduce((n, x) => n + x.count, 0), verified: (byStatus.VERIFIED || 0) + (byStatus.APPROVED || 0), pending: (byStatus.PENDING_VERIFICATION || 0) + (byStatus.PENDING_REVIEW || 0) + (byStatus.UNDER_REVIEW || 0), suspended: byStatus.SUSPENDED || 0, members, collections: collections[0] || { total: 0, count: 0 } } }); };
+exports.adminList = async (req, res) => {
+  if (!operationalAdminReadScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  const managerRead = svc.isHierarchyManager(req.user);
+  const filters = [];
+  if (managerRead) filters.push(await svc.managedOrganizationFilter(req));
+  if (req.query.status) filters.push({ status: String(req.query.status).toUpperCase() });
+  if (req.query.search) {
+    const search = String(req.query.search).trim().slice(0, 100);
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filters.push({
+      $or: [
+        { name: new RegExp(escaped, "i") },
+        { code: search.toUpperCase() },
+      ],
+    });
+  }
+  const filter = filters.length > 1 ? { $and: filters } : filters[0] || {};
+  let query = Organization.find(filter).sort({ createdAt: -1 }).limit(200);
+  if (managerRead) query = query.select("_id name type organizationType status state lga createdAt");
+  const organizations = await query.lean();
+  return ok(res, {
+    organizations: managerRead
+      ? organizations.map((org) => ({
+          _id: org._id,
+          name: org.name,
+          type: org.type || org.organizationType || "",
+          status: org.status,
+          state: org.state || org.officeAddress?.state || "",
+          lga: org.lga || org.officeAddress?.lga || "",
+          createdAt: org.createdAt,
+        }))
+      : organizations,
+  });
+};
+exports.adminSummary = async (req, res) => {
+  if (!operationalAdminReadScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  if (svc.isHierarchyManager(req.user)) {
+    const scope = await svc.managedOrganizationFilter(req);
+    const organizations = await Organization.find(scope).select("_id status").lean();
+    const organizationIds = organizations.map((org) => org._id);
+    const [counts, members, collections] = await Promise.all([
+      Organization.aggregate([
+        { $match: { _id: { $in: organizationIds } } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      OrganizationMember.countDocuments({ organization: { $in: organizationIds } }),
+      OrganizationPayment.aggregate([
+        { $match: { organization: { $in: organizationIds }, status: "SUCCESS" } },
+        { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+      ]),
+    ]);
+    const byStatus = Object.fromEntries(counts.map((x) => [x._id, x.count]));
+    return ok(res, {
+      summary: {
+        total: organizations.length,
+        verified: (byStatus.VERIFIED || 0) + (byStatus.APPROVED || 0),
+        pending: (byStatus.PENDING_VERIFICATION || 0) + (byStatus.PENDING_REVIEW || 0) + (byStatus.UNDER_REVIEW || 0),
+        suspended: byStatus.SUSPENDED || 0,
+        members,
+        collections: collections[0] || { total: 0, count: 0 },
+      },
+    });
+  }
+  const [counts, members, collections] = await Promise.all([Organization.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]), OrganizationMember.countDocuments({}), OrganizationPayment.aggregate([{ $match: { status: "SUCCESS" } }, { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }])]);
+  const byStatus = Object.fromEntries(counts.map((x) => [x._id, x.count]));
+  return ok(res, { summary: { total: counts.reduce((n, x) => n + x.count, 0), verified: (byStatus.VERIFIED || 0) + (byStatus.APPROVED || 0), pending: (byStatus.PENDING_VERIFICATION || 0) + (byStatus.PENDING_REVIEW || 0) + (byStatus.UNDER_REVIEW || 0), suspended: byStatus.SUSPENDED || 0, members, collections: collections[0] || { total: 0, count: 0 } } });
+};
 exports.adminDetail = async (req, res) => {
-  if (!adminScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  if (!operationalAdminReadScope(req)) return fail(res, 403, "Platform administrator access is required.");
+  if (svc.isHierarchyManager(req.user)) {
+    const organization = await Organization.findOne({
+      $and: [
+        { _id: req.params.id },
+        await svc.managedOrganizationFilter(req),
+      ],
+    })
+      .select("_id name type organizationType status state lga officeAddress.state officeAddress.lga createdAt")
+      .lean();
+    if (!organization) return fail(res, 404, "Organization not found.");
+    return ok(res, {
+      organization: {
+        _id: organization._id,
+        name: organization.name,
+        type: organization.type || organization.organizationType || "",
+        status: organization.status,
+        state: organization.state || organization.officeAddress?.state || "",
+        lga: organization.lga || organization.officeAddress?.lga || "",
+        createdAt: organization.createdAt,
+      },
+    });
+  }
   const includeDocuments = documentsAdminScope(req);
   const projection = includeDocuments
     ? "+representative.nin +documents.storageKey"

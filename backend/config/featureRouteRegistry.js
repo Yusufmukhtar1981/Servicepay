@@ -64,6 +64,7 @@ const FEATURE_ROUTE_REGISTRY = Object.freeze([
   {
     key: "organizations",
     methods: ["POST"],
+    paths: ["/api/management/records/organizations"],
     patterns: [
       /^\/api\/organizations$/,
       /^\/api\/organizations\/[^/]+\/(?:submit|apply|staff)$/,

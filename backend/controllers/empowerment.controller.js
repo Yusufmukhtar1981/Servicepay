@@ -28,6 +28,11 @@ const Transaction = require("../models/transaction.model");
 const { postCredit } = require(
   "../services/ledger.service"
 );
+const {
+  getManagedRecordScope,
+  managedRecordFilter,
+  withAggregatorRecordCreation,
+} = require("../services/aggregatorRecordScope.service");
 
 const ADMIN_ROLES = new Set([
   "HEAD_OFFICE",
@@ -74,6 +79,10 @@ const isAdmin = (user) =>
 
 const isHeadOffice = (user) =>
   String(user?.role || "").trim().toUpperCase() === "HEAD_OFFICE";
+const isHierarchyManager = (user) =>
+  ["AGENT", "STATE_MANAGER", "ZONAL_MANAGER"].includes(
+    String(user?.role || "").trim().toUpperCase()
+  );
 
 const organizationVerificationStatus = (organization) => {
   const legacy = String(organization?.status || "")
@@ -128,13 +137,37 @@ const staffBranchId = (req) => {
 const hasBranchAccess = (req, record) => {
   if (!req.staffAccess || req.staffAccess.isHeadOffice) return true;
   const branchId = staffBranchId(req);
+  if (!branchId && isHierarchyManager(req.user)) return true;
   return Boolean(branchId && record?.branchId &&
     String(record.branchId) === String(branchId));
 };
 
+const combineFilters = (...filters) => {
+  const meaningful = filters.filter(
+    (filter) => filter && Object.keys(filter).length > 0
+  );
+  if (!meaningful.length) return {};
+  if (meaningful.length === 1) return meaningful[0];
+  return { $and: meaningful };
+};
+
+const managerRecordFilter = async (req) => {
+  if (!isHierarchyManager(req.user)) return {};
+  const scope = await getManagedRecordScope(req.user);
+  return managedRecordFilter(scope, {
+    includeLegacyCustomers: true,
+    includeLegacyStateManagers: true,
+    stateManagerField: "stateManagerId",
+  });
+};
+
+const empowermentRecordFilter = async (req) =>
+  combineFilters(branchFilterFor(req), await managerRecordFilter(req));
+
 const branchFilterFor = (req) => {
   if (req.staffAccess && !req.staffAccess.isHeadOffice) {
     const branchId = staffBranchId(req);
+    if (!branchId && isHierarchyManager(req.user)) return {};
     return branchId ? { branchId } : { _id: null };
   }
   if (isHeadOffice(req.user)) return {};
@@ -344,26 +377,53 @@ const audit = async ({
   }
 };
 
-const canManageOrganization = (req, organization) =>
-  isAdmin(req.user) ||
-  Boolean(req.staffAccess) ||
-  documentId(organization.createdBy) === actorId(req);
+const canManageOrganization = async (req, organization) => {
+  if (isHierarchyManager(req.user)) {
+    const filter = await managerRecordFilter(req);
+    return EmpowermentOrganization.exists(
+      combineFilters({ _id: organization?._id }, filter)
+    );
+  }
+  if (isAdmin(req.user)) return true;
+  if (req.staffAccess) return hasBranchAccess(req, organization);
+  return documentId(organization?.createdBy) === actorId(req);
+};
 
-const canManageProgram = (req, program) =>
-  isAdmin(req.user) ||
-  Boolean(req.staffAccess) ||
-  documentId(program.createdBy) === actorId(req);
+const canManageProgram = async (req, program) => {
+  if (isHierarchyManager(req.user)) {
+    const filter = await managerRecordFilter(req);
+    return EmpowermentProgram.exists(
+      combineFilters({ _id: program?._id }, filter)
+    );
+  }
+  if (isAdmin(req.user)) return true;
+  if (req.staffAccess) return hasBranchAccess(req, program);
+  return documentId(program?.createdBy) === actorId(req);
+};
 
 const getManagedOrganization = async (req, id, session = null) => {
   if (!objectIdIsValid(id)) return null;
 
+  const ownershipFilter = await managerRecordFilter(req);
+  const ownerFilter = isHierarchyManager(req.user)
+    ? ownershipFilter
+    : isAdmin(req.user)
+      ? {}
+      : req.staffAccess
+        ? {}
+        : { createdBy: req.user._id };
   const organization = await sessionQuery(
-    EmpowermentOrganization.findById(id),
+    EmpowermentOrganization.findOne(
+      combineFilters(
+        { _id: id },
+        ownerFilter,
+        branchFilterFor(req)
+      )
+    ),
     session
   );
 
-  if (!organization || !canManageOrganization(req, organization) ||
-    !hasBranchAccess(req, organization)) {
+  if (!organization || !hasBranchAccess(req, organization)) {
     return null;
   }
 
@@ -373,16 +433,43 @@ const getManagedOrganization = async (req, id, session = null) => {
 const getManagedProgram = async (req, id, session = null) => {
   if (!objectIdIsValid(id)) return null;
 
+  const ownershipFilter = await managerRecordFilter(req);
+  const ownerFilter = isHierarchyManager(req.user)
+    ? ownershipFilter
+    : isAdmin(req.user)
+      ? {}
+      : req.staffAccess
+        ? {}
+        : { createdBy: req.user._id };
   const program = await sessionQuery(
-    EmpowermentProgram.findById(id),
+    EmpowermentProgram.findOne(
+      combineFilters(
+        { _id: id },
+        ownerFilter,
+        branchFilterFor(req)
+      )
+    ),
     session
   );
 
-  if (!program || !canManageProgram(req, program) || !hasBranchAccess(req, program)) {
+  if (!program || !hasBranchAccess(req, program)) {
     return null;
   }
 
   return program;
+};
+
+const hasCurrentHierarchyProgramAndSponsor = async (
+  req,
+  programId,
+  session = null
+) => {
+  if (!isHierarchyManager(req.user)) return true;
+  const program = await getManagedProgram(req, programId, session);
+  if (!program) return false;
+  return Boolean(
+    await getManagedOrganization(req, program.organization, session)
+  );
 };
 
 const pagination = (req) => {
@@ -478,8 +565,12 @@ const organizationPayload = (body) => ({
   description: cleanString(body?.description, 2000),
 });
 
-const createOrganization = async (req, res) => {
+const createOrganizationHandler = async (req, res, requireAggregator = false) => {
   try {
+    const role = String(req.user?.role || "").trim().toUpperCase();
+    if (requireAggregator && role !== "AGENT") {
+      return respondError(res, 403, "Only an Aggregator can create a managed sponsor.");
+    }
     const values = organizationPayload(req.body);
 
     if (
@@ -509,22 +600,35 @@ const createOrganization = async (req, res) => {
       );
     }
 
-    const organization = await EmpowermentOrganization.create({
-      ...values,
-      createdBy: req.user._id,
-      branchId: creationBranchId(req),
-      status: "PENDING",
-      verificationStatus: "PENDING_VERIFICATION",
-    });
-
-    await audit({
-      req,
-      action: "ORGANIZATION_CREATED",
-      entityType: "ORGANIZATION",
-      entityId: organization._id,
-      branchId: organization.branchId,
-      after: { status: organization.status, name: organization.name },
-    });
+    const createRecord = async (ownership = null, session = null) => {
+      const payload = {
+        ...values,
+        createdBy: ownership?.createdBy || req.user._id,
+        createdByRole: ownership?.createdByRole || role,
+        aggregatorId: ownership?.aggregatorId || null,
+        stateManagerId: ownership?.stateManagerId || null,
+        zonalManagerId: ownership?.zonalManagerId || null,
+        branchId: creationBranchId(req),
+        status: "PENDING",
+        verificationStatus: "PENDING_VERIFICATION",
+      };
+      const organization = session
+        ? (await EmpowermentOrganization.create([payload], { session }))[0]
+        : await EmpowermentOrganization.create(payload);
+      await audit({
+        req,
+        action: "ORGANIZATION_CREATED",
+        entityType: "ORGANIZATION",
+        entityId: organization._id,
+        branchId: organization.branchId,
+        after: { status: organization.status, name: organization.name },
+        session,
+      });
+      return organization;
+    };
+    const organization = role === "AGENT"
+      ? await withAggregatorRecordCreation(req.user, createRecord)
+      : await createRecord();
 
     return res.status(201).json({
       success: true,
@@ -533,50 +637,50 @@ const createOrganization = async (req, res) => {
     });
   } catch (error) {
     console.error("CREATE EMPOWERMENT ORGANIZATION ERROR:", error);
-    return respondError(res, 500, "Unable to create organization.");
+    return respondError(res, error.status || 500, error.status ? error.message : "Unable to create organization.");
   }
 };
+
+const createOrganization = (req, res) => createOrganizationHandler(req, res);
+const managedCreateOrganization = (req, res) =>
+  createOrganizationHandler(req, res, true);
 
 const listOrganizations = async (req, res) => {
   try {
     const { page, limit, skip } = pagination(req);
     const search = cleanString(req.query?.search, 100);
-    const filter = isAdmin(req.user)
-      ? branchFilterFor(req)
-      : { createdBy: req.user._id, ...branchFilterFor(req) };
+    const ownerFilter = isHierarchyManager(req.user)
+      ? await empowermentRecordFilter(req)
+      : isAdmin(req.user)
+        ? branchFilterFor(req)
+        : combineFilters({ createdBy: req.user._id }, branchFilterFor(req));
 
     const eligibleOnly =
       String(req.query?.eligible || "").toLowerCase() === "true" ||
       String(req.query?.purpose || "").toLowerCase() === "program";
 
-    const eligibilityFilter = eligibleOnly
-      ? {
+    const filters = [ownerFilter];
+    if (eligibleOnly) {
+      filters.push({
           $or: [
-        { status: "ACTIVE" },
-        { verificationStatus: "VERIFIED" },
+            { status: "ACTIVE" },
+            { verificationStatus: "VERIFIED" },
           ],
-        }
-      : null;
-    if (eligibilityFilter) {
-      filter.$and = [eligibilityFilter];
+      });
     } else if (req.query?.status) {
-      filter.status = cleanString(req.query.status, 30).toUpperCase();
+      filters.push({ status: cleanString(req.query.status, 30).toUpperCase() });
     }
 
     if (search) {
-      const searchFilter = {
+      filters.push({
         $or: [
-        { name: new RegExp(search, "i") },
-        { contactName: new RegExp(search, "i") },
-        { registrationNumber: new RegExp(search, "i") },
+          { name: new RegExp(search, "i") },
+          { contactName: new RegExp(search, "i") },
+          { registrationNumber: new RegExp(search, "i") },
         ],
-      };
-      if (eligibilityFilter) {
-        filter.$and.push(searchFilter);
-      } else {
-        filter.$or = searchFilter.$or;
-      }
+      });
     }
+    const filter = combineFilters(...filters);
 
     const [organizations, total] = await Promise.all([
       EmpowermentOrganization.find(filter)
@@ -682,10 +786,12 @@ const updateOrganizationStatus = async (req, res) => {
       return respondError(res, 400, "Invalid organization status.");
     }
 
-    const organization = await EmpowermentOrganization.findOne({
-      _id: req.params.id,
-      ...branchFilterFor(req),
-    });
+    const organizationFilter = isHierarchyManager(req.user)
+      ? await empowermentRecordFilter(req)
+      : branchFilterFor(req);
+    const organization = await EmpowermentOrganization.findOne(
+      combineFilters({ _id: req.params.id }, organizationFilter)
+    );
     if (!organization) {
       return respondError(res, 404, "Organization was not found.");
     }
@@ -792,50 +898,79 @@ const validateProgramValues = (values) => {
   return "";
 };
 
-const createProgram = async (req, res) => {
+const createProgramHandler = async (req, res, requireAggregator = false) => {
   try {
-    const organizationId = req.body?.organizationId;
-    const organization = await getManagedOrganization(req, organizationId);
-    if (!organization) {
-      return respondError(
-        res,
-        403,
-        "You do not have permission to create a program for this organization."
-      );
+    const role = String(req.user?.role || "").trim().toUpperCase();
+    if (requireAggregator && role !== "AGENT") {
+      return respondError(res, 403, "Only an Aggregator can create a managed program.");
     }
-
-    if (!isProgramEligibleOrganization(organization)) {
-      return respondError(
-        res,
-        409,
-        "The organization must be verified before creating a program."
-      );
+    if (isHierarchyManager(req.user) && role !== "AGENT") {
+      return respondError(res, 403, "Program creation is limited to the sponsor's Aggregator.");
     }
-
+    const organizationId = req.body?.organizationId || req.body?.sponsorId;
     const values = programPayload(req.body);
     const error = validateProgramValues(values);
     if (error) return respondError(res, 400, error);
 
-    const program = await EmpowermentProgram.create({
-      ...values,
-      organization: organization._id,
-      createdBy: req.user._id,
-      branchId: organization.branchId,
-      totalBudget:
-        values.amountPerBeneficiary * values.targetBeneficiaries,
-      beneficiaryCount: 0,
-      status: "DRAFT",
-    });
-
-    await audit({
-      req,
-      action: "PROGRAM_CREATED",
-      entityType: "PROGRAM",
-      entityId: program._id,
-      program: program._id,
-      branchId: program.branchId,
-      after: { status: program.status, totalBudget: program.totalBudget },
-    });
+    const createRecord = async (ownership = null, session = null) => {
+      let organization;
+      if (ownership) {
+        organization = await sessionQuery(
+          EmpowermentOrganization.findOne({
+            _id: organizationId,
+            createdBy: ownership.createdBy,
+            aggregatorId: { $in: [ownership.aggregatorId, null] },
+            ...branchFilterFor(req),
+          }),
+          session
+        );
+      } else {
+        organization = await getManagedOrganization(req, organizationId, session);
+      }
+      if (!organization) {
+        throw Object.assign(
+          new Error("You do not have permission to create a program for this sponsor."),
+          { status: 403 }
+        );
+      }
+      if (!isProgramEligibleOrganization(organization)) {
+        throw Object.assign(
+          new Error("The organization must be verified before creating a program."),
+          { status: 409 }
+        );
+      }
+      const payload = {
+        ...values,
+        organization: organization._id,
+        createdBy: ownership?.createdBy || req.user._id,
+        createdByRole: ownership?.createdByRole || role,
+        aggregatorId: ownership?.aggregatorId || null,
+        stateManagerId: ownership?.stateManagerId || null,
+        zonalManagerId: ownership?.zonalManagerId || null,
+        branchId: organization.branchId,
+        totalBudget:
+          values.amountPerBeneficiary * values.targetBeneficiaries,
+        beneficiaryCount: 0,
+        status: "DRAFT",
+      };
+      const program = session
+        ? (await EmpowermentProgram.create([payload], { session }))[0]
+        : await EmpowermentProgram.create(payload);
+      await audit({
+        req,
+        action: "PROGRAM_CREATED",
+        entityType: "PROGRAM",
+        entityId: program._id,
+        program: program._id,
+        branchId: program.branchId,
+        after: { status: program.status, totalBudget: program.totalBudget },
+        session,
+      });
+      return program;
+    };
+    const program = role === "AGENT"
+      ? await withAggregatorRecordCreation(req.user, createRecord)
+      : await createRecord();
 
     return res.status(201).json({
       success: true,
@@ -844,27 +979,37 @@ const createProgram = async (req, res) => {
     });
   } catch (error) {
     console.error("CREATE EMPOWERMENT PROGRAM ERROR:", error);
-    return respondError(res, 500, "Unable to create empowerment program.");
+    return respondError(res, error.status || 500, error.status ? error.message : "Unable to create empowerment program.");
   }
 };
+
+const createProgram = (req, res) => createProgramHandler(req, res);
+const managedCreateProgram = (req, res) =>
+  createProgramHandler(req, res, true);
 
 const listPrograms = async (req, res) => {
   try {
     const { page, limit, skip } = pagination(req);
-    const filter = isAdmin(req.user)
-      ? branchFilterFor(req)
-      : { createdBy: req.user._id, ...branchFilterFor(req) };
+    const ownerFilter = isHierarchyManager(req.user)
+      ? await empowermentRecordFilter(req)
+      : isAdmin(req.user)
+        ? branchFilterFor(req)
+        : combineFilters({ createdBy: req.user._id }, branchFilterFor(req));
     const search = cleanString(req.query?.search, 100);
 
+    const filters = [ownerFilter];
     if (req.query?.status) {
-      filter.status = cleanString(req.query.status, 30).toUpperCase();
+      filters.push({ status: cleanString(req.query.status, 30).toUpperCase() });
     }
     if (search) {
-      filter.$or = [
+      filters.push({
+        $or: [
         { name: new RegExp(search, "i") },
         { state: new RegExp(search, "i") },
-      ];
+        ],
+      });
     }
+    const filter = combineFilters(...filters);
 
     const [programs, total] = await Promise.all([
       EmpowermentProgram.find(filter)
@@ -928,18 +1073,26 @@ const listPrograms = async (req, res) => {
 
 const getSponsorDashboard = async (req, res) => {
   try {
+    const ownerFilter = isHierarchyManager(req.user)
+      ? await empowermentRecordFilter(req)
+      : combineFilters({ createdBy: req.user._id }, branchFilterFor(req));
     const organizations = await EmpowermentOrganization.find({
-      createdBy: req.user._id,
-      ...branchFilterFor(req),
+      ...ownerFilter,
     })
       .sort({ createdAt: -1 })
       .lean();
     const organizationIds = organizations.map((organization) => organization._id);
     const programs = organizationIds.length
       ? await EmpowermentProgram.find({
-          organization: { $in: organizationIds },
-          createdBy: req.user._id,
-          ...branchFilterFor(req),
+          $and: [
+            { organization: { $in: organizationIds } },
+            isHierarchyManager(req.user)
+              ? await managerRecordFilter(req)
+              : combineFilters(
+                  { createdBy: req.user._id },
+                  branchFilterFor(req)
+                ),
+          ],
         })
           .populate("organization", "name status verificationStatus state")
           .sort({ createdAt: -1 })
@@ -1020,24 +1173,32 @@ const getSponsorDashboard = async (req, res) => {
 
 const getProgram = async (req, res) => {
   try {
-    const program = await EmpowermentProgram.findOne({
-      _id: req.params.programId,
-      ...branchFilterFor(req),
-    })
-      .populate("organization", "name status state")
-      .populate("createdBy", "fullName phone");
+    let program = await getManagedProgram(req, req.params.programId);
+    if (!program && !isHierarchyManager(req.user)) {
+      program = await EmpowermentProgram.findOne(
+        combineFilters(
+          { _id: req.params.programId },
+          branchFilterFor(req),
+          {
+            publicTransparencyEnabled: true,
+            status: { $in: ["OPEN", "APPROVED", "DISBURSING", "COMPLETED"] },
+          }
+        )
+      );
+    }
+    if (program) {
+      await program.populate("organization", "name status state");
+      await program.populate("createdBy", "fullName phone");
+    }
 
     if (!program) {
       return respondError(res, 404, "Empowerment program was not found.");
     }
 
-    const accessible =
-      canManageProgram(req, program) ||
+    const accessible = await canManageProgram(req, program) ||
       (program.publicTransparencyEnabled &&
         program.organization?.status === "ACTIVE" &&
-        ["OPEN", "APPROVED", "DISBURSING", "COMPLETED"].includes(
-          program.status
-        ));
+        ["OPEN", "APPROVED", "DISBURSING", "COMPLETED"].includes(program.status));
 
     if (!accessible) {
       return respondError(res, 403, "You cannot view this private program.");
@@ -1987,6 +2148,17 @@ const fundProgram = async (req, res) => {
             { status: 409 }
           );
         }
+        if (
+          !(await hasCurrentHierarchyProgramAndSponsor(
+            req,
+            existing.program,
+            session
+          ))
+        ) {
+          throw Object.assign(new Error("You cannot fund this program."), {
+            status: 403,
+          });
+        }
         duplicate = existing;
         const existingProgram = await EmpowermentProgram.findById(
           existing.program
@@ -2095,6 +2267,11 @@ const fundProgram = async (req, res) => {
             409,
             "Idempotency key is already in use for a different funding request."
           );
+        }
+        if (
+          !(await hasCurrentHierarchyProgramAndSponsor(req, existing.program))
+        ) {
+          return respondError(res, 403, "You cannot fund this program.");
         }
         const program = await EmpowermentProgram.findById(existing.program);
         return res.status(200).json({
@@ -2241,6 +2418,17 @@ const disburseProgram = async (req, res) => {
             ),
             { status: 409 }
           );
+        }
+        if (
+          !(await hasCurrentHierarchyProgramAndSponsor(
+            req,
+            existing.program,
+            session
+          ))
+        ) {
+          throw Object.assign(new Error("You cannot disburse this program."), {
+            status: 403,
+          });
         }
         duplicate = existing;
         return;
@@ -2572,6 +2760,11 @@ const disburseProgram = async (req, res) => {
             "Idempotency key is already in use for a different disbursement request."
           );
         }
+        if (
+          !(await hasCurrentHierarchyProgramAndSponsor(req, existing.program))
+        ) {
+          return respondError(res, 403, "You cannot disburse this program.");
+        }
         return res.status(200).json({
           success: true,
           idempotent: true,
@@ -2785,37 +2978,58 @@ const getEmpowermentDashboardSummary = async (req, res) => {
     if (!isHeadOffice(req.user) && !req.staffAccess) {
       return respondError(res, 403, "Only Head Office can view Empowerment audit records.");
     }
+    let organizationFilter = branchFilterFor(req);
+    let programFilter = branchFilterFor(req);
+    let beneficiaryFilter = branchFilterFor(req);
+    let payoutFilter = branchFilterFor(req);
+    if (isHierarchyManager(req.user)) {
+      const managedFilter = await empowermentRecordFilter(req);
+      const organizationIds = await EmpowermentOrganization.distinct(
+        "_id",
+        managedFilter
+      );
+      const scopedPrograms = organizationIds.length
+        ? combineFilters(
+            { organization: { $in: organizationIds } },
+            managedFilter
+          )
+        : { _id: { $in: [] } };
+      const programIds = await EmpowermentProgram.distinct("_id", scopedPrograms);
+      organizationFilter = combineFilters({ _id: { $in: organizationIds } }, branchFilterFor(req));
+      programFilter = combineFilters({ _id: { $in: programIds } }, branchFilterFor(req));
+      beneficiaryFilter = { program: { $in: programIds } };
+      payoutFilter = { program: { $in: programIds } };
+    }
     const [
       organizations,
       programs,
       beneficiaries,
       programFinancialRows,
       payouts,
-    ] =
-      await Promise.all([
-        EmpowermentOrganization.countDocuments(branchFilterFor(req)),
-        EmpowermentProgram.countDocuments(branchFilterFor(req)),
-        EmpowermentBeneficiary.aggregate([
-          { $match: branchFilterFor(req) },
-          { $group: { _id: "$applicationStatus", count: { $sum: 1 } } },
-        ]),
-        EmpowermentProgram.aggregate([
-          { $match: branchFilterFor(req) },
-          {
-            $group: {
-              _id: null,
-              totalBudget: { $sum: "$totalBudget" },
-              totalFundedAmount: { $sum: "$totalFundedAmount" },
-              availableFundingAmount: { $sum: "$availableFundingAmount" },
-              totalDisbursedAmount: { $sum: "$totalDisbursedAmount" },
-            },
+    ] = await Promise.all([
+      EmpowermentOrganization.countDocuments(organizationFilter),
+      EmpowermentProgram.countDocuments(programFilter),
+      EmpowermentBeneficiary.aggregate([
+        { $match: beneficiaryFilter },
+        { $group: { _id: "$applicationStatus", count: { $sum: 1 } } },
+      ]),
+      EmpowermentProgram.aggregate([
+        { $match: programFilter },
+        {
+          $group: {
+            _id: null,
+            totalBudget: { $sum: "$totalBudget" },
+            totalFundedAmount: { $sum: "$totalFundedAmount" },
+            availableFundingAmount: { $sum: "$availableFundingAmount" },
+            totalDisbursedAmount: { $sum: "$totalDisbursedAmount" },
           },
-        ]),
-        EmpowermentPayout.aggregate([
-          { $match: branchFilterFor(req) },
-          { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
-        ]),
-      ]);
+        },
+      ]),
+      EmpowermentPayout.aggregate([
+        { $match: payoutFilter },
+        { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+      ]),
+    ]);
     const beneficiaryCount = beneficiaries.reduce(
       (total, row) => total + Number(row.count || 0),
       0
@@ -2849,8 +3063,37 @@ const getEmpowermentAuditTrail = async (req, res) => {
       return respondError(res, 403, "Administrator access is required.");
     }
     const limit = Math.min(200, Math.max(1, Number(req.query?.limit || 50)));
-    const activity = await EmpowermentAuditLog.find(branchFilterFor(req))
-      .populate("actor", "fullName phone role")
+    let filter = branchFilterFor(req);
+    if (isHierarchyManager(req.user)) {
+      const managedFilter = await empowermentRecordFilter(req);
+      const organizationIds = await EmpowermentOrganization.distinct(
+        "_id",
+        managedFilter
+      );
+      const programIds = organizationIds.length
+        ? await EmpowermentProgram.distinct(
+            "_id",
+            combineFilters(
+              { organization: { $in: organizationIds } },
+              managedFilter
+            )
+          )
+        : [];
+      filter = combineFilters(
+        filter,
+        {
+          $or: [
+            { program: { $in: programIds } },
+            { entityId: { $in: organizationIds } },
+          ],
+        }
+      );
+    }
+    const activity = await EmpowermentAuditLog.find(filter)
+      .populate(
+        "actor",
+        isHierarchyManager(req.user) ? "fullName role" : "fullName phone role"
+      )
       .populate("program", "name")
       .sort({ createdAt: -1 })
       .limit(limit);
@@ -2865,8 +3108,10 @@ module.exports = {
   listOrganizations,
   getOrganization,
   createOrganization,
+  managedCreateOrganization,
   updateOrganization,
   createProgram,
+  managedCreateProgram,
   listPrograms,
   getSponsorDashboard,
   getProgram,

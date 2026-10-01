@@ -10,6 +10,7 @@ const {
   isProgramEligibleOrganization,
   createOrganization,
   listOrganizations,
+  getOrganization,
   updateOrganizationStatus,
   createProgram: createProgramHandler,
   applyForProgram,
@@ -26,6 +27,7 @@ const {
   bulkDisburseProgram,
   listDisbursementBatches,
   listPrograms,
+  getProgram,
   getProgramStatistics,
   getProgramReport,
   getEmpowermentDashboardSummary,
@@ -299,6 +301,83 @@ test("Empowerment stamps the authenticated branch and isolates branch staff", as
   });
   assert.equal(staffResponse.status, 200);
   assert.equal(staffResponse.body.organizations.length, 0);
+});
+
+test("branch staff with scoped permission can read records created by another user only in their branch", async () => {
+  const branchId = new mongoose.Types.ObjectId();
+  const otherBranchId = new mongoose.Types.ObjectId();
+  const creator = await createUser();
+  const otherCreator = await createUser();
+  const branchOrganization = await EmpowermentOrganization.create({
+    name: "Branch-scoped sponsor",
+    organizationType: "NGO",
+    registrationNumber: "BRANCH-SCOPED-001",
+    state: creator.state,
+    status: "ACTIVE",
+    createdBy: creator._id,
+    branchId,
+  });
+  const branchProgram = await createProgram({
+    owner: creator,
+    organization: branchOrganization,
+    status: "OPEN",
+  });
+  await EmpowermentProgram.updateOne(
+    { _id: branchProgram._id },
+    { $set: { branchId } }
+  );
+  const otherBranchOrganization = await EmpowermentOrganization.create({
+    name: "Other branch sponsor",
+    organizationType: "NGO",
+    registrationNumber: "BRANCH-SCOPED-002",
+    state: otherCreator.state,
+    status: "ACTIVE",
+    createdBy: otherCreator._id,
+    branchId: otherBranchId,
+  });
+  const otherBranchProgram = await createProgram({
+    owner: otherCreator,
+    organization: otherBranchOrganization,
+    status: "OPEN",
+  });
+  await EmpowermentProgram.updateOne(
+    { _id: otherBranchProgram._id },
+    { $set: { branchId: otherBranchId } }
+  );
+  const staff = { ...otherCreator.toObject(), role: "STAFF", isStaff: true };
+  const staffAccess = {
+    isHeadOffice: false,
+    permissions: ["empowerment.view"],
+    scope: { type: "BRANCH", branchId },
+  };
+
+  const [sponsor, program, foreignSponsor, foreignProgram] = await Promise.all([
+    call(getOrganization, {
+      user: staff,
+      staffAccess,
+      params: { id: String(branchOrganization._id) },
+    }),
+    call(getProgram, {
+      user: staff,
+      staffAccess,
+      params: { programId: String(branchProgram._id) },
+    }),
+    call(getOrganization, {
+      user: staff,
+      staffAccess,
+      params: { id: String(otherBranchOrganization._id) },
+    }),
+    call(getProgram, {
+      user: staff,
+      staffAccess,
+      params: { programId: String(otherBranchProgram._id) },
+    }),
+  ]);
+  assert.equal(sponsor.status, 200);
+  assert.equal(program.status, 200);
+  assert.equal(String(program.body.program._id), String(branchProgram._id));
+  assert.equal(foreignSponsor.status, 404);
+  assert.equal(foreignProgram.status, 404);
 });
 
 test("branch Empowerment history omits funding and recipient contact PII", async () => {

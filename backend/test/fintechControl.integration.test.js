@@ -7,6 +7,7 @@ const AppSettings = require("../models/appSettings.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 const BankTransfer = require("../models/bankTransfer.model");
 const Transaction = require("../models/transaction.model");
+const User = require("../models/user.model");
 const {
   getFintechControlSettings,
   updateFintechControlSettings,
@@ -26,6 +27,7 @@ const {
   requireFeatureEnabled,
   isBypassPath,
 } = require("../middleware/fintechControl.middleware");
+const { featureBindingsForRequest } = require("../config/featureRouteRegistry");
 const { adminOnly } = require("../middleware/auth.middleware");
 
 let mongo;
@@ -50,6 +52,7 @@ const models = [
   AdminAuditLog,
   BankTransfer,
   Transaction,
+  User,
 ];
 
 test.before(async () => {
@@ -481,6 +484,60 @@ test("middleware enforces maintenance, feature toggles, and tier transaction lim
   assert.equal(maintenance.body.maintenance, true);
 });
 
+test("managed organization creation alias inherits the original organizations feature guard", async () => {
+  const originalPath = "/api/organizations";
+  const managedPath = "/api/management/records/organizations";
+  const originalBinding = featureBindingsForRequest({
+    method: "POST",
+    originalUrl: originalPath,
+  });
+  const managedBinding = featureBindingsForRequest({
+    method: "POST",
+    originalUrl: managedPath,
+  });
+  assert.deepEqual(originalBinding, ["organizations"]);
+  assert.deepEqual(managedBinding, originalBinding);
+
+  const originalGetGlobalSettings = AppSettings.getGlobalSettings;
+  const cases = [
+    {
+      fintechControl: {
+        featureRegistry: { organizations: { enabled: false } },
+      },
+    },
+    {
+      fintechControl: {
+        featureRegistry: {
+          organizations: {
+            enabled: true,
+            maintenanceMode: true,
+            maintenanceMessage: "Organization onboarding maintenance.",
+          },
+        },
+      },
+    },
+  ];
+  try {
+    for (const settings of cases) {
+      AppSettings.getGlobalSettings = async () => settings;
+      const run = async (originalUrl) => runMiddleware({
+        user: { role: "CUSTOMER", kycTier: "TIER_1" },
+        method: "POST",
+        originalUrl,
+      });
+      const original = await run(originalPath);
+      const managed = await run(managedPath);
+      assert.equal(original.next, false);
+      assert.equal(managed.next, false);
+      assert.equal(original.status, 503);
+      assert.deepEqual(managed.body, original.body,
+        "the managed alias must retain the original disabled/maintenance response");
+    }
+  } finally {
+    AppSettings.getGlobalSettings = originalGetGlobalSettings;
+  }
+});
+
 test("feature enforcement bypasses reads, callbacks, webhooks, and transfer requeries", async () => {
   await AppSettings.create({
     key: "GLOBAL_SETTINGS",
@@ -823,10 +880,17 @@ test("duplicate bank requery returns a safe manual-review response without provi
 });
 
 test("unsupported requery returns MANUAL_REVIEW and leaves financial state untouched", async () => {
-  const customerId = new mongoose.Types.ObjectId();
+  const customer = await User.create({
+    fullName: `Unsupported Requery Customer ${sequence}`,
+    phone: `080${String(sequence).padStart(7, "0")}`,
+    email: `unsupported-requery-${sequence}@example.test`,
+    password: "disposable-password",
+    role: "CUSTOMER",
+    status: "ACTIVE",
+  });
   const transaction = await Transaction.create({
     reference: `UNSUPPORTED-${sequence}`,
-    customerId,
+    customerId: customer._id,
     serviceType: "AIRTIME",
     amount: 500,
     status: "PENDING",

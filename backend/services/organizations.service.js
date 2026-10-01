@@ -7,6 +7,11 @@ const { postDebit } = require("./ledger.service");
 const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("./biometric.service");
 const { resolveState, isValidLga } = require("../data/nigeriaLocations");
 const { normalizeDocumentType } = require("./organizationDocument.service");
+const {
+  getManagedRecordScope,
+  managedRecordFilter,
+  withAggregatorRecordCreation,
+} = require("./aggregatorRecordScope.service");
 
 const { Organization, OrganizationRole, OrganizationMember, OrganizationWallet, OrganizationLedger, OrganizationPayment, OrganizationAuditLog } = models;
 const clean = (v, max = 200) => String(v || "").trim().slice(0, max);
@@ -241,6 +246,18 @@ const publicError = (error, duplicateFallback) =>
   Object.assign(new Error(error?.status ? error.message : "Unable to complete organization request."), {
     status: error?.status || error?.statusCode || 500,
   });
+const isHierarchyManager = (user) =>
+  ["AGENT", "STATE_MANAGER", "ZONAL_MANAGER"].includes(
+    String(user?.role || "").trim().toUpperCase()
+  );
+const managedOrganizationFilter = async (req) => {
+  const scope = await getManagedRecordScope(req.user);
+  return managedRecordFilter(scope, {
+    includeLegacyCustomers: true,
+    includeLegacyStateManagers: true,
+    stateManagerField: "stateManagerId",
+  });
+};
 async function audit(req, organization, action, entityType, entityId, metadata = {}, session) {
   const normalizedMetadata = { ...(metadata || {}) };
   if (normalizedMetadata.status === undefined && organization?.status) normalizedMetadata.status = organization.status;
@@ -251,14 +268,13 @@ async function audit(req, organization, action, entityType, entityId, metadata =
   const row = { organization: organization._id, actor: req.user?._id, action, entityType, entityId, metadata: normalizedMetadata, ip: req.ip };
   await OrganizationAuditLog.create([row], session ? { session } : undefined);
 }
-async function makeOrganization(req) {
+async function makeOrganizationWithSession(req, ownership, session, ownsTransaction) {
   const name = clean(req.body?.name, 180);
   if (!name) throw Object.assign(new Error("Organization name is required."), { status: 400 });
   const slug = `${slugify(name)}-${crypto.randomBytes(2).toString("hex")}`;
-  const session = await mongoose.startSession();
   let organization;
   try {
-    await session.withTransaction(async () => {
+    const create = async () => {
       const normalizeOptionalMoney = (value) =>
         value === undefined || value === null || String(value).trim() === ""
           ? 0
@@ -271,15 +287,29 @@ async function makeOrganization(req) {
       if (logo && (!["image/png", "image/jpeg", "image/webp"].includes(logo.mimeType) || !logo.url || !/^https:\/\//.test(logo.url))) throw Object.assign(new Error("Logo must be a safe HTTPS image metadata object."), { status: 400 });
        const kyb = normalizeKybInput(req.body || {});
        const type = kyb.organizationType || clean(req.body?.type, 50).toUpperCase() || "ASSOCIATION";
-       [organization] = await Organization.create([{ name, slug, code: makeCode(), ...kyb, type, description: kyb.description || clean(req.body?.description, 3000), registrationNumber: kyb.registrationNumber || clean(req.body?.registrationNumber, 100), contact: req.body?.contact || {}, country: clean(req.body?.country, 80) || "NG", state: clean(req.body?.state, 100), lga: clean(req.body?.lga, 100), annualFee, registrationFee, renewalCycle: ["ANNUAL", "MONTHLY", "NONE"].includes(req.body?.renewalCycle) ? req.body.renewalCycle : "ANNUAL", logo, createdBy: req.user._id, status: "DRAFT", membershipMode: req.body?.membershipMode === "AUTO" ? "AUTO" : "MANUAL", organizationReference: `SP-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}` }], { session });
+        [organization] = await Organization.create([{ name, slug, code: makeCode(), ...kyb, type, description: kyb.description || clean(req.body?.description, 3000), registrationNumber: kyb.registrationNumber || clean(req.body?.registrationNumber, 100), contact: req.body?.contact || {}, country: clean(req.body?.country, 80) || "NG", state: clean(req.body?.state, 100), lga: clean(req.body?.lga, 100), annualFee, registrationFee, renewalCycle: ["ANNUAL", "MONTHLY", "NONE"].includes(req.body?.renewalCycle) ? req.body.renewalCycle : "ANNUAL", logo, createdBy: ownership?.createdBy || req.user._id, createdByRole: ownership?.createdByRole || String(req.user?.role || "CUSTOMER").toUpperCase(), aggregatorId: ownership?.aggregatorId || null, stateManagerId: ownership?.stateManagerId || null, zonalManagerId: ownership?.zonalManagerId || null, status: "DRAFT", membershipMode: req.body?.membershipMode === "AUTO" ? "AUTO" : "MANUAL", organizationReference: `SP-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}` }], { session });
       await OrganizationRole.create([{ organization: organization._id, user: req.user._id, role: "OWNER", assignedBy: req.user._id }], { session });
       await OrganizationWallet.create([{ organization: organization._id }], { session });
       await audit(req, organization, "ORGANIZATION_CREATED", "Organization", organization._id, {}, session);
-    });
+    };
+    if (ownsTransaction) await session.withTransaction(create);
+    else await create();
     return organization;
   } finally {
-    await session.endSession();
+    if (ownsTransaction) await session.endSession();
   }
+}
+
+async function makeOrganization(req) {
+  if (String(req.user?.role || "").trim().toUpperCase() === "AGENT") {
+    return withAggregatorRecordCreation(
+      req.user,
+      (ownership, session) =>
+        makeOrganizationWithSession(req, ownership, session, false)
+    );
+  }
+  const session = await mongoose.startSession();
+  return makeOrganizationWithSession(req, null, session, true);
 }
 
 async function ownerOnboardingAccess(req, organizationId) {
@@ -369,7 +399,14 @@ async function submitOrganization(req, organizationId) {
 
 async function reviewOrganization(req, organizationId, targetStatus, details = {}) {
   if (!mongoose.isValidObjectId(organizationId)) throw Object.assign(new Error("Invalid organization id."), { status: 400 });
-  const organization = await Organization.findById(organizationId);
+  const organization = isHierarchyManager(req.user)
+    ? await Organization.findOne({
+        $and: [
+          { _id: organizationId },
+          await managedOrganizationFilter(req),
+        ],
+      })
+    : await Organization.findById(organizationId);
   if (!organization) throw Object.assign(new Error("Organization not found."), { status: 404 });
   const current = statusAlias(organization.status);
   const target = statusAlias(targetStatus);
@@ -512,4 +549,6 @@ module.exports = {
   updateOrganizationDraft,
   submitOrganization,
   reviewOrganization,
+  isHierarchyManager,
+  managedOrganizationFilter,
 };

@@ -22,10 +22,12 @@ const {
 const zonalHierarchy = require("../controllers/zonalHierarchy.controller");
 // The oversight router is owned by the zonal oversight workstream.
 const zonalOversight = require("./zonalOversight.routes");
+const managedRecords = require("./managedRecords.routes");
 
 const router = express.Router();
 
 router.use(protect);
+router.use("/records", managedRecords);
 // Keep hierarchy paths explicit: generic section routes would swallow zonal
 // oversight paths and the existing management APIs below.
 for (const section of ["state-managers", "aggregators", "customers"]) {

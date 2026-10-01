@@ -54,6 +54,12 @@ const organizationSchema = new Schema({
   registrationNumber: { type: String, default: "" },
   contact: { name: String, email: String, phone: String, address: String, officialName: String, officialEmail: String, officialPhone: String },
   createdBy: oid("User", true),
+  createdByRole: { type: String, trim: true, default: null, immutable: true },
+  // Optional management hierarchy provenance; the creator remains the actor.
+  // No defaults are materialized on legacy organizations.
+  aggregatorId: { ...oid("User"), immutable: true },
+  stateManagerId: { ...oid("User"), immutable: true },
+  zonalManagerId: { ...oid("User"), immutable: true },
   // PENDING_VERIFICATION and VERIFIED are retained for existing consumers/data.
   // The validator below also accepts the newer KYB lifecycle values without
   // changing the legacy enumValues contract used by older consumers.
@@ -98,6 +104,8 @@ organizationStatusPath.validate({
   message: "Invalid organization status.",
 });
 organizationSchema.index({ status: 1, createdAt: -1 });
+organizationSchema.index({ aggregatorId: 1, createdAt: -1 });
+organizationSchema.index({ stateManagerId: 1, createdAt: -1 });
 
 const memberSchema = new Schema({
   organization: oid("Organization", true), user: oid("User", true),

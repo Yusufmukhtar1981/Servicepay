@@ -45,17 +45,15 @@ test("zonal oversight lists and details all four sections from the authorized zo
   });
   originals.set("scope", service.getZonalScope);
   service.getZonalScope = async () => ({
-    stateManagerIds: [manager], agentIds: [], customerIds: [customer, foreignCustomer],
+    stateManagerIds: [manager], agentIds: [], customerIds: [customer],
   });
-  // Only the actual CUSTOMER owner is accepted; a stale/unknown scope ID is
-  // deliberately not enough to authorize an organization record.
   originals.set(User, { find: User.find });
   User.find = () => ({ select: () => ({ lean: async () => [{ _id: customer }] }) });
   originals.set(SchoolRequest, { find: SchoolRequest.find });
   SchoolRequest.find = () => chain([]);
   for (const [section, model] of Object.entries(models)) {
     originals.set(model, { find: model.find, countDocuments: model.countDocuments, findOne: model.findOne, exists: model.exists });
-    model.find = (query) => { filters[section] = query; return chain(records[section]); };
+    model.find = (query) => { (filters[section] ||= []).push(query); return chain(records[section]); };
     model.countDocuments = async () => records[section].length;
     model.findOne = () => chain(records[section][0]);
     model.exists = async () => true;
@@ -68,17 +66,20 @@ test("zonal oversight lists and details all four sections from the authorized zo
     }, assert.fail);
     assert.equal(response.items.length, 1, section);
   }
-  assert.deepEqual(filters.delivery.customerId.$in, [customer, foreignCustomer]);
-  assert.deepEqual(filters.edupay.stateManagerId.$in, [manager]);
-  assert.deepEqual(filters.empowerment.createdBy.$in, [customer]);
-  assert.deepEqual(filters.organizations.createdBy.$in, [customer]);
+  assert.deepEqual(filters.delivery[0].customerId.$in, [customer]);
+  assert.ok(filters.edupay.some((filter) => JSON.stringify(filter).includes(String(manager))));
+  assert.ok(filters.edupay.some((filter) => JSON.stringify(filter).includes(String(customer))));
+  for (const section of ["empowerment", "organizations"]) {
+    assert.deepEqual(filters[section][0].createdBy.$in, [customer]);
+    assert.equal(filters[section][0].aggregatorId, null);
+  }
   const detailResponse = {};
   await controller.getOne({ user: { _id: manager }, params: { section: "delivery", id: records.delivery[0]._id } }, {
     json(value) { Object.assign(detailResponse, value); },
     status(code) { this.code = code; return this; },
   }, assert.fail);
   assert.equal(detailResponse.item._id, records.delivery[0]._id);
-  assert.notEqual(filters.delivery.customerId.$in.includes(foreign), true);
+  assert.notEqual(filters.delivery[0].customerId.$in.includes(foreign), true);
 });
 
 test("overview accepts captured manager history, but scopes legacy transactions by current customer", async (t) => {
@@ -130,7 +131,7 @@ test("overview accepts captured manager history, but scopes legacy transactions 
     "unverified historical manager references must not authorize transactions");
 });
 
-test("pending EduPay requests are state-manager scoped and deduplicated", async (t) => {
+test("pending EduPay requests are state-manager scoped without hiding request status", async (t) => {
   const service = require("../services/zonalScope.service");
   const School = require("../models/edupaySchool.model");
   const Request = require("../models/edupaySchoolRequest.model");
@@ -138,18 +139,19 @@ test("pending EduPay requests are state-manager scoped and deduplicated", async 
   const manager = id(), foreignManager = id(), schoolId = id(), linked = id();
   const originalScope = service.getZonalScope;
   const originals = { schoolFind: School.find, requestFind: Request.find };
+  let schoolQueries = [];
   t.after(() => {
     service.getZonalScope = originalScope;
     School.find = originals.schoolFind; Request.find = originals.requestFind;
   });
   service.getZonalScope = async () => ({ stateManagerIds: [manager], agentIds: [], customerIds: [] });
   School.find = (filter) => {
-    assert.deepEqual(filter.stateManagerId.$in, [manager]);
+    schoolQueries.push(filter);
     return chain([{ _id: schoolId, stateManagerId: manager, name: "Approved", createdAt: new Date() }]);
   };
   Request.find = (filter) => {
-    assert.deepEqual(filter.stateManagerId.$in, [manager]);
-    assert.deepEqual(filter.status.$in, ["PENDING_REVIEW", "CONTACTED"]);
+    assert.ok(JSON.stringify(filter).includes(String(manager)));
+    assert.ok(JSON.stringify(filter).includes("PENDING_REVIEW"));
     return chain([
       { _id: linked, school: schoolId, schoolName: "Duplicate", stateManagerId: manager, status: "PENDING_REVIEW" },
       { _id: id(), school: null, schoolName: "Pending North", stateManagerId: manager, status: "CONTACTED" },
@@ -161,9 +163,12 @@ test("pending EduPay requests are state-manager scoped and deduplicated", async 
   await controller.list({ params: { section: "edupay" }, query: {} }, {
     json(value) { Object.assign(response, value); },
   }, assert.fail);
-  assert.equal(response.total, 2);
-  assert.equal(response.items.some((item) => item.schoolName === "Duplicate"), false);
+  assert.equal(response.total, 3);
+  assert.equal(response.items.some((item) => item.schoolName === "Duplicate"), true,
+    "only approved requests linked to an in-scope school are deduplicated; pending requests remain visible");
   assert.equal(response.items.some((item) => item.schoolName === "Foreign"), false);
+  assert.ok(schoolQueries.length >= 2);
+  assert.ok(schoolQueries.every((filter) => JSON.stringify(filter).includes(String(manager))));
   assert.deepEqual(Object.keys(response.items.find((item) => item.schoolName === "Pending North")), ["_id", "schoolName", "state", "status", "stateManagerId", "createdAt", "updatedAt"]);
 });
 

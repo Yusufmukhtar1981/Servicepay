@@ -19,6 +19,11 @@ const { evaluateEduPayReadiness } = require("./featureControl.controller");
 const edupaySquadService = require("../services/edupaySquad.service");
 const { validateStrongPassword } = require("../utils/passwordPolicy");
 const studentLink = require("../services/edupayStudentLink.service");
+const {
+  getManagedRecordScope,
+  managedRecordFilter,
+  withAggregatorRecordCreation,
+} = require("../services/aggregatorRecordScope.service");
 
 const SCHOOL_HANDOFF_COOKIE = "servicepay_school_handoff";
 const SCHOOL_HANDOFF_TTL_MS = 2 * 60 * 1000;
@@ -762,16 +767,240 @@ exports.stateManagerCreateSchool = async (req, res) => {
   } catch (error) { return errorResponse(res, error); }
 };
 
+// Aggregator enrollment creates only the existing pending approval request.
+// The scope service fences the current Agent/State Manager/Zonal Manager
+// lineage for the full request-and-audit transaction.
+exports.aggregatorCreateSchool = async (req, res) => {
+  const body = req.body || {};
+  if (String(req.user?.role || "").toUpperCase() !== "AGENT") {
+    return res.status(403).json({ success: false, message: "Aggregator access required." });
+  }
+  const required = ["schoolName", "location", "state", "schoolType", "lga", "contactPerson", "phone", "email", "registrationNumber", "authorizedRepresentative"];
+  if (required.some((key) => !String(body[key] || "").trim())) {
+    return res.status(400).json({ success: false, code: "SCHOOL_FIELDS_REQUIRED", message: "Complete school identity and representative information is required." });
+  }
+  const schoolName = String(body.schoolName).trim();
+  const location = String(body.location).trim();
+  const requestedState = String(body.state).trim();
+  const normalizedSchoolName = normalizeRequestText(schoolName);
+  const normalizedLocation = normalizeRequestText(location);
+  const email = String(body.email).trim().toLowerCase();
+  const phone = String(body.phone).trim();
+  const registrationNumber = String(body.registrationNumber).trim().toUpperCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !/^\d{10,15}$/.test(phone)) {
+    return res.status(400).json({ success: false, code: "SCHOOL_CONTACT_INVALID", message: "A valid email and phone number are required." });
+  }
+  try {
+    const request = await withAggregatorRecordCreation(req.user, async (ownership, session) => {
+      const manager = await User.findOne({
+        _id: ownership.stateManagerId,
+        role: "STATE_MANAGER",
+        status: "ACTIVE",
+        isDeleted: { $ne: true },
+      }).select("_id state").session(session).lean();
+      if (!manager?.state || requestedState.toUpperCase() !== String(manager.state).trim().toUpperCase()) {
+        const error = new Error("An Aggregator may only register schools in their assigned State Manager's state.");
+        error.statusCode = 403;
+        error.code = "STATE_SCOPE_FORBIDDEN";
+        throw error;
+      }
+      const duplicate = await School.findOne({
+        $or: [
+          { normalizedRegistrationNumber: registrationNumber },
+          { normalizedEmail: email },
+          { normalizedPhone: phone },
+        ],
+        status: { $in: activeSchoolStatuses },
+      }).select("_id").session(session).lean();
+      if (duplicate || await findAuthoritativeSchoolIdentity({ schoolName, location, session })) {
+        const error = new Error("An active school application already exists.");
+        error.statusCode = 409;
+        error.code = "ACTIVE_APPLICATION_EXISTS";
+        throw error;
+      }
+      const existing = await SchoolRequest.findOne({
+        $or: [
+          { parent: ownership.createdBy },
+          { stateManagerId: ownership.stateManagerId },
+        ],
+        normalizedSchoolName,
+        normalizedLocation,
+        status: { $in: ["PENDING_REVIEW", "CONTACTED"] },
+      }).session(session);
+      if (existing) {
+        const requestBelongsToActor = String(existing.createdBy || "") === String(ownership.createdBy)
+          || String(existing.aggregatorId || "") === String(ownership.createdBy);
+        const error = new Error("You already submitted this school for approval.");
+        error.statusCode = 409;
+        error.code = "ACTIVE_SCHOOL_REQUEST_EXISTS";
+        error.message = requestBelongsToActor
+          ? "You already submitted this school for approval."
+          : "An active school application already exists.";
+        if (requestBelongsToActor) error.request = schoolRequestDto(existing);
+        throw error;
+      }
+      const [created] = await SchoolRequest.create([{
+        parent: ownership.createdBy,
+        ...ownership,
+        schoolName,
+        normalizedSchoolName,
+        location,
+        normalizedLocation,
+        contactPhone: phone,
+        schoolType: String(body.schoolType).trim(),
+        proprietorName: String(body.proprietorName || "").trim() || null,
+        registrationNumber,
+        state: requestedState,
+        lga: String(body.lga).trim(),
+        contactPerson: String(body.contactPerson).trim(),
+        email,
+        authorizedRepresentative: String(body.authorizedRepresentative).trim(),
+      }], { session });
+      await audit({
+        actor: ownership.createdBy,
+        action: "EDUPAY_AGGREGATOR_SCHOOL_CREATED",
+        entityType: "EduPaySchoolRequest",
+        entityId: created._id,
+        metadata: {
+          aggregatorId: String(ownership.aggregatorId),
+          stateManagerId: String(ownership.stateManagerId),
+          zonalManagerId: String(ownership.zonalManagerId),
+        },
+        req,
+        session,
+      });
+      return created;
+    });
+    return res.status(201).json({ success: true, request: schoolRequestDto(request) });
+  } catch (error) {
+    if (error?.statusCode && typeof error.code === "string") {
+      return res.status(error.statusCode).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+        ...(error.request ? { request: error.request } : {}),
+      });
+    }
+    if (error?.status && typeof error.code === "string") {
+      return res.status(error.status).json({ success: false, code: error.code, message: error.message });
+    }
+    if (error?.code === 11000) {
+      const existing = await SchoolRequest.findOne({
+        parent: req.user?._id,
+        normalizedSchoolName,
+        normalizedLocation,
+        status: { $in: ["PENDING_REVIEW", "CONTACTED"] },
+      }).sort({ createdAt: -1 });
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          code: "ACTIVE_SCHOOL_REQUEST_EXISTS",
+          message: "You already submitted this school for approval.",
+          request: schoolRequestDto(existing),
+        });
+      }
+      return res.status(409).json({ success: false, code: "ACTIVE_APPLICATION_EXISTS", message: "An active school application already exists." });
+    }
+    return errorResponse(res, error);
+  }
+};
+
 exports.stateManagerSchools = async (req, res) => {
   try {
     if (String(req.user?.role || "").toUpperCase() !== "STATE_MANAGER") return res.status(403).json({ success: false, message: "State Manager access required." });
     const manager = await User.findOne({ _id: req.user._id, role: "STATE_MANAGER", status: "ACTIVE", isDeleted: { $ne: true } }).select("_id").lean();
     if (!manager) return res.status(403).json({ success: false, code: "STATE_MANAGER_INACTIVE", message: "An active State Manager account is required." });
-    const requests = await SchoolRequest.find({ stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
-    // A school remains assigned to its State Manager even if its originating
-    // request is later archived, migrated, or has no request reference.  The
-    // assignment itself is authoritative for this scoped listing.
-    const schools = await School.find({ stateManagerId: req.user._id }).sort({ createdAt: -1 }).lean();
+    const scope = await getManagedRecordScope(req.user);
+    const recordScope = {
+      ...scope,
+      aggregatorIds: (scope.aggregatorIds || []).filter(mongoose.isValidObjectId).map((id) => new mongoose.Types.ObjectId(id)),
+      stateManagerIds: (scope.stateManagerIds || []).filter(mongoose.isValidObjectId).map((id) => new mongoose.Types.ObjectId(id)),
+      customerIds: (scope.customerIds || []).filter(mongoose.isValidObjectId).map((id) => new mongoose.Types.ObjectId(id)),
+    };
+    const ownershipRequestFilter = managedRecordFilter(recordScope, {
+      creatorField: "createdBy",
+      aggregatorField: "aggregatorId",
+      stateManagerField: "stateManagerId",
+      includeLegacyStateManagers: true,
+    });
+    const ownershipFilter = managedRecordFilter(recordScope, {
+      creatorField: "createdBy",
+      aggregatorField: "aggregatorId",
+      stateManagerField: "stateManagerId",
+      includeLegacyStateManagers: true,
+    });
+    // Preserve direct State Manager school assignments created before
+    // aggregatorId was recorded; explicit Aggregator ownership always takes
+    // precedence and is resolved from the current hierarchy above.
+    const legacyDirectSchoolBase = {
+      stateManagerId: manager._id,
+      aggregatorId: { $in: [null, ""] },
+    };
+    const legacyDirectRequestBase = {
+      stateManagerId: manager._id,
+      aggregatorId: { $in: [null, ""] },
+    };
+    const [legacySchoolCreators, legacyRequestOwners] = await Promise.all([
+      School.aggregate([
+        { $match: legacyDirectSchoolBase },
+        { $group: { _id: "$createdBy" } },
+      ]),
+      SchoolRequest.aggregate([
+        { $match: legacyDirectRequestBase },
+        { $project: { owner: ["$createdBy", "$parent"] } },
+        { $unwind: "$owner" },
+        { $group: { _id: "$owner" } },
+      ]),
+    ]);
+    const candidateOwnerIds = [...new Set(
+      [...legacySchoolCreators, ...legacyRequestOwners]
+        .map((row) => String(row._id || ""))
+        .filter(mongoose.isValidObjectId),
+    )].map((id) => new mongoose.Types.ObjectId(id));
+    const liveOwnerIds = new Set([
+      manager._id,
+      ...recordScope.aggregatorIds,
+      ...recordScope.stateManagerIds,
+      ...recordScope.customerIds,
+    ].map(String));
+    // Resolve both request owners (creator and requester parent) against the
+    // current User collection without active/deleted filters: a role change or
+    // soft deletion does not make a stale snapshot safe. Only genuinely
+    // unresolvable legacy identities retain the explicit-State-Manager
+    // fallback. This deny list is applied to that fallback only; the shared
+    // live ownership filters below still retain any independently owned row.
+    const knownOwners = candidateOwnerIds.length
+      ? await User.find({ _id: { $in: candidateOwnerIds } }).select("_id").lean()
+      : [];
+    const excludedLegacyOwnerIds = knownOwners
+      .filter((owner) => !liveOwnerIds.has(String(owner._id)))
+      .map((owner) => owner._id);
+    const legacyDirectSchoolFilter = {
+      ...legacyDirectSchoolBase,
+      ...(excludedLegacyOwnerIds.length ? { createdBy: { $nin: excludedLegacyOwnerIds } } : {}),
+    };
+    const legacyDirectRequestFilter = {
+      ...legacyDirectRequestBase,
+      ...(excludedLegacyOwnerIds.length
+        ? { $nor: [
+          { createdBy: { $in: excludedLegacyOwnerIds } },
+          { parent: { $in: excludedLegacyOwnerIds } },
+        ] }
+        : {}),
+    };
+    // Aggregation keeps the shared filter's explicit null/empty-string legacy
+    // semantics without Mongoose trying to cast legacy string values to
+    // ObjectIds before MongoDB can match them.
+    const [schools, requests] = await Promise.all([
+      School.aggregate([
+        { $match: { $or: [ownershipFilter, legacyDirectSchoolFilter] } },
+        { $sort: { createdAt: -1 } },
+      ]),
+      SchoolRequest.aggregate([
+        { $match: { $or: [ownershipRequestFilter, legacyDirectRequestFilter] } },
+        { $sort: { createdAt: -1 } },
+      ]),
+    ]);
     return res.json({ success: true, schools: schools.map(schoolAdminDto), requests: requests.map(schoolRequestDto) });
   } catch (error) { return errorResponse(res, error); }
 };
@@ -849,6 +1078,22 @@ exports.adminSchoolRequestAction = async (req, res) => {
         const isStateManagerOrigin = request.createdByRole === "STATE_MANAGER"
           && request.stateManagerId
           && String(request.stateManagerId) === String(request.createdBy || request.parent);
+        const isAggregatorOrigin = request.createdByRole === "AGENT";
+        const isManagedOrigin = isStateManagerOrigin || isAggregatorOrigin;
+        const requestCreatorId = String(request.createdBy || request.parent || "");
+        if (isAggregatorOrigin && (
+          !request.createdBy
+          || !request.aggregatorId
+          || !request.stateManagerId
+          || !request.zonalManagerId
+          || String(request.parent) !== requestCreatorId
+          || String(request.aggregatorId) !== requestCreatorId
+        )) {
+          const error = new Error("The Aggregator school request has incomplete or inconsistent ownership provenance.");
+          error.statusCode = 409;
+          error.code = "AGGREGATOR_PROVENANCE_INVALID";
+          throw error;
+        }
         const requester = await User.findById(request.parent)
           .select("_id status email phone")
           .session(session)
@@ -873,12 +1118,23 @@ exports.adminSchoolRequestAction = async (req, res) => {
         }
         if (request.school) {
           admittedSchool = await School.findById(request.school).session(session);
+          const sameManagedOwner = !isManagedOrigin || (isStateManagerOrigin
+            ? admittedSchool?.createdByRole === "STATE_MANAGER"
+              && String(admittedSchool.createdBy || "") === requestCreatorId
+              && String(admittedSchool.stateManagerId || "") === String(request.stateManagerId || request.createdBy || request.parent)
+              && String(admittedSchool.zonalManagerId || "") === String(request.zonalManagerId || "")
+            : admittedSchool?.createdByRole === "AGENT"
+              && String(admittedSchool.createdBy || "") === requestCreatorId
+              && String(admittedSchool.aggregatorId || "") === String(request.aggregatorId || "")
+              && String(admittedSchool.stateManagerId || "") === String(request.stateManagerId || "")
+              && String(admittedSchool.zonalManagerId || "") === String(request.zonalManagerId || ""));
           if (!admittedSchool
             || String(admittedSchool.sourceRequest || "") !== String(request._id)
             || admittedSchool.sourceRequestNormalizedSchoolName !== identity.schoolName
             || admittedSchool.sourceRequestNormalizedLocation !== identity.location
-            || (!isStateManagerOrigin && String(admittedSchool.portalUser || "") !== String(requester._id))
-            || (isStateManagerOrigin && admittedSchool.portalUser)) {
+            || !sameManagedOwner
+            || (!isManagedOrigin && String(admittedSchool.portalUser || "") !== String(requester._id))
+            || (isManagedOrigin && admittedSchool.portalUser)) {
             const error = new Error("School request is linked to a mismatched school.");
             error.statusCode = 409;
             error.code = "SCHOOL_REQUEST_LINK_MISMATCH";
@@ -894,13 +1150,16 @@ exports.adminSchoolRequestAction = async (req, res) => {
             phone: request.contactPhone || null,
             status: "APPROVED",
             active: true,
-            // State Manager origin is provenance, not portal ownership.  A
+            // Managed origin is provenance, not portal ownership. A
             // representative must separately claim this school after
-            // verification; never turn the manager into a portal identity.
-            portalUser: isStateManagerOrigin ? null : requester._id,
+            // verification; never turn the manager or aggregator into a
+            // portal identity.
+            portalUser: isManagedOrigin ? null : requester._id,
             createdBy: request.createdBy || request.parent,
             createdByRole: request.createdByRole || null,
+            aggregatorId: request.aggregatorId || null,
             stateManagerId: request.stateManagerId || null,
+            zonalManagerId: request.zonalManagerId || null,
             schoolType: request.schoolType || null,
             proprietorName: request.proprietorName || null,
             // The legacy unique sparse index includes explicit null values.
@@ -928,11 +1187,20 @@ exports.adminSchoolRequestAction = async (req, res) => {
           admittedSchool.createdByRole = "STATE_MANAGER";
           admittedSchool.stateManagerId = request.stateManagerId || request.createdBy || request.parent;
           admittedSchool.authorizedRepresentative = request.authorizedRepresentative || admittedSchool.authorizedRepresentative || null;
+        } else if (isAggregatorOrigin) {
+          // Assignment/provenance always comes from the persisted request,
+          // never from the approval payload or the school requester's body.
+          admittedSchool.createdBy = request.createdBy || request.parent;
+          admittedSchool.createdByRole = "AGENT";
+          admittedSchool.aggregatorId = request.aggregatorId || null;
+          admittedSchool.stateManagerId = request.stateManagerId || null;
+          admittedSchool.zonalManagerId = request.zonalManagerId || null;
+          admittedSchool.authorizedRepresentative = request.authorizedRepresentative || admittedSchool.authorizedRepresentative || null;
         }
         admittedSchool.reviewedBy = req.user._id;
         admittedSchool.reviewedAt = new Date();
         await admittedSchool.save({ session });
-        if (!isStateManagerOrigin) {
+        if (!isManagedOrigin) {
           await SchoolUser.updateOne(
             { school: admittedSchool._id, user: requester._id },
             { $set: { role: "ADMIN", status: "ACTIVE", invitedBy: req.user._id }, $setOnInsert: { school: admittedSchool._id, user: requester._id } },

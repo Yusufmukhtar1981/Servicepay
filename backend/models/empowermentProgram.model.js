@@ -199,6 +199,32 @@ const empowermentProgramSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    createdByRole: {
+      type: String,
+      trim: true,
+      default: null,
+      immutable: true,
+    },
+    // Optional hierarchy provenance; missing values remain valid for legacy
+    // sponsor/program rows and never replace the original creator.
+    aggregatorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      immutable: true,
+    },
+    stateManagerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      immutable: true,
+    },
+    zonalManagerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      immutable: true,
+    },
   },
   {
     timestamps: true,
@@ -219,6 +245,8 @@ empowermentProgramSchema.index({
   createdBy: 1,
   createdAt: -1,
 });
+empowermentProgramSchema.index({ aggregatorId: 1, createdAt: -1 });
+empowermentProgramSchema.index({ stateManagerId: 1, createdAt: -1 });
 
 module.exports = mongoose.model(
   "EmpowermentProgram",

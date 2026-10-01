@@ -8,6 +8,7 @@ const EduPaySchool = require("../models/edupaySchool.model");
 const SchoolRequest = require("../models/edupaySchoolRequest.model");
 const EmpowermentOrganization = require("../models/empowermentOrganization.model");
 const { Organization } = require("../models/organizations.models");
+const { managedRecordFilter } = require("../services/aggregatorRecordScope.service");
 
 const idList = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
 const oid = (value) => String(value);
@@ -20,8 +21,35 @@ const scopeQuery = (scope) => {
   const stateManagerIds = idList(scope && scope.stateManagerIds);
   const agentIds = idList(scope && scope.agentIds);
   const customerIds = idList(scope && scope.customerIds);
-  return { stateManagerIds, agentIds, customerIds };
+  return { stateManagerIds, agentIds, aggregatorIds: agentIds, customerIds, global: false };
 };
+const andQuery = (...queries) => {
+  const present = queries.filter((query) => query && Object.keys(query).length);
+  return present.length < 2 ? (present[0] || {}) : { $and: present };
+};
+const zonalSchoolFilter = (scope) => managedRecordFilter(scope, {
+  creatorField: "createdBy",
+  aggregatorField: "aggregatorId",
+  stateManagerField: "stateManagerId",
+  includeLegacyCustomers: true,
+  includeLegacyStateManagers: true,
+});
+const zonalSchoolRequestFilter = (scope) => ({
+  $or: [
+    managedRecordFilter(scope, {
+      creatorField: "createdBy",
+      aggregatorField: "aggregatorId",
+      stateManagerField: "stateManagerId",
+      includeLegacyCustomers: true,
+      includeLegacyStateManagers: true,
+    }),
+    managedRecordFilter(scope, {
+      creatorField: "parent",
+      aggregatorField: "aggregatorId",
+      includeLegacyCustomers: true,
+    }),
+  ],
+});
 // Only post-capture manager snapshots can establish historical ownership.
 // Legacy references are unverified; scope those records by current customer.
 const transactionQuery = (scope, zonalManagerId) => ({
@@ -65,32 +93,27 @@ function authorized(req, res, next) {
 // This middleware is exported for mounting applications which already use protect.
 exports.middleware = [protect, authorized];
 
-async function customerCreators(ids) {
-  if (!ids.length) return [];
-  const users = await User.find({ _id: { $in: ids }, role: "CUSTOMER" }).select("_id").lean();
-  return users.map((user) => user._id);
-}
-
 async function zonalEduPayItems(scope, search) {
   const text = search ? new RegExp(escapeRegex(search), "i") : null;
-  const schoolQuery = {
-    stateManagerId: { $in: scope.stateManagerIds },
-    ...(text && { $or: [{ name: text }, { schoolCode: text }, { state: text }] }),
-  };
-  const requestQuery = {
-    stateManagerId: { $in: scope.stateManagerIds },
-    status: { $in: ["PENDING_REVIEW", "CONTACTED"] },
-    ...(text && { $or: [{ schoolName: text }, { state: text }, { status: text }] }),
-  };
-  const [schools, requests] = await Promise.all([
+  const schoolQuery = andQuery(
+    zonalSchoolFilter(scope),
+    text && { $or: [{ name: text }, { schoolCode: text }, { state: text }] },
+  );
+  const requestQuery = andQuery(
+    zonalSchoolRequestFilter(scope),
+    { status: { $in: ["PENDING_REVIEW", "CONTACTED"] } },
+    text && { $or: [{ schoolName: text }, { state: text }, { status: text }] },
+  );
+  const [schools, allScopedSchools, requests] = await Promise.all([
     EduPaySchool.find(schoolQuery).select(projection.edupay).lean(),
+    EduPaySchool.find(zonalSchoolFilter(scope)).select("_id").lean(),
     SchoolRequest.find(requestQuery).select(requestProjection).lean(),
   ]);
-  const schoolIds = new Set(schools.map((school) => String(school._id)));
+  const schoolIds = new Set(allScopedSchools.map((school) => String(school._id)));
   // A request becomes a school after approval. Do not show the same
   // submission twice when its request retains the approved school reference.
   const pending = requests
-    .filter((request) => !request.school || !schoolIds.has(String(request.school)))
+    .filter((request) => request.status !== "APPROVED" || !request.school || !schoolIds.has(String(request.school)))
     .map((request) => ({
       _id: request._id,
       schoolName: request.schoolName,
@@ -109,11 +132,17 @@ function sectionSpec(section, scope, search) {
     case "delivery":
       return { model: Delivery, query: { customerId: { $in: scope.customerIds }, ...(text && { $or: [{ trackingNumber: text }, { status: text }] }) }, select: projection.delivery };
     case "edupay":
-      return { model: EduPaySchool, query: { stateManagerId: { $in: scope.stateManagerIds }, ...(text && { $or: [{ name: text }, { schoolCode: text }, { state: text }] }) }, select: projection.edupay };
+      return { model: EduPaySchool, query: andQuery(zonalSchoolFilter(scope), text && { $or: [{ name: text }, { schoolCode: text }, { state: text }] }), select: projection.edupay };
     case "empowerment":
-      return { model: EmpowermentOrganization, query: { createdBy: { $in: scope.customerIds }, ...(text && { $or: [{ name: text }, { state: text }, { organizationType: text }] }) }, select: projection.empowerment };
+      return { model: EmpowermentOrganization, query: andQuery(
+        managedRecordFilter(scope, { includeLegacyCustomers: true }),
+        text && { $or: [{ name: text }, { state: text }, { organizationType: text }] },
+      ), select: projection.empowerment };
     case "organizations":
-      return { model: Organization, query: { createdBy: { $in: scope.customerIds }, ...(text && { $or: [{ name: text }, { slug: text }, { code: text }, { type: text }] }) }, select: projection.organizations };
+      return { model: Organization, query: andQuery(
+        managedRecordFilter(scope, { includeLegacyCustomers: true }),
+        text && { $or: [{ name: text }, { slug: text }, { code: text }, { type: text }] },
+      ), select: projection.organizations };
     default:
       return null;
   }
@@ -122,18 +151,17 @@ function sectionSpec(section, scope, search) {
 exports.getOverview = async (req, res, next) => {
   try {
     const scope = scopeQuery(await zonalScopeService.getZonalScope(req.user));
-    const creators = await customerCreators(scope.customerIds);
     const [stateManagers, aggregators, customers, transactions, deliveries, edupayItems, empowerment, organizations, deliveryRollup] = await Promise.all([
       User.countDocuments({ _id: { $in: scope.stateManagerIds }, role: "STATE_MANAGER" }),
       User.countDocuments({ _id: { $in: scope.agentIds }, role: { $in: ["AGENT", "AGGREGATOR"] } }),
       User.countDocuments({ _id: { $in: scope.customerIds }, role: "CUSTOMER" }),
       Transaction.countDocuments(transactionQuery(scope, req.user._id)),
       Delivery.countDocuments({ customerId: { $in: scope.customerIds } }),
-      // EduPay overview counts each authorized persisted school plus each
-      // still-pending request, excluding requests already linked to a school.
+      // EduPay overview uses the same current-owner filters and request
+      // deduplication predicate as the section list.
       zonalEduPayItems(scope).then((items) => items.length),
-      EmpowermentOrganization.countDocuments({ createdBy: { $in: creators } }),
-      Organization.countDocuments({ createdBy: { $in: creators } }),
+      EmpowermentOrganization.countDocuments(managedRecordFilter(scope, { includeLegacyCustomers: true })),
+      Organization.countDocuments(managedRecordFilter(scope, { includeLegacyCustomers: true })),
       deliverySummary(scope),
     ]);
     const summary = deliveryRollup[0] || { total: 0, pending: 0, inProgress: 0, completed: 0, failed: 0, cancelled: 0, totalValue: 0 };
@@ -151,11 +179,6 @@ exports.list = async (req, res, next) => {
     }
     const spec = sectionSpec(req.params.section, scope, req.query.search);
     if (!spec) return res.status(404).json({ success: false, message: "Unknown oversight section." });
-    // Creator fields are restricted to actual CUSTOMER users, not merely IDs
-    // that happen to appear in a stale scope document.
-    if (req.params.section === "empowerment" || req.params.section === "organizations") {
-      spec.query.createdBy = { $in: await customerCreators(scope.customerIds) };
-    }
     const { page, limit } = pagination(req);
     const [items, total] = await Promise.all([
       spec.model.find(spec.query).select(spec.select).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
@@ -182,9 +205,6 @@ exports.getOne = async (req, res, next) => {
     }
     const spec = sectionSpec(req.params.section, scope);
     if (!spec) return res.status(404).json({ success: false, message: "Unknown oversight section." });
-    if (req.params.section === "empowerment" || req.params.section === "organizations") {
-      spec.query.createdBy = { $in: await customerCreators(scope.customerIds) };
-    }
     const item = await spec.model.findOne({ ...spec.query, _id: req.params.id }).select(spec.select).lean();
     if (item) return res.json({ item });
     // Deliberately distinguish a valid but out-of-zone identifier from a

@@ -8,11 +8,13 @@ const schema = new mongoose.Schema({
     immutable: true,
     index: true,
   },
-  // State-manager registrations retain their origin independently of the
-  // requester identity used by the existing customer discovery flow.
+  // Managed registrations retain their origin independently of the requester
+  // identity used by the existing customer discovery flow.
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
-  createdByRole: { type: String, enum: ["STATE_MANAGER", null], default: null },
+  createdByRole: { type: String, enum: ["STATE_MANAGER", "AGENT", null], default: null },
+  aggregatorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, immutable: true },
   stateManagerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+  zonalManagerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, immutable: true },
   schoolType: { type: String, trim: true, maxlength: 80, default: null },
   proprietorName: { type: String, trim: true, maxlength: 160, default: null },
   registrationNumber: { type: String, trim: true, maxlength: 120, default: null },

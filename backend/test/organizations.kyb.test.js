@@ -6,6 +6,8 @@ const models = require("../models/organizations.models");
 const OrganizationDocumentCleanup = require("../models/organizationDocumentCleanup.model");
 const service = require("../services/organizations.service");
 const controller = require("../controllers/organizations.controller");
+const empowermentController = require("../controllers/empowerment.controller");
+const managedRecordsRouter = require("../routes/managedRecords.routes");
 const adminOrganizationsRouter = require("../routes/adminOrganizations.routes");
 const documentService = require("../services/organizationDocument.service");
 const { validateFile, MAX_DOCUMENT_BYTES } = require("../services/amanaDocument.service");
@@ -167,6 +169,54 @@ test("organization profile uses view permission while documents retain dedicated
   assert.deepEqual(detailRoute.route.stack[0].handle.requiredPermissions, ["organizations.view"]);
 });
 
+test("managed create response contracts enforce Aggregator role and expose delegated handlers", async () => {
+  for (const handler of [
+    empowermentController.managedCreateOrganization,
+    empowermentController.managedCreateProgram,
+    controller.managedCreateOrganization,
+  ]) {
+    assert.equal(typeof handler, "function");
+  }
+  const paths = managedRecordsRouter.stack
+    .filter((layer) => layer.route)
+    .map((layer) => ({
+      path: layer.route.path,
+      methods: layer.route.methods,
+    }));
+  for (const path of [
+    "/empowerment/sponsors",
+    "/empowerment/programs",
+    "/organizations",
+  ]) {
+    assert.ok(paths.some((route) => route.path === path && route.methods.post));
+  }
+  const response = () => ({
+    statusCode: 200,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.value = value; return this; },
+  });
+  for (const [handler, message] of [
+    [
+      empowermentController.managedCreateOrganization,
+      "Only an Aggregator can create a managed sponsor.",
+    ],
+    [
+      empowermentController.managedCreateProgram,
+      "Only an Aggregator can create a managed program.",
+    ],
+    [
+      controller.managedCreateOrganization,
+      "Only an Aggregator can create a managed organization.",
+    ],
+  ]) {
+    const res = response();
+    await handler({ user: { _id: userId, role: "CUSTOMER" }, body: {} }, res);
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.value.success, false);
+    assert.equal(res.value.message, message);
+  }
+});
+
 test("admin organization profile omits document metadata without document permission", async () => {
   const organization = makeOrg();
   const previousFindById = models.Organization.findById;
@@ -202,6 +252,71 @@ test("admin organization profile omits document metadata without document permis
     assert.equal(documentsResponse.value.organization.documents[0].documentType, "CERTIFICATE_OF_INCORPORATION");
   } finally {
     models.Organization.findById = previousFindById;
+  }
+});
+
+test("hierarchy managers receive scoped operational organization details without tenant documents", async () => {
+  const organization = makeOrg({
+    contact: { name: "Private Contact", email: "private@example.test" },
+    documents: [{
+      name: "Private certificate",
+      documentType: "CERTIFICATE_OF_INCORPORATION",
+      storageKey: "private/tenant-document",
+      mimeType: "application/pdf",
+      size: 100,
+    }],
+  });
+  const previousFindOne = models.Organization.findOne;
+  const previousFindById = models.Organization.findById;
+  const previousScope = service.managedOrganizationFilter;
+  let capturedFilter;
+  models.Organization.findOne = (filter) => {
+    capturedFilter = filter;
+    return {
+      select() {
+        return { lean: async () => organization };
+      },
+    };
+  };
+  models.Organization.findById = () => ({
+    select: async () => organization,
+  });
+  service.managedOrganizationFilter = async () => ({ aggregatorId: userId });
+  const response = () => ({
+    statusCode: 200,
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.value = value; return this; },
+  });
+  try {
+    const profile = response();
+    await controller.adminDetail({
+      params: { id: String(organization._id) },
+      user: { _id: otherUserId, role: "ZONAL_MANAGER" },
+      staffAccess: { permissions: ["organizations.view"] },
+    }, profile);
+    assert.equal(profile.statusCode, 200);
+    assert.equal(String(capturedFilter.$and[0]._id), String(organization._id));
+    assert.equal(capturedFilter.$and[1].aggregatorId, userId);
+    assert.equal(profile.value.organization.documents, undefined);
+    assert.equal(profile.value.organization.contact, undefined);
+    assert.equal(profile.value.organization.representative, undefined);
+    assert.equal(profile.value.organization.phone, undefined);
+
+    const document = response();
+    await controller.organizationDocumentView({
+      params: {
+        id: String(organization._id),
+        documentId: String(organization.documents[0]._id),
+      },
+      user: { _id: otherUserId, role: "ZONAL_MANAGER" },
+      staffAccess: { permissions: ["organizations.documents.view"] },
+    }, document);
+    assert.equal(document.statusCode, 403);
+    assert.equal(document.value.message, "Organization access denied.");
+  } finally {
+    models.Organization.findOne = previousFindOne;
+    models.Organization.findById = previousFindById;
+    service.managedOrganizationFilter = previousScope;
   }
 });
 

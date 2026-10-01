@@ -129,6 +129,32 @@ const empowermentOrganizationSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    createdByRole: {
+      type: String,
+      trim: true,
+      default: null,
+      immutable: true,
+    },
+    // Optional hierarchy provenance. Null/absent values preserve legacy rows;
+    // createdBy remains the authenticated actor who submitted the record.
+    aggregatorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      immutable: true,
+    },
+    stateManagerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      immutable: true,
+    },
+    zonalManagerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      immutable: true,
+    },
   },
   {
     timestamps: true,
@@ -139,6 +165,8 @@ empowermentOrganizationSchema.index({
   createdBy: 1,
   createdAt: -1,
 });
+empowermentOrganizationSchema.index({ aggregatorId: 1, createdAt: -1 });
+empowermentOrganizationSchema.index({ stateManagerId: 1, createdAt: -1 });
 
 module.exports = mongoose.model(
   "EmpowermentOrganization",
