@@ -26,9 +26,16 @@ const {
 } = require("../services/providerManagement.service");
 const telecomAbode = require("../services/telecomAbode.service");
 const {
+  settleTelecomAbodeDataOutcome,
+} = require("../services/telecomAbodeDataSettlement.service");
+const {
   issueDataPlanQuote,
   verifyDataPlanQuote,
 } = require("../services/dataPlanQuote.service");
+const {
+  processTelecomAbodeDataCommissionEffect,
+  safeErrorCode: safeTelecomAbodeEffectErrorCode,
+} = require("../services/telecomAbodeDataCommissionRecovery.service");
 
 const AIRTIME_URL = "https://www.nellobytesystems.com/APIAirtimeV1.asp";
 
@@ -96,6 +103,11 @@ const getCredentials = () => {
     valid: Boolean(userId && apiKey),
   };
 };
+
+const safeDataErrorCode = (error, fallback = "DATA_ERROR") =>
+  typeof error?.code === "string"
+    ? error.code.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || fallback
+    : fallback;
 
 const parseProviderResponse = (data) => {
   if (data === null || data === undefined) {
@@ -687,10 +699,9 @@ exports.getDataPlans = async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error(
-      "GET DATA PLANS ERROR:",
-      error
-    );
+    console.error("GET DATA PLANS ERROR:", {
+      code: safeDataErrorCode(error, "DATA_CATALOG_ERROR"),
+    });
 
     return res.status(503).json({
       success: false,
@@ -1023,13 +1034,7 @@ const hasCustomerDataIdempotencyIndex = async () => {
   }
 };
 
-const runDataSuccessEffects = async ({
-  transaction,
-  customer,
-  networkCode,
-  mobileNumber,
-  selectedPlan,
-}) => {
+const runDataReferralSuccessEffect = async ({ transaction, customer }) => {
   try {
     const sourceSession = await mongoose.startSession();
     try {
@@ -1050,9 +1055,20 @@ const runDataSuccessEffects = async ({
       sourceId: transaction._id,
     });
   } catch (rewardError) {
-    console.error("DATA REFERRAL RECONCILIATION ERROR:", rewardError);
+    console.error("DATA REFERRAL RECONCILIATION ERROR:", {
+      code: safeDataErrorCode(rewardError, "REFERRAL_RECONCILIATION_ERROR"),
+    });
   }
+};
 
+const runDataSuccessEffects = async ({
+  transaction,
+  customer,
+  networkCode,
+  mobileNumber,
+  selectedPlan,
+}) => {
+  await runDataReferralSuccessEffect({ transaction, customer });
   try {
     const commissionResult = await distributeCommission({
       transaction,
@@ -1068,10 +1084,53 @@ const runDataSuccessEffects = async ({
         reference: transaction.reference,
       },
     });
-    console.log("DATA COMMISSION RESULT:", commissionResult);
+    console.log("DATA COMMISSION RECONCILED:", { succeeded: Boolean(commissionResult) });
   } catch (commissionError) {
-    console.error("DATA COMMISSION ERROR:", commissionError);
+    console.error("DATA COMMISSION ERROR:", {
+      code: safeDataErrorCode(commissionError, "DATA_COMMISSION_ERROR"),
+    });
   }
+};
+
+const runTelecomAbodeSuccessEffectsOnce = async ({
+  transaction,
+  customer,
+  networkCode,
+  mobileNumber,
+  selectedPlan,
+}) => {
+  try {
+    const commissionEffect = await processTelecomAbodeDataCommissionEffect(
+      transaction._id,
+    );
+    if (["RETRY_PENDING", "BLOCKED"].includes(commissionEffect?.status)) {
+      console.error("TELECOM ABODE DATA COMMISSION EFFECT DEFERRED:", {
+        code: commissionEffect.errorCode || "DATA_COMMISSION_EFFECT_DEFERRED",
+      });
+    }
+  } catch (error) {
+    console.error("TELECOM ABODE DATA COMMISSION EFFECT DEFERRED:", {
+      code: safeTelecomAbodeEffectErrorCode(error),
+    });
+  }
+
+  const claimed = await Transaction.findOneAndUpdate(
+    {
+      _id: transaction._id,
+      provider: "TELECOM_ABODE",
+      serviceType: "DATA",
+      status: "SUCCESSFUL",
+      "providerResponse.dataSuccessEffectsStarted": { $ne: true },
+    },
+    { $set: { "providerResponse.dataSuccessEffectsStarted": true } },
+    { new: true },
+  ).lean();
+  if (!claimed) return false;
+  await runDataReferralSuccessEffect({
+    transaction: claimed,
+    customer,
+  });
+  return true;
 };
 
 exports.buyData = async (req, res) => {
@@ -1310,6 +1369,17 @@ exports.buyData = async (req, res) => {
         message: "The selected plan belongs to a different provider. Refresh the data plans.",
       });
     }
+    if (
+      !hasProductQuote ||
+      typeof productQuote !== "string" ||
+      !productQuote.trim() ||
+      !process.env.JWT_SECRET
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: "The selected Data plan requires a valid signed quote. Refresh the plans before purchasing.",
+      });
+    }
     const catalogPlan = (await getCatalog(networkCode)).find(
       (plan) => plan.code === selectedPlan,
     );
@@ -1338,13 +1408,13 @@ exports.buyData = async (req, res) => {
         message: "This Data plan has no active ServicePay selling price.",
       });
     }
-    if (hasProductQuote && (!process.env.JWT_SECRET || !verifyDataPlanQuote(productQuote, {
+    if (!verifyDataPlanQuote(productQuote, {
       customerId: req.user._id,
       provider: selectedProvider,
       network: networkCode,
       plan: providerPlan,
       price: dataAmount,
-    }))) {
+    })) {
       return res.status(409).json({
         success: false,
         message: "The selected Data plan changed or its quote expired. Refresh the plans before purchasing.",
@@ -1585,7 +1655,9 @@ exports.buyData = async (req, res) => {
               network: networkCode,
               planCode: selectedPlan,
               outcome: "UNKNOWN",
-              message: providerError.message,
+              message: selectedProvider === "TELECOM_ABODE"
+                ? "Provider request outcome is unresolved."
+                : String(providerError.message || "Provider request outcome is unresolved.").slice(0, 320),
               ...(httpError ? {
                 httpStatus: providerError.statusCode,
                 ...(providerError.providerEvidence
@@ -1598,6 +1670,19 @@ exports.buyData = async (req, res) => {
       );
       const pending = await Transaction.findById(transaction._id);
       if (pending && pending.status !== "PENDING") {
+        if (
+          selectedProvider === "TELECOM_ABODE" &&
+          pending.status === "SUCCESSFUL" &&
+          pending.providerResponse?.telecomAbodeSettlement?.source === "TELECOM_ABODE_WEBHOOK"
+        ) {
+          await runTelecomAbodeSuccessEffectsOnce({
+            transaction: pending,
+            customer,
+            networkCode,
+            mobileNumber,
+            selectedPlan,
+          });
+        }
         return returnExisting(pending, networkCode, mobileNumber, selectedPlan);
       }
       return pendingResponse(pending || transaction, customer.walletBalance);
@@ -1607,8 +1692,9 @@ exports.buyData = async (req, res) => {
     console.log("DATA PROVIDER RESPONSE:", {
       httpStatus: providerResult.status,
       provider: selectedProvider,
-      reference: transaction.reference,
-      providerResponse,
+      providerStatus: typeof providerResponse.status === "string"
+        ? providerResponse.status.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24)
+        : "UNKNOWN",
     });
 
     const httpSuccess = providerResult.status >= 200 && providerResult.status < 300;
@@ -1635,6 +1721,72 @@ exports.buyData = async (req, res) => {
       : "UNKNOWN";
     if (outcome !== "SUCCESS") {
       if (outcome === "FAILED") {
+        if (selectedProvider === "TELECOM_ABODE") {
+          const settlement = await settleTelecomAbodeDataOutcome({
+            requestId: providerResponse.requestId,
+            outcome: "FAILED",
+            source: "REQUEST",
+            evidence: {
+              requestId: providerResponse.requestId,
+              service: providerResponse.service,
+              documentedDataStatus: providerResponse.documentedDataStatus,
+              providerStatus: providerResponse.rawProviderStatus || providerResponse.status,
+              amount: providerResponse.amount,
+              httpStatus: providerResult.status,
+            },
+          });
+          if (settlement.status === "REFUNDED") {
+            return res.status(422).json({
+              success: false,
+              message: "The provider reported failure and the wallet debit was refunded.",
+              reference: settlement.transaction.reference,
+              status: "FAILED",
+              walletDebitHeld: false,
+              walletBalance: settlement.walletBalance,
+            });
+          }
+          const current = await Transaction.findById(transaction._id);
+          if (current && current.status !== "PENDING") {
+            if (
+              current.status === "SUCCESSFUL" &&
+              current.providerResponse?.telecomAbodeSettlement?.source === "TELECOM_ABODE_WEBHOOK"
+            ) {
+              await runTelecomAbodeSuccessEffectsOnce({
+                transaction: current,
+                customer,
+                networkCode,
+                mobileNumber,
+                selectedPlan,
+              });
+            }
+            return returnExisting(current, networkCode, mobileNumber, selectedPlan);
+          }
+          await Transaction.updateOne(
+            {
+              _id: transaction._id,
+              status: "PENDING",
+              dispatchStatus: "SENDING",
+            },
+            {
+              $set: {
+                dispatchStatus: "UNKNOWN",
+                providerStatus: settlement.status === "AMOUNT_MISMATCH"
+                  ? "AMOUNT_MISMATCH"
+                  : "UNKNOWN",
+                providerResponse: {
+                  ...transaction.providerResponse,
+                  network: networkCode,
+                  planCode: selectedPlan,
+                  response: providerResponse,
+                  httpStatus: providerResult.status,
+                  outcome: "UNKNOWN",
+                },
+              },
+            },
+          );
+          const pending = await Transaction.findById(transaction._id);
+          return pendingResponse(pending || transaction, customer.walletBalance);
+        }
         const failed = await Transaction.findOneAndUpdate(
           {
             _id: transaction._id,
@@ -1701,34 +1853,115 @@ exports.buyData = async (req, res) => {
       );
       const pending = await Transaction.findById(transaction._id);
       if (pending && pending.status !== "PENDING") {
+        if (
+          selectedProvider === "TELECOM_ABODE" &&
+          pending.status === "SUCCESSFUL" &&
+          pending.providerResponse?.telecomAbodeSettlement?.source === "TELECOM_ABODE_WEBHOOK"
+        ) {
+          await runTelecomAbodeSuccessEffectsOnce({
+            transaction: pending,
+            customer,
+            networkCode,
+            mobileNumber,
+            selectedPlan,
+          });
+        }
         return returnExisting(pending, networkCode, mobileNumber, selectedPlan);
       }
       return pendingResponse(pending || transaction, customer.walletBalance);
     }
 
-    const successfulTransaction = await Transaction.findOneAndUpdate(
-      {
-        _id: transaction._id,
-        status: "PENDING",
-        dispatchStatus: activeDispatchStatus,
-      },
-      {
-        $set: {
-          status: "SUCCESSFUL",
-          dispatchStatus: "SUCCEEDED",
-          providerStatus: getProviderStatus(providerResponse) || "SUCCESS",
-          providerReference:
-            String(providerResponse.providerReference || providerResponse.requestId || "").trim(),
-          providerResponse: {
-            ...transaction.providerResponse,
-            network: networkCode,
-            planCode: selectedPlan,
-            response: providerResponse,
+    let successfulTransaction;
+    if (selectedProvider === "TELECOM_ABODE") {
+      const settlement = await settleTelecomAbodeDataOutcome({
+        requestId: providerResponse.requestId,
+        outcome: "SUCCESS",
+        source: "REQUEST",
+        evidence: {
+          requestId: providerResponse.requestId,
+          service: providerResponse.service,
+          documentedDataStatus: providerResponse.documentedDataStatus,
+          providerStatus: providerResponse.rawProviderStatus || providerResponse.status,
+          amount: providerResponse.amount,
+          httpStatus: providerResult.status,
+        },
+      });
+      if (settlement.status === "SETTLED") {
+        successfulTransaction = settlement.transaction;
+      } else if (settlement.status === "ALREADY_TERMINAL") {
+        const current = settlement.transaction;
+        if (current?.status === "SUCCESSFUL") {
+          successfulTransaction = current;
+          if (
+            current.providerResponse?.telecomAbodeSettlement?.source === "TELECOM_ABODE_WEBHOOK"
+          ) {
+            await runTelecomAbodeSuccessEffectsOnce({
+              transaction: current,
+              customer,
+              networkCode,
+              mobileNumber,
+              selectedPlan,
+            });
+          }
+        } else if (current) {
+          return returnExisting(current, networkCode, mobileNumber, selectedPlan);
+        }
+      }
+      if (!successfulTransaction) {
+        await Transaction.updateOne(
+          {
+            _id: transaction._id,
+            status: "PENDING",
+            dispatchStatus: "SENDING",
+          },
+          {
+            $set: {
+              dispatchStatus: "UNKNOWN",
+              providerStatus: settlement.status === "AMOUNT_MISMATCH"
+                ? "AMOUNT_MISMATCH"
+                : "UNKNOWN",
+              providerResponse: {
+                ...transaction.providerResponse,
+                network: networkCode,
+                planCode: selectedPlan,
+                response: providerResponse,
+                httpStatus: providerResult.status,
+                outcome: "UNKNOWN",
+              },
+            },
+          },
+        );
+        const pending = await Transaction.findById(transaction._id);
+        if (pending?.status && pending.status !== "PENDING") {
+          return returnExisting(pending, networkCode, mobileNumber, selectedPlan);
+        }
+        return pendingResponse(pending || transaction, customer.walletBalance);
+      }
+    } else {
+      successfulTransaction = await Transaction.findOneAndUpdate(
+        {
+          _id: transaction._id,
+          status: "PENDING",
+          dispatchStatus: activeDispatchStatus,
+        },
+        {
+          $set: {
+            status: "SUCCESSFUL",
+            dispatchStatus: "SUCCEEDED",
+            providerStatus: getProviderStatus(providerResponse) || "SUCCESS",
+            providerReference:
+              String(providerResponse.providerReference || providerResponse.requestId || "").trim(),
+            providerResponse: {
+              ...transaction.providerResponse,
+              network: networkCode,
+              planCode: selectedPlan,
+              response: providerResponse,
+            },
           },
         },
-      },
-      { new: true },
-    );
+        { new: true },
+      );
+    }
     if (!successfulTransaction) {
       const current = await Transaction.findById(transaction._id);
       if (current?.status === "SUCCESSFUL") {
@@ -1753,13 +1986,23 @@ exports.buyData = async (req, res) => {
     }
     transaction = successfulTransaction;
 
-    await runDataSuccessEffects({
-      transaction,
-      customer,
-      networkCode,
-      mobileNumber,
-      selectedPlan,
-    });
+    if (selectedProvider === "TELECOM_ABODE") {
+      await runTelecomAbodeSuccessEffectsOnce({
+        transaction,
+        customer,
+        networkCode,
+        mobileNumber,
+        selectedPlan,
+      });
+    } else {
+      await runDataSuccessEffects({
+        transaction,
+        customer,
+        networkCode,
+        mobileNumber,
+        selectedPlan,
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -1778,7 +2021,10 @@ exports.buyData = async (req, res) => {
       providerResponse,
     });
   } catch (error) {
-    console.error("DATA PURCHASE ERROR:", error);
+    console.error("DATA PURCHASE ERROR:", {
+      code: safeDataErrorCode(error, "DATA_PURCHASE_ERROR"),
+      statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : undefined,
+    });
     if (transaction && dispatchClaimed) {
       await Transaction.updateOne(
         {
@@ -1795,15 +2041,30 @@ exports.buyData = async (req, res) => {
               network: transaction.providerResponse?.network,
               planCode: transaction.providerResponse?.planCode,
               outcome: "UNKNOWN",
-              message: error.message,
+              message: "Provider request outcome is unresolved.",
             },
           },
         },
       ).catch((persistError) => {
-        console.error("DATA PENDING STATE ERROR:", persistError);
+        console.error("DATA PENDING STATE ERROR:", {
+          code: safeDataErrorCode(persistError, "DATA_PENDING_STATE_ERROR"),
+        });
       });
       const current = await Transaction.findById(transaction._id);
       if (current && current.status !== "PENDING") {
+        if (
+          current.provider === "TELECOM_ABODE" &&
+          current.status === "SUCCESSFUL" &&
+          current.providerResponse?.telecomAbodeSettlement?.source === "TELECOM_ABODE_WEBHOOK"
+        ) {
+          await runTelecomAbodeSuccessEffectsOnce({
+            transaction: current,
+            customer,
+            networkCode: current.providerResponse?.network,
+            mobileNumber: current.phone,
+            selectedPlan: current.providerResponse?.planCode,
+          });
+        }
         return returnExisting(current, current.providerResponse?.network, current.phone, current.providerResponse?.planCode);
       }
       return pendingResponse(transaction, customer?.walletBalance);
@@ -1811,7 +2072,6 @@ exports.buyData = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Data purchase could not be completed.",
-      error: error.message,
     });
   }
 };
@@ -1874,7 +2134,9 @@ exports.getDataReconciliationQueue = async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("DATA RECONCILIATION QUEUE ERROR:", error);
+    console.error("DATA RECONCILIATION QUEUE ERROR:", {
+      code: safeDataErrorCode(error, "DATA_RECONCILIATION_QUEUE_ERROR"),
+    });
     return res.status(500).json({
       success: false,
       message: "Unable to load the data reconciliation queue.",

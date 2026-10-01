@@ -220,7 +220,11 @@ const verifyTelecomAbodeSource = (req, options = {}) => {
       if (Object.values(headers).some((header) => header.present)) return false;
     } else {
       // Two independently interpreted forwarding chains are ambiguous.
-      if (headers.forwarded.present || !headers["x-forwarded-for"].present) {
+      if (
+        headers.forwarded.present ||
+        !headers["x-forwarded-for"].present ||
+        !headers["cf-connecting-ip"].present
+      ) {
         return false;
       }
       const chain = parseForwardedFor(headers["x-forwarded-for"].value);
@@ -241,9 +245,10 @@ const verifyTelecomAbodeSource = (req, options = {}) => {
     const normalizedSource = normalizeParsedIp(source);
     if (normalizedSource !== TELECOM_ABODE_SOURCE_IP) return false;
 
-    // Optional single-address identity headers may corroborate the derived
-    // source, but they never select it. Reject disagreements and malformed
-    // values rather than choosing one of several competing claims.
+    // On the trusted-proxy path, CF-Connecting-IP is required and must
+    // corroborate the XFF-derived source. Other single-address identity
+    // headers are optional corroboration only; none may select the source.
+    // Reject disagreements rather than choosing between competing claims.
     for (const name of [
       "x-real-ip",
       "cf-connecting-ip",

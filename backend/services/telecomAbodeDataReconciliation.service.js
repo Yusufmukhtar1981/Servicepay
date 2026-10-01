@@ -1,6 +1,8 @@
 const Transaction = require("../models/transaction.model");
-const LedgerEntry = require("../models/ledgerEntry.model");
 const telecomAbode = require("./telecomAbode.service");
+const {
+  settleTelecomAbodeDataOutcome,
+} = require("./telecomAbodeDataSettlement.service");
 
 const UNKNOWN_RESULT = Object.freeze({
   outcome: "UNKNOWN",
@@ -11,21 +13,13 @@ const createTelecomAbodeDataReconciliationService = ({
   transactionModel = Transaction,
   getTransactionByRequestId = (requestId) =>
     telecomAbode.getTransactionByRequestId(requestId),
+  settleOutcome = settleTelecomAbodeDataOutcome,
 } = {}) => {
   const reconcileByReference = async (reference) => {
     const transaction = await transactionModel.findOne({ reference }).lean();
     if (!transaction) {
       return { httpStatus: 404, body: { outcome: "NOT_FOUND" } };
     }
-
-    const lockedResponse = () => ({
-      httpStatus: 409,
-      body: {
-        outcome: "NOT_ELIGIBLE",
-        status: transaction.status,
-        dispatchStatus: transaction.dispatchStatus,
-      },
-    });
 
     if (
       transaction.serviceType !== "DATA" ||
@@ -37,15 +31,20 @@ const createTelecomAbodeDataReconciliationService = ({
       !transaction.providerRequestId ||
       transaction.reference !== transaction.providerRequestId
     ) {
-      return lockedResponse();
+      return {
+        httpStatus: 409,
+        body: {
+          outcome: "NOT_ELIGIBLE",
+          status: transaction.status,
+          dispatchStatus: transaction.dispatchStatus,
+        },
+      };
     }
 
     let result;
     try {
       result = await getTransactionByRequestId(transaction.providerRequestId);
     } catch (error) {
-      // Provider 404, timeout and transport failures are uncertainty, never
-      // evidence that delivery failed or permission to send another purchase.
       return {
         httpStatus: 202,
         body: {
@@ -76,7 +75,7 @@ const createTelecomAbodeDataReconciliationService = ({
     const rawStatus = String(result.rawProviderStatus || "").trim().toUpperCase();
     const rawOutcome = ["SUCCESS", "SUCCESSFUL", "COMPLETED"].includes(rawStatus)
       ? "SUCCESS"
-      : ["FAILED", "FAILURE"].includes(rawStatus)
+      : ["FAILED", "FAIL", "FAILURE"].includes(rawStatus)
         ? "FAILED"
         : ["PENDING", "PROCESSING"].includes(rawStatus)
           ? "PENDING"
@@ -101,161 +100,72 @@ const createTelecomAbodeDataReconciliationService = ({
         body: { ...UNKNOWN_RESULT, providerLookup: "CONTRADICTORY" },
       };
     }
-
     if (result.status === "PENDING" || result.status === "UNKNOWN") {
       return {
         httpStatus: 202,
         body: { ...UNKNOWN_RESULT, providerStatus: result.status },
       };
     }
-    if (
-      result.amount !== undefined &&
-      transaction.providerResponse?.providerPrice !== undefined &&
-      Number(result.amount) !== Number(transaction.providerResponse.providerPrice)
-    ) {
+
+    const settled = await settleOutcome({
+      requestId: transaction.providerRequestId,
+      outcome: result.status,
+      source: "STATUS_QUERY",
+      evidence: {
+        requestId: result.requestId,
+        service: result.service,
+        documentedDataStatus: true,
+        providerStatus: result.rawProviderStatus || result.status,
+        amount: result.amount,
+        httpStatus: 200,
+      },
+    });
+
+    if (settled.status === "SETTLED") {
       return {
-        httpStatus: 202,
-        body: { ...UNKNOWN_RESULT, providerLookup: "AMOUNT_MISMATCH" },
+        httpStatus: 200,
+        body: {
+          outcome: "SUCCESS",
+          status: "SUCCESSFUL",
+          dispatchStatus: "SUCCEEDED",
+          reference: settled.transaction.reference,
+        },
       };
     }
-
-    const evidence = {
-      provider: "TELECOM_ABODE",
-      service: "data",
-      status: result.status,
-      "request-id": result.requestId,
-      reference: result.providerReference || result.requestId,
-    };
-
-    const debit = await LedgerEntry.findOne({
-      _id: transaction.debitLedgerEntryId,
-      user: transaction.customerId,
-      transactionId: transaction._id,
-      reference: transaction.reference,
-      service: "DATA",
-      direction: "DEBIT",
-      amount: transaction.amount,
-    }).lean();
-    if (!debit) {
-      return {
-        httpStatus: 202,
-        body: { ...UNKNOWN_RESULT, providerLookup: "DEBIT_LEDGER_UNVERIFIED" },
-      };
-    }
-
-    if (result.status === "FAILED") {
-      const failed = await transactionModel.findOneAndUpdate(
-        {
-          _id: transaction._id,
-          reference: transaction.reference,
-          providerRequestId: transaction.providerRequestId,
-          serviceType: "DATA",
-          provider: "TELECOM_ABODE",
-          status: "PENDING",
-          dispatchStatus: "UNKNOWN",
-          dispatchClaimedAt: { $ne: null },
-          debitLedgerEntryId: { $ne: null },
-        },
-        {
-          $set: {
-            status: "FAILED",
-            dispatchStatus: "FAILED",
-            providerStatus: "FAILED",
-            providerReference: transaction.providerRequestId,
-            providerResponse: {
-              ...(transaction.providerResponse || {}),
-              reconciliation: {
-                source: "TELECOM_ABODE_STATUS_QUERY",
-                httpStatus: 200,
-                outcome: "FAILED",
-                requestIdMatches: true,
-                refundStatus: "NOT_AUTOMATED",
-                response: evidence,
-              },
-            },
-          },
-        },
-        { new: true },
-      );
-      if (!failed) {
-        const current = await transactionModel.findById(transaction._id).lean();
-        return {
-          httpStatus: current?.status === "FAILED" ? 200 : 202,
-          body: {
-            outcome: current?.status === "FAILED" ? "FAILED" : "UNKNOWN",
-            status: current?.status || "PENDING",
-            dispatchStatus: current?.dispatchStatus || "UNKNOWN",
-            ...(current?.status === "FAILED"
-              ? { reference: current.reference, walletDebitHeld: true }
-              : {}),
-          },
-        };
-      }
+    if (settled.status === "REFUNDED") {
       return {
         httpStatus: 200,
         body: {
           outcome: "FAILED",
           status: "FAILED",
-          dispatchStatus: "FAILED",
-          reference: failed.reference,
-          walletDebitHeld: true,
+          dispatchStatus: "REFUNDED",
+          reference: settled.transaction.reference,
+          walletDebitHeld: false,
         },
       };
     }
-
-    const reconciled = await transactionModel.findOneAndUpdate(
-      {
-        _id: transaction._id,
-        reference: transaction.reference,
-        providerRequestId: transaction.providerRequestId,
-        serviceType: "DATA",
-        provider: "TELECOM_ABODE",
-        status: "PENDING",
-        dispatchStatus: "UNKNOWN",
-        dispatchClaimedAt: { $ne: null },
-        debitLedgerEntryId: { $ne: null },
-      },
-      {
-        $set: {
-          status: "SUCCESSFUL",
-          dispatchStatus: "SUCCEEDED",
-          providerStatus: "SUCCESSFUL",
-          providerReference: transaction.providerRequestId,
-          providerResponse: {
-            ...(transaction.providerResponse || {}),
-            reconciliation: {
-              source: "TELECOM_ABODE_STATUS_QUERY",
-              httpStatus: 200,
-              outcome: "SUCCESS",
-              requestIdMatches: true,
-            },
-          },
-        },
-      },
-      { new: true },
-    );
-    if (!reconciled) {
-      const current = await transactionModel.findById(transaction._id).lean();
+    if (settled.status === "ALREADY_TERMINAL") {
+      const successful = settled.transaction.status === "SUCCESSFUL";
+      const refunded = settled.transaction.status === "FAILED" &&
+        settled.transaction.dispatchStatus === "REFUNDED";
       return {
-        httpStatus: current?.status === "SUCCESSFUL" ? 200 : 202,
+        httpStatus: successful || refunded ? 200 : 202,
         body: {
-          outcome: current?.status === "SUCCESSFUL" ? "SUCCESS" : "UNKNOWN",
-          status: current?.status || "PENDING",
-          dispatchStatus: current?.dispatchStatus || "UNKNOWN",
-          ...(current?.status === "SUCCESSFUL"
-            ? { reference: current.reference }
-            : {}),
+          outcome: successful ? "SUCCESS" : refunded ? "FAILED" : "UNKNOWN",
+          status: settled.transaction.status,
+          dispatchStatus: settled.transaction.dispatchStatus,
+          ...(successful || refunded ? { reference: settled.transaction.reference } : {}),
+          ...(refunded ? { walletDebitHeld: false } : {}),
         },
       };
     }
-
     return {
-      httpStatus: 200,
+      httpStatus: 202,
       body: {
-        outcome: "SUCCESS",
-        status: "SUCCESSFUL",
-        dispatchStatus: "SUCCEEDED",
-        reference: reconciled.reference,
+        ...UNKNOWN_RESULT,
+        providerLookup: settled.status === "AMOUNT_MISMATCH"
+          ? "AMOUNT_MISMATCH"
+          : "SETTLEMENT_UNAVAILABLE",
       },
     };
   };

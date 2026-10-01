@@ -3,9 +3,6 @@ const Transaction = require("../models/transaction.model");
 
 const DEFAULT_BASE_URL = "https://telecomabode.com.ng/api";
 const DEFAULT_TIMEOUT_MS = 30000;
-// Preserve the isolated adapter's existing `plan` field. Provider documentation
-// conflicts with examples that use `plan_id`; the authoritative field remains
-// unconfirmed and must not be represented as verified.
 
 class TelecomAbodeError extends Error {
   constructor(message, { statusCode = 502, code = "TELECOM_ABODE_ERROR", providerEvidence } = {}) {
@@ -165,9 +162,24 @@ const normalizePurchaseStatus = (data) => {
 
 const documentedDataOutcome = (data) => {
   if (!data || typeof data !== "object" || Array.isArray(data)) return "PENDING";
-  if (data.status === "success" && data.Status === "successful") return "SUCCESS";
-  if (data.status === "fail" && data.Status === "failed") return "FAILED";
-  return "PENDING";
+  const statusFields = ["status", "Status"].filter((field) =>
+    Object.prototype.hasOwnProperty.call(data, field),
+  );
+  if (!statusFields.length) return "PENDING";
+
+  const outcomes = [];
+  for (const field of statusFields) {
+    if (typeof data[field] !== "string") return "PENDING";
+    const status = data[field].trim().toLowerCase();
+    if (status === "success" || status === "successful") {
+      outcomes.push("SUCCESS");
+    } else if (status === "fail" || status === "failed") {
+      outcomes.push("FAILED");
+    } else {
+      return "PENDING";
+    }
+  }
+  return new Set(outcomes).size === 1 ? outcomes[0] : "PENDING";
 };
 
 const getCollection = (data, collectionName) => {
@@ -471,7 +483,7 @@ const buildDataPurchasePayload = ({
   return {
     network,
     phone: recipientPhone,
-    plan_id: plan,
+    plan,
     "request-id": requestId,
   };
 };
@@ -545,14 +557,28 @@ const normalizeDataPurchaseResponse = (
     (messageSignalsFailure && messageSignalsSuccess) ||
     (documentedOutcome === "SUCCESS" && messageSignalsFailure) ||
     (documentedOutcome === "FAILED" && messageSignalsSuccess);
+  const suppliedAmount = Object.prototype.hasOwnProperty.call(data, "amount");
+  const amountText = typeof data?.amount === "number"
+    ? String(data.amount)
+    : typeof data?.amount === "string"
+      ? data.amount.trim()
+      : "";
+  const amountIsValid = !suppliedAmount ||
+    (/^(?:0\.\d{1,2}|[1-9]\d*(?:\.\d{1,2})?)$/.test(amountText) &&
+      Number.isFinite(Number(amountText)) &&
+      Number(amountText) > 0);
+  const terminalOutcome = contradictory || !amountIsValid
+    ? "PENDING"
+    : documentedOutcome;
   return {
     provider: "TELECOM_ABODE",
     service: "data",
     servicepayReference,
-    status: providerRequestId ? documentedOutcome : "PENDING",
-    documentedDataStatus: Boolean(providerRequestId && documentedOutcome !== "PENDING"),
+    status: providerRequestId ? terminalOutcome : "PENDING",
+    documentedDataStatus: Boolean(providerRequestId && terminalOutcome !== "PENDING"),
     requestId: expectedRequestId,
     ...(providerRequestId ? { providerReference: providerRequestId } : {}),
+    ...(suppliedAmount && amountIsValid ? { amount: amountText } : {}),
     ...(providerMessages.length
       ? {
           providerMessage: providerMessages
@@ -566,6 +592,7 @@ const normalizeDataPurchaseResponse = (
         }
       : {}),
     ...(contradictory ? { contradictory: true } : {}),
+    ...(!amountIsValid ? { reason: "INVALID_PROVIDER_AMOUNT" } : {}),
   };
 };
 
@@ -581,23 +608,64 @@ const normalizeTransaction = (data, configuredKey) => {
       ? { rawProviderStatus: rawProviderStatus.slice(0, 24) }
       : {}),
   };
+  const hasAmount = Object.prototype.hasOwnProperty.call(data, "amount");
+  let invalidProviderAmount = false;
   for (const field of ["request-id", "amount", "service"]) {
     const value = data[field];
     if (typeof value === "string" || typeof value === "number") {
       if (field === "request-id") {
         result.requestId = sanitizeProviderText(value, configuredKey).slice(0, 128);
         result.providerReference = result.requestId;
-      } else if (field === "amount" && /^[0-9]+(?:\.[0-9]+)?$/.test(String(value))) {
-        result.amount = String(value).slice(0, 32);
+      } else if (field === "amount") {
+        if (/^(?:0\.\d{1,2}|[1-9]\d*(?:\.\d{1,2})?)$/.test(String(value)) &&
+            Number.isFinite(Number(value)) &&
+            Number(value) > 0) {
+          result.amount = String(value).slice(0, 32);
+        } else {
+          invalidProviderAmount = true;
+        }
       } else if (field === "service" && /^[a-zA-Z _-]{1,32}$/.test(String(value))) {
         result.service = String(value);
       }
     }
   }
-  const providerMessage = [data.message, data.api_response, data.response]
-    .find((value) => typeof value === "string" && value.trim());
-  if (providerMessage) {
-    result.providerMessage = sanitizeProviderText(providerMessage, configuredKey);
+  if (hasAmount && result.amount === undefined) invalidProviderAmount = true;
+  if (invalidProviderAmount) {
+    result.status = "PENDING";
+    result.documentedDataStatus = false;
+    result.invalidProviderAmount = true;
+  }
+  const providerMessages = [
+    ["message", data.message],
+    ["api_response", data.api_response],
+    ["response", data.response],
+    ["response_description", data.response_description],
+    ["responseDescription", data.responseDescription],
+    ["error_description", data.error_description],
+    ["error", data.error],
+  ]
+    .filter(([, value]) => typeof value === "string" && value.trim())
+    .map(([field, value]) => ({
+      field,
+      text: sanitizeProviderText(value, configuredKey),
+    }));
+  const messageSignalsFailure = providerMessages.some(({ text }) =>
+    /\b(FAILED|FAILURE|ERROR|INVALID|REJECTED|DECLINED|CANCELLED|CANCELED)\b/i.test(text),
+  );
+  const messageSignalsSuccess = providerMessages.some(({ text }) =>
+    /\b(SUCCESS|SUCCESSFUL|COMPLETED)\b/i.test(text),
+  );
+  const contradictory =
+    (messageSignalsFailure && messageSignalsSuccess) ||
+    (status === "SUCCESS" && messageSignalsFailure) ||
+    (status === "FAILED" && messageSignalsSuccess);
+  if (contradictory) {
+    result.status = "PENDING";
+    result.documentedDataStatus = false;
+    result.contradictory = true;
+  }
+  if (providerMessages.length) {
+    result.providerMessage = providerMessages[0].text;
   }
   return result;
 };
@@ -649,8 +717,8 @@ const createTelecomAbodeService = ({
       });
     }
     if (response.status < 200 || response.status >= 300) {
-      // HTTP 422 is final only for the documented, fully correlated DATA
-      // failure pair. Every other non-2xx response remains unknown.
+      // HTTP 422 is final only for a documented DATA failure with the exact
+      // echoed request-id. Every other non-2xx response remains unknown.
       if (returnDataHttpResponse && endpoint === "/data" &&
           response.status === 422 &&
           documentedDataOutcome(response.data) === "FAILED" &&
@@ -847,7 +915,7 @@ const createTelecomAbodeService = ({
       provider: "TELECOM_ABODE",
       phone: payload.phone,
       "providerResponse.providerNetworkId": payload.network,
-      "providerResponse.providerPlanId": payload.plan_id,
+      "providerResponse.providerPlanId": payload.plan,
       status: "PENDING",
       dispatchStatus: "CLAIMED",
       dispatchClaimedAt: { $ne: null },

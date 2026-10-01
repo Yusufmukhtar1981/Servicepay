@@ -16,6 +16,7 @@ const Transaction = require("../models/transaction.model");
 const LedgerEntry = require("../models/ledgerEntry.model");
 const DataPriceOverride = require("../models/dataPriceOverride.model");
 const ProviderManagementConfig = require("../models/providerManagementConfig.model");
+const AppSettings = require("../models/appSettings.model");
 const Commission = require("../models/commission.model");
 const ReferralRewardReconciliation = require("../models/referralRewardReconciliation.model");
 const clubkonnectRoutes = require("../routes/clubkonnect.routes");
@@ -26,6 +27,10 @@ const {
 const telecomAbode = require("../services/telecomAbode.service");
 const { createTelecomAbodeService } = telecomAbode;
 const { issueDataPlanQuote } = require("../services/dataPlanQuote.service");
+const { servicepayPlanCode } = require("../services/telecomAbodeDataCatalog.service");
+
+const TELECOM_PLAN_CODE = servicepayPlanCode("01", "1GB SME - 30 days");
+const TELECOM_API_KEY = "mock-telecom-abode-key";
 
 let replicaSet;
 let axiosGet;
@@ -44,6 +49,7 @@ let originalTelecomGetDataPlans;
 let originalTelecomPurchaseData;
 let originalTelecomGetTransactionByRequestId;
 let originalTelecomApiKey;
+let configuredSellingPrice = 100;
 let sequence = 0;
 
 const invoke = async (user, body, { idempotencyKey, headers = {} } = {}) => {
@@ -109,29 +115,54 @@ const seedPendingTransaction = async (user, dispatchStatus) => Transaction.creat
     idempotencyKey: `manual-${sequence}`,
     dispatchStatus,
     dispatchClaimedAt: dispatchStatus === "READY" ? null : new Date(),
-    providerResponse: { network: "01", planCode: "plan-1" },
+    providerResponse: { network: "01", planCode: TELECOM_PLAN_CODE },
   });
 
-const purchaseBody = () => ({
+const purchaseBody = (user) => ({
   network: "MTN",
   phone: "08012345678",
-  planCode: "plan-1",
+  planCode: TELECOM_PLAN_CODE,
+  productQuote: issueDataPlanQuote({
+    customerId: user._id,
+    provider: "TELECOM_ABODE",
+    network: "01",
+    plan: {
+      code: TELECOM_PLAN_CODE,
+      name: "1GB SME - 30 days",
+      networkId: 1,
+      providerPlanId: 77,
+    },
+    price: configuredSellingPrice,
+  }),
 });
 
-const configureTelecomAbode = async () => {
-  process.env.TELECOM_ABODE_API_KEY = "mock-telecom-abode-key";
-  await ProviderManagementConfig.create({
-    _id: "DATA",
-    service: "DATA",
-    primaryProvider: "TELECOM_ABODE",
-    fallbackProvider: null,
-    providerStates: [
-      { provider: "CLUBKONNECT", enabled: true },
-      { provider: "TELECOM_ABODE", enabled: true },
-    ],
-  });
+const configureTelecomAbode = async ({ price = 150, sellingPrice = price } = {}) => {
+  process.env.TELECOM_ABODE_API_KEY = TELECOM_API_KEY;
+  configuredSellingPrice = sellingPrice;
+  await ProviderManagementConfig.findOneAndUpdate({ service: "DATA" }, {
+    $set: {
+      _id: "DATA",
+      service: "DATA",
+      primaryProvider: "TELECOM_ABODE",
+      fallbackProvider: null,
+      providerStates: [
+        { provider: "CLUBKONNECT", enabled: true },
+        { provider: "TELECOM_ABODE", enabled: true },
+      ],
+    },
+  }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  await DataPriceOverride.findOneAndUpdate({
+    networkCode: "01",
+    planCode: TELECOM_PLAN_CODE,
+  }, {
+    $set: {
+      providerPrice: price,
+      sellingPrice,
+      active: true,
+    },
+  }, { upsert: true, new: true, setDefaultsOnInsert: true });
   const service = createTelecomAbodeService({
-    apiKey: "mock-telecom-abode-key",
+    apiKey: TELECOM_API_KEY,
     transactionModel: Transaction,
     transport: async (config) => {
       if (config.url.endsWith("/get-networks?service=data")) {
@@ -141,25 +172,52 @@ const configureTelecomAbode = async () => {
         ] };
       }
       if (config.url.endsWith("/data_plans")) {
+        plansRequestCount += 1;
+        if (plansUnavailable) throw new Error("mock plan catalog outage");
         return { status: 200, data: { status: "success", data_plans: [{
           plan_id: 77, network: "MTN", datasize: "1GB",
-          type: "SME", day: "30 days", price: 150,
+          type: "SME", day: "30 days", price,
         }] } };
       }
+      if (config.url.endsWith("/data")) {
+        dataRequestCount += 1;
+        assert.equal(config.method, "POST");
+        assert.equal(config.headers.Authorization, `Token ${TELECOM_API_KEY}`);
+        assert.deepEqual(Object.keys(config.data).sort(), ["network", "phone", "plan", "request-id"].sort());
+        assert.equal(config.data.network, 1);
+        assert.equal(config.data.plan, 77);
+        assert.equal(config.data.phone, "08012345678");
+        assert.match(config.data["request-id"], /^DATA-/);
+        telecomPurchaseCount += 1;
+        let data;
+        if (telecomPurchaseResponse instanceof Error) throw telecomPurchaseResponse;
+        if (typeof telecomPurchaseResponse === "function") {
+          data = await telecomPurchaseResponse(config.data["request-id"]);
+        } else if (telecomPurchaseResponse) {
+          data = telecomPurchaseResponse;
+        } else if (providerDataResponse instanceof Error) {
+          throw providerDataResponse;
+        } else {
+          const clubResponse = typeof providerDataResponse === "function"
+            ? await providerDataResponse(
+              "https://mock-clubkonnect.invalid/APIDatabundleV1.asp",
+              { params: { RequestID: config.data["request-id"] } },
+            )
+            : providerDataResponse;
+          data = clubResponse?.data ?? clubResponse;
+          if (data && Object.prototype.hasOwnProperty.call(data, "RequestID")) {
+            data = { ...data, "request-id": data.RequestID };
+            delete data.RequestID;
+          }
+          if (data && typeof data === "object" && !Array.isArray(data) &&
+              !Object.prototype.hasOwnProperty.call(data, "request-id")) {
+            data = { ...data, "request-id": config.data["request-id"] };
+          }
+        }
+        return { status: telecomPurchaseHttpStatus, data };
+      }
       assert.equal(config.url, "https://telecomabode.com.ng/api/data");
-      assert.equal(config.method, "POST");
-      assert.equal(config.headers.Authorization, "Token mock-telecom-abode-key");
-      assert.deepEqual(Object.keys(config.data).sort(), ["network", "phone", "plan", "request-id"].sort());
-      assert.equal(config.data.network, 1);
-      assert.equal(config.data.plan, 77);
-      assert.equal(config.data.phone, "08012345678");
-      assert.match(config.data["request-id"], /^DATA-/);
-      telecomPurchaseCount += 1;
-      if (telecomPurchaseResponse instanceof Error) throw telecomPurchaseResponse;
-      const data = typeof telecomPurchaseResponse === "function"
-        ? telecomPurchaseResponse(config.data["request-id"])
-        : telecomPurchaseResponse || { status: "success", "request-id": config.data["request-id"] };
-      return { status: telecomPurchaseHttpStatus, data };
+      throw new Error(`Unexpected Telecom Abode URL in test: ${config.url}`);
     },
   });
   telecomAbode.getDataPlans = async () => {
@@ -192,6 +250,7 @@ test.before(async () => {
     ProviderManagementConfig,
     Commission,
     ReferralRewardReconciliation,
+    AppSettings,
   ].map((model) => model.init()));
   axiosGet = axios.get;
   originalTelecomGetDataPlans = telecomAbode.getDataPlans;
@@ -212,12 +271,15 @@ test.after(async () => {
 });
 
 test.beforeEach(async () => {
+  // getServiceConfig prefers GLOBAL_SETTINGS over the provider-config collection.
+  // Clear both persisted sources, then seed this test's actual Telecom Abode route.
   await Promise.all([
     User.deleteMany({}),
     Transaction.deleteMany({}),
     LedgerEntry.collection.deleteMany({}),
     DataPriceOverride.deleteMany({}),
     ProviderManagementConfig.deleteMany({}),
+    AppSettings.deleteMany({}),
     Commission.collection.deleteMany({}),
     ReferralRewardReconciliation.collection.deleteMany({}),
   ]);
@@ -236,6 +298,7 @@ test.beforeEach(async () => {
   telecomAbode.getDataPlans = originalTelecomGetDataPlans;
   telecomAbode.purchaseData = originalTelecomPurchaseData;
   telecomAbode.getTransactionByRequestId = originalTelecomGetTransactionByRequestId;
+  process.env.TELECOM_ABODE_API_KEY = TELECOM_API_KEY;
   axios.get = async (url, config) => {
     if (url.includes("DatabundlePlansV2")) {
       plansRequestCount += 1;
@@ -268,11 +331,12 @@ test.beforeEach(async () => {
     }
     throw new Error(`Unexpected provider URL in test: ${url}`);
   };
+  await configureTelecomAbode({ price: 100, sellingPrice: 100 });
 });
 
 test("DATA admission atomically debits wallet, writes ledger and transaction, then preserves success response", async () => {
   const user = await makeUser();
-  const result = await invoke(user, purchaseBody(), { idempotencyKey: "atomic-success-1" });
+  const result = await invoke(user, purchaseBody(user), { idempotencyKey: "atomic-success-1" });
 
   assert.equal(result.status, 200);
   assert.equal(result.body.success, true);
@@ -291,7 +355,7 @@ test("DATA admission atomically debits wallet, writes ledger and transaction, th
   assert.equal(dataRequestCount, 1);
 });
 
-test("customer receives a product-bound quote and can buy the same ClubKonnect plan once", async () => {
+test("customer receives a product-bound Telecom Abode quote and can buy the same plan once", async () => {
   const user = await makeUser();
   const catalog = await invokeHandler(controller.getDataPlans, {
     user: { _id: user._id },
@@ -301,7 +365,7 @@ test("customer receives a product-bound quote and can buy the same ClubKonnect p
   assert.equal(catalog.status, 200);
   const quote = catalog.body.plans[0].productQuote;
   assert.equal(typeof quote, "string");
-  const body = { ...purchaseBody(), amount: 100, productQuote: quote };
+  const body = { ...purchaseBody(user), amount: 100, productQuote: quote };
   const first = await invoke(user, body, { idempotencyKey: "customer-quoted-data" });
   const retry = await invoke(user, body, { idempotencyKey: "customer-quoted-data" });
   assert.equal(first.status, 200);
@@ -319,10 +383,16 @@ test("tampered, expired, another customer's, and repriced quotes all reject befo
     query: {},
   });
   const quote = catalog.body.plans[0].productQuote;
-  const plan = { code: "plan-1", name: "Mock 1GB", price: 100 };
+  const plan = {
+    code: TELECOM_PLAN_CODE,
+    name: "1GB SME - 30 days",
+    price: 100,
+    networkId: 1,
+    providerPlanId: 77,
+  };
   const expired = issueDataPlanQuote({
     customerId: user._id,
-    provider: "CLUBKONNECT",
+    provider: "TELECOM_ABODE",
     network: "01",
     plan,
     price: 100,
@@ -334,16 +404,22 @@ test("tampered, expired, another customer's, and repriced quotes all reject befo
     [other, quote],
   ];
   for (const [buyer, productQuote] of cases) {
-    const result = await invoke(buyer, { ...purchaseBody(), productQuote }, {
+    const result = await invoke(buyer, { ...purchaseBody(user), productQuote }, {
       idempotencyKey: `invalid-quote-${++sequence}`,
     });
     assert.equal(result.status, 409);
   }
-  await DataPriceOverride.create({
-    networkCode: "01", planCode: "plan-1",
-    providerPrice: 100, sellingPrice: 200, active: true,
+  await DataPriceOverride.findOneAndUpdate({
+    networkCode: "01",
+    planCode: TELECOM_PLAN_CODE,
+  }, {
+    $set: {
+      providerPrice: 100,
+      sellingPrice: 200,
+      active: true,
+    },
   });
-  const repriced = await invoke(user, { ...purchaseBody(), productQuote: quote }, {
+  const repriced = await invoke(user, { ...purchaseBody(user), productQuote: quote }, {
     idempotencyKey: "repriced-quote",
   });
   assert.equal(repriced.status, 409);
@@ -367,7 +443,7 @@ test("Telecom Abode requires its signed product quote before wallet debit", asyn
   const result = await invoke(user, {
     network: "MTN",
     phone: "08012345678",
-    planCode: "77",
+    planCode: TELECOM_PLAN_CODE,
     planProvider: "TELECOM_ABODE",
     quotedPrice: 150,
     amount: 150,
@@ -383,7 +459,7 @@ test("Telecom Abode requires its signed product quote before wallet debit", asyn
 });
 
 const telecomPurchaseBody = (quote) => ({
-  network: "MTN", phone: "08012345678", planCode: "77",
+  network: "MTN", phone: "08012345678", planCode: TELECOM_PLAN_CODE,
   planProvider: "TELECOM_ABODE", quotedPrice: 150,
   productQuote: quote,
 });
@@ -438,7 +514,7 @@ for (const [scenario, providerReply, expectedStatus, expectedBalance] of [
     assert.equal(await User.findById(user._id).then((row) => row.walletBalance), expectedBalance);
     assert.equal(await LedgerEntry.countDocuments({ user: user._id, service: "DATA", direction: "DEBIT" }), 1);
     assert.equal(telecomPurchaseCount, 1);
-    assert.equal(first.status, expectedStatus === "SUCCESSFUL" ? 200 : expectedStatus === "FAILED" ? 400 : 202);
+    assert.equal(first.status, expectedStatus === "SUCCESSFUL" ? 200 : expectedStatus === "FAILED" ? 422 : 202);
     const retry = await invoke(user, body, { idempotencyKey: key });
     assert.equal(retry.body.reference, first.body.reference);
     assert.equal(telecomPurchaseCount, 1);
@@ -491,8 +567,10 @@ test("Telecom Abode status query reconciles a correlated PENDING DATA purchase t
     queryCount += 1;
     assert.equal(requestId, transaction.providerRequestId);
     return {
+      provider: "TELECOM_ABODE",
       status: "SUCCESS",
       rawProviderStatus: "successful",
+      documentedDataStatus: true,
       requestId,
       providerReference: requestId,
       service: "data",
@@ -523,8 +601,10 @@ test("correlated Telecom Abode status-query failure refunds exactly once under c
   telecomAbode.getTransactionByRequestId = async (requestId) => {
     queryCount += 1;
     return {
+      provider: "TELECOM_ABODE",
       status: "FAILED",
       rawProviderStatus: "failed",
+      documentedDataStatus: true,
       requestId,
       providerReference: requestId,
       service: "data",
@@ -674,7 +754,10 @@ test("separate Telecom Abode adapter instances cannot consume the same dispatch 
     serviceType: "DATA", provider: "TELECOM_ABODE", phone: "08012345678",
     amount: 150, status: "PENDING", dispatchStatus: "CLAIMED",
     dispatchClaimedAt: new Date(),
-    providerResponse: { network: "01", planCode: "77", providerNetworkId: 1, providerPlanId: 77 },
+    providerResponse: {
+      network: "01", planCode: TELECOM_PLAN_CODE,
+      providerNetworkId: 1, providerPlanId: 77,
+    },
   });
   let posts = 0;
   const transport = async (config) => {
@@ -732,8 +815,8 @@ test("ClubKonnect Airtime success behavior remains unchanged", async () => {
 test("same customer retry key admits and dispatches only once under concurrent retries", async () => {
   const user = await makeUser();
   const results = await Promise.all([
-    invoke(user, purchaseBody(), { idempotencyKey: "concurrent-data-key" }),
-    invoke(user, purchaseBody(), { idempotencyKey: "concurrent-data-key" }),
+    invoke(user, purchaseBody(user), { idempotencyKey: "concurrent-data-key" }),
+    invoke(user, purchaseBody(user), { idempotencyKey: "concurrent-data-key" }),
   ]);
 
   assert.equal(await Transaction.countDocuments({ customerId: user._id, serviceType: "DATA" }), 1);
@@ -746,7 +829,7 @@ test("same customer retry key admits and dispatches only once under concurrent r
 test("a reused DATA key rejects a different phone, network or plan without another debit", async () => {
   const user = await makeUser();
   const key = "fingerprint-conflict-key";
-  const first = await invoke(user, purchaseBody(), { idempotencyKey: key });
+  const first = await invoke(user, purchaseBody(user), { idempotencyKey: key });
   assert.equal(first.status, 200);
 
   for (const changed of [
@@ -754,7 +837,7 @@ test("a reused DATA key rejects a different phone, network or plan without anoth
     { network: "Airtel" },
     { planCode: "plan-2" },
   ]) {
-    const conflict = await invoke(user, { ...purchaseBody(), ...changed }, { idempotencyKey: key });
+    const conflict = await invoke(user, { ...purchaseBody(user), ...changed }, { idempotencyKey: key });
     assert.equal(conflict.status, 409);
     assert.match(conflict.body.message, /already used for a different data purchase/i);
   }
@@ -766,8 +849,8 @@ test("a reused DATA key rejects a different phone, network or plan without anoth
 
 test("a new DATA key intentionally buys the same plan a second time", async () => {
   const user = await makeUser();
-  const first = await invoke(user, purchaseBody(), { idempotencyKey: "first-intent-key" });
-  const second = await invoke(user, purchaseBody(), { idempotencyKey: "second-intent-key" });
+  const first = await invoke(user, purchaseBody(user), { idempotencyKey: "first-intent-key" });
+  const second = await invoke(user, purchaseBody(user), { idempotencyKey: "second-intent-key" });
   assert.equal(first.status, 200);
   assert.equal(second.status, 200);
   assert.notEqual(first.body.reference, second.body.reference);
@@ -783,9 +866,9 @@ test("timeout stays pending and a retry never resends or refunds", async () => {
   timeout.code = "ECONNABORTED";
   providerDataResponse = timeout;
 
-  const first = await invoke(user, purchaseBody(), { idempotencyKey: "timeout-data-key" });
+  const first = await invoke(user, purchaseBody(user), { idempotencyKey: "timeout-data-key" });
   plansUnavailable = true;
-  const repeated = await invoke(user, purchaseBody(), { idempotencyKey: "timeout-data-key" });
+  const repeated = await invoke(user, purchaseBody(user), { idempotencyKey: "timeout-data-key" });
 
   assert.equal(first.status, 202);
   assert.equal(repeated.status, 202);
@@ -808,11 +891,11 @@ test("correlated deterministic provider failure atomically refunds once and pres
     },
   });
 
-  const first = await invoke(user, purchaseBody(), { idempotencyKey: "failed-data-key" });
-  const repeated = await invoke(user, purchaseBody(), { idempotencyKey: "failed-data-key" });
+  const first = await invoke(user, purchaseBody(user), { idempotencyKey: "failed-data-key" });
+  const repeated = await invoke(user, purchaseBody(user), { idempotencyKey: "failed-data-key" });
 
-  assert.equal(first.status, 400);
-  assert.equal(first.body.status, "REFUNDED");
+  assert.equal(first.status, 422);
+  assert.equal(first.body.status, "FAILED");
   assert.equal(first.body.walletBalance, 500);
   assert.equal(repeated.status, 400);
   assert.equal(repeated.body.status, "REFUNDED");
@@ -844,7 +927,7 @@ test("an uncorrelated explicit provider failure remains pending without a refund
     data: { RequestID: "another-order", status: "FAILED" },
   };
 
-  const result = await invoke(user, purchaseBody(), { idempotencyKey: "uncorrelated-failure-key" });
+  const result = await invoke(user, purchaseBody(user), { idempotencyKey: "uncorrelated-failure-key" });
   const transaction = await Transaction.findOne({ customerId: user._id });
 
   assert.equal(result.status, 202);
@@ -864,7 +947,7 @@ test("a correlated failure message without a terminal failure status is not refu
     },
   });
 
-  const result = await invoke(user, purchaseBody(), { idempotencyKey: "message-only-failure-key" });
+  const result = await invoke(user, purchaseBody(user), { idempotencyKey: "message-only-failure-key" });
   const transaction = await Transaction.findOne({ customerId: user._id });
 
   assert.equal(result.status, 202);
@@ -941,7 +1024,7 @@ test("uncertain non-success provider response is pending rather than refunded", 
     data: { reference: "provider-reference-without-an-outcome" },
   };
 
-  const result = await invoke(user, purchaseBody(), { idempotencyKey: "uncertain-data-key" });
+  const result = await invoke(user, purchaseBody(user), { idempotencyKey: "uncertain-data-key" });
 
   assert.equal(result.status, 202);
   assert.equal(await User.findById(user._id).then((record) => record.walletBalance), 400);
@@ -955,8 +1038,9 @@ test("X-Idempotency-Key from the customer API is accepted without a body key", a
   const customerApiBody = {
     network: "MTN",
     phone: "08012345678",
-    planCode: "plan-1",
+    planCode: TELECOM_PLAN_CODE,
     amount: 100,
+    productQuote: purchaseBody(user).productQuote,
   };
   const result = await invoke(user, customerApiBody, {
     headers: { "X-Idempotency-Key": "customer-api-header-key" },
@@ -966,7 +1050,7 @@ test("X-Idempotency-Key from the customer API is accepted without a body key", a
   });
 
   assert.equal(result.status, 200);
-  assert.equal(result.body.transaction.provider, "CLUBKONNECT");
+  assert.equal(result.body.transaction.provider, "TELECOM_ABODE");
   assert.equal(replay.status, 200);
   assert.equal(dataRequestCount, 1);
   assert.equal(await Transaction.countDocuments({
@@ -978,7 +1062,7 @@ test("X-Idempotency-Key from the customer API is accepted without a body key", a
 test("legacy body and Idempotency-Key contracts remain supported, conflicting keys fail closed", async () => {
   const bodyKeyUser = await makeUser();
   const legacyBody = await invoke(bodyKeyUser, {
-    ...purchaseBody(),
+    ...purchaseBody(bodyKeyUser),
     idempotencyKey: "legacy-body-contract",
   });
   assert.equal(legacyBody.status, 200);
@@ -988,7 +1072,7 @@ test("legacy body and Idempotency-Key contracts remain supported, conflicting ke
   }), 1);
 
   const headerKeyUser = await makeUser();
-  const legacyHeader = await invoke(headerKeyUser, purchaseBody(), {
+  const legacyHeader = await invoke(headerKeyUser, purchaseBody(headerKeyUser), {
     headers: { "Idempotency-Key": "legacy-header-contract" },
   });
   assert.equal(legacyHeader.status, 200);
@@ -999,7 +1083,7 @@ test("legacy body and Idempotency-Key contracts remain supported, conflicting ke
 
   const conflictUser = await makeUser();
   const conflict = await invoke(conflictUser, {
-    ...purchaseBody(),
+    ...purchaseBody(conflictUser),
     idempotencyKey: "body-key",
   }, { idempotencyKey: "header-key" });
   assert.equal(conflict.status, 400);
@@ -1010,7 +1094,7 @@ test("accepted and in-progress ClubKonnect statuses stay pending with no reward 
   const user = await makeUser();
   for (const status of ["PENDING", "PROCESSING", "ORDER_RECEIVED"]) {
     providerDataResponse = { status: 200, data: { status } };
-    const result = await invoke(user, purchaseBody(), {
+    const result = await invoke(user, purchaseBody(user), {
       idempotencyKey: `provider-${status.toLowerCase()}-key`,
     });
     assert.equal(result.status, 202, `${status} must not finalize delivery`);
@@ -1031,16 +1115,15 @@ test("contradictory provider success and failure signals remain UNKNOWN and pend
   const contradictoryBodies = [
     {
       status: "SUCCESSFUL",
-      responseCode: "FAILED",
       message: "The provider rejected this order",
     },
-    { status: "FAILED", success: true },
-    { status: "SUCCESSFUL", message: "The provider rejected this order." },
+    { status: "FAILED", message: "The provider completed this order successfully." },
+    { status: "SUCCESSFUL", api_response: "FAILED" },
   ];
 
   for (const [index, data] of contradictoryBodies.entries()) {
     providerDataResponse = { status: 200, data };
-    const result = await invoke(user, purchaseBody(), {
+    const result = await invoke(user, purchaseBody(user), {
       idempotencyKey: `contradictory-outcome-key-${index}`,
     });
     const transaction = await Transaction.findOne({
@@ -1051,7 +1134,8 @@ test("contradictory provider success and failure signals remain UNKNOWN and pend
     assert.equal(result.status, 202);
     assert.equal(transaction.status, "PENDING");
     assert.equal(transaction.dispatchStatus, "UNKNOWN");
-    assert.equal(transaction.providerStatus, "CONTRADICTORY");
+    assert.equal(transaction.providerStatus, "PENDING");
+    assert.equal(transaction.providerResponse.response.contradictory, true);
     assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 0);
     assert.equal(await ReferralRewardReconciliation.countDocuments({ sourceId: transaction._id }), 0);
   }
@@ -1073,12 +1157,12 @@ test("active provider I/O stays debited until correlated failure is confirmed", 
     });
   });
 
-  const purchase = invoke(user, purchaseBody(), { idempotencyKey: "inflight-no-refund-key" });
+  const purchase = invoke(user, purchaseBody(user), { idempotencyKey: "inflight-no-refund-key" });
   while (!finishProviderCall) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   const duringProviderIo = await Transaction.findOne({ customerId: user._id });
-  assert.equal(duringProviderIo.dispatchStatus, "CLAIMED");
+  assert.equal(duringProviderIo.dispatchStatus, "SENDING");
   assert.equal(duringProviderIo.status, "PENDING");
   assert.equal(await User.findById(user._id).then((record) => record.walletBalance), 400);
   assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "CREDIT" }), 0);
@@ -1087,7 +1171,7 @@ test("active provider I/O stays debited until correlated failure is confirmed", 
   const result = await purchase;
   const afterProviderFailure = await Transaction.findById(duringProviderIo._id);
 
-  assert.equal(result.status, 400);
+  assert.equal(result.status, 422);
   assert.equal(afterProviderFailure.status, "FAILED");
   assert.equal(afterProviderFailure.dispatchStatus, "REFUNDED");
   assert.equal(await User.findById(user._id).then((record) => record.walletBalance), 500);
@@ -1097,18 +1181,17 @@ test("active provider I/O stays debited until correlated failure is confirmed", 
 test("an existing retry outcome is returned before catalog access during outage or repricing", async () => {
   const user = await makeUser();
   const key = "retry-during-catalog-outage";
-  const first = await invoke(user, purchaseBody(), { idempotencyKey: key });
+  const first = await invoke(user, purchaseBody(user), { idempotencyKey: key });
   assert.equal(first.status, 200);
-  await DataPriceOverride.create({
+  await DataPriceOverride.findOneAndUpdate({
     networkCode: "01",
-    planCode: "plan-1",
-    providerPrice: 100,
-    sellingPrice: 250,
-    active: true,
+    planCode: TELECOM_PLAN_CODE,
+  }, {
+    $set: { providerPrice: 100, sellingPrice: 250, active: true },
   });
 
   plansUnavailable = true;
-  const repeated = await invoke(user, purchaseBody(), { idempotencyKey: key });
+  const repeated = await invoke(user, purchaseBody(user), { idempotencyKey: key });
 
   assert.equal(repeated.status, 200);
   assert.equal(repeated.body.reference, first.body.reference);
@@ -1122,7 +1205,7 @@ test("new admissions fail closed until the unique idempotency index exists", asy
   const user = await makeUser();
   await Transaction.collection.dropIndex("uniq_customer_service_idempotency_key");
 
-  const result = await invoke(user, purchaseBody(), { idempotencyKey: "index-not-ready" });
+  const result = await invoke(user, purchaseBody(user), { idempotencyKey: "index-not-ready" });
 
   assert.equal(result.status, 503);
   assert.equal(dataRequestCount, 0);

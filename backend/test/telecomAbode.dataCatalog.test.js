@@ -107,7 +107,7 @@ test("Telecom Abode DATA dispatch consumes a durable claim; other paid services 
   }), {
     network: 2,
     phone: "08012345678",
-    plan_id: 17,
+    plan: 17,
     "request-id": "SP-DATA-1",
   });
   assert.throws(() => buildDataPurchasePayload({
@@ -118,12 +118,12 @@ test("Telecom Abode DATA dispatch consumes a durable claim; other paid services 
     planMetadata: { plan_id: 17, network: 2 },
   }), { code: "INVALID_ARGUMENT" });
 
-  const unpairedSuccess = normalizeDataPurchaseResponse({
+  const singleStatusSuccess = normalizeDataPurchaseResponse({
     status: "success",
     "request-id": "SP-DATA-2",
   }, { requestId: "SP-DATA-2" });
-  assert.equal(unpairedSuccess.status, "PENDING");
-  assert.equal(unpairedSuccess.documentedDataStatus, false);
+  assert.equal(singleStatusSuccess.status, "SUCCESS");
+  assert.equal(singleStatusSuccess.documentedDataStatus, true);
   const pairedSuccess = normalizeDataPurchaseResponse({
     status: "success",
     Status: "successful",
@@ -141,8 +141,8 @@ test("Telecom Abode DATA dispatch consumes a durable claim; other paid services 
     requestId: "SP-DATA-3",
     configuredKey: "test-provider-secret",
   });
-  assert.equal(contradictorySuccess.status, "SUCCESS");
-  assert.equal(contradictorySuccess.documentedDataStatus, true);
+  assert.equal(contradictorySuccess.status, "PENDING");
+  assert.equal(contradictorySuccess.documentedDataStatus, false);
   assert.equal(contradictorySuccess.contradictory, true);
   assert.match(contradictorySuccess.providerMessage, /message: Request accepted for processing/);
   assert.match(contradictorySuccess.providerMessage, /api_response: Transaction REJECTED/);
@@ -215,10 +215,10 @@ test("Telecom Abode DATA dispatch consumes a durable claim; other paid services 
   assert.deepEqual(ready.calls[2].data, {
     network: 1,
     phone: "08012345678",
-    plan_id: 17,
+    plan: 17,
     "request-id": "SP-DATA-READY",
   });
-  assert.equal(Object.hasOwn(ready.calls[2].data, "plan"), false);
+  assert.equal(Object.hasOwn(ready.calls[2].data, "plan_id"), false);
   assert.equal(Object.hasOwn(ready.calls[2].data, "bypass"), false);
   assert.equal(Object.hasOwn(ready.calls[2].data, "ported"), false);
 

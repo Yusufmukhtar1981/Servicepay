@@ -22,6 +22,7 @@ const ProviderManagementConfig = require("../models/providerManagementConfig.mod
 const {
   servicepayPlanCode,
 } = require("../services/telecomAbodeDataCatalog.service");
+const { issueDataPlanQuote } = require("../services/dataPlanQuote.service");
 
 const PROVIDER_PLAN_ID = 186;
 const PROVIDER_NETWORK_ID = 1;
@@ -102,7 +103,6 @@ const purchase = (user, {
   planCode = PLAN_CODE,
   amount = SERVICEPAY_PRICE,
   productQuote,
-  includeQuote = false,
   extraFields = {},
 } = {}) => {
   const headers = { "x-idempotency-key": key };
@@ -112,7 +112,18 @@ const purchase = (user, {
     planCode,
     amount,
   };
-  if (includeQuote) body.productQuote = productQuote;
+  body.productQuote = productQuote || issueDataPlanQuote({
+    customerId: user._id,
+    provider: "TELECOM_ABODE",
+    network: "01",
+    plan: {
+      code: planCode,
+      name: PLAN_NAME,
+      networkId: PROVIDER_NETWORK_ID,
+      providerPlanId: PROVIDER_PLAN_ID,
+    },
+    price: SERVICEPAY_PRICE,
+  });
   Object.assign(body, extraFields);
   return invoke(customerController.buyData, {
     user: { _id: user._id },
@@ -305,12 +316,15 @@ test("HTTP DATA route authenticates, verifies PIN, persists correlation before d
 
   try {
     const key = "http-route-live-mtn-hot-4";
+    const catalog = await readCustomerCatalog(user);
+    assert.equal(catalog.status, 200);
     const body = {
       network: "MTN",
       phone: CUSTOMER_PHONE,
       planCode: PLAN_CODE,
       amount: SERVICEPAY_PRICE,
       transactionPin: "2468",
+      productQuote: catalog.body.plans[0].productQuote,
     };
     const unauthorized = await postJson(server, "/api/clubkonnect/data", { key, body });
     assert.equal(unauthorized.status, 401);
@@ -454,7 +468,7 @@ test("missing or inactive canonical price and raw provider IDs fail before debit
   assert.equal(clubKonnectCalls, 0);
 });
 
-test("amount mismatches and invalid optional quotes reject; concurrent same-key requests debit and dispatch once", async () => {
+test("amount mismatches and invalid product quotes reject; concurrent same-key requests debit and dispatch once", async () => {
   const user = await makeUser();
   await addCanonicalPrice();
   const catalog = await readCustomerCatalog(user);
@@ -466,7 +480,6 @@ test("amount mismatches and invalid optional quotes reject; concurrent same-key 
   })).status, 409);
   assert.equal((await purchase(user, {
     key: "forged-quote",
-    includeQuote: true,
     productQuote: `${plan.productQuote}x`,
   })).status, 409);
   assert.equal(await Transaction.countDocuments({ customerId: user._id }), 0);
@@ -496,11 +509,11 @@ test("amount mismatches and invalid optional quotes reject; concurrent same-key 
 
 for (const [scenario, outcome, expectedStatus, expectedDispatchStatus, heldDebit] of [
   ["exact correlated success", "SUCCESS", 200, "SUCCEEDED", false],
-  ["exact correlated failure", "FAILED", 422, "FAILED", true],
+  ["exact correlated failure", "FAILED", 422, "REFUNDED", false],
   ["unknown outcome", "UNKNOWN", 202, "UNKNOWN", true],
   ["success paired with explicit rejection message remains unknown", "CONTRADICTORY", 202, "UNKNOWN", true],
 ]) {
-  test(`${scenario} settles only documented Telecom Abode evidence and never auto-refunds`, async () => {
+  test(`${scenario} settles only documented Telecom Abode evidence atomically`, async () => {
     const user = await makeUser();
     await addCanonicalPrice();
     setOutcome(outcome);
@@ -529,11 +542,12 @@ for (const [scenario, outcome, expectedStatus, expectedDispatchStatus, heldDebit
       direction: "CREDIT",
     });
     assert.equal(debitCount, 1);
-    assert.equal(creditCount, 0);
-    if (outcome === "FAILED") assert.equal(result.body.walletDebitHeld, true);
+    assert.equal(creditCount, outcome === "FAILED" ? 1 : 0);
+    if (outcome === "FAILED") assert.equal(result.body.walletDebitHeld, false);
     if (outcome === "SUCCESS") assert.equal(Boolean(result.body.walletDebitHeld), false);
-    assert.equal(heldDebit, outcome !== "SUCCESS");
-    assert.equal(await User.findById(user._id).then((row) => row.walletBalance), 1000 - SERVICEPAY_PRICE);
+    assert.equal(heldDebit, ["UNKNOWN", "CONTRADICTORY"].includes(outcome));
+    assert.equal(await User.findById(user._id).then((row) => row.walletBalance),
+      outcome === "FAILED" ? 1000 : 1000 - SERVICEPAY_PRICE);
     assert.equal(dispatchCalls, 1);
     assert.equal(clubKonnectCalls, 0);
 
@@ -549,6 +563,6 @@ for (const [scenario, outcome, expectedStatus, expectedDispatchStatus, heldDebit
     assert.equal(await LedgerEntry.countDocuments({
       transactionId: transaction._id,
       direction: "CREDIT",
-    }), 0);
+    }), outcome === "FAILED" ? 1 : 0);
   });
 }

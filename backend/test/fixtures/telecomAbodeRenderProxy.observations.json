@@ -1,0 +1,349 @@
+{
+  "diagnosticCommit": "cce8616310d25de2b99dc4eea36c158ce49a29d4",
+  "rows": [
+    {
+      "host": "api.servicepay.ng",
+      "case": "ordinary",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["34.55.20.87, 172.68.23.80, 10.25.136.6"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": { "values": ["api.servicepay.ng"], "truncated": false }
+      }
+    },
+    {
+      "host": "api.servicepay.ng",
+      "case": "spoof-xff",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["49.12.92.4,34.55.20.87, 172.71.146.109, 10.31.245.18"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": { "values": ["api.servicepay.ng"], "truncated": false }
+      }
+    },
+    {
+      "host": "api.servicepay.ng",
+      "case": "spoof-mapped",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["::ffff:49.12.92.4,34.55.20.87, 172.68.23.80, 10.25.136.6"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": { "values": ["api.servicepay.ng"], "truncated": false }
+      }
+    },
+    {
+      "host": "api.servicepay.ng",
+      "case": "spoof-prefix",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": [
+            "49.12.92.4, 203.0.113.77,34.55.20.87, 172.71.146.109, 10.29.222.90"
+          ],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": { "values": ["api.servicepay.ng"], "truncated": false }
+      }
+    },
+    {
+      "host": "api.servicepay.ng",
+      "case": "spoof-cf",
+      "http": 403,
+      "responseType": "text/html; charset=UTF-8",
+      "server": "cloudflare"
+    },
+    {
+      "host": "api.servicepay.ng",
+      "case": "spoof-forwarded",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["34.55.20.87, 172.69.7.241, 10.25.136.6"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": {
+          "values": ["for=49.12.92.4;proto=https"],
+          "truncated": false
+        },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": { "values": ["api.servicepay.ng"], "truncated": false }
+      }
+    },
+    {
+      "host": "api.servicepay.ng",
+      "case": "spoof-real",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["34.55.20.87, 172.68.23.80, 10.25.136.6"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": { "values": ["api.servicepay.ng"], "truncated": false }
+      }
+    },
+    {
+      "host": "api.servicepay.ng",
+      "case": "spoof-all",
+      "http": 403,
+      "responseType": "text/html; charset=UTF-8",
+      "server": "cloudflare"
+    },
+    {
+      "host": "servicepay-j6jg.onrender.com",
+      "case": "ordinary",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["34.55.20.87, 172.71.146.84, 10.31.245.18"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": {
+          "values": ["servicepay-j6jg.onrender.com"],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "host": "servicepay-j6jg.onrender.com",
+      "case": "spoof-xff",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["49.12.92.4,34.55.20.87, 172.71.151.207, 10.29.222.90"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": {
+          "values": ["servicepay-j6jg.onrender.com"],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "host": "servicepay-j6jg.onrender.com",
+      "case": "spoof-mapped",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["::ffff:49.12.92.4,34.55.20.87, 172.71.151.207, 10.29.222.90"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": {
+          "values": ["servicepay-j6jg.onrender.com"],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "host": "servicepay-j6jg.onrender.com",
+      "case": "spoof-prefix",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": [
+            "49.12.92.4, 203.0.113.77,34.55.20.87, 172.71.146.84, 10.31.245.18"
+          ],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": {
+          "values": ["servicepay-j6jg.onrender.com"],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "host": "servicepay-j6jg.onrender.com",
+      "case": "spoof-cf",
+      "http": 403,
+      "responseType": "text/html; charset=UTF-8",
+      "server": "cloudflare"
+    },
+    {
+      "host": "servicepay-j6jg.onrender.com",
+      "case": "spoof-forwarded",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["34.55.20.87, 104.22.62.54, 10.31.245.18"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": {
+          "values": ["for=49.12.92.4;proto=https"],
+          "truncated": false
+        },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": {
+          "values": ["servicepay-j6jg.onrender.com"],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "host": "servicepay-j6jg.onrender.com",
+      "case": "spoof-real",
+      "http": 200,
+      "observed": {
+        "socketPeer": "127.0.0.1",
+        "xForwardedFor": {
+          "values": ["34.55.20.87, 172.68.22.199, 10.29.222.90"],
+          "truncated": false
+        },
+        "cfConnectingIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "xRealIp": { "values": [], "truncated": false },
+        "trueClientIp": {
+          "values": ["34.55.20.87"],
+          "truncated": false
+        },
+        "forwarded": { "values": [], "truncated": false },
+        "cfConnectingIpv6": { "values": [], "truncated": false },
+        "host": {
+          "values": ["servicepay-j6jg.onrender.com"],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "host": "servicepay-j6jg.onrender.com",
+      "case": "spoof-all",
+      "http": 403,
+      "responseType": "text/html; charset=UTF-8",
+      "server": "cloudflare"
+    }
+  ]
+}

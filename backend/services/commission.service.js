@@ -43,7 +43,7 @@ const normalizeObjectId = (value) => {
   return new mongoose.Types.ObjectId(rawValue);
 };
 
-const getCustomerHierarchy = async (customer) => {
+const getCustomerHierarchy = async (customer, session = null) => {
   const customerId = normalizeObjectId(
     customer?._id || customer
   );
@@ -57,9 +57,9 @@ const getCustomerHierarchy = async (customer) => {
   const customerDocument =
     customer && customer._id
       ? customer
-      : await User.findById(customerId).select(
-          "agentId stateManagerId zonalManagerId"
-        );
+      : await (session
+          ? User.findById(customerId).session(session)
+          : User.findById(customerId)).select("agentId stateManagerId zonalManagerId");
 
   if (!customerDocument) {
     throw new Error("Customer not found.");
@@ -86,11 +86,8 @@ const getCustomerHierarchy = async (customer) => {
     agentId &&
     (!stateManagerId || !zonalManagerId)
   ) {
-    const agent = await User.findById(
-      agentId
-    ).select(
-      "stateManagerId zonalManagerId"
-    );
+    const agentQuery = User.findById(agentId).select("stateManagerId zonalManagerId");
+    const agent = await (session ? agentQuery.session(session) : agentQuery);
 
     if (agent) {
       stateManagerId =
@@ -115,10 +112,10 @@ const getCustomerHierarchy = async (customer) => {
     stateManagerId &&
     !zonalManagerId
   ) {
-    const stateManager =
-      await User.findById(
-        stateManagerId
-      ).select("zonalManagerId");
+    const stateManagerQuery = User.findById(stateManagerId).select("zonalManagerId");
+    const stateManager = await (session
+      ? stateManagerQuery.session(session)
+      : stateManagerQuery);
 
     if (stateManager) {
       zonalManagerId =
@@ -140,6 +137,7 @@ const getProductCommissionSetting =
   async ({
     serviceType,
     productCode,
+    session = null,
   }) => {
     const normalizedServiceType =
       normalizeText(serviceType);
@@ -159,13 +157,14 @@ const getProductCommissionSetting =
       );
     }
 
-    return ProductCommission.findOne({
+    const query = ProductCommission.findOne({
       serviceType:
         normalizedServiceType,
       productCode:
         normalizedProductCode,
       isActive: true,
     });
+    return session ? query.session(session) : query;
   };
 
 const buildCommissionRecord = ({
@@ -225,6 +224,100 @@ const buildCommissionRecord = ({
       commissionType: "FIXED_AMOUNT",
     },
   };
+};
+
+const buildTelecomAbodeDataCommissionRecords = async ({
+  transaction,
+  customer,
+  metadata = {},
+  session = null,
+}) => {
+  if (!transaction?._id || normalizeText(transaction.status) !== "SUCCESSFUL") {
+    return { configured: false, records: [] };
+  }
+  const setting = await getProductCommissionSetting({
+    serviceType: "DATA",
+    productCode: "DATA",
+    session,
+  });
+  if (!setting) return { configured: false, records: [] };
+
+  const transactionAmount = roundMoney(transaction.amount);
+  const providerCost = 0;
+  const netProfit = roundMoney(transactionAmount - providerCost);
+  if (netProfit <= 0) return { configured: true, records: [] };
+
+  const agentAmount = roundMoney(setting.agentCommission);
+  const stateAmount = roundMoney(setting.stateCommission);
+  const zonalAmount = roundMoney(setting.zonalCommission);
+  const configuredCommissionTotal = roundMoney(
+    agentAmount + stateAmount + zonalAmount,
+  );
+  if (configuredCommissionTotal > netProfit) {
+    throw new Error(
+      `Configured commissions ₦${configuredCommissionTotal} exceed net profit ₦${netProfit}.`,
+    );
+  }
+
+  const hierarchy = await getCustomerHierarchy(customer, session);
+  const allocations = [];
+  let distributedToManagers = 0;
+  if (hierarchy.agentId && agentAmount > 0) {
+    allocations.push({
+      beneficiaryRole: "AGENT",
+      beneficiaryId: hierarchy.agentId,
+      commissionAmount: agentAmount,
+    });
+    distributedToManagers += agentAmount;
+  }
+  if (hierarchy.stateManagerId && stateAmount > 0) {
+    allocations.push({
+      beneficiaryRole: "STATE_MANAGER",
+      beneficiaryId: hierarchy.stateManagerId,
+      commissionAmount: stateAmount,
+    });
+    distributedToManagers += stateAmount;
+  }
+  if (hierarchy.zonalManagerId && zonalAmount > 0) {
+    allocations.push({
+      beneficiaryRole: "ZONAL_MANAGER",
+      beneficiaryId: hierarchy.zonalManagerId,
+      commissionAmount: zonalAmount,
+    });
+    distributedToManagers += zonalAmount;
+  }
+  const headOfficeProfit = roundMoney(netProfit - roundMoney(distributedToManagers));
+  allocations.unshift({
+    beneficiaryRole: "HEAD_OFFICE",
+    beneficiaryId: null,
+    commissionAmount: headOfficeProfit,
+  });
+
+  const records = allocations
+    .filter((allocation) => allocation.commissionAmount > 0)
+    .map((allocation) => buildCommissionRecord({
+      transaction,
+      customerId: hierarchy.customerId,
+      beneficiaryId: allocation.beneficiaryId,
+      beneficiaryRole: allocation.beneficiaryRole,
+      serviceType: "DATA",
+      productCode: "DATA",
+      productName: setting.productName,
+      transactionAmount,
+      providerCost,
+      netProfit,
+      commissionAmount: allocation.commissionAmount,
+      status: "AVAILABLE",
+      description: "Data purchase commission",
+      metadata: {
+        ...metadata,
+        configuredAgentCommission: agentAmount,
+        configuredStateCommission: stateAmount,
+        configuredZonalCommission: zonalAmount,
+        productCommissionSettingId: setting._id,
+      },
+    }));
+  return { configured: true, records };
 };
 
 const saveCommissionRecord = async (record) => {
@@ -661,6 +754,7 @@ const reverseTransactionCommissions =
 
 module.exports = {
   distributeCommission,
+  buildTelecomAbodeDataCommissionRecords,
   reverseTransactionCommissions,
   getProductCommissionSetting,
   roundMoney,

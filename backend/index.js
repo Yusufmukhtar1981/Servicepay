@@ -40,6 +40,9 @@ const {
 const {
   startReferralRewardOutboxWorker,
 } = require("./services/referralReward.service");
+const {
+  startTelecomAbodeDataCommissionRecoveryWorker,
+} = require("./services/telecomAbodeDataCommissionRecovery.service");
 const { reconcileEduPaySchoolAssets } = require("./controllers/edupay.controller");
 
 const paystackRoutes = require(
@@ -131,9 +134,9 @@ const transactionPinRoutes = require(
 const app = express();
 
 /*
- * Render and Replit each place one trusted reverse proxy in front of the app.
- * Trust exactly one hop so req.ip resolves the client without accepting an
- * arbitrary left-most X-Forwarded-For value supplied by the requester.
+ * Retain the legacy immediate-proxy setting for general request metadata.
+ * Financial Telecom Abode callbacks do not authorize through req.ip: their
+ * verifier walks the actual chain against explicitly verified proxy CIDRs.
  */
 app.set("trust proxy", 1);
 
@@ -202,6 +205,8 @@ app.use(cors({
 }));
 // Must precede the global JSON parser so Squad HMAC covers the exact bytes.
 app.use("/api/edupay/webhooks/squad", edupaySquadWebhookRoutes);
+// Telecom Abode owns its bounded JSON parser; mount before the general parser.
+app.use("/api/webhooks/telecom-abode", telecomAbodeWebhookRoutes);
 
 /*
  * Keep the original raw JSON payload.
@@ -242,12 +247,6 @@ function sendServiceVersion(req, res) {
 app.get("/", sendServiceHealth);
 app.get("/version", sendServiceVersion);
 app.get("/api/version", sendServiceVersion);
-
-// Temporary authenticated read-only ingress inspection; hard-expires in router.
-app.use("/api/internal/diagnostics/telecom-abode-proxy", require("./routes/telecomAbodeWebhookProxyDiagnostic.routes"));
-// Keep the public provider callback reachable without granting unsigned
-// notifications authority to change a transaction or wallet.
-app.use("/api/webhooks/telecom-abode", telecomAbodeWebhookRoutes);
 
 
 /*
@@ -479,6 +478,7 @@ async function startServer() {
   const edupayAssetReconcileTimer = setInterval(() => reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {}), 60 * 60 * 1000);
   edupayAssetReconcileTimer.unref?.();
   startReferralRewardOutboxWorker();
+  startTelecomAbodeDataCommissionRecoveryWorker();
   // A bounded, best-effort pass resumes durable document cleanup without
   // delaying server startup or affecting settlement paths.
   processDocumentAssetCleanup({ limit: 10 }).catch(() => {});
