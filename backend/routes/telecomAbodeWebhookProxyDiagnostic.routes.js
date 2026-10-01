@@ -86,6 +86,7 @@ const createTelecomAbodeWebhookProxyDiagnosticRouter = ({
     adminOnly("HEAD_OFFICE"),
     loadStaffRole,
     (req, res) => {
+      res.set("Cache-Control", "no-store");
       const socketPeer = normalizeIp(req.socket && req.socket.remoteAddress);
       return res.status(200).json({
         success: true,
@@ -94,6 +95,10 @@ const createTelecomAbodeWebhookProxyDiagnosticRouter = ({
           socketPeer,
           xForwardedFor: boundedHeaderValues(req, "x-forwarded-for"),
           cfConnectingIp: boundedHeaderValues(req, "cf-connecting-ip", 2),
+          xRealIp: boundedHeaderValues(req, "x-real-ip", 2),
+          trueClientIp: boundedHeaderValues(req, "true-client-ip", 2),
+          forwarded: boundedHeaderValues(req, "forwarded", 2),
+          cfConnectingIpv6: boundedHeaderValues(req, "cf-connecting-ipv6", 2),
           host: boundedHeaderValues(req, "host", 2),
           cfRay: boundedHeaderValues(req, "cf-ray", 2),
         },
