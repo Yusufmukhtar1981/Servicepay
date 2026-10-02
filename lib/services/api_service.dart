@@ -33,11 +33,22 @@ class ApiService {
     String serviceType = '',
   }) async {
     final token = await _getAuthToken();
-    final response = await http.post(
-      Uri.parse('$baseUrl/customer/beneficiaries'),
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({'phone': phone.trim(), 'name': name.trim(), 'network': network.trim(), 'serviceType': serviceType}),
-    ).timeout(requestTimeout);
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/customer/beneficiaries'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token'
+          },
+          body: jsonEncode({
+            'phone': phone.trim(),
+            'name': name.trim(),
+            'network': network.trim(),
+            'serviceType': serviceType
+          }),
+        )
+        .timeout(requestTimeout);
     return _handleResponse(response);
   }
 
@@ -46,11 +57,17 @@ class ApiService {
     required String name,
   }) async {
     final token = await _getAuthToken();
-    final response = await http.patch(
-      Uri.parse('$baseUrl/customer/beneficiaries/$id'),
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({'name': name.trim()}),
-    ).timeout(requestTimeout);
+    final response = await http
+        .patch(
+          Uri.parse('$baseUrl/customer/beneficiaries/$id'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token'
+          },
+          body: jsonEncode({'name': name.trim()}),
+        )
+        .timeout(requestTimeout);
     return _handleResponse(response);
   }
 
@@ -123,7 +140,8 @@ class ApiService {
           body: jsonEncode({
             'network': providerNetworkId ?? network.trim(),
             if (providerNetworkId != null) 'provider': 'TELECOM_ABODE',
-            if (customerSellingPrice != null) 'customerSellingPrice': customerSellingPrice,
+            if (customerSellingPrice != null)
+              'customerSellingPrice': customerSellingPrice,
             'phone': phone.trim(),
             'amount': amount.trim(),
             if (transactionPin.isNotEmpty) 'transactionPin': transactionPin,
@@ -138,20 +156,33 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getAirtimeNetworks() async {
     final token = await _getAuthToken();
-    final response = await http.get(Uri.parse('$baseUrl/clubkonnect/airtime/networks'),
-      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(requestTimeout);
+    final response = await http
+        .get(Uri.parse('$baseUrl/clubkonnect/airtime/networks'), headers: {
+      'Authorization': 'Bearer $token',
+      'Accept': 'application/json'
+    }).timeout(requestTimeout);
     return _handleResponse(response);
   }
 
   static Future<Map<String, dynamic>> quoteAirtime({
-    required int networkId, required String amount, String? phone,
+    required int networkId,
+    required String amount,
+    String? phone,
   }) async {
     final token = await _getAuthToken();
-    final response = await http.post(Uri.parse('$baseUrl/clubkonnect/airtime/quote'),
-      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-      body: jsonEncode({'network': networkId, 'provider': 'TELECOM_ABODE', 'amount': amount,
-        if (phone != null) 'phone': phone}))
-      .timeout(requestTimeout);
+    final response = await http
+        .post(Uri.parse('$baseUrl/clubkonnect/airtime/quote'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json'
+            },
+            body: jsonEncode({
+              'network': networkId,
+              'provider': 'TELECOM_ABODE',
+              'amount': amount,
+              if (phone != null) 'phone': phone
+            }))
+        .timeout(requestTimeout);
     return _handleResponse(response);
   }
 
@@ -218,6 +249,27 @@ class ApiService {
         .timeout(requestTimeout);
 
     return _handleResponse(response);
+  }
+
+  /// Recorded status only; never recreates or redispatches a provider purchase.
+  static Future<Map<String, dynamic>> dataPurchaseStatus(
+      String requestKey) async {
+    final token = await _getAuthToken();
+    final response = await http.get(
+      Uri.parse(
+          '$baseUrl/clubkonnect/data/status/${Uri.encodeComponent(requestKey)}'),
+      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    ).timeout(requestTimeout);
+    final body = _handleResponse(response);
+    if (response.statusCode == 200) return body;
+    // A 404 does not prove the original POST will not arrive later.
+    return {
+      'success': false,
+      'pending': true,
+      'status': 'PENDING',
+      'message': 'The original DATA request has not yet been confirmed. '
+          'Check Transactions or check this request again; do not submit again.'
+    };
   }
 
   static Future<String> _getAuthToken() async {

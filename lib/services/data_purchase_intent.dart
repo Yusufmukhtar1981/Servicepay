@@ -83,6 +83,7 @@ class DataPurchaseIntent {
     required String planCode,
     required double price,
     String? productQuote,
+    String? planName,
   }) async {
     final storageKey = '$_prefix${await _accountId()}';
     final preceding = _submissions[storageKey];
@@ -105,6 +106,9 @@ class DataPurchaseIntent {
               existing['fingerprint'] == fingerprint &&
               existing['key'] is String &&
               (existing['key'] as String).isNotEmpty) {
+            // Re-establish durability even if the storage implementation cached
+            // a preceding failed write optimistically.
+            await _storage.write(storageKey, saved);
             return existing['key'] as String;
           }
         } catch (_) {
@@ -122,7 +126,8 @@ class DataPurchaseIntent {
       // Persist before sending: a timeout or screen restart must retain this key.
       await _storage.write(
         storageKey,
-        jsonEncode({'fingerprint': fingerprint, 'key': key}),
+        jsonEncode(
+            {'fingerprint': fingerprint, 'key': key, 'planName': planName}),
       );
       return key;
     } finally {
@@ -141,5 +146,17 @@ class DataPurchaseIntent {
     if (existing is Map && existing['key'] == key) {
       await _storage.delete(storageKey);
     }
+  }
+
+  Future<Map<String, dynamic>?> pending() async {
+    final saved = await _storage.read('$_prefix${await _accountId()}');
+    if (saved == null) return null;
+    final decoded = jsonDecode(saved);
+    if (decoded is! Map ||
+        decoded['key'] is! String ||
+        decoded['fingerprint'] is! String) {
+      throw StateError('An earlier DATA request cannot be safely recovered.');
+    }
+    return Map<String, dynamic>.from(decoded);
   }
 }

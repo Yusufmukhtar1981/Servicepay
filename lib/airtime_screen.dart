@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'widgets/purchase_processing.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'services/api_service.dart';
@@ -32,6 +33,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
   String selectedNetwork = 'MTN';
   bool isLoading = false;
+  bool _processingPurchase = false;
   bool _isCheckingStatus = false;
   String? _pendingIdempotencyKey;
   List<String> _retainedRequestKeys = [];
@@ -54,27 +56,36 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         throw Exception('Airtime networks could not be verified.');
       }
       final mapped = <String, int>{};
-      const labels = {'MTN': 'MTN', 'AIRTEL': 'Airtel', 'GLO': 'Glo',
-        '9MOBILE': '9mobile', 'ETISALAT': '9mobile'};
+      const labels = {
+        'MTN': 'MTN',
+        'AIRTEL': 'Airtel',
+        'GLO': 'Glo',
+        '9MOBILE': '9mobile',
+        'ETISALAT': '9mobile'
+      };
       for (final row in response['data'] as List) {
         final label = labels[row['displayName'].toString().toUpperCase()];
         final id = int.tryParse(row['providerId'].toString());
         if (label != null && id != null && id > 0) mapped[label] = id;
       }
-      if (mapped.isEmpty) throw Exception('Airtime networks could not be verified.');
+      if (mapped.isEmpty)
+        throw Exception('Airtime networks could not be verified.');
       if (!mounted) return;
       setState(() {
         providerNetworkIds.addAll(mapped);
         networks = mapped.keys.toList();
-        if (!networks.contains(selectedNetwork)) selectedNetwork = networks.first;
+        if (!networks.contains(selectedNetwork))
+          selectedNetwork = networks.first;
         _catalogLoading = false;
         _catalogError = null;
       });
     } catch (_) {
-      if (mounted) setState(() {
-        _catalogLoading = false;
-        _catalogError = 'Airtime networks are unavailable. Retry loading; no purchase has been made.';
-      });
+      if (mounted)
+        setState(() {
+          _catalogLoading = false;
+          _catalogError =
+              'Airtime networks are unavailable. Retry loading; no purchase has been made.';
+        });
     }
   }
 
@@ -135,17 +146,24 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         showMessage('Load the current Airtime networks before buying.');
         return;
       }
-      final quoted = await ApiService.quoteAirtime(networkId: providerId, amount: purchaseAmount, phone: phone);
+      final quoted = await ApiService.quoteAirtime(
+          networkId: providerId, amount: purchaseAmount, phone: phone);
       final quote = quoted['data'] as Map?;
-      final sellingPrice = double.tryParse(quote?['customerSellingPrice'].toString() ?? '');
+      final sellingPrice =
+          double.tryParse(quote?['customerSellingPrice'].toString() ?? '');
       final normalizedPhone = quote?['normalizedPhone']?.toString();
-      if (quoted['success'] != true || sellingPrice == null || sellingPrice <= 0 ||
-          normalizedPhone == null || normalizedPhone.isEmpty) {
+      if (quoted['success'] != true ||
+          sellingPrice == null ||
+          sellingPrice <= 0 ||
+          normalizedPhone == null ||
+          normalizedPhone.isEmpty) {
         showMessage(quoted['message']?.toString() ??
-          'The phone number or selling price could not be confirmed. No purchase was made.');
+            'The phone number or selling price could not be confirmed. No purchase was made.');
         return;
       }
       phone = normalizedPhone;
+      if (!mounted) return;
+      bool confirmationSubmitted = false;
       final bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (BuildContext dialogContext) {
@@ -169,6 +187,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
               ),
               ElevatedButton(
                 onPressed: () {
+                  if (confirmationSubmitted) return;
+                  confirmationSubmitted = true;
                   Navigator.pop(
                     dialogContext,
                     true,
@@ -190,7 +210,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       String transactionPin = '';
       final TextEditingController transactionPinController =
           TextEditingController();
-      final String? enteredPin = await showDialog<String>(
+      bool pinSubmitted = false;
+      final pinRoute = DialogRoute<String>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) {
@@ -216,8 +237,15 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
               ),
               ElevatedButton(
                 onPressed: () {
+                  if (pinSubmitted) return;
+                  final pin = transactionPinController.text.trim();
+                  if (!RegExp(r'^\d{4}$').hasMatch(pin)) return;
+                  pinSubmitted = true;
+                  setState(() {
+                    _processingPurchase = true;
+                  });
                   Navigator.of(dialogContext).pop(
-                    transactionPinController.text.trim(),
+                    pin,
                   );
                 },
                 child: const Text('Confirm'),
@@ -226,7 +254,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
           );
         },
       );
-      transactionPinController.dispose();
+      final String? enteredPin = await Navigator.of(context).push(pinRoute);
+      pinRoute.completed.then((_) => transactionPinController.dispose());
       transactionPin = enteredPin ?? '';
 
       if (transactionPin.isEmpty) {
@@ -258,6 +287,10 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
           idempotencyKey: idempotencyKey,
         ),
       );
+      if (mounted)
+        setState(() {
+          _processingPurchase = false;
+        });
 
       if (!mounted) return;
       await _restorePendingIntent();
@@ -328,6 +361,10 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         showMessage(finalMessage);
       }
     } catch (error) {
+      if (mounted)
+        setState(() {
+          _processingPurchase = false;
+        });
       final String message = error is TimeoutException
           ? 'The airtime request timed out. Its request key has been retained; '
               'please check its status before trying again.'
@@ -338,6 +375,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       if (mounted) {
         setState(() {
           isLoading = false;
+          _processingPurchase = false;
         });
       }
     }
@@ -379,9 +417,11 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             'refunded automatically. A separate purchase uses a new request '
             'key and may charge your wallet separately.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
               child: const Text('Start separate purchase')),
         ],
       ),
@@ -488,215 +528,233 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 600,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_retainedRequestKeys.isNotEmpty ||
-                    _pendingIntentError != null) ...[
-                  Card(
-                    color: Colors.orange.shade50,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _pendingMessage ??
-                                'A previous airtime request needs a status '
-                                    'check.',
-                          ),
-                          const SizedBox(height: 8),
-                          if (_pendingIdempotencyKey != null) OutlinedButton.icon(
-                            onPressed: _pendingIdempotencyKey == null ||
-                                    _isCheckingStatus
-                                ? null
-                                : checkPreviousRequest,
-                            icon: _isCheckingStatus
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.refresh),
-                            label: Text(
-                              _isCheckingStatus
-                                  ? 'Checking status...'
-                                  : 'Check previous request',
+      body: PurchaseProcessing(
+        processing: _processingPurchase,
+        service: 'airtime',
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 600,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_retainedRequestKeys.isNotEmpty ||
+                      _pendingIntentError != null) ...[
+                    Card(
+                      color: Colors.orange.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _pendingMessage ??
+                                  'A previous airtime request needs a status '
+                                      'check.',
                             ),
-                          ),
-                          for (final key in _retainedRequestKeys.where(
-                              (key) => key != _pendingIdempotencyKey))
-                            TextButton.icon(
-                              onPressed: isLoading || _isCheckingStatus
-                                  ? null : () => checkPreviousRequest(requestKey: key),
-                              icon: const Icon(Icons.refresh),
-                              label: Text('Check earlier request '
-                                  '${_retainedRequestKeys.indexOf(key) + 1}'),
-                            ),
-                          if (_pendingIdempotencyKey != null &&
-                              _pendingIntentError == null)
-                            TextButton(
-                              onPressed: isLoading || _isCheckingStatus
-                                  ? null : startSeparatePurchase,
-                              child: const Text('Start a separate purchase'),
-                            ),
-                        ],
+                            const SizedBox(height: 8),
+                            if (_pendingIdempotencyKey != null)
+                              OutlinedButton.icon(
+                                onPressed: _pendingIdempotencyKey == null ||
+                                        _isCheckingStatus
+                                    ? null
+                                    : checkPreviousRequest,
+                                icon: _isCheckingStatus
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh),
+                                label: Text(
+                                  _isCheckingStatus
+                                      ? 'Checking status...'
+                                      : 'Check previous request',
+                                ),
+                              ),
+                            for (final key in _retainedRequestKeys
+                                .where((key) => key != _pendingIdempotencyKey))
+                              TextButton.icon(
+                                onPressed: isLoading || _isCheckingStatus
+                                    ? null
+                                    : () =>
+                                        checkPreviousRequest(requestKey: key),
+                                icon: const Icon(Icons.refresh),
+                                label: Text('Check earlier request '
+                                    '${_retainedRequestKeys.indexOf(key) + 1}'),
+                              ),
+                            if (_pendingIdempotencyKey != null &&
+                                _pendingIntentError == null)
+                              TextButton(
+                                onPressed: isLoading || _isCheckingStatus
+                                    ? null
+                                    : startSeparatePurchase,
+                                child: const Text('Start a separate purchase'),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                const Text(
-                  'Select Network',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedNetwork,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(
-                      Icons.sim_card_outlined,
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 16),
+                  ],
+                  const Text(
+                    'Select Network',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  items: networks
-                      .map(
-                        (String network) => DropdownMenuItem<String>(
-                          value: network,
-                          child: Text(network),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: isLoading || _isCheckingStatus
-                      ? null
-                      : (String? value) {
-                          if (value == null) return;
-
-                          setState(() {
-                            selectedNetwork = value;
-                          });
-                        },
-                ),
-                const SizedBox(height: 22),
-                if (_catalogLoading) const LinearProgressIndicator(),
-                if (_catalogError != null) ...[
-                  Text(_catalogError!, style: const TextStyle(color: Colors.red)),
-                  TextButton(onPressed: () {
-                    setState(() { _catalogLoading = true; _catalogError = null; });
-                    _loadNetworks();
-                  }, child: const Text('Retry loading networks')),
-                ],
-                const Text(
-                  'Phone Number',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: phoneController,
-                  enabled: !isLoading && !_isCheckingStatus,
-                  keyboardType: TextInputType.phone,
-                  maxLength: 24,
-                  decoration: InputDecoration(
-                    hintText: '08012345678 or +2348012345678',
-                    counterText: '',
-                    prefixIcon: const Icon(
-                      Icons.phone_outlined,
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SavedBeneficiaries(
-                  phoneController: phoneController,
-                  network: selectedNetwork,
-                  serviceType: 'AIRTIME',
-                ),
-                const SizedBox(height: 22),
-                const Text(
-                  'Amount',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: amountController,
-                  enabled: !isLoading && !_isCheckingStatus,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Enter amount',
-                    prefixText: '₦ ',
-                    prefixIcon: const Icon(
-                      Icons.payments_outlined,
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed:
-                        isLoading || _isCheckingStatus || _catalogLoading ||
-                        _catalogError != null || _pendingIdempotencyKey != null ||
-                        _pendingIntentError != null ? null : buyAirtime,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    value: selectedNetwork,
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(
+                        Icons.sim_card_outlined,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: isLoading || _isCheckingStatus
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Buy Airtime',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    items: networks
+                        .map(
+                          (String network) => DropdownMenuItem<String>(
+                            value: network,
+                            child: Text(network),
                           ),
+                        )
+                        .toList(),
+                    onChanged: isLoading || _isCheckingStatus
+                        ? null
+                        : (String? value) {
+                            if (value == null) return;
+
+                            setState(() {
+                              selectedNetwork = value;
+                            });
+                          },
                   ),
-                ),
-              ],
+                  const SizedBox(height: 22),
+                  if (_catalogLoading) const LinearProgressIndicator(),
+                  if (_catalogError != null) ...[
+                    Text(_catalogError!,
+                        style: const TextStyle(color: Colors.red)),
+                    TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _catalogLoading = true;
+                            _catalogError = null;
+                          });
+                          _loadNetworks();
+                        },
+                        child: const Text('Retry loading networks')),
+                  ],
+                  const Text(
+                    'Phone Number',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: phoneController,
+                    enabled: !isLoading && !_isCheckingStatus,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 24,
+                    decoration: InputDecoration(
+                      hintText: '08012345678 or +2348012345678',
+                      counterText: '',
+                      prefixIcon: const Icon(
+                        Icons.phone_outlined,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SavedBeneficiaries(
+                    phoneController: phoneController,
+                    network: selectedNetwork,
+                    serviceType: 'AIRTIME',
+                  ),
+                  const SizedBox(height: 22),
+                  const Text(
+                    'Amount',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: amountController,
+                    enabled: !isLoading && !_isCheckingStatus,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Enter amount',
+                      prefixText: '₦ ',
+                      prefixIcon: const Icon(
+                        Icons.payments_outlined,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: isLoading ||
+                              _isCheckingStatus ||
+                              _catalogLoading ||
+                              _catalogError != null ||
+                              _pendingIdempotencyKey != null ||
+                              _pendingIntentError != null
+                          ? null
+                          : buyAirtime,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: isLoading || _isCheckingStatus
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Buy Airtime',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -883,8 +941,10 @@ class AirtimePurchaseIntent {
       final decoded = jsonDecode(raw);
       if (decoded is! List) throw const FormatException();
       return decoded.map((item) {
-        if (item is! Map || item['key'] is! String ||
-            (item['key'] as String).isEmpty || item['fingerprint'] is! String) {
+        if (item is! Map ||
+            item['key'] is! String ||
+            (item['key'] as String).isEmpty ||
+            item['fingerprint'] is! String) {
           throw const FormatException();
         }
         return Map<String, dynamic>.from(item);
@@ -895,48 +955,55 @@ class AirtimePurchaseIntent {
   }
 
   Future<List<String>> retainedKeys() => _withStorageLock(() async {
-    final retained = await _readRetained();
-    final active = await _storage.read(_storageKey);
-    if (active != null) {
-      final item = jsonDecode(active);
-      if (item is! Map || item['key'] is! String ||
-          (item['key'] as String).isEmpty || item['fingerprint'] is! String) {
-        throw StateError('The current request could not be verified.');
-      }
-      retained.add(Map<String, dynamic>.from(item));
-    }
-    return retained.map((item) => item['key'] as String).toSet().toList();
-  });
+        final retained = await _readRetained();
+        final active = await _storage.read(_storageKey);
+        if (active != null) {
+          final item = jsonDecode(active);
+          if (item is! Map ||
+              item['key'] is! String ||
+              (item['key'] as String).isEmpty ||
+              item['fingerprint'] is! String) {
+            throw StateError('The current request could not be verified.');
+          }
+          retained.add(Map<String, dynamic>.from(item));
+        }
+        return retained.map((item) => item['key'] as String).toSet().toList();
+      });
 
   /// Explicit user action only: retain the old request durably before freeing
   /// the active slot. Its key is for queries, never a new provider dispatch.
   Future<void> retainForSeparatePurchase() => _withStorageLock(() async {
-    final active = await _storage.read(_storageKey);
-    if (active == null) return;
-    final item = jsonDecode(active);
-    if (item is! Map || item['key'] is! String ||
-        (item['key'] as String).isEmpty || item['fingerprint'] is! String) {
-      throw StateError('The current request could not be safely retained.');
-    }
-    final retained = await _readRetained();
-    if (!retained.any((entry) => entry['key'] == item['key'])) {
-      if (retained.length >= 100) {
-        throw StateError('Resolve an earlier request before retaining more.');
-      }
-      retained.add(Map<String, dynamic>.from(item));
-    }
-    final encoded = jsonEncode(retained);
-    await _storage.write(_archiveKey, encoded);
-    if (await _storage.read(_archiveKey) != encoded) {
-      throw StateError('Earlier request could not be durably retained.');
-    }
-    await _storage.delete(_storageKey);
-  });
+        final active = await _storage.read(_storageKey);
+        if (active == null) return;
+        final item = jsonDecode(active);
+        if (item is! Map ||
+            item['key'] is! String ||
+            (item['key'] as String).isEmpty ||
+            item['fingerprint'] is! String) {
+          throw StateError('The current request could not be safely retained.');
+        }
+        final retained = await _readRetained();
+        if (!retained.any((entry) => entry['key'] == item['key'])) {
+          if (retained.length >= 100) {
+            throw StateError(
+                'Resolve an earlier request before retaining more.');
+          }
+          retained.add(Map<String, dynamic>.from(item));
+        }
+        final encoded = jsonEncode(retained);
+        await _storage.write(_archiveKey, encoded);
+        if (await _storage.read(_archiveKey) != encoded) {
+          throw StateError('Earlier request could not be durably retained.');
+        }
+        await _storage.delete(_storageKey);
+      });
 
   bool isTerminalResult(Map<String, dynamic> result) {
     final deliveryStatus = result['status']?.toString().toUpperCase();
-    if (result['provider'] == 'TELECOM_ABODE' && result['dispatchStatus'] == 'SUCCEEDED' &&
-        ['SUCCESS', 'SUCCESSFUL', 'COMPLETED'].contains(deliveryStatus)) return true;
+    if (result['provider'] == 'TELECOM_ABODE' &&
+        result['dispatchStatus'] == 'SUCCEEDED' &&
+        ['SUCCESS', 'SUCCESSFUL', 'COMPLETED'].contains(deliveryStatus))
+      return true;
     final httpStatus =
         result['httpStatus'] is int ? result['httpStatus'] as int : 0;
     final status = result['status']?.toString().toUpperCase() ?? '';

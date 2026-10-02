@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'services/electricity_request_store.dart';
 
 import 'package:flutter/material.dart';
+import 'widgets/purchase_processing.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +19,7 @@ class ElectricityScreen extends StatefulWidget {
 }
 
 class _ElectricityScreenState extends State<ElectricityScreen> {
+  bool _processingPurchase = false;
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static const Color primaryGreen = Color(0xFF2E7D32);
@@ -73,16 +75,25 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
         phoneController.text = intent['phoneNumber'].toString();
         amountController.text = intent['amount'].toString();
       });
-    } catch (_) { showMessage('Unable to restore the last Electricity request. Check Transactions before paying.'); }
+    } catch (_) {
+      showMessage(
+          'Unable to restore the last Electricity request. Check Transactions before paying.');
+    }
   }
 
   Future<void> _checkPaymentStatus() async {
     final token = await getAuthToken();
     if (token == null || _pendingTransactionId == null || isBusy) return;
-    setState(() { isPaying = true; });
+    setState(() {
+      isPaying = true;
+    });
     try {
-      final response = await http.get(Uri.parse('$baseUrl/electricity/transactions/$_pendingTransactionId/status'),
-          headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 45));
+      final response = await http.get(
+          Uri.parse(
+              '$baseUrl/electricity/transactions/$_pendingTransactionId/status'),
+          headers: {
+            'Authorization': 'Bearer $token'
+          }).timeout(const Duration(seconds: 45));
       final body = decodeResponse(response.body);
       final data = body['data'];
       if (response.statusCode != 200 || data is! Map) {
@@ -91,41 +102,65 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       }
       final payment = Map<String, dynamic>.from(data);
       if (!mounted) return;
-      await showPaymentResult(responseData: body, paymentData: payment, amount: (payment['amount'] as num).toDouble());
+      await showPaymentResult(
+          responseData: body,
+          paymentData: payment,
+          amount: (payment['amount'] as num).toDouble());
       if (['SUCCESSFUL', 'FAILED'].contains(payment['status'])) {
         await ElectricityRequestStore.complete(token);
-        if (mounted) setState(() { _pendingTransactionId = null; });
+        if (mounted)
+          setState(() {
+            _pendingTransactionId = null;
+          });
       }
-    } catch (_) { showMessage('Status is unconfirmed. Check Transactions; do not resend.'); }
-    finally { if (mounted) setState(() { isPaying = false; }); }
+    } catch (_) {
+      showMessage('Status is unconfirmed. Check Transactions; do not resend.');
+    } finally {
+      if (mounted)
+        setState(() {
+          isPaying = false;
+        });
+    }
   }
 
   Future<void> _loadCatalogue() async {
     try {
       final token = await getAuthToken();
-      final response = await http.get(Uri.parse('$baseUrl/electricity/companies'),
-        headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 60));
+      final response = await http
+          .get(Uri.parse('$baseUrl/electricity/companies'), headers: {
+        'Authorization': 'Bearer $token'
+      }).timeout(const Duration(seconds: 60));
       final data = decodeResponse(response.body);
-      if (response.statusCode != 200 || data['success'] != true || data['companies'] is! List) {
+      if (response.statusCode != 200 ||
+          data['success'] != true ||
+          data['companies'] is! List) {
         throw Exception('Catalogue unavailable');
       }
-      final rows = (data['companies'] as List).map((row) => <String, String>{
-        'code': row['code'].toString(), 'name': row['name'].toString(),
-        'shortName': row['shortName'].toString(),
-      }).toList();
+      final rows = (data['companies'] as List)
+          .map((row) => <String, String>{
+                'code': row['code'].toString(),
+                'name': row['name'].toString(),
+                'shortName': row['shortName'].toString(),
+              })
+          .toList();
       if (rows.isEmpty) throw Exception('Catalogue empty');
       if (!mounted) return;
       setState(() {
         discos = rows;
-        if (!rows.any((row) => row['code'] == selectedDiscoCode)) selectedDiscoCode = rows.first['code']!;
+        if (!rows.any((row) => row['code'] == selectedDiscoCode))
+          selectedDiscoCode = rows.first['code']!;
         _catalogLoaded = true;
         _purchaseBlocked = data['purchaseBlocked'] == true;
         _catalogMessage = _purchaseBlocked
-          ? 'Electricity catalogue is ready. Purchases are blocked because the provider cannot reliably verify meters. No debit will be made.'
-          : 'Verify the meter customer name before paying.';
+            ? 'Electricity activation is pending provider minimum-amount evidence and a controlled payment test. No debit will be made.'
+            : 'Verify the meter customer name before paying.';
       });
     } catch (_) {
-      if (mounted) setState(() { _catalogMessage = 'Electricity catalogue is unavailable. Retry loading; no purchase was made.'; });
+      if (mounted)
+        setState(() {
+          _catalogMessage =
+              'Electricity catalogue is unavailable. Retry loading; no purchase was made.';
+        });
     }
   }
 
@@ -312,7 +347,10 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   }
 
   Future<void> verifyMeter() async {
-    if (!_catalogLoaded) { showMessage(_catalogMessage); return; }
+    if (!_catalogLoaded) {
+      showMessage(_catalogMessage);
+      return;
+    }
     FocusScope.of(context).unfocus();
 
     final String? validationError = validateMeterNumber(meterController.text);
@@ -450,7 +488,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
     bool hidePin = true;
     String errorMessage = '';
 
-    final String? pin = await showDialog<String>(
+    final pinRoute = DialogRoute<String>(
       context: context,
       barrierDismissible: false,
       builder: (
@@ -517,8 +555,10 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                          if (_verifiedAddress.isNotEmpty) Text(_verifiedAddress, textAlign: TextAlign.center),
-                          const Text('By entering your PIN, you confirm this account and your selected prepaid/postpaid type.'),
+                          if (_verifiedAddress.isNotEmpty)
+                            Text(_verifiedAddress, textAlign: TextAlign.center),
+                          const Text(
+                              'By entering your PIN, you confirm this account and your selected prepaid/postpaid type.'),
                           const SizedBox(height: 4),
                           Text(
                             '${selectedDisco['shortName']} • '
@@ -656,20 +696,32 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       },
     );
 
-    pinController.dispose();
+    final String? pin = await Navigator.of(context).push(pinRoute);
+    pinRoute.completed.then((_) => pinController.dispose());
 
     return pin;
   }
 
   Future<void> payElectricity() async {
     if (isBusy) return;
-    setState(() { isPaying = true; });
-    try { await _payElectricityCore(); }
-    finally { if (mounted) setState(() { isPaying = false; }); }
+    setState(() {
+      isPaying = true;
+    });
+    try {
+      await _payElectricityCore();
+    } finally {
+      if (mounted)
+        setState(() {
+          isPaying = false;
+        });
+    }
   }
 
   Future<void> _payElectricityCore() async {
-    if (!_catalogLoaded || _purchaseBlocked) { showMessage(_catalogMessage); return; }
+    if (!_catalogLoaded || _purchaseBlocked) {
+      showMessage(_catalogMessage);
+      return;
+    }
     FocusScope.of(context).unfocus();
 
     if (!(formKey.currentState?.validate() ?? false)) {
@@ -688,24 +740,43 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
     );
 
     final String? token = await getAuthToken();
-    if (token == null) { showMessage('Please sign in again.'); return; }
+    if (token == null) {
+      showMessage('Please sign in again.');
+      return;
+    }
     String idempotencyKey;
     try {
       idempotencyKey = await ElectricityRequestStore.persist(token, {
-        'electricCompany': selectedDiscoCode, 'meterType': selectedMeterTypeCode,
-        'meterNumber': meterController.text.trim(), 'phoneNumber': phoneController.text.trim(),
+        'electricCompany': selectedDiscoCode,
+        'meterType': selectedMeterTypeCode,
+        'meterNumber': meterController.text.trim(),
+        'phoneNumber': phoneController.text.trim(),
         'amount': amount.toStringAsFixed(2),
       });
-    } catch (_) { showMessage('Cannot safely submit. Check any unresolved Electricity request in Transactions.'); return; }
+    } catch (_) {
+      showMessage(
+          'Cannot safely submit. Check any unresolved Electricity request in Transactions.');
+      return;
+    }
     Map<String, dynamic> quoteData;
     try {
-      final quote = await http.post(Uri.parse('$baseUrl/electricity/quote'),
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-        body: jsonEncode({'amount': amount})).timeout(const Duration(seconds: 30));
+      final quote = await http
+          .post(Uri.parse('$baseUrl/electricity/quote'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token'
+              },
+              body: jsonEncode({'amount': amount}))
+          .timeout(const Duration(seconds: 30));
       final body = decodeResponse(quote.body);
-      if (quote.statusCode != 200 || body['data'] is! Map) throw StateError('Quote unavailable');
+      if (quote.statusCode != 200 || body['data'] is! Map)
+        throw StateError('Quote unavailable');
       quoteData = Map<String, dynamic>.from(body['data'] as Map);
-    } catch (_) { showMessage('Cannot confirm Electricity pricing. No payment was submitted.'); return; }
+    } catch (_) {
+      showMessage(
+          'Cannot confirm Electricity pricing. No payment was submitted.');
+      return;
+    }
     final Map<String, dynamic> authorizationBody = {
       'electricCompany': selectedDiscoCode,
       'meterType': selectedMeterTypeCode,
@@ -728,19 +799,22 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       }
     }
     final String? pin = biometricGrant == null
-        ? await requestTransactionPin(amount: (quoteData['customerSellingPrice'] as num).toDouble())
+        ? await requestTransactionPin(
+            amount: (quoteData['customerSellingPrice'] as num).toDouble())
         : '';
 
     if (pin == null || !mounted) {
       if (pin == null) {
         final saved = await ElectricityRequestStore.read(token);
-        if (saved?['phase'] == 'UNSUBMITTED') await ElectricityRequestStore.complete(token);
+        if (saved?['phase'] == 'UNSUBMITTED')
+          await ElectricityRequestStore.complete(token);
       }
       return;
     }
 
     setState(() {
       isPaying = true;
+      _processingPurchase = true;
     });
 
     try {
@@ -776,6 +850,10 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
           );
 
       final Map<String, dynamic> responseData = decodeResponse(response.body);
+      if (mounted)
+        setState(() {
+          _processingPurchase = false;
+        });
 
       if (!mounted) {
         return;
@@ -783,8 +861,9 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
 
       final bool successful = response.statusCode >= 200 &&
           response.statusCode < 300 &&
-          (responseData['success'] == true || responseData['data'] is Map &&
-            (responseData['data'] as Map)['status'] == 'FAILED');
+          (responseData['success'] == true ||
+              responseData['data'] is Map &&
+                  (responseData['data'] as Map)['status'] == 'FAILED');
 
       if (!successful) {
         final dynamic data = responseData['data'];
@@ -848,14 +927,26 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
         });
       }
     } on TimeoutException {
+      if (mounted)
+        setState(() {
+          _processingPurchase = false;
+        });
       showMessage(
         'The electricity payment is taking longer than expected. Check Transactions before trying again.',
       );
     } on http.ClientException {
+      if (mounted)
+        setState(() {
+          _processingPurchase = false;
+        });
       showMessage(
         'Unable to connect to the electricity payment server.',
       );
     } catch (_) {
+      if (mounted)
+        setState(() {
+          _processingPurchase = false;
+        });
       showMessage(
         'Unable to complete the electricity payment.',
       );
@@ -863,6 +954,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       if (mounted) {
         setState(() {
           isPaying = false;
+          _processingPurchase = false;
         });
       }
     }
@@ -1143,399 +1235,411 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
           ),
         ),
       ),
-      body: SafeArea(
-        child: Form(
-          key: formKey,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              18,
-              18,
-              18,
-              32,
-            ),
-            children: [
-              Text(_catalogMessage, style: const TextStyle(fontWeight: FontWeight.w600)),
-              if (!_catalogLoaded) TextButton(onPressed: _loadCatalogue,
-                child: const Text('Retry loading electricity providers')),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(19),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF2E7D32),
-                      Color(0xFF43A047),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 29,
-                      backgroundColor: Colors.white24,
-                      child: Icon(
-                        Icons.electric_bolt_rounded,
-                        color: Colors.white,
-                        size: 34,
-                      ),
-                    ),
-                    SizedBox(width: 15),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Pay Electricity Bill',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 21,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 5),
-                          Text(
-                            'Verify the meter owner before completing payment.',
-                            style: TextStyle(
-                              color: Colors.white,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+      body: PurchaseProcessing(
+        processing: _processingPurchase,
+        service: 'electricity',
+        child: SafeArea(
+          child: Form(
+            key: formKey,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                18,
+                18,
+                18,
+                32,
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'Electricity Company',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: selectedDiscoCode,
-                isExpanded: true,
-                decoration: inputDecoration(
-                  label: 'Electricity Company',
-                  hint: 'Select electricity company',
-                  icon: Icons.apartment_rounded,
-                ),
-                items: discos.map((disco) {
-                  return DropdownMenuItem<String>(
-                    value: disco['code'],
-                    child: Text(
-                      '${disco['name']} (${disco['shortName']})',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  );
-                }).toList(),
-                onChanged: isBusy
-                    ? null
-                    : (String? value) {
-                        if (value == null) {
-                          return;
-                        }
-
-                        setState(() {
-                          selectedDiscoCode = value;
-                          verifiedCustomerName = '';
-                          verifiedMeterNumber = '';
-                          verifiedDiscoCode = '';
-                          verifiedMeterTypeCode = '';
-                        });
-                      },
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Meter Type',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: selectedMeterTypeCode,
-                decoration: inputDecoration(
-                  label: 'Meter Type',
-                  hint: 'Select meter type',
-                  icon: Icons.speed_rounded,
-                ),
-                items: meterTypes.map((meterType) {
-                  return DropdownMenuItem<String>(
-                    value: meterType['code'],
-                    child: Text(
-                      meterType['name'] ?? '',
-                    ),
-                  );
-                }).toList(),
-                onChanged: isBusy
-                    ? null
-                    : (String? value) {
-                        if (value == null) {
-                          return;
-                        }
-
-                        setState(() {
-                          selectedMeterTypeCode = value;
-                          verifiedCustomerName = '';
-                          verifiedMeterNumber = '';
-                          verifiedDiscoCode = '';
-                          verifiedMeterTypeCode = '';
-                        });
-                      },
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Meter Number',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: meterController,
-                enabled: !isBusy,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(
-                    RegExp(r'[A-Za-z0-9]'),
-                  ),
-                  LengthLimitingTextInputFormatter(20),
-                ],
-                validator: validateMeterNumber,
-                onChanged: (_) {
-                  if (verifiedCustomerName.isNotEmpty) {
-                    clearMeterVerification();
-                  }
-                },
-                decoration: inputDecoration(
-                  label: 'Meter Number',
-                  hint: 'Enter meter number',
-                  icon: Icons.numbers_rounded,
-                  suffixIcon: TextButton(
-                    onPressed: isBusy ? null : verifyMeter,
-                    child: isVerifyingMeter
-                        ? const SizedBox(
-                            width: 19,
-                            height: 19,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: primaryGreen,
-                            ),
-                          )
-                        : const Text(
-                            'Verify',
-                            style: TextStyle(
-                              color: primaryGreen,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-              if (meterIsVerified) ...[
-                const SizedBox(height: 13),
+              children: [
+                Text(_catalogMessage,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                if (!_catalogLoaded)
+                  TextButton(
+                      onPressed: _loadCatalogue,
+                      child: const Text('Retry loading electricity providers')),
+                const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.all(15),
+                  padding: const EdgeInsets.all(19),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0FDF4),
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(
-                      color: const Color(0xFFBBF7D0),
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFF2E7D32),
+                        Color(0xFF43A047),
+                      ],
                     ),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Row(
+                  child: const Row(
                     children: [
-                      const CircleAvatar(
-                        backgroundColor: Color(0xFFDCFCE7),
+                      CircleAvatar(
+                        radius: 29,
+                        backgroundColor: Colors.white24,
                         child: Icon(
-                          Icons.person_rounded,
-                          color: primaryGreen,
+                          Icons.electric_bolt_rounded,
+                          color: Colors.white,
+                          size: 34,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 15),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Meter Customer',
+                            Text(
+                              'Pay Electricity Bill',
                               style: TextStyle(
-                                color: Color(0xFF6B7280),
-                                fontSize: 12,
+                                color: Colors.white,
+                                fontSize: 21,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                            const SizedBox(height: 3),
+                            SizedBox(height: 5),
                             Text(
-                              verifiedCustomerName,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${selectedDisco['shortName']} • '
-                              '${selectedMeterType['name']}',
-                              style: const TextStyle(
-                                color: Color(0xFF6B7280),
+                              'Verify the meter owner before completing payment.',
+                              style: TextStyle(
+                                color: Colors.white,
+                                height: 1.4,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(
-                        Icons.verified_rounded,
-                        color: primaryGreen,
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Electricity Company',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: selectedDiscoCode,
+                  isExpanded: true,
+                  decoration: inputDecoration(
+                    label: 'Electricity Company',
+                    hint: 'Select electricity company',
+                    icon: Icons.apartment_rounded,
+                  ),
+                  items: discos.map((disco) {
+                    return DropdownMenuItem<String>(
+                      value: disco['code'],
+                      child: Text(
+                        '${disco['name']} (${disco['shortName']})',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: isBusy
+                      ? null
+                      : (String? value) {
+                          if (value == null) {
+                            return;
+                          }
+
+                          setState(() {
+                            selectedDiscoCode = value;
+                            verifiedCustomerName = '';
+                            verifiedMeterNumber = '';
+                            verifiedDiscoCode = '';
+                            verifiedMeterTypeCode = '';
+                          });
+                        },
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Meter Type',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: selectedMeterTypeCode,
+                  decoration: inputDecoration(
+                    label: 'Meter Type',
+                    hint: 'Select meter type',
+                    icon: Icons.speed_rounded,
+                  ),
+                  items: meterTypes.map((meterType) {
+                    return DropdownMenuItem<String>(
+                      value: meterType['code'],
+                      child: Text(
+                        meterType['name'] ?? '',
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: isBusy
+                      ? null
+                      : (String? value) {
+                          if (value == null) {
+                            return;
+                          }
+
+                          setState(() {
+                            selectedMeterTypeCode = value;
+                            verifiedCustomerName = '';
+                            verifiedMeterNumber = '';
+                            verifiedDiscoCode = '';
+                            verifiedMeterTypeCode = '';
+                          });
+                        },
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Meter Number',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: meterController,
+                  enabled: !isBusy,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'[A-Za-z0-9]'),
+                    ),
+                    LengthLimitingTextInputFormatter(20),
+                  ],
+                  validator: validateMeterNumber,
+                  onChanged: (_) {
+                    if (verifiedCustomerName.isNotEmpty) {
+                      clearMeterVerification();
+                    }
+                  },
+                  decoration: inputDecoration(
+                    label: 'Meter Number',
+                    hint: 'Enter meter number',
+                    icon: Icons.numbers_rounded,
+                    suffixIcon: TextButton(
+                      onPressed: isBusy ? null : verifyMeter,
+                      child: isVerifyingMeter
+                          ? const SizedBox(
+                              width: 19,
+                              height: 19,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: primaryGreen,
+                              ),
+                            )
+                          : const Text(
+                              'Verify',
+                              style: TextStyle(
+                                color: primaryGreen,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+                if (meterIsVerified) ...[
+                  const SizedBox(height: 13),
+                  Container(
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: const Color(0xFFBBF7D0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const CircleAvatar(
+                          backgroundColor: Color(0xFFDCFCE7),
+                          child: Icon(
+                            Icons.person_rounded,
+                            color: primaryGreen,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Meter Customer',
+                                style: TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                verifiedCustomerName,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${selectedDisco['shortName']} • '
+                                '${selectedMeterType['name']}',
+                                style: const TextStyle(
+                                  color: Color(0xFF6B7280),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.verified_rounded,
+                          color: primaryGreen,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                const Text(
+                  'Phone Number',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: phoneController,
+                  enabled: !isBusy,
+                  keyboardType: TextInputType.phone,
+                  maxLength: 11,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(11),
+                  ],
+                  validator: validatePhone,
+                  decoration: inputDecoration(
+                    label: 'Phone Number',
+                    hint: 'Enter 11-digit phone number',
+                    icon: Icons.phone_outlined,
+                  ).copyWith(
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Amount',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: amountController,
+                  enabled: !isBusy,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d*\.?\d{0,2}'),
+                    ),
+                  ],
+                  validator: validateAmount,
+                  decoration: inputDecoration(
+                    label: 'Electricity Amount',
+                    hint: '₦1,000 — ₦200,000',
+                    icon: Icons.payments_outlined,
+                    prefixText: '₦ ',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_pendingTransactionId != null)
+                  OutlinedButton.icon(
+                      onPressed: isBusy ? null : _checkPaymentStatus,
+                      icon: const Icon(Icons.refresh),
+                      label:
+                          const Text('Check pending payment — never resend')),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFFFDE68A),
+                    ),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: Color(0xFFD97706),
+                      ),
+                      SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'ServicePay entry minimum is ₦1,000; this is not proof of the provider minimum. Verify the meter account before continuing.',
+                          style: TextStyle(
+                            color: Color(0xFF92400E),
+                            height: 1.4,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-              const SizedBox(height: 18),
-              const Text(
-                'Phone Number',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: phoneController,
-                enabled: !isBusy,
-                keyboardType: TextInputType.phone,
-                maxLength: 11,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(11),
-                ],
-                validator: validatePhone,
-                decoration: inputDecoration(
-                  label: 'Phone Number',
-                  hint: 'Enter 11-digit phone number',
-                  icon: Icons.phone_outlined,
-                ).copyWith(
-                  counterText: '',
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Amount',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: amountController,
-                enabled: !isBusy,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(
-                    RegExp(r'^\d*\.?\d{0,2}'),
-                  ),
-                ],
-                validator: validateAmount,
-                decoration: inputDecoration(
-                  label: 'Electricity Amount',
-                  hint: '₦1,000 — ₦200,000',
-                  icon: Icons.payments_outlined,
-                  prefixText: '₦ ',
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (_pendingTransactionId != null)
-                OutlinedButton.icon(onPressed: isBusy ? null : _checkPaymentStatus,
-                  icon: const Icon(Icons.refresh), label: const Text('Check pending payment — never resend')),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: const Color(0xFFFDE68A),
+                const SizedBox(height: 23),
+                SizedBox(
+                  height: 55,
+                  child: FilledButton.icon(
+                    onPressed: isBusy || !_catalogLoaded || _purchaseBlocked
+                        ? null
+                        : payElectricity,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                    ),
+                    icon: isPaying
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.electric_bolt_rounded,
+                          ),
+                    label: Text(
+                      isPaying
+                          ? 'Processing Payment...'
+                          : meterIsVerified
+                              ? 'Pay Electricity Bill'
+                              : 'Verify Meter First',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ),
-                child: const Row(
+                const SizedBox(height: 18),
+                const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      Icons.info_outline_rounded,
-                      color: Color(0xFFD97706),
+                      Icons.lock_outline_rounded,
+                      color: Color(0xFF6B7280),
+                      size: 19,
                     ),
-                    SizedBox(width: 9),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Minimum payment is ₦1,000. Verify the meter customer name before continuing.',
+                        'Electricity payments are protected with meter verification and your transaction PIN.',
                         style: TextStyle(
-                          color: Color(0xFF92400E),
+                          color: Color(0xFF6B7280),
                           height: 1.4,
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 23),
-              SizedBox(
-                height: 55,
-                child: FilledButton.icon(
-                  onPressed: isBusy || !_catalogLoaded || _purchaseBlocked ? null : payElectricity,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
-                  ),
-                  icon: isPaying
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.electric_bolt_rounded,
-                        ),
-                  label: Text(
-                    isPaying
-                        ? 'Processing Payment...'
-                        : meterIsVerified
-                            ? 'Pay Electricity Bill'
-                            : 'Verify Meter First',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.lock_outline_rounded,
-                    color: Color(0xFF6B7280),
-                    size: 19,
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Electricity payments are protected with meter verification and your transaction PIN.',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
