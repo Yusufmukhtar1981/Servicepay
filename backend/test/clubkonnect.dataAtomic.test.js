@@ -863,19 +863,20 @@ test("separate Telecom Abode adapter instances cannot consume the same dispatch 
   assert.ok(stored.dispatchStartedAt);
 });
 
-test("ClubKonnect Airtime success behavior remains unchanged", async () => {
+test("ClubKonnect Airtime ambiguous receipt stays pending without changing DATA", async () => {
   const user = await makeUser();
   const result = await invokeHandler(controller.buyAirtime, {
     user: { _id: user._id },
-    body: { network: "MTN", phone: "08012345678", amount: 100 },
+    body: { network: "MTN", phone: "08012345678", amount: 100,
+      idempotencyKey: "airtime-compatibility-request-key" },
   });
 
-  assert.equal(result.status, 200);
-  assert.equal(result.body.success, true);
-  assert.equal(result.body.status, "SUCCESSFUL");
+  assert.equal(result.status, 202);
+  assert.equal(result.body.success, false);
+  assert.equal(result.body.status, "PENDING");
   assert.equal(result.body.transaction.serviceType, "AIRTIME");
   assert.equal(await User.findById(user._id).then((record) => record.walletBalance), 400);
-  assert.equal(await Transaction.countDocuments({ customerId: user._id, serviceType: "AIRTIME", status: "SUCCESSFUL" }), 1);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id, serviceType: "AIRTIME", status: "PENDING" }), 1);
   assert.equal(await LedgerEntry.countDocuments({ user: user._id, service: "AIRTIME", direction: "DEBIT" }), 1);
   assert.equal(airtimeRequestCount, 1);
   assert.equal(dataRequestCount, 0);

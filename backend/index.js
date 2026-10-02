@@ -43,6 +43,9 @@ const {
 const {
   startTelecomAbodeDataCommissionRecoveryWorker,
 } = require("./services/telecomAbodeDataCommissionRecovery.service");
+const {
+  startClubkonnectAirtimeRecoveryWorker,
+} = require("./services/clubkonnectAirtimeRecoveryWorker.service");
 const { reconcileEduPaySchoolAssets } = require("./controllers/edupay.controller");
 
 const paystackRoutes = require(
@@ -479,6 +482,7 @@ async function startServer() {
   edupayAssetReconcileTimer.unref?.();
   startReferralRewardOutboxWorker();
   startTelecomAbodeDataCommissionRecoveryWorker();
+  startClubkonnectAirtimeRecoveryWorker();
   // A bounded, best-effort pass resumes durable document cleanup without
   // delaying server startup or affecting settlement paths.
   processDocumentAssetCleanup({ limit: 10 }).catch(() => {});

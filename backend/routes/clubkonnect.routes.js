@@ -90,6 +90,25 @@ router.post(
 );
 
 router.post(
+  "/airtime/requery",
+  protect,
+  require("../controllers/clubkonnectAirtime.controller").requeryAirtime
+);
+
+router.post(
+  "/airtime/:reference/requery",
+  protect,
+  require("../controllers/clubkonnectAirtime.controller").requeryAirtime
+);
+
+router.get(
+  "/admin/airtime-provider-evidence/:transactionId",
+  protect,
+  headOfficeOnly,
+  require("../controllers/clubkonnectAirtime.controller").readHistoricalProviderEvidence
+);
+
+router.post(
   "/data",
   protect,
   requireNoRestriction("BLOCK_BILL_PURCHASES", "BLOCK_WALLET_DEBIT"),
