@@ -136,8 +136,11 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                           .hasMatch(entry.key) ||
                       _isElectricityMeterToken(entry)),
             )
-            .map((entry) =>
-                MapEntry(entry.key, customerReceiptText(entry.value))),
+            .map((entry) => MapEntry(
+                entry.key,
+                ['Narration', 'Description', 'Service'].contains(entry.key)
+                    ? customerReceiptText(entry.value)
+                    : entry.value)),
       );
 
   bool _isElectricityMeterToken(MapEntry<String, String> entry) {

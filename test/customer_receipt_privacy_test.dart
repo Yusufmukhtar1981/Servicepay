@@ -6,6 +6,21 @@ import '../lib/customer_receipt_privacy.dart';
 import '../lib/airtime_screen.dart';
 
 void main() {
+  testWidgets('literal customer identity is never rebranded or fabricated',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+        home: ReceiptScreen(
+      serviceName: 'Electricity',
+      amount: '2000',
+      reference: 'SP-unit',
+      date: 'Unit date',
+      status: 'SUCCESSFUL',
+      details: {'Customer': 'Telecom Abode Ltd', 'DISCO': 'Kano Electric'},
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Telecom Abode Ltd'), findsOneWidget);
+    expect(find.text('Kano Electric'), findsOneWidget);
+  });
   test('public delivery state retains Airtime terminal and retry safety', () {
     final intent = AirtimePurchaseIntent();
     final delivered = <String, dynamic>{

@@ -5,6 +5,12 @@ final _providerNames = RegExp(
 );
 
 String customerReceiptText(String text) {
+  if (RegExp(
+    r'https?://\S*(telecomabode|clubkonnect|vtpass|paystack|flutterwave|monnify|/api/)\S*',
+    caseSensitive: false,
+  ).hasMatch(text)) {
+    return 'Contact ServicePay support with your transaction reference if you need help.';
+  }
   final cleaned = text.replaceAll(_providerNames, 'ServicePay');
   if (RegExp(
     r'(provider cost|accounting reconciliation|profit and commission|api key|api credential)',

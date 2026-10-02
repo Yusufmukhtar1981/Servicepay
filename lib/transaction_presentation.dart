@@ -206,7 +206,8 @@ class TransactionPresentation {
     }.entries) {
       final value = _firstDeep(entry.value).toString().trim();
       if (value.isNotEmpty)
-        yield MapEntry(entry.key, customerReceiptText(value));
+        yield MapEntry(entry.key,
+            entry.key == 'Narration' ? customerReceiptText(value) : value);
     }
     if (fee != null) {
       yield MapEntry('Fee', '₦${fee!.toStringAsFixed(2)}');
