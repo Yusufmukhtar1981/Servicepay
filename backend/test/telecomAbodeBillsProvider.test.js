@@ -4,6 +4,18 @@ const { createTelecomAbodeBillsProvider, buildAirtimePayload, buildElectricityPa
   classify, financialReadiness } = require("../services/telecomAbodeBillsProvider.service");
 const reference = "AIRTIME-20261002-TEST-0001";
 const phone = "08000000000";
+test("only a documented initial 422 rejection can authorize failure", () => {
+  const input = { httpStatus: 422, service: "AIRTIME", reference,
+    data: { status: "fail", Status: "failed", message: "Insufficient wallet balance" } };
+  assert.equal(classify({ ...input, source: "INITIAL_REQUEST" }).outcome, "FAILED");
+  for (const extra of [
+    { source: "STATUS_QUERY" }, { source: "CALLBACK_QUERY" }, { httpStatus: 200 },
+    { data: { ...input.data, "request-id": "different-reference" } },
+    { data: { ...input.data, service: "electricity" } },
+    { data: { ...input.data, Status: "successful" } },
+    { data: { ...input.data, token: "12345678901234567890" } },
+  ]) assert.equal(classify({ ...input, source: "INITIAL_REQUEST", ...extra }).authoritative, false);
+});
 const networks = [1, 2, 3, 4].map((id, i) => ({ id, network: ["MTN", "Airtel", "Glo", "9mobile"][i] }));
 const discos = [{ id: 1, name: "Ikeja Electric", abb: "IE", apidiscount: "0.90" }];
 const success = (service = "airtime", extra = {}) => ({ status: "success", Status: "successful",
@@ -61,11 +73,12 @@ test("authenticated live-shape catalogue parses network names and dynamic DISCOs
   assert.equal(disco.providerId, 1);
   assert.equal(disco.advertisedDiscount, "0.90");
 });
-test("meter validation succeeds without debit or purchase", async () => {
+test("generic meter identity never authorizes a debit or purchase", async () => {
   const { provider, sends, claims } = providerWith({ response: { status: "success", name: "Fixture",
     customer_address: "Fixture address" } });
   const result = await provider.validateMeter({ disco: 1, meterNumber: "12345067890", meterType: "prepaid" });
-  assert.equal(result.verified, true);
+  assert.equal(result.verified, false);
+  assert.equal(result.reasonCode, "METER_IDENTITY_UNTRUSTED");
   assert.equal(claims.length, 0);
   const call = sends.find(s => s.method === "POST");
   assert.ok(call.url.endsWith("/bill/bill-validation"));

@@ -63,11 +63,24 @@ const financialReadiness = Object.freeze({
     "Electricity validation returned the same verified identity for deliberately invalid test meters."]) }),
 });
 
-const classify = ({ httpStatus, data, service, reference, meterType }) => {
+const classify = ({ httpStatus, data, service, reference, meterType, source = "STATUS_QUERY" }) => {
   const base = { httpStatus, outcome: "UNKNOWN", authoritative: false,
     reasonCode: "PROVIDER_RESULT_UNCONFIRMED", requestId: reference,
     providerOrderId: "", providerCost: null, receipt: null };
   if (httpStatus === 202) return { ...base, outcome: "PENDING", reasonCode: "PROVIDER_HTTP_ACCEPTED" };
+  // First-party documentation defines 422 as a validation rejection. Only the
+  // authenticated response to this exact initial POST may authorize reversal.
+  // A lookup saying fail/failed, including the old Invalid MSISDN lookup, cannot.
+  if (source === "INITIAL_REQUEST" && httpStatus === 422 &&
+      data && typeof data === "object" && !Array.isArray(data) &&
+      text(data.status).toLowerCase() === "fail" &&
+      text(data.Status).toLowerCase() === "failed" &&
+      text(data.message) && !data.token &&
+      (data["request-id"] === undefined || text(data["request-id"]) === reference) &&
+      (data.service === undefined || text(data.service).toUpperCase() === service)) {
+    return { ...base, outcome: "FAILED", authoritative: true,
+      reasonCode: "DOCUMENTED_INITIAL_VALIDATION_REJECTION" };
+  }
   if (httpStatus !== 200 || !data || typeof data !== "object" || Array.isArray(data)) return base;
   const echoed = text(data["request-id"]);
   if (echoed !== reference) return { ...base, reasonCode: "PROVIDER_REFERENCE_MISMATCH" };
@@ -148,8 +161,9 @@ const createTelecomAbodeBillsProvider = ({
     const response = await send("POST", "/bill/bill-validation", { disco: providerId, ...meterData });
     const status = text(response.data?.status).toLowerCase();
     if (response.httpStatus === 200 && status === "success" && text(response.data?.name)) {
-      return { verified: true, disco: providerId, ...meterData,
-        customerName: text(response.data.name), customerAddress: text(response.data.customer_address) };
+      // This live endpoint returned this identity for invalid controls. Names
+      // and addresses alone therefore cannot authorize a debit or fulfillment.
+      return { verified: false, reasonCode: "METER_IDENTITY_UNTRUSTED" };
     }
     if ([200, 400, 422].includes(response.httpStatus) && ["error", "fail", "failed"].includes(status))
       return { verified: false, reasonCode: "METER_NOT_VERIFIED" };
@@ -186,7 +200,7 @@ const createTelecomAbodeBillsProvider = ({
         "The canonical posted wallet debit could not be verified. No provider purchase was sent.", 409);
     }
     const response = await send("POST", service === "AIRTIME" ? "/airtime" : "/bill", payload);
-    return seal({ source: "INITIAL_REQUEST", ...classify({ ...response, service, reference: requestId,
+    return seal({ source: "INITIAL_REQUEST", ...classify({ ...response, source: "INITIAL_REQUEST", service, reference: requestId,
       meterType: payload.meter_type }) });
   };
   const purchaseAirtime = async input => {

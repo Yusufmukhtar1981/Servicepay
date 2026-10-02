@@ -35,6 +35,8 @@ const fixture = async ({ mode = "success", markupBps = 0 } = {}) => {
         { id: 11, network: "Glo" }, { id: 12, network: "9mobile" }] };
       if (mode === "timeout") throw Error("Mock timeout");
       const key = options.data?.["request-id"] || decodeURIComponent(options.url.split("/").pop());
+      if (mode === "validation-rejected") return { status: 422, data: {
+        status: "fail", Status: "failed", message: "Insufficient wallet balance" } };
       return { status: 200, data: mode === "failure" ? { status: "fail", Status: "failed", "request-id": key }
         : { status: "success", Status: "successful", "request-id": mode === "wrong-ref" ? "unrelated-order" : key,
           service: "airtime", amount: 50 } };
@@ -108,4 +110,31 @@ test("markup cannot be negative or create zero-priced airtime", () => {
   assert.throws(() => priceFor(50, -1));
   assert.throws(() => priceFor(0, 0));
   assert.equal(priceFor("93.07", 0), 93.07);
+});
+
+test("documented initial validation rejection refunds once without commission", async () => {
+  const f = await fixture({ mode: "validation-rejected" });
+  const first = await f.lifecycle.executePurchase(f.input);
+  assert.equal(first.transaction.status, "FAILED");
+  assert.equal(first.transaction.dispatchStatus, "REFUNDED");
+  await f.lifecycle.executePurchase(f.input);
+  await assert.rejects(f.lifecycle.reconcilePendingPurchase({ transactionId: first.transaction._id }),
+    { code: "AIRTIME_TRANSACTION_NOT_PENDING" });
+  assert.equal(f.calls.filter(c => c.method === "POST").length, 1);
+  assert.equal((await User.findById(f.customer._id)).walletBalance, 1000);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: first.transaction._id, direction: "DEBIT" }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: first.transaction._id, direction: "CREDIT" }), 1);
+  assert.equal(await Commission.countDocuments({ transactionId: first.transaction._id }), 0);
+});
+
+test("an old UNKNOWN request never blocks a distinct new request or gets resent", async () => {
+  const f = await fixture({ mode: "timeout" });
+  const first = await f.lifecycle.executePurchase(f.input);
+  const second = await f.lifecycle.executePurchase({ ...f.input, idempotencyKey: f.input.idempotencyKey + "-separate" });
+  assert.notEqual(String(first.transaction._id), String(second.transaction._id));
+  assert.notEqual(first.transaction.providerRequestId, second.transaction.providerRequestId);
+  await f.lifecycle.executePurchase(f.input);
+  assert.equal(f.calls.filter(c => c.method === "POST").length, 2);
+  assert.equal((await User.findById(f.customer._id)).walletBalance, 900);
+  assert.equal((await Transaction.findById(first.transaction._id)).status, "PENDING");
 });

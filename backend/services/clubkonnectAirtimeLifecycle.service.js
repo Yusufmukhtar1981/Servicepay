@@ -330,6 +330,16 @@ const createClubKonnectAirtimeLifecycleService = ({
               dispatchStartedAt: null,
               providerResponse: {
                 ...(purchase.providerIntent ? { telecomAbodePurchaseIntent: purchase.providerIntent } : {}),
+                ...(providerName === "TELECOM_ABODE" ? { financialAccounting: {
+                  customerAmount: debitAmount,
+                  customerSellingPrice: debitAmount,
+                  providerCost: null,
+                  serviceFee: roundMoney(debitAmount - purchase.amount),
+                  servicePayGrossProfit: null,
+                  commission: null,
+                  netServicePayRevenue: null,
+                  status: "AWAITING_FULFILLMENT",
+                } } : {}),
                 airtimeLifecycle: {
                   version: 1,
                   requestFingerprint: purchase.requestFingerprint,
@@ -668,6 +678,7 @@ const createClubKonnectAirtimeLifecycleService = ({
               lastErrorCode: "",
             },
             ...(providerName === "TELECOM_ABODE" ? { financialAccounting: {
+              ...transaction.providerResponse?.financialAccounting,
               customerSellingPrice: Number(transaction.amount),
               providerCost: charged,
               servicePayGrossProfit: charged === null ? null : roundMoney(Number(transaction.amount) - charged),
@@ -684,9 +695,12 @@ const createClubKonnectAirtimeLifecycleService = ({
           providerResult.outcome === "FAILED" &&
           transaction.status === "PENDING" &&
           providerResult.authoritative === true &&
-          providerName === "CLUBKONNECT" &&
-          ["500", "501"].includes(safe.statusCode) &&
-          safe.orderStatus === "ORDER_CANCELLED"
+          ((providerName === "CLUBKONNECT" &&
+            ["500", "501"].includes(safe.statusCode) &&
+            safe.orderStatus === "ORDER_CANCELLED") ||
+           (providerName === "TELECOM_ABODE" &&
+            source === "INITIAL_REQUEST" && safe.httpStatus === 422 &&
+            safe.reasonCode === "DOCUMENTED_INITIAL_VALIDATION_REJECTION"))
         ) {
           return refundAndFail(transaction, providerMetadata, session);
         }
@@ -742,7 +756,8 @@ const createClubKonnectAirtimeLifecycleService = ({
       idempotencyKey: `AIRTIME:${transaction.reference}:REFUND`,
       narration: `Refund of Airtime purchase ${transaction.reference}`,
       metadata: {
-        reason: "DOCUMENTED_PROVIDER_ORDER_CANCELLED",
+        reason: providerName === "TELECOM_ABODE"
+          ? "DOCUMENTED_INITIAL_VALIDATION_REJECTION" : "DOCUMENTED_PROVIDER_ORDER_CANCELLED",
         providerCode: providerMetadata.statusCode,
       },
       session,
@@ -753,7 +768,8 @@ const createClubKonnectAirtimeLifecycleService = ({
 
     transaction.status = "FAILED";
     transaction.dispatchStatus = "REFUNDED";
-    transaction.providerStatus = "ORDER_CANCELLED";
+    transaction.providerStatus = providerName === "TELECOM_ABODE"
+      ? "VALIDATION_REJECTED" : "ORDER_CANCELLED";
     transaction.reversalLedgerEntryId = reversal.entry._id;
     transaction.providerResponse = {
       airtimeLifecycle: {
