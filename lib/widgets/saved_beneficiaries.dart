@@ -119,14 +119,13 @@ class SavedBeneficiaries extends StatefulWidget {
 }
 
 class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
-  final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _nicknameController = TextEditingController();
   List<Map<String, dynamic>> _items = <Map<String, dynamic>>[];
   bool _loading = true;
   bool _writing = false;
   String? _loadError;
   String? _mutationError;
   int _loadGeneration = 0;
+  StateSetter? _sheetSetState;
 
   BeneficiaryLoader get _loader =>
       widget.loadBeneficiaries ?? ApiService.getBeneficiaries;
@@ -147,9 +146,20 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
   @override
   void dispose() {
     SavedBeneficiaries._reloadListeners.remove(_reloadFromExternalSave);
-    _searchController.dispose();
-    _nicknameController.dispose();
+    _sheetSetState = null;
     super.dispose();
+  }
+
+  void _refreshViews([VoidCallback? change]) {
+    if (mounted) setState(change ?? () {});
+    final updateSheet = _sheetSetState;
+    if (updateSheet != null) {
+      try {
+        updateSheet(() {});
+      } catch (_) {
+        _sheetSetState = null;
+      }
+    }
   }
 
   void _reloadFromExternalSave() {
@@ -168,14 +178,14 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
     try {
       final result = await _loader().timeout(widget.loadTimeout);
       if (!mounted || generation != _loadGeneration) return;
-      setState(() {
+      _refreshViews(() {
         _items = result.map((item) => Map<String, dynamic>.from(item)).toList();
         _loading = false;
         _loadError = null;
       });
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
-      setState(() {
+      _refreshViews(() {
         _loading = false;
         _loadError =
             "Saved numbers couldn't load. You can still enter a number manually.";
@@ -191,42 +201,144 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
     if (cache == null) return;
     try {
       final rows = await cache().timeout(const Duration(milliseconds: 750));
-      if (!mounted || generation != _loadGeneration ||
-          (!_loading && _loadError == null)) return;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          (!_loading && _loadError == null)) {
+        return;
+      }
       if (rows.isNotEmpty) {
-        setState(() => _items = rows.map(Map<String, dynamic>.from).toList());
+        _refreshViews(
+            () => _items = rows.map(Map<String, dynamic>.from).toList());
       }
     } catch (_) {
       // Optional cached numbers must never block the form or its network fetch.
     }
   }
 
-  List<Map<String, dynamic>> get _visibleItems {
-    final query = _searchController.text.trim().toLowerCase();
-    if (query.isEmpty) return _items;
-    return _items.where((item) {
-      final name = (item['name'] ?? '').toString().toLowerCase();
-      final phone = (item['phone'] ?? '').toString().toLowerCase();
-      return name.contains(query) || phone.contains(query);
-    }).toList();
+  Future<void> _openSaveDialog() async {
+    final phoneController =
+        TextEditingController(text: widget.phoneController.text.trim());
+    final nicknameController = TextEditingController();
+    bool saving = false;
+    String? errorMessage;
+    final route = DialogRoute<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Save number'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: phoneController,
+                  autofocus: true,
+                  keyboardType: TextInputType.phone,
+                  maxLength: 24,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number',
+                    hintText: '08012345678',
+                    counterText: '',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: nicknameController,
+                  maxLength: 80,
+                  decoration: const InputDecoration(
+                    labelText: 'Nickname (optional)',
+                    hintText: 'Mum, Office',
+                    counterText: '',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  _inlineMessage(context, errorMessage!, isError: true),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final phone = phoneController.text.trim();
+                      if (phone.isEmpty) {
+                        setDialogState(
+                            () => errorMessage = 'Enter a phone number.');
+                        return;
+                      }
+                      setDialogState(() {
+                        saving = true;
+                        errorMessage = null;
+                      });
+                      try {
+                        final result = await _saver(
+                          phone: phone,
+                          name: nicknameController.text.trim(),
+                          network: widget.network,
+                          serviceType: widget.serviceType,
+                        );
+                        _ensureSuccessful(
+                            result, 'Could not save this number.');
+                        if (!mounted) return;
+                        _upsertSavedItem(
+                          phone: phone,
+                          name: nicknameController.text.trim(),
+                          result: result,
+                        );
+                        SavedBeneficiaries.notifySaved();
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, true);
+                        }
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            saving = false;
+                            errorMessage = _message(error);
+                          });
+                        }
+                      }
+                    },
+              child: Text(saving ? 'Saving…' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await Navigator.of(context).push(route);
+    await route.completed;
+    phoneController.dispose();
+    nicknameController.dispose();
   }
 
-  Future<void> _saveCurrentNumber() async {
-    final phone = widget.phoneController.text.trim();
-    if (phone.isEmpty) {
-      setState(() => _mutationError = 'Enter a phone number before saving.');
-      return;
-    }
-    await _performWrite(() async {
-      final result = await _saver(
-        phone: phone,
-        name: _nicknameController.text.trim(),
-        network: widget.network,
-        serviceType: widget.serviceType,
-      );
-      _ensureSuccessful(result, 'Could not save this number.');
-      _nicknameController.clear();
-      SavedBeneficiaries.notifySaved();
+  void _upsertSavedItem({
+    required String phone,
+    required String name,
+    required Map<String, dynamic> result,
+  }) {
+    final dynamic raw = result['beneficiary'] ?? result['data'];
+    final Map<String, dynamic> saved =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    saved['phone'] = saved['phone']?.toString() ?? phone;
+    saved['name'] = saved['name']?.toString() ?? name;
+    final index =
+        _items.indexWhere((item) => (item['phone'] ?? '').toString() == phone);
+    _refreshViews(() {
+      if (index >= 0) {
+        _items[index] = {..._items[index], ...saved};
+      } else {
+        _items = [saved, ..._items];
+      }
+      _loadError = null;
+      _loading = false;
     });
   }
 
@@ -267,6 +379,13 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
       final result =
           await _updater(id: item['_id'].toString(), name: name.trim());
       _ensureSuccessful(result, 'Could not rename this number.');
+      final index = _items.indexWhere(
+          (saved) => saved['_id'].toString() == item['_id'].toString());
+      if (index >= 0) {
+        final updated = Map<String, dynamic>.from(_items[index]);
+        updated['name'] = name.trim();
+        _refreshViews(() => _items[index] = updated);
+      }
     });
   }
 
@@ -293,22 +412,27 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
     await _performWrite(() async {
       final result = await _deleter(item['_id'].toString());
       _ensureSuccessful(result, 'Could not delete this number.');
+      _refreshViews(() => _items.removeWhere(
+          (saved) => saved['_id'].toString() == item['_id'].toString()));
     });
   }
 
   Future<void> _performWrite(Future<void> Function() action) async {
     if (_writing) return;
-    setState(() {
+    _refreshViews(() {
       _writing = true;
       _mutationError = null;
     });
     try {
       await action();
-      await _load();
+      if (!mounted) return;
+      // Invalidate an earlier background response before refreshing the list.
+      _loadGeneration++;
+      unawaited(_load());
     } catch (error) {
-      if (mounted) setState(() => _mutationError = _message(error));
+      _refreshViews(() => _mutationError = _message(error));
     } finally {
-      if (mounted) setState(() => _writing = false);
+      _refreshViews(() => _writing = false);
     }
   }
 
@@ -328,115 +452,201 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final visibleItems = _visibleItems;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      margin: const EdgeInsets.only(top: 4, bottom: 8),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(Icons.bookmark_outline, color: theme.colorScheme.primary),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  'Saved Numbers',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
-              if (_loading)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _nicknameController,
-            maxLength: 80,
-            enabled: !_writing,
-            decoration: const InputDecoration(
-              labelText: 'Nickname (optional)',
-              hintText: 'Mum, Office, My MTN',
-              prefixIcon: Icon(Icons.person_outline),
-              counterText: '',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
+          Expanded(
             child: OutlinedButton.icon(
-              onPressed: _writing ? null : _saveCurrentNumber,
-              icon: const Icon(Icons.bookmark_add_outlined),
-              label: Text(_writing ? 'Saving…' : 'Save this number'),
-            ),
-          ),
-          if (_mutationError != null) ...[
-            const SizedBox(height: 8),
-            _inlineMessage(context, _mutationError!, isError: true),
-          ],
-          const SizedBox(height: 14),
-          TextField(
-            controller: _searchController,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Search saved numbers',
-              border: const OutlineInputBorder(),
-              suffixIcon: _searchController.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear search',
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.close),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (_loading && _items.isEmpty)
-            const _BeneficiaryLoading()
-          else if (_loadError != null) ...[
-            _inlineMessage(
-              context,
-              _loadError!,
-              isError: true,
-              action: TextButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
+              onPressed: _showSavedNumbers,
+              icon: const Icon(Icons.bookmark_outline, size: 18),
+              label: const Text('Saved Numbers'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                visualDensity: VisualDensity.compact,
               ),
             ),
-            if (_items.isNotEmpty)
-              ...visibleItems.map((item) => _beneficiaryTile(context, item)),
-          ] else if (_items.isEmpty)
-            _inlineMessage(context,
-                'No saved numbers yet. Save this number for next time.')
-          else if (visibleItems.isEmpty)
-            _inlineMessage(context,
-                'No saved numbers match “${_searchController.text.trim()}”.')
-          else
-            ...visibleItems.map((item) => _beneficiaryTile(context, item)),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _openSaveDialog,
+              icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+              label: const Text('Save Number'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _showSavedNumbers() async {
+    final searchController = TextEditingController();
+    final media = MediaQuery.of(context);
+    final maxHeight = media.size.height * 0.78;
+    TransitionRoute<dynamic>? sheetRoute;
+    final future = showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: Material(
+              color: Theme.of(sheetContext).colorScheme.surface,
+              clipBehavior: Clip.antiAlias,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(22)),
+              child: StatefulBuilder(
+                builder: (context, setModalState) {
+                  sheetRoute ??=
+                      ModalRoute.of(sheetContext) as TransitionRoute<dynamic>?;
+                  _sheetSetState = setModalState;
+                  final query = searchController.text.trim().toLowerCase();
+                  final visibleItems = _items.where((item) {
+                    final name = (item['name'] ?? '').toString().toLowerCase();
+                    final phone =
+                        (item['phone'] ?? '').toString().toLowerCase();
+                    return query.isEmpty ||
+                        name.contains(query) ||
+                        phone.contains(query);
+                  }).toList();
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text('Saved Numbers',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w800)),
+                            ),
+                            if (_loading)
+                              const SizedBox(
+                                width: 17,
+                                height: 17,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            IconButton(
+                              tooltip: 'Close',
+                              onPressed: () => Navigator.pop(sheetContext),
+                              icon: const Icon(Icons.close),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: TextField(
+                          controller: searchController,
+                          onChanged: (_) => setModalState(() {}),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            prefixIcon: const Icon(Icons.search),
+                            hintText: 'Search saved numbers',
+                            border: const OutlineInputBorder(),
+                            suffixIcon: searchController.text.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear search',
+                                    onPressed: () {
+                                      searchController.clear();
+                                      setModalState(() {});
+                                    },
+                                    icon: const Icon(Icons.close),
+                                  ),
+                          ),
+                        ),
+                      ),
+                      if (_loadError != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                          child: _inlineMessage(
+                            context,
+                            _loadError!,
+                            isError: true,
+                            action: TextButton.icon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry'),
+                            ),
+                          ),
+                        ),
+                      if (_mutationError != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                          child: _inlineMessage(context, _mutationError!,
+                              isError: true),
+                        ),
+                      Flexible(
+                        child: _loading && _items.isEmpty
+                            ? const _BeneficiaryLoading()
+                            : _items.isEmpty
+                                ? Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Text(
+                                        _loadError == null
+                                            ? 'No saved numbers yet.'
+                                            : 'Saved numbers are unavailable. You can still enter a number manually.',
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  )
+                                : visibleItems.isEmpty
+                                    ? Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(20),
+                                          child: Text(
+                                            'No saved numbers match “${searchController.text.trim()}”.',
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      )
+                                    : ListView.builder(
+                                        keyboardDismissBehavior:
+                                            ScrollViewKeyboardDismissBehavior
+                                                .onDrag,
+                                        padding: const EdgeInsets.fromLTRB(
+                                            16, 0, 16, 16),
+                                        itemCount: visibleItems.length,
+                                        itemBuilder: (context, index) =>
+                                            _beneficiaryTile(
+                                          context,
+                                          visibleItems[index],
+                                        ),
+                                      ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await future;
+    await sheetRoute?.completed;
+    _sheetSetState = null;
+    searchController.dispose();
   }
 
   Widget _beneficiaryTile(BuildContext context, Map<String, dynamic> item) {
@@ -444,58 +654,38 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
     final name = (item['name'] ?? '').toString().trim();
     final phone = (item['phone'] ?? '').toString();
     return Container(
-      margin: const EdgeInsets.only(top: 7),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(10),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .32),
+        borderRadius: BorderRadius.circular(13),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => _select(item),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                child: Row(
-                  children: [
-                    Icon(Icons.phone_iphone,
-                        size: 20, color: theme.colorScheme.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (name.isNotEmpty)
-                            Text(name,
-                                style: theme.textTheme.bodyMedium
-                                    ?.copyWith(fontWeight: FontWeight.w700)),
-                          Text(phone, style: theme.textTheme.bodyMedium),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Text('Use',
-                        style: theme.textTheme.labelMedium
-                            ?.copyWith(color: theme.colorScheme.primary)),
-                  ],
-                ),
-              ),
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.only(left: 13, right: 4),
+        leading: Icon(Icons.phone_iphone, color: theme.colorScheme.primary),
+        title: Text(name.isEmpty ? phone : name,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: name.isEmpty ? null : Text(phone),
+        onTap: () {
+          _select(item);
+          Navigator.pop(context);
+        },
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: 'Rename $phone',
+              onPressed: _writing ? null : () => _rename(item),
+              icon: const Icon(Icons.edit_outlined, size: 19),
             ),
-          ),
-          IconButton(
-            tooltip: 'Rename $phone',
-            onPressed: _writing ? null : () => _rename(item),
-            icon: const Icon(Icons.edit_outlined, size: 19),
-          ),
-          IconButton(
-            tooltip: 'Delete $phone',
-            onPressed: _writing ? null : () => _confirmDelete(item),
-            icon: const Icon(Icons.delete_outline, size: 19),
-          ),
-        ],
+            IconButton(
+              tooltip: 'Delete $phone',
+              onPressed: _writing ? null : () => _confirmDelete(item),
+              icon: const Icon(Icons.delete_outline, size: 19),
+            ),
+          ],
+        ),
       ),
     );
   }

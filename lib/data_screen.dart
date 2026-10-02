@@ -1052,7 +1052,12 @@ class _DataScreenState extends State<DataScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      SavedBeneficiaries(
+                        loadBeneficiaries: widget.loadBeneficiaries,
+                        phoneController: phoneController,
+                        network: selectedNetwork,
+                        serviceType: 'DATA',
+                      ),
                       const SizedBox(
                         height: 14,
                       ),
@@ -1066,12 +1071,6 @@ class _DataScreenState extends State<DataScreen> {
                         height: 8,
                       ),
                       buildNetworkSelector(),
-                      SavedBeneficiaries(
-                        loadBeneficiaries: widget.loadBeneficiaries,
-                        phoneController: phoneController,
-                        network: selectedNetwork,
-                        serviceType: 'DATA',
-                      ),
                       if (!isLoadingPlans && dataPlans.isNotEmpty) ...[
                         const SizedBox(
                           height: 14,

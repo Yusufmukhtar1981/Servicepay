@@ -94,6 +94,10 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
     await tester.pump();
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text("Saved numbers couldn't load. You can still enter a number manually."),findsNothing);
+    await tester.tap(find.text('Saved Numbers'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(
         find.text(
             "Saved numbers couldn't load. You can still enter a number manually."),
@@ -120,11 +124,18 @@ void main() {
                           {'_id': 'one', 'phone': '08012345678', 'name': 'Home'}
                         ])))));
     await tester.pump();
+    await tester.tap(find.text('Saved Numbers'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Home'), findsOneWidget);
     await tester.tap(find.text('Home'));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(phone.text, '08012345678');
     await tester.pump(const Duration(seconds: 4));
     await tester.pump();
+    await tester.tap(find.text('Saved Numbers'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Home'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     pending.complete([]);
@@ -141,6 +152,8 @@ void main() {
     await tester.pump();
     cache.complete([{'_id':'one','phone':'08012345678','name':'Offline home'}]);
     await tester.pump();
+    await tester.tap(find.text('Saved Numbers'));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Offline home'),findsOneWidget);
     expect(find.text("Saved numbers couldn't load. You can still enter a number manually."),findsOneWidget);
     await tester.pumpWidget(const SizedBox());phone.dispose();
@@ -183,7 +196,7 @@ void main() {
     await tester.enterText(amount,'50');
     expect(tester.widget<TextField>(amount).controller!.text,'50');
     await tester.pump(const Duration(seconds:4));await tester.pump();
-    expect(find.text("Saved numbers couldn't load. You can still enter a number manually."),findsOneWidget);
+    expect(find.text("Saved numbers couldn't load. You can still enter a number manually."),findsNothing);
     expect(find.byType(CircularProgressIndicator),findsNothing);
     networks.complete({'success':true,'data':[]});saved.complete([]);
     await tester.pumpWidget(const SizedBox());
