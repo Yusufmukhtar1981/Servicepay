@@ -120,6 +120,7 @@ const createClubKonnectAirtimeLifecycleService = ({
   provider = createClubKonnectAirtimeProvider(),
   providerName = "CLUBKONNECT",
   normalizePurchaseNetwork = normalizeNetwork,
+  normalizePurchasePhone = normalizePhone,
   preparePurchase = async purchase => purchase,
   verifyAdmission = async () => {},
   models = {},
@@ -204,7 +205,7 @@ const createClubKonnectAirtimeLifecycleService = ({
     if (!networkCode) {
       throw buildError("Select MTN, Glo, Airtel or 9mobile.");
     }
-    const phoneNumber = normalizePhone(phone);
+    const phoneNumber = normalizePurchasePhone(phone);
     if (!phoneNumber) {
       throw buildError("Enter a valid Nigerian phone number.");
     }
@@ -799,7 +800,7 @@ const createClubKonnectAirtimeLifecycleService = ({
         provider.purchase || provider.submitAirtime;
       providerResult = await purchaseProviderRequest.call(provider, {
         network: sending.providerResponse?.airtimeLifecycle?.network || normalizePurchaseNetwork(input.network),
-        phone: normalizePhone(input.phone),
+        phone: normalizePurchasePhone(input.phone),
         amount: Number(sending.providerResponse?.airtimeLifecycle?.faceValue ?? sending.amount),
         requestId: sending.providerRequestId || sending.reference,
       });

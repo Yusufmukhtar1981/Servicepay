@@ -1,0 +1,577 @@
+{
+  "1:1": {
+    "networkCode": "01",
+    "name": "1GB Weekly - 7",
+    "pricingCode": "DATA-MTN-74cb5b964256b42bef21"
+  },
+  "1:2": {
+    "networkCode": "01",
+    "name": "2GB Weekly - 7",
+    "pricingCode": "DATA-MTN-4562102280e769f97a29"
+  },
+  "3:3": {
+    "networkCode": "02",
+    "name": "500MB Monthly - 30",
+    "pricingCode": "DATA-GLO-4eeaf249a87eef51cc70"
+  },
+  "3:4": {
+    "networkCode": "02",
+    "name": "1GB Monthly - 30",
+    "pricingCode": "DATA-GLO-0c542b495f23ecfabcfe"
+  },
+  "3:5": {
+    "networkCode": "02",
+    "name": "2GB Monthly - 30",
+    "pricingCode": "DATA-GLO-57b2597c0af9a3dff2c4"
+  },
+  "3:6": {
+    "networkCode": "02",
+    "name": "3GB Monthly - 30",
+    "pricingCode": "DATA-GLO-754cd120266b4076e3ab"
+  },
+  "3:7": {
+    "networkCode": "02",
+    "name": "5GB Monthly - 30",
+    "pricingCode": "DATA-GLO-540e0d232098ff070042"
+  },
+  "3:8": {
+    "networkCode": "02",
+    "name": "10GB Monthly - 30",
+    "pricingCode": "DATA-GLO-2776cd243460a4ab6f59"
+  },
+  "1:9": {
+    "networkCode": "01",
+    "name": "1GB Monthly - 30",
+    "pricingCode": "DATA-MTN-84c721d9f0fc5b2f56f4"
+  },
+  "1:10": {
+    "networkCode": "01",
+    "name": "2GB Monthly - 30",
+    "pricingCode": "DATA-MTN-e14df54d14427b89fc87"
+  },
+  "1:11": {
+    "networkCode": "01",
+    "name": "5GB Monthly - 30",
+    "pricingCode": "DATA-MTN-e906ac7769513bd5e83d"
+  },
+  "3:19": {
+    "networkCode": "02",
+    "name": "1GB 3days - 3",
+    "pricingCode": "DATA-GLO-1f14bb362c98103d9941"
+  },
+  "3:20": {
+    "networkCode": "02",
+    "name": "3GB 3days - 3",
+    "pricingCode": "DATA-GLO-2f6f9ec7e7a73ee36c7d"
+  },
+  "3:21": {
+    "networkCode": "02",
+    "name": "5GB 3days - 3",
+    "pricingCode": "DATA-GLO-da06ae4d5d72af44f917"
+  },
+  "3:22": {
+    "networkCode": "02",
+    "name": "1GB Weekly - 7",
+    "pricingCode": "DATA-GLO-d1be67669f25ea1809f9"
+  },
+  "3:23": {
+    "networkCode": "02",
+    "name": "3GB Weekly - 7",
+    "pricingCode": "DATA-GLO-74bddd0538073c75ed73"
+  },
+  "3:24": {
+    "networkCode": "02",
+    "name": "5GB Weekly - 7",
+    "pricingCode": "DATA-GLO-cdeb5aef434c9a640aa3"
+  },
+  "3:25": {
+    "networkCode": "02",
+    "name": "200MB Monthly - 30",
+    "pricingCode": "DATA-GLO-e8622e4438d831d4617d"
+  },
+  "2:26": {
+    "networkCode": "04",
+    "name": "1GB Weekly - 7",
+    "pricingCode": "DATA-AIRTEL-dd3764a5041f4d4a9d22"
+  },
+  "2:27": {
+    "networkCode": "04",
+    "name": "200MB Daily - 2",
+    "pricingCode": "DATA-AIRTEL-af94769b902e6bd4a34c"
+  },
+  "2:28": {
+    "networkCode": "04",
+    "name": "500MB HOT - 1",
+    "pricingCode": "DATA-AIRTEL-cd8d4a8f28a51f542cac"
+  },
+  "2:29": {
+    "networkCode": "04",
+    "name": "2GB Monthly - 30",
+    "pricingCode": "DATA-AIRTEL-65cdd4e957ff441e926e"
+  },
+  "2:30": {
+    "networkCode": "04",
+    "name": "4GB Monthly - 30",
+    "pricingCode": "DATA-AIRTEL-9a5a6faa8287395571d6"
+  },
+  "2:31": {
+    "networkCode": "04",
+    "name": "10GB Monthly - 30",
+    "pricingCode": "DATA-AIRTEL-efdd8ddd437fc6c3c1ba"
+  },
+  "2:32": {
+    "networkCode": "04",
+    "name": "100MB Daily - 1",
+    "pricingCode": "DATA-AIRTEL-d5d3f4fa1114bceb70c6"
+  },
+  "2:33": {
+    "networkCode": "04",
+    "name": "500MB Weekly - 7",
+    "pricingCode": "DATA-AIRTEL-0ba2a671ccc7f4a962bd"
+  },
+  "2:34": {
+    "networkCode": "04",
+    "name": "1GB HOT - 3",
+    "pricingCode": "DATA-AIRTEL-0121d843dbb84d576205"
+  },
+  "2:35": {
+    "networkCode": "04",
+    "name": "200MB HOT - 2",
+    "pricingCode": "DATA-AIRTEL-b37a9c1ac4a4602eae1c"
+  },
+  "2:36": {
+    "networkCode": "04",
+    "name": "1.5GB Weekly - 7",
+    "pricingCode": "DATA-AIRTEL-f75e43059ef2147d1c40"
+  },
+  "2:37": {
+    "networkCode": "04",
+    "name": "3GB HOT - 2",
+    "pricingCode": "DATA-AIRTEL-636e49f00a1e207a39fd"
+  },
+  "2:38": {
+    "networkCode": "04",
+    "name": "4GB Weekly - 7",
+    "pricingCode": "DATA-AIRTEL-2ac31e0346d4fbb9b99e"
+  },
+  "2:39": {
+    "networkCode": "04",
+    "name": "2GB HOT - 2",
+    "pricingCode": "DATA-AIRTEL-9978f86ccb62dc4b2e0d"
+  },
+  "2:40": {
+    "networkCode": "04",
+    "name": "1.5GB Daily - 1",
+    "pricingCode": "DATA-AIRTEL-135bdb3ef7b8d37b7d88"
+  },
+  "2:41": {
+    "networkCode": "04",
+    "name": "18GB Monthly - 30",
+    "pricingCode": "DATA-AIRTEL-5d0a0d68c6273c238c24"
+  },
+  "2:42": {
+    "networkCode": "04",
+    "name": "8GB Monthly - 30",
+    "pricingCode": "DATA-AIRTEL-a429fb6cec132717cfd7"
+  },
+  "2:43": {
+    "networkCode": "04",
+    "name": "150MB Daily - 2",
+    "pricingCode": "DATA-AIRTEL-9fed0e94902c60940096"
+  },
+  "2:44": {
+    "networkCode": "04",
+    "name": "300MB HOT - 2",
+    "pricingCode": "DATA-AIRTEL-cc241a96c3727a1b7c36"
+  },
+  "2:45": {
+    "networkCode": "04",
+    "name": "600MB HOT - 2",
+    "pricingCode": "DATA-AIRTEL-db4e69d47b921027f191"
+  },
+  "2:46": {
+    "networkCode": "04",
+    "name": "1GB Daily - 1",
+    "pricingCode": "DATA-AIRTEL-c9a1ebdb4ed37c62e035"
+  },
+  "2:47": {
+    "networkCode": "04",
+    "name": "1.5GB HOT - 1",
+    "pricingCode": "DATA-AIRTEL-1bd0a2b15a301ce7d717"
+  },
+  "2:48": {
+    "networkCode": "04",
+    "name": "10GB HOT - 30",
+    "pricingCode": "DATA-AIRTEL-5d3d49f2896b354b9b03"
+  },
+  "2:49": {
+    "networkCode": "04",
+    "name": "7GB Weekly - 7",
+    "pricingCode": "DATA-AIRTEL-d95c9caba2b688536a17"
+  },
+  "1:80": {
+    "networkCode": "01",
+    "name": "500MB Weekly - 7",
+    "pricingCode": "DATA-MTN-2565c1f4cbd79b4a5838"
+  },
+  "3:81": {
+    "networkCode": "02",
+    "name": "1GB Weekly - 30",
+    "pricingCode": "DATA-GLO-593c87c95d3eea316da7"
+  },
+  "3:82": {
+    "networkCode": "02",
+    "name": "750MB HOT - 1",
+    "pricingCode": "DATA-GLO-2d23de2277b245c00c64"
+  },
+  "3:83": {
+    "networkCode": "02",
+    "name": "1.5GB HOT - 1",
+    "pricingCode": "DATA-GLO-b8cfe05fc16276bc59fa"
+  },
+  "3:84": {
+    "networkCode": "02",
+    "name": "2.5GB HOT - 2",
+    "pricingCode": "DATA-GLO-3ae658ebadb2e1a2e0e5"
+  },
+  "3:85": {
+    "networkCode": "02",
+    "name": "10GB HOT - 7",
+    "pricingCode": "DATA-GLO-80ffff0774e6b67b4095"
+  },
+  "1:86": {
+    "networkCode": "01",
+    "name": "3GB Monthly - 30",
+    "pricingCode": "DATA-MTN-0c343375e1a3e3d5d386"
+  },
+  "1:89": {
+    "networkCode": "01",
+    "name": "3.5GB HOT - 1",
+    "pricingCode": "DATA-MTN-568ca8c120cc3ace7f0e"
+  },
+  "1:90": {
+    "networkCode": "01",
+    "name": "4GB HOT - 2",
+    "pricingCode": "DATA-MTN-05b0994c89ecbbf1f065"
+  },
+  "1:91": {
+    "networkCode": "01",
+    "name": "5.5GB HOT - 2",
+    "pricingCode": "DATA-MTN-eadc998aaf2dafb21c24"
+  },
+  "1:92": {
+    "networkCode": "01",
+    "name": "500.0MB Weekly - 7",
+    "pricingCode": "DATA-MTN-6b7723f73f0b12d48996"
+  },
+  "4:94": {
+    "networkCode": "03",
+    "name": "500MB Corporate - 30",
+    "pricingCode": "DATA-9MOBILE-aebe4b5519ce2fb9161f"
+  },
+  "4:95": {
+    "networkCode": "03",
+    "name": "1GB Corporate - 30",
+    "pricingCode": "DATA-9MOBILE-caacf275271b6cbbdbe2"
+  },
+  "4:96": {
+    "networkCode": "03",
+    "name": "1.5GB Corporate - 30",
+    "pricingCode": "DATA-9MOBILE-e438028a2c26192b266a"
+  },
+  "4:97": {
+    "networkCode": "03",
+    "name": "2GB Corporate - 30",
+    "pricingCode": "DATA-9MOBILE-f608f2d60ce2ee86338c"
+  },
+  "4:98": {
+    "networkCode": "03",
+    "name": "3GB Corporate - 30",
+    "pricingCode": "DATA-9MOBILE-3ac43eed53696bb54d8a"
+  },
+  "4:100": {
+    "networkCode": "03",
+    "name": "5GB Corporate - 30",
+    "pricingCode": "DATA-9MOBILE-5cc96ee6605c7ed9c5fa"
+  },
+  "4:101": {
+    "networkCode": "03",
+    "name": "10GB Corporate - 30",
+    "pricingCode": "DATA-9MOBILE-e266422d430d07ce2e51"
+  },
+  "3:103": {
+    "networkCode": "02",
+    "name": "1.0GB HOT - 1",
+    "pricingCode": "DATA-GLO-cdcabe3495be9a2cc169"
+  },
+  "1:104": {
+    "networkCode": "01",
+    "name": "2.7GB Extra Night - 30",
+    "pricingCode": "DATA-MTN-20b05d74309cc0be6b8c"
+  },
+  "1:105": {
+    "networkCode": "01",
+    "name": "60GB Broadband - 30",
+    "pricingCode": "DATA-MTN-2381f0d9ad719ad64d75"
+  },
+  "1:106": {
+    "networkCode": "01",
+    "name": "120GB Broadband - 30",
+    "pricingCode": "DATA-MTN-0b9e439faf7ba70eb112"
+  },
+  "1:107": {
+    "networkCode": "01",
+    "name": "450GB Broadband - 90",
+    "pricingCode": "DATA-MTN-b183da442173c68d9352"
+  },
+  "1:108": {
+    "networkCode": "01",
+    "name": "1.5TB Broadband - 365",
+    "pricingCode": "DATA-MTN-0dc54abbb9ef525b83f8"
+  },
+  "1:109": {
+    "networkCode": "01",
+    "name": "6GB Weekly - 7",
+    "pricingCode": "DATA-MTN-ec63598cb2c0b442a1cf"
+  },
+  "2:111": {
+    "networkCode": "04",
+    "name": "6GB Weekly - 7",
+    "pricingCode": "DATA-AIRTEL-6538353e051efdc28c5b"
+  },
+  "1:112": {
+    "networkCode": "01",
+    "name": "10GB Monthly - 30",
+    "pricingCode": "DATA-MTN-c51b121295d78de7b5df"
+  },
+  "1:115": {
+    "networkCode": "01",
+    "name": "11GB Weekly - 7",
+    "pricingCode": "DATA-MTN-12eecf59b1c337250cb1"
+  },
+  "1:116": {
+    "networkCode": "01",
+    "name": "10.0GB Monthly - 30",
+    "pricingCode": "DATA-MTN-46f3ae9b6c246d1d3f7b"
+  },
+  "1:117": {
+    "networkCode": "01",
+    "name": "2GB Extra Night - 30",
+    "pricingCode": "DATA-MTN-ac7d16ec5d452390ad83"
+  },
+  "1:118": {
+    "networkCode": "01",
+    "name": "3.5GB Extra Night - 30",
+    "pricingCode": "DATA-MTN-59cc048b0ba55fcd63f8"
+  },
+  "1:119": {
+    "networkCode": "01",
+    "name": "7GB Extra Night - 30",
+    "pricingCode": "DATA-MTN-b14e6681e8cac062c3f5"
+  },
+  "1:120": {
+    "networkCode": "01",
+    "name": "1.2GB Weekly - 7",
+    "pricingCode": "DATA-MTN-275940f5310d50cb63c0"
+  },
+  "1:121": {
+    "networkCode": "01",
+    "name": "1GB Weekly - 7",
+    "pricingCode": "DATA-MTN-b78e1a678e7179015e44"
+  },
+  "1:122": {
+    "networkCode": "01",
+    "name": "1.5GB Weekly - 7",
+    "pricingCode": "DATA-MTN-b165419d80c4c721ddf6"
+  },
+  "1:123": {
+    "networkCode": "01",
+    "name": "3.5GB Weekly - 7",
+    "pricingCode": "DATA-MTN-54c8c5df2acbaf9c6e61"
+  },
+  "1:124": {
+    "networkCode": "01",
+    "name": "16.5GB Extra Night - 30",
+    "pricingCode": "DATA-MTN-b856dc2d10d52784455b"
+  },
+  "1:125": {
+    "networkCode": "01",
+    "name": "1.5GB HOT - 2",
+    "pricingCode": "DATA-MTN-cf8fc9578dda51d820f6"
+  },
+  "1:127": {
+    "networkCode": "01",
+    "name": "2.5GB HOT - 2",
+    "pricingCode": "DATA-MTN-cad791b7587c75297dab"
+  },
+  "1:128": {
+    "networkCode": "01",
+    "name": "2.0GB Weekly - 7",
+    "pricingCode": "DATA-MTN-9bad8392c9c64c358a27"
+  },
+  "2:129": {
+    "networkCode": "04",
+    "name": "3GB Monthly - 30",
+    "pricingCode": "DATA-AIRTEL-04978ba514dba3f9c85f"
+  },
+  "1:133": {
+    "networkCode": "01",
+    "name": "7GB HOT - 2",
+    "pricingCode": "DATA-MTN-8b1ea6c617387448fe87"
+  },
+  "1:135": {
+    "networkCode": "01",
+    "name": "2GB HOT - 7",
+    "pricingCode": "DATA-MTN-0e7c45362810cd23b7b9"
+  },
+  "1:136": {
+    "networkCode": "01",
+    "name": "470MB HOT - 7",
+    "pricingCode": "DATA-MTN-156bc05fdb08adec1bd0"
+  },
+  "1:137": {
+    "networkCode": "01",
+    "name": "18.6GB Always ON - 30",
+    "pricingCode": "DATA-MTN-f393d9cb64bc6246411f"
+  },
+  "1:138": {
+    "networkCode": "01",
+    "name": "45GB Always ON - 30",
+    "pricingCode": "DATA-MTN-ae3a64462a51c3363a8b"
+  },
+  "1:141": {
+    "networkCode": "01",
+    "name": "1GB Data pin - 7",
+    "pricingCode": "DATA-MTN-a0486e02fa3da7c98147"
+  },
+  "2:145": {
+    "networkCode": "04",
+    "name": "8GB Weekly - 7",
+    "pricingCode": "DATA-AIRTEL-3886eeb84aefd7ff3734"
+  },
+  "1:150": {
+    "networkCode": "01",
+    "name": "2GB Data pin - 7",
+    "pricingCode": "DATA-MTN-236982d6e6f0172b1480"
+  },
+  "1:155": {
+    "networkCode": "01",
+    "name": "20GB Monthly - 30",
+    "pricingCode": "DATA-MTN-7d706a281501e3e48476"
+  },
+  "1:156": {
+    "networkCode": "01",
+    "name": "15GB Monthly - 30",
+    "pricingCode": "DATA-MTN-30019304fd5682affefa"
+  },
+  "1:163": {
+    "networkCode": "01",
+    "name": "20GB HOT - 30",
+    "pricingCode": "DATA-MTN-2355fc1e63d850494ac7"
+  },
+  "1:164": {
+    "networkCode": "01",
+    "name": "1.2GB HOT - 7",
+    "pricingCode": "DATA-MTN-8d52526b35e6c7d3a3b9"
+  },
+  "1:165": {
+    "networkCode": "01",
+    "name": "20GB Weekly - 7",
+    "pricingCode": "DATA-MTN-f9b567559eae6678c314"
+  },
+  "2:166": {
+    "networkCode": "04",
+    "name": "500MB Direct - 7",
+    "pricingCode": "DATA-AIRTEL-fd80f10e8031d91dba28"
+  },
+  "2:167": {
+    "networkCode": "04",
+    "name": "1GB Direct - 1",
+    "pricingCode": "DATA-AIRTEL-ebcbf5b0bb0dcb1b81fc"
+  },
+  "2:168": {
+    "networkCode": "04",
+    "name": "1.5GB Direct - 7",
+    "pricingCode": "DATA-AIRTEL-d80fbecb92e30985bcd5"
+  },
+  "2:169": {
+    "networkCode": "04",
+    "name": "3GB Direct - 2",
+    "pricingCode": "DATA-AIRTEL-9f72fbf22bde6cc07f2d"
+  },
+  "2:170": {
+    "networkCode": "04",
+    "name": "18GB Direct - 30",
+    "pricingCode": "DATA-AIRTEL-6c5f6b3a6988cf4cec47"
+  },
+  "2:171": {
+    "networkCode": "04",
+    "name": "6GB Direct - 7",
+    "pricingCode": "DATA-AIRTEL-df2b1bdbee6cf8374e74"
+  },
+  "2:172": {
+    "networkCode": "04",
+    "name": "2GB Direct - 30",
+    "pricingCode": "DATA-AIRTEL-531a278bd4462f1ccf34"
+  },
+  "2:173": {
+    "networkCode": "04",
+    "name": "3GB Direct - 30",
+    "pricingCode": "DATA-AIRTEL-f60c3cdd567d14cc8a8d"
+  },
+  "2:174": {
+    "networkCode": "04",
+    "name": "4GB Direct - 30",
+    "pricingCode": "DATA-AIRTEL-3fb958887632006d63ad"
+  },
+  "2:175": {
+    "networkCode": "04",
+    "name": "8GB Direct - 30",
+    "pricingCode": "DATA-AIRTEL-069733a3e9eac11553fe"
+  },
+  "2:176": {
+    "networkCode": "04",
+    "name": "10GB Direct - 30",
+    "pricingCode": "DATA-AIRTEL-b7a24d7a45d7c1c8c318"
+  },
+  "2:177": {
+    "networkCode": "04",
+    "name": "100MB Direct - 1",
+    "pricingCode": "DATA-AIRTEL-661e6f63e7ea4f05e46f"
+  },
+  "3:178": {
+    "networkCode": "02",
+    "name": "500MB HOT - 1",
+    "pricingCode": "DATA-GLO-ef8ca041cfe1952007aa"
+  },
+  "3:179": {
+    "networkCode": "02",
+    "name": "1GB HOT - 1",
+    "pricingCode": "DATA-GLO-d08f22c3b4d0f5502c7f"
+  },
+  "3:180": {
+    "networkCode": "02",
+    "name": "3GB HOT - 1",
+    "pricingCode": "DATA-GLO-9f25042255599d98de93"
+  },
+  "3:181": {
+    "networkCode": "02",
+    "name": "6GB HOT - 1",
+    "pricingCode": "DATA-GLO-eb99616bd78d1fa4e83b"
+  },
+  "1:184": {
+    "networkCode": "01",
+    "name": "3.2GB HOT - 2",
+    "pricingCode": "DATA-MTN-e11a93c8fde6aa0673a0"
+  },
+  "1:185": {
+    "networkCode": "01",
+    "name": "500MB HOT - 2",
+    "pricingCode": "DATA-MTN-fabe22fe4f248a89c63d"
+  },
+  "1:187": {
+    "networkCode": "01",
+    "name": "200MB HOT - 4",
+    "pricingCode": "DATA-MTN-bff19c35af67fb3ef841"
+  }
+}

@@ -21,17 +21,19 @@ const DataPriceOverride = require("../models/dataPriceOverride.model");
 const ProviderManagementConfig = require("../models/providerManagementConfig.model");
 const {
   servicepayPlanCode,
+  providerPlanCode,
 } = require("../services/telecomAbodeDataCatalog.service");
 const { issueDataPlanQuote } = require("../services/dataPlanQuote.service");
 
-const PROVIDER_PLAN_ID = 186;
+const PROVIDER_PLAN_ID = 1;
 const PROVIDER_NETWORK_ID = 1;
 const PROVIDER_COST = 50;
 const SERVICEPAY_PRICE = 55;
-const PLAN_NAME = "100MB HOT - 4";
-const PLAN_CODE = "DATA-MTN-6fb9d2d599ad73385503";
+const PLAN_NAME = "1GB Weekly - 7";
+const PLAN_CODE = providerPlanCode("01", PROVIDER_NETWORK_ID, PROVIDER_PLAN_ID);
+const PRICE_CODE = servicepayPlanCode("01", PLAN_NAME, "A");
 const CUSTOMER_PHONE = "08012345678";
-assert.equal(servicepayPlanCode("01", PLAN_NAME), PLAN_CODE);
+assert.equal(servicepayPlanCode("01", PLAN_NAME, "A"), PRICE_CODE);
 
 let replicaSet;
 let originalGetDataPlans;
@@ -136,7 +138,7 @@ const purchase = (user, {
 const addCanonicalPrice = async (sellingPrice = SERVICEPAY_PRICE, active = true) =>
   DataPriceOverride.create({
     networkCode: "01",
-    planCode: PLAN_CODE,
+    planCode: PRICE_CODE,
     planName: PLAN_NAME,
     providerPrice: PROVIDER_COST,
     sellingPrice,
@@ -343,7 +345,7 @@ test("HTTP DATA route authenticates, verifies PIN, persists correlation before d
     assert.equal(dispatchedRequests[0].request_id, response.body.reference);
     assert.equal(dispatchedRequests[0].network, 1);
     assert.equal(typeof dispatchedRequests[0].network, "number");
-    assert.equal(dispatchedRequests[0].plan, 186);
+    assert.equal(dispatchedRequests[0].plan, PROVIDER_PLAN_ID);
     assert.equal(typeof dispatchedRequests[0].plan, "number");
 
     const transaction = await Transaction.findOne({

@@ -267,12 +267,12 @@ const normalizeDataPlans = (data, dataNetworks) => {
     });
   }
 
-  const ids = new Set();
-  return collection.map((item) => {
+  const byId = new Map();
+  const quarantined = new Set();
+  for (const item of collection) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new TelecomAbodeError("Telecom Abode returned an invalid data plan entry.", {
-        code: "INVALID_PROVIDER_RESPONSE",
-      });
+      console.warn("DATA_CATALOG_ANOMALY", { reason: "MALFORMED_PROVIDER_PRODUCT" });
+      continue;
     }
 
     const rawId = item.plan_id;
@@ -297,7 +297,6 @@ const normalizeDataPlans = (data, dataNetworks) => {
     if (
       !Number.isSafeInteger(id) ||
       id <= 0 ||
-      ids.has(id) ||
       !network ||
       !datasize ||
       !day ||
@@ -305,12 +304,11 @@ const normalizeDataPlans = (data, dataNetworks) => {
       !Number.isFinite(price) ||
       price <= 0
     ) {
-      throw new TelecomAbodeError("Telecom Abode returned an ambiguous data plan entry.", {
-        code: "INVALID_PROVIDER_RESPONSE",
-      });
+      console.warn("DATA_CATALOG_ANOMALY", { reason: "UNSUPPORTED_PROVIDER_PRODUCT",
+        providerPlanId: Number.isSafeInteger(id) ? id : undefined });
+      continue;
     }
-    ids.add(id);
-    return {
+    const normalized = {
       id: String(id),
       code: String(id),
       name: `${datasize} ${type} - ${day}`,
@@ -322,7 +320,24 @@ const normalizeDataPlans = (data, dataNetworks) => {
       datasize,
       day,
     };
+    const key = `${network.id}:${id}`;
+    if (quarantined.has(key)) continue;
+    const previous = byId.get(key);
+    if (previous) {
+      if (JSON.stringify(previous) !== JSON.stringify(normalized)) {
+        quarantined.add(key);
+        byId.delete(key);
+      }
+      console.warn("DATA_CATALOG_ANOMALY", { reason: quarantined.has(key)
+        ? "CONFLICTING_PROVIDER_PRODUCT_ID" : "REPEATED_PROVIDER_PRODUCT_ID", providerPlanId: id });
+      continue;
+    }
+    byId.set(key, normalized);
+  }
+  if (!byId.size) throw new TelecomAbodeError("Telecom Abode returned no valid data plans.", {
+    code: "INVALID_PROVIDER_RESPONSE",
   });
+  return [...byId.values()];
 };
 
 const normalizeNamedItems = (data, itemLabel) => {

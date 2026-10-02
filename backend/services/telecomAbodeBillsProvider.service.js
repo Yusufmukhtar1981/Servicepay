@@ -1,6 +1,7 @@
 const axios = require("axios");
 const Transaction = require("../models/transaction.model");
 const LedgerEntry = require("../models/ledgerEntry.model");
+const { normalizeNigerianMsisdn } = require("./nigerianMsisdn.service");
 
 const BASE_URL = "https://telecomabode.com.ng/api";
 const SERVICES = new Set(["AIRTIME", "ELECTRICITY"]);
@@ -21,8 +22,8 @@ const positiveMoney = value => {
   return n;
 };
 const phoneNumber = value => {
-  const result = text(value);
-  if (!/^0[789]\d{9}$/.test(result))
+  const result = normalizeNigerianMsisdn(value);
+  if (!result)
     throw error("BILLS_INVALID_PHONE", "A valid Nigerian recipient phone number is required.", 400);
   return result;
 };

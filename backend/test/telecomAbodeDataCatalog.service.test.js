@@ -11,6 +11,7 @@ const {
   getPricedCatalog,
   mapCatalog,
   servicepayPlanCode,
+  providerPlanCode,
 } = require("../services/telecomAbodeDataCatalog.service");
 const {
   issueDataPlanQuote,
@@ -34,14 +35,14 @@ test("Telecom Abode plan identity is stable and independent of provider price", 
   const first = mapCatalog([providerPlan()])[0];
   const repriced = mapCatalog([providerPlan({ price: 185 })])[0];
   assert.equal(first.code, repriced.code);
-  assert.equal(first.code, servicepayPlanCode("01", "1GB SME - 30 days"));
+  assert.equal(first.code, providerPlanCode("01", 1, 77));
   assert.match(first.code, /^DATA-MTN-[A-Fa-f0-9]{20}$/);
   assert.equal(first.providerPlanId, 77);
   assert.equal(first.price, 150);
   assert.equal(repriced.price, 185);
 });
 
-test("ambiguous provider descriptions require explicit reviewed variants", () => {
+test("duplicate descriptions retain every unique provider product without a mapping outage", () => {
   const duplicates = [
     providerPlan({ id: 1, networkId: 1, name: "1GB WEEKLY - 7" }),
     providerPlan({ id: 121, networkId: 1, name: "1GB WEEKLY - 7" }),
@@ -50,10 +51,12 @@ test("ambiguous provider descriptions require explicit reviewed variants", () =>
   assert.equal(mapped[0].ambiguousIdentity, true);
   assert.equal(mapped[1].ambiguousIdentity, true);
   assert.notEqual(mapped[0].code, mapped[1].code);
-  assert.throws(
-    () => mapCatalog([...duplicates, providerPlan({ id: 999, name: "1GB WEEKLY - 7" })]),
-    /explicit ServicePay variant mapping/,
-  );
+  const expanded = mapCatalog([...duplicates, providerPlan({ id: 999, name: "1GB WEEKLY - 7" })]);
+  assert.equal(expanded.length, 3);
+  assert.equal(new Set(expanded.map(p => p.code)).size, 3);
+  assert.equal(expanded[0].pricingCode, servicepayPlanCode("01", "1GB WEEKLY - 7", "A"));
+  assert.equal(expanded[1].pricingCode, servicepayPlanCode("01", "1GB WEEKLY - 7", "B"));
+  assert.equal(expanded[2].pricingCode, expanded[2].code, "new product must not inherit a reviewed variant price");
 });
 
 test("customer catalog includes only exact active ServicePay prices", async () => {
@@ -62,7 +65,7 @@ test("customer catalog includes only exact active ServicePay prices", async () =
   telecomAbode.getDataPlans = async () => [providerPlan(), providerPlan({
     id: 78, name: "2GB SME - 30 days",
   })];
-  const code = servicepayPlanCode("01", "1GB SME - 30 days");
+  const code = providerPlanCode("01", 1, 77);
   let query;
   DataPriceOverride.find = (filter) => {
     query = filter;
@@ -79,7 +82,7 @@ test("customer catalog includes only exact active ServicePay prices", async () =
     const plans = await getPricedCatalog("MTN");
     assert.deepEqual(query, {
       networkCode: "01",
-      planCode: { $in: [code, servicepayPlanCode("01", "2GB SME - 30 days")] },
+      planCode: { $in: [code, providerPlanCode("01", 1, 78)] },
       active: true,
     });
     assert.equal(plans.length, 1);
@@ -202,14 +205,14 @@ test("Admin Telecom Abode pricing is editable by canonical code without migratin
       params: { network: "MTN" },
     });
     assert.equal(read.status, 200);
-    assert.equal(read.body.plans[0].code, servicepayPlanCode("01", "1GB SME - 30 days"));
+    assert.equal(read.body.plans[0].code, providerPlanCode("01", 1, 77));
     assert.equal(read.body.plans[0].sellingPrice, null);
     assert.equal(read.body.plans[0].priced, false);
 
     DataPriceOverride.findOneAndUpdate = async (filter, update) => {
       assert.deepEqual(filter, {
         networkCode: "01",
-        planCode: servicepayPlanCode("01", "1GB SME - 30 days"),
+        planCode: providerPlanCode("01", 1, 77),
       });
       assert.equal(update.$set.sellingPrice, 193);
       return { ...update.$set, pricingVersion: 1 };
@@ -217,7 +220,7 @@ test("Admin Telecom Abode pricing is editable by canonical code without migratin
     const saved = await invoke(dataPricingController.saveDataSellingPrice, {
       params: {
         network: "MTN",
-        planCode: servicepayPlanCode("01", "1GB SME - 30 days"),
+        planCode: providerPlanCode("01", 1, 77),
       },
       body: { sellingPrice: 193 },
       user: { _id: "admin-1" },

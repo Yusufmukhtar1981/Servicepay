@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const telecomAbode = require("./telecomAbode.service");
 const DataPriceOverride = require("../models/dataPriceOverride.model");
+const legacyPriceBindings = require("./telecomAbodeLegacyPriceBindings.json");
 
 const NETWORK_NAMES = Object.freeze({
   "01": "MTN",
@@ -9,11 +10,8 @@ const NETWORK_NAMES = Object.freeze({
   "04": "Airtel",
 });
 
-// Provider IDs identify reviewed variants; they are never ServicePay price keys.
-const VARIANT_MAPPINGS = Object.freeze({
-  "01|1GB WEEKLY - 7": Object.freeze({ "1:1": "A", "1:121": "B" }),
-  "02|1GB HOT - 1": Object.freeze({ "3:103": "A", "3:179": "B" }),
-});
+// Historical name-based price keys are compatibility-only. Product keys below
+// use immutable provider network/plan IDs, never a display name.
 
 const normalizeNetwork = (input) => {
   const value = String(input || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -34,7 +32,14 @@ const servicepayPlanCode = (networkCode, name, variant = null) =>
 
 const mapCatalog = (catalog) => {
   if (!Array.isArray(catalog)) throw new Error("Telecom Abode DATA catalog is unavailable.");
-  const parsed = catalog.map((plan) => {
+  const parsed = [];
+  const byProviderKey = new Map();
+  const quarantined = new Set();
+  for (const plan of catalog) {
+    if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+      console.warn("DATA_CATALOG_ANOMALY", { reason: "MALFORMED_PRODUCT" });
+      continue;
+    }
     const networkCode = normalizeNetwork(plan.network);
     const providerPlanId = Number(plan.id);
     if (!networkCode ||
@@ -42,9 +47,11 @@ const mapCatalog = (catalog) => {
         !Number.isSafeInteger(plan.networkId) || plan.networkId <= 0 ||
         !Number.isFinite(Number(plan.price)) || Number(plan.price) <= 0 ||
         typeof plan.name !== "string" || !plan.name.trim()) {
-      throw new Error("Telecom Abode returned an invalid DATA plan mapping.");
+      console.warn("DATA_CATALOG_ANOMALY", { reason: "UNSUPPORTED_PRODUCT",
+        providerPlanId: Number.isSafeInteger(providerPlanId) ? providerPlanId : undefined });
+      continue;
     }
-    return {
+    const normalized = {
       name: plan.name,
       networkCode,
       network: NETWORK_NAMES[networkCode],
@@ -52,7 +59,21 @@ const mapCatalog = (catalog) => {
       providerNetworkId: plan.networkId,
       price: Number(plan.price),
     };
-  });
+    const key = `${plan.networkId}:${providerPlanId}`;
+    if (quarantined.has(key)) continue;
+    const previous = byProviderKey.get(key);
+    if (previous) {
+      if (JSON.stringify(previous) !== JSON.stringify(normalized)) {
+        quarantined.add(key);
+        byProviderKey.delete(key);
+      }
+      console.warn("DATA_CATALOG_ANOMALY", { reason: quarantined.has(key)
+        ? "CONFLICTING_PROVIDER_ID" : "REPEATED_PROVIDER_ID", providerPlanId });
+      continue;
+    }
+    byProviderKey.set(key, normalized);
+  }
+  parsed.push(...byProviderKey.values());
   const identityCounts = new Map();
   for (const plan of parsed) {
     const identity = servicepayPlanCode(plan.networkCode, plan.name);
@@ -61,27 +82,27 @@ const mapCatalog = (catalog) => {
   const mapped = parsed.map((plan) => {
     const identity = servicepayPlanCode(plan.networkCode, plan.name);
     const ambiguousIdentity = identityCounts.get(identity) > 1;
-    const normalizedName = String(plan.name).trim().toUpperCase().replace(/\s+/g, " ");
-    const variant = ambiguousIdentity
-      ? VARIANT_MAPPINGS[`${plan.networkCode}|${normalizedName}`]?.[
-        `${plan.providerNetworkId}:${plan.providerPlanId}`
-      ]
-      : null;
-    if (ambiguousIdentity && !variant) {
-      throw new Error("Ambiguous DATA plan requires an explicit ServicePay variant mapping.");
-    }
+    const binding = legacyPriceBindings[`${plan.providerNetworkId}:${plan.providerPlanId}`];
+    const sameDescription = binding && binding.networkCode === plan.networkCode &&
+      binding.name.trim().toUpperCase().replace(/\s+/g, " ") ===
+      plan.name.trim().toUpperCase().replace(/\s+/g, " ");
+    const code = providerPlanCode(plan.networkCode, plan.providerNetworkId, plan.providerPlanId);
     return {
       ...plan,
-      code: ambiguousIdentity ? servicepayPlanCode(plan.networkCode, plan.name, variant) : identity,
+      code,
+      // A fixed compatibility binding preserves approved prices without
+      // migrating records or inheriting prices for a newly-added same-name ID.
+      pricingCode: sameDescription ? binding.pricingCode : code,
       ambiguousIdentity,
-      variant,
     };
   });
-  if (new Set(mapped.map((plan) => plan.code)).size !== mapped.length) {
-    throw new Error("Telecom Abode returned duplicate DATA plan mappings.");
-  }
   return mapped;
 };
+
+const providerPlanCode = (networkCode, networkId, planId) =>
+  `DATA-${NETWORK_NAMES[networkCode].toUpperCase()}-${crypto.createHash("sha256")
+    .update(JSON.stringify(["TELECOM_ABODE", Number(networkId), Number(planId)]))
+    .digest("hex").slice(0, 20)}`;
 
 const getCatalog = async (network, provider = telecomAbode) => {
   const networkCode = normalizeNetwork(network);
@@ -100,12 +121,12 @@ const getPricedCatalog = async (network, provider = telecomAbode) => {
   const networkCode = normalizeNetwork(network);
   const overrides = await DataPriceOverride.find({
     networkCode,
-    planCode: { $in: plans.map((plan) => plan.code) },
+    planCode: { $in: plans.map((plan) => plan.pricingCode) },
     active: true,
   }).lean();
   const prices = new Map(overrides.map((row) => [row.planCode, Number(row.sellingPrice)]));
   return plans.flatMap((plan) => {
-    const sellingPrice = prices.get(plan.code);
+    const sellingPrice = prices.get(plan.pricingCode);
     return Number.isFinite(sellingPrice) && sellingPrice > 0
       ? [{ ...plan, sellingPrice }]
       : [];
@@ -116,6 +137,7 @@ module.exports = {
   NETWORK_NAMES,
   normalizeNetwork,
   servicepayPlanCode,
+  providerPlanCode,
   mapCatalog,
   getCatalog,
   getPricedCatalog,

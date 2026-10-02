@@ -38,7 +38,7 @@ exports.getAirtimeNetworks = async (_req, res) => {
 };
 exports.quoteAirtime = async (req, res) => {
   try { return res.json({ success: true, data: await telecomLifecycle.quote({
-    network: await providerNetwork(req.body), amount: req.body.amount }) }); }
+    network: await providerNetwork(req.body), amount: req.body.amount, phone: req.body.phone }) }); }
   catch (e) { return res.status(e.status || 503).json({ success: false, code: e.code || "AIRTIME_QUOTE_UNAVAILABLE",
     message: e.status < 500 ? e.message : "Airtime pricing could not be confirmed." }); }
 };

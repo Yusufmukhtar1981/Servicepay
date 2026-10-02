@@ -1128,7 +1128,7 @@ exports.buyData = async (req, res) => {
     const providerPrice = Number(catalogPlan.price);
     const override = await DataPriceOverride.findOne({
       networkCode,
-      planCode: selectedPlan,
+      planCode: catalogPlan.pricingCode || selectedPlan,
       active: true,
     }).lean();
     const dataAmount = Number(override?.sellingPrice);
@@ -1191,7 +1191,7 @@ exports.buyData = async (req, res) => {
         admissionPriceChanged = false;
         const currentPrice = await DataPriceOverride.findOneAndUpdate({
           networkCode,
-          planCode: selectedPlan,
+          planCode: catalogPlan.pricingCode || selectedPlan,
           active: true,
           sellingPrice: dataAmount,
         }, {

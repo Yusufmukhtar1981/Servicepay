@@ -1,6 +1,7 @@
 const { createTelecomAbodeBillsProvider, buildAirtimePayload } = require("./telecomAbodeBillsProvider.service");
 const { createClubkonnectAirtimeLifecycleService } = require("./clubkonnectAirtimeLifecycle.service");
 const { getServiceConfig } = require("./providerManagement.service");
+const { normalizeNigerianMsisdn } = require("./nigerianMsisdn.service");
 
 const reject = (message, code = "AIRTIME_INVALID_REQUEST", status = 400) =>
   Object.assign(new Error(message), { code, status });
@@ -16,7 +17,10 @@ const normalizeProviderNetwork = value => /^\d{1,3}$/.test(String(value))
   ? String(Number(value)) : null;
 const createTelecomAbodeAirtimeLifecycle = ({ bills = createTelecomAbodeBillsProvider(),
   readConfig = getServiceConfig, ...options } = {}) => {
-  const quote = async ({ network, amount }) => {
+  const quote = async ({ network, amount, phone }) => {
+    const normalizedPhone = phone === undefined ? undefined : normalizeNigerianMsisdn(phone);
+    if (phone !== undefined && !normalizedPhone)
+      throw reject("Enter a valid Nigerian phone number, such as 08012345678 or +2348012345678.");
     const catalogue = await bills.getAirtimeNetworks();
     const selected = catalogue.find(n => String(n.providerId) === normalizeProviderNetwork(network));
     if (!selected) throw reject("Select a network from the current Airtime catalogue.");
@@ -24,7 +28,8 @@ const createTelecomAbodeAirtimeLifecycle = ({ bills = createTelecomAbodeBillsPro
     return { provider: "TELECOM_ABODE", network: selected.providerId,
       networkName: selected.displayName, faceValue: Number(amount),
       customerSellingPrice: priceFor(amount, config.airtimeMarkupBps || 0),
-      providerCost: null, markupBps: config.airtimeMarkupBps || 0 };
+       providerCost: null, markupBps: config.airtimeMarkupBps || 0,
+       ...(normalizedPhone ? { normalizedPhone, phoneValidation: "SYNTAX_ONLY" } : {}) };
   };
   const provider = {
     purchase: input => bills.purchaseAirtime(input),
@@ -34,6 +39,7 @@ const createTelecomAbodeAirtimeLifecycle = ({ bills = createTelecomAbodeBillsPro
   const lifecycle = createClubkonnectAirtimeLifecycleService({
     ...options, provider, providerName: "TELECOM_ABODE",
     normalizePurchaseNetwork: normalizeProviderNetwork,
+    normalizePurchasePhone: normalizeNigerianMsisdn,
     preparePurchase: async (purchase, input, reference) => {
       const q = await quote({ network: purchase.networkCode, amount: purchase.amount });
       if (input.customerSellingPrice === undefined && q.markupBps !== 0 ||

@@ -44,6 +44,19 @@ const fixture = async ({ mode = "success", markupBps = 0 } = {}) => {
     customerSellingPrice: priceFor(50, markupBps), idempotencyKey: `ta-mock-request-${n}` };
   return { customer, lifecycle, calls, input, config };
 };
+test("international phone formats validate at quote boundary without a wallet debit or purchase dispatch", async () => {
+  const f = await fixture();
+  for (const phone of ["08012345678", "2348012345678", "+2348012345678"]) {
+    const quote = await f.lifecycle.quote({ network: 7, amount: 50, phone });
+    assert.equal(quote.normalizedPhone, "08012345678");
+    assert.equal(quote.phoneValidation, "SYNTAX_ONLY");
+  }
+  await assert.rejects(f.lifecycle.quote({ network: 7, amount: 50, phone: "abc08012345678" }));
+  await assert.rejects(f.lifecycle.executePurchase({ ...f.input, phone: "abc08012345678" }));
+  assert.equal((await User.findById(f.customer._id)).walletBalance, 1000);
+  assert.equal(await Transaction.countDocuments({ customerId: f.customer._id }), 0);
+  assert.equal(f.calls.filter(c => c.method === "POST").length, 0);
+});
 test("real wallet lifecycle settles delivery once with unknown cost and no invented commission", async () => {
   const f = await fixture({ markupBps: 500 });
   const first = await f.lifecycle.executePurchase(f.input);

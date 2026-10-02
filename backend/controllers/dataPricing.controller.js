@@ -55,7 +55,7 @@ exports.getAdminDataPricing = async (req, res) => {
       const providerPrice = Number(plan.price);
 
       const override = overrideMap.get(
-        String(plan.code)
+        String(plan.pricingCode || plan.code)
       );
 
       const configuredPrice = Number(override?.sellingPrice);
@@ -153,12 +153,12 @@ exports.saveDataSellingPrice = async (
       await DataPriceOverride.findOneAndUpdate(
         {
           networkCode,
-          planCode,
+          planCode: plan.pricingCode || planCode,
         },
         {
           $set: {
             networkCode,
-            planCode,
+            planCode: plan.pricingCode || planCode,
             planName: plan.name || "",
             providerPrice,
             sellingPrice,
