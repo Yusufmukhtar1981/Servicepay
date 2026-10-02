@@ -283,7 +283,7 @@ class TransactionPresentation {
         return _first(Map<String, dynamic>.from(nestedProvider), keys);
       }
     }
-    return null;
+    return '';
   }
 
   static double? _number(dynamic value) {

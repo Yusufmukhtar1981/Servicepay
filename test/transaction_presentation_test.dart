@@ -3,6 +3,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/transaction_presentation.dart';
 
 void main() {
+  test('redacted receipt omits unavailable facts instead of printing null', () {
+    final transaction = TransactionPresentation({
+      'serviceType': 'ELECTRICITY',
+      'status': 'SUCCESSFUL',
+      'reference': 'SP-existing-electricity',
+      'metadata': {
+        'fulfillment': {
+          'meterNumber': '62130123456',
+          'electricityCompany': 'Kano Electric',
+          'customerName': 'Unit customer',
+          'meterToken': '1234-5678-9012-3456-7890',
+        },
+      },
+    });
+    final details = Map.fromEntries(transaction.details);
+    expect(details['Token'], '1234-5678-9012-3456-7890');
+    expect(details['Meter number'], '62130123456');
+    expect(details.containsKey('Units'), isFalse);
+    expect(details.containsKey('Bank'), isFalse);
+    expect(details.containsKey('Phone number'), isFalse);
+    expect(details.values, isNot(contains('null')));
+  });
+
   test('custom transaction date range includes complete boundary days', () {
     final DateTimeRange range = DateTimeRange(
       start: DateTime(2026, 8, 10),
