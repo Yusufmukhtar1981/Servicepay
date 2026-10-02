@@ -85,6 +85,20 @@ const hasClubKonnectCredentials = () => Boolean(
 const telecomAbodeServicesWithAdapter = new Set(["ELECTRICITY", "CABLE", "DATA"]);
 
 const getProviderCapabilities = (service, provider) => {
+  if (provider === "TELECOM_ABODE" && ["AIRTIME", "ELECTRICITY"].includes(service)) {
+    const credentialsConfigured = Boolean(String(process.env.TELECOM_ABODE_API_KEY || "").trim());
+    const airtime = service === "AIRTIME";
+    return { adapterImplemented: true, credentialsConfigured, catalogAvailable: true,
+      purchaseSupported: airtime, routingControlSupported: true, querySupported: true,
+      webhookSupported: false, webhookVerified: false, financialSafetyVerified: airtime,
+      productionReady: airtime && credentialsConfigured,
+      readinessReasons: [
+        ...(!credentialsConfigured ? ["Telecom Abode credentials are not configured."] : []),
+        ...(airtime ? ["Unconfirmed cost keeps accounting pending; no unverified profit or commission."]
+          : ["Purchases are blocked: provider meter validation failed negative controls."]),
+        "Callbacks never settle directly; authenticated status queries are required.",
+      ] };
+  }
   const telecomAbode = provider === "TELECOM_ABODE";
   const adapterImplemented = telecomAbode
     ? telecomAbodeServicesWithAdapter.has(service)
@@ -220,9 +234,7 @@ const serializeConfig = (config) => {
     item.provider === config.primaryProvider && item.enabled && item.available
   );
   // Airtime remains on its legacy route; DATA consumes this primary selection.
-  const currentProvider = service === "AIRTIME"
-    ? providers.find((item) => item.provider === "CLUBKONNECT" && item.available)?.provider || null
-    : enabledPrimary?.provider || null;
+  const currentProvider = enabledPrimary?.provider || null;
   return {
     service,
     primaryProvider: config.primaryProvider,
@@ -234,6 +246,10 @@ const serializeConfig = (config) => {
     currentProvider,
     providers,
     updatedAt: config.updatedAt,
+    ...(service === "AIRTIME" ? { airtimeMarkupBps: config.airtimeMarkupBps || 0 } : {}),
+    ...(service === "ELECTRICITY" && config.primaryProvider === "TELECOM_ABODE"
+      ? { catalogProvider: "TELECOM_ABODE", purchaseBlocked: true,
+          purchaseBlockReason: "PROVIDER_METER_VALIDATION_UNTRUSTED" } : {}),
     updatedBy: config.updatedBy ? String(config.updatedBy) : null,
   };
 };

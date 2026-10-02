@@ -35,6 +35,8 @@ const providerManagementConfigSchema = new mongoose.Schema({
     default: null,
   },
   providerStates: { type: [providerStateSchema], default: [] },
+  airtimeMarkupBps: { type: Number, min: 0, max: 10000, default: 0,
+    validate: Number.isInteger },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { timestamps: true });
 

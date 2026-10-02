@@ -113,7 +113,7 @@ test("persists safe service matrix defaults and audits mutations", async () => {
   }
 });
 
-test("DATA provider controls are available while Airtime remains locked", async () => {
+test("DATA and Airtime provider controls support independent production selection", async () => {
   const oldUserId = process.env.CLUBKONNECT_USER_ID;
   const oldApiKey = process.env.CLUBKONNECT_API_KEY;
   const oldTelecomKey = process.env.TELECOM_ABODE_API_KEY;
@@ -134,18 +134,21 @@ test("DATA provider controls are available while Airtime remains locked", async 
       assert.equal(legacy.enabled, true);
       assert.equal(legacy.available, true);
       assert.equal(telecomAbode.enabled, false);
-      assert.equal(telecomAbode.available, service === "DATA");
-      assert.equal(telecomAbode.routingControlSupported, service === "DATA");
-      assert.equal(telecomAbode.productionReady, service === "DATA");
+      assert.equal(telecomAbode.available, true);
+      assert.equal(telecomAbode.routingControlSupported, true);
+      assert.equal(telecomAbode.productionReady, true);
 
       const disable = await patch({ service, action: "disable", provider: "CLUBKONNECT" });
-      assert.equal(disable.status, 409);
-      assert.equal(disable.body.code, service === "DATA"
-        ? "PRIMARY_PROVIDER_REQUIRED" : "ROUTING_CONTROL_UNAVAILABLE");
+      if (service === "DATA") {
+        assert.equal(disable.status, 409);
+        assert.equal(disable.body.code, "PRIMARY_PROVIDER_REQUIRED");
+      } else {
+        assert.equal(disable.status, 200);
+        await patch({ service, action: "enable", provider: "CLUBKONNECT" });
+      }
       const select = await patch({ service, action: "setPrimary", provider: "TELECOM_ABODE" });
       assert.equal(select.status, 409);
-      assert.equal(select.body.code, service === "DATA"
-        ? "PRIMARY_PROVIDER_NOT_ENABLED" : "TELECOM_ABODE_PURCHASES_LOCKED");
+      assert.equal(select.body.code, "PRIMARY_PROVIDER_NOT_ENABLED");
       const enable = await patch({ service, action: "enable", provider: "TELECOM_ABODE" });
       if (service === "DATA") {
         assert.equal(enable.status, 200);
@@ -164,8 +167,15 @@ test("DATA provider controls are available while Airtime remains locked", async 
           { key: "GLOBAL_SETTINGS" }, { $unset: { dataProviderManagement: "" } },
         );
       } else {
-        assert.equal(enable.status, 409);
-        assert.equal(enable.body.code, "TELECOM_ABODE_PURCHASES_LOCKED");
+        assert.equal(enable.status, 200);
+        const selected = await patch({ service, action: "setPrimary", provider: "TELECOM_ABODE" });
+        assert.equal(selected.status, 200);
+        const pricing = await patch({ service, action: "setPricing", provider: "TELECOM_ABODE", airtimeMarkupBps: 500 });
+        assert.equal(pricing.status, 200);
+        assert.equal(pricing.body.data.airtimeMarkupBps, 500);
+        assert.equal((await ProviderManagementConfig.findOne({ service })).airtimeMarkupBps, 500);
+        assert.equal((await patch({ service, action: "setPricing", provider: "TELECOM_ABODE", airtimeMarkupBps: -1 })).status, 400);
+        assert.equal((await patch({ service, action: "disable", provider: "CLUBKONNECT" })).status, 200);
       }
     }
     const responseJson = JSON.stringify(result.body);
@@ -174,9 +184,10 @@ test("DATA provider controls are available while Airtime remains locked", async 
     assert.equal(responseJson.includes(process.env.TELECOM_ABODE_API_KEY), false);
     assert.equal(
       await ProviderManagementConfig.countDocuments({ service: { $in: ["AIRTIME", "DATA"] } }),
-      0,
-      "GET and rejected actions do not persist Airtime/Data defaults",
+      1,
+      "Airtime controls persist independently; DATA remains in shared settings",
     );
+    await ProviderManagementConfig.deleteOne({ service: "AIRTIME" });
 
     process.env.CLUBKONNECT_USER_ID = " \t ";
     process.env.CLUBKONNECT_API_KEY = " \t ";
@@ -256,16 +267,15 @@ test("disabled electricity is rejected before downstream verify/pay handlers", a
   assert.equal(downstreamCalled, false);
 });
 
-test("Telecom Abode remains locked even with an API key and fallback fails closed", async () => {
+test("Electricity catalogue configuration does not unlock purchases; fallback stays blocked", async () => {
   const oldKey = process.env.TELECOM_ABODE_API_KEY;
   process.env.TELECOM_ABODE_API_KEY = "configured-but-not-authorized";
   try {
     const enable = await patch({ service: "ELECTRICITY", action: "enable", provider: "TELECOM_ABODE" });
-    assert.equal(enable.status, 409);
-    assert.equal(enable.body.code, "TELECOM_ABODE_PURCHASES_LOCKED");
+    assert.equal(enable.status, 200);
     const select = await patch({ service: "ELECTRICITY", action: "setPrimary", provider: "TELECOM_ABODE" });
-    assert.equal(select.status, 409);
-    assert.equal(select.body.code, "TELECOM_ABODE_PURCHASES_LOCKED");
+    assert.equal(select.status, 200);
+    assert.equal(select.body.data.providers.find(p => p.provider === "TELECOM_ABODE").available, false);
     const fallback = await patch({ service: "ELECTRICITY", action: "setFallback", provider: "NELLOBYTES" });
     assert.equal(fallback.status, 409);
     assert.equal(fallback.body.code, "FALLBACK_ROUTING_UNSUPPORTED");
@@ -278,8 +288,8 @@ test("Telecom Abode remains locked even with an API key and fallback fails close
     assert.equal(cableEnable.body.code, "CABLE_PURCHASE_UNAVAILABLE");
 
     const stored = await ProviderManagementConfig.findOne({ service: "ELECTRICITY" }).lean();
-    assert.equal(stored.primaryProvider, "NELLOBYTES");
-    assert.equal(stored.providerStates.find((p) => p.provider === "TELECOM_ABODE").enabled, false);
+    assert.equal(stored.primaryProvider, "TELECOM_ABODE");
+    assert.equal(stored.providerStates.find((p) => p.provider === "TELECOM_ABODE").enabled, true);
   } finally {
     if (oldKey === undefined) delete process.env.TELECOM_ABODE_API_KEY;
     else process.env.TELECOM_ABODE_API_KEY = oldKey;
@@ -295,6 +305,7 @@ test("concurrent toggles remain atomic and leave one audited persisted state", a
     // Exercise the first-write race: each admin mutation may attempt to create
     // the missing singleton, but the unique service index and retry must leave
     // one persisted row and an audit row for each committed mutation.
+    const auditCountBefore = await AdminAuditLog.countDocuments({ action: "FINTECH_OPERATION" });
     await ProviderManagementConfig.deleteOne({ service: "ELECTRICITY" });
     const [one, two] = await Promise.all([
       patch({ service: "ELECTRICITY", action: "enable", provider: "NELLOBYTES" }),
@@ -304,7 +315,7 @@ test("concurrent toggles remain atomic and leave one audited persisted state", a
     assert.equal(two.status, 200);
     const stored = await ProviderManagementConfig.findOne({ service: "ELECTRICITY" }).lean();
     assert.equal(typeof stored.providerStates.find((p) => p.provider === "NELLOBYTES").enabled, "boolean");
-    assert.equal(await AdminAuditLog.countDocuments({ action: "FINTECH_OPERATION" }), 8);
+    assert.equal(await AdminAuditLog.countDocuments({ action: "FINTECH_OPERATION" }), auditCountBefore + 2);
   } finally {
     if (oldUserId === undefined) delete process.env.NELLOBYTES_USERID;
     else process.env.NELLOBYTES_USERID = oldUserId;

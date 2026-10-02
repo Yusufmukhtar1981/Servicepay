@@ -100,8 +100,8 @@ const safeEvidence = (providerResult) => {
       : null,
     statusCode: evidence?.statusCode || "",
     orderStatus: evidence?.orderStatus || "",
-    orderId: evidence?.orderId || "",
-    requestId: evidence?.requestId || "",
+    orderId: evidence?.orderId || providerResult?.providerOrderId || "",
+    requestId: evidence?.requestId || providerResult?.requestId || "",
     amountCharged:
       typeof providerResult?.providerCost === "number" &&
       Number.isFinite(providerResult.providerCost)
@@ -118,6 +118,10 @@ const safeEvidence = (providerResult) => {
 
 const createClubKonnectAirtimeLifecycleService = ({
   provider = createClubKonnectAirtimeProvider(),
+  providerName = "CLUBKONNECT",
+  normalizePurchaseNetwork = normalizeNetwork,
+  preparePurchase = async purchase => purchase,
+  verifyAdmission = async () => {},
   models = {},
   ledger = {},
   now = () => new Date(),
@@ -196,7 +200,7 @@ const createClubKonnectAirtimeLifecycleService = ({
       );
     }
 
-    const networkCode = normalizeNetwork(network);
+    const networkCode = normalizePurchaseNetwork(network);
     if (!networkCode) {
       throw buildError("Select MTN, Glo, Airtel or 9mobile.");
     }
@@ -260,6 +264,7 @@ const createClubKonnectAirtimeLifecycleService = ({
 
     // Keep both generated values stable across MongoDB transient transaction retries.
     const reference = makeReference();
+    Object.assign(purchase, await preparePurchase(purchase, input, reference));
     const transactionId = new mongoose.Types.ObjectId();
     const createdAt = now();
     let session;
@@ -288,7 +293,8 @@ const createClubKonnectAirtimeLifecycleService = ({
           throw buildError("This account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
         }
 
-        const debitAmount = purchase.amount;
+        await verifyAdmission(purchase, session);
+        const debitAmount = purchase.customerAmount ?? purchase.amount;
         if (
           !Number.isFinite(Number(customer.walletBalance)) ||
           Number(customer.walletBalance) < debitAmount
@@ -310,7 +316,7 @@ const createClubKonnectAirtimeLifecycleService = ({
               stateManagerId: customer.stateManagerId || null,
               zonalManagerId: customer.zonalManagerId || null,
               serviceType: "AIRTIME",
-              provider: "CLUBKONNECT",
+              provider: providerName,
               phone: purchase.phoneNumber,
               amount: debitAmount,
               status: "PENDING",
@@ -322,9 +328,12 @@ const createClubKonnectAirtimeLifecycleService = ({
               dispatchClaimedAt: null,
               dispatchStartedAt: null,
               providerResponse: {
+                ...(purchase.providerIntent ? { telecomAbodePurchaseIntent: purchase.providerIntent } : {}),
                 airtimeLifecycle: {
                   version: 1,
                   requestFingerprint: purchase.requestFingerprint,
+                  network: purchase.networkCode,
+                  faceValue: purchase.amount,
                 },
               },
               createdAt,
@@ -370,7 +379,7 @@ const createClubKonnectAirtimeLifecycleService = ({
           narration: `Airtime purchase to ${purchase.phoneNumber}`,
           metadata: {
             network: purchase.networkCode,
-            provider: "CLUBKONNECT",
+            provider: providerName,
           },
           session,
         });
@@ -410,7 +419,7 @@ const createClubKonnectAirtimeLifecycleService = ({
       {
         _id: transactionId,
         serviceType: "AIRTIME",
-        provider: "CLUBKONNECT",
+        provider: providerName,
         "providerResponse.airtimeLifecycle.version": 1,
         status: "PENDING",
         dispatchStatus: "READY",
@@ -431,7 +440,7 @@ const createClubKonnectAirtimeLifecycleService = ({
       {
         _id: transactionId,
         serviceType: "AIRTIME",
-        provider: "CLUBKONNECT",
+        provider: providerName,
         "providerResponse.airtimeLifecycle.version": 1,
         status: "PENDING",
         dispatchStatus: "CLAIMED",
@@ -451,6 +460,12 @@ const createClubKonnectAirtimeLifecycleService = ({
     evidenceDisposition: "TERMINAL_CONFLICT",
   });
 
+  const confirmsSuccess = (result, safe) => result?.outcome === "SUCCESS" &&
+    result.authoritative === true && safe.httpStatus === 200 &&
+    (providerName === "TELECOM_ABODE"
+      ? safe.reasonCode === "CORRELATED_PROVIDER_SUCCESS"
+      : safe.statusCode === "200" && safe.orderStatus === "ORDER_COMPLETED");
+
   const writeProviderResult = async (transactionId, providerResult) => {
     const source = providerResult?.source;
     if (!["INITIAL_REQUEST", "STATUS_QUERY", "CALLBACK_QUERY"].includes(source)) {
@@ -466,7 +481,7 @@ const createClubKonnectAirtimeLifecycleService = ({
         const transaction = await TransactionModel.findOne({
           _id: transactionId,
           serviceType: "AIRTIME",
-          provider: "CLUBKONNECT",
+          provider: providerName,
         }).session(session);
         if (!transaction) {
           throw buildError("Airtime transaction was not found.", 404, "AIRTIME_TRANSACTION_NOT_FOUND");
@@ -534,8 +549,7 @@ const createClubKonnectAirtimeLifecycleService = ({
               providerResult.authoritative === true &&
               safe.outcome === "SUCCESS" &&
               safe.httpStatus === 200 &&
-              safe.statusCode === "200" &&
-              safe.orderStatus === "ORDER_COMPLETED" &&
+              confirmsSuccess(providerResult, safe) &&
               safe.requestId === String(transaction.providerRequestId || transaction.reference) &&
               safe.amountCharged === prior.amountCharged &&
               safe.orderId === String(prior.orderId || "");
@@ -555,8 +569,7 @@ const createClubKonnectAirtimeLifecycleService = ({
             providerResult.outcome !== "SUCCESS" ||
             safe.outcome !== "SUCCESS" ||
             safe.httpStatus !== 200 ||
-            safe.statusCode !== "200" ||
-            safe.orderStatus !== "ORDER_COMPLETED" ||
+            !confirmsSuccess(providerResult, safe) ||
             (safe.requestId !== String(transaction.providerRequestId || transaction.reference) &&
               !(safe.requestId === "" && transaction.providerReference &&
                 safe.orderId === String(transaction.providerReference)))
@@ -614,8 +627,7 @@ const createClubKonnectAirtimeLifecycleService = ({
           providerResult.outcome === "SUCCESS" &&
           providerResult.authoritative === true &&
           safe.outcome !== "UNKNOWN" &&
-          safe.statusCode === "200" &&
-          safe.orderStatus === "ORDER_COMPLETED" &&
+          confirmsSuccess(providerResult, safe) &&
           (safe.requestId === String(transaction.providerRequestId || transaction.reference) ||
             Boolean(safe.orderId))
         ) {
@@ -627,6 +639,7 @@ const createClubKonnectAirtimeLifecycleService = ({
             transaction.dispatchStatus = "UNKNOWN";
             transaction.providerStatus = "INVALID_AMOUNT_CHARGED";
             transaction.providerResponse = {
+              ...transaction.providerResponse,
               airtimeLifecycle: {
                 ...transaction.providerResponse?.airtimeLifecycle,
                 ...providerMetadata,
@@ -638,20 +651,29 @@ const createClubKonnectAirtimeLifecycleService = ({
 
           transaction.status = "SUCCESSFUL";
           transaction.dispatchStatus = "SUCCEEDED";
-          transaction.providerStatus = "ORDER_COMPLETED";
+          transaction.providerStatus = providerName === "TELECOM_ABODE" ? "SUCCESS" : "ORDER_COMPLETED";
           if (safe.orderId) transaction.providerReference = safe.orderId;
           transaction.providerResponse = {
+            ...transaction.providerResponse,
             airtimeLifecycle: {
               ...transaction.providerResponse?.airtimeLifecycle,
               ...providerMetadata,
             },
             airtimeCommissionRecovery: {
-              status: "PENDING",
+              status: providerName === "TELECOM_ABODE" && charged === null ? "BLOCKED" : "PENDING",
               attempts: 0,
               nextAttemptAt: now(),
               leaseUntil: null,
               lastErrorCode: "",
             },
+            ...(providerName === "TELECOM_ABODE" ? { financialAccounting: {
+              customerSellingPrice: Number(transaction.amount),
+              providerCost: charged,
+              servicePayGrossProfit: charged === null ? null : roundMoney(Number(transaction.amount) - charged),
+              commission: null,
+              netServicePayRevenue: null,
+              status: charged === null ? "AWAITING_PROVIDER_COST" : "PENDING",
+            }} : {}),
           };
           await transaction.save({ session });
           return transaction;
@@ -661,6 +683,7 @@ const createClubKonnectAirtimeLifecycleService = ({
           providerResult.outcome === "FAILED" &&
           transaction.status === "PENDING" &&
           providerResult.authoritative === true &&
+          providerName === "CLUBKONNECT" &&
           ["500", "501"].includes(safe.statusCode) &&
           safe.orderStatus === "ORDER_CANCELLED"
         ) {
@@ -672,6 +695,7 @@ const createClubKonnectAirtimeLifecycleService = ({
           safe.orderStatus || safe.reasonCode || "UNKNOWN";
         if (safe.orderId) transaction.providerReference = safe.orderId;
         transaction.providerResponse = {
+          ...transaction.providerResponse,
           airtimeLifecycle: {
             ...transaction.providerResponse?.airtimeLifecycle,
             ...providerMetadata,
@@ -774,11 +798,13 @@ const createClubKonnectAirtimeLifecycleService = ({
       const purchaseProviderRequest =
         provider.purchase || provider.submitAirtime;
       providerResult = await purchaseProviderRequest.call(provider, {
-        network: normalizeNetwork(input.network),
+        network: sending.providerResponse?.airtimeLifecycle?.network || normalizePurchaseNetwork(input.network),
         phone: normalizePhone(input.phone),
-        amount: Number(sending.amount),
+        amount: Number(sending.providerResponse?.airtimeLifecycle?.faceValue ?? sending.amount),
         requestId: sending.providerRequestId || sending.reference,
       });
+      if (providerResult.authoritative === true && !provider.isVerifiedEvidence?.(providerResult))
+        throw buildError("Unverified provider evidence.", 503, "AIRTIME_UNTRUSTED_EVIDENCE");
     } catch (_error) {
       providerResult = {
         source: "INITIAL_REQUEST",
@@ -855,7 +881,7 @@ const createClubKonnectAirtimeLifecycleService = ({
     }
     const transaction = await TransactionModel.findOne({
       _id: transactionId,
-      provider: "CLUBKONNECT",
+      provider: providerName,
       serviceType: "AIRTIME",
       status: { $in: ["PENDING", "SUCCESSFUL"] },
     });
@@ -989,7 +1015,7 @@ const createClubKonnectAirtimeLifecycleService = ({
       {
         _id: transactionId,
         serviceType: "AIRTIME",
-        provider: "CLUBKONNECT",
+        provider: providerName,
         "providerResponse.airtimeLifecycle.version": 1,
         status: "SUCCESSFUL",
         "providerResponse.airtimeCommissionRecovery.status": {
@@ -1026,7 +1052,7 @@ const createClubKonnectAirtimeLifecycleService = ({
         const transaction = await TransactionModel.findOne({
           _id: claimed._id,
           serviceType: "AIRTIME",
-          provider: "CLUBKONNECT",
+          provider: providerName,
           status: "SUCCESSFUL",
           "providerResponse.airtimeCommissionRecovery.status": "RUNNING",
         }).session(session);
@@ -1209,7 +1235,7 @@ const createClubKonnectAirtimeLifecycleService = ({
     const boundedLimit = Math.min(100, requestedLimit);
     const candidates = await TransactionModel.find({
       serviceType: "AIRTIME",
-      provider: "CLUBKONNECT",
+      provider: providerName,
       "providerResponse.airtimeLifecycle.version": 1,
       status: "SUCCESSFUL",
       "providerResponse.airtimeCommissionRecovery.status": {

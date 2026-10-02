@@ -7,7 +7,9 @@ const Transaction = require(
   "../models/transaction.model"
 );
 const { authorizeTransaction } = require("../services/biometric.service");
-const { ensureProviderCanRouteElectricity } = require("../services/providerManagement.service");
+const { ensureProviderCanRouteElectricity, getServiceConfig } = require("../services/providerManagement.service");
+const telecomBills = require("../services/telecomAbodeBillsProvider.service").createTelecomAbodeBillsProvider();
+const usesTelecomAbode = async () => (await getServiceConfig("ELECTRICITY")).primaryProvider === "TELECOM_ABODE";
 
 const ELECTRICITY_PAYMENT_URL =
   "https://www.nellobytesystems.com/APIElectricityV1.asp";
@@ -448,6 +450,21 @@ const refundElectricityTransaction =
  */
 exports.getElectricityCompanies =
   async (req, res) => {
+    if (await usesTelecomAbode()) {
+      try {
+        const providers = await telecomBills.getElectricityProviders();
+        return res.json({ success: true, provider: "TELECOM_ABODE",
+          companies: providers.map(p => ({ code: String(p.providerId), providerId: p.providerId,
+            shortName: p.providerCode || p.displayName, name: p.displayName })),
+          meterTypes: [{ code: "01", name: "Prepaid" }, { code: "02", name: "Postpaid" }],
+          limits: { minimumAmount: 1000, maximumAmount: 200000 },
+          purchaseBlocked: true, blockCode: "PROVIDER_METER_VALIDATION_UNTRUSTED",
+          blockReason: "Electricity purchases are unavailable until the provider can reliably verify meters.",
+        });
+      } catch (_) {
+        return res.status(503).json({ success: false, message: "Electricity catalogue is unavailable." });
+      }
+    }
     return res.status(200).json({
       success: true,
 
@@ -476,6 +493,13 @@ exports.verifyMeter = async (
   res
 ) => {
   try {
+    if (await usesTelecomAbode()) {
+      // Provider status/name failed live negative controls. Never expose it as
+      // verified customer information or issue a payment-authorizing ticket.
+      return res.status(503).json({ success: false, verified: false,
+        code: "PROVIDER_METER_VALIDATION_UNTRUSTED",
+        message: "The provider cannot reliably verify this meter. No purchase or debit is permitted." });
+    }
     const electricCompany =
       String(
         req.body.electricCompany ||
@@ -604,6 +628,11 @@ exports.payElectricity = async (
   let pendingTransaction = null;
 
   try {
+    if (await usesTelecomAbode()) {
+      return res.status(503).json({ success: false,
+        code: "PROVIDER_METER_VALIDATION_UNTRUSTED",
+        message: "Electricity purchases are blocked until meter verification is trustworthy. No wallet debit or provider purchase was made." });
+    }
     const userId =
       req.user?._id ||
       req.user?.id ||

@@ -14,6 +14,34 @@ const {
 } = require("../services/clubkonnectAirtimeProvider.service");
 
 const lifecycle = createClubkonnectAirtimeLifecycleService();
+const telecomLifecycle = require("../services/telecomAbodeAirtimeLifecycle.service")
+  .createTelecomAbodeAirtimeLifecycle();
+const lifecycleFor = transaction => transaction.provider === "TELECOM_ABODE" ? telecomLifecycle : lifecycle;
+
+const providerNetwork = async body => {
+  if (body.provider === "TELECOM_ABODE") return body.network;
+  // Older apps used ClubKonnect's codes; translate by name, never assume
+  // their numeric IDs are the same as Telecom Abode's.
+  const names = { "01": "MTN", "02": "GLO", "03": "9MOBILE", "04": "AIRTEL" };
+  const name = names[String(body.network)] || String(body.network || "").toUpperCase();
+  const rows = await telecomLifecycle.getNetworks();
+  const row = rows.find(r => r.displayName.toUpperCase() === name ||
+    name === "9MOBILE" && /9MOBILE|ETISALAT/i.test(r.displayName));
+  if (!row) throw Object.assign(new Error("Select a current Airtime network."),
+    { code: "AIRTIME_INVALID_REQUEST", status: 400 });
+  return row.providerId;
+};
+exports.getAirtimeNetworks = async (_req, res) => {
+  try { return res.json({ success: true, provider: "TELECOM_ABODE",
+    data: await telecomLifecycle.getNetworks() }); }
+  catch (_) { return res.status(503).json({ success: false, message: "Airtime catalogue is unavailable." }); }
+};
+exports.quoteAirtime = async (req, res) => {
+  try { return res.json({ success: true, data: await telecomLifecycle.quote({
+    network: await providerNetwork(req.body), amount: req.body.amount }) }); }
+  catch (e) { return res.status(e.status || 503).json({ success: false, code: e.code || "AIRTIME_QUOTE_UNAVAILABLE",
+    message: e.status < 500 ? e.message : "Airtime pricing could not be confirmed." }); }
+};
 
 const respondWithTransaction = async (res, transaction) => {
   if (!transaction) {
@@ -28,7 +56,7 @@ const respondWithTransaction = async (res, transaction) => {
       typeof transaction.providerResponse?.airtimeLifecycle?.amountCharged === "number") {
     // A verified invoice is available: attempt the recoverable, atomic effect
     // now rather than making the customer wait for the bounded worker.
-    await lifecycle.processCommissionEffect(transaction._id);
+    await lifecycleFor(transaction).processCommissionEffect(transaction._id);
     transaction = await Transaction.findById(transaction._id);
   }
   const customer = await User.findById(transaction.customerId).select("walletBalance").lean();
@@ -42,7 +70,9 @@ const respondWithTransaction = async (res, transaction) => {
     success: successful,
     pending: !successful && !failed,
     message: successful
-      ? "Airtime purchase was successful."
+      ? (transaction.provider === "TELECOM_ABODE" && metadata.amountCharged == null
+          ? "Airtime delivered successfully. Provider cost, profit and commission are awaiting accounting reconciliation."
+          : "Airtime purchase was successful.")
       : failed
         ? "The provider confirmed failure. Your wallet was refunded once."
         : "The Airtime result is awaiting confirmation. Do not make another purchase for this request.",
@@ -51,7 +81,10 @@ const respondWithTransaction = async (res, transaction) => {
     status: transaction.status,
     dispatchStatus: transaction.dispatchStatus,
     walletBalance: customer?.walletBalance,
-    accountingStatus: effect?.status || (successful ? "PENDING" : "NOT_DUE"),
+    accountingStatus: transaction.providerResponse?.financialAccounting?.status ||
+      effect?.status || (successful ? "PENDING" : "NOT_DUE"),
+    provider: transaction.provider,
+    customerSellingPrice: transaction.amount,
     transaction: {
       serviceType: "AIRTIME",
       phone: transaction.phone,
@@ -72,20 +105,23 @@ const respondWithTransaction = async (res, transaction) => {
 exports.buyAirtime = async (req, res) => {
   try {
     const config = await getServiceConfig("AIRTIME");
-    const enabled = config.providerStates?.find(p => p.provider === "CLUBKONNECT")?.enabled;
-    if (config.primaryProvider !== "CLUBKONNECT" || enabled !== true ||
-        !isAvailable("AIRTIME", "CLUBKONNECT")) {
+    const selected = config.primaryProvider;
+    const enabled = config.providerStates?.find(p => p.provider === selected)?.enabled;
+    if (!["CLUBKONNECT", "TELECOM_ABODE"].includes(selected) || enabled !== true ||
+        !isAvailable("AIRTIME", selected)) {
       return res.status(503).json({
         success: false,
         code: "AIRTIME_PROVIDER_UNAVAILABLE",
         message: "The configured Airtime provider is unavailable.",
       });
     }
-    const result = await lifecycle.executePurchase({
+    const activeLifecycle = selected === "TELECOM_ABODE" ? telecomLifecycle : lifecycle;
+    const result = await activeLifecycle.executePurchase({
       customerId: req.user._id,
-      network: req.body.network,
+      network: selected === "TELECOM_ABODE" ? await providerNetwork(req.body) : req.body.network,
       phone: req.body.phone,
       amount: req.body.amount,
+      customerSellingPrice: req.body.customerSellingPrice,
       idempotencyKey: req.get?.("Idempotency-Key") || req.get?.("X-Idempotency-Key") ||
         req.headers?.["idempotency-key"] || req.headers?.["x-idempotency-key"] ||
         req.body.idempotencyKey,
@@ -122,7 +158,7 @@ exports.requeryAirtime = async (req, res) => {
       ...identity,
       customerId: req.user._id,
       serviceType: "AIRTIME",
-      provider: "CLUBKONNECT",
+      provider: { $in: ["CLUBKONNECT", "TELECOM_ABODE"] },
       "providerResponse.airtimeLifecycle.version": 1,
     });
     if (!transaction) {
@@ -130,10 +166,10 @@ exports.requeryAirtime = async (req, res) => {
     }
     const accountingComplete = transaction.providerResponse?.airtimeCommissionRecovery?.status === "COMPLETE";
     if (transaction.status !== "PENDING" &&
-        (transaction.status !== "SUCCESSFUL" || accountingComplete)) {
+        (transaction.status !== "SUCCESSFUL" || accountingComplete || transaction.provider === "TELECOM_ABODE")) {
       return respondWithTransaction(res, transaction);
     }
-    const result = await lifecycle.reconcilePendingPurchase({ transactionId: transaction._id });
+    const result = await lifecycleFor(transaction).reconcilePendingPurchase({ transactionId: transaction._id });
     return respondWithTransaction(res, result?.transaction || result ||
       await Transaction.findById(transaction._id));
   } catch (_error) {

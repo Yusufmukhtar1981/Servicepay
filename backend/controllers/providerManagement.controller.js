@@ -11,7 +11,7 @@ const {
   serializeConfig,
 } = require("../services/providerManagement.service");
 
-const allowedBodyKeys = new Set(["service", "action", "provider", "enabled"]);
+const allowedBodyKeys = new Set(["service", "action", "provider", "enabled", "airtimeMarkupBps"]);
 const fail = (res, status, code, message) => res.status(status).json({
   success: false, code, message,
 });
@@ -28,6 +28,10 @@ exports.getProviderManagement = async (_req, res) => {
 
 exports.patchProviderManagement = async (req, res) => {
   const body = req.body || {};
+  if (body.airtimeMarkupBps !== undefined &&
+      (String(body.service).toUpperCase() !== "AIRTIME" || body.action !== "setPricing")) {
+    return fail(res, 400, "INVALID_AIRTIME_PRICING_ACTION", "Airtime markup is only accepted by the Airtime pricing action.");
+  }
   if (Object.keys(body).some((key) => !allowedBodyKeys.has(key))) {
     return fail(res, 400, "INVALID_PROVIDER_MANAGEMENT_FIELDS", "Request contains unsupported fields.");
   }
@@ -37,7 +41,7 @@ exports.patchProviderManagement = async (req, res) => {
   if (!Object.hasOwn(DEFAULTS, service)) {
     return fail(res, 400, "INVALID_SERVICE", "Service must be AIRTIME, DATA, ELECTRICITY, or CABLE.");
   }
-  if (!["enable", "disable", "setPrimary", "setFallback"].includes(action)) {
+  if (!["enable", "disable", "setPrimary", "setFallback", "setPricing"].includes(action)) {
     return fail(res, 400, "INVALID_ACTION", "Action must be enable, disable, setPrimary, or setFallback.");
   }
   if (!SERVICE_PROVIDERS[service].includes(provider)) {
@@ -50,8 +54,9 @@ exports.patchProviderManagement = async (req, res) => {
     return fail(res, 400, "INVALID_ENABLED_VALUE", "The disable action requires enabled=false.");
   }
 
-  // DATA alone has a Telecom Abode adapter and durable paid dispatch.
-  if (provider === "TELECOM_ABODE" && service !== "DATA" && action !== "disable") {
+  // Airtime has an independent durable adapter; Electricity permits catalogue
+  // configuration only. Cable remains blocked.
+  if (provider === "TELECOM_ABODE" && !["DATA", "AIRTIME", "ELECTRICITY"].includes(service) && action !== "disable") {
     return fail(res, 409, "TELECOM_ABODE_PURCHASES_LOCKED",
       "Telecom Abode can provide read-only DATA plans, but purchases cannot be enabled or selected until customer pricing and provider recovery are verified.");
   }
@@ -63,10 +68,9 @@ exports.patchProviderManagement = async (req, res) => {
     return fail(res, 409, "CABLE_PURCHASE_UNAVAILABLE",
       "Cable purchasing is unavailable: no cable purchase route or provider adapter is implemented.");
   }
-  if (service === "AIRTIME") {
-    return fail(res, 409, "ROUTING_CONTROL_UNAVAILABLE",
-      `${service} purchases are currently hard-wired to ClubKonnect. Provider control changes are locked until the purchase route has an atomic management gate.`);
-  }
+  if (action === "setPricing" && (service !== "AIRTIME" || !Number.isInteger(body.airtimeMarkupBps) ||
+      body.airtimeMarkupBps < 0 || body.airtimeMarkupBps > 10000))
+    return fail(res, 400, "AIRTIME_PRICING_INVALID", "Airtime markup must be an integer from 0 to 10,000 basis points.");
 
   let updated;
   let previous;
@@ -96,12 +100,14 @@ exports.patchProviderManagement = async (req, res) => {
           });
         }
 
-        if ((action === "enable" || action === "setPrimary") && !isAvailable(service, provider)) {
+        const catalogOnly = service === "ELECTRICITY" && provider === "TELECOM_ABODE";
+        if ((action === "enable" || action === "setPrimary") && !catalogOnly && !isAvailable(service, provider)) {
           throw Object.assign(new Error("Provider is unavailable and cannot be enabled or selected."), {
             statusCode: 409, code: "PROVIDER_UNAVAILABLE",
           });
         }
-        if (action === "enable") state.enabled = true;
+        if (action === "setPricing") current.airtimeMarkupBps = body.airtimeMarkupBps;
+        else if (action === "enable") state.enabled = true;
         else if (action === "disable") state.enabled = false;
         else if (action === "setPrimary") {
           if (!state.enabled) {

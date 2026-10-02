@@ -89,6 +89,11 @@ router.post(
   buyAirtime
 );
 
+router.get("/airtime/networks", protect,
+  require("../controllers/clubkonnectAirtime.controller").getAirtimeNetworks);
+router.post("/airtime/quote", protect,
+  require("../controllers/clubkonnectAirtime.controller").quoteAirtime);
+
 router.post(
   "/airtime/requery",
   protect,

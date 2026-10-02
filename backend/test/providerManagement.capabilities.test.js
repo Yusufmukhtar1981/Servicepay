@@ -25,7 +25,7 @@ test("Telecom Abode DATA capability is scoped; other Telecom Abode purchases sta
   await withEnvironment({
     TELECOM_ABODE_API_KEY: "test-only-key",
   }, async () => {
-    for (const service of ["AIRTIME", "DATA", "ELECTRICITY", "CABLE"]) {
+    for (const service of ["DATA", "CABLE"]) {
       const capability = getProviderCapabilities(service, "TELECOM_ABODE");
       assert.equal(capability.credentialsConfigured, true);
       assert.equal(capability.adapterImplemented, ["DATA", "ELECTRICITY", "CABLE"].includes(service));
@@ -40,6 +40,14 @@ test("Telecom Abode DATA capability is scoped; other Telecom Abode purchases sta
       assert.ok(Array.isArray(capability.readinessReasons));
       assert.ok(capability.readinessReasons.length > 0);
     }
+    const airtime = getProviderCapabilities("AIRTIME", "TELECOM_ABODE");
+    assert.equal(airtime.adapterImplemented, true);
+    assert.equal(airtime.purchaseSupported, true);
+    assert.equal(airtime.productionReady, true);
+    const electricity = getProviderCapabilities("ELECTRICITY", "TELECOM_ABODE");
+    assert.equal(electricity.catalogAvailable, true);
+    assert.equal(electricity.purchaseSupported, false);
+    assert.equal(electricity.productionReady, false);
   });
 });
 
@@ -72,7 +80,7 @@ test("Provider Management returns capabilities and keeps Telecom Abode unavailab
     assert.equal(telecomAbode.enabled, false);
     assert.equal(telecomAbode.capabilities.credentialsConfigured, true);
     assert.equal(telecomAbode.capabilities.productionReady, false);
-    assert.ok(telecomAbode.readinessReasons.some((reason) => /query contract is undocumented/i.test(reason)));
+    assert.ok(telecomAbode.readinessReasons.some((reason) => /validation/i.test(reason)));
     assert.doesNotMatch(JSON.stringify(serialized), /test-only-key|test-nello-key|test-club-key/);
   });
 });
