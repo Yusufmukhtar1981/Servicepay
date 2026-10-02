@@ -5,6 +5,7 @@ import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'services/receipt_download.dart';
+import 'customer_receipt_privacy.dart';
 
 class BusinessWalletTransactionReceiptScreen extends StatefulWidget {
   final Map<String, dynamic> transaction;
@@ -127,7 +128,7 @@ class _BusinessWalletTransactionReceiptScreenState
     );
 
     buffer.writeln(
-      'Description: ${textValue(transaction['narration'], fallback: 'Business transaction')}',
+      'Description: ${customerReceiptText(textValue(transaction['narration'], fallback: 'Business transaction'))}',
     );
 
     buffer.writeln(
@@ -409,10 +410,10 @@ class _BusinessWalletTransactionReceiptScreenState
   }
 
   Widget buildReceiptCard() {
-    final narration = textValue(
+    final narration = customerReceiptText(textValue(
       transaction['narration'],
       fallback: 'Business transaction',
-    );
+    ));
 
     final reference = textValue(
       transaction['reference'],
@@ -473,14 +474,13 @@ class _BusinessWalletTransactionReceiptScreenState
           children: <Widget>[
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: const <Widget>[
-                Icon(
-                  Icons.account_balance_wallet_rounded,
-                  color: primaryGreen,
-                  size: 25,
-                ),
-                SizedBox(width: 8),
-                Text(
+              children: <Widget>[
+                Image.asset('assets/image/servicepay_logo.png',
+                    width: 32,
+                    height: 32,
+                    semanticLabel: 'Official ServicePay logo'),
+                const SizedBox(width: 8),
+                const Text(
                   'ServicePay',
                   style: TextStyle(
                     fontSize: 22,

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'services/receipt_download.dart';
+import 'customer_receipt_privacy.dart';
 
 /// A receipt is rendered only from the values supplied by the completed
 /// transaction flow. Do not add account credentials or authentication values
@@ -113,7 +114,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   String get _shareText {
     final List<String> lines = <String>[
       'ServicePay Transaction Receipt',
-      'Service: ${widget.serviceName}',
+      'Service: ${customerReceiptText(widget.serviceName)}',
       'Amount: ₦${widget.amount}',
       'Reference: ${widget.reference}',
       'Date & Time: ${widget.date}',
@@ -126,12 +127,17 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   }
 
   Map<String, String> get _safeDetails => Map<String, String>.fromEntries(
-        widget.details.entries.where(
-          (MapEntry<String, String> entry) => !RegExp(
-                  r'(pin|token|password|secret|authorization)',
-                  caseSensitive: false)
-              .hasMatch(entry.key) || _isElectricityMeterToken(entry),
-        ),
+        widget.details.entries
+            .where(
+              (MapEntry<String, String> entry) =>
+                  !isPrivateReceiptLabel(entry.key) &&
+                  (!RegExp(r'(pin|token|password|secret|authorization)',
+                              caseSensitive: false)
+                          .hasMatch(entry.key) ||
+                      _isElectricityMeterToken(entry)),
+            )
+            .map((entry) =>
+                MapEntry(entry.key, customerReceiptText(entry.value))),
       );
 
   bool _isElectricityMeterToken(MapEntry<String, String> entry) {
@@ -141,8 +147,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
         entry.key.trim().toLowerCase() == 'token' &&
         RegExp(r'^[\d -]+$').hasMatch(value) &&
         RegExp(r'^\d{20}$').hasMatch(value.replaceAll(RegExp(r'[ -]'), '')) &&
-        !RegExp(r'^(\d)\1+$')
-            .hasMatch(value.replaceAll(RegExp(r'[ -]'), ''));
+        !RegExp(r'^(\d)\1+$').hasMatch(value.replaceAll(RegExp(r'[ -]'), ''));
   }
 
   void _notice(String text) {
@@ -232,7 +237,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                   fontWeight: FontWeight.w800,
                   color: status.color)),
           const SizedBox(height: 10),
-          Text(widget.serviceName,
+          Text(customerReceiptText(widget.serviceName),
               textAlign: TextAlign.center,
               style: const TextStyle(
                   fontSize: 15,
@@ -259,22 +264,11 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
       );
 
   Widget _logo() =>
-      const Row(mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
-        DecoratedBox(
-            decoration: BoxDecoration(
-                color: primaryGreen,
-                borderRadius: BorderRadius.all(Radius.circular(14))),
-            child: SizedBox(
-                width: 44,
-                height: 44,
-                child: Center(
-                    child: Text('S',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900))))),
-        SizedBox(width: 10),
-        Text('ServicePay',
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
+        Image.asset('assets/image/servicepay_logo.png',
+            width: 44, height: 44, semanticLabel: 'Official ServicePay logo'),
+        const SizedBox(width: 10),
+        const Text('ServicePay',
             style: TextStyle(
                 fontSize: 23,
                 fontWeight: FontWeight.w900,

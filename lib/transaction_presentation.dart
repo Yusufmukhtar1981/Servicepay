@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'customer_receipt_privacy.dart';
 
 bool transactionDateMatchesRange({
   required DateTime? date,
@@ -111,7 +112,7 @@ class TransactionPresentation {
         'phone',
       ]).toString().trim();
 
-  String get description => _first(raw, const [
+  String get description => customerReceiptText(_first(raw, const [
         'description',
         'narration',
         'message',
@@ -119,7 +120,7 @@ class TransactionPresentation {
         'recipientName',
         'recipientPhone',
         'phone',
-      ]).toString().trim();
+      ]).toString().trim());
 
   double get amount {
     final value = _first(raw, const ['amount', 'totalAmount', 'value']);
@@ -173,9 +174,12 @@ class TransactionPresentation {
   Iterable<MapEntry<String, String>> get details sync* {
     if (isElectricity) {
       for (final entry in const <String, List<String>>{
-        'Customer': ['customerName'], 'Meter number': ['meterNumber'],
-        'DISCO': ['electricityCompany'], 'Meter type': ['meterType'],
-        'Token': ['meterToken'], 'Units': ['units'], 'Provider reference': ['providerReference'],
+        'Customer': ['customerName'],
+        'Meter number': ['meterNumber'],
+        'DISCO': ['electricityCompany'],
+        'Meter type': ['meterType'],
+        'Token': ['meterToken'],
+        'Units': ['units'],
       }.entries) {
         final value = _firstDeep(entry.value).toString().trim();
         if (value.isNotEmpty) yield MapEntry(entry.key, value);
@@ -192,11 +196,17 @@ class TransactionPresentation {
       'Bank': ['bankName'],
       'Account number': ['accountNumber'],
       'Narration': ['narration', 'description'],
-      'Provider': ['provider'],
-      'Provider reference': ['providerReference', 'nipTransactionReference'],
+      'Network': ['networkName', 'network'],
+      'Data Plan': ['planName', 'dataPlan'],
+      'Smartcard': ['smartcardNumber', 'smartCardNumber'],
+      'TV service': ['cableCompany'],
+      'Package': ['packageName'],
+      'Activation code': ['activationCode', 'rechargeCode', 'voucherCode'],
+      'Voucher serial': ['serialNumber'],
     }.entries) {
       final value = _firstDeep(entry.value).toString().trim();
-      if (value.isNotEmpty) yield MapEntry(entry.key, value);
+      if (value.isNotEmpty)
+        yield MapEntry(entry.key, customerReceiptText(value));
     }
     if (fee != null) {
       yield MapEntry('Fee', '₦${fee!.toStringAsFixed(2)}');
@@ -237,6 +247,15 @@ class TransactionPresentation {
   dynamic _firstDeep(List<String> keys) {
     final direct = _first(raw, keys);
     if (direct != null && direct.toString().trim().isNotEmpty) return direct;
+    for (final container in [
+      raw['fulfillment'],
+      raw['metadata'] is Map ? raw['metadata']['fulfillment'] : null,
+    ]) {
+      if (container is Map) {
+        final value = _first(Map<String, dynamic>.from(container), keys);
+        if (value != null && value.toString().trim().isNotEmpty) return value;
+      }
+    }
     final provider = raw['providerResponse'];
     if (provider is Map) {
       final electricity = provider['electricity'];

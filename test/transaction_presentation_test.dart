@@ -80,11 +80,12 @@ void main() {
       containsAll(<String>[
         'Ada Okafor',
         '0123456789',
-        'NIP-7788',
         '₦25.00',
         '₦1025.00',
       ]),
     );
+    expect(transaction.details.map((entry) => entry.value),
+        isNot(contains('NIP-7788')));
     expect(transaction.matchesSearch('ada'), isTrue);
     expect(transaction.matchesSearch('0803'), isTrue);
     expect(transaction.matchesSearch('012345'), isTrue);
@@ -109,5 +110,4 @@ void main() {
     expect(transaction.recipient, '08031234567');
     expect(transaction.provider, 'CLUBKONNECT');
   });
-
 }

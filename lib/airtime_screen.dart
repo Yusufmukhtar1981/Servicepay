@@ -65,7 +65,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       };
       for (final row in response['data'] as List) {
         final label = labels[row['displayName'].toString().toUpperCase()];
-        final id = int.tryParse(row['providerId'].toString());
+        final id =
+            int.tryParse((row['networkId'] ?? row['providerId']).toString());
         if (label != null && id != null && id > 0) mapped[label] = id;
       }
       if (mapped.isEmpty)
@@ -1000,8 +1001,9 @@ class AirtimePurchaseIntent {
 
   bool isTerminalResult(Map<String, dynamic> result) {
     final deliveryStatus = result['status']?.toString().toUpperCase();
-    if (result['provider'] == 'TELECOM_ABODE' &&
-        result['dispatchStatus'] == 'SUCCEEDED' &&
+    if ((result['deliveryStatus'] == 'SUCCEEDED' ||
+            (result['provider'] == 'TELECOM_ABODE' &&
+                result['dispatchStatus'] == 'SUCCEEDED')) &&
         ['SUCCESS', 'SUCCESSFUL', 'COMPLETED'].contains(deliveryStatus))
       return true;
     final httpStatus =
@@ -1041,6 +1043,7 @@ class AirtimePurchaseIntent {
   }
 
   bool isDeliveredAccountingPending(Map<String, dynamic> result) {
+    if (result['deliveryStatus'] == 'SUCCEEDED') return false;
     final httpStatus =
         result['httpStatus'] is int ? result['httpStatus'] as int : 0;
     final status = result['status']?.toString().toUpperCase() ?? '';
