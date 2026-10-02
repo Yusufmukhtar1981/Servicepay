@@ -100,7 +100,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   Future<void> buyAirtime() async {
     if (isLoading || _isCheckingStatus) return;
 
-    final String phone = phoneController.text.trim();
+    String phone = phoneController.text.trim();
 
     final String amountText = amountController.text.trim();
 
@@ -109,13 +109,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     if (phone.isEmpty || amountText.isEmpty) {
       showMessage(
         'Please enter the phone number and amount.',
-      );
-      return;
-    }
-
-    if (!RegExp(r'^[0-9]{11}$').hasMatch(phone) || !phone.startsWith('0')) {
-      showMessage(
-        'Please enter a valid 11-digit phone number.',
       );
       return;
     }
@@ -141,13 +134,17 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         showMessage('Load the current Airtime networks before buying.');
         return;
       }
-      final quoted = await ApiService.quoteAirtime(networkId: providerId, amount: purchaseAmount);
+      final quoted = await ApiService.quoteAirtime(networkId: providerId, amount: purchaseAmount, phone: phone);
       final quote = quoted['data'] as Map?;
       final sellingPrice = double.tryParse(quote?['customerSellingPrice'].toString() ?? '');
-      if (quoted['success'] != true || sellingPrice == null || sellingPrice <= 0) {
-        showMessage('The selling price could not be confirmed. No purchase was made.');
+      final normalizedPhone = quote?['normalizedPhone']?.toString();
+      if (quoted['success'] != true || sellingPrice == null || sellingPrice <= 0 ||
+          normalizedPhone == null || normalizedPhone.isEmpty) {
+        showMessage(quoted['message']?.toString() ??
+          'The phone number or selling price could not be confirmed. No purchase was made.');
         return;
       }
+      phone = normalizedPhone;
       final bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (BuildContext dialogContext) {
@@ -570,9 +567,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   controller: phoneController,
                   enabled: !isLoading && !_isCheckingStatus,
                   keyboardType: TextInputType.phone,
-                  maxLength: 11,
+                  maxLength: 24,
                   decoration: InputDecoration(
-                    hintText: '08012345678',
+                    hintText: '08012345678 or +2348012345678',
                     counterText: '',
                     prefixIcon: const Icon(
                       Icons.phone_outlined,

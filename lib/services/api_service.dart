@@ -144,12 +144,13 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> quoteAirtime({
-    required int networkId, required String amount,
+    required int networkId, required String amount, String? phone,
   }) async {
     final token = await _getAuthToken();
     final response = await http.post(Uri.parse('$baseUrl/clubkonnect/airtime/quote'),
       headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-      body: jsonEncode({'network': networkId, 'provider': 'TELECOM_ABODE', 'amount': amount}))
+      body: jsonEncode({'network': networkId, 'provider': 'TELECOM_ABODE', 'amount': amount,
+        if (phone != null) 'phone': phone}))
       .timeout(requestTimeout);
     return _handleResponse(response);
   }
