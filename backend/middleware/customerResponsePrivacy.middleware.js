@@ -1,6 +1,6 @@
 // Response-only projection. Never mutate stored records or staff responses.
-const privateKey = /^(provider.*|api.*|routing.*|internal.*|upstream.*|raw(response|request|payload|data)?|requestpayload|requestheaders|responseheaders|financialaccounting|accountingstatus|actualcost|costsource|netprofit|profit|margin|invoice.*|orderid|requestid|transaction_id|niptransactionreference|dispatch.*|telecomabode.*|fingerprint)$/i;
-const providerNames = /\b(telecom[\s_-]*abode|club[\s_-]*konnect|vtpass|paystack|flutterwave|monnify)\b/gi;
+const privateKey = /^(.*provider.*|api.*|routing.*|internal.*|upstream.*|raw(response|request|payload|data)?|requestpayload|requestheaders|responseheaders|financialaccounting|accountingstatus|actualcost|costsource|netprofit|profit|margin|orderid|requestid|transaction_id|niptransactionreference|dispatch.*|telecomabode.*|fingerprint)$/i;
+const providerNames = /(^|[^a-z0-9])(telecom[\s_-]*abode|club[\s_-]*konnect|vtpass|paystack|flutterwave|monnify|secure[\s_-]*wave(?:ng)?|squad(?:co)?|quick[\s_-]*teller|interswitch)(?=$|[^a-z0-9])/gi;
 const fulfillmentKeys = new Set([
   "customerName", "meterNumber", "electricityCompany", "meterType", "meterToken",
   "units", "networkName", "planName", "phone", "phoneNumber", "recipientPhone",
@@ -21,10 +21,10 @@ function fulfillmentFrom(value, depth = 0, output = {}) {
   return output;
 }
 function customerText(value) {
-  if (/https?:\/\/\S*(?:telecomabode|clubkonnect|vtpass|paystack|flutterwave|monnify|\/api\/)\S*/i.test(String(value))) {
+  if (/https?:\/\/\S*(?:telecomabode|clubkonnect|vtpass|paystack|flutterwave|monnify|securewave|squadco|quickteller|interswitch|\/api\/)\S*/i.test(String(value))) {
     return "Contact ServicePay support with your transaction reference if you need help.";
   }
-  const text = String(value).replace(providerNames, "ServicePay");
+  const text = String(value).replace(providerNames, (_match, prefix) => `${prefix}ServicePay`);
   if (/\b(provider cost|accounting reconciliation|profit and commission|api key|api credential)\b/i.test(text)) {
     return "Your transaction status is shown above. Contact ServicePay support with your transaction reference if you need help.";
   }
@@ -54,8 +54,10 @@ function customerResponse(value, depth = 0) {
         UNKNOWN: "UNKNOWN", RESPONDED: "COMPLETED" })[item] || "PROCESSING";
       continue;
     }
-    if (privateKey.test(key.replace(/^_+/, "")) || /^(password|secret|authorization|accessToken|authToken|transactionPin)$/i.test(key)) continue;
-    output[key] = typeof item === "string" && /^(message|description|narration|title|code)$/i.test(key)
+    if (privateKey.test(key.replace(/^_+/, "")) ||
+        privateKey.test(key.replace(/[_-]/g, "")) ||
+        /^(password|secret|authorization|accessToken|authToken|transactionPin)$/i.test(key.replace(/[_-]/g, ""))) continue;
+    output[key] = typeof item === "string" && /^(message|description|narration|title|code|error|reason|detail|text|body|errorMessage|statusMessage)$/i.test(key)
       ? customerText(item) : customerResponse(item, depth + 1);
   }
   return output;

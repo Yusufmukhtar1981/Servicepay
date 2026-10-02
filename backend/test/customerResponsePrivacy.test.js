@@ -55,12 +55,18 @@ test("middleware filters post-auth customer response including duplicate data al
 });
 test("public catalog identities and prices stay usable without provider fields", () => {
   const result = customerResponse({ data: [{ displayName: "MTN", networkCode: "MTN",
-    providerId: 1, provider: "TELECOM_ABODE", id: "DATA-MTN-opaque-hash", price: 97 }] });
+    providerId: 1, provider: "TELECOM_ABODE", planProvider: "TELECOM_ABODE",
+    primaryProvider: "TELECOM_ABODE", order_id: "private-order",
+    id: "DATA-MTN-opaque-hash", price: 97, invoiceId: "public-invoice" }] });
   assert.equal(result.data[0].networkId, 1);
   assert.equal(result.data[0].networkCode, "MTN");
   assert.equal(result.data[0].id, "DATA-MTN-opaque-hash");
   assert.equal(result.data[0].price, 97);
   assert.equal(result.data[0].providerId, undefined);
+  assert.equal(result.data[0].planProvider, undefined);
+  assert.equal(result.data[0].primaryProvider, undefined);
+  assert.equal(result.data[0].order_id, undefined);
+  assert.equal(result.data[0].invoiceId, "public-invoice");
 });
 test("legacy completed purchases retain terminal delivery without private accounting fields", () => {
   assert.deepEqual(customerResponse({ reference: "SP-unit", status: "SUCCESSFUL",
@@ -72,6 +78,8 @@ test("names and internal accounting messages cannot leak via human-readable stri
     /provider|profit|commission|reconciliation/i);
   assert.doesNotMatch(customerResponse({ message: "Failed at https://telecomabode.com.ng/api/bill/bill-purchase" }).message,
     /https|telecomabode|\/api\//i);
+  assert.doesNotMatch(JSON.stringify(customerResponse({ code: "TELECOM_ABODE_UNAVAILABLE",
+    error: "SecureWaveNG lookup unavailable" })), /TELECOM|SECUREWAVE/i);
 });
 test("real HTTP serialization filters customer success/failure/pending and preserves staff detail", async () => {
   const express = require("express");

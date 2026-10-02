@@ -41,3 +41,30 @@ test("quote binds provider, network ID, full product identity, price, customer a
   assert.equal(verifyDataPlanQuote(quote, { ...selection, now: now + 15 * 60 * 1000 }), false);
   assert.equal(verifyDataPlanQuote(`${quote}x`, { ...selection, now }), false);
 });
+test("new quotes contain only public product facts and an opaque routing binding", () => {
+  const quote = issueDataPlanQuote(selection);
+  const payload = JSON.parse(Buffer.from(quote.split(".")[0], "base64url"));
+  assert.equal(payload.version, 2);
+  assert.equal(payload.provider, undefined);
+  assert.equal(payload.providerPlanId, undefined);
+  assert.equal(payload.networkId, undefined);
+  assert.equal(payload.planId, plan.code);
+  assert.equal(payload.name, plan.name);
+  assert.equal(payload.price, selection.price);
+  assert.equal(typeof payload.binding, "string");
+  assert.doesNotMatch(JSON.stringify(payload), /TELECOM|provider|networkId/i);
+});
+test("already-issued signed v1 quotes remain valid only for their original bound product and lifetime", () => {
+  const crypto = require("crypto"), now = Date.now();
+  const legacy = { version: 1, customerId: selection.customerId, provider: selection.provider,
+    network: selection.network, planId: plan.code, networkId: plan.networkId, providerPlanId: null,
+    name: plan.name, size: plan.datasize, type: plan.type, duration: plan.day,
+    price: selection.price, issuedAt: now, expiresAt: now + 15 * 60 * 1000 };
+  const body = Buffer.from(JSON.stringify(legacy)).toString("base64url");
+  const key = crypto.createHmac("sha256", process.env.JWT_SECRET).update("servicepay:data-plan-quote:v1").digest();
+  const quote = body + "." + crypto.createHmac("sha256", key).update(body).digest("base64url");
+  assert.equal(verifyDataPlanQuote(quote, { ...selection, now }), true);
+  assert.equal(verifyDataPlanQuote(quote, { ...selection, provider: "CLUBKONNECT", now }), false);
+  assert.equal(verifyDataPlanQuote(quote, { ...selection, price: 151, now }), false);
+  assert.equal(verifyDataPlanQuote(quote, { ...selection, now: now + 15 * 60 * 1000 }), false);
+});
