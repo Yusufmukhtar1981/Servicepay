@@ -1,10 +1,20 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'services/api_service.dart';
 import 'widgets/saved_beneficiaries.dart';
 
 class AirtimeScreen extends StatefulWidget {
-  const AirtimeScreen({super.key});
+  const AirtimeScreen({
+    super.key,
+    this.purchaseIntent,
+  });
+
+  final AirtimePurchaseIntent? purchaseIntent;
 
   @override
   State<AirtimeScreen> createState() => _AirtimeScreenState();
@@ -24,7 +34,18 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
   String selectedNetwork = 'MTN';
   bool isLoading = false;
+  bool _isCheckingStatus = false;
   String? _pendingIdempotencyKey;
+  String? _pendingIntentError;
+  String? _pendingMessage;
+  late final AirtimePurchaseIntent _purchaseIntent;
+
+  @override
+  void initState() {
+    super.initState();
+    _purchaseIntent = widget.purchaseIntent ?? AirtimePurchaseIntent();
+    _restorePendingIntent();
+  }
 
   @override
   void dispose() {
@@ -47,11 +68,13 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   }
 
   Future<void> buyAirtime() async {
+    if (isLoading || _isCheckingStatus) return;
+
     final String phone = phoneController.text.trim();
 
     final String amountText = amountController.text.trim();
 
-    final double? amount = double.tryParse(amountText);
+    final int? amountCents = AirtimePurchaseIntent.amountInCents(amountText);
 
     if (phone.isEmpty || amountText.isEmpty) {
       showMessage(
@@ -67,61 +90,63 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       return;
     }
 
-    if (amount == null || amount < 50) {
+    if (amountCents == null || amountCents < 5000) {
       showMessage(
         'The minimum airtime amount is ₦50.',
       );
       return;
     }
+    final double amount = amountCents / 100;
+    final String purchaseAmount =
+        AirtimePurchaseIntent.formatAmountCents(amountCents);
 
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            'Confirm airtime purchase',
-          ),
-          content: Text(
-            'Purchase ₦${amount.toStringAsFixed(0)} '
-            '$selectedNetwork airtime for $phone?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Confirm'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-    final String idempotencyKey = _pendingIdempotencyKey ??=
-        'airtime-${DateTime.now().microsecondsSinceEpoch}';
-
+    final String network = selectedNetwork;
     setState(() {
       isLoading = true;
     });
 
     try {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text(
+              'Confirm airtime purchase',
+            ),
+            content: Text(
+              'Purchase ₦${amount.toStringAsFixed(0)} '
+              '$network airtime for $phone?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(
+                    dialogContext,
+                    false,
+                  );
+                },
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(
+                    dialogContext,
+                    true,
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Confirm'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true || !mounted) return;
+
       String transactionPin = '';
       final TextEditingController transactionPinController =
           TextEditingController();
@@ -179,47 +204,78 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         return;
       }
 
-      final Map<String, dynamic> result = await ApiService.buyAirtime(
-        transactionPin: transactionPin,
-        network: selectedNetwork,
+      final Map<String, dynamic> result = await _purchaseIntent.submit(
+        network: network,
         phone: phone,
-        amount: amountText,
-        idempotencyKey: idempotencyKey,
+        amount: purchaseAmount,
+        dispatch: (String idempotencyKey) => ApiService.buyAirtime(
+          transactionPin: transactionPin,
+          network: network,
+          phone: phone,
+          amount: purchaseAmount,
+          idempotencyKey: idempotencyKey,
+        ),
       );
 
       if (!mounted) return;
+      await _restorePendingIntent();
+      if (!mounted) return;
 
-      final bool success = result['success'] == true;
+      final String responseStatus =
+          result['status']?.toString().toUpperCase() ?? '';
+      final bool purchaseTerminal = _purchaseIntent.isTerminalResult(result);
+      final bool terminalRefund = responseStatus == 'REFUNDED' ||
+          responseStatus == 'REVERSED' ||
+          (responseStatus == 'FAILED' &&
+              result['dispatchStatus'] == 'REFUNDED');
+      final bool unresolved = !purchaseTerminal;
+      const successfulStatuses = <String>{
+        'SUCCESS',
+        'SUCCESSFUL',
+        'COMPLETED',
+      };
+      final bool purchaseSucceeded =
+          purchaseTerminal && successfulStatuses.contains(responseStatus);
 
       final String message = result['message']?.toString() ??
           result['response_description']?.toString() ??
           result['description']?.toString() ??
           result['error']?.toString() ??
-          (success
+          (purchaseSucceeded
               ? 'Airtime purchase was successful.'
               : 'Airtime purchase failed.');
 
-      if (success) {
+      if (unresolved) {
+        final String pendingMessage =
+            _purchaseIntent.isDeliveredAccountingPending(result)
+                ? 'Airtime delivered, but confirmation is pending. The request '
+                    'key is retained; use Check previous request to retrieve '
+                    'the final status and charge amount.'
+                : 'Your airtime request has not been confirmed. Its request '
+                    'key has been retained; please check its status before '
+                    'trying again.';
+        setState(() {
+          _pendingMessage = pendingMessage;
+        });
+        showMessage(pendingMessage);
+      } else if (purchaseSucceeded) {
         showMessage(message);
         await SavedBeneficiaries.offerSave(
           context: context,
           phone: phone,
-          network: selectedNetwork,
+          network: network,
           serviceType: 'AIRTIME',
         );
         if (!mounted) return;
 
         phoneController.clear();
         amountController.clear();
-        _pendingIdempotencyKey = null;
       } else {
         final String? reference = result['reference']?.toString();
 
-        final String? status = result['status']?.toString();
-
         String finalMessage = message;
 
-        if (status == 'REFUNDED') {
+        if (terminalRefund) {
           finalMessage = '$message Your wallet has been refunded.';
         }
 
@@ -230,13 +286,117 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         showMessage(finalMessage);
       }
     } catch (error) {
-      final String message = error.toString().replaceFirst('Exception: ', '');
-
+      final String message = error is TimeoutException
+          ? 'The airtime request timed out. Its request key has been retained; '
+              'please check its status before trying again.'
+          : error.toString().replaceFirst('Exception: ', '');
+      await _restorePendingIntent();
       showMessage(message);
     } finally {
       if (mounted) {
         setState(() {
           isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _restorePendingIntent() async {
+    try {
+      final String? key = await _purchaseIntent.pendingKey();
+      if (!mounted) return;
+      setState(() {
+        _pendingIdempotencyKey = key;
+        _pendingIntentError = null;
+        _pendingMessage = key == null
+            ? null
+            : 'A previous airtime request is still awaiting a final status. '
+                'Check its status before starting a different purchase.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _pendingIdempotencyKey = null;
+        _pendingIntentError = error.toString().replaceFirst('Exception: ', '');
+        _pendingMessage = 'A previous airtime request could not be verified. '
+            'Do not start another purchase until its status is confirmed.';
+      });
+    }
+  }
+
+  Future<void> checkPreviousRequest() async {
+    if (isLoading || _isCheckingStatus) return;
+
+    String? key = _pendingIdempotencyKey;
+    if (key == null) {
+      await _restorePendingIntent();
+      key = _pendingIdempotencyKey;
+    }
+    if (!mounted) return;
+    if (key == null) {
+      showMessage(
+        'There is no verifiable previous airtime request to check.',
+      );
+      return;
+    }
+
+    setState(() {
+      _isCheckingStatus = true;
+      _pendingMessage = 'Checking the status of your previous request...';
+    });
+
+    try {
+      final Map<String, dynamic> result =
+          await ApiService.requeryAirtime(idempotencyKey: key);
+      final bool terminal = _purchaseIntent.isTerminalResult(result);
+      if (terminal) await _purchaseIntent.finish(key);
+      if (!mounted) return;
+
+      if (terminal) {
+        await _restorePendingIntent();
+        if (!mounted) return;
+        final String status =
+            result['status']?.toString().toUpperCase() ?? 'CONFIRMED';
+        final String message = result['message']?.toString() ??
+            result['response_description']?.toString() ??
+            result['description']?.toString() ??
+            'The previous airtime request is $status.';
+        final String? amountCharged = result['amountCharged']?.toString();
+        final String? reference = result['reference']?.toString();
+        showMessage(
+          <String>[
+            message,
+            if (amountCharged != null && amountCharged.trim().isNotEmpty)
+              'Amount charged: ₦$amountCharged',
+            if (reference != null && reference.trim().isNotEmpty)
+              'Reference: $reference',
+          ].join(' '),
+        );
+      } else {
+        setState(() {
+          _pendingIdempotencyKey = key;
+          _pendingIntentError = null;
+          _pendingMessage = _purchaseIntent.isDeliveredAccountingPending(result)
+              ? 'Airtime delivered, but confirmation is pending. The '
+                  'request key is retained; check again to retrieve the '
+                  'final status and charge amount.'
+              : 'The previous airtime request is not confirmed yet. Its '
+                  'request key has been retained; check again later.';
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      final String message = error.toString().replaceFirst('Exception: ', '');
+      setState(() {
+        _pendingIdempotencyKey = key;
+        _pendingMessage = 'Status could not be confirmed. The request key '
+            'has been retained. $message';
+      });
+      showMessage(message);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingStatus = false;
         });
       }
     }
@@ -266,6 +426,47 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_pendingIdempotencyKey != null ||
+                    _pendingIntentError != null) ...[
+                  Card(
+                    color: Colors.orange.shade50,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _pendingMessage ??
+                                'A previous airtime request needs a status '
+                                    'check.',
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _pendingIdempotencyKey == null ||
+                                    _isCheckingStatus
+                                ? null
+                                : checkPreviousRequest,
+                            icon: _isCheckingStatus
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh),
+                            label: Text(
+                              _isCheckingStatus
+                                  ? 'Checking status...'
+                                  : 'Check previous request',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 const Text(
                   'Select Network',
                   style: TextStyle(
@@ -294,7 +495,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                         ),
                       )
                       .toList(),
-                  onChanged: isLoading
+                  onChanged: isLoading || _isCheckingStatus
                       ? null
                       : (String? value) {
                           if (value == null) return;
@@ -315,7 +516,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: phoneController,
-                  enabled: !isLoading,
+                  enabled: !isLoading && !_isCheckingStatus,
                   keyboardType: TextInputType.phone,
                   maxLength: 11,
                   decoration: InputDecoration(
@@ -348,7 +549,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: amountController,
-                  enabled: !isLoading,
+                  enabled: !isLoading && !_isCheckingStatus,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
@@ -370,7 +571,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: isLoading ? null : buyAirtime,
+                    onPressed:
+                        isLoading || _isCheckingStatus ? null : buyAirtime,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -378,7 +580,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: isLoading
+                    child: isLoading || _isCheckingStatus
                         ? const SizedBox(
                             width: 24,
                             height: 24,
@@ -403,4 +605,237 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       ),
     );
   }
+}
+
+abstract class AirtimePurchaseIntentStorage {
+  Future<String?> read(String key);
+  Future<void> write(String key, String value);
+  Future<void> delete(String key);
+}
+
+class _SecureAirtimePurchaseIntentStorage
+    implements AirtimePurchaseIntentStorage {
+  static const FlutterSecureStorage _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+  );
+
+  @override
+  Future<String?> read(String key) => _storage.read(key: key);
+
+  @override
+  Future<void> write(String key, String value) =>
+      _storage.write(key: key, value: value);
+
+  @override
+  Future<void> delete(String key) => _storage.delete(key: key);
+}
+
+/// Airtime keys are durable and deliberately use a namespace separate from
+/// the DATA purchase store. An ambiguous response must not create a new key.
+class AirtimePurchaseIntent {
+  AirtimePurchaseIntent({AirtimePurchaseIntentStorage? storage})
+      : _storage = storage ?? _SecureAirtimePurchaseIntentStorage();
+
+  final AirtimePurchaseIntentStorage _storage;
+  static const String _storageKey = 'servicepay.airtimePurchase.pending';
+  static final Map<String, Future<void>> _submissions =
+      <String, Future<void>>{};
+
+  static int? amountInCents(String amount) {
+    final match = RegExp(r'^(\d+)(?:\.(\d{1,2}))?$').firstMatch(amount.trim());
+    if (match == null) return null;
+
+    final int? whole = int.tryParse(match.group(1)!);
+    final String fraction = (match.group(2) ?? '').padRight(2, '0');
+    final int? cents = int.tryParse(fraction);
+    if (whole == null || cents == null) return null;
+
+    return whole * 100 + cents;
+  }
+
+  static String formatAmountCents(int cents) =>
+      '${cents ~/ 100}.${(cents % 100).toString().padLeft(2, '0')}';
+
+  String _fingerprint({
+    required String network,
+    required String phone,
+    required String amount,
+  }) {
+    final int? cents = amountInCents(amount);
+    if (cents == null) {
+      throw ArgumentError.value(amount, 'amount');
+    }
+
+    return jsonEncode(<Object>[
+      network.trim().toUpperCase(),
+      phone.trim().replaceAll(RegExp(r'\s+'), ''),
+      cents,
+    ]);
+  }
+
+  Future<T> _withStorageLock<T>(Future<T> Function() operation) async {
+    final preceding = _submissions[_storageKey];
+    final completed = Completer<void>();
+    _submissions[_storageKey] = completed.future;
+
+    try {
+      if (preceding != null) await preceding;
+      return await operation();
+    } finally {
+      if (identical(_submissions[_storageKey], completed.future)) {
+        _submissions.remove(_storageKey);
+      }
+      completed.complete();
+    }
+  }
+
+  Future<String> keyForSubmission({
+    required String network,
+    required String phone,
+    required String amount,
+  }) =>
+      _withStorageLock<String>(() async {
+        final fingerprint = _fingerprint(
+          network: network,
+          phone: phone,
+          amount: amount,
+        );
+        final saved = await _storage.read(_storageKey);
+        if (saved != null) {
+          try {
+            final existing = jsonDecode(saved);
+            if (existing is! Map ||
+                existing['fingerprint'] is! String ||
+                existing['key'] is! String ||
+                (existing['key'] as String).isEmpty) {
+              throw const FormatException('Invalid pending airtime request.');
+            }
+            if (existing['fingerprint'] != fingerprint) {
+              throw StateError(
+                'A previous airtime purchase may still be processing. '
+                'Confirm its final status before starting a different '
+                'purchase.',
+              );
+            }
+            return existing['key'] as String;
+          } on FormatException {
+            throw StateError(
+              'An earlier airtime purchase could not be verified. Confirm its '
+              'status before starting another purchase.',
+            );
+          }
+        }
+
+        final random = Random.secure();
+        final key = 'airtime-${base64UrlEncode(
+          List<int>.generate(24, (_) => random.nextInt(256)),
+        ).replaceAll('=', '')}';
+        // A successful durable write is required before the network is called.
+        await _storage.write(
+          _storageKey,
+          jsonEncode({'fingerprint': fingerprint, 'key': key}),
+        );
+        return key;
+      });
+
+  Future<String?> pendingKey() => _withStorageLock<String?>(() async {
+        final saved = await _storage.read(_storageKey);
+        if (saved == null) return null;
+
+        try {
+          final existing = jsonDecode(saved);
+          if (existing is! Map ||
+              existing['fingerprint'] is! String ||
+              existing['key'] is! String ||
+              (existing['key'] as String).isEmpty) {
+            throw const FormatException('Invalid pending airtime request.');
+          }
+          return existing['key'] as String;
+        } on FormatException {
+          throw StateError(
+            'An earlier airtime purchase could not be verified. Confirm its '
+            'status before starting another purchase.',
+          );
+        }
+      });
+
+  Future<Map<String, dynamic>> submit({
+    required String network,
+    required String phone,
+    required String amount,
+    required Future<Map<String, dynamic>> Function(String idempotencyKey)
+        dispatch,
+  }) async {
+    final key = await keyForSubmission(
+      network: network,
+      phone: phone,
+      amount: amount,
+    );
+    final result = await dispatch(key);
+    if (isTerminalResult(result)) await finish(key);
+    return result;
+  }
+
+  bool isTerminalResult(Map<String, dynamic> result) {
+    final httpStatus =
+        result['httpStatus'] is int ? result['httpStatus'] as int : 0;
+    final status = result['status']?.toString().toUpperCase() ?? '';
+    const unresolvedStatuses = <String>{
+      'PENDING',
+      'PROCESSING',
+      'IN_PROGRESS',
+      'QUEUED',
+      'UNKNOWN',
+      'TIMEOUT',
+      'NETWORK_ERROR',
+      'ERROR',
+    };
+
+    if (httpStatus < 200 ||
+        httpStatus >= 300 ||
+        unresolvedStatuses.contains(status)) {
+      return false;
+    }
+
+    final reference = result['reference']?.toString() ?? '';
+    if (reference.trim().isEmpty) return false;
+
+    const successStatuses = <String>{'SUCCESS', 'SUCCESSFUL', 'COMPLETED'};
+    if (successStatuses.contains(status) &&
+        result['accountingStatus']?.toString().trim().toUpperCase() !=
+            'COMPLETE') {
+      return false;
+    }
+
+    return successStatuses.contains(status) ||
+        status == 'FAILED' ||
+        status == 'REFUNDED' ||
+        status == 'REVERSED';
+  }
+
+  bool isDeliveredAccountingPending(Map<String, dynamic> result) {
+    final httpStatus =
+        result['httpStatus'] is int ? result['httpStatus'] as int : 0;
+    final status = result['status']?.toString().toUpperCase() ?? '';
+    const successStatuses = <String>{'SUCCESS', 'SUCCESSFUL', 'COMPLETED'};
+    final reference = result['reference']?.toString() ?? '';
+
+    return httpStatus >= 200 &&
+        httpStatus < 300 &&
+        successStatuses.contains(status) &&
+        reference.trim().isNotEmpty &&
+        result['accountingStatus']?.toString().trim().toUpperCase() !=
+            'COMPLETE';
+  }
+
+  Future<void> finish(String key) => _withStorageLock<void>(() async {
+        final saved = await _storage.read(_storageKey);
+        if (saved == null) return;
+
+        final dynamic existing = jsonDecode(saved);
+        if (existing is Map && existing['key'] == key) {
+          await _storage.delete(_storageKey);
+        }
+      });
 }

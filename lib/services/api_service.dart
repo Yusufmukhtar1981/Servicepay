@@ -97,10 +97,14 @@ class ApiService {
     required String phone,
     required String amount,
     required String transactionPin,
+    required String idempotencyKey,
     String? biometricGrant,
     String? deviceId,
-    String? idempotencyKey,
   }) async {
+    if (idempotencyKey.trim().isEmpty) {
+      throw ArgumentError.value(idempotencyKey, 'idempotencyKey');
+    }
+
     final String token = await _getAuthToken();
 
     final http.Response response = await http
@@ -112,8 +116,7 @@ class ApiService {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Authorization': 'Bearer $token',
-            if (idempotencyKey != null && idempotencyKey.isNotEmpty)
-              'Idempotency-Key': idempotencyKey,
+            'Idempotency-Key': idempotencyKey,
           },
           body: jsonEncode({
             'network': network.trim(),
@@ -123,6 +126,29 @@ class ApiService {
             if (biometricGrant != null) 'biometricGrant': biometricGrant,
             if (deviceId != null) 'deviceId': deviceId,
           }),
+        )
+        .timeout(requestTimeout);
+
+    return _handleResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> requeryAirtime({
+    required String idempotencyKey,
+  }) async {
+    if (idempotencyKey.trim().isEmpty) {
+      throw ArgumentError.value(idempotencyKey, 'idempotencyKey');
+    }
+
+    final String token = await _getAuthToken();
+    final http.Response response = await http
+        .post(
+          Uri.parse('$baseUrl/clubkonnect/airtime/requery'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'idempotencyKey': idempotencyKey}),
         )
         .timeout(requestTimeout);
 
