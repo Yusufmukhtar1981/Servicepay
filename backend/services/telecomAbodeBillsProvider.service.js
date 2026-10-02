@@ -104,7 +104,9 @@ const classify = ({ httpStatus, data, service, reference, meterType, source = "S
   return { ...base, outcome: "SUCCESS", authoritative: true, providerOrderId: echoed,
     reasonCode: "CORRELATED_PROVIDER_SUCCESS",
     // Do NOT call amount or advertised discounts an actual invoice cost.
-    receipt: { reference: echoed, ...(token ? { token } : {}),
+     receipt: { reference: echoed, ...(token ? { token } : {}),
+       ...(service === "ELECTRICITY" && ["string", "number"].includes(typeof data.units)
+         ? { units: String(data.units).slice(0, 64) } : {}),
       ...(data.amount !== undefined ? { reportedAmount: String(data.amount).slice(0, 32) } : {}) },
   };
 };

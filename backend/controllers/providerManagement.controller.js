@@ -11,7 +11,7 @@ const {
   serializeConfig,
 } = require("../services/providerManagement.service");
 
-const allowedBodyKeys = new Set(["service", "action", "provider", "enabled", "airtimeMarkupBps"]);
+const allowedBodyKeys = new Set(["service", "action", "provider", "enabled", "airtimeMarkupBps", "electricityMarkupBps"]);
 const fail = (res, status, code, message) => res.status(status).json({
   success: false, code, message,
 });
@@ -28,6 +28,13 @@ exports.getProviderManagement = async (_req, res) => {
 
 exports.patchProviderManagement = async (req, res) => {
   const body = req.body || {};
+  if (String(body.service).toUpperCase() === "ELECTRICITY" && body.action === "setPricing" &&
+      !Number.isInteger(body.electricityMarkupBps))
+    return fail(res, 400, "INVALID_ELECTRICITY_PRICING", "Electricity markup is required.");
+  if (body.electricityMarkupBps !== undefined &&
+      (String(body.service).toUpperCase() !== "ELECTRICITY" || body.action !== "setPricing" ||
+        !Number.isInteger(body.electricityMarkupBps) || body.electricityMarkupBps < 0 || body.electricityMarkupBps > 10000))
+    return fail(res, 400, "INVALID_ELECTRICITY_PRICING", "Electricity pricing must be a whole basis-point markup from 0 to 10000.");
   if (body.airtimeMarkupBps !== undefined &&
       (String(body.service).toUpperCase() !== "AIRTIME" || body.action !== "setPricing")) {
     return fail(res, 400, "INVALID_AIRTIME_PRICING_ACTION", "Airtime markup is only accepted by the Airtime pricing action.");
@@ -68,7 +75,7 @@ exports.patchProviderManagement = async (req, res) => {
     return fail(res, 409, "CABLE_PURCHASE_UNAVAILABLE",
       "Cable purchasing is unavailable: no cable purchase route or provider adapter is implemented.");
   }
-  if (action === "setPricing" && (service !== "AIRTIME" || !Number.isInteger(body.airtimeMarkupBps) ||
+  if (action === "setPricing" && service !== "ELECTRICITY" && (service !== "AIRTIME" || !Number.isInteger(body.airtimeMarkupBps) ||
       body.airtimeMarkupBps < 0 || body.airtimeMarkupBps > 10000))
     return fail(res, 400, "AIRTIME_PRICING_INVALID", "Airtime markup must be an integer from 0 to 10,000 basis points.");
 
@@ -106,7 +113,11 @@ exports.patchProviderManagement = async (req, res) => {
             statusCode: 409, code: "PROVIDER_UNAVAILABLE",
           });
         }
-        if (action === "setPricing") current.airtimeMarkupBps = body.airtimeMarkupBps;
+        if (action === "setPricing" && service === "AIRTIME") current.airtimeMarkupBps = body.airtimeMarkupBps;
+        if (action === "setPricing" && service === "ELECTRICITY") {
+          if (!Number.isInteger(body.electricityMarkupBps)) throw Object.assign(new Error("Electricity markup is required."), { statusCode: 400 });
+          current.electricityMarkupBps = body.electricityMarkupBps;
+        }
         else if (action === "enable") state.enabled = true;
         else if (action === "disable") state.enabled = false;
         else if (action === "setPrimary") {
@@ -146,6 +157,7 @@ exports.patchProviderManagement = async (req, res) => {
                 provider: item.provider, enabled: item.enabled,
               })),
               airtimeMarkupBps: current.airtimeMarkupBps,
+              electricityMarkupBps: current.electricityMarkupBps,
               updatedBy: current.updatedBy, updatedAt: current.updatedAt,
             } } },
             { session, timestamps: false, runValidators: true },

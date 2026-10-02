@@ -132,4 +132,24 @@ router.all(
     .electricityCallback
 );
 
+router.get("/transactions/:id/status", protect, async (req, res) => {
+  try {
+    const { createTelecomAbodeElectricity } = require("../services/telecomAbodeElectricity.service");
+    return res.json(await createTelecomAbodeElectricity().requery(req.user._id || req.user.id, req.params.id));
+  } catch (error) {
+    return res.status(error.status || 503).json({ success: false, code: error.code || "ELECTRICITY_STATUS_UNAVAILABLE",
+      message: error.code ? error.message : "Electricity status is unavailable. Do not resend." });
+  }
+});
+router.post("/quote", protect, electricityEnabled, async (req, res) => {
+  try {
+    const { createTelecomAbodeElectricity } = require("../services/telecomAbodeElectricity.service");
+    return res.json({ success: true, data: await createTelecomAbodeElectricity().quote(req.body.amount) });
+  } catch (error) {
+    return res.status(error.status || 503).json({ success: false,
+      code: error.code || "ELECTRICITY_QUOTE_UNAVAILABLE",
+      message: error.code ? error.message : "Electricity quote is unavailable." });
+  }
+});
+
 module.exports = router;

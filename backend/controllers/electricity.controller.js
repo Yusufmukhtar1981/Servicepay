@@ -10,6 +10,8 @@ const { authorizeTransaction } = require("../services/biometric.service");
 const { ensureProviderCanRouteElectricity, getServiceConfig } = require("../services/providerManagement.service");
 const telecomBills = require("../services/telecomAbodeBillsProvider.service").createTelecomAbodeBillsProvider();
 const usesTelecomAbode = async () => (await getServiceConfig("ELECTRICITY")).primaryProvider === "TELECOM_ABODE";
+const { createTelecomAbodeElectricity, mode } = require("../services/telecomAbodeElectricity.service");
+const telecomElectricity = createTelecomAbodeElectricity({ bills: telecomBills });
 
 const ELECTRICITY_PAYMENT_URL =
   "https://www.nellobytesystems.com/APIElectricityV1.asp";
@@ -458,8 +460,8 @@ exports.getElectricityCompanies =
             shortName: p.providerCode || p.displayName, name: p.displayName })),
           meterTypes: [{ code: "01", name: "Prepaid" }, { code: "02", name: "Postpaid" }],
           limits: { minimumAmount: 1000, maximumAmount: 200000 },
-          purchaseBlocked: true, blockCode: "PROVIDER_METER_VALIDATION_UNTRUSTED",
-          blockReason: "Electricity purchases are unavailable until the provider can reliably verify meters.",
+          purchaseBlocked: mode() !== "LIVE", blockCode: mode() === "LIVE" ? null : "ELECTRICITY_ACTIVATION_PENDING",
+          blockReason: "Only distinguishable meter identities are accepted. Confirm the account and your known meter type.",
         });
       } catch (_) {
         return res.status(503).json({ success: false, message: "Electricity catalogue is unavailable." });
@@ -494,11 +496,7 @@ exports.verifyMeter = async (
 ) => {
   try {
     if (await usesTelecomAbode()) {
-      // Provider status/name failed live negative controls. Never expose it as
-      // verified customer information or issue a payment-authorizing ticket.
-      return res.status(503).json({ success: false, verified: false,
-        code: "PROVIDER_METER_VALIDATION_UNTRUSTED",
-        message: "The provider cannot reliably verify this meter. No purchase or debit is permitted." });
+      return res.json(await telecomElectricity.verify(req.user._id || req.user.id, req.body));
     }
     const electricCompany =
       String(
@@ -603,6 +601,9 @@ exports.verifyMeter = async (
       },
     });
   } catch (error) {
+    if (await usesTelecomAbode()) return res.status(error.status || error.statusCode || 503)
+      .json({ success: false, code: error.code || "ELECTRICITY_UNAVAILABLE",
+        message: error.code ? error.message : "Electricity is unavailable. No new request should be submitted." });
     console.error(
       "Electricity meter verification error:",
       error.response?.data ||
@@ -629,9 +630,10 @@ exports.payElectricity = async (
 
   try {
     if (await usesTelecomAbode()) {
-      return res.status(503).json({ success: false,
-        code: "PROVIDER_METER_VALIDATION_UNTRUSTED",
-        message: "Electricity purchases are blocked until meter verification is trustworthy. No wallet debit or provider purchase was made." });
+      const userId = req.user._id || req.user.id;
+      await authorizeTransaction({ userId, body: req.body, operation: "ELECTRICITY_PAYMENT",
+        idempotencyKey: req.get?.("Idempotency-Key") || req.body.idempotencyKey });
+      return res.json(await telecomElectricity.purchase(userId, req.body));
     }
     const userId =
       req.user?._id ||
@@ -1232,6 +1234,8 @@ exports.payElectricity = async (
       error.response?.data ||
         error.message
     );
+    if (error.status && error.code) return res.status(error.status)
+      .json({ success: false, code: error.code, message: error.message });
 
     if (error?.code === "ELECTRICITY_PROVIDER_UNAVAILABLE") {
       return res.status(503).json({ success: false, code: error.code, message: error.message });
@@ -1363,6 +1367,9 @@ exports.electricityCallback =
             "Electricity transaction was not found.",
         });
       }
+      if (transaction.provider === "TELECOM_ABODE")
+        return res.status(202).json({ success: true, settled: false,
+          message: "Telecom Abode callbacks cannot settle transactions. Authenticated status lookup is required." });
 
       const completed =
         statusCode === "200" ||

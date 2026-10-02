@@ -110,14 +110,16 @@ const getProviderCapabilities = (service, provider) => {
   if (provider === "TELECOM_ABODE" && ["AIRTIME", "ELECTRICITY"].includes(service)) {
     const credentialsConfigured = Boolean(String(process.env.TELECOM_ABODE_API_KEY || "").trim());
     const airtime = service === "AIRTIME";
+    const electricityLive = service === "ELECTRICITY" &&
+      process.env.TELECOM_ABODE_ELECTRICITY_ACTIVATION === "LIVE";
     return { adapterImplemented: true, credentialsConfigured, catalogAvailable: true,
-      purchaseSupported: airtime, routingControlSupported: true, querySupported: true,
-      webhookSupported: false, webhookVerified: false, financialSafetyVerified: airtime,
-      productionReady: airtime && credentialsConfigured,
+      purchaseSupported: airtime || electricityLive, routingControlSupported: true, querySupported: true,
+      webhookSupported: false, webhookVerified: false, financialSafetyVerified: airtime || electricityLive,
+      productionReady: (airtime || electricityLive) && credentialsConfigured,
       readinessReasons: [
         ...(!credentialsConfigured ? ["Telecom Abode credentials are not configured."] : []),
-        ...(airtime ? ["Unconfirmed cost keeps accounting pending; no unverified profit or commission."]
-          : ["Purchases are blocked: provider meter validation failed negative controls."]),
+        ...(airtime || electricityLive ? ["Unconfirmed cost keeps accounting pending; no unverified profit or commission."]
+          : ["Electricity activation requires distinguishable meter validation, provider minimum-amount confirmation and controlled live payment proof."]),
         "Callbacks never settle directly; authenticated status queries are required.",
       ] };
   }
@@ -269,9 +271,12 @@ const serializeConfig = (config) => {
     providers,
     updatedAt: config.updatedAt,
     ...(service === "AIRTIME" ? { airtimeMarkupBps: config.airtimeMarkupBps || 0 } : {}),
+    ...(service === "ELECTRICITY" ? { electricityMarkupBps: config.electricityMarkupBps || 0 } : {}),
     ...(service === "ELECTRICITY" && config.primaryProvider === "TELECOM_ABODE"
-      ? { catalogProvider: "TELECOM_ABODE", purchaseBlocked: true,
-          purchaseBlockReason: "PROVIDER_METER_VALIDATION_UNTRUSTED" } : {}),
+      ? { catalogProvider: "TELECOM_ABODE",
+          purchaseBlocked: process.env.TELECOM_ABODE_ELECTRICITY_ACTIVATION !== "LIVE",
+          purchaseBlockReason: process.env.TELECOM_ABODE_ELECTRICITY_ACTIVATION === "LIVE"
+            ? null : "ELECTRICITY_ACTIVATION_PENDING" } : {}),
     updatedBy: config.updatedBy ? String(config.updatedBy) : null,
   };
 };
