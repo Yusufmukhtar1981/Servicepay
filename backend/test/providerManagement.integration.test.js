@@ -404,3 +404,46 @@ test("DATA provider changes roll back when the audit write fails", async () => {
   assert.deepEqual(after, before, "unaudited provider changes must never persist");
   assert.equal(await AdminAuditLog.countDocuments(), auditCount);
 });
+
+test("Airtime and Electricity configure without a new namespace and preserve DATA", async () => {
+  const previousKey = process.env.TELECOM_ABODE_API_KEY;
+  process.env.TELECOM_ABODE_API_KEY = "test-telecom-abode-key";
+  try {
+    const before = (await AppSettings.findOne({ key: "GLOBAL_SETTINGS" }).lean()).dataProviderManagement;
+    for (const service of ["AIRTIME", "ELECTRICITY"]) {
+      assert.equal((await patch({ service, provider: "TELECOM_ABODE", action: "enable" })).status, 200);
+      assert.equal((await patch({ service, provider: "TELECOM_ABODE", action: "setPrimary" })).status, 200);
+    }
+    assert.equal((await patch({ service: "AIRTIME", provider: "TELECOM_ABODE",
+      action: "setPricing", airtimeMarkupBps: 500 })).status, 200);
+    const settings = await AppSettings.findOne({ key: "GLOBAL_SETTINGS" }).lean();
+    assert.deepEqual(settings.dataProviderManagement, before);
+    assert.equal(settings.billProviderManagement.AIRTIME.primaryProvider, "TELECOM_ABODE");
+    assert.equal(settings.billProviderManagement.AIRTIME.airtimeMarkupBps, 500);
+    assert.equal(settings.billProviderManagement.ELECTRICITY.primaryProvider, "TELECOM_ABODE");
+    assert.equal(await mongoose.connection.db.listCollections(
+      { name: ProviderManagementConfig.collection.name }, { nameOnly: true },
+    ).hasNext(), false);
+    const refreshed = await invoke(getProviderManagement, makeRequest({}, "HEAD_OFFICE", "GET"));
+    assert.equal(refreshed.body.data.items.find(x => x.service === "AIRTIME").airtimeMarkupBps, 500);
+    assert.equal(refreshed.body.data.items.find(x => x.service === "ELECTRICITY")
+      .providers.find(p => p.provider === "TELECOM_ABODE").available, false);
+  } finally {
+    if (previousKey === undefined) delete process.env.TELECOM_ABODE_API_KEY;
+    else process.env.TELECOM_ABODE_API_KEY = previousKey;
+  }
+});
+
+test("singleton bill pricing rolls back on audit failure", async () => {
+  const before = (await AppSettings.findOne({ key: "GLOBAL_SETTINGS" }).lean()).billProviderManagement;
+  const count = await AdminAuditLog.countDocuments();
+  const originalCreate = AdminAuditLog.create;
+  AdminAuditLog.create = async () => { throw Error("Simulated audit storage failure"); };
+  try {
+    const rejected = await patch({ service: "AIRTIME", provider: "TELECOM_ABODE",
+      action: "setPricing", airtimeMarkupBps: 900 });
+    assert.equal(rejected.status, 500);
+  } finally { AdminAuditLog.create = originalCreate; }
+  assert.deepEqual((await AppSettings.findOne({ key: "GLOBAL_SETTINGS" }).lean()).billProviderManagement, before);
+  assert.equal(await AdminAuditLog.countDocuments(), count);
+});

@@ -51,6 +51,13 @@ const defaultServiceConfig = (service) => new ProviderManagementConfig({
 
 // Customer request guards and GET requests must never create operational state.
 const getServiceConfig = async (service, session = null) => {
+  if (["AIRTIME", "ELECTRICITY"].includes(service)) {
+    let settingsQuery = AppSettings.findOne({ key: "GLOBAL_SETTINGS" })
+      .select("billProviderManagement");
+    if (session) settingsQuery = settingsQuery.session(session);
+    const billing = (await settingsQuery)?.billProviderManagement?.[service];
+    if (billing) return { service, ...billing };
+  }
   if (service === "DATA") {
     let settingsQuery = AppSettings.findOne({ key: "GLOBAL_SETTINGS" })
       .select("dataProviderManagement");
@@ -66,6 +73,21 @@ const getServiceConfig = async (service, session = null) => {
 // First-time configuration is created only by an audited admin mutation,
 // within that mutation's transaction.
 const getOrCreateServiceConfigForMutation = async (service, session) => {
+  if (["AIRTIME", "ELECTRICITY"].includes(service)) {
+    const settings = await AppSettings.findOne({ key: "GLOBAL_SETTINGS" })
+      .select("billProviderManagement").session(session);
+    const billing = settings?.billProviderManagement?.[service];
+    // This metadata read has no transaction session and creates no namespace.
+    const exists = await ProviderManagementConfig.db.db.listCollections(
+      { name: ProviderManagementConfig.collection.name }, { nameOnly: true },
+    ).hasNext();
+    if (billing || !exists) {
+      const config = billing ? new ProviderManagementConfig({ _id: service, service, ...billing })
+        : defaultServiceConfig(service);
+      config.$locals.singletonStorage = true;
+      return config;
+    }
+  }
   const existing = await ProviderManagementConfig.findOne({ service }).session(session);
   if (existing) return existing;
   const config = defaultServiceConfig(service);

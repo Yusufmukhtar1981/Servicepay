@@ -689,6 +689,9 @@ const appSettingsSchema =
 
       // DATA provider routing lives in the existing settings singleton so a
       // new collection is not required on collection-limited Atlas clusters.
+      // Independent bill-service settings reuse this existing singleton when
+      // Atlas has no capacity for a new provider-management collection.
+      billProviderManagement: { type: mongoose.Schema.Types.Mixed, default: undefined },
       dataProviderManagement: {
         type: mongoose.Schema.Types.Mixed,
         default: undefined,

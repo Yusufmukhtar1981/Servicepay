@@ -133,6 +133,24 @@ exports.patchProviderManagement = async (req, res) => {
             { session, timestamps: false, runValidators: true },
           );
           if (result.matchedCount !== 1) throw new Error("Global settings are unavailable.");
+        } else if (current.$locals?.singletonStorage) {
+          await current.validate();
+          const settings = await AppSettings.getGlobalSettings({ session });
+          current.updatedAt = new Date();
+          const result = await AppSettings.updateOne(
+            { _id: settings._id },
+            { $set: { [`billProviderManagement.${service}`]: {
+              service, primaryProvider: current.primaryProvider,
+              fallbackProvider: current.fallbackProvider,
+              providerStates: current.providerStates.map(item => ({
+                provider: item.provider, enabled: item.enabled,
+              })),
+              airtimeMarkupBps: current.airtimeMarkupBps,
+              updatedBy: current.updatedBy, updatedAt: current.updatedAt,
+            } } },
+            { session, timestamps: false, runValidators: true },
+          );
+          if (result.matchedCount !== 1) throw new Error("Global settings are unavailable.");
         } else {
           await current.save({ session });
         }
