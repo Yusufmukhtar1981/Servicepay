@@ -72,8 +72,8 @@ test("loads the provider-owned data networks and complete live plan catalog", as
   assert.doesNotMatch(JSON.stringify(plans), /provider_private_metadata|test-only-data-catalog-key/);
 });
 
-test("fails closed on incomplete data network mappings and ambiguous plans", async () => {
-  const invalidNetworks = mockService(() => response(networks.slice(0, 3)));
+test("fails closed when no trustworthy networks or plans remain", async () => {
+  const invalidNetworks = mockService(() => response([{ id: 1, network: "MTN" }, { id: 1, network: "Glo" }]));
   await assert.rejects(invalidNetworks.service.getDataNetworks, {
     code: "INVALID_PROVIDER_RESPONSE",
   });
@@ -95,6 +95,16 @@ test("fails closed on incomplete data network mappings and ambiguous plans", asy
   await assert.rejects(invalidPlans.service.getDataPlans, {
     code: "INVALID_PROVIDER_RESPONSE",
   });
+});
+
+test("malformed networks and products cannot remove valid catalogue entries", async () => {
+  const plan = { plan_id: 1, day: "7", type: "Weekly", network: "MTN", datasize: "1GB", price: 370 };
+  const mock = mockService(config => config.url.endsWith("/data_plans")
+    ? response({ status: "success", data_plans: [null, {}, plan, { ...plan, plan_id: 93 },
+      { ...plan, plan_id: 121, price: 776 }, { ...plan, plan_id: 999, price: "bad" }] })
+    : response([...networks, null, { id: 999, network: "UNSUPPORTED" }, networks[0]]));
+  const plans = await mock.service.getDataPlans();
+  assert.deepEqual(plans.map(p => p.id), ["1", "93", "121"]);
 });
 
 test("Telecom Abode DATA dispatch consumes a durable claim; other paid services stay locked", async () => {

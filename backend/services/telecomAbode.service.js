@@ -200,35 +200,44 @@ const normalizeNetworkName = (value) =>
   typeof value === "string" ? value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
 
 const normalizeDataNetworks = (data) => {
-  if (!Array.isArray(data) || data.length !== DATA_NETWORK_NAMES.length) {
+  if (!Array.isArray(data)) {
     throw new TelecomAbodeError("Telecom Abode returned an incomplete or invalid data network list.", {
       code: "INVALID_PROVIDER_RESPONSE",
     });
   }
 
   const expectedNames = new Map(DATA_NETWORK_NAMES.map((name) => [normalizeNetworkName(name), name]));
-  const ids = new Set();
-  const names = new Set();
-  const networks = data.map((item) => {
+  const unique = new Map();
+  for (const item of data) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new TelecomAbodeError("Telecom Abode returned an invalid data network entry.", {
-        code: "INVALID_PROVIDER_RESPONSE",
-      });
+      console.warn("DATA_CATALOG_ANOMALY", { reason: "MALFORMED_NETWORK" });
+      continue;
     }
     const id = item.id;
-    const key = normalizeNetworkName(item.network);
+    const rawKey = normalizeNetworkName(item.network);
+    const key = DATA_NETWORK_ALIASES[rawKey] || rawKey;
     const name = expectedNames.get(key);
-    if (!Number.isSafeInteger(id) || id <= 0 || !name || ids.has(id) || names.has(key)) {
-      throw new TelecomAbodeError("Telecom Abode returned ambiguous data network mappings.", {
-        code: "INVALID_PROVIDER_RESPONSE",
-      });
+    if (!Number.isSafeInteger(id) || id <= 0 || !name) {
+      console.warn("DATA_CATALOG_ANOMALY", { reason: "UNSUPPORTED_NETWORK" });
+      continue;
     }
-    ids.add(id);
-    names.add(key);
-    return { id, network: name };
+    const identity = `${id}:${name}`;
+    if (unique.has(identity)) console.warn("DATA_CATALOG_ANOMALY", { reason: "REPEATED_NETWORK_ID", providerNetworkId: id });
+    unique.set(identity, { id, network: name });
+  }
+  const entries = [...unique.values()];
+  const idCounts = new Map(), nameCounts = new Map();
+  for (const n of entries) {
+    idCounts.set(n.id, (idCounts.get(n.id) || 0) + 1);
+    nameCounts.set(n.network, (nameCounts.get(n.network) || 0) + 1);
+  }
+  const networks = entries.filter(n => {
+    const safe = idCounts.get(n.id) === 1 && nameCounts.get(n.network) === 1;
+    if (!safe) console.warn("DATA_CATALOG_ANOMALY", { reason: "CONFLICTING_NETWORK_ID", providerNetworkId: n.id });
+    return safe;
   });
 
-  if (names.size !== expectedNames.size || [...expectedNames.keys()].some((name) => !names.has(name))) {
+  if (!networks.length) {
     throw new TelecomAbodeError("Telecom Abode returned an incomplete data network mapping.", {
       code: "INVALID_PROVIDER_RESPONSE",
     });
