@@ -1,6 +1,7 @@
 import 'services/session_store.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'services/electricity_request_store.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -36,7 +37,9 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   bool isPaying = false;
   final TransactionAuthorizationService _authorization =
       TransactionAuthorizationService();
-  String? _paymentIdempotencyKey;
+  String? _validationToken;
+  String? _pendingTransactionId;
+  String _verifiedAddress = '';
 
   String verifiedCustomerName = '';
   String verifiedMeterNumber = '';
@@ -51,7 +54,50 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCatalogue();
+    _initializeElectricity();
+  }
+
+  Future<void> _initializeElectricity() async {
+    await _loadCatalogue();
+    final token = await getAuthToken();
+    if (token == null || !mounted) return;
+    try {
+      final pending = await ElectricityRequestStore.read(token);
+      if (pending == null || !mounted) return;
+      final intent = pending['intent'] as Map;
+      setState(() {
+        _pendingTransactionId = pending['transactionId'] as String?;
+        selectedDiscoCode = intent['electricCompany'].toString();
+        selectedMeterTypeCode = intent['meterType'].toString();
+        meterController.text = intent['meterNumber'].toString();
+        phoneController.text = intent['phoneNumber'].toString();
+        amountController.text = intent['amount'].toString();
+      });
+    } catch (_) { showMessage('Unable to restore the last Electricity request. Check Transactions before paying.'); }
+  }
+
+  Future<void> _checkPaymentStatus() async {
+    final token = await getAuthToken();
+    if (token == null || _pendingTransactionId == null || isBusy) return;
+    setState(() { isPaying = true; });
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/electricity/transactions/$_pendingTransactionId/status'),
+          headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 45));
+      final body = decodeResponse(response.body);
+      final data = body['data'];
+      if (response.statusCode != 200 || data is! Map) {
+        showMessage('Status is unavailable. Do not resend this purchase.');
+        return;
+      }
+      final payment = Map<String, dynamic>.from(data);
+      if (!mounted) return;
+      await showPaymentResult(responseData: body, paymentData: payment, amount: (payment['amount'] as num).toDouble());
+      if (['SUCCESSFUL', 'FAILED'].contains(payment['status'])) {
+        await ElectricityRequestStore.complete(token);
+        if (mounted) setState(() { _pendingTransactionId = null; });
+      }
+    } catch (_) { showMessage('Status is unconfirmed. Check Transactions; do not resend.'); }
+    finally { if (mounted) setState(() { isPaying = false; }); }
   }
 
   Future<void> _loadCatalogue() async {
@@ -194,8 +240,6 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   }
 
   Future<String?> getAuthToken() async {
-    final SharedPreferences preferences = await SharedPreferences.getInstance();
-
     final String token = (await SessionStore.readToken()) ?? '';
 
     if (token.trim().isEmpty) {
@@ -268,7 +312,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   }
 
   Future<void> verifyMeter() async {
-    if (!_catalogLoaded || _purchaseBlocked) { showMessage(_catalogMessage); return; }
+    if (!_catalogLoaded) { showMessage(_catalogMessage); return; }
     FocusScope.of(context).unfocus();
 
     final String? validationError = validateMeterNumber(meterController.text);
@@ -365,6 +409,8 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       }
 
       setState(() {
+        _validationToken = responseData['validationToken']?.toString();
+        _verifiedAddress = customer['address']?.toString() ?? '';
         verifiedCustomerName = customerName;
         verifiedMeterNumber = meterNumber;
         verifiedDiscoCode = selectedDiscoCode;
@@ -372,7 +418,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       });
 
       showMessage(
-        'Meter verified successfully.',
+        'Account details returned. Confirm them and your known prepaid/postpaid type; the provider does not verify the type.',
         isError: false,
       );
     } on TimeoutException {
@@ -471,6 +517,8 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                               fontWeight: FontWeight.w900,
                             ),
                           ),
+                          if (_verifiedAddress.isNotEmpty) Text(_verifiedAddress, textAlign: TextAlign.center),
+                          const Text('By entering your PIN, you confirm this account and your selected prepaid/postpaid type.'),
                           const SizedBox(height: 4),
                           Text(
                             '${selectedDisco['shortName']} • '
@@ -614,6 +662,13 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   }
 
   Future<void> payElectricity() async {
+    if (isBusy) return;
+    setState(() { isPaying = true; });
+    try { await _payElectricityCore(); }
+    finally { if (mounted) setState(() { isPaying = false; }); }
+  }
+
+  Future<void> _payElectricityCore() async {
     if (!_catalogLoaded || _purchaseBlocked) { showMessage(_catalogMessage); return; }
     FocusScope.of(context).unfocus();
 
@@ -628,16 +683,29 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       return;
     }
 
-    if (isBusy) {
-      return;
-    }
-
     final double amount = double.parse(
       amountController.text.trim(),
     );
 
-    final String idempotencyKey = _paymentIdempotencyKey ??=
-        'electricity-${DateTime.now().microsecondsSinceEpoch}';
+    final String? token = await getAuthToken();
+    if (token == null) { showMessage('Please sign in again.'); return; }
+    String idempotencyKey;
+    try {
+      idempotencyKey = await ElectricityRequestStore.persist(token, {
+        'electricCompany': selectedDiscoCode, 'meterType': selectedMeterTypeCode,
+        'meterNumber': meterController.text.trim(), 'phoneNumber': phoneController.text.trim(),
+        'amount': amount.toStringAsFixed(2),
+      });
+    } catch (_) { showMessage('Cannot safely submit. Check any unresolved Electricity request in Transactions.'); return; }
+    Map<String, dynamic> quoteData;
+    try {
+      final quote = await http.post(Uri.parse('$baseUrl/electricity/quote'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({'amount': amount})).timeout(const Duration(seconds: 30));
+      final body = decodeResponse(quote.body);
+      if (quote.statusCode != 200 || body['data'] is! Map) throw StateError('Quote unavailable');
+      quoteData = Map<String, dynamic>.from(body['data'] as Map);
+    } catch (_) { showMessage('Cannot confirm Electricity pricing. No payment was submitted.'); return; }
     final Map<String, dynamic> authorizationBody = {
       'electricCompany': selectedDiscoCode,
       'meterType': selectedMeterTypeCode,
@@ -646,9 +714,8 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       'amount': amount,
       'idempotencyKey': idempotencyKey,
     };
-    final String? token = await getAuthToken();
     String? biometricGrant;
-    if (token != null) {
+    {
       final BiometricDeviceSettings? settings =
           await BiometricAuthService().settings(token);
       if (settings?.transactionEnabled == true) {
@@ -661,10 +728,14 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       }
     }
     final String? pin = biometricGrant == null
-        ? await requestTransactionPin(amount: amount)
+        ? await requestTransactionPin(amount: (quoteData['customerSellingPrice'] as num).toDouble())
         : '';
 
     if (pin == null || !mounted) {
+      if (pin == null) {
+        final saved = await ElectricityRequestStore.read(token);
+        if (saved?['phase'] == 'UNSUBMITTED') await ElectricityRequestStore.complete(token);
+      }
       return;
     }
 
@@ -673,13 +744,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
     });
 
     try {
-      if (token == null) {
-        showMessage(
-          'Your login session has expired. Please log out and log in again.',
-        );
-        return;
-      }
-
+      await ElectricityRequestStore.markSubmitted(token);
       final http.Response response = await http
           .post(
             Uri.parse(
@@ -701,6 +766,9 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
               'biometricGrant': biometricGrant,
               'deviceId': await BiometricAuthService().deviceId(),
               'idempotencyKey': idempotencyKey,
+              'validationToken': _validationToken,
+              'customerConfirmed': true,
+              'customerSellingPrice': quoteData['customerSellingPrice'],
             }),
           )
           .timeout(
@@ -715,7 +783,8 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
 
       final bool successful = response.statusCode >= 200 &&
           response.statusCode < 300 &&
-          responseData['success'] == true;
+          (responseData['success'] == true || responseData['data'] is Map &&
+            (responseData['data'] as Map)['status'] == 'FAILED');
 
       if (!successful) {
         final dynamic data = responseData['data'];
@@ -749,6 +818,8 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
         return;
       }
 
+      await ElectricityRequestStore.rememberResult(token, paymentData);
+      _pendingTransactionId = paymentData['transactionId']?.toString();
       await showPaymentResult(
         responseData: responseData,
         paymentData: paymentData,
@@ -762,8 +833,9 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       final String status =
           paymentData['status']?.toString().toUpperCase() ?? '';
 
-      if (status == 'SUCCESSFUL' || status == 'PENDING') {
-        _paymentIdempotencyKey = null;
+      if (status == 'SUCCESSFUL' || status == 'FAILED') {
+        await ElectricityRequestStore.complete(token);
+        _pendingTransactionId = null;
         meterController.clear();
         phoneController.clear();
         amountController.clear();
@@ -1377,6 +1449,9 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              if (_pendingTransactionId != null)
+                OutlinedButton.icon(onPressed: isBusy ? null : _checkPaymentStatus,
+                  icon: const Icon(Icons.refresh), label: const Text('Check pending payment — never resend')),
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(

@@ -163,6 +163,16 @@ class TransactionPresentation {
       reference.isNotEmpty;
 
   Iterable<MapEntry<String, String>> get details sync* {
+    if (raw['serviceType'] == 'ELECTRICITY') {
+      for (final entry in const <String, List<String>>{
+        'Customer': ['customerName'], 'Meter number': ['meterNumber'],
+        'DISCO': ['electricityCompany'], 'Meter type': ['meterType'],
+        'Token': ['meterToken'], 'Units': ['units'], 'Provider reference': ['providerReference'],
+      }.entries) {
+        final value = _firstDeep(entry.value).toString().trim();
+        if (value.isNotEmpty) yield MapEntry(entry.key, value);
+      }
+    }
     for (final entry in const <String, List<String>>{
       'Recipient': [
         'recipientName',
@@ -221,6 +231,11 @@ class TransactionPresentation {
     if (direct != null && direct.toString().trim().isNotEmpty) return direct;
     final provider = raw['providerResponse'];
     if (provider is Map) {
+      final electricity = provider['electricity'];
+      if (raw['serviceType'] == 'ELECTRICITY' && electricity is Map) {
+        final value = _first(Map<String, dynamic>.from(electricity), keys);
+        if (value != null && value.toString().trim().isNotEmpty) return value;
+      }
       final dynamic value = _first(Map<String, dynamic>.from(provider), keys);
       if (value != null && value.toString().trim().isNotEmpty) return value;
     }
