@@ -1346,8 +1346,13 @@ exports.getProfile = async (
       });
     }
 
+    // Customer protect middleware already loaded and validated this exact
+    // document (status and token version). Reuse it, never a client profile.
     const user =
-      await User.findById(userId);
+      typeof User === "function" && req.user instanceof User &&
+      req.user.role === "CUSTOMER" && String(req.user._id) === String(userId)
+        ? req.user
+        : await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({

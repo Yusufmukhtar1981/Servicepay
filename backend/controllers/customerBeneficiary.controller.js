@@ -22,14 +22,21 @@ const validId = id => typeof id === "string" && /^[a-f\d]{24}$/i.test(id);
 // Import existing rows without creating a new collection. The single-document
 // conditional push enforces uniqueness even during parallel saves/migrations.
 async function readOwner(req) {
-  const owner = await User.findOne(ownerFilter(req)).select("+savedTelecomBeneficiaries +savedTelecomLegacyDeleted").lean();
+  // Both reads are independent and indexed. Do not hydrate the entire customer
+  // profile or serialize two database round trips for an address-book read.
+  const [owner, legacy] = await Promise.all([
+    User.findOne(ownerFilter(req))
+      .select("_id savedTelecomBeneficiaries savedTelecomLegacyDeleted").lean(),
+    LegacyBeneficiary.find({ customer: customerId(req) })
+      .select("_id phone name createdAt updatedAt").limit(MAX_NUMBERS).lean(),
+  ]);
   if (!owner) return null;
-  const legacy = await LegacyBeneficiary.find({ customer: owner._id }).limit(MAX_NUMBERS).lean();
+  let imported = false;
   for (const row of legacy) {
     const phone = normalizePhone(row.phone);
     if (!phone || owner.savedTelecomBeneficiaries?.some(b => b.normalizedPhone === phone) ||
         owner.savedTelecomLegacyDeleted?.some(id => String(id) === String(row._id))) continue;
-    await User.updateOne({
+    const result = await User.updateOne({
       ...ownerFilter(req), "savedTelecomBeneficiaries.normalizedPhone": { $ne: phone },
       savedTelecomLegacyDeleted: { $ne: row._id },
       $expr: { $lt: [{ $size: { $ifNull: ["$savedTelecomBeneficiaries", []] } }, MAX_NUMBERS] },
@@ -37,9 +44,10 @@ async function readOwner(req) {
       _id: row._id, phone, normalizedPhone: phone, name: String(row.name || "").slice(0, 80),
       createdAt: row.createdAt || new Date(), updatedAt: row.updatedAt || new Date(),
     } } });
+    imported ||= result.modifiedCount > 0;
   }
-  return legacy.length
-    ? User.findOne(ownerFilter(req)).select("+savedTelecomBeneficiaries").lean()
+  return imported
+    ? User.findOne(ownerFilter(req)).select("_id savedTelecomBeneficiaries").lean()
     : owner;
 }
 
