@@ -135,6 +135,7 @@ const transactionPinRoutes = require(
 );
 
 const app = express();
+app.use(require("./middleware/customerResponsePrivacy.middleware").customerResponsePrivacy);
 
 /*
  * Retain the legacy immediate-proxy setting for general request metadata.
