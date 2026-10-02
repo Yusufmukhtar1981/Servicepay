@@ -13,7 +13,9 @@ class DataScreen extends StatefulWidget {
       this.purchaseIntent,
       this.loadPlans,
       this.purchase,
-      this.statusQuery});
+      this.statusQuery,
+      this.loadBeneficiaries});
+  final BeneficiaryLoader? loadBeneficiaries;
   final DataPurchaseIntent? purchaseIntent;
   final Future<Map<String, dynamic>> Function(String network)? loadPlans;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> input)?
@@ -1044,6 +1046,7 @@ class _DataScreenState extends State<DataScreen> {
                   ),
                   const SizedBox(height: 10),
                   SavedBeneficiaries(
+                    loadBeneficiaries: widget.loadBeneficiaries,
                     phoneController: phoneController,
                     network: selectedNetwork,
                     serviceType: 'DATA',

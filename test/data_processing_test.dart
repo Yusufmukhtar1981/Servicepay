@@ -36,6 +36,7 @@ void main() {
       int submits = 0;
       await tester.pumpWidget(MaterialApp(
           home: DataScreen(
+          loadBeneficiaries: () async => [],
         purchaseIntent: intent,
         loadPlans: (_) async => {
           'success': true,
@@ -86,6 +87,7 @@ void main() {
         await tester.pumpWidget(const SizedBox());
         await tester.pumpWidget(MaterialApp(
             home: DataScreen(
+          loadBeneficiaries: () async => [],
           purchaseIntent: DataPurchaseIntent(
               storage: storage, accountId: () async => 'test-customer'),
           loadPlans: (_) async => {'success': true, 'plans': []},
