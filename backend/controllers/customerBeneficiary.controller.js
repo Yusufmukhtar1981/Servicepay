@@ -1,65 +1,103 @@
-const CustomerBeneficiary = require("../models/customerBeneficiary.model");
-
-const normalizePhone = (value) => {
-  let phone = String(value || "").replace(/\D/g, "");
-  if (phone.startsWith("234") && phone.length === 13) phone = `0${phone.slice(3)}`;
-  return phone;
+"use strict";
+const mongoose = require("mongoose");
+const User = require("../models/user.model");
+const LegacyBeneficiary = require("../models/customerBeneficiary.model");
+const { normalizeNigerianMsisdn } = require("../services/nigerianMsisdn.service");
+const MAX_NUMBERS = 200;
+const normalizePhone = value => normalizeNigerianMsisdn(value) || "";
+const customerId = req => req.user?._id || req.user?.id;
+const ownerFilter = req => ({ _id: customerId(req), role: "CUSTOMER", status: "ACTIVE" });
+const view = row => ({
+  _id: String(row._id), phone: row.phone, normalizedPhone: row.normalizedPhone || row.phone,
+  name: row.name || "", createdAt: row.createdAt, updatedAt: row.updatedAt,
+});
+const fail = (res, status, message) => res.status(status).json({ success: false, message });
+const nickname = body => {
+  if (body.name !== undefined && typeof body.name !== "string") return null;
+  const name = (body.name || "").trim();
+  return name.length <= 80 ? name : null;
 };
+const validId = id => typeof id === "string" && /^[a-f\d]{24}$/i.test(id);
 
-const customerId = (req) => req.user && (req.user._id || req.user.id);
-const validPhone = (phone) => /^0\d{10}$/.test(phone);
+// Import existing rows without creating a new collection. The single-document
+// conditional push enforces uniqueness even during parallel saves/migrations.
+async function readOwner(req) {
+  const owner = await User.findOne(ownerFilter(req)).select("+savedTelecomBeneficiaries +savedTelecomLegacyDeleted").lean();
+  if (!owner) return null;
+  const legacy = await LegacyBeneficiary.find({ customer: owner._id }).limit(MAX_NUMBERS).lean();
+  for (const row of legacy) {
+    const phone = normalizePhone(row.phone);
+    if (!phone || owner.savedTelecomBeneficiaries?.some(b => b.normalizedPhone === phone) ||
+        owner.savedTelecomLegacyDeleted?.some(id => String(id) === String(row._id))) continue;
+    await User.updateOne({
+      ...ownerFilter(req), "savedTelecomBeneficiaries.normalizedPhone": { $ne: phone },
+      savedTelecomLegacyDeleted: { $ne: row._id },
+      $expr: { $lt: [{ $size: { $ifNull: ["$savedTelecomBeneficiaries", []] } }, MAX_NUMBERS] },
+    }, { $push: { savedTelecomBeneficiaries: {
+      _id: row._id, phone, normalizedPhone: phone, name: String(row.name || "").slice(0, 80),
+      createdAt: row.createdAt || new Date(), updatedAt: row.updatedAt || new Date(),
+    } } });
+  }
+  return legacy.length
+    ? User.findOne(ownerFilter(req)).select("+savedTelecomBeneficiaries").lean()
+    : owner;
+}
 
 exports.list = async (req, res) => {
-  const filter = { customer: customerId(req) };
-  const search = String(req.query.search || "").trim();
-  if (search) {
-    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    filter.$or = [{ name: new RegExp(escaped, "i") }, { phone: new RegExp(escaped) }];
-  }
-  const items = await CustomerBeneficiary.find(filter).sort({ name: 1, createdAt: -1 }).lean();
+  const owner = await readOwner(req);
+  if (!owner) return fail(res, 403, "Saved numbers are available to active customers only.");
+  const search = String(req.query?.search || "").trim().toLowerCase().slice(0, 100);
+  const items = (owner.savedTelecomBeneficiaries || []).map(view)
+    .filter(b => !search || b.name.toLowerCase().includes(search) || b.phone.includes(search))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.phone.localeCompare(b.phone));
   return res.json({ success: true, beneficiaries: items });
 };
 
 exports.create = async (req, res) => {
-  const phone = normalizePhone(req.body.phone);
-  const name = String(req.body.name || "").trim();
-  if (!validPhone(phone)) return res.status(400).json({ success: false, message: "Enter a valid Nigerian phone number." });
-  if (!name) return res.status(400).json({ success: false, message: "A beneficiary name is required." });
-  try {
-    const serviceType = String(req.body.serviceType || "").toUpperCase();
-    const update = { $set: { name, network: String(req.body.network || "").trim() } };
-    if (["AIRTIME", "DATA"].includes(serviceType)) update.$addToSet = { serviceTypes: serviceType };
-    const item = await CustomerBeneficiary.findOneAndUpdate(
-      { customer: customerId(req), phone },
-      update,
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
-    );
-    return res.status(201).json({ success: true, beneficiary: item });
-  } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ success: false, message: "This phone number is already saved." });
-    throw error;
-  }
+  const phone = normalizePhone(req.body?.phone), name = nickname(req.body || {});
+  if (!phone) return fail(res, 400, "Enter a valid Nigerian phone number.");
+  if (name === null) return fail(res, 400, "Use a name of no more than 80 characters.");
+  if (!await readOwner(req)) return fail(res, 403, "Saved numbers are available to active customers only.");
+  const now = new Date();
+  const item = { _id: new mongoose.Types.ObjectId(), phone, normalizedPhone: phone, name, createdAt: now, updatedAt: now };
+  const owner = await User.findOneAndUpdate({
+    ...ownerFilter(req), "savedTelecomBeneficiaries.normalizedPhone": { $ne: phone },
+    $expr: { $lt: [{ $size: { $ifNull: ["$savedTelecomBeneficiaries", []] } }, MAX_NUMBERS] },
+  }, { $push: { savedTelecomBeneficiaries: item } },
+  { returnDocument: "after", runValidators: true }).select("+savedTelecomBeneficiaries").lean();
+  if (owner) return res.status(201).json({ success: true, message: "Number saved.", beneficiary: view(item) });
+  const current = await User.findOne(ownerFilter(req)).select("+savedTelecomBeneficiaries").lean();
+  const duplicate = current?.savedTelecomBeneficiaries?.find(b => b.normalizedPhone === phone);
+  if (duplicate) return res.json({ success: true, message: "This number is already saved.", beneficiary: view(duplicate) });
+  return fail(res, 409, "Saved-number limit reached. Delete an unused number first.");
 };
 
 exports.update = async (req, res) => {
-  const update = {};
-  if (req.body.name !== undefined) {
-    const name = String(req.body.name).trim();
-    if (!name) return res.status(400).json({ success: false, message: "A beneficiary name is required." });
-    update.name = name;
-  }
-  if (req.body.network !== undefined) update.network = String(req.body.network).trim();
-  const item = await CustomerBeneficiary.findOneAndUpdate(
-    { _id: req.params.id, customer: customerId(req) }, { $set: update }, { new: true, runValidators: true }
-  );
-  if (!item) return res.status(404).json({ success: false, message: "Beneficiary not found." });
-  return res.json({ success: true, beneficiary: item });
+  if (!validId(req.params.id)) return fail(res, 404, "Beneficiary not found.");
+  const name = nickname(req.body || {});
+  if (name === null || req.body?.name === undefined) return fail(res, 400, "Use a name of no more than 80 characters.");
+  if (!await readOwner(req)) return fail(res, 403, "Saved numbers are available to active customers only.");
+  const owner = await User.findOneAndUpdate({
+    ...ownerFilter(req), "savedTelecomBeneficiaries._id": req.params.id,
+  }, { $set: { "savedTelecomBeneficiaries.$.name": name, "savedTelecomBeneficiaries.$.updatedAt": new Date() } },
+  { returnDocument: "after", runValidators: true }).select("+savedTelecomBeneficiaries").lean();
+  if (!owner) return fail(res, 404, "Beneficiary not found.");
+  // Keep legacy backing rows in sync so future list imports cannot resurrect
+  // an older nickname after deletion or replacement.
+  await LegacyBeneficiary.updateOne({ _id: req.params.id, customer: customerId(req) }, { $set: { name } });
+  return res.json({ success: true, beneficiary: view(owner.savedTelecomBeneficiaries.find(b => String(b._id) === req.params.id)) });
 };
 
 exports.remove = async (req, res) => {
-  const item = await CustomerBeneficiary.findOneAndDelete({ _id: req.params.id, customer: customerId(req) });
-  if (!item) return res.status(404).json({ success: false, message: "Beneficiary not found." });
+  if (!validId(req.params.id)) return fail(res, 404, "Beneficiary not found.");
+  if (!await readOwner(req)) return fail(res, 403, "Saved numbers are available to active customers only.");
+  // Delete a legacy row first so subsequent reads cannot re-import it.
+  await LegacyBeneficiary.deleteOne({ _id: req.params.id, customer: customerId(req) });
+  const r = await User.updateOne({
+    ...ownerFilter(req), "savedTelecomBeneficiaries._id": req.params.id,
+  }, { $pull: { savedTelecomBeneficiaries: { _id: req.params.id } },
+    $addToSet: { savedTelecomLegacyDeleted: new mongoose.Types.ObjectId(req.params.id) } });
+  if (!r.modifiedCount) return fail(res, 404, "Beneficiary not found.");
   return res.json({ success: true, message: "Beneficiary deleted." });
 };
-
 exports.normalizePhone = normalizePhone;

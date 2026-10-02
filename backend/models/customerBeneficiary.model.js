@@ -16,7 +16,7 @@ const customerBeneficiarySchema = new mongoose.Schema(
       default: [],
     },
   },
-  { timestamps: true }
+  { timestamps: true, autoCreate: false, autoIndex: false }
 );
 
 customerBeneficiarySchema.index({ customer: 1, phone: 1 }, { unique: true });

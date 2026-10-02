@@ -12,6 +12,22 @@ const svpScopeSchema = new mongoose.Schema({
 
 const userSchema = new mongoose.Schema(
   {
+    savedTelecomLegacyDeleted: {
+      type: [mongoose.Schema.Types.ObjectId],
+      default: undefined,
+      select: false,
+    },
+    savedTelecomBeneficiaries: {
+      type: [new mongoose.Schema({
+        phone: { type: String, required: true },
+        normalizedPhone: { type: String, required: true },
+        name: { type: String, default: "", maxlength: 80 },
+        createdAt: { type: Date, required: true },
+        updatedAt: { type: Date, required: true },
+      })],
+      default: undefined,
+      select: false,
+    },
     fullName: {
       type: String,
       required: true,
