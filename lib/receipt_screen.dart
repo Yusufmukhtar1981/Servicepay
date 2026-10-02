@@ -130,9 +130,20 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
           (MapEntry<String, String> entry) => !RegExp(
                   r'(pin|token|password|secret|authorization)',
                   caseSensitive: false)
-              .hasMatch(entry.key),
+              .hasMatch(entry.key) || _isElectricityMeterToken(entry),
         ),
       );
+
+  bool _isElectricityMeterToken(MapEntry<String, String> entry) {
+    final value = entry.value.trim();
+    return widget.serviceName.trim().toUpperCase() == 'ELECTRICITY' &&
+        _status == ReceiptStatus.successful &&
+        entry.key.trim().toLowerCase() == 'token' &&
+        RegExp(r'^[\d -]+$').hasMatch(value) &&
+        RegExp(r'^\d{20}$').hasMatch(value.replaceAll(RegExp(r'[ -]'), '')) &&
+        !RegExp(r'^(\d)\1+$')
+            .hasMatch(value.replaceAll(RegExp(r'[ -]'), ''));
+  }
 
   void _notice(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));

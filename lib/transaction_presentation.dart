@@ -162,8 +162,16 @@ class TransactionPresentation {
       (status == 'PENDING' || status == 'PROCESSING') &&
       reference.isNotEmpty;
 
+  bool get isElectricity {
+    final metadata = raw['metadata'];
+    final serviceType = raw['serviceType'] ??
+        (metadata is Map ? metadata['serviceType'] : null) ??
+        raw['type'];
+    return serviceType?.toString().trim().toUpperCase() == 'ELECTRICITY';
+  }
+
   Iterable<MapEntry<String, String>> get details sync* {
-    if (raw['serviceType'] == 'ELECTRICITY') {
+    if (isElectricity) {
       for (final entry in const <String, List<String>>{
         'Customer': ['customerName'], 'Meter number': ['meterNumber'],
         'DISCO': ['electricityCompany'], 'Meter type': ['meterType'],
@@ -232,7 +240,7 @@ class TransactionPresentation {
     final provider = raw['providerResponse'];
     if (provider is Map) {
       final electricity = provider['electricity'];
-      if (raw['serviceType'] == 'ELECTRICITY' && electricity is Map) {
+      if (isElectricity && electricity is Map) {
         final value = _first(Map<String, dynamic>.from(electricity), keys);
         if (value != null && value.toString().trim().isNotEmpty) return value;
       }
@@ -247,6 +255,11 @@ class TransactionPresentation {
       if (direct != null && direct.toString().trim().isNotEmpty) return direct;
       final dynamic nestedProvider = metadataMap['providerResponse'];
       if (nestedProvider is Map) {
+        final electricity = nestedProvider['electricity'];
+        if (isElectricity && electricity is Map) {
+          final value = _first(Map<String, dynamic>.from(electricity), keys);
+          if (value != null && value.toString().trim().isNotEmpty) return value;
+        }
         return _first(Map<String, dynamic>.from(nestedProvider), keys);
       }
     }
