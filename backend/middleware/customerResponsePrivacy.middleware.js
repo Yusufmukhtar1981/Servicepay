@@ -1,5 +1,5 @@
 // Response-only projection. Never mutate stored records or staff responses.
-const privateKey = /^(provider.*|api.*|routing.*|internal.*|upstream.*|raw(response|request|payload|data)?|requestpayload|requestheaders|responseheaders|financialaccounting|accountingstatus|actualcost|costsource|netprofit|profit|margin|invoice.*|orderid|requestid|transaction_id|niptransactionreference|dispatch.*|telecomabode.*)$/i;
+const privateKey = /^(provider.*|api.*|routing.*|internal.*|upstream.*|raw(response|request|payload|data)?|requestpayload|requestheaders|responseheaders|financialaccounting|accountingstatus|actualcost|costsource|netprofit|profit|margin|invoice.*|orderid|requestid|transaction_id|niptransactionreference|dispatch.*|telecomabode.*|fingerprint)$/i;
 const providerNames = /\b(telecom[\s_-]*abode|club[\s_-]*konnect|vtpass|paystack|flutterwave|monnify)\b/gi;
 const fulfillmentKeys = new Set([
   "customerName", "meterNumber", "electricityCompany", "meterType", "meterToken",
@@ -11,6 +11,8 @@ const fulfillmentKeys = new Set([
 function fulfillmentFrom(value, depth = 0, output = {}) {
   if (!value || typeof value !== "object" || depth > 5) return output;
   for (const [key, item] of Object.entries(value)) {
+    if (key === "network" && typeof item === "string" &&
+        /^(MTN|GLO|AIRTEL|9MOBILE|ETISALAT)$/i.test(item)) output.networkName = item;
     if (fulfillmentKeys.has(key) && ["string", "number"].includes(typeof item) &&
         String(item).trim() !== "" && output[key] === undefined) output[key] = item;
     else if (["electricity", "cable", "fulfillment", "data"].includes(key) &&
@@ -19,6 +21,9 @@ function fulfillmentFrom(value, depth = 0, output = {}) {
   return output;
 }
 function customerText(value) {
+  if (/https?:\/\/\S*(?:telecomabode|clubkonnect|vtpass|paystack|flutterwave|monnify|\/api\/)\S*/i.test(String(value))) {
+    return "Contact ServicePay support with your transaction reference if you need help.";
+  }
   const text = String(value).replace(providerNames, "ServicePay");
   if (/\b(provider cost|accounting reconciliation|profit and commission|api key|api credential)\b/i.test(text)) {
     return "Your transaction status is shown above. Contact ServicePay support with your transaction reference if you need help.";
@@ -50,7 +55,7 @@ function customerResponse(value, depth = 0) {
       continue;
     }
     if (privateKey.test(key.replace(/^_+/, "")) || /^(password|secret|authorization|accessToken|authToken|transactionPin)$/i.test(key)) continue;
-    output[key] = typeof item === "string" && /^(message|description|narration|title|counterparty|code)$/i.test(key)
+    output[key] = typeof item === "string" && /^(message|description|narration|title|code)$/i.test(key)
       ? customerText(item) : customerResponse(item, depth + 1);
   }
   return output;

@@ -7,8 +7,8 @@ for (const serviceType of ["DATA", "AIRTIME", "ELECTRICITY", "CABLE_TV", "BANK_T
     test(`${serviceType} ${status}: private responses hidden, customer facts unchanged`, () => {
       const raw = { reference: "SP-unit-reference", serviceType, status, amount: 2000,
         provider: "TELECOM_ABODE", providerReference: "private-upstream-id",
-        apiInformation: "private-api", dispatchStatus: "UNKNOWN",
-        providerResponse: { providerCost: 1900, rawResponse: { secretExtra: "private", customerName: "private-raw-name" },
+        apiInformation: "private-api", dispatchStatus: "UNKNOWN", data: { fingerprint: "private-input-fingerprint" },
+        providerResponse: { network: "MTN", providerCost: 1900, rawResponse: { secretExtra: "private", customerName: "private-raw-name" },
           electricity: { meterNumber: "62130123456", customerName: "Unit customer",
             electricityCompany: "Kano Electric", meterType: "prepaid", meterToken: "1234-5678-9012-3456-7890",
             units: "", providerReference: "private-upstream-id" },
@@ -23,6 +23,7 @@ for (const serviceType of ["DATA", "AIRTIME", "ELECTRICITY", "CABLE_TV", "BANK_T
       assert.equal(projected.status, status);
       assert.equal(projected.fulfillment.meterToken, raw.providerResponse.electricity.meterToken);
       assert.equal(projected.fulfillment.customerName, "Unit customer");
+      assert.equal(projected.fulfillment.networkName, "MTN");
       assert.equal(projected.fulfillment.voucherCode, "unit-claim-code");
       assert.equal(projected.fulfillment.units, undefined);
       assert.equal(projected.deliveryStatus, "UNKNOWN");
@@ -69,6 +70,8 @@ test("names and internal accounting messages cannot leak via human-readable stri
   assert.equal(customerResponse({ description: "Telecom Abode delivery" }).description, "ServicePay delivery");
   assert.doesNotMatch(customerResponse({ message: "Provider cost, profit and commission are awaiting accounting reconciliation." }).message,
     /provider|profit|commission|reconciliation/i);
+  assert.doesNotMatch(customerResponse({ message: "Failed at https://telecomabode.com.ng/api/bill/bill-purchase" }).message,
+    /https|telecomabode|\/api\//i);
 });
 test("real HTTP serialization filters customer success/failure/pending and preserves staff detail", async () => {
   const express = require("express");
