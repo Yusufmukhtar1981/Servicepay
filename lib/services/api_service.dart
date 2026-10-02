@@ -36,11 +36,7 @@ class ApiService {
       Uri.parse('$baseUrl/customer/beneficiaries$query'),
       headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
     ).timeout(secondaryReadTimeout);
-    final result = _handleResponse(response);
-    final raw = result['beneficiaries'];
-    final rows = raw is List
-        ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
-        : <Map<String, dynamic>>[];
+    final rows = beneficiariesFromResponse(response);
     if (await _getAuthToken() != token) {
       throw Exception('Your session changed. Reload saved numbers.');
     }
@@ -49,6 +45,20 @@ class ApiService {
       unawaited(SavedNumbersCache.write(owner, rows));
     }
     return rows;
+  }
+
+  /// An unsuccessful/malformed read is not a successful empty address book.
+  /// Throw before touching the cache so offline numbers remain selectable.
+  static List<Map<String, dynamic>> beneficiariesFromResponse(
+      http.Response response) {
+    final result = _handleResponse(response);
+    final raw = result['beneficiaries'];
+    if (response.statusCode < 200 || response.statusCode >= 300 ||
+        result['success'] != true || raw is! List) {
+      throw Exception("Saved numbers couldn't load. You can still enter a number manually.");
+    }
+    return raw.whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   static Future<Map<String, dynamic>> saveBeneficiary({

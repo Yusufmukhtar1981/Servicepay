@@ -9,6 +9,8 @@ import 'package:servicepay_app/widgets/saved_beneficiaries.dart';
 import 'package:servicepay_app/data_screen.dart';
 import 'package:servicepay_app/services/data_purchase_intent.dart';
 import 'package:servicepay_app/airtime_screen.dart';
+import 'package:servicepay_app/services/api_service.dart';
+import 'package:http/http.dart' as http;
 
 class EmptyIntentStorage implements DataPurchaseIntentStorage, AirtimePurchaseIntentStorage {
   @override
@@ -24,6 +26,18 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     FlutterSecureStorage.setMockInitialValues({});
+  });
+  test('failed/malformed Saved Numbers responses cannot erase a valid cache', () {
+    for (final response in [
+      http.Response('{"success":false,"message":"Unavailable"}', 503),
+      http.Response('{"success":false}', 200),
+      http.Response('{"success":true}', 200),
+      http.Response('<html>Gateway error</html>', 502),
+    ]) {
+      expect(() => ApiService.beneficiariesFromResponse(response), throwsException);
+    }
+    expect(ApiService.beneficiariesFromResponse(http.Response(
+      '{"success":true,"beneficiaries":[]}',200)), isEmpty);
   });
   test('cache namespace is identity only, never the token or another customer',
       () {
