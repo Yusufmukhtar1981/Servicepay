@@ -34,6 +34,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   bool isLoading = false;
   bool _isCheckingStatus = false;
   String? _pendingIdempotencyKey;
+  List<String> _retainedRequestKeys = [];
   String? _pendingIntentError;
   String? _pendingMessage;
   late final AirtimePurchaseIntent _purchaseIntent;
@@ -345,14 +346,17 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   Future<void> _restorePendingIntent() async {
     try {
       final String? key = await _purchaseIntent.pendingKey();
+      final retained = await _purchaseIntent.retainedKeys();
       if (!mounted) return;
       setState(() {
         _pendingIdempotencyKey = key;
+        _retainedRequestKeys = retained;
         _pendingIntentError = null;
         _pendingMessage = key == null
             ? null
             : 'A previous airtime request is still awaiting a final status. '
-                'Check its status before starting a different purchase.';
+                'Check its status, or explicitly start a separate purchase. '
+                'The earlier request will not be resent.';
       });
     } catch (error) {
       if (!mounted) return;
@@ -365,10 +369,39 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     }
   }
 
-  Future<void> checkPreviousRequest() async {
+  Future<void> startSeparatePurchase() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Start a separate purchase?'),
+        content: const Text('The earlier request is still unresolved. It will '
+            'remain available for status checks and will not be resent or '
+            'refunded automatically. A separate purchase uses a new request '
+            'key and may charge your wallet separately.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true),
+              child: const Text('Start separate purchase')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _purchaseIntent.retainForSeparatePurchase();
+      await _restorePendingIntent();
+      showMessage('Earlier request retained for status checks. '
+          'You can now enter a separate purchase.');
+    } catch (error) {
+      showMessage('The earlier request could not be safely retained. '
+          'No new purchase was started. $error');
+    }
+  }
+
+  Future<void> checkPreviousRequest({String? requestKey}) async {
     if (isLoading || _isCheckingStatus) return;
 
-    String? key = _pendingIdempotencyKey;
+    String? key = requestKey ?? _pendingIdempotencyKey;
     if (key == null) {
       await _restorePendingIntent();
       key = _pendingIdempotencyKey;
@@ -415,7 +448,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         );
       } else {
         setState(() {
-          _pendingIdempotencyKey = key;
           _pendingIntentError = null;
           _pendingMessage = _purchaseIntent.isDeliveredAccountingPending(result)
               ? 'Airtime delivered, but confirmation is pending. The '
@@ -429,7 +461,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       if (!mounted) return;
       final String message = error.toString().replaceFirst('Exception: ', '');
       setState(() {
-        _pendingIdempotencyKey = key;
         _pendingMessage = 'Status could not be confirmed. The request key '
             'has been retained. $message';
       });
@@ -467,7 +498,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_pendingIdempotencyKey != null ||
+                if (_retainedRequestKeys.isNotEmpty ||
                     _pendingIntentError != null) ...[
                   Card(
                     color: Colors.orange.shade50,
@@ -482,7 +513,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                                     'check.',
                           ),
                           const SizedBox(height: 8),
-                          OutlinedButton.icon(
+                          if (_pendingIdempotencyKey != null) OutlinedButton.icon(
                             onPressed: _pendingIdempotencyKey == null ||
                                     _isCheckingStatus
                                 ? null
@@ -502,6 +533,22 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                                   : 'Check previous request',
                             ),
                           ),
+                          for (final key in _retainedRequestKeys.where(
+                              (key) => key != _pendingIdempotencyKey))
+                            TextButton.icon(
+                              onPressed: isLoading || _isCheckingStatus
+                                  ? null : () => checkPreviousRequest(requestKey: key),
+                              icon: const Icon(Icons.refresh),
+                              label: Text('Check earlier request '
+                                  '${_retainedRequestKeys.indexOf(key) + 1}'),
+                            ),
+                          if (_pendingIdempotencyKey != null &&
+                              _pendingIntentError == null)
+                            TextButton(
+                              onPressed: isLoading || _isCheckingStatus
+                                  ? null : startSeparatePurchase,
+                              child: const Text('Start a separate purchase'),
+                            ),
                         ],
                       ),
                     ),
@@ -621,7 +668,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   height: 52,
                   child: ElevatedButton(
                     onPressed:
-                        isLoading || _isCheckingStatus || _catalogLoading || _catalogError != null ? null : buyAirtime,
+                        isLoading || _isCheckingStatus || _catalogLoading ||
+                        _catalogError != null || _pendingIdempotencyKey != null ||
+                        _pendingIntentError != null ? null : buyAirtime,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -688,6 +737,7 @@ class AirtimePurchaseIntent {
 
   final AirtimePurchaseIntentStorage _storage;
   static const String _storageKey = 'servicepay.airtimePurchase.pending';
+  static const String _archiveKey = 'servicepay.airtimePurchase.retained';
   static final Map<String, Future<void>> _submissions =
       <String, Future<void>>{};
 
@@ -826,6 +876,63 @@ class AirtimePurchaseIntent {
     return result;
   }
 
+  Future<List<Map<String, dynamic>>> _readRetained() async {
+    final raw = await _storage.read(_archiveKey);
+    if (raw == null) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) throw const FormatException();
+      return decoded.map((item) {
+        if (item is! Map || item['key'] is! String ||
+            (item['key'] as String).isEmpty || item['fingerprint'] is! String) {
+          throw const FormatException();
+        }
+        return Map<String, dynamic>.from(item);
+      }).toList();
+    } on FormatException {
+      throw StateError('Earlier request storage could not be verified.');
+    }
+  }
+
+  Future<List<String>> retainedKeys() => _withStorageLock(() async {
+    final retained = await _readRetained();
+    final active = await _storage.read(_storageKey);
+    if (active != null) {
+      final item = jsonDecode(active);
+      if (item is! Map || item['key'] is! String ||
+          (item['key'] as String).isEmpty || item['fingerprint'] is! String) {
+        throw StateError('The current request could not be verified.');
+      }
+      retained.add(Map<String, dynamic>.from(item));
+    }
+    return retained.map((item) => item['key'] as String).toSet().toList();
+  });
+
+  /// Explicit user action only: retain the old request durably before freeing
+  /// the active slot. Its key is for queries, never a new provider dispatch.
+  Future<void> retainForSeparatePurchase() => _withStorageLock(() async {
+    final active = await _storage.read(_storageKey);
+    if (active == null) return;
+    final item = jsonDecode(active);
+    if (item is! Map || item['key'] is! String ||
+        (item['key'] as String).isEmpty || item['fingerprint'] is! String) {
+      throw StateError('The current request could not be safely retained.');
+    }
+    final retained = await _readRetained();
+    if (!retained.any((entry) => entry['key'] == item['key'])) {
+      if (retained.length >= 100) {
+        throw StateError('Resolve an earlier request before retaining more.');
+      }
+      retained.add(Map<String, dynamic>.from(item));
+    }
+    final encoded = jsonEncode(retained);
+    await _storage.write(_archiveKey, encoded);
+    if (await _storage.read(_archiveKey) != encoded) {
+      throw StateError('Earlier request could not be durably retained.');
+    }
+    await _storage.delete(_storageKey);
+  });
+
   bool isTerminalResult(Map<String, dynamic> result) {
     final deliveryStatus = result['status']?.toString().toUpperCase();
     if (result['provider'] == 'TELECOM_ABODE' && result['dispatchStatus'] == 'SUCCEEDED' &&
@@ -883,11 +990,16 @@ class AirtimePurchaseIntent {
 
   Future<void> finish(String key) => _withStorageLock<void>(() async {
         final saved = await _storage.read(_storageKey);
-        if (saved == null) return;
-
-        final dynamic existing = jsonDecode(saved);
-        if (existing is Map && existing['key'] == key) {
-          await _storage.delete(_storageKey);
+        if (saved != null) {
+          final dynamic existing = jsonDecode(saved);
+          if (existing is Map && existing['key'] == key) {
+            await _storage.delete(_storageKey);
+          }
+        }
+        final retained = await _readRetained();
+        final remaining = retained.where((item) => item['key'] != key).toList();
+        if (remaining.length != retained.length) {
+          await _storage.write(_archiveKey, jsonEncode(remaining));
         }
       });
 }
