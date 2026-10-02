@@ -100,10 +100,12 @@ class DashboardScreen extends StatefulWidget {
     super.key,
     this.client,
     this.schoolPortalSupported,
+    this.electricityScreenBuilder,
   });
 
   final http.Client? client;
   final bool? schoolPortalSupported;
+  final Widget Function()? electricityScreenBuilder;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -1416,7 +1418,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         keywords: 'electricity power light bill',
         onTap: () {
           openScreen(
-            const ElectricityScreen(),
+            widget.electricityScreenBuilder?.call() ?? const ElectricityScreen(),
           );
         },
       ),

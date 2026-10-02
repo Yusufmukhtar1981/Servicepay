@@ -11,7 +11,8 @@ import 'servicepay_theme.dart';
 import 'edupay/edupay_screen.dart';
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+  const MainNavigation({super.key, this.electricityScreenBuilder});
+  final Widget Function()? electricityScreenBuilder;
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -126,12 +127,12 @@ class _MainNavigationState extends State<MainNavigation>
      * ZONAL_MANAGER
      * etc.
      */
-    return const <Widget>[
-      DashboardScreen(),
-      TransactionsScreen(),
-      WalletScreen(),
-      ProfileScreen(),
-      EduPayScreen(),
+    return <Widget>[
+      DashboardScreen(electricityScreenBuilder: widget.electricityScreenBuilder),
+      const TransactionsScreen(),
+      const WalletScreen(),
+      const ProfileScreen(),
+      const EduPayScreen(),
     ];
   }
 

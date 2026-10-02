@@ -13,6 +13,7 @@ import 'branch_manager/branch_manager_dashboard_screen.dart' deferred as branch;
 import 'forced_password_change_screen.dart';
 import 'admin/svp_command_center_screen.dart' deferred as svp;
 import 'widgets/deferred_screen.dart';
+import 'electricity_screen.dart';
 
 String normalizeLoginRole(dynamic value) {
   return value
@@ -56,7 +57,9 @@ Widget authenticatedHomeForRole(String role) {
           load: rider.loadLibrary, builder: () => rider.RiderMainNavigation());
     case 'CUSTOMER':
       return DeferredScreen(
-          load: customer.loadLibrary, builder: () => customer.MainNavigation());
+          load: customer.loadLibrary,
+          builder: () => customer.MainNavigation(
+              electricityScreenBuilder: () => const ElectricityScreen()));
     case 'SOLAR_OFFICER':
       return DeferredScreen(
           load: solar.loadLibrary,
