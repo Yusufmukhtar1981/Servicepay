@@ -25,12 +25,10 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
   final TextEditingController amountController = TextEditingController();
 
-  final List<String> networks = [
-    'MTN',
-    'Airtel',
-    'Glo',
-    '9mobile',
-  ];
+  List<String> networks = [];
+  final Map<String, int> providerNetworkIds = {};
+  bool _catalogLoading = true;
+  String? _catalogError;
 
   String selectedNetwork = 'MTN';
   bool isLoading = false;
@@ -45,6 +43,38 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     super.initState();
     _purchaseIntent = widget.purchaseIntent ?? AirtimePurchaseIntent();
     _restorePendingIntent();
+    _loadNetworks();
+  }
+
+  Future<void> _loadNetworks() async {
+    try {
+      final response = await ApiService.getAirtimeNetworks();
+      if (response['success'] != true || response['data'] is! List) {
+        throw Exception('Airtime networks could not be verified.');
+      }
+      final mapped = <String, int>{};
+      const labels = {'MTN': 'MTN', 'AIRTEL': 'Airtel', 'GLO': 'Glo',
+        '9MOBILE': '9mobile', 'ETISALAT': '9mobile'};
+      for (final row in response['data'] as List) {
+        final label = labels[row['displayName'].toString().toUpperCase()];
+        final id = int.tryParse(row['providerId'].toString());
+        if (label != null && id != null && id > 0) mapped[label] = id;
+      }
+      if (mapped.isEmpty) throw Exception('Airtime networks could not be verified.');
+      if (!mounted) return;
+      setState(() {
+        providerNetworkIds.addAll(mapped);
+        networks = mapped.keys.toList();
+        if (!networks.contains(selectedNetwork)) selectedNetwork = networks.first;
+        _catalogLoading = false;
+        _catalogError = null;
+      });
+    } catch (_) {
+      if (mounted) setState(() {
+        _catalogLoading = false;
+        _catalogError = 'Airtime networks are unavailable. Retry loading; no purchase has been made.';
+      });
+    }
   }
 
   @override
@@ -106,6 +136,18 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     });
 
     try {
+      final providerId = providerNetworkIds[network];
+      if (providerId == null) {
+        showMessage('Load the current Airtime networks before buying.');
+        return;
+      }
+      final quoted = await ApiService.quoteAirtime(networkId: providerId, amount: purchaseAmount);
+      final quote = quoted['data'] as Map?;
+      final sellingPrice = double.tryParse(quote?['customerSellingPrice'].toString() ?? '');
+      if (quoted['success'] != true || sellingPrice == null || sellingPrice <= 0) {
+        showMessage('The selling price could not be confirmed. No purchase was made.');
+        return;
+      }
       final bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (BuildContext dialogContext) {
@@ -115,7 +157,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             ),
             content: Text(
               'Purchase ₦${amount.toStringAsFixed(0)} '
-              '$network airtime for $phone?',
+              '$network airtime for $phone?\nWallet charge: ₦${sellingPrice.toStringAsFixed(2)}',
             ),
             actions: [
               TextButton(
@@ -211,6 +253,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         dispatch: (String idempotencyKey) => ApiService.buyAirtime(
           transactionPin: transactionPin,
           network: network,
+          providerNetworkId: providerId,
+          customerSellingPrice: sellingPrice,
           phone: phone,
           amount: purchaseAmount,
           idempotencyKey: idempotencyKey,
@@ -506,6 +550,14 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                         },
                 ),
                 const SizedBox(height: 22),
+                if (_catalogLoading) const LinearProgressIndicator(),
+                if (_catalogError != null) ...[
+                  Text(_catalogError!, style: const TextStyle(color: Colors.red)),
+                  TextButton(onPressed: () {
+                    setState(() { _catalogLoading = true; _catalogError = null; });
+                    _loadNetworks();
+                  }, child: const Text('Retry loading networks')),
+                ],
                 const Text(
                   'Phone Number',
                   style: TextStyle(
@@ -572,7 +624,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   height: 52,
                   child: ElevatedButton(
                     onPressed:
-                        isLoading || _isCheckingStatus ? null : buyAirtime,
+                        isLoading || _isCheckingStatus || _catalogLoading || _catalogError != null ? null : buyAirtime,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -778,6 +830,9 @@ class AirtimePurchaseIntent {
   }
 
   bool isTerminalResult(Map<String, dynamic> result) {
+    final deliveryStatus = result['status']?.toString().toUpperCase();
+    if (result['provider'] == 'TELECOM_ABODE' && result['dispatchStatus'] == 'SUCCEEDED' &&
+        ['SUCCESS', 'SUCCESSFUL', 'COMPLETED'].contains(deliveryStatus)) return true;
     final httpStatus =
         result['httpStatus'] is int ? result['httpStatus'] as int : 0;
     final status = result['status']?.toString().toUpperCase() ?? '';

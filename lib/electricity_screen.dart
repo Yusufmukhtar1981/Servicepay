@@ -43,68 +43,45 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   String verifiedDiscoCode = '';
   String verifiedMeterTypeCode = '';
 
-  final List<Map<String, String>> discos = const [
-    {
-      'code': '01',
-      'shortName': 'EKEDC',
-      'name': 'Eko Electric',
-    },
-    {
-      'code': '02',
-      'shortName': 'IKEDC',
-      'name': 'Ikeja Electric',
-    },
-    {
-      'code': '03',
-      'shortName': 'AEDC',
-      'name': 'Abuja Electric',
-    },
-    {
-      'code': '04',
-      'shortName': 'KEDC',
-      'name': 'Kano Electric',
-    },
-    {
-      'code': '05',
-      'shortName': 'PHEDC',
-      'name': 'Port Harcourt Electric',
-    },
-    {
-      'code': '06',
-      'shortName': 'JEDC',
-      'name': 'Jos Electric',
-    },
-    {
-      'code': '07',
-      'shortName': 'IBEDC',
-      'name': 'Ibadan Electric',
-    },
-    {
-      'code': '08',
-      'shortName': 'KAEDC',
-      'name': 'Kaduna Electric',
-    },
-    {
-      'code': '09',
-      'shortName': 'EEDC',
-      'name': 'Enugu Electric',
-    },
-    {
-      'code': '10',
-      'shortName': 'BEDC',
-      'name': 'Benin Electric',
-    },
-    {
-      'code': '11',
-      'shortName': 'YEDC',
-      'name': 'Yola Electric',
-    },
-    {
-      'code': '12',
-      'shortName': 'APLE',
-      'name': 'Aba Electric',
-    },
-  ];
+  List<Map<String, String>> discos = [];
+  bool _catalogLoaded = false;
+  bool _purchaseBlocked = true;
+  String _catalogMessage = 'Loading the verified electricity catalogue...';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCatalogue();
+  }
+
+  Future<void> _loadCatalogue() async {
+    try {
+      final token = await getAuthToken();
+      final response = await http.get(Uri.parse('$baseUrl/electricity/companies'),
+        headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 60));
+      final data = decodeResponse(response.body);
+      if (response.statusCode != 200 || data['success'] != true || data['companies'] is! List) {
+        throw Exception('Catalogue unavailable');
+      }
+      final rows = (data['companies'] as List).map((row) => <String, String>{
+        'code': row['code'].toString(), 'name': row['name'].toString(),
+        'shortName': row['shortName'].toString(),
+      }).toList();
+      if (rows.isEmpty) throw Exception('Catalogue empty');
+      if (!mounted) return;
+      setState(() {
+        discos = rows;
+        if (!rows.any((row) => row['code'] == selectedDiscoCode)) selectedDiscoCode = rows.first['code']!;
+        _catalogLoaded = true;
+        _purchaseBlocked = data['purchaseBlocked'] == true;
+        _catalogMessage = _purchaseBlocked
+          ? 'Electricity catalogue is ready. Purchases are blocked because the provider cannot reliably verify meters. No debit will be made.'
+          : 'Verify the meter customer name before paying.';
+      });
+    } catch (_) {
+      if (mounted) setState(() { _catalogMessage = 'Electricity catalogue is unavailable. Retry loading; no purchase was made.'; });
+    }
+  }
 
   final List<Map<String, String>> meterTypes = const [
     {
@@ -122,6 +99,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   }
 
   Map<String, String> get selectedDisco {
+    if (discos.isEmpty) return {};
     return discos.firstWhere(
       (item) => item['code'] == selectedDiscoCode,
       orElse: () => discos.first,
@@ -290,6 +268,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   }
 
   Future<void> verifyMeter() async {
+    if (!_catalogLoaded || _purchaseBlocked) { showMessage(_catalogMessage); return; }
     FocusScope.of(context).unfocus();
 
     final String? validationError = validateMeterNumber(meterController.text);
@@ -635,6 +614,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   }
 
   Future<void> payElectricity() async {
+    if (!_catalogLoaded || _purchaseBlocked) { showMessage(_catalogMessage); return; }
     FocusScope.of(context).unfocus();
 
     if (!(formKey.currentState?.validate() ?? false)) {
@@ -1102,6 +1082,10 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
               32,
             ),
             children: [
+              Text(_catalogMessage, style: const TextStyle(fontWeight: FontWeight.w600)),
+              if (!_catalogLoaded) TextButton(onPressed: _loadCatalogue,
+                child: const Text('Retry loading electricity providers')),
+              const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(19),
                 decoration: BoxDecoration(
@@ -1426,7 +1410,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
               SizedBox(
                 height: 55,
                 child: FilledButton.icon(
-                  onPressed: isBusy ? null : payElectricity,
+                  onPressed: isBusy || !_catalogLoaded || _purchaseBlocked ? null : payElectricity,
                   style: FilledButton.styleFrom(
                     backgroundColor: primaryGreen,
                   ),
