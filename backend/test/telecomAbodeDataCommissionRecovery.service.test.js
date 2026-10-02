@@ -21,7 +21,9 @@ const {
 let replicaSet;
 let sequence = 0;
 
-const seedPendingPurchase = async (dispatchStatus = "UNKNOWN") => {
+const seedPendingPurchase = async (dispatchStatus = "UNKNOWN", {
+  amount = 100, providerPrice = 80, agentCommission = 10, withAgent = true,
+} = {}) => {
   const id = ++sequence;
   const customer = await User.create({
     fullName: `Commission Recovery Customer ${id}`,
@@ -30,7 +32,7 @@ const seedPendingPurchase = async (dispatchStatus = "UNKNOWN") => {
     password: "test-password-only",
     role: "CUSTOMER",
     status: "ACTIVE",
-    walletBalance: 400,
+    walletBalance: 500 - amount,
   });
   const agent = await User.create({
     fullName: `Commission Recovery Agent ${id}`,
@@ -42,12 +44,14 @@ const seedPendingPurchase = async (dispatchStatus = "UNKNOWN") => {
     walletBalance: 0,
     commissionBalance: 0,
   });
-  await User.updateOne({ _id: customer._id }, { $set: { agentId: agent._id } });
+  if (withAgent) {
+    await User.updateOne({ _id: customer._id }, { $set: { agentId: agent._id } });
+  }
   await ProductCommission.create({
     serviceType: "DATA",
     productCode: "DATA",
     productName: "Telecom Abode DATA",
-    agentCommission: 10,
+    agentCommission,
     stateCommission: 0,
     zonalCommission: 0,
     isActive: true,
@@ -60,21 +64,21 @@ const seedPendingPurchase = async (dispatchStatus = "UNKNOWN") => {
     serviceType: "DATA",
     provider: "TELECOM_ABODE",
     phone: customer.phone,
-    amount: 100,
+    amount,
     status: "PENDING",
     dispatchStatus,
     dispatchClaimedAt: new Date(),
     providerResponse: {
-      providerPrice: 80,
+      providerPrice,
       network: "01",
       planCode: "77",
     },
   });
   const debit = await postDebit({
     userId: customer._id,
-    amount: 100,
+    amount,
     openingBalance: 500,
-    closingBalance: 400,
+    closingBalance: 500 - amount,
     service: "DATA",
     reference,
     idempotencyKey: `DATA:${reference}:DEBIT`,
@@ -165,6 +169,9 @@ for (const [source, dispatchStatus] of [
       `DATA:${transaction.reference}:COMMISSION`,
     );
     assert.equal(commissions.length, 2);
+    assert.ok(commissions.every((row) => row.providerCost === 80 && row.netProfit === 20));
+    assert.equal(commissions.reduce((sum, row) => sum + row.commissionAmount, 0), 20);
+    assert.equal(commissions.find((row) => row.beneficiaryRole === "HEAD_OFFICE").commissionAmount, 10);
     assert.equal(commissions.find((row) => row.beneficiaryRole === "AGENT").commissionAmount, 10);
     assert.equal(await User.findById(agent._id).then((row) => row.walletBalance), 10);
     assert.equal(await User.findById(agent._id).then((row) => row.commissionBalance), 10);
@@ -179,6 +186,102 @@ for (const [source, dispatchStatus] of [
     );
   });
 }
+
+test("the observed NGN97 sale and NGN90 cost record only NGN7 Head Office margin once", async () => {
+  const { customer, agent, transaction } = await seedPendingPurchase("SENDING", {
+    amount: 97, providerPrice: 90, agentCommission: 0, withAgent: false,
+  });
+  const result = await settleSuccess(createTelecomAbodeDataSettlementService(), transaction, "REQUEST");
+  assert.equal(result.status, "SETTLED");
+  const rows = await Commission.find({ transactionId: transaction._id }).lean();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].beneficiaryRole, "HEAD_OFFICE");
+  assert.equal(rows[0].beneficiaryId, null);
+  assert.equal(rows[0].transactionAmount, 97);
+  assert.equal(rows[0].providerCost, 90);
+  assert.equal(rows[0].netProfit, 7);
+  assert.equal(rows[0].commissionAmount, 7);
+  assert.equal(await User.findById(customer._id).then((row) => row.walletBalance), 403);
+  assert.equal(await User.findById(agent._id).then((row) => row.walletBalance), 0);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "DEBIT" }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 0);
+  assert.equal((await processTelecomAbodeDataCommissionEffect(transaction._id)).status, "ALREADY_COMPLETED");
+  assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 1);
+});
+
+for (const [label, providerPrice] of [
+  ["missing", undefined], ["null", null], ["string", "80"], ["negative", -1],
+  ["zero", 0], ["sub-cent", 0.0001], ["NaN", NaN], ["infinity", Infinity], ["above sale", 101],
+]) {
+  test(`invalid ${label} provider cost never creates commissions or credits a wallet`, async () => {
+    const { customer, agent, transaction } = await seedPendingPurchase("SENDING", { providerPrice });
+    if (label === "missing") {
+      await Transaction.updateOne({ _id: transaction._id }, { $unset: { "providerResponse.providerPrice": "" } });
+    }
+    const result = await settleSuccess(createTelecomAbodeDataSettlementService(), transaction, "REQUEST");
+    assert.equal(result.status, "SETTLED");
+    const current = await Transaction.findById(transaction._id).lean();
+    assert.equal(current.status, "SUCCESSFUL");
+    assert.equal(current.providerResponse.dataSuccessEffects.commission.status, "PENDING");
+    assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 0);
+    assert.equal(await User.findById(agent._id).then((row) => row.walletBalance), 0);
+    assert.equal(await User.findById(agent._id).then((row) => row.commissionBalance), 0);
+    assert.equal(await User.findById(customer._id).then((row) => row.walletBalance), 400);
+    assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 0);
+  });
+}
+
+test("configured commissions above the real DATA margin cannot create rows or wallet credits", async () => {
+  const { customer, agent, transaction } = await seedPendingPurchase("SENDING", { amount: 97, providerPrice: 90 });
+  const result = await settleSuccess(createTelecomAbodeDataSettlementService(), transaction, "REQUEST");
+  assert.equal(result.status, "SETTLED");
+  assert.equal((await Transaction.findById(transaction._id).lean()).providerResponse.dataSuccessEffects.commission.status, "PENDING");
+  assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 0);
+  assert.equal(await User.findById(agent._id).then((row) => row.walletBalance), 0);
+  assert.equal(await User.findById(customer._id).then((row) => row.walletBalance), 403);
+});
+
+for (const [amount, providerPrice] of [[0.01, 0.009], [97, 97.004]]) {
+  test(`raw cost ${providerPrice} on sale ${amount} cannot bypass bounds through rounding`, async () => {
+    const { agent, transaction } = await seedPendingPurchase("SENDING", {
+      amount, providerPrice, agentCommission: 0,
+    });
+    await settleSuccess(createTelecomAbodeDataSettlementService(), transaction, "REQUEST");
+    assert.equal((await Transaction.findById(transaction._id).lean()).providerResponse.dataSuccessEffects.commission.status, "PENDING");
+    assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 0);
+    assert.equal(await User.findById(agent._id).then((row) => row.walletBalance), 0);
+    assert.equal(await LedgerEntry.countDocuments({ transactionId: transaction._id, direction: "CREDIT" }), 0);
+  });
+}
+
+test("completed legacy accounting remains untouched rather than being rewritten or paid again", async () => {
+  const { agent, transaction } = await seedPendingPurchase("SENDING");
+  await settleSuccess(createTelecomAbodeDataSettlementService(), transaction, "REQUEST");
+  await Commission.updateOne({ transactionId: transaction._id, beneficiaryRole: "HEAD_OFFICE" },
+    { $set: { providerCost: 0, netProfit: 100, commissionAmount: 90 } });
+  const before = await Commission.find({ transactionId: transaction._id }).sort({ _id: 1 }).lean();
+  const txBefore = await Transaction.findById(transaction._id).lean();
+  assert.equal((await processTelecomAbodeDataCommissionEffect(transaction._id)).status, "ALREADY_COMPLETED");
+  assert.deepEqual(await Commission.find({ transactionId: transaction._id }).sort({ _id: 1 }).lean(), before);
+  assert.deepEqual(await Transaction.findById(transaction._id).lean(), txBefore);
+  assert.equal(await User.findById(agent._id).then((row) => row.walletBalance), 10);
+});
+
+test("zero DATA margin with no configured commission completes without fabricated profit", async () => {
+  const { agent, transaction } = await seedPendingPurchase("SENDING", { providerPrice: 100, agentCommission: 0 });
+  await settleSuccess(createTelecomAbodeDataSettlementService(), transaction, "REQUEST");
+  assert.equal((await Transaction.findById(transaction._id).lean()).providerResponse.dataSuccessEffects.commission.status, "COMPLETED");
+  assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 0);
+  assert.equal(await User.findById(agent._id).then((row) => row.walletBalance), 0);
+});
+
+test("zero DATA margin does not silently mark configured beneficiary commissions paid", async () => {
+  const { agent, transaction } = await seedPendingPurchase("SENDING", { providerPrice: 100 });
+  await settleSuccess(createTelecomAbodeDataSettlementService(), transaction, "REQUEST");
+  assert.equal((await Transaction.findById(transaction._id).lean()).providerResponse.dataSuccessEffects.commission.status, "PENDING");
+  assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 0);
+  assert.equal(await User.findById(agent._id).then((row) => row.walletBalance), 0);
+});
 
 test("a process interruption after terminal commit leaves a retryable intent and retry pays once", async () => {
   const { agent, transaction } = await seedPendingPurchase();

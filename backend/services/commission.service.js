@@ -243,9 +243,21 @@ const buildTelecomAbodeDataCommissionRecords = async ({
   if (!setting) return { configured: false, records: [] };
 
   const transactionAmount = roundMoney(transaction.amount);
-  const providerCost = 0;
+  // Telecom Abode DATA admission persists the verified catalogue cost.
+  // Missing/corrupt cost must never turn gross sales into distributable profit.
+  const rawProviderCost = transaction.providerResponse?.providerPrice;
+  if (
+    typeof rawProviderCost !== "number" ||
+    !Number.isFinite(rawProviderCost) ||
+    rawProviderCost < 0.01 ||
+    rawProviderCost > transactionAmount
+  ) {
+    const error = new Error("Telecom Abode DATA commission requires a valid persisted provider cost.");
+    error.code = "DATA_COMMISSION_INVALID_PROVIDER_COST";
+    throw error;
+  }
+  const providerCost = roundMoney(rawProviderCost);
   const netProfit = roundMoney(transactionAmount - providerCost);
-  if (netProfit <= 0) return { configured: true, records: [] };
 
   const agentAmount = roundMoney(setting.agentCommission);
   const stateAmount = roundMoney(setting.stateCommission);
@@ -258,6 +270,7 @@ const buildTelecomAbodeDataCommissionRecords = async ({
       `Configured commissions ₦${configuredCommissionTotal} exceed net profit ₦${netProfit}.`,
     );
   }
+  if (netProfit === 0) return { configured: true, records: [] };
 
   const hierarchy = await getCustomerHierarchy(customer, session);
   const allocations = [];
