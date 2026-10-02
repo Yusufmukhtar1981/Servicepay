@@ -289,7 +289,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         });
       }
 
-      await _loadServiceAvailability();
+      unawaited(_loadServiceAvailability());
 
       final String? token = await getSavedAuthToken(preferences);
 
@@ -304,15 +304,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         return false;
       }
 
-      final List<dynamic> results =
-          await Future.wait<dynamic>(<Future<dynamic>>[
-        _loadWalletBalance(token, preferences),
-        _loadRecentTransactions(token),
-        _loadNotificationSummary(token),
-        _loadActiveServiceStatuses(token),
-        _loadSchoolPortalMemberships(token),
-      ]);
-      receivedFreshWalletBalance = results.first == true;
+      // Secondary services have their own state and cannot delay the dashboard.
+      unawaited(_loadRecentTransactions(token));
+      unawaited(_loadNotificationSummary(token));
+      unawaited(_loadActiveServiceStatuses(token));
+      unawaited(_loadSchoolPortalMemberships(token));
+      receivedFreshWalletBalance =
+          await _loadWalletBalance(token, preferences);
       // Announcements are deliberately non-blocking: dashboard data remains
       // usable if the campaign service is slow or unavailable.
       unawaited(_loadAnnouncements(token));

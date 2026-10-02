@@ -22,6 +22,7 @@ class _MainNavigationState extends State<MainNavigation>
   static const Color primaryGreen = ServicePayColors.brand;
 
   int currentIndex = 0;
+  final Set<int> _visitedPages = {0};
 
   bool isLoadingRole = false;
 
@@ -169,7 +170,10 @@ class _MainNavigationState extends State<MainNavigation>
 
     return Scaffold(
       extendBody: false,
-      body: IndexedStack(index: currentIndex, children: pages),
+      body: IndexedStack(index: currentIndex, children: [
+        for (int i = 0; i < pages.length; i++)
+          _visitedPages.contains(i) ? pages[i] : const SizedBox.shrink(),
+      ]),
       bottomNavigationBar: SafeArea(
         top: false,
         minimum: const EdgeInsets.fromLTRB(10, 0, 10, 8),
@@ -345,6 +349,7 @@ class _MainNavigationState extends State<MainNavigation>
             onTap: () {
               setState(() {
                 currentIndex = index;
+                _visitedPages.add(index);
               });
             },
             borderRadius: BorderRadius.circular(18),

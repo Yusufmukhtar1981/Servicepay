@@ -1,12 +1,29 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:http/http.dart' as http;
 import 'session_store.dart';
+import 'saved_numbers_cache.dart';
 
 class ApiService {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static const Duration requestTimeout = Duration(seconds: 60);
+  static const Duration secondaryReadTimeout = Duration(seconds: 4);
+
+  static Future<List<Map<String, dynamic>>> cachedBeneficiaries() async {
+    final token = await _getAuthToken();
+    final owner = SavedNumbersCache.ownerForToken(token);
+    if (owner == null) return [];
+    final rows = await SavedNumbersCache.read(owner);
+    if (await _getAuthToken() != token) return [];
+    return rows;
+  }
+
+  static Future<void> _invalidateBeneficiaries(String token) async {
+    final owner = SavedNumbersCache.ownerForToken(token);
+    if (owner != null) await SavedNumbersCache.invalidate(owner);
+  }
 
   static Future<List<Map<String, dynamic>>> getBeneficiaries({
     String search = '',
@@ -18,12 +35,20 @@ class ApiService {
     final response = await http.get(
       Uri.parse('$baseUrl/customer/beneficiaries$query'),
       headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
-    ).timeout(requestTimeout);
+    ).timeout(secondaryReadTimeout);
     final result = _handleResponse(response);
     final raw = result['beneficiaries'];
-    return raw is List
+    final rows = raw is List
         ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
         : <Map<String, dynamic>>[];
+    if (await _getAuthToken() != token) {
+      throw Exception('Your session changed. Reload saved numbers.');
+    }
+    final owner = SavedNumbersCache.ownerForToken(token);
+    if (search.trim().isEmpty && owner != null) {
+      unawaited(SavedNumbersCache.write(owner, rows));
+    }
+    return rows;
   }
 
   static Future<Map<String, dynamic>> saveBeneficiary({
@@ -49,7 +74,9 @@ class ApiService {
           }),
         )
         .timeout(requestTimeout);
-    return _handleResponse(response);
+    final result = _handleResponse(response);
+    if (result['success'] != false) await _invalidateBeneficiaries(token);
+    return result;
   }
 
   static Future<Map<String, dynamic>> updateBeneficiary({
@@ -68,7 +95,9 @@ class ApiService {
           body: jsonEncode({'name': name.trim()}),
         )
         .timeout(requestTimeout);
-    return _handleResponse(response);
+    final result = _handleResponse(response);
+    if (result['success'] != false) await _invalidateBeneficiaries(token);
+    return result;
   }
 
   static Future<Map<String, dynamic>> deleteBeneficiary(String id) async {
@@ -77,7 +106,9 @@ class ApiService {
       Uri.parse('$baseUrl/customer/beneficiaries/$id'),
       headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
     ).timeout(requestTimeout);
-    return _handleResponse(response);
+    final result = _handleResponse(response);
+    if (result['success'] != false) await _invalidateBeneficiaries(token);
+    return result;
   }
 
   static Future<Map<String, dynamic>> getDataPlans({

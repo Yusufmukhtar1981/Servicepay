@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:servicepay_app/widgets/deferred_screen.dart';
 
 import 'package:servicepay_app/login_routing.dart';
 import 'package:servicepay_app/main_navigation.dart';
@@ -12,6 +14,12 @@ import 'package:servicepay_app/branch_manager/branch_manager_dashboard_screen.da
 import 'package:servicepay_app/forced_password_change_screen.dart';
 
 void main() {
+  Future<Widget> loadedHome(String role) async {
+    final home = authenticatedHomeForRole(role) as DeferredScreen;
+    await home.load();
+    return home.builder();
+  }
+
   test('reads and normalizes the authenticated role', () {
     expect(
       loginRoleFromResponse(
@@ -36,7 +44,8 @@ void main() {
     );
   });
 
-  test('keeps unknown or missing roles on the existing role dashboard', () {
+  test('keeps unknown or missing roles on the existing role dashboard',
+      () async {
     expect(normalizeLoginRole(' state manager '), 'STATE_MANAGER');
     expect(
       loginRoleFromResponse(
@@ -46,65 +55,66 @@ void main() {
       'CUSTOMER',
     );
     expect(
-      authenticatedHomeForRole('STATE_MANAGER'),
+      await loadedHome('STATE_MANAGER'),
       isA<RoleDashboardScreen>(),
     );
   });
 
-  test('routes Solar Officers directly to the dedicated dashboard', () {
+  test('routes Solar Officers directly to the dedicated dashboard', () async {
     expect(
-      authenticatedHomeForRole(' solar-officer '),
+      await loadedHome(' solar-officer '),
       isA<SolarOfficerDashboardScreen>(),
     );
     expect(
-      authenticatedHomeForRole('CUSTOMER'),
+      await loadedHome('CUSTOMER'),
       isA<MainNavigation>(),
     );
     expect(
-      authenticatedHomeForRole('DELIVERY_RIDER'),
+      await loadedHome('DELIVERY_RIDER'),
       isA<RiderMainNavigation>(),
     );
   });
 
-  test('routes Phone Financing Officers to their scoped dashboard', () {
+  test('routes Phone Financing Officers to their scoped dashboard', () async {
     expect(
-      authenticatedHomeForRole('phone financing officer'),
+      await loadedHome('phone financing officer'),
       isA<PhoneFinancingOfficerDashboardScreen>(),
     );
   });
 
-  test('routes Business Partners to their dedicated dashboard', () {
+  test('routes Business Partners to their dedicated dashboard', () async {
     expect(
-      authenticatedHomeForRole('business partner'),
+      await loadedHome('business partner'),
       isA<BusinessPartnerDashboardScreen>(),
     );
   });
 
-  test('routes Staff to the permission-aware Admin dashboard', () {
+  test('routes Staff to the permission-aware Admin dashboard', () async {
     expect(
-      authenticatedHomeForRole('STAFF'),
+      await loadedHome('STAFF'),
       isA<AdminMainNavigation>(),
     );
     expect(
-      authenticatedHomeForRole('STAFF'),
+      await loadedHome('STAFF'),
       isNot(isA<RoleDashboardScreen>()),
     );
   });
 
-  test('routes Branch Managers to their dedicated dashboard', () {
+  test('routes Branch Managers to their dedicated dashboard', () async {
     expect(
-      authenticatedHomeForRole(' branch-manager '),
+      await loadedHome(' branch-manager '),
       isA<BranchManagerDashboardScreen>(),
     );
   });
 
-  test('requires a temporary-password account to change password first', () {
+  test('requires a temporary-password account to change password first',
+      () async {
     expect(
       authenticatedHomeForLogin('BRANCH_MANAGER', mustChangePassword: true),
       isA<ForcedPasswordChangeScreen>(),
     );
     expect(
-      authenticatedHomeForLogin('BRANCH_MANAGER', mustChangePassword: false),
+      await loadedHome('BRANCH_MANAGER'),
       isA<BranchManagerDashboardScreen>(),
     );
   });

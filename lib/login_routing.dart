@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
-import 'main_navigation.dart';
-import 'rider/rider_main_navigation.dart';
-import 'role_dashboard_screen.dart';
-import 'solar_officer/solar_officer_dashboard_screen.dart';
-import 'phone_financing_officer/phone_financing_officer_dashboard_screen.dart';
-import 'business_partner/business_partner_dashboard_screen.dart';
-import 'admin/main_navigation.dart';
-import 'branch_manager/branch_manager_dashboard_screen.dart';
+import 'main_navigation.dart' deferred as customer;
+import 'rider/rider_main_navigation.dart' deferred as rider;
+import 'role_dashboard_screen.dart' deferred as roleHome;
+import 'solar_officer/solar_officer_dashboard_screen.dart' deferred as solar;
+import 'phone_financing_officer/phone_financing_officer_dashboard_screen.dart'
+    deferred as financing;
+import 'business_partner/business_partner_dashboard_screen.dart'
+    deferred as partner;
+import 'admin/main_navigation.dart' deferred as admin;
+import 'branch_manager/branch_manager_dashboard_screen.dart' deferred as branch;
 import 'forced_password_change_screen.dart';
-import 'admin/svp_command_center_screen.dart';
+import 'admin/svp_command_center_screen.dart' deferred as svp;
+import 'widgets/deferred_screen.dart';
 
 String normalizeLoginRole(dynamic value) {
   return value
@@ -49,29 +52,42 @@ String loginRoleFromResponse(
 Widget authenticatedHomeForRole(String role) {
   switch (normalizeLoginRole(role)) {
     case 'DELIVERY_RIDER':
-      return const RiderMainNavigation();
+      return DeferredScreen(
+          load: rider.loadLibrary, builder: () => rider.RiderMainNavigation());
     case 'CUSTOMER':
-      return const MainNavigation();
+      return DeferredScreen(
+          load: customer.loadLibrary, builder: () => customer.MainNavigation());
     case 'SOLAR_OFFICER':
-      return const SolarOfficerDashboardScreen();
+      return DeferredScreen(
+          load: solar.loadLibrary,
+          builder: () => solar.SolarOfficerDashboardScreen());
     case 'PHONE_FINANCING_OFFICER':
-      return const PhoneFinancingOfficerDashboardScreen();
+      return DeferredScreen(
+          load: financing.loadLibrary,
+          builder: () => financing.PhoneFinancingOfficerDashboardScreen());
     case 'BUSINESS_PARTNER':
-      return const BusinessPartnerDashboardScreen();
+      return DeferredScreen(
+          load: partner.loadLibrary,
+          builder: () => partner.BusinessPartnerDashboardScreen());
     case 'HEAD_OFFICE':
     case 'HEAD_OFFICE_ADMIN':
     case 'SUPER_ADMIN':
     case 'ADMIN':
     case 'STAFF':
-      return const AdminMainNavigation();
+      return DeferredScreen(
+          load: admin.loadLibrary, builder: () => admin.AdminMainNavigation());
     case 'SVP':
-      return const SvpCommandCenterScreen();
+      return DeferredScreen(
+          load: svp.loadLibrary, builder: () => svp.SvpCommandCenterScreen());
     case 'BRANCH_MANAGER':
-      return const BranchManagerDashboardScreen();
+      return DeferredScreen(
+          load: branch.loadLibrary,
+          builder: () => branch.BranchManagerDashboardScreen());
     default:
-      return RoleDashboardScreen(
-        role: normalizeLoginRole(role),
-      );
+      return DeferredScreen(
+          load: roleHome.loadLibrary,
+          builder: () =>
+              roleHome.RoleDashboardScreen(role: normalizeLoginRole(role)));
   }
 }
 

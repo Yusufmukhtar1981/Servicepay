@@ -16,7 +16,8 @@ import 'public_website_screen.dart';
 import 'register_screen.dart';
 import 'referral_attribution_service.dart';
 import 'services/session_store.dart';
-import 'edupay/edupay_screen.dart';
+import 'edupay/edupay_screen.dart' deferred as edupay;
+import 'widgets/deferred_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'rider/rider_delivery_alert_service.dart';
@@ -226,8 +227,8 @@ class _ServicePayAppState extends State<ServicePayApp> {
     _readNativeInitialUri();
     if (!kIsWeb) {
       _deepLinkSubscription = _deepLinkEvents.receiveBroadcastStream().listen(
-        (dynamic value) => _handleNativeUri(value?.toString()),
-      );
+            (dynamic value) => _handleNativeUri(value?.toString()),
+          );
     }
   }
 
@@ -310,6 +311,11 @@ class _ServicePayAppState extends State<ServicePayApp> {
         initialReferralCode: ReferralCodeNormalizer.fromUri(currentUri),
       );
     }
+    if (currentUri.queryParameters['mode']?.toLowerCase() == 'login' ||
+        path == '/login' ||
+        path == '/login/') {
+      return const StartupSessionGate();
+    }
 
     if (kIsWeb) {
       final bool edupayEntry = path == '/edupay' ||
@@ -366,7 +372,6 @@ class _WebLandingSessionGateState extends State<WebLandingSessionGate> {
     try {
       // SharedPreferences is retained here for compatibility with older
       // sessions; SessionStore is the authoritative token location.
-      await SharedPreferences.getInstance();
       final token = (await SessionStore.readToken())?.trim() ?? '';
       if (mounted) {
         setState(() {
@@ -388,8 +393,10 @@ class _WebLandingSessionGateState extends State<WebLandingSessionGate> {
       return const PublicWebsiteScreen();
     }
     return StartupSessionGate(
-      authenticatedHomeOverride:
-          widget.edupayEntry ? const EduPayScreen() : null,
+      authenticatedHomeOverride: widget.edupayEntry
+          ? DeferredScreen(
+              load: edupay.loadLibrary, builder: () => edupay.EduPayScreen())
+          : null,
     );
   }
 }

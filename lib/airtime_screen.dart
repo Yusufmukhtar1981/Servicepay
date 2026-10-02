@@ -13,9 +13,13 @@ class AirtimeScreen extends StatefulWidget {
   const AirtimeScreen({
     super.key,
     this.purchaseIntent,
+    this.loadNetworks,
+    this.loadBeneficiaries,
   });
 
   final AirtimePurchaseIntent? purchaseIntent;
+  final Future<Map<String, dynamic>> Function()? loadNetworks;
+  final BeneficiaryLoader? loadBeneficiaries;
 
   @override
   State<AirtimeScreen> createState() => _AirtimeScreenState();
@@ -26,7 +30,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
   final TextEditingController amountController = TextEditingController();
 
-  List<String> networks = [];
+  // Labels are static, but purchase still requires server-verified catalogue IDs.
+  List<String> networks = ['MTN', 'Airtel', 'Glo', '9mobile'];
   final Map<String, int> providerNetworkIds = {};
   bool _catalogLoading = true;
   String? _catalogError;
@@ -51,7 +56,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
   Future<void> _loadNetworks() async {
     try {
-      final response = await ApiService.getAirtimeNetworks();
+      final response = await (widget.loadNetworks ?? ApiService.getAirtimeNetworks)()
+          .timeout(const Duration(seconds: 4));
       if (response['success'] != true || response['data'] is! List) {
         throw Exception('Airtime networks could not be verified.');
       }
@@ -684,6 +690,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   ),
                   const SizedBox(height: 10),
                   SavedBeneficiaries(
+                    loadBeneficiaries: widget.loadBeneficiaries,
                     phoneController: phoneController,
                     network: selectedNetwork,
                     serviceType: 'AIRTIME',

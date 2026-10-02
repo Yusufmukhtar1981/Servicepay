@@ -46,6 +46,7 @@ class _DataScreenState extends State<DataScreen> {
   List<Map<String, dynamic>> dataPlans = <Map<String, dynamic>>[];
 
   bool isLoadingPlans = true;
+  int _catalogGeneration = 0;
   bool isBuyingData = false;
   late final DataPurchaseIntent _purchaseIntent;
   PurchasePhase _phase = PurchasePhase.idle;
@@ -312,6 +313,8 @@ class _DataScreenState extends State<DataScreen> {
 
   Future<void> loadDataPlans() async {
     if (!mounted) return;
+    final generation = ++_catalogGeneration;
+    final network = selectedNetwork;
 
     setState(() {
       isLoadingPlans = true;
@@ -322,10 +325,11 @@ class _DataScreenState extends State<DataScreen> {
 
     try {
       final Map<String, dynamic> result = widget.loadPlans != null
-          ? await widget.loadPlans!(selectedNetwork)
-          : await ApiService.getDataPlans(network: selectedNetwork);
+          ? await widget.loadPlans!(network).timeout(const Duration(seconds: 8))
+          : await ApiService.getDataPlans(network: network)
+              .timeout(const Duration(seconds: 8));
 
-      if (!mounted) return;
+      if (!mounted || generation != _catalogGeneration) return;
 
       if (result['success'] != true) {
         setState(() {
@@ -362,7 +366,7 @@ class _DataScreenState extends State<DataScreen> {
         ),
       );
 
-      if (!mounted) return;
+      if (!mounted || generation != _catalogGeneration) return;
 
       setState(() {
         dataPlans = plans;
@@ -373,7 +377,7 @@ class _DataScreenState extends State<DataScreen> {
         }
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _catalogGeneration) return;
 
       setState(() {
         plansError = error.toString().replaceFirst(
@@ -382,7 +386,7 @@ class _DataScreenState extends State<DataScreen> {
             );
       });
     } finally {
-      if (mounted) {
+      if (mounted && generation == _catalogGeneration) {
         setState(() {
           isLoadingPlans = false;
         });
@@ -802,7 +806,7 @@ class _DataScreenState extends State<DataScreen> {
               color: selected ? Colors.white : Colors.black87,
               fontWeight: FontWeight.w700,
             ),
-            onSelected: isBusy
+            onSelected: isBuyingData || _pendingKey != null
                 ? null
                 : (_) async {
                     if (selected) return;
@@ -998,156 +1002,160 @@ class _DataScreenState extends State<DataScreen> {
       body: PurchaseProcessing(
         processing: _phase == PurchasePhase.processing,
         service: 'data',
-        child: Column(
-          children: <Widget>[
-            if (_pendingMessage.isNotEmpty)
-              MaterialBanner(
-                content: Text('Transaction Pending\n$_pendingMessage'),
-                actions: [
-                  TextButton(
-                      onPressed: isBuyingData ? null : _checkPurchase,
-                      child: const Text('Check existing request')),
-                ],
-              ),
-            Container(
-              width: double.infinity,
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                14,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  TextField(
-                    controller: phoneController,
-                    enabled: !isBusy,
-                    maxLength: 11,
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                      labelText: 'Beneficiary Phone Number',
-                      hintText: '08012345678',
-                      counterText: '',
-                      prefixIcon: const Icon(
-                        Icons.phone_android_rounded,
-                      ),
-                      filled: true,
-                      fillColor: const Color(
-                        0xFFF8FAFC,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          14,
-                        ),
-                      ),
-                    ),
+        child: RefreshIndicator(
+          onRefresh: loadDataPlans,
+          child: CustomScrollView(
+            slivers: <Widget>[
+              SliverToBoxAdapter(
+                  child: Column(children: [
+                if (_pendingMessage.isNotEmpty)
+                  MaterialBanner(
+                    content: Text('Transaction Pending\n$_pendingMessage'),
+                    actions: [
+                      TextButton(
+                          onPressed: isBuyingData ? null : _checkPurchase,
+                          child: const Text('Check existing request')),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  SavedBeneficiaries(
-                    loadBeneficiaries: widget.loadBeneficiaries,
-                    phoneController: phoneController,
-                    network: selectedNetwork,
-                    serviceType: 'DATA',
+                Container(
+                  width: double.infinity,
+                  color: Colors.white,
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    16,
+                    16,
+                    14,
                   ),
-                  const SizedBox(
-                    height: 14,
-                  ),
-                  const Text(
-                    'Network',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(
-                    height: 8,
-                  ),
-                  buildNetworkSelector(),
-                  if (!isLoadingPlans && dataPlans.isNotEmpty) ...[
-                    const SizedBox(
-                      height: 14,
-                    ),
-                    const Text(
-                      'Data Type',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(
-                      height: 8,
-                    ),
-                    buildCategorySelector(),
-                  ],
-                ],
-              ),
-            ),
-            Expanded(
-              child: isLoadingPlans
-                  ? const Center(
-                      child: CircularProgressIndicator(),
-                    )
-                  : plansError.isNotEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(
-                              24,
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                const Icon(
-                                  Icons.error_outline_rounded,
-                                  size: 46,
-                                  color: Colors.red,
-                                ),
-                                const SizedBox(
-                                  height: 12,
-                                ),
-                                Text(
-                                  plansError,
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(
-                                  height: 14,
-                                ),
-                                FilledButton.icon(
-                                  onPressed: loadDataPlans,
-                                  icon: const Icon(
-                                    Icons.refresh_rounded,
-                                  ),
-                                  label: const Text(
-                                    'Try Again',
-                                  ),
-                                ),
-                              ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      TextField(
+                        controller: phoneController,
+                        enabled: !isBuyingData && _pendingKey == null,
+                        maxLength: 11,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: 'Beneficiary Phone Number',
+                          hintText: '08012345678',
+                          counterText: '',
+                          prefixIcon: const Icon(
+                            Icons.phone_android_rounded,
+                          ),
+                          filled: true,
+                          fillColor: const Color(
+                            0xFFF8FAFC,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              14,
                             ),
                           ),
-                        )
-                      : displayed.isEmpty
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const SizedBox(
+                        height: 14,
+                      ),
+                      const Text(
+                        'Network',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 8,
+                      ),
+                      buildNetworkSelector(),
+                      SavedBeneficiaries(
+                        loadBeneficiaries: widget.loadBeneficiaries,
+                        phoneController: phoneController,
+                        network: selectedNetwork,
+                        serviceType: 'DATA',
+                      ),
+                      if (!isLoadingPlans && dataPlans.isNotEmpty) ...[
+                        const SizedBox(
+                          height: 14,
+                        ),
+                        const Text(
+                          'Data Type',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(
+                          height: 8,
+                        ),
+                        buildCategorySelector(),
+                      ],
+                    ],
+                  ),
+                ),
+              ])),
+              if (isLoadingPlans || plansError.isNotEmpty || displayed.isEmpty)
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                      height: 240,
+                      child: isLoadingPlans
                           ? const Center(
-                              child: Text(
-                                'No plans found in this category.',
-                              ),
+                              child: CircularProgressIndicator(),
                             )
-                          : RefreshIndicator(
-                              onRefresh: loadDataPlans,
-                              child: ListView.builder(
-                                padding: const EdgeInsets.all(
-                                  16,
-                                ),
-                                itemCount: displayed.length,
-                                itemBuilder: (
-                                  BuildContext context,
-                                  int index,
-                                ) =>
-                                    buildPlanCard(
-                                  displayed[index],
-                                ),
-                              ),
-                            ),
-            ),
-          ],
+                          : plansError.isNotEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(
+                                      24,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        const Icon(
+                                          Icons.error_outline_rounded,
+                                          size: 46,
+                                          color: Colors.red,
+                                        ),
+                                        const SizedBox(
+                                          height: 12,
+                                        ),
+                                        Text(
+                                          plansError,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(
+                                          height: 14,
+                                        ),
+                                        FilledButton.icon(
+                                          onPressed: loadDataPlans,
+                                          icon: const Icon(
+                                            Icons.refresh_rounded,
+                                          ),
+                                          label: const Text(
+                                            'Try Again',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : displayed.isEmpty
+                                  ? const Center(
+                                      child: Text(
+                                        'No plans found in this category.',
+                                      ),
+                                    )
+                                  : const SizedBox.shrink()),
+                ),
+              if (!isLoadingPlans && plansError.isEmpty && displayed.isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.all(16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => buildPlanCard(displayed[index]),
+                      childCount: displayed.length,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

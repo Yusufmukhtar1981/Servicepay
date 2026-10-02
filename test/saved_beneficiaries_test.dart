@@ -35,37 +35,45 @@ void main() {
                 phoneController: phoneController,
                 network: 'MTN',
                 serviceType: 'AIRTIME',
-                loadBeneficiaries: loader ?? () async {
-                  loadCount++;
-                  if (failLoad) throw Exception('Could not load saved numbers');
-                  return saved.map((item) => Map<String, dynamic>.from(item)).toList();
-                },
-                saveBeneficiary: saver ?? ({
-                  required String phone,
-                  required String name,
-                  required String network,
-                  required String serviceType,
-                }) async {
-                  if (failSave) throw Exception('Number already saved');
-                  saved.add({
-                    '_id': 'saved-${saved.length + 1}',
-                    'phone': phone,
-                    'name': name,
-                  });
-                  return {'success': true};
-                },
-                updateBeneficiary: updater ?? ({
-                  required String id,
-                  required String name,
-                }) async {
-                  final item = saved.firstWhere((entry) => entry['_id'] == id);
-                  item['name'] = name;
-                  return {'success': true};
-                },
-                deleteBeneficiary: deleter ?? (String id) async {
-                  saved.removeWhere((entry) => entry['_id'] == id);
-                  return {'success': true};
-                },
+                loadBeneficiaries: loader ??
+                    () async {
+                      loadCount++;
+                      if (failLoad)
+                        throw Exception('Could not load saved numbers');
+                      return saved
+                          .map((item) => Map<String, dynamic>.from(item))
+                          .toList();
+                    },
+                saveBeneficiary: saver ??
+                    ({
+                      required String phone,
+                      required String name,
+                      required String network,
+                      required String serviceType,
+                    }) async {
+                      if (failSave) throw Exception('Number already saved');
+                      saved.add({
+                        '_id': 'saved-${saved.length + 1}',
+                        'phone': phone,
+                        'name': name,
+                      });
+                      return {'success': true};
+                    },
+                updateBeneficiary: updater ??
+                    ({
+                      required String id,
+                      required String name,
+                    }) async {
+                      final item =
+                          saved.firstWhere((entry) => entry['_id'] == id);
+                      item['name'] = name;
+                      return {'success': true};
+                    },
+                deleteBeneficiary: deleter ??
+                    (String id) async {
+                      saved.removeWhere((entry) => entry['_id'] == id);
+                      return {'success': true};
+                    },
               ),
             ),
           ),
@@ -74,12 +82,16 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('always shows saved numbers, handles empty and loading error retry',
+    testWidgets(
+        'always shows saved numbers, handles empty and loading error retry',
         (tester) async {
       failLoad = true;
       await pumpWidgetUnderTest(tester);
       expect(find.text('Saved Numbers'), findsOneWidget);
-      expect(find.text('Could not load saved numbers'), findsOneWidget);
+      expect(
+          find.text(
+              "Saved numbers couldn't load. You can still enter a number manually."),
+          findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
 
       failLoad = false;

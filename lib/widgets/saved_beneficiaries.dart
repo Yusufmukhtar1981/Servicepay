@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../services/api_service.dart';
 
 typedef BeneficiaryLoader = Future<List<Map<String, dynamic>>> Function();
@@ -24,6 +25,8 @@ class SavedBeneficiaries extends StatefulWidget {
     this.saveBeneficiary,
     this.updateBeneficiary,
     this.deleteBeneficiary,
+    this.loadCachedBeneficiaries,
+    this.loadTimeout = const Duration(seconds: 4),
   });
 
   final TextEditingController phoneController;
@@ -33,6 +36,8 @@ class SavedBeneficiaries extends StatefulWidget {
   final BeneficiarySaver? saveBeneficiary;
   final BeneficiaryUpdater? updateBeneficiary;
   final BeneficiaryDeleter? deleteBeneficiary;
+  final BeneficiaryLoader? loadCachedBeneficiaries;
+  final Duration loadTimeout;
 
   static final Set<VoidCallback> _reloadListeners = <VoidCallback>{};
 
@@ -62,7 +67,8 @@ class SavedBeneficiaries extends StatefulWidget {
             child: const Text('Not now'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
             child: const Text('Save'),
           ),
         ],
@@ -80,12 +86,14 @@ class SavedBeneficiaries extends StatefulWidget {
         serviceType: serviceType,
       );
       if (result['success'] == false) {
-        throw Exception(result['message']?.toString() ?? 'Could not save this number.');
+        throw Exception(
+            result['message']?.toString() ?? 'Could not save this number.');
       }
       _notifyReloadListeners();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message']?.toString() ?? 'Number saved.')),
+          SnackBar(
+              content: Text(result['message']?.toString() ?? 'Number saved.')),
         );
       }
     } catch (error) {
@@ -156,8 +164,9 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
         _loadError = null;
       });
     }
+    unawaited(_restoreCached(generation));
     try {
-      final result = await _loader();
+      final result = await _loader().timeout(widget.loadTimeout);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _items = result.map((item) => Map<String, dynamic>.from(item)).toList();
@@ -168,8 +177,26 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
-        _loadError = _message(error);
+        _loadError =
+            "Saved numbers couldn't load. You can still enter a number manually.";
       });
+    }
+  }
+
+  Future<void> _restoreCached(int generation) async {
+    final cache = widget.loadCachedBeneficiaries ??
+        (widget.loadBeneficiaries == null
+            ? ApiService.cachedBeneficiaries
+            : null);
+    if (cache == null) return;
+    try {
+      final rows = await cache().timeout(const Duration(milliseconds: 750));
+      if (!mounted || generation != _loadGeneration || !_loading) return;
+      if (rows.isNotEmpty) {
+        setState(() => _items = rows.map(Map<String, dynamic>.from).toList());
+      }
+    } catch (_) {
+      // Optional cached numbers must never block the form or its network fetch.
     }
   }
 
@@ -203,7 +230,8 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
   }
 
   Future<void> _rename(Map<String, dynamic> item) async {
-    final controller = TextEditingController(text: (item['name'] ?? '').toString());
+    final controller =
+        TextEditingController(text: (item['name'] ?? '').toString());
     final route = DialogRoute<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -223,7 +251,8 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
             child: const Text('Save'),
           ),
         ],
@@ -234,7 +263,8 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
     controller.dispose();
     if (name == null || !mounted) return;
     await _performWrite(() async {
-      final result = await _updater(id: item['_id'].toString(), name: name.trim());
+      final result =
+          await _updater(id: item['_id'].toString(), name: name.trim());
       _ensureSuccessful(result, 'Could not rename this number.');
     });
   }
@@ -304,7 +334,8 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
       margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
@@ -318,7 +349,8 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
               Expanded(
                 child: Text(
                   'Saved Numbers',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
               if (_loading)
@@ -391,12 +423,14 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
                 label: const Text('Retry'),
               ),
             ),
-            if (_items.isNotEmpty) ...visibleItems.map((item) => _beneficiaryTile(context, item)),
-          ]
-          else if (_items.isEmpty)
-            _inlineMessage(context, 'No saved numbers yet. Save this number for next time.')
+            if (_items.isNotEmpty)
+              ...visibleItems.map((item) => _beneficiaryTile(context, item)),
+          ] else if (_items.isEmpty)
+            _inlineMessage(context,
+                'No saved numbers yet. Save this number for next time.')
           else if (visibleItems.isEmpty)
-            _inlineMessage(context, 'No saved numbers match “${_searchController.text.trim()}”.')
+            _inlineMessage(context,
+                'No saved numbers match “${_searchController.text.trim()}”.')
           else
             ...visibleItems.map((item) => _beneficiaryTile(context, item)),
         ],
@@ -422,23 +456,29 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
               borderRadius: BorderRadius.circular(10),
               onTap: () => _select(item),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
                 child: Row(
                   children: [
-                    Icon(Icons.phone_iphone, size: 20, color: theme.colorScheme.primary),
+                    Icon(Icons.phone_iphone,
+                        size: 20, color: theme.colorScheme.primary),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (name.isNotEmpty)
-                            Text(name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                            Text(name,
+                                style: theme.textTheme.bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700)),
                           Text(phone, style: theme.textTheme.bodyMedium),
                         ],
                       ),
                     ),
                     const SizedBox(width: 5),
-                    Text('Use', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.primary)),
+                    Text('Use',
+                        style: theme.textTheme.labelMedium
+                            ?.copyWith(color: theme.colorScheme.primary)),
                   ],
                 ),
               ),
@@ -465,7 +505,9 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
     bool isError = false,
     Widget? action,
   }) {
-    final color = isError ? Theme.of(context).colorScheme.error : Theme.of(context).hintColor;
+    final color = isError
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).hintColor;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
@@ -475,7 +517,12 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
       ),
       child: Row(
         children: [
-          Expanded(child: Text(message, style: TextStyle(color: isError ? Theme.of(context).colorScheme.onErrorContainer : color))),
+          Expanded(
+              child: Text(message,
+                  style: TextStyle(
+                      color: isError
+                          ? Theme.of(context).colorScheme.onErrorContainer
+                          : color))),
           if (action != null) action,
         ],
       ),
