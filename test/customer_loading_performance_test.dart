@@ -131,6 +131,20 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     phone.dispose();
   });
+  testWidgets('a fast failure does not discard a slower persistent-cache read', (tester) async {
+    final cache = Completer<List<Map<String, dynamic>>>();
+    final phone = TextEditingController();
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child:
+      SavedBeneficiaries(phoneController: phone,network:'MTN',serviceType:'DATA',
+        loadBeneficiaries: () async => throw Exception('Offline'),
+        loadCachedBeneficiaries: () => cache.future)))));
+    await tester.pump();
+    cache.complete([{'_id':'one','phone':'08012345678','name':'Offline home'}]);
+    await tester.pump();
+    expect(find.text('Offline home'),findsOneWidget);
+    expect(find.text("Saved numbers couldn't load. You can still enter a number manually."),findsOneWidget);
+    await tester.pumpWidget(const SizedBox());phone.dispose();
+  });
   testWidgets('Data phone and network controls work before catalogue returns',
       (tester) async {
     final pending = Completer<Map<String, dynamic>>();

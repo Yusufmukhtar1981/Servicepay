@@ -191,7 +191,8 @@ class _SavedBeneficiariesState extends State<SavedBeneficiaries> {
     if (cache == null) return;
     try {
       final rows = await cache().timeout(const Duration(milliseconds: 750));
-      if (!mounted || generation != _loadGeneration || !_loading) return;
+      if (!mounted || generation != _loadGeneration ||
+          (!_loading && _loadError == null)) return;
       if (rows.isNotEmpty) {
         setState(() => _items = rows.map(Map<String, dynamic>.from).toList());
       }
