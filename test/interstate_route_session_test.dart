@@ -27,4 +27,59 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test(
+      'customer destinations include only valid visible active routes for origin',
+      () {
+    final List<Map<String, dynamic>> routes = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'originState': 'KANO',
+        'destinationState': 'ABUJA',
+        'status': 'ACTIVE',
+        'customerVisible': true,
+        'baseFare': 2500,
+        'maximumWeightKg': 10,
+      },
+      <String, dynamic>{
+        'originState': 'KANO',
+        'destinationState': 'KADUNA',
+        'status': 'ACTIVE',
+        'baseFare': 2500,
+        'maximumWeightKg': 10,
+      },
+      <String, dynamic>{
+        'originState': 'KANO',
+        'destinationState': 'LAGOS',
+        'status': 'ACTIVE',
+        'customerVisible': false,
+        'baseFare': 2500,
+        'maximumWeightKg': 10,
+      },
+      <String, dynamic>{
+        'originState': 'KANO',
+        'destinationState': 'RIVERS',
+        'status': 'INACTIVE',
+        'customerVisible': true,
+        'baseFare': 2500,
+        'maximumWeightKg': 10,
+      },
+      <String, dynamic>{
+        'originState': 'KANO',
+        'destinationState': 'EKITI',
+        'status': 'ACTIVE',
+        'customerVisible': true,
+        'baseFare': 2500,
+        'maximumWeightKg': 0,
+      },
+    ];
+
+    expect(
+      InterstateLogisticsContracts.destinationsForOrigin(routes, 'KANO'),
+      <String>['ABUJA', 'KADUNA'],
+    );
+    expect(
+      InterstateLogisticsContracts.destinationsForOrigin(routes, 'ABUJA'),
+      isEmpty,
+    );
+  });
 }

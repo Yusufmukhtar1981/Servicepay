@@ -43,21 +43,33 @@ void main() {
         routesLoader: () async => <Map<String, dynamic>>[
           <String, dynamic>{
             'id': 'kano-abuja',
+            'status': 'ACTIVE',
+            'baseFare': 100,
+            'maximumWeightKg': 10,
             'originState': 'KANO',
             'destinationState': 'ABUJA',
           },
           <String, dynamic>{
             'id': 'abuja-kano',
+            'status': 'ACTIVE',
+            'baseFare': 100,
+            'maximumWeightKg': 10,
             'originState': 'ABUJA',
             'destinationState': 'KANO',
           },
           <String, dynamic>{
             'id': 'kano-lagos',
+            'status': 'ACTIVE',
+            'baseFare': 100,
+            'maximumWeightKg': 10,
             'originState': 'KANO',
             'destinationState': 'LAGOS',
           },
           <String, dynamic>{
             'id': 'kano-kano-branches',
+            'status': 'ACTIVE',
+            'baseFare': 100,
+            'maximumWeightKg': 10,
             'originState': 'KANO',
             'destinationState': 'KANO',
           },
@@ -83,10 +95,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('interstate-destination-state')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAGOS').last);
-    await tester.pumpAndSettle();
-    expect(
-        find.byKey(const Key('interstate-unsupported-route')), findsOneWidget);
+    expect(find.text('KANO').last, findsOneWidget);
+    expect(find.text('LAGOS'), findsNothing);
+    expect(find.byKey(const Key('interstate-unsupported-route')), findsNothing);
   });
 
   testWidgets(
@@ -104,6 +115,47 @@ void main() {
     expect(find.byKey(const Key('interstate-unsupported-route')), findsNothing);
   });
 
+  testWidgets('reopening destination selector refreshes stale visibility',
+      (WidgetTester tester) async {
+    List<Map<String, dynamic>> activeRoutes = <Map<String, dynamic>>[
+      <String, dynamic>{
+        '_id': 'kano-abuja',
+        'name': 'Kano to Abuja',
+        'originState': 'KANO',
+        'destinationState': 'ABUJA',
+        'status': 'ACTIVE',
+        'customerVisible': true,
+        'baseFare': 2500,
+        'maximumWeightKg': 10,
+      },
+    ];
+    await tester.pumpWidget(MaterialApp(
+      theme: ServicePayTheme.light(),
+      home: InterstateShipmentWizard(
+        routesLoader: () async => activeRoutes,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('interstate-pickup-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('KANO').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('interstate-destination-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ABUJA').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kano to Abuja'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kano to Abuja'), findsOneWidget);
+
+    activeRoutes = <Map<String, dynamic>>[];
+    await tester.tap(find.byKey(const Key('interstate-destination-state')));
+    await tester.pumpAndSettle();
+    expect(find.text('Kano to Abuja'), findsNothing);
+    expect(find.byKey(const Key('interstate-unsupported-route')), findsNothing);
+  });
+
   testWidgets('same-state-pair routes retain backend names and delivery times',
       (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
@@ -112,6 +164,9 @@ void main() {
         routesLoader: () async => <Map<String, dynamic>>[
           <String, dynamic>{
             'id': 'kano-abuja-central',
+            'status': 'ACTIVE',
+            'baseFare': 100,
+            'maximumWeightKg': 10,
             'name': 'Kano Central to Abuja Main',
             'originState': 'KANO',
             'destinationState': 'ABUJA',
@@ -119,6 +174,9 @@ void main() {
           },
           <String, dynamic>{
             'id': 'kano-abuja-east',
+            'status': 'ACTIVE',
+            'baseFare': 100,
+            'maximumWeightKg': 10,
             'name': 'Kano East to Abuja Garki',
             'originState': 'KANO',
             'destinationState': 'ABUJA',
@@ -156,6 +214,10 @@ void main() {
         routesLoader: () async => <Map<String, dynamic>>[
           <String, dynamic>{
             'id': 'kano-abuja',
+            'status': 'ACTIVE',
+            'customerVisible': true,
+            'baseFare': 100,
+            'maximumWeightKg': 10,
             'name': 'Kano Central to Abuja Main',
             'originState': 'KANO',
             'destinationState': 'ABUJA',
