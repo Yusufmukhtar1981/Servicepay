@@ -84,6 +84,7 @@ class DataPurchaseIntent {
     required double price,
     String? productQuote,
     String? planName,
+    bool preparedOnly = false,
   }) async {
     final storageKey = '$_prefix${await _accountId()}';
     final preceding = _submissions[storageKey];
@@ -126,8 +127,12 @@ class DataPurchaseIntent {
       // Persist before sending: a timeout or screen restart must retain this key.
       await _storage.write(
         storageKey,
-        jsonEncode(
-            {'fingerprint': fingerprint, 'key': key, 'planName': planName}),
+        jsonEncode({
+          'fingerprint': fingerprint,
+          'key': key,
+          'planName': planName,
+          'submitted': !preparedOnly
+        }),
       );
       return key;
     } finally {
@@ -137,6 +142,42 @@ class DataPurchaseIntent {
       completed.complete();
     }
   }
+
+  /// Serialize preparation cancellation against durable submission admission.
+  Future<void> _updatePreparation(String key, {required bool submit}) async {
+    final storageKey = '$_prefix${await _accountId()}';
+    final preceding = _submissions[storageKey];
+    final completed = Completer<void>();
+    _submissions[storageKey] = completed.future;
+    try {
+      if (preceding != null) await preceding;
+      final saved = await _storage.read(storageKey);
+      final existing = saved == null ? null : jsonDecode(saved);
+      if (existing is! Map || existing['key'] != key) {
+        if (submit)
+          throw StateError(
+              'The purchase confirmation expired. Please try again.');
+        return;
+      }
+      if (submit) {
+        await _storage.write(
+            storageKey, jsonEncode({...existing, 'submitted': true}));
+      } else if (existing['submitted'] == false) {
+        // Missing submitted flags are legacy uncertain purchases, never cancel.
+        await _storage.delete(storageKey);
+      }
+    } finally {
+      if (identical(_submissions[storageKey], completed.future)) {
+        _submissions.remove(storageKey);
+      }
+      completed.complete();
+    }
+  }
+
+  Future<void> markSubmitted(String key) =>
+      _updatePreparation(key, submit: true);
+  Future<void> cancelPreparation(String key) =>
+      _updatePreparation(key, submit: false);
 
   Future<void> finish(String key) async {
     final storageKey = '$_prefix${await _accountId()}';
@@ -157,6 +198,7 @@ class DataPurchaseIntent {
         decoded['fingerprint'] is! String) {
       throw StateError('An earlier DATA request cannot be safely recovered.');
     }
+    if (decoded['submitted'] == false) return null;
     return Map<String, dynamic>.from(decoded);
   }
 }

@@ -83,6 +83,33 @@ void main() {
     expect(await buy(tracker()), isNot(keys[0]));
   });
 
+  test(
+      'PIN preparation persists one key and cancellation never discards a submitted intent',
+      () async {
+    final isolated = _MemoryIntentStorage();
+    final intent = DataPurchaseIntent(
+        storage: isolated, accountId: () async => 'pin-customer');
+    Future<String> prepare() => intent.keyForSubmission(
+        network: 'MTN',
+        phone: '08012345678',
+        planCode: 'plan-a',
+        price: 100,
+        preparedOnly: true);
+    final first = await prepare();
+    expect(await intent.pending(), isNull);
+    expect(await prepare(), first);
+    await intent.cancelPreparation(first);
+    expect(isolated.entries, isEmpty);
+    final next = await prepare();
+    expect(next, isNot(first));
+    await intent.markSubmitted(next);
+    await intent.cancelPreparation(next);
+    expect((await intent.pending())!['key'], next);
+    expect(await prepare(), next);
+    await intent.finish(next);
+    expect(await prepare(), isNot(next));
+  });
+
   test('two simultaneous screens cannot issue two keys for one intent',
       () async {
     final slowStorage = _SlowIntentStorage();

@@ -34,9 +34,10 @@ void main() {
           storage: storage, accountId: () async => 'test-customer');
       final result = Completer<Map<String, dynamic>>();
       int submits = 0;
+      String? submittedKey;
       await tester.pumpWidget(MaterialApp(
           home: DataScreen(
-          loadBeneficiaries: () async => [],
+        loadBeneficiaries: () async => [],
         purchaseIntent: intent,
         loadPlans: (_) async => {
           'success': true,
@@ -44,7 +45,8 @@ void main() {
             {'code': 'DATA-MTN-test', 'name': '1GB SME', 'price': 100},
           ]
         },
-        purchase: (_) {
+        purchase: (request) {
+          submittedKey = request['idempotencyKey'] as String;
           submits++;
           return result.future;
         },
@@ -55,11 +57,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Buy Data').last);
       await tester.pumpAndSettle();
+      final confirmedKey = storage.entries.values.single;
+      expect(confirmedKey, contains('"submitted":false'));
       await tester.enterText(find.byType(TextField).last, '0000');
       await tester.tap(find.text('Confirm'));
       await tester.tap(find.text('Confirm'), warnIfMissed: false);
       await tester.pump(const Duration(milliseconds: 400));
       expect(submits, 1);
+      expect(confirmedKey, contains(submittedKey!));
       expect(find.text('Processing your data purchase...'), findsOneWidget);
       expect(find.text('Data Purchase Successful'), findsNothing);
       expect(find.byType(ModalBarrier), findsWidgets);

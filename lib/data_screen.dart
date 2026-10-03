@@ -431,6 +431,7 @@ class _DataScreenState extends State<DataScreen> {
       isBuyingData = true;
       _phase = PurchasePhase.confirming;
     });
+    String? preparedKey;
     try {
       bool confirmationSubmitted = false;
       final bool? confirmed = await showDialog<bool>(
@@ -493,6 +494,18 @@ class _DataScreenState extends State<DataScreen> {
       );
 
       if (confirmed != true || !mounted) return;
+      // Bind the confirmed intent before PIN; never create a second key later.
+      final String idempotencyKey = await _purchaseIntent.keyForSubmission(
+        network: network,
+        phone: phone,
+        planCode: code,
+        price: price,
+        productQuote: productQuote,
+        planName: name,
+        preparedOnly: true,
+      );
+      preparedKey = idempotencyKey;
+      if (!mounted) return;
       String transactionPin = '';
       final TextEditingController transactionPinController =
           TextEditingController();
@@ -560,14 +573,7 @@ class _DataScreenState extends State<DataScreen> {
         return;
       }
 
-      final String idempotencyKey = await _purchaseIntent.keyForSubmission(
-        network: network,
-        phone: phone,
-        planCode: code,
-        price: price,
-        productQuote: productQuote,
-        planName: name,
-      );
+      await _purchaseIntent.markSubmitted(idempotencyKey);
       _pendingKey = idempotencyKey;
       final Map<String, dynamic> result = widget.purchase != null
           ? await widget.purchase!({
@@ -610,6 +616,9 @@ class _DataScreenState extends State<DataScreen> {
               : _pendingMessage,
           isError: _pendingKey == null);
     } finally {
+      if (preparedKey != null) {
+        await _purchaseIntent.cancelPreparation(preparedKey);
+      }
       if (mounted)
         setState(() {
           isBuyingData = false;

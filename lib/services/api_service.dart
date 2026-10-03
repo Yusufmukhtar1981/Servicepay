@@ -53,12 +53,17 @@ class ApiService {
       http.Response response) {
     final result = _handleResponse(response);
     final raw = result['beneficiaries'];
-    if (response.statusCode < 200 || response.statusCode >= 300 ||
-        result['success'] != true || raw is! List) {
-      throw Exception("Saved numbers couldn't load. You can still enter a number manually.");
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        result['success'] != true ||
+        raw is! List) {
+      throw Exception(
+          "Saved numbers couldn't load. You can still enter a number manually.");
     }
-    return raw.whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e)).toList();
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   static Future<Map<String, dynamic>> saveBeneficiary({
@@ -258,9 +263,13 @@ class ApiService {
     required String transactionPin,
     String? biometricGrant,
     String? deviceId,
-    String? idempotencyKey,
+    required String idempotencyKey,
     String? productQuote,
   }) async {
+    if (idempotencyKey.trim().isEmpty || idempotencyKey.length > 128) {
+      throw StateError(
+          'Unable to complete your data purchase. Please try again.');
+    }
     final String token = await _getAuthToken();
 
     final http.Response response = await http
@@ -272,13 +281,14 @@ class ApiService {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Authorization': 'Bearer $token',
-            if (idempotencyKey != null && idempotencyKey.isNotEmpty)
-              'Idempotency-Key': idempotencyKey,
+            'Idempotency-Key': idempotencyKey,
+            'X-Idempotency-Key': idempotencyKey,
           },
           body: jsonEncode({
             'network': network.trim(),
             'phone': phone.trim(),
             'planCode': planCode.trim(),
+            'idempotencyKey': idempotencyKey,
             'amount': amount,
             if (productQuote != null && productQuote.isNotEmpty)
               'productQuote': productQuote,
@@ -289,7 +299,18 @@ class ApiService {
         )
         .timeout(requestTimeout);
 
-    return _handleResponse(response);
+    final result = _handleResponse(response);
+    if (result['code'] == 'IDEMPOTENCY_KEY_REQUIRED' ||
+        result['code'] == 'INVALID_IDEMPOTENCY_KEY' ||
+        result['code'] == 'IDEMPOTENCY_KEY_CONFLICT' ||
+        RegExp(r'idempotency', caseSensitive: false)
+            .hasMatch(result['message']?.toString() ?? '')) {
+      return {
+        ...result,
+        'message': 'Unable to complete your data purchase. Please try again.'
+      };
+    }
+    return result;
   }
 
   /// Recorded status only; never recreates or redispatches a provider purchase.
