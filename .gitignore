@@ -7,3 +7,9 @@ build/
 backend/.env
 .env
 .replit
+
+# Production Android upload-signing credentials are local only.
+android/key.properties
+android/**/*.jks
+android/**/*.keystore
+android/local.properties

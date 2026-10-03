@@ -14,6 +14,7 @@ import 'package:servicepay_app/admin/executive_management_screen.dart';
 import 'package:servicepay_app/admin/svp_management_screen.dart';
 import 'package:servicepay_app/main_navigation.dart' as customer_navigation;
 import 'package:servicepay_app/login_routing.dart';
+import 'package:servicepay_app/widgets/deferred_screen.dart';
 
 void main() {
   test('live operations use the backend availability contract', () {
@@ -67,21 +68,26 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({'auth_token': 'test-token'});
   });
-  test('SVP authentication destination is the dedicated command center', () {
-    final home = authenticatedHomeForRole('SVP');
+  test('SVP authentication destination is the dedicated command center',
+      () async {
+    final destination = authenticatedHomeForRole('SVP') as DeferredScreen;
+    await destination.load();
+    final home = destination.builder();
     expect(home, isA<SvpCommandCenterScreen>());
     expect(home, isNot(isA<AdminMainNavigation>()));
     expect(home, isNot(isA<customer_navigation.MainNavigation>()));
   });
 
-  test('all legitimate Head Office roles enter the real Admin shell', () {
+  test('all legitimate Head Office roles enter the real Admin shell', () async {
     for (final role in const [
       'HEAD_OFFICE',
       'HEAD_OFFICE_ADMIN',
       'SUPER_ADMIN',
       'ADMIN',
     ]) {
-      expect(authenticatedHomeForRole(role), isA<AdminMainNavigation>());
+      final destination = authenticatedHomeForRole(role) as DeferredScreen;
+      await destination.load();
+      expect(destination.builder(), isA<AdminMainNavigation>());
     }
   });
 
