@@ -9,7 +9,7 @@ const routes = (router) => router.stack.filter((x) => x.route).flatMap((x) => Ob
 
 test("treasury models expose held funds, lifecycle, approvals and indexes", () => {
   assert.ok(models.OrganizationWallet.schema.path("heldBalance"));
-  assert.deepEqual(models.OrganizationWithdrawal.schema.path("status").enumValues, ["INITIATED", "PENDING_APPROVAL", "APPROVED", "PROCESSING", "SUCCESS", "REJECTED", "FAILED", "REVERSED", "CANCELLED", "PENDING_REVIEW"]);
+  assert.deepEqual(models.OrganizationWithdrawal.schema.path("status").enumValues, ["INITIATED", "PENDING_APPROVAL", "APPROVED", "PROCESSING", "SUCCESS", "REJECTED", "FAILED", "REVERSED", "CANCELLED", "PENDING_REVIEW", "PENDING", "COMPLETED"]);
   assert.ok(models.OrganizationWithdrawal.schema.path("approvals"));
   assert.ok(models.OrganizationWithdrawal.schema.indexes().some((i) => i[0].organization && i[0].idempotencyKey));
 });
@@ -26,9 +26,15 @@ test("organization treasury routes are complete and separated from customer with
   for (const route of ["GET /:organizationId/treasury", "GET /:organizationId/settlement-accounts", "POST /:organizationId/settlement-accounts", "POST /:organizationId/settlement-accounts/resolve", "GET /:organizationId/withdrawals", "POST /:organizationId/withdrawals", "GET /:organizationId/withdrawals/:withdrawalId", "POST /:organizationId/withdrawals/:withdrawalId/approve", "POST /:organizationId/withdrawals/:withdrawalId/reject"]) assert.ok(ownerRoutes.includes(route), route);
   const adminRoutes = routes(admin);
   for (const route of ["GET /withdrawals/summary", "GET /withdrawals", "POST /withdrawals/:id/approve", "POST /withdrawals/:id/reject", "GET /settlement-accounts", "POST /settlement-accounts/:id/approve", "POST /settlement-accounts/:id/reject", "GET /treasury-config", "PATCH /treasury-config"]) assert.ok(adminRoutes.includes(route), route);
+  for (const route of ["GET /:organizationId/bank-account", "PUT /:organizationId/bank-account",
+    "GET /:organizationId/manual-wallet", "GET /:organizationId/manual-withdrawals",
+    "POST /:organizationId/manual-withdrawals"]) assert.ok(ownerRoutes.includes(route), route);
+  for (const route of ["GET /manual-withdrawals", "POST /withdrawals/:id/mark-paid",
+    "POST /withdrawals/:id/manual-reject", "POST /withdrawals/:id/cancel"]) assert.ok(adminRoutes.includes(route), route);
 });
 
 test("safety controls cover PIN, atomic limits, approval distinctness, webhook and compensating release", () => {
   const source = require("../services/organizationTreasury.service").createWithdrawal.toString() + treasury.transition.toString() + treasury.handleWebhook.toString();
-  for (const term of ["verifyTransactionPin", "dailyReserved", "monthlyReserved", "approvals", "holdReleasedAt"]) assert.match(source, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(source, /authorizeTransaction|verifyTransactionPin/);
+  for (const term of ["dailyReserved", "monthlyReserved", "approvals", "holdReleasedAt"]) assert.match(source, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });

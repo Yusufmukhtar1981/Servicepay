@@ -2,7 +2,10 @@ const express = require("express");
 const { protect } = require("../middleware/auth.middleware");
 const { loadStaffRole, requireAnyPermission } = require("../middleware/staffPermission.middleware");
 const { Organization } = require("../models/organizations.models");
+const { OrganizationWithdrawal } = require("../models/organizations.models");
+const mongoose = require("mongoose");
 const c = require("../controllers/organizations.controller");
+const manualWithdrawal = require("../controllers/organizationManualWithdrawal.controller");
 const router = express.Router();
 router.use(protect);
 const normalizeAdminRole = (value) => String(value || "")
@@ -63,10 +66,22 @@ const statusGate = async (req, res, next) => {
 };
 router.get("/summary", gate("organizations.view"), c.adminSummary);
 router.get("/withdrawals/summary", gate("organizations.withdrawals.view"), c.adminWithdrawalsSummary);
+router.get("/manual-withdrawals", gate("organizations.withdrawals.view"), manualWithdrawal.adminList);
+router.post("/withdrawals/:id/mark-paid", gate("organizations.withdrawals.review"), manualWithdrawal.paid);
+router.post("/withdrawals/:id/manual-reject", gate("organizations.withdrawals.review"), manualWithdrawal.reject);
 router.get("/withdrawals", gate("organizations.withdrawals.view"), c.adminWithdrawals);
 router.get("/withdrawals/:id", gate("organizations.withdrawals.view"), c.adminWithdrawalDetail);
 router.post("/withdrawals/:id/approve", criticalGate("organizations.withdrawals.review"), (req, res, next) => { req.body.action = "APPROVE"; return c.adminReviewWithdrawal(req, res, next); });
-router.post("/withdrawals/:id/reject", criticalGate("organizations.withdrawals.review"), (req, res, next) => { req.body.action = "REJECT"; return c.adminReviewWithdrawal(req, res, next); });
+router.post("/withdrawals/:id/reject", gate("organizations.withdrawals.review"), async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ success: false, message: "Withdrawal not found." });
+    if (await OrganizationWithdrawal.exists({ _id: req.params.id, provider: "MANUAL" })) return manualWithdrawal.reject(req, res);
+    return criticalGate("organizations.withdrawals.review")(req, res, () => {
+      req.body.action = "REJECT"; return c.adminReviewWithdrawal(req, res, next);
+    });
+  } catch (e) { return next(e); }
+});
+router.post("/withdrawals/:id/cancel", gate("organizations.withdrawals.review"), manualWithdrawal.reject);
 router.get("/settlement-accounts", gate("organizations.settlement_accounts.view"), c.adminSettlementAccounts);
 router.post("/settlement-accounts/:id/approve", criticalGate("organizations.settlement_accounts.review"), (req, res, next) => { req.body.status = "VERIFIED"; return c.adminReviewSettlementAccount(req, res, next); });
 router.post("/settlement-accounts/:id/reject", criticalGate("organizations.settlement_accounts.review"), (req, res, next) => { req.body.status = "REJECTED"; return c.adminReviewSettlementAccount(req, res, next); });

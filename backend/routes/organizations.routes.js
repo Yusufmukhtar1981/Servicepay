@@ -2,6 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const { protect, customerOnly, adminOnly } = require("../middleware/auth.middleware");
 const c = require("../controllers/organizations.controller");
+const manualWithdrawal = require("../controllers/organizationManualWithdrawal.controller");
 const router = express.Router();
 const organizationUpload = multer({
   storage: multer.memoryStorage(),
@@ -89,7 +90,14 @@ router.get("/:organizationId/settlement-accounts", c.settlementAccounts);
 router.post("/:organizationId/settlement-accounts", c.settlementAccounts);
 router.post("/:organizationId/settlement-accounts/resolve", c.resolveSettlementAccount);
 router.get("/:organizationId/withdrawals", c.withdrawalList);
-router.post("/:organizationId/withdrawals", c.withdraw);
+router.get("/:organizationId/bank-account", manualWithdrawal.bank);
+router.put("/:organizationId/bank-account", manualWithdrawal.saveBank);
+router.get("/:organizationId/manual-wallet", manualWithdrawal.wallet);
+router.get("/:organizationId/manual-withdrawals", manualWithdrawal.list);
+router.post("/:organizationId/manual-withdrawals", manualWithdrawal.create);
+// All new Organization withdrawals are manual. Legacy recovery routes remain
+// available only for genuinely admitted legacy provider withdrawals.
+router.post("/:organizationId/withdrawals", manualWithdrawal.create);
 router.get("/:organizationId/withdrawals/:withdrawalId", c.withdrawalDetail);
 router.post("/:organizationId/withdrawals/:withdrawalId/approve", c.approveWithdrawal);
 router.post("/:organizationId/withdrawals/:withdrawalId/reject", c.rejectWithdrawal);

@@ -95,8 +95,10 @@ async function createWithdrawal(req, org) {
 }
 
 async function transition(req, id, target, admin = false) {
+  if (await OrganizationWithdrawal.exists({ _id: id, provider: "MANUAL" })) throw error("Manual withdrawals require ServicePay Admin's manual payout workflow.", 409);
   const query = { _id: id, status: { $in: target === "REJECTED" ? ["INITIATED", "PENDING_APPROVAL", "APPROVED"] : ["PENDING_APPROVAL", "APPROVED"] } };
   const w = await OrganizationWithdrawal.findOne(query);
+  if (w?.provider === "MANUAL") throw error("Manual withdrawals require ServicePay Admin's manual payout workflow.", 409);
   if (!w) throw error("Withdrawal is not awaiting this action.", 409);
   const org = await Organization.findOne({ _id: w.organization, status: "VERIFIED" });
   if (!org) throw error("Organization is not operational.", 409);
@@ -147,6 +149,7 @@ const providerStatus = (payload, code) => {
   return "PROCESSING";
 };
 async function finalize(withdrawal, status, reason) {
+  if (withdrawal.provider === "MANUAL") throw error("Manual withdrawals cannot be settled by a provider.", 409);
   const session = await mongoose.startSession(); let updated;
   try { await session.withTransaction(async () => {
     const current = await OrganizationWithdrawal.findOne({ _id: withdrawal._id }).session(session);
@@ -198,6 +201,7 @@ async function reverseSuccessful(withdrawalId, reason = "Provider reversal") {
   }); } finally { await session.endSession(); } return updated || await OrganizationWithdrawal.findById(withdrawalId);
 }
 async function dispatch(withdrawalId) {
+  if (await OrganizationWithdrawal.exists({ _id: withdrawalId, provider: "MANUAL" })) throw error("Manual withdrawals never dispatch to a payment provider.", 409);
   if (!providerReady()) return { withdrawal: await OrganizationWithdrawal.findById(withdrawalId), configurationRequired: true };
   const withdrawal = await OrganizationWithdrawal.findById(withdrawalId).populate({ path: "settlementAccount", select: "+accountNumber" });
   if (!withdrawal) throw error("Withdrawal not found.", 404);
@@ -213,6 +217,7 @@ async function dispatch(withdrawalId) {
   } catch (_) { return { withdrawal: await OrganizationWithdrawal.findById(withdrawal._id), configurationRequired: false, ambiguous: true }; }
 }
 async function requery(withdrawalId) {
+  if (await OrganizationWithdrawal.exists({ _id: withdrawalId, provider: "MANUAL" })) throw error("Manual withdrawals do not use provider requery.", 409);
   const now = new Date();
   const w = await OrganizationWithdrawal.findOneAndUpdate({ _id: withdrawalId, status: { $in: ["PROCESSING", "PENDING_REVIEW"] }, providerReference: { $nin: [null, ""] }, $or: [{ requeryLeaseUntil: null }, { requeryLeaseUntil: { $exists: false } }, { requeryLeaseUntil: { $lte: now } }] }, { $set: { requeryLeaseUntil: new Date(now.getTime() + 60000), lastRequeryAt: now }, $inc: { requeryAttempts: 1 } }, { new: true });
   if (!w) return { withdrawal: await OrganizationWithdrawal.findById(withdrawalId), alreadyRunning: true };

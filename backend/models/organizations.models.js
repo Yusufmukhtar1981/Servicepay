@@ -167,6 +167,25 @@ const settlementAccountSchema = new Schema({ organization: oid("Organization", t
 settlementAccountSchema.index({ organization: 1, bankCode: 1, accountNumber: 1 }, { unique: true });
 settlementAccountSchema.index({ organization: 1, status: 1, createdAt: -1 });
 const withdrawalSchema = new Schema({ organization: oid("Organization", true), requestedBy: oid("User", true), approvedBy: oid("User"), approvals: [{ user: oid("User"), role: String, decision: { type: String, enum: ["APPROVE", "REJECT"] }, at: { type: Date, default: Date.now }, reason: String }], settlementAccount: oid("OrganizationSettlementAccount", true), amount: { ...money, required: true }, fee: { ...money, default: 0 }, totalDebit: { ...money, required: true }, currency: { type: String, default: "NGN" }, reference: { type: String }, idempotencyKey: { type: String }, narration: { type: String, maxlength: 200 }, destinationSnapshot: { bankCode: String, bankName: String, accountName: String, accountNumberLast4: String }, status: { type: String, enum: ["INITIATED", "PENDING_APPROVAL", "APPROVED", "PROCESSING", "SUCCESS", "REJECTED", "FAILED", "REVERSED", "CANCELLED", "PENDING_REVIEW"], default: "INITIATED", index: true }, provider: { type: String, default: "SQUAD" }, providerReference: String, providerTransactionId: String, failureReason: String, rejectionReason: String, recoveryDebt: { amount: Number, reason: String, detectedAt: Date }, holdReleasedAt: Date, debitFinalizedAt: Date, requeryLeaseUntil: Date, requeryAttempts: { type: Number, default: 0 }, lastRequeryAt: Date, snapshot: Schema.Types.Mixed }, timestamps);
+// Manual withdrawals reuse the existing accounting/audit collections. Bank
+// details are private by default and are never exposed by generic org queries.
+organizationSchema.add({
+  manualWithdrawalBank: { type: new Schema({
+    accountName: { type: String, required: true, maxlength: 160 },
+    accountNumber: { type: String, required: true, match: /^\d{10}$/ },
+    bankName: { type: String, required: true, maxlength: 160 },
+    updatedBy: oid("User"), updatedAt: Date,
+  }, { _id: false }), select: false, default: undefined },
+});
+withdrawalSchema.path("status").enum("PENDING", "COMPLETED");
+withdrawalSchema.path("settlementAccount").required(function () {
+  return this.provider !== "MANUAL";
+});
+withdrawalSchema.add({
+  "destinationSnapshot.accountNumber": { type: String, select: false },
+  completedAt: Date,
+  manualPaymentConfirmation: { type: Schema.Types.Mixed, select: false },
+});
 withdrawalSchema.index({ organization: 1, idempotencyKey: 1 }, { unique: true, partialFilterExpression: { idempotencyKey: { $type: "string" } } });
 withdrawalSchema.index({ organization: 1, reference: 1 }, { unique: true, partialFilterExpression: { reference: { $type: "string" } } });
 withdrawalSchema.index({ organization: 1, status: 1, createdAt: -1 });
