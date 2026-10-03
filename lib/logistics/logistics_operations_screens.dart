@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'logistics_api.dart';
@@ -664,16 +666,42 @@ class _RiderInterstateDeliveriesScreenState
     extends State<RiderInterstateDeliveriesScreen> {
   late final LogisticsApi _api = widget.api ?? LogisticsApi();
   late Future<List<Map<String, dynamic>>> _future;
+  Timer? _refreshTimer;
   @override
   void initState() {
     super.initState();
     _future = _api.list('rider', 'shipments');
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _reload();
+    });
   }
 
-  void _reload() => setState(() => _future = _api.list('rider', 'shipments'));
+  void _reload() {
+    final Future<List<Map<String, dynamic>>> refreshed =
+        _api.list('rider', 'shipments');
+    setState(() {
+      _future = refreshed;
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('Interstate deliveries')),
+      appBar: AppBar(
+        title: const Text('Interstate deliveries'),
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'Refresh interstate assignments',
+            onPressed: _reload,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
           future: _future,
           builder: (_, snap) {
@@ -683,8 +711,16 @@ class _RiderInterstateDeliveriesScreenState
               return _ErrorRetry(
                   error: snap.error.toString(), onRetry: _reload);
             if (snap.data!.isEmpty)
-              return const Center(
-                  child: Text('No interstate deliveries assigned.'));
+              return RefreshIndicator(
+                onRefresh: () async => _reload(),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const <Widget>[
+                    SizedBox(height: 180),
+                    Center(child: Text('No interstate deliveries assigned.')),
+                  ],
+                ),
+              );
             return RefreshIndicator(
                 onRefresh: () async => _reload(),
                 child: ListView.builder(
@@ -721,8 +757,115 @@ class _RiderShipmentCard extends StatelessWidget {
           onPressed: id.isEmpty ? null : () => _complete(context, id),
           child: const Text('OTP delivery'),
         ),
+        onTap: id.isEmpty ? null : () => _openDetails(context, id),
       ),
     );
+  }
+
+  Future<void> _openDetails(BuildContext context, String id) async {
+    try {
+      final Map<String, dynamic> root = await api.request(
+        'GET',
+        '/rider/logistics/interstate/shipments/${Uri.encodeComponent(id)}',
+      );
+      final Map<String, dynamic> shipment =
+          LogisticsApi.map(root['shipment']);
+      final List<Map<String, dynamic>> history =
+          LogisticsApi.listOf(root['history']);
+      if (!context.mounted) return;
+      final Map<String, dynamic> sender =
+          LogisticsApi.map(shipment['sender']);
+      final Map<String, dynamic> receiver =
+          LogisticsApi.map(shipment['receiver']);
+      final Map<String, dynamic> parcel =
+          LogisticsApi.map(shipment['parcel']);
+      final String status = logisticsText(shipment['status'], '').toUpperCase();
+      final List<String> statusActions = <String>[
+        if (status == 'ASSIGNED' ||
+            status == 'PICKUP_ASSIGNED' ||
+            status == 'AWAITING_PICKUP')
+          'PICKED_UP',
+        if (status == 'PICKED_UP') 'RECEIVED_AT_ORIGIN_HUB',
+        if (status == 'OUT_FOR_DELIVERY') 'DELIVERY_ATTEMPTED',
+      ];
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext ctx) => AlertDialog(
+          title: Text(
+              logisticsText(shipment['trackingNumber'], 'Interstate delivery')),
+          content: SizedBox(
+            width: 500,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text('INTERSTATE',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                  const SizedBox(height: 8),
+                  Text('Tracking: ${logisticsText(shipment['trackingNumber'])}'),
+                  Text(
+                      'Origin: ${logisticsText(shipment['originState'] ?? shipment['origin'])}'),
+                  Text(
+                      'Destination: ${logisticsText(shipment['destinationState'] ?? shipment['destination'])}'),
+                  Text(
+                      'Receiver: ${logisticsText(receiver['name'] ?? shipment['receiverName'])}'),
+                  Text(
+                      'Receiver phone: ${logisticsText(receiver['phone'] ?? shipment['receiverPhone'])}'),
+                  Text(
+                      'Parcel: ${logisticsText(parcel['description'] ?? shipment['parcelDescription'])}'),
+                  Text(
+                      'Quantity: ${logisticsText(parcel['quantity'])} · Weight: ${logisticsText(parcel['weightKg'])} kg'),
+                  Text(
+                      'Sender: ${logisticsText(sender['name'])} · ${logisticsText(sender['phone'])}'),
+                  Text('Current status: ${status.replaceAll('_', ' ')}'),
+                  const Divider(),
+                  const Text('Shipment history',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  ...history.map((Map<String, dynamic> event) => ListTile(
+                        dense: true,
+                        title: Text(logisticsText(event['status'])
+                            .replaceAll('_', ' ')),
+                        subtitle: Text(logisticsText(
+                            event['createdAt'] ?? event['timestamp'])),
+                      )),
+                ],
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            ...statusActions.map((String next) => TextButton(
+                  onPressed: () async {
+                    try {
+                      await api.request(
+                        'PATCH',
+                        '/rider/logistics/interstate/shipments/'
+                            '${Uri.encodeComponent(id)}/status',
+                        body: <String, dynamic>{'status': next},
+                      );
+                      onChanged();
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    } on LogisticsApiException catch (error) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text(error.message)));
+                      }
+                    }
+                  },
+                  child: Text(next.replaceAll('_', ' ')),
+                )),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close')),
+          ],
+        ),
+      );
+    } on LogisticsApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
   }
 
   Future<void> _complete(BuildContext context, String id) async {

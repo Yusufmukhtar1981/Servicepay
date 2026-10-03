@@ -279,6 +279,39 @@ abstract final class InterstateLogisticsContracts {
     return 'We could not load configured routes ($statusCode). Please retry.';
   }
 
+  static String customerStatusLabel(dynamic raw) {
+    switch ('$raw'.toUpperCase()) {
+      case 'RECEIVED_AT_ORIGIN_HUB':
+      case 'RECEIVED_AT_SERVICEPAY':
+        return 'Received at ServicePay office';
+      case 'VERIFIED_AT_ORIGIN_HUB':
+        return 'Parcel checked at origin office';
+      case 'READY_FOR_INTERSTATE_DISPATCH':
+        return 'Preparing to travel';
+      case 'IN_TRANSIT':
+        return 'On the way';
+      case 'ARRIVED_AT_DESTINATION_HUB':
+        return 'Arrived at destination office';
+      case 'DESTINATION_HUB_VERIFIED':
+        return 'Ready for local delivery';
+      case 'OUT_FOR_DELIVERY':
+        return 'Out for delivery';
+      case 'DELIVERY_ATTEMPTED':
+        return 'Delivery attempted';
+      case 'READY_FOR_COLLECTION':
+        return 'Ready for collection';
+      case 'DELIVERED':
+        return 'Delivered';
+      case 'RETURN_INITIATED':
+      case 'RETURNED':
+        return 'Return in progress';
+      case 'CANCELLED':
+        return 'Cancelled';
+      default:
+        return 'Registered with ServicePay';
+    }
+  }
+
   static String _label(String key) => key
       .replaceAllMapped(
           RegExp(r'([a-z])([A-Z])'), (Match m) => '${m[1]} ${m[2]}')
@@ -1188,13 +1221,6 @@ class _TrackingResult extends StatelessWidget {
   const _TrackingResult({required this.shipment});
   final Map<String, dynamic> shipment;
   String _text(dynamic value) => '${value ?? ''}'.trim();
-  String _pretty(String v) => v
-      .replaceAll('_', ' ')
-      .toLowerCase()
-      .split(' ')
-      .map((String e) =>
-          e.isEmpty ? e : '${e[0].toUpperCase()}${e.substring(1)}')
-      .join(' ');
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> timeline = _LogisticsApi.list(
@@ -1215,7 +1241,9 @@ class _TrackingResult extends StatelessWidget {
                 const SizedBox(height: 12),
                 _line('Route',
                     '${_text(shipment['origin'] ?? shipment['originState'])} → ${_text(shipment['destination'] ?? shipment['destinationState'])}'),
-                _line('Current status', _pretty(_text(shipment['status']))),
+                _line('Current status',
+                    InterstateLogisticsContracts.customerStatusLabel(
+                        shipment['status'])),
                 _line(
                     'Expected delivery',
                     _text(shipment['expectedDelivery'] ??
@@ -1234,7 +1262,9 @@ class _TrackingResult extends StatelessWidget {
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.radio_button_checked,
                           color: ServicePayColors.brand),
-                      title: Text(_pretty(_text(event['status']))),
+                      title: Text(
+                          InterstateLogisticsContracts.customerStatusLabel(
+                              event['status'])),
                       subtitle: Text(_text(event['timestamp'] ??
                           event['createdAt'] ??
                           event['date'])))),
@@ -1353,16 +1383,30 @@ class _MyInterstateShipmentsScreenState
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w800)),
                             subtitle: Text(
-                                '${shipment['originState'] ?? shipment['origin'] ?? ''} → ${shipment['destinationState'] ?? shipment['destination'] ?? ''}\n${shipment['status'] ?? 'Status unavailable'}'),
+                                '${shipment['originState'] ?? shipment['origin'] ?? ''} → ${shipment['destinationState'] ?? shipment['destination'] ?? ''}\nReceiver: ${_LogisticsApi.map(shipment['receiver'])['name'] ?? shipment['receiverName'] ?? '—'}\n${InterstateLogisticsContracts.customerStatusLabel(shipment['status'])}'),
                             isThreeLine: true,
-                            trailing: IconButton(
-                              icon: const Icon(Icons.location_searching),
-                              tooltip: 'Track shipment',
-                              onPressed: () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                Text(
+                                  '${shipment['createdAt'] ?? shipment['createdOn'] ?? ''}'
+                                      .split('T')
+                                      .first,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.location_searching),
+                                  tooltip: 'Track shipment',
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
                                       builder: (_) => InterstateTrackingScreen(
-                                          initialTracking:
-                                              '${shipment['trackingNumber'] ?? ''}'))),
+                                        initialTracking:
+                                            '${shipment['trackingNumber'] ?? ''}',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             onTap: () {
                               final String id =

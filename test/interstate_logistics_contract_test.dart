@@ -122,4 +122,20 @@ void main() {
       'We could not load configured routes (502). Please retry.',
     );
   });
+
+  test('office receipt and hub statuses stay customer friendly', () {
+    expect(
+      InterstateLogisticsContracts.customerStatusLabel(
+          'RECEIVED_AT_ORIGIN_HUB'),
+      'Received at ServicePay office',
+    );
+    expect(
+      InterstateLogisticsContracts.customerStatusLabel('IN_TRANSIT'),
+      'On the way',
+    );
+    expect(
+      InterstateLogisticsContracts.customerStatusLabel('OUT_FOR_DELIVERY'),
+      'Out for delivery',
+    );
+  });
 }

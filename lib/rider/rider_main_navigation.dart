@@ -13,6 +13,7 @@ import 'rider_transaction_pin_screen.dart';
 import 'rider_delivery_alert_service.dart';
 import 'rider_auth_session.dart';
 import '../logistics/logistics_operations_screens.dart';
+import '../logistics/logistics_api.dart';
 
 class RiderApi {
   static const String baseUrl = 'https://api.servicepay.ng/api';
@@ -298,11 +299,13 @@ class _RiderMainNavigationState extends State<RiderMainNavigation> {
   void initState() {
     super.initState();
 
-    pages = const <Widget>[
+    pages = <Widget>[
       KekeDriverScreen(),
       RiderDeliveriesScreen(),
       RiderEarningsScreen(),
-      RiderInterstateDeliveriesScreen(),
+      RiderInterstateDeliveriesScreen(
+        api: LogisticsApi(tokenLoader: RiderApi.getToken),
+      ),
       RiderProfileScreen(),
     ];
     RiderDeliveryAlertService.activate(
