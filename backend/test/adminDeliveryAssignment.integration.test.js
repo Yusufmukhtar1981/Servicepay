@@ -115,7 +115,7 @@ test.beforeEach(async () => {
   await Promise.all(models.map((model) => model.collection.deleteMany({})));
 });
 
-test("available-riders returns only verified online riders and a stable empty list", async () => {
+test("manual rider list returns verified active online riders first and offline fallback", async () => {
   const headOffice = await createUser("HEAD_OFFICE");
   const branch = await Branch.create({
     code: "AR",
@@ -150,8 +150,8 @@ test("available-riders returns only verified online riders and a stable empty li
   });
   assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.equal(result.body.success, true);
-  assert.equal(result.body.data.count, 1);
-  assert.equal(result.body.riders.length, 1);
+  assert.equal(result.body.data.count, 2);
+  assert.equal(result.body.riders.length, 2);
   assert.equal(String(result.body.riders[0]._id), String(available._id));
   assert.equal(result.body.riders[0].phone, undefined);
   assert.equal(result.body.riders[0].email, undefined);
@@ -165,8 +165,8 @@ test("available-riders returns only verified online riders and a stable empty li
     path: `/api/admin/deliveries/${delivery._id}/available-riders`,
   });
   assert.equal(empty.status, 200, JSON.stringify(empty.body));
-  assert.deepEqual(empty.body.riders, []);
-  assert.equal(empty.body.data.count, 0);
+  assert.equal(empty.body.data.count, 2);
+  assert.ok(empty.body.riders.every(rider => rider.availabilityStatus === "OFFLINE"));
 });
 
 test("delivery assignment routes reject unauthenticated and unauthorized staff", async () => {

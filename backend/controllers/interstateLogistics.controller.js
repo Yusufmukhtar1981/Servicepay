@@ -17,6 +17,7 @@ const LogisticsQuote = require("../models/logisticsQuote.model");
 const { calculateInterstateQuote } = require("../services/interstatePricing.service");
 const { sendDeliveryOtp } = require("../services/logisticsSms.service");
 const { authorizeTransaction, BIOMETRIC_OPERATIONS } = require("../services/biometric.service");
+const { trackingNumber } = require("../services/interstateTracking.service");
 
 // Admission middleware is not atomic with a wallet debit. Preserve held funds
 // at the actual update that spends the customer's balance.
@@ -40,7 +41,7 @@ const transitions = {
   OUT_FOR_DELIVERY: ["DELIVERY_ATTEMPTED", "DELIVERED", "FAILED_DELIVERY"], DELIVERY_ATTEMPTED: ["OUT_FOR_DELIVERY", "FAILED_DELIVERY"],
   FAILED_DELIVERY: ["RETURN_INITIATED"], RETURN_INITIATED: ["RETURN_IN_TRANSIT"], RETURN_IN_TRANSIT: ["RETURNED"],
 };
-const branchAllowed = (user, branchId) => user.role === "HEAD_OFFICE" || String(user.branchId || "") === String(branchId);
+const branchAllowed = (user, branchId) => ["HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"].includes(user.role) || String(user.branchId || "") === String(branchId);
 const tracking = () => `SPX-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
 const ref = () => `INTERSTATE-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 const logisticsError = (message, status, code) => Object.assign(new Error(message), { status, code });
@@ -184,7 +185,7 @@ exports.createShipment = async (req, res, retryAttempt = 0) => {
       error.status = 409; error.code = "QUOTE_STALE";
       throw error;
     }
-    const [shipment] = await Shipment.create([{ customerId: req.user._id, routeId: route._id, originBranchId: route.originBranchId, destinationBranchId: route.destinationBranchId, sender: { ...b.sender, state: route.originState }, receiver: { ...b.receiver, state: route.destinationState }, pickupMethod: b.pickupMethod, deliveryMethod: b.deliveryMethod, parcel: { ...b.parcel, dimensions: input.dimensions, specialHandlingNote: b.parcel.specialHandlingNote ?? b.parcel.specialHandling ?? "" }, serviceType: b.serviceType, protection: !!b.protection, quote: { routeVersion: savedQuote.routeVersion, breakdown: quote.breakdown, total: quote.total, expectedDelivery: quote.expectedDelivery }, status: "AWAITING_PAYMENT" }], { session });
+    const [shipment] = await Shipment.create([{ customerId: req.user._id, trackingNumber: trackingNumber(), orderReference: ref(), createdBy: req.user._id, routeId: route._id, originBranchId: route.originBranchId, destinationBranchId: route.destinationBranchId, sender: { ...b.sender, state: route.originState }, receiver: { ...b.receiver, state: route.destinationState }, pickupMethod: b.pickupMethod, deliveryMethod: b.deliveryMethod, parcel: { ...b.parcel, dimensions: input.dimensions, specialHandlingNote: b.parcel.specialHandlingNote ?? b.parcel.specialHandling ?? "" }, serviceType: b.serviceType, protection: !!b.protection, quote: { routeVersion: savedQuote.routeVersion, breakdown: quote.breakdown, total: quote.total, expectedDelivery: quote.expectedDelivery }, status: "AWAITING_PAYMENT" }], { session });
     await History.create([{ shipmentId: shipment._id, status: "AWAITING_PAYMENT", actorId: req.user._id, actorRole: req.user.role, branchId: route.originBranchId, note: "Shipment created" }], { session });
     await session.commitTransaction();
     return res.status(201).json({ success: true, data: shipment, shipment });
@@ -211,7 +212,7 @@ exports.pay = async (req, res) => {
     if (!shipment) throw Object.assign(new Error("Shipment is not available for payment."), { status: 404 });
     const route = await LogisticsRoute.findOne(activeRouteFilter({ _id: shipment.routeId })).session(session);
     if (!route || shipment.quote.routeVersion !== String(route.updatedAt.getTime())) throw Object.assign(new Error("Route pricing changed. Request a new quote before payment."), { status: 409, code: "QUOTE_STALE" });
-    shipment.paymentIdempotencyKey = key; shipment.trackingNumber = tracking(); shipment.paymentStatus = "PAID"; shipment.paidAt = new Date(); shipment.status = "PAID";
+    shipment.paymentIdempotencyKey = key; shipment.paymentStatus = "PAID"; shipment.paidAt = new Date(); shipment.status = "PAID";
     const user = await User.findOneAndUpdate({ _id: req.user._id, status: "ACTIVE", ...spendableWalletFilter(shipment.quote.total) }, { $inc: { walletBalance: -shipment.quote.total, totalTransactions: 1 } }, { new: true, session });
     if (!user) throw Object.assign(new Error("Insufficient wallet balance."), { status: 400 });
     const [transaction] = await Transaction.create([{ reference: ref(), customerId: user._id, branchId: shipment.originBranchId, agentId: user.agentId || null, stateManagerId: user.stateManagerId || null, zonalManagerId: user.zonalManagerId || null, serviceType: "INTERSTATE_LOGISTICS", provider: "SERVICEPAY_LOGISTICS", phone: shipment.receiver.phone, amount: shipment.quote.total, status: "SUCCESSFUL", providerResponse: { shipmentId: shipment._id, trackingNumber: shipment.trackingNumber, paymentMode: "WALLET" } }], { session });
@@ -310,7 +311,7 @@ exports.confirmDeliveryFallback = async (req, res) => {
     const metadata = { shipmentId: shipment._id, trackingNumber: shipment.trackingNumber, method: "AUTHORIZED_FALLBACK", evidenceCount: evidenceUrls.length };
     if (req.user.role === "HEAD_OFFICE") await AdminAuditLog.create({ actorId: req.user._id, actorRole: req.user.role, actorName: req.user.fullName || "", action: "INTERSTATE_DELIVERY_FALLBACK_CONFIRMED", reason, metadata, ipAddress: req.ip || "", userAgent: req.get("user-agent") || "", requestMethod: req.method || "", requestPath: req.originalUrl || "" });
     else await BranchAuditLog.create({ branchId: req.user.branchId, actorId: req.user._id, action: "INTERSTATE_DELIVERY_FALLBACK_CONFIRMED", reason, metadata });
-    await Notification.create({ userId: shipment.customerId, title: "Shipment delivered", message: `Your shipment ${shipment.trackingNumber} has been confirmed as delivered.`, type: "DELIVERY", action: "DELIVERY", referenceId: shipment._id, referenceType: "INTERSTATE_SHIPMENT", reference: shipment.trackingNumber, relatedStatus: "DELIVERED", dedupeKey: `interstate-delivered-${shipment._id}` });
+    if (shipment.customerId) await Notification.create({ userId: shipment.customerId, title: "Shipment delivered", message: `Your shipment ${shipment.trackingNumber} has been confirmed as delivered.`, type: "DELIVERY", action: "DELIVERY", referenceId: shipment._id, referenceType: "INTERSTATE_SHIPMENT", reference: shipment.trackingNumber, relatedStatus: "DELIVERED", dedupeKey: `interstate-delivered-${shipment._id}` });
     return res.json({ success: true, data: shipment, shipment });
   } catch (error) {
     if (session.inTransaction()) await session.abortTransaction();
@@ -337,17 +338,34 @@ exports.sendOtp = async (req, res) => {
   const pepper = String(process.env.LOGISTICS_OTP_PEPPER || "");
   const hash = crypto.createHash("sha256").update(`${code}:${pepper}`).digest("hex");
   await Otp.findOneAndUpdate({ shipmentId: shipment._id }, { otpHash: hash, expiresAt: new Date(Date.now() + 10 * 60000), attempts: prior?.attempts || 0, lastSentAt: new Date(), resendCount: (prior?.resendCount || 0) + 1, providerMessageId: delivery.providerMessageId, verifiedAt: null }, { upsert: true });
-  await Notification.create({ userId: shipment.customerId, title: "Delivery OTP sent", message: `A delivery verification code was sent for ${shipment.trackingNumber}.`, type: "DELIVERY", action: "DELIVERY", referenceId: shipment._id, referenceType: "INTERSTATE_SHIPMENT", reference: shipment.trackingNumber, relatedStatus: shipment.status, dedupeKey: `interstate-otp-${shipment._id}-${Date.now()}` });
+  if (shipment.customerId) await Notification.create({ userId: shipment.customerId, title: "Delivery OTP sent", message: `A delivery verification code was sent for ${shipment.trackingNumber}.`, type: "DELIVERY", action: "DELIVERY", referenceId: shipment._id, referenceType: "INTERSTATE_SHIPMENT", reference: shipment.trackingNumber, relatedStatus: shipment.status, dedupeKey: `interstate-otp-${shipment._id}-${Date.now()}` });
   res.json({ success: true, message: "Delivery OTP was sent to the receiver." });
 };
 exports.verifyDelivery = async (req, res) => {
-  const shipment = await Shipment.findOne({ _id: req.params.id, assignedRiderId: req.user._id, status: "OUT_FOR_DELIVERY" });
-  const otp = await Otp.findOne({ shipmentId: req.params.id }).select("+otpHash");
-  const value = String(req.body.otp || ""); if (!shipment || !otp) return res.status(404).json({ success: false, message: "Delivery OTP is unavailable." });
-  if (otp.expiresAt < new Date() || otp.attempts >= otp.maxAttempts) return res.status(400).json({ success: false, message: "Delivery OTP has expired or is locked." });
-  const pepper = String(process.env.LOGISTICS_OTP_PEPPER || "");
-  if (crypto.createHash("sha256").update(`${value}:${pepper}`).digest("hex") !== otp.otpHash) { otp.attempts += 1; await otp.save(); return res.status(400).json({ success: false, message: "Invalid delivery OTP." }); }
-  otp.verifiedAt = new Date(); await otp.save(); await recordStatus(shipment, "DELIVERED", req, { note: "Receiver OTP verified" }); res.json({ success: true, shipment });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid shipment reference." });
+  const session = await mongoose.startSession();
+  let shipment;
+  try {
+    await session.withTransaction(async () => {
+      const current = await Shipment.findOne({ _id: req.params.id, assignedRiderId: req.user._id, status: "OUT_FOR_DELIVERY" }).session(session);
+      const otp = await Otp.findOne({ shipmentId: req.params.id }).select("+otpHash").session(session);
+      if (!current || !otp) throw Object.assign(new Error("Assigned shipment or delivery OTP is unavailable."), { status: 404 });
+      if (otp.verifiedAt || otp.expiresAt <= new Date() || otp.attempts >= otp.maxAttempts) throw Object.assign(new Error("Delivery OTP has expired, was used or is locked."), { status: 400 });
+      const hash = crypto.createHash("sha256").update(`${String(req.body.otp || "")}:${String(process.env.LOGISTICS_OTP_PEPPER || "")}`).digest("hex");
+      if (otp.otpHash !== hash) {
+        await Otp.updateOne({ _id: otp._id, verifiedAt: null }, { $inc: { attempts: 1 } }, { session });
+        return;
+      }
+      shipment = await Shipment.findOneAndUpdate({ _id: current._id, assignedRiderId: req.user._id, status: "OUT_FOR_DELIVERY" }, { $set: { status: "DELIVERED", deliveredAt: new Date() } }, { new: true, session, runValidators: true });
+      if (!shipment) throw Object.assign(new Error("Assignment changed; delivery was not confirmed."), { status: 409 });
+      await Otp.updateOne({ _id: otp._id, verifiedAt: null }, { $set: { verifiedAt: new Date() } }, { session });
+      await History.create([{ shipmentId: shipment._id, status: "DELIVERED", actorId: req.user._id, actorRole: req.user.role, branchId: shipment.destinationBranchId, note: "Receiver OTP verified", publicVisible: true }], { session });
+    });
+    if (!shipment) return res.status(400).json({ success: false, message: "Invalid delivery OTP." });
+    return res.json({ success: true, shipment });
+  } catch (error) {
+    return res.status(error.status || 500).json({ success: false, message: error.status ? error.message : "Unable to confirm delivery." });
+  } finally { await session.endSession(); }
 };
 const routeFields = [
   "name", "originState", "originBranchId", "destinationState",

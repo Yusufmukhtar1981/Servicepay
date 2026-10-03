@@ -478,6 +478,8 @@ async function startServer() {
   // Do not bind until required startup data safety work is complete.
   await connectDB();
   await require("./services/interstateShipmentIndexMigration.service").migrate();
+  await require("./services/interstateTracking.service").migrateTracking();
+  require("./services/interstateTracking.service").startWorker();
   reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {});
   const edupayAssetReconcileTimer = setInterval(() => reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {}), 60 * 60 * 1000);
   edupayAssetReconcileTimer.unref?.();

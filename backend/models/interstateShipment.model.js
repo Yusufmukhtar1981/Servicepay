@@ -1,7 +1,32 @@
 const mongoose = require("mongoose");
-const partySchema = new mongoose.Schema({ name: String, phone: String, state: String, lga: String, address: String, landmark: { type: String, default: "" } }, { _id: false });
+const partySchema = new mongoose.Schema({ name: String, phone: String, email: String, state: String, lga: String, address: String, landmark: { type: String, default: "" } }, { _id: false });
 const shipmentSchema = new mongoose.Schema({
-  customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+  customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: function () { return this.creationChannel !== "OFFICE"; }, index: true },
+  orderType: { type: String, enum: ["INTERSTATE"], default: "INTERSTATE", immutable: true, index: true },
+  orderReference: { type: String, immutable: true },
+  creationChannel: { type: String, enum: ["CUSTOMER", "OFFICE"], default: "CUSTOMER", immutable: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", immutable: true },
+  officeName: { type: String, immutable: true },
+  officeIdempotencyKey: { type: String, select: false },
+  officeFingerprint: { type: String, select: false },
+  assignmentLeg: { type: String, enum: ["ORIGIN", "DESTINATION"] },
+  assignmentHistory: [{
+    riderId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    previousRiderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    leg: { type: String, enum: ["ORIGIN", "DESTINATION"] },
+    assignedAt: { type: Date, default: Date.now },
+  }],
+  trackingEmail: {
+    recipient: String,
+    status: { type: String, enum: ["PENDING", "SENDING", "RETRY", "SENT", "MISSING_EMAIL"] },
+    attempts: { type: Number, default: 0 },
+    nextAttemptAt: Date,
+    leaseUntil: Date,
+    leaseToken: String,
+    sentAt: Date,
+    lastError: String,
+  },
   routeId: { type: mongoose.Schema.Types.ObjectId, ref: "LogisticsRoute", required: true, index: true },
   originBranchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
   destinationBranchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
@@ -32,6 +57,13 @@ const shipmentSchema = new mongoose.Schema({
   priceAdjustments: [{ declaredWeightKg: Number, verifiedWeightKg: Number, previousTotal: Number, adjustedTotal: Number, difference: Number, actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, createdAt: { type: Date, default: Date.now }, settlementTransactionId: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null } }],
 }, { timestamps: true });
 shipmentSchema.index({ customerId: 1, createdAt: -1 });
+shipmentSchema.index({ assignedRiderId: 1, status: 1, createdAt: -1 });
+shipmentSchema.index({ orderType: 1, status: 1, createdAt: -1 });
+shipmentSchema.index({ "trackingEmail.status": 1, "trackingEmail.nextAttemptAt": 1 });
+shipmentSchema.index({ officeIdempotencyKey: 1 }, {
+  unique: true, name: "officeIdempotencyKey_string_unique",
+  partialFilterExpression: { officeIdempotencyKey: { $type: "string" } },
+});
 shipmentSchema.index({ originBranchId: 1, status: 1, createdAt: -1 });
 shipmentSchema.index({ destinationBranchId: 1, status: 1, createdAt: -1 });
 shipmentSchema.index(

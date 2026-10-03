@@ -10,6 +10,14 @@ const deliverySchema =
         required: true,
       },
       branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
+      orderType: { type: String, enum: ["LOCAL_DELIVERY"], default: "LOCAL_DELIVERY", immutable: true, index: true },
+      assignmentHistory: [{
+        riderId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        previousRiderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        assignedAt: { type: Date, default: Date.now },
+        action: { type: String, enum: ["ASSIGNED", "REASSIGNED", "UNASSIGNED"] },
+      }],
 
       trackingNumber: {
         type: String,

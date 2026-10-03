@@ -1,9 +1,12 @@
 const router = require("express").Router();
 const c = require("../controllers/interstateLogistics.controller");
 const { protect, adminOnly } = require("../middleware/auth.middleware");
+const office = require("../controllers/interstateOffice.controller");
 router.use(protect, adminOnly("DELIVERY_RIDER"));
-router.get("/shipments", c.riderShipment);
-router.get("/deliveries", c.riderShipment);
+router.get("/shipments", office.riderList);
+router.get("/deliveries", office.riderList);
+router.get("/shipments/:id", office.riderDetail);
+router.patch("/shipments/:id/status", office.riderStatus);
 router.post("/shipments/:id/delivery-otp", c.sendOtp);
 router.post("/shipments/:id/verify-delivery", c.verifyDelivery);
 router.patch("/deliveries/:id/complete", c.verifyDelivery);

@@ -4,6 +4,7 @@ const { randomUUID } = require("crypto");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const Delivery = require("../models/delivery.model");
+const { eligibleRiderFilter, riderSummary } = require("../services/riderEligibility.service");
 const {
   sendAssignmentAlertIfOnline,
   sendAssignmentCancellation,
@@ -150,25 +151,22 @@ exports.getAvailableRiders = async (req, res) => {
       return res.status(404).json({ success: false, message: "Delivery was not found." });
     }
     const assignable = Boolean(delivery.branchId) &&
-      delivery.status === "PENDING" &&
-      !delivery.assignedRiderId;
+      ((delivery.status === "PENDING" && !delivery.assignedRiderId) ||
+       (delivery.status === "ASSIGNED" && delivery.assignedRiderId && !delivery.riderAcceptedAt));
     const riders = assignable
       ? await User.find({
-          role: "DELIVERY_RIDER",
-          branchId: delivery.branchId,
-          status: "ACTIVE",
-          riderVerificationStatus: "VERIFIED",
-          availabilityStatus: "ONLINE",
+          ...eligibleRiderFilter({ branchId: delivery.branchId, manual: true }),
+          ...(delivery.assignedRiderId ? { _id: { $ne: delivery.assignedRiderId } } : {}),
         })
-          .select("_id riderId fullName vehicleType plateNumber availabilityStatus riderRating totalAssignedDeliveries totalCompletedDeliveries")
-          .sort({ riderRating: -1, createdAt: -1 })
+          .select("_id riderId fullName vehicleType plateNumber availabilityStatus riderVerificationStatus riderRating totalAssignedDeliveries totalCompletedDeliveries")
+          .sort({ availabilityStatus: -1, riderRating: -1, _id: 1 })
           .limit(100)
           .lean()
       : [];
     return res.json({
       success: true,
-      data: { delivery, riders, count: riders.length, assignable },
-      riders,
+      data: { delivery, riders: riders.map(riderSummary), count: riders.length, assignable },
+      riders: riders.map(riderSummary),
       count: riders.length,
     });
   } catch (error) {
@@ -201,14 +199,9 @@ exports.assignRiderToDelivery = async (req, res) => {
   let delivery;
   try {
     await session.withTransaction(async () => {
-      rider = await User.findOne({
-        _id: riderId,
-        role: "DELIVERY_RIDER",
-        branchId: scopedDelivery.branchId,
-        status: "ACTIVE",
-        riderVerificationStatus: "VERIFIED",
-        availabilityStatus: "ONLINE",
-      }).session(session);
+      rider = await User.findOne(eligibleRiderFilter({
+        riderId, branchId: scopedDelivery.branchId, manual: true,
+      })).session(session);
       if (!rider) {
         const error = new Error("The selected rider is not available.");
         error.statusCode = 409;
@@ -237,6 +230,10 @@ exports.assignRiderToDelivery = async (req, res) => {
               ? { adminNote: String(req.body.adminNote).trim() }
               : {}),
           },
+          $push: { assignmentHistory: {
+            riderId: rider._id, previousRiderId: null,
+            actorId: req.user._id, assignedAt: new Date(), action: "ASSIGNED",
+          } },
         },
         { new: true, runValidators: true, session }
       );
@@ -999,14 +996,9 @@ exports.reassignRiderToDelivery = async (req, res) => {
       if (String(current.assignedRiderId) === riderId) {
         throw Object.assign(new Error("Select a different replacement rider."), { statusCode: 400 });
       }
-      rider = await User.findOne({
-        _id: riderId,
-        branchId: current.branchId,
-        role: "DELIVERY_RIDER",
-        status: "ACTIVE",
-        riderVerificationStatus: "VERIFIED",
-        availabilityStatus: "ONLINE",
-      }).session(session);
+      rider = await User.findOne(eligibleRiderFilter({
+        riderId, branchId: current.branchId, manual: true,
+      })).session(session);
       if (!rider) throw Object.assign(new Error("The selected rider is not eligible for this branch delivery."), { statusCode: 409 });
       delivery = await Delivery.findOneAndUpdate({
         _id: current._id,
@@ -1023,7 +1015,10 @@ exports.reassignRiderToDelivery = async (req, res) => {
         assignmentEventId: randomUUID(),
         riderRejectedAt: null,
         riderRejectionReason: "",
-      } }, { new: true, session, runValidators: true });
+      }, $push: { assignmentHistory: {
+        riderId: rider._id, previousRiderId: current.assignedRiderId,
+        actorId: req.user._id, assignedAt: new Date(), action: "REASSIGNED",
+      } } }, { new: true, session, runValidators: true });
       if (!delivery) throw Object.assign(new Error("Delivery assignment changed; reload and retry."), { statusCode: 409 });
       await User.updateOne(
         { _id: current.assignedRiderId, branchId: current.branchId, role: "DELIVERY_RIDER" },
