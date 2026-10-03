@@ -13,6 +13,7 @@ class Organization {
     this.memberCount,
     this.joinStatus,
     this.allowedToManage = false,
+    this.role = '',
     this.fields = const <OrganizationField>[],
     this.type = '',
     this.code = '',
@@ -43,6 +44,8 @@ class Organization {
   final int? memberCount;
   final String? joinStatus;
   final bool allowedToManage;
+  final String role;
+  bool get isOwner => role.trim().toUpperCase() == 'OWNER';
   final List<OrganizationField> fields;
   final String type;
   final String code;
@@ -88,6 +91,8 @@ class Organization {
               ?.toString(),
       allowedToManage:
           json['canManage'] == true || json['allowedToManage'] == true,
+      role:
+          '${membership?['role'] ?? json['role'] ?? json['organizationRole'] ?? (json['isOwner'] == true ? 'OWNER' : '')}',
       type: '${json['type'] ?? ''}',
       code: '${json['code'] ?? ''}',
       slug: '${json['slug'] ?? ''}',

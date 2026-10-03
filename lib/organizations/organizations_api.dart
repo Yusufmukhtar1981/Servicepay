@@ -2,6 +2,7 @@ import '../services/session_store.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,8 @@ import 'organization_models.dart';
 
 class OrganizationsApi {
   static final Random _secureRandom = Random.secure();
+  static final Map<String, String> _pendingManualWithdrawalKeys =
+      <String, String>{};
 
   static String _createIdempotencyKey() {
     final List<int> randomBytes = List<int>.generate(
@@ -22,21 +25,28 @@ class OrganizationsApi {
   OrganizationsApi({
     http.Client? client,
     this.baseUrl = 'https://api.servicepay.ng/api/organizations',
-  }) : _client = client ?? http.Client();
+    Future<bool> Function(String key, String value)? manualKeyPersistence,
+    Future<String> Function()? manualSessionFingerprint,
+  })  : _client = client ?? http.Client(),
+        _manualKeyPersistence = manualKeyPersistence,
+        _manualSessionFingerprint = manualSessionFingerprint;
   final http.Client _client;
   final String baseUrl;
+  final Future<bool> Function(String key, String value)? _manualKeyPersistence;
+  final Future<String> Function()? _manualSessionFingerprint;
 
   Future<List<Organization>> mine() async {
     final data = await _request('GET', '/mine');
     final owned = data['organizations'] is List
         ? data['organizations'] as List
         : const [];
-    final memberships = data['memberships'] is List
-        ? data['memberships'] as List
-        : const [];
+    final memberships =
+        data['memberships'] is List ? data['memberships'] as List : const [];
     final result = <Organization>[];
     for (final item in owned.whereType<Map>()) {
-      result.add(Organization.fromJson(Map<String, dynamic>.from(item)));
+      final json = Map<String, dynamic>.from(item);
+      json.putIfAbsent('role', () => 'OWNER');
+      result.add(Organization.fromJson(json));
     }
     for (final item in memberships.whereType<Map>()) {
       final membership = Map<String, dynamic>.from(item);
@@ -44,6 +54,10 @@ class OrganizationsApi {
       if (rawOrg is Map) {
         final json = Map<String, dynamic>.from(rawOrg);
         json['membership'] = membership;
+        json.putIfAbsent(
+          'role',
+          () => membership['role'] ?? membership['organizationRole'] ?? '',
+        );
         result.add(Organization.fromJson(json));
       }
     }
@@ -55,9 +69,8 @@ class OrganizationsApi {
   Future<Organization> detail(String id) async {
     final data = await _request('GET', '/${Uri.encodeComponent(id)}');
     final raw = data['organization'];
-    final organization = raw is Map
-        ? Map<String, dynamic>.from(raw)
-        : <String, dynamic>{};
+    final organization =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
     if (data['membership'] is Map) {
       organization['membership'] = data['membership'];
     }
@@ -85,10 +98,11 @@ class OrganizationsApi {
   Future<Map<String, dynamic>> approveMember({
     required String organizationId,
     required String memberId,
-  }) => _request(
-    'POST',
-    '/${Uri.encodeComponent(organizationId)}/members/${Uri.encodeComponent(memberId)}/approve',
-  );
+  }) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(organizationId)}/members/${Uri.encodeComponent(memberId)}/approve',
+      );
 
   /// Owner-safe, read-only section resources. The API returns the envelope
   /// unchanged so the UI never has to invent fields.
@@ -123,26 +137,29 @@ class OrganizationsApi {
     String status = '',
     String branchId = '',
     int page = 1,
-  }) => ownerSection(
-    id,
-    'members/search',
-    search: search,
-    status: status,
-    page: page,
-    branchId: branchId,
-  );
+  }) =>
+      ownerSection(
+        id,
+        'members/search',
+        search: search,
+        status: status,
+        page: page,
+        branchId: branchId,
+      );
   Future<Map<String, dynamic>> applications(
     String id, {
     String status = '',
     int page = 1,
-  }) => ownerSection(id, 'applications', status: status, page: page);
+  }) =>
+      ownerSection(id, 'applications', status: status, page: page);
   Future<Map<String, dynamic>> applicationDetail(
     String id,
     String applicationId,
-  ) => _request(
-    'GET',
-    '/${Uri.encodeComponent(id)}/applications/${Uri.encodeComponent(applicationId)}',
-  );
+  ) =>
+      _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/applications/${Uri.encodeComponent(applicationId)}',
+      );
   Future<Map<String, dynamic>> paymentHistory(
     String id, {
     String status = '',
@@ -152,20 +169,21 @@ class OrganizationsApi {
     String from = '',
     String to = '',
     int page = 1,
-  }) => _request(
-    'GET',
-    '/${Uri.encodeComponent(id)}/payment-history',
-    query: {
-      'page': '$page',
-      'limit': '25',
-      if (status.trim().isNotEmpty) 'status': status.trim(),
-      if (memberId.trim().isNotEmpty) 'memberId': memberId.trim(),
-      if (branchId.trim().isNotEmpty) 'branchId': branchId.trim(),
-      if (feeType.trim().isNotEmpty) 'feeType': feeType.trim(),
-      if (from.trim().isNotEmpty) 'from': from.trim(),
-      if (to.trim().isNotEmpty) 'to': to.trim(),
-    },
-  );
+  }) =>
+      _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/payment-history',
+        query: {
+          'page': '$page',
+          'limit': '25',
+          if (status.trim().isNotEmpty) 'status': status.trim(),
+          if (memberId.trim().isNotEmpty) 'memberId': memberId.trim(),
+          if (branchId.trim().isNotEmpty) 'branchId': branchId.trim(),
+          if (feeType.trim().isNotEmpty) 'feeType': feeType.trim(),
+          if (from.trim().isNotEmpty) 'from': from.trim(),
+          if (to.trim().isNotEmpty) 'to': to.trim(),
+        },
+      );
   Future<Map<String, dynamic>> fees(String id, {int page = 1}) =>
       ownerSection(id, 'fees', page: page);
 
@@ -173,73 +191,176 @@ class OrganizationsApi {
   /// customer wallet/withdrawal API.
   Future<Map<String, dynamic>> walletDetails(String id) =>
       _request('GET', '/${Uri.encodeComponent(id)}/treasury');
+  Future<Map<String, dynamic>> manualBankAccount(String id) =>
+      _request('GET', '/${Uri.encodeComponent(id)}/bank-account');
+  Future<Map<String, dynamic>> saveManualBankAccount(
+    String id,
+    Map<String, dynamic> account,
+  ) =>
+      _request(
+        'PUT',
+        '/${Uri.encodeComponent(id)}/bank-account',
+        body: {
+          'accountName': account['accountName'],
+          'accountNumber': account['accountNumber'],
+          'bankName': account['bankName'],
+        },
+      );
+  Future<Map<String, dynamic>> manualWallet(String id) =>
+      _request('GET', '/${Uri.encodeComponent(id)}/manual-wallet');
+  Future<Map<String, dynamic>> manualWithdrawals(
+    String id, {
+    String status = '',
+    int page = 1,
+  }) =>
+      _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/manual-withdrawals',
+        query: {
+          'page': '$page',
+          if (status.trim().isNotEmpty) 'status': status.trim(),
+        },
+      );
+
+  Future<String> _manualAccountFingerprint() async {
+    final token = await SessionStore.readToken();
+    if (token == null || token.trim().isEmpty) {
+      throw Exception(
+        'Your login session was not found. Please sign in again.',
+      );
+    }
+    final override = _manualSessionFingerprint;
+    return override == null
+        ? sha256.convert(utf8.encode(token.trim())).toString()
+        : await override();
+  }
+
+  Future<String> manualWithdrawalIdempotencyKey(String id, num amount) async {
+    final preferences = await SharedPreferences.getInstance();
+    final accountFingerprint = await _manualAccountFingerprint();
+    final minorUnits = (amount * 100).round();
+    final storageKey =
+        'manual_org_withdrawal:$accountFingerprint:$id:$minorUnits';
+    final existing = preferences.getString(storageKey);
+    final key = existing?.isNotEmpty == true
+        ? existing!
+        : _pendingManualWithdrawalKeys[storageKey] ??
+            'org-withdrawal-${base64UrlEncode(List<int>.generate(24, (_) => _secureRandom.nextInt(256)))}';
+    _pendingManualWithdrawalKeys[storageKey] = key;
+    final keyPersistence = _manualKeyPersistence;
+    final persisted = keyPersistence == null
+        ? await preferences.setString(storageKey, key)
+        : await keyPersistence(storageKey, key);
+    if (!persisted) {
+      throw Exception(
+        'Unable to securely prepare this withdrawal. Please try again.',
+      );
+    }
+    return key;
+  }
+
+  Future<bool> clearManualWithdrawalIdempotencyKey(
+    String id,
+    num amount,
+  ) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final accountFingerprint = await _manualAccountFingerprint();
+      final storageKey =
+          'manual_org_withdrawal:$accountFingerprint:$id:${(amount * 100).round()}';
+      final removed = await preferences.remove(storageKey);
+      if (removed) _pendingManualWithdrawalKeys.remove(storageKey);
+      return removed;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> createManualWithdrawal(
+    String id,
+    Map<String, dynamic> body,
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/manual-withdrawals',
+        body: body,
+        idempotencyKey: body['idempotencyKey']?.toString(),
+      );
   Future<Map<String, dynamic>> settlementAccounts(String id) =>
       _request('GET', '/${Uri.encodeComponent(id)}/settlement-accounts');
   Future<Map<String, dynamic>> addSettlementAccount(
     String id,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/settlement-accounts',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/settlement-accounts',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> resolveSettlementAccount(
     String id,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/settlement-accounts/resolve',
-    body: body,
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/settlement-accounts/resolve',
+        body: body,
+      );
   Future<Map<String, dynamic>> withdrawals(
     String id, {
     String status = '',
     int page = 1,
-  }) => _request(
-    'GET',
-    '/${Uri.encodeComponent(id)}/withdrawals',
-    query: {
-      'page': '$page',
-      'limit': '25',
-      if (status.trim().isNotEmpty) 'status': status.trim(),
-    },
-  );
+  }) =>
+      _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/withdrawals',
+        query: {
+          'page': '$page',
+          'limit': '25',
+          if (status.trim().isNotEmpty) 'status': status.trim(),
+        },
+      );
   Future<Map<String, dynamic>> createWithdrawal(
     String id,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/withdrawals',
-    body: body,
-    idempotencyKey: body['idempotencyKey']?.toString() ?? _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/withdrawals',
+        body: body,
+        idempotencyKey:
+            body['idempotencyKey']?.toString() ?? _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> withdrawalDetail(
     String id,
     String withdrawalId,
-  ) => _request(
-    'GET',
-    '/${Uri.encodeComponent(id)}/withdrawals/${Uri.encodeComponent(withdrawalId)}',
-  );
+  ) =>
+      _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/withdrawals/${Uri.encodeComponent(withdrawalId)}',
+      );
   Future<Map<String, dynamic>> approveWithdrawal(
     String id,
     String withdrawalId,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/withdrawals/${Uri.encodeComponent(withdrawalId)}/approve',
-    body: {},
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/withdrawals/${Uri.encodeComponent(withdrawalId)}/approve',
+        body: {},
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> rejectWithdrawal(
     String id,
     String withdrawalId, {
     String reason = '',
-  }) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/withdrawals/${Uri.encodeComponent(withdrawalId)}/reject',
-    body: {'reason': reason},
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  }) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/withdrawals/${Uri.encodeComponent(withdrawalId)}/reject',
+        body: {'reason': reason},
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> branches(String id, {int page = 1}) =>
       ownerSection(id, 'branches', page: page);
   Future<Map<String, dynamic>> staffList(String id, {int page = 1}) =>
@@ -253,16 +374,17 @@ class OrganizationsApi {
     int page = 1,
     String kind = '',
     String period = '',
-  }) => _request(
-    'GET',
-    '/${Uri.encodeComponent(id)}/reports',
-    query: {
-      'page': '$page',
-      'limit': '25',
-      if (kind.trim().isNotEmpty) 'kind': kind.trim(),
-      if (period.trim().isNotEmpty) 'period': period.trim(),
-    },
-  );
+  }) =>
+      _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/reports',
+        query: {
+          'page': '$page',
+          'limit': '25',
+          if (kind.trim().isNotEmpty) 'kind': kind.trim(),
+          if (period.trim().isNotEmpty) 'period': period.trim(),
+        },
+      );
   Future<Map<String, dynamic>> audit(
     String id, {
     int page = 1,
@@ -271,19 +393,20 @@ class OrganizationsApi {
     String entityType = '',
     String from = '',
     String to = '',
-  }) => _request(
-    'GET',
-    '/${Uri.encodeComponent(id)}/audit',
-    query: {
-      'page': '$page',
-      'limit': '25',
-      if (action.trim().isNotEmpty) 'action': action.trim(),
-      if (actor.trim().isNotEmpty) 'actor': actor.trim(),
-      if (entityType.trim().isNotEmpty) 'entityType': entityType.trim(),
-      if (from.trim().isNotEmpty) 'from': from.trim(),
-      if (to.trim().isNotEmpty) 'to': to.trim(),
-    },
-  );
+  }) =>
+      _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/audit',
+        query: {
+          'page': '$page',
+          'limit': '25',
+          if (action.trim().isNotEmpty) 'action': action.trim(),
+          if (actor.trim().isNotEmpty) 'actor': actor.trim(),
+          if (entityType.trim().isNotEmpty) 'entityType': entityType.trim(),
+          if (from.trim().isNotEmpty) 'from': from.trim(),
+          if (to.trim().isNotEmpty) 'to': to.trim(),
+        },
+      );
   Future<Map<String, dynamic>> settings(String id) =>
       ownerSection(id, 'settings');
 
@@ -292,165 +415,183 @@ class OrganizationsApi {
   Future<Map<String, dynamic>> approveApplication(
     String id,
     String applicationId,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/applications/${Uri.encodeComponent(applicationId)}/approve',
-    body: {},
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/applications/${Uri.encodeComponent(applicationId)}/approve',
+        body: {},
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> rejectApplication(
     String id,
     String applicationId,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/applications/${Uri.encodeComponent(applicationId)}/reject',
-    body: {},
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/applications/${Uri.encodeComponent(applicationId)}/reject',
+        body: {},
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> createFee(
     String id,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/fees',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/fees',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> updateFee(
     String id,
     String feeId,
     Map<String, dynamic> body,
-  ) => _request(
-    'PATCH',
-    '/${Uri.encodeComponent(id)}/fees/${Uri.encodeComponent(feeId)}',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'PATCH',
+        '/${Uri.encodeComponent(id)}/fees/${Uri.encodeComponent(feeId)}',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> setFeeStatus(
     String id,
     String feeId,
     String status,
-  ) => updateFee(id, feeId, {
-    'active': status.toUpperCase() == 'ACTIVE',
-    'status': status,
-  });
+  ) =>
+      updateFee(id, feeId, {
+        'active': status.toUpperCase() == 'ACTIVE',
+        'status': status,
+      });
   Future<Map<String, dynamic>> createBranch(
     String id,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/branches',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/branches',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> updateBranch(
     String id,
     String branchId,
     Map<String, dynamic> body,
-  ) => _request(
-    'PATCH',
-    '/${Uri.encodeComponent(id)}/branches/${Uri.encodeComponent(branchId)}',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'PATCH',
+        '/${Uri.encodeComponent(id)}/branches/${Uri.encodeComponent(branchId)}',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> setBranchStatus(
     String id,
     String branchId,
     String status,
-  ) => updateBranch(id, branchId, {
-    'active': status.toUpperCase() == 'ACTIVE',
-    'status': status,
-  });
+  ) =>
+      updateBranch(id, branchId, {
+        'active': status.toUpperCase() == 'ACTIVE',
+        'status': status,
+      });
   Future<Map<String, dynamic>> createStaff(
     String id,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/staff',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/staff',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> updateStaff(
     String id,
     String staffId,
     Map<String, dynamic> body,
-  ) => _request(
-    'PATCH',
-    '/${Uri.encodeComponent(id)}/staff/${Uri.encodeComponent(staffId)}',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'PATCH',
+        '/${Uri.encodeComponent(id)}/staff/${Uri.encodeComponent(staffId)}',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> setStaffStatus(
     String id,
     String staffId,
     String status,
-  ) => updateStaff(id, staffId, {
-    'active': status.toUpperCase() == 'ACTIVE',
-    'status': status,
-  });
+  ) =>
+      updateStaff(id, staffId, {
+        'active': status.toUpperCase() == 'ACTIVE',
+        'status': status,
+      });
   Future<Map<String, dynamic>> publishAnnouncement(
     String id,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/announcements',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/announcements',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> patchSettings(
     String id,
     Map<String, dynamic> body,
-  ) => _request('PATCH', '/${Uri.encodeComponent(id)}/settings', body: body);
+  ) =>
+      _request('PATCH', '/${Uri.encodeComponent(id)}/settings', body: body);
   Future<Map<String, dynamic>> memberStatus(
     String id,
     String memberId,
     String status,
-  ) => _request(
-    'PATCH',
-    '/${Uri.encodeComponent(id)}/members/${Uri.encodeComponent(memberId)}/status',
-    body: {'status': status},
-  );
+  ) =>
+      _request(
+        'PATCH',
+        '/${Uri.encodeComponent(id)}/members/${Uri.encodeComponent(memberId)}/status',
+        body: {'status': status},
+      );
   Future<Map<String, dynamic>> memberDetail(
     String id,
     String memberId,
-  ) => _request(
-    'GET',
-    '/${Uri.encodeComponent(id)}/members/${Uri.encodeComponent(memberId)}/detail',
-  );
+  ) =>
+      _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/members/${Uri.encodeComponent(memberId)}/detail',
+      );
   Future<Map<String, dynamic>> patchMemberDetail(
     String id,
     String memberId,
     Map<String, dynamic> body,
-  ) => _request(
-    'PATCH',
-    '/${Uri.encodeComponent(id)}/members/${Uri.encodeComponent(memberId)}/detail',
-    body: body,
-  );
+  ) =>
+      _request(
+        'PATCH',
+        '/${Uri.encodeComponent(id)}/members/${Uri.encodeComponent(memberId)}/detail',
+        body: body,
+      );
   Future<Map<String, dynamic>> cardDetail(String id, String cardId) => _request(
-    'GET',
-    '/${Uri.encodeComponent(id)}/cards/${Uri.encodeComponent(cardId)}',
-  );
+        'GET',
+        '/${Uri.encodeComponent(id)}/cards/${Uri.encodeComponent(cardId)}',
+      );
   Future<Map<String, dynamic>> feeAssignments(String id) =>
       ownerSection(id, 'fee-assignments/summary');
   Future<Map<String, dynamic>> assignFee(
     String id,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/fee-assignments',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/fee-assignments',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> messageMember(
     String id,
     String memberId,
     Map<String, dynamic> body,
-  ) => _request(
-    'POST',
-    '/${Uri.encodeComponent(id)}/members/${Uri.encodeComponent(memberId)}/message',
-    body: body,
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  ) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(id)}/members/${Uri.encodeComponent(memberId)}/message',
+        body: body,
+        idempotencyKey: _createIdempotencyKey(),
+      );
 
   Future<Map<String, dynamic>> apply(String id, Map<String, dynamic> fields) =>
       _request('POST', '/${Uri.encodeComponent(id)}/apply', body: fields);
@@ -549,12 +690,11 @@ class OrganizationsApi {
     final raw = data['payments'] ?? data['data'];
     return raw is List
         ? raw
-              .whereType<Map>()
-              .map(
-                (e) =>
-                    OrganizationPayment.fromJson(Map<String, dynamic>.from(e)),
-              )
-              .toList()
+            .whereType<Map>()
+            .map(
+              (e) => OrganizationPayment.fromJson(Map<String, dynamic>.from(e)),
+            )
+            .toList()
         : <OrganizationPayment>[];
   }
 
@@ -571,22 +711,24 @@ class OrganizationsApi {
   Future<Map<String, dynamic>> payAnnual({
     required String organizationId,
     required String pin,
-  }) => _request(
-    'POST',
-    '/${Uri.encodeComponent(organizationId)}/annual-payment',
-    body: {'transactionPin': pin},
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  }) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(organizationId)}/annual-payment',
+        body: {'transactionPin': pin},
+        idempotencyKey: _createIdempotencyKey(),
+      );
   Future<Map<String, dynamic>> pay({
     required String organizationId,
     required String dueId,
     required String pin,
-  }) => _request(
-    'POST',
-    '/${Uri.encodeComponent(organizationId)}/payments',
-    body: {'dueId': dueId, 'transactionPin': pin},
-    idempotencyKey: _createIdempotencyKey(),
-  );
+  }) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(organizationId)}/payments',
+        body: {'dueId': dueId, 'transactionPin': pin},
+        idempotencyKey: _createIdempotencyKey(),
+      );
 
   Future<List<Organization>> _list(
     String path, [
@@ -597,8 +739,8 @@ class OrganizationsApi {
     final list = raw is List
         ? raw
         : raw is Map
-        ? <dynamic>[raw]
-        : <dynamic>[];
+            ? <dynamic>[raw]
+            : <dynamic>[];
     return list
         .whereType<Map>()
         .map((e) => Organization.fromJson(Map<String, dynamic>.from(e)))
@@ -613,8 +755,7 @@ class OrganizationsApi {
     String? idempotencyKey,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    var token =
-        (await SessionStore.readToken()) ??
+    var token = (await SessionStore.readToken()) ??
         (await SessionStore.readToken()) ??
         (await SessionStore.readToken());
     if (token == null || token.trim().isEmpty) {
@@ -633,16 +774,22 @@ class OrganizationsApi {
     final response = method == 'GET'
         ? await _client.get(uri, headers: headers)
         : method == 'PATCH'
-        ? await _client.patch(
-            uri,
-            headers: headers,
-            body: jsonEncode(body ?? {}),
-          )
-        : await _client.post(
-            uri,
-            headers: headers,
-            body: jsonEncode(body ?? {}),
-          );
+            ? await _client.patch(
+                uri,
+                headers: headers,
+                body: jsonEncode(body ?? {}),
+              )
+            : method == 'PUT'
+                ? await _client.put(
+                    uri,
+                    headers: headers,
+                    body: jsonEncode(body ?? {}),
+                  )
+                : await _client.post(
+                    uri,
+                    headers: headers,
+                    body: jsonEncode(body ?? {}),
+                  );
     dynamic decoded;
     try {
       decoded = jsonDecode(response.body);

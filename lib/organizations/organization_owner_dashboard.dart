@@ -4,8 +4,6 @@ import '../servicepay_theme.dart';
 import 'organization_models.dart';
 import 'organizations_api.dart';
 import '../feature_transaction_pin_dialog.dart';
-import '../services/session_store.dart';
-import '../services/transaction_authorization_service.dart';
 
 /// The owner surface deliberately keeps each section's contract visible here.
 /// This prevents a new backend envelope from silently becoming a generic card.
@@ -46,6 +44,8 @@ class _OrganizationOwnerDashboardState
   final searches = <String, String>{};
   final statuses = <String, String>{};
   final filters = <String, Map<String, String>>{};
+  final _knownWithdrawalStatuses = <String, String>{};
+  bool _walletSubmitBusy = false;
   int selected = 0;
 
   @override
@@ -65,52 +65,78 @@ class _OrganizationOwnerDashboardState
       final value = switch (name) {
         'Overview' => await widget.api.ownerDashboard(id),
         'Members' => await widget.api.membersSearch(
-          id,
-          search: searches[name] ?? '',
-          status: statuses[name] ?? '',
-          branchId: filters[name]?['branchId'] ?? '',
-          page: page,
-        ),
+            id,
+            search: searches[name] ?? '',
+            status: statuses[name] ?? '',
+            branchId: filters[name]?['branchId'] ?? '',
+            page: page,
+          ),
         'Applications' => await widget.api.applications(
-          id,
-          status: statuses[name] ?? '',
-          page: page,
-        ),
+            id,
+            status: statuses[name] ?? '',
+            page: page,
+          ),
         'Payments' => await widget.api.paymentHistory(
-          id,
-          status: statuses[name] ?? '',
-          memberId: filters[name]?['memberId'] ?? '',
-          feeType: filters[name]?['feeType'] ?? '',
-          from: filters[name]?['from'] ?? '',
-          to: filters[name]?['to'] ?? '',
-          branchId: filters[name]?['branchId'] ?? '',
-          page: page,
-        ),
+            id,
+            status: statuses[name] ?? '',
+            memberId: filters[name]?['memberId'] ?? '',
+            feeType: filters[name]?['feeType'] ?? '',
+            from: filters[name]?['from'] ?? '',
+            to: filters[name]?['to'] ?? '',
+            branchId: filters[name]?['branchId'] ?? '',
+            page: page,
+          ),
         'Fees & Dues' => await _feesEnvelope(id, page),
-        'Wallet' => await _treasuryEnvelope(id, page),
+        'Wallet' => widget.organization.isOwner
+            ? await _treasuryEnvelope(id, page)
+            : await _staffWalletEnvelope(id),
         'Branches' => await widget.api.branches(id, page: page),
         'Staff & Roles' => await widget.api.staffList(id, page: page),
         'Messages' => await widget.api.announcements(id, page: page),
         'ID Cards' => await widget.api.cards(id, page: page),
         'Reports' => await widget.api.reports(
-          id,
-          page: page,
-          kind: filters[name]?['kind'] ?? '',
-          period: filters[name]?['period'] ?? '',
-        ),
+            id,
+            page: page,
+            kind: filters[name]?['kind'] ?? '',
+            period: filters[name]?['period'] ?? '',
+          ),
         'Audit Logs' => await widget.api.audit(
-          id,
-          page: page,
-          action: filters[name]?['action'] ?? '',
-          actor: filters[name]?['actor'] ?? '',
-          entityType: filters[name]?['entityType'] ?? '',
-          from: filters[name]?['from'] ?? '',
-          to: filters[name]?['to'] ?? '',
-        ),
+            id,
+            page: page,
+            action: filters[name]?['action'] ?? '',
+            actor: filters[name]?['actor'] ?? '',
+            entityType: filters[name]?['entityType'] ?? '',
+            from: filters[name]?['from'] ?? '',
+            to: filters[name]?['to'] ?? '',
+          ),
         'Settings' => await widget.api.settings(id),
         _ => <String, dynamic>{},
       };
-      if (mounted) setState(() => data[name] = value);
+      if (mounted) {
+        if (name == 'Wallet' && widget.organization.isOwner) {
+          for (final withdrawal in _list(value, 'withdrawals')) {
+            final id =
+                '${withdrawal['_id'] ?? withdrawal['id'] ?? withdrawal['reference']}';
+            final status = '${withdrawal['status'] ?? ''}'.toUpperCase();
+            final previous = _knownWithdrawalStatuses[id];
+            final amount = num.tryParse('${withdrawal['amount'] ?? 0}') ?? 0;
+            if (previous != null && previous != status) {
+              final message = status == 'COMPLETED'
+                  ? 'Your withdrawal of ₦${amount.toStringAsFixed(2)} has been completed successfully.'
+                  : status == 'REJECTED'
+                      ? 'Your withdrawal request of ₦${amount.toStringAsFixed(2)} was not completed. The amount has been returned to your available balance.'
+                      : null;
+              if (message != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(message)),
+                );
+              }
+            }
+            _knownWithdrawalStatuses[id] = status;
+          }
+        }
+        setState(() => data[name] = value);
+      }
     } catch (e) {
       if (mounted) {
         setState(
@@ -137,23 +163,32 @@ class _OrganizationOwnerDashboardState
 
   Future<Map<String, dynamic>> _treasuryEnvelope(String id, int page) async {
     final result = await Future.wait([
-      widget.api.walletDetails(id),
-      widget.api.settlementAccounts(id),
-      widget.api.withdrawals(id, status: statuses['Wallet'] ?? '', page: page),
+      widget.api.manualWallet(id),
+      widget.api.manualBankAccount(id),
+      widget.api.manualWithdrawals(
+        id,
+        status: statuses['Wallet'] ?? '',
+        page: page,
+      ),
     ]);
-    final treasury = _map(result[0]['data']);
-    final accounts = _map(result[1]['data']);
-    final withdrawals = _map(result[2]['data']);
+    final wallet = _map(result[0]['data']);
+    final bankEnvelope = _map(result[1]['data']);
+    final withdrawalEnvelope = _map(result[2]['data']);
     return {
-      ...treasury,
-      'settlementAccounts':
-          accounts['settlementAccounts'] ??
-          result[1]['settlementAccounts'] ??
+      ...wallet,
+      'bankAccount': bankEnvelope['account'] ?? result[1]['account'],
+      'withdrawals': withdrawalEnvelope['withdrawals'] ??
+          result[2]['withdrawals'] ??
           const [],
-      'withdrawals':
-          withdrawals['withdrawals'] ?? result[2]['withdrawals'] ?? const [],
-      'withdrawalPagination': result[2]['pagination'],
+      'withdrawalPagination':
+          withdrawalEnvelope['pagination'] ?? result[2]['pagination'],
     };
+  }
+
+  Future<Map<String, dynamic>> _staffWalletEnvelope(String id) async {
+    final response = await widget.api.walletDetails(id);
+    final data = _map(response['data']);
+    return {...(_map(data['wallet']).isEmpty ? data : _map(data['wallet']))};
   }
 
   void _select(int index) {
@@ -178,6 +213,10 @@ class _OrganizationOwnerDashboardState
     String action, [
     Map<String, dynamic> body = const {},
   ]) async {
+    if (section == 'Wallet' && action == 'withdraw') {
+      if (_walletSubmitBusy) return;
+      setState(() => _walletSubmitBusy = true);
+    }
     try {
       final id = widget.organization.id;
       if (section == 'Applications') {
@@ -219,62 +258,56 @@ class _OrganizationOwnerDashboardState
         await widget.api.patchSettings(id, body);
       } else if (section == 'Wallet') {
         if (action == 'addAccount') {
-          final resolved = await widget.api.resolveSettlementAccount(id, body);
-          final resolvedData = _map(resolved['data']);
-          final accountName =
-              resolvedData['accountName'] ?? resolved['accountName'];
-          if ('$accountName'.trim().isEmpty || accountName == null) {
-            throw Exception('The bank account could not be resolved.');
-          }
-          await widget.api.addSettlementAccount(id, {
-            ...body,
-            'accountName': accountName,
+          await widget.api.saveManualBankAccount(id, {
+            'accountName': body['accountName'],
+            'accountNumber': body['accountNumber'],
+            'bankName': body['bankName'],
           });
         } else if (action == 'withdraw') {
-          final idempotencyKey = body['idempotencyKey']?.toString() ??
-              'organization-withdrawal:$id:${DateTime.now().toUtc().toIso8601String()}';
-          if (!TransactionAuthorizationService.transactionBiometricsEnabled) {
-            await widget.api.createWithdrawal(id, {
-              ...body,
-              'idempotencyKey': idempotencyKey,
-            });
-          } else {
-            final token = (await SessionStore.readToken()) ?? '';
-            final intent = Map<String, dynamic>.from(body)
-              ..remove('transactionPin')
-              ..remove('biometricGrant')
-              ..remove('deviceId')
-              ..['idempotencyKey'] = idempotencyKey;
-            final authorization = await authorizeFeatureTransaction(
-              context,
-              token: token,
-              operation: organizationTreasuryWithdrawalOperation,
-              requestBody: intent,
-              idempotencyKey: idempotencyKey,
-              title: 'Confirm treasury withdrawal',
-              message: 'Authorize this organization treasury withdrawal.',
-            );
-            if (authorization == null) return;
-            await widget.api.createWithdrawal(id, {
-              ...intent,
-              ...authorization,
-            });
-          }
-        } else if (action == 'approveWithdrawal') {
-          await widget.api.approveWithdrawal(id, '${body['withdrawalId']}');
-        } else if (action == 'rejectWithdrawal') {
-          await widget.api.rejectWithdrawal(
-            id,
-            '${body['withdrawalId']}',
-            reason: '${body['reason'] ?? ''}',
+          final amount = num.parse('${body['amount']}');
+          final idempotencyKey =
+              await widget.api.manualWithdrawalIdempotencyKey(id, amount);
+          final intent = <String, dynamic>{
+            'amount': amount,
+            'idempotencyKey': idempotencyKey,
+          };
+          final pin = await showFeatureTransactionPinDialog(
+            context,
+            title: 'Confirm organization withdrawal',
+            message:
+                'Enter your transaction PIN to request this manual withdrawal.',
           );
+          if (pin == null) return;
+          try {
+            await widget.api.createManualWithdrawal(id, {
+              ...intent,
+              'transactionPin': pin,
+            });
+            await widget.api.clearManualWithdrawalIdempotencyKey(id, amount);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Your withdrawal request of ₦${amount.toStringAsFixed(2)} has been submitted successfully and is awaiting processing.',
+                  ),
+                ),
+              );
+            }
+          } on OrganizationApiException catch (error) {
+            if (error.statusCode == 400 ||
+                error.statusCode == 403 ||
+                error.statusCode == 409) {
+              await widget.api.clearManualWithdrawalIdempotencyKey(id, amount);
+            }
+            rethrow;
+          }
         } else {
           throw Exception('This wallet action is not supported.');
         }
       } else {
         throw Exception('This action is not supported for $section.');
       }
-      if (mounted) {
+      if (mounted && action != 'withdraw') {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Saved successfully')));
@@ -286,6 +319,10 @@ class _OrganizationOwnerDashboardState
           SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
         );
       }
+    } finally {
+      if (mounted && section == 'Wallet' && action == 'withdraw') {
+        setState(() => _walletSubmitBusy = false);
+      }
     }
   }
 
@@ -296,18 +333,18 @@ class _OrganizationOwnerDashboardState
       final value = section == 'Members'
           ? await widget.api.memberDetail(id, recordId)
           : section == 'Applications'
-          ? await widget.api.applicationDetail(id, recordId)
-          : section == 'Cards'
-          ? await widget.api.cardDetail(id, recordId)
-          : await widget.api.withdrawalDetail(id, recordId);
+              ? await widget.api.applicationDetail(id, recordId)
+              : section == 'Cards'
+                  ? await widget.api.cardDetail(id, recordId)
+                  : await widget.api.withdrawalDetail(id, recordId);
       if (!mounted) return;
       final record = section == 'Members'
           ? _map(value['member'])
           : section == 'Applications'
-          ? _map(value['application'])
-          : section == 'Cards'
-          ? _map(value['card'])
-          : _map(value['withdrawal'] ?? value['data']);
+              ? _map(value['application'])
+              : section == 'Cards'
+                  ? _map(value['card'])
+                  : _map(value['withdrawal'] ?? value['data']);
       await showDialog<void>(
         context: context,
         builder: (c) => AlertDialog(
@@ -444,7 +481,7 @@ class _OrganizationOwnerDashboardState
       page: pages[name] ?? 1,
       search: searches[name] ?? '',
       status: statuses[name] ?? '',
-      loading: loading[name] == true,
+      loading: loading[name] == true || (name == 'Wallet' && _walletSubmitBusy),
       onRetry: () => _load(name),
       onPage: (p) {
         setState(() => pages[name] = p);
@@ -487,7 +524,12 @@ class _OrganizationOwnerDashboardState
       'Applications' => OwnerApplicationsSection(input: common),
       'Payments' => OwnerPaymentsSection(input: common),
       'Fees & Dues' => OwnerFeesSection(input: common),
-      'Wallet' => OwnerWalletSection(input: common),
+      'Wallet' => widget.organization.isOwner
+          ? OwnerWalletSection(
+              input: common,
+              onBankSave: (values) => _action('Wallet', 'addAccount', values),
+            )
+          : StaffWalletSection(input: common),
       'Branches' => OwnerBranchesSection(input: common),
       'Staff & Roles' => OwnerStaffSection(input: common),
       'Messages' => OwnerMessagesSection(input: common),
@@ -500,69 +542,69 @@ class _OrganizationOwnerDashboardState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: ServicePayColors.canvas,
-    appBar: AppBar(
-      title: Text(widget.organization.name),
-      actions: [
-        IconButton(
-          onPressed: () => _load(names[selected]),
-          icon: const Icon(Icons.refresh_rounded),
-        ),
-      ],
-    ),
-    body: LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 700) {
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: DropdownButtonFormField<int>(
-                  value: selected,
-                  decoration: const InputDecoration(
-                    labelText: 'Dashboard section',
-                  ),
-                  items: [
-                    for (var i = 0; i < names.length; i++)
-                      DropdownMenuItem(value: i, child: Text(names[i])),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) _select(v);
-                  },
-                ),
-              ),
-              Expanded(child: _body(names[selected])),
-            ],
-          );
-        }
-        return Row(
-          children: [
-            SingleChildScrollView(
-              child: NavigationRail(
-                selectedIndex: selected,
-                onDestinationSelected: _select,
-                labelType: constraints.maxWidth < 900
-                    ? NavigationRailLabelType.none
-                    : NavigationRailLabelType.all,
-                destinations: [
-                  for (final name in names)
-                    NavigationRailDestination(
-                      icon: Icon(_dashboardIcon(name)),
-                      selectedIcon: Icon(
-                        _dashboardIcon(name),
-                        color: ServicePayColors.brand,
-                      ),
-                      label: Text(name),
-                    ),
-                ],
-              ),
+        backgroundColor: ServicePayColors.canvas,
+        appBar: AppBar(
+          title: Text(widget.organization.name),
+          actions: [
+            IconButton(
+              onPressed: () => _load(names[selected]),
+              icon: const Icon(Icons.refresh_rounded),
             ),
-            Expanded(child: _body(names[selected])),
           ],
-        );
-      },
-    ),
-  );
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 700) {
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: DropdownButtonFormField<int>(
+                      value: selected,
+                      decoration: const InputDecoration(
+                        labelText: 'Dashboard section',
+                      ),
+                      items: [
+                        for (var i = 0; i < names.length; i++)
+                          DropdownMenuItem(value: i, child: Text(names[i])),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) _select(v);
+                      },
+                    ),
+                  ),
+                  Expanded(child: _body(names[selected])),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                SingleChildScrollView(
+                  child: NavigationRail(
+                    selectedIndex: selected,
+                    onDestinationSelected: _select,
+                    labelType: constraints.maxWidth < 900
+                        ? NavigationRailLabelType.none
+                        : NavigationRailLabelType.all,
+                    destinations: [
+                      for (final name in names)
+                        NavigationRailDestination(
+                          icon: Icon(_dashboardIcon(name)),
+                          selectedIcon: Icon(
+                            _dashboardIcon(name),
+                            color: ServicePayColors.brand,
+                          ),
+                          label: Text(name),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(child: _body(names[selected])),
+              ],
+            );
+          },
+        ),
+      );
 }
 
 class DashboardInput {
@@ -607,53 +649,56 @@ class DashboardInput {
 }
 
 Widget _dashboardShell(String title, Widget child) => ListView(
-  padding: const EdgeInsets.all(20),
-  children: [
-    Text(
-      title,
-      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-    ),
-    const SizedBox(height: 14),
-    child,
-  ],
-);
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 14),
+        child,
+      ],
+    );
 
 Widget _dashboardSearch(
   DashboardInput i, {
   bool statuses = false,
   bool paymentStatuses = false,
   bool searchField = true,
-}) => Column(
-  children: [
-    if (searchField)
-      TextField(
-        onSubmitted: i.onSearch,
-        decoration: const InputDecoration(
-          labelText: 'Search',
-          prefixIcon: Icon(Icons.search),
-        ),
-      ),
-    if (statuses)
-      DropdownButtonFormField<String>(
-        value: i.status.isEmpty ? null : i.status,
-        decoration: const InputDecoration(labelText: 'Status'),
-        items: paymentStatuses
-            ? const [
-                DropdownMenuItem(value: 'SUCCESS', child: Text('Success')),
-                DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
-                DropdownMenuItem(value: 'FAILED', child: Text('Failed')),
-              ]
-            : const [
-                DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
-                DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
-                DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
-                DropdownMenuItem(value: 'SUSPENDED', child: Text('Suspended')),
-                DropdownMenuItem(value: 'EXPIRED', child: Text('Expired')),
-              ],
-        onChanged: (v) => i.onStatus(v ?? ''),
-      ),
-  ],
-);
+}) =>
+    Column(
+      children: [
+        if (searchField)
+          TextField(
+            onSubmitted: i.onSearch,
+            decoration: const InputDecoration(
+              labelText: 'Search',
+              prefixIcon: Icon(Icons.search),
+            ),
+          ),
+        if (statuses)
+          DropdownButtonFormField<String>(
+            value: i.status.isEmpty ? null : i.status,
+            decoration: const InputDecoration(labelText: 'Status'),
+            items: paymentStatuses
+                ? const [
+                    DropdownMenuItem(value: 'SUCCESS', child: Text('Success')),
+                    DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                    DropdownMenuItem(value: 'FAILED', child: Text('Failed')),
+                  ]
+                : const [
+                    DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                    DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
+                    DropdownMenuItem(
+                        value: 'REJECTED', child: Text('Rejected')),
+                    DropdownMenuItem(
+                        value: 'SUSPENDED', child: Text('Suspended')),
+                    DropdownMenuItem(value: 'EXPIRED', child: Text('Expired')),
+                  ],
+            onChanged: (v) => i.onStatus(v ?? ''),
+          ),
+      ],
+    );
 
 Widget _dashboardPager(DashboardInput i, Map<String, dynamic> source) {
   final pagination = source['pagination'] is Map
@@ -703,15 +748,15 @@ String _branchAdminsLabel(dynamic value) {
 
 List<Map<String, dynamic>> _list(Map<String, dynamic> source, String key) =>
     source[key] is List
-    ? (source[key] as List)
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList()
-    : <Map<String, dynamic>>[];
+        ? (source[key] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList()
+        : <Map<String, dynamic>>[];
 Widget _empty(String label) => Padding(
-  padding: const EdgeInsets.symmetric(vertical: 24),
-  child: Text(label, style: const TextStyle(color: Colors.black54)),
-);
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Text(label, style: const TextStyle(color: Colors.black54)),
+    );
 
 class OwnerOverviewSection extends StatelessWidget {
   const OwnerOverviewSection({required this.input, super.key});
@@ -790,9 +835,7 @@ class OwnerOverviewSection extends StatelessWidget {
               ),
             );
           }),
-          ...recentPayments
-              .take(5)
-              .map(
+          ...recentPayments.take(5).map(
                 (payment) => ListTile(
                   dense: true,
                   leading: const Icon(Icons.payments_outlined),
@@ -805,9 +848,7 @@ class OwnerOverviewSection extends StatelessWidget {
                 ),
               ),
           if (growth.isNotEmpty) const Text('Membership trend'),
-          ...growth
-              .take(10)
-              .map(
+          ...growth.take(10).map(
                 (point) => Row(
                   children: [
                     SizedBox(width: 92, child: Text(_text(point['date']))),
@@ -816,18 +857,16 @@ class OwnerOverviewSection extends StatelessWidget {
                         value: maxMembers == 0
                             ? 0
                             : (((point['count'] as num?)?.toDouble() ?? 0) /
-                                      maxMembers)
-                                  .clamp(0, 1)
-                                  .toDouble(),
+                                    maxMembers)
+                                .clamp(0, 1)
+                                .toDouble(),
                       ),
                     ),
                   ],
                 ),
               ),
           if (trends.isNotEmpty) const Text('Revenue trend'),
-          ...trends
-              .take(10)
-              .map(
+          ...trends.take(10).map(
                 (point) => Row(
                   children: [
                     SizedBox(width: 92, child: Text(_text(point['date']))),
@@ -836,9 +875,9 @@ class OwnerOverviewSection extends StatelessWidget {
                         value: maxRevenue == 0
                             ? 0
                             : (((point['amount'] as num?)?.toDouble() ?? 0) /
-                                      maxRevenue)
-                                  .clamp(0, 1)
-                                  .toDouble(),
+                                    maxRevenue)
+                                .clamp(0, 1)
+                                .toDouble(),
                       ),
                     ),
                   ],
@@ -855,89 +894,93 @@ class OwnerMembersSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) => _dashboardShell(
-    'Members',
-    Column(
-      children: [
-        _dashboardSearch(input, statuses: true, paymentStatuses: false),
-        ...(_list(input.data, 'members').isEmpty
-            ? [_empty('No members found.')]
-            : _list(input.data, 'members').map((member) {
-                final user = _map(member['user']);
-                final active = '${member['status']}'.toUpperCase() == 'ACTIVE';
-                return Card(
-                  child: ListTile(
-                    leading: user['photo'] is String
-                        ? CircleAvatar(
-                            backgroundImage: NetworkImage('${user['photo']}'),
-                          )
-                        : const CircleAvatar(child: Icon(Icons.person_outline)),
-                    title: Text(_text(user['fullName'])),
-                    subtitle: Text(
-                      'Phone: ${_text(user['phone'])} • Email: ${_text(user['email'])}\nNumber: ${_text(member['membershipNumber'])}\nCategory: ${_text(member['category'])} • Branch: ${_text(member['branch'])}\nJoined: ${_text(member['joinedAt'])} • Status: ${_text(member['status'])}\nAnnual fee: ${_text(member['annualFeeStatus'] ?? 'Unavailable')}',
-                    ),
-                    isThreeLine: true,
-                    trailing: Wrap(
-                      children: [
-                        IconButton(
-                          tooltip: 'View member',
-                          onPressed: () => input.detail(member),
-                          icon: const Icon(Icons.visibility_outlined),
+        'Members',
+        Column(
+          children: [
+            _dashboardSearch(input, statuses: true, paymentStatuses: false),
+            ...(_list(input.data, 'members').isEmpty
+                ? [_empty('No members found.')]
+                : _list(input.data, 'members').map((member) {
+                    final user = _map(member['user']);
+                    final active =
+                        '${member['status']}'.toUpperCase() == 'ACTIVE';
+                    return Card(
+                      child: ListTile(
+                        leading: user['photo'] is String
+                            ? CircleAvatar(
+                                backgroundImage:
+                                    NetworkImage('${user['photo']}'),
+                              )
+                            : const CircleAvatar(
+                                child: Icon(Icons.person_outline)),
+                        title: Text(_text(user['fullName'])),
+                        subtitle: Text(
+                          'Phone: ${_text(user['phone'])} • Email: ${_text(user['email'])}\nNumber: ${_text(member['membershipNumber'])}\nCategory: ${_text(member['category'])} • Branch: ${_text(member['branch'])}\nJoined: ${_text(member['joinedAt'])} • Status: ${_text(member['status'])}\nAnnual fee: ${_text(member['annualFeeStatus'] ?? 'Unavailable')}',
                         ),
-                        IconButton(
-                          tooltip: 'Edit member',
-                          onPressed: () => input.memberEdit(member),
-                          icon: const Icon(Icons.edit_outlined),
-                        ),
-                        IconButton(
-                          tooltip: 'Message member',
-                          onPressed: () => input.memberMessage(member),
-                          icon: const Icon(Icons.message_outlined),
-                        ),
-                        IconButton(
-                          tooltip: 'View payments',
-                          onPressed: () => input.memberPayments(member),
-                          icon: const Icon(Icons.payments_outlined),
-                        ),
-                        IconButton(
-                          tooltip: 'View card',
-                          onPressed: () => input.memberCard(member),
-                          icon: const Icon(Icons.badge_outlined),
-                        ),
-                        Chip(label: Text(_text(member['status']))),
-                        if (active ||
-                            '${member['status']}'.toUpperCase() == 'SUSPENDED')
-                          IconButton(
-                            tooltip: active ? 'Suspend' : 'Reactivate',
-                            onPressed: () async {
-                              final next = active ? 'SUSPENDED' : 'ACTIVE';
-                              if (await _confirm(
-                                context,
-                                next == 'SUSPENDED'
-                                    ? 'Suspend member'
-                                    : 'Reactivate member',
-                                'Confirm changing this member to $next?',
-                              )) {
-                                await input.action('status', {
-                                  'memberId': member['_id'] ?? member['id'],
-                                  'status': next,
-                                });
-                              }
-                            },
-                            icon: Icon(
-                              active
-                                  ? Icons.pause_circle_outline
-                                  : Icons.play_circle_outline,
+                        isThreeLine: true,
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              tooltip: 'View member',
+                              onPressed: () => input.detail(member),
+                              icon: const Icon(Icons.visibility_outlined),
                             ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              })),
-        _dashboardPager(input, input.data),
-      ],
-    ),
-  );
+                            IconButton(
+                              tooltip: 'Edit member',
+                              onPressed: () => input.memberEdit(member),
+                              icon: const Icon(Icons.edit_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'Message member',
+                              onPressed: () => input.memberMessage(member),
+                              icon: const Icon(Icons.message_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'View payments',
+                              onPressed: () => input.memberPayments(member),
+                              icon: const Icon(Icons.payments_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'View card',
+                              onPressed: () => input.memberCard(member),
+                              icon: const Icon(Icons.badge_outlined),
+                            ),
+                            Chip(label: Text(_text(member['status']))),
+                            if (active ||
+                                '${member['status']}'.toUpperCase() ==
+                                    'SUSPENDED')
+                              IconButton(
+                                tooltip: active ? 'Suspend' : 'Reactivate',
+                                onPressed: () async {
+                                  final next = active ? 'SUSPENDED' : 'ACTIVE';
+                                  if (await _confirm(
+                                    context,
+                                    next == 'SUSPENDED'
+                                        ? 'Suspend member'
+                                        : 'Reactivate member',
+                                    'Confirm changing this member to $next?',
+                                  )) {
+                                    await input.action('status', {
+                                      'memberId': member['_id'] ?? member['id'],
+                                      'status': next,
+                                    });
+                                  }
+                                },
+                                icon: Icon(
+                                  active
+                                      ? Icons.pause_circle_outline
+                                      : Icons.play_circle_outline,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  })),
+            _dashboardPager(input, input.data),
+          ],
+        ),
+      );
 }
 
 class OwnerApplicationsSection extends StatelessWidget {
@@ -945,75 +988,75 @@ class OwnerApplicationsSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) => _dashboardShell(
-    'Applications',
-    Column(
-      children: [
-        _dashboardSearch(input, statuses: true),
-        ...(_list(input.data, 'applications').isEmpty
-            ? [_empty('No applications found.')]
-            : _list(input.data, 'applications').map((application) {
-                final user = _map(application['user']);
-                final pending =
-                    '${application['status']}'.toUpperCase() == 'PENDING';
-                return Card(
-                  child: ListTile(
-                    title: Text(_text(user['fullName'])),
-                    subtitle: Text(
-                      'Application data: ${_text(application['applicationData'])}\nDate: ${_text(application['createdAt'])} • Fee: ${_text(application['fee'])}\nBranch: ${_text(application['branch'])} • Category: ${_text(application['category'])}',
-                    ),
-                    isThreeLine: true,
-                    trailing: Wrap(
-                      children: [
-                        IconButton(
-                          tooltip: 'View application',
-                          onPressed: () => input.detail(application),
-                          icon: const Icon(Icons.visibility_outlined),
+        'Applications',
+        Column(
+          children: [
+            _dashboardSearch(input, statuses: true),
+            ...(_list(input.data, 'applications').isEmpty
+                ? [_empty('No applications found.')]
+                : _list(input.data, 'applications').map((application) {
+                    final user = _map(application['user']);
+                    final pending =
+                        '${application['status']}'.toUpperCase() == 'PENDING';
+                    return Card(
+                      child: ListTile(
+                        title: Text(_text(user['fullName'])),
+                        subtitle: Text(
+                          'Application data: ${_text(application['applicationData'])}\nDate: ${_text(application['createdAt'])} • Fee: ${_text(application['fee'])}\nBranch: ${_text(application['branch'])} • Category: ${_text(application['category'])}',
                         ),
-                        if (pending)
-                          IconButton(
-                            tooltip: 'Approve',
-                            onPressed: () async {
-                              if (await _confirm(
-                                context,
-                                'Approve application',
-                                'Approve this pending application?',
-                              )) {
-                                await input.action('approve', {
-                                  'applicationId':
-                                      application['_id'] ?? application['id'],
-                                });
-                              }
-                            },
-                            icon: const Icon(Icons.check),
-                          ),
-                        if (pending)
-                          IconButton(
-                            tooltip: 'Reject',
-                            onPressed: () async {
-                              if (await _confirm(
-                                context,
-                                'Reject application',
-                                'Reject this pending application?',
-                              )) {
-                                await input.action('reject', {
-                                  'applicationId':
-                                      application['_id'] ?? application['id'],
-                                });
-                              }
-                            },
-                            icon: const Icon(Icons.close),
-                          ),
-                        if (!pending)
-                          Chip(label: Text(_text(application['status']))),
-                      ],
-                    ),
-                  ),
-                );
-              })),
-        _dashboardPager(input, input.data),
-      ],
-    ),
-  );
+                        isThreeLine: true,
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              tooltip: 'View application',
+                              onPressed: () => input.detail(application),
+                              icon: const Icon(Icons.visibility_outlined),
+                            ),
+                            if (pending)
+                              IconButton(
+                                tooltip: 'Approve',
+                                onPressed: () async {
+                                  if (await _confirm(
+                                    context,
+                                    'Approve application',
+                                    'Approve this pending application?',
+                                  )) {
+                                    await input.action('approve', {
+                                      'applicationId': application['_id'] ??
+                                          application['id'],
+                                    });
+                                  }
+                                },
+                                icon: const Icon(Icons.check),
+                              ),
+                            if (pending)
+                              IconButton(
+                                tooltip: 'Reject',
+                                onPressed: () async {
+                                  if (await _confirm(
+                                    context,
+                                    'Reject application',
+                                    'Reject this pending application?',
+                                  )) {
+                                    await input.action('reject', {
+                                      'applicationId': application['_id'] ??
+                                          application['id'],
+                                    });
+                                  }
+                                },
+                                icon: const Icon(Icons.close),
+                              ),
+                            if (!pending)
+                              Chip(label: Text(_text(application['status']))),
+                          ],
+                        ),
+                      ),
+                    );
+                  })),
+            _dashboardPager(input, input.data),
+          ],
+        ),
+      );
 }
 
 class OwnerPaymentsSection extends StatelessWidget {
@@ -1021,65 +1064,65 @@ class OwnerPaymentsSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) => _dashboardShell(
-    'Payments',
-    Column(
-      children: [
-        _dashboardSearch(
-          input,
-          statuses: true,
-          paymentStatuses: true,
-          searchField: false,
-        ),
-        TextField(
-          onSubmitted: (value) => input.filter('memberId', value),
-          decoration: const InputDecoration(labelText: 'Member ID'),
-        ),
-        TextField(
-          onSubmitted: (value) => input.filter('feeType', value),
-          decoration: const InputDecoration(labelText: 'Fee type'),
-        ),
-        Row(
+        'Payments',
+        Column(
           children: [
-            Expanded(
-              child: TextField(
-                onSubmitted: (value) => input.filter('from', value),
-                decoration: const InputDecoration(labelText: 'From date'),
-              ),
+            _dashboardSearch(
+              input,
+              statuses: true,
+              paymentStatuses: true,
+              searchField: false,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                onSubmitted: (value) => input.filter('to', value),
-                decoration: const InputDecoration(labelText: 'To date'),
-              ),
+            TextField(
+              onSubmitted: (value) => input.filter('memberId', value),
+              decoration: const InputDecoration(labelText: 'Member ID'),
             ),
+            TextField(
+              onSubmitted: (value) => input.filter('feeType', value),
+              decoration: const InputDecoration(labelText: 'Fee type'),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    onSubmitted: (value) => input.filter('from', value),
+                    decoration: const InputDecoration(labelText: 'From date'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    onSubmitted: (value) => input.filter('to', value),
+                    decoration: const InputDecoration(labelText: 'To date'),
+                  ),
+                ),
+              ],
+            ),
+            if (input.data['summary'] is Map)
+              Text('Summary: ${_text(input.data['summary'])}'),
+            ...(_list(input.data, 'payments').isEmpty
+                ? [_empty('No payments found.')]
+                : _list(input.data, 'payments').map((payment) {
+                    final member = _map(payment['member']);
+                    final user = _map(member['user']);
+                    final fee = _map(payment['fee']);
+                    return Card(
+                      child: ListTile(
+                        title: Text(
+                          '${_text(payment['memberName'] ?? user['fullName'])} • ${_text(fee['name'] ?? payment['fee'])}',
+                        ),
+                        subtitle: Text(
+                          'Type: ${_text(fee['type'])} • Amount: ${_text(payment['amount'])}\nReference: ${_text(payment['reference'])} • Method: ${payment['method'] ?? 'Unavailable'}\nDate: ${_text(payment['date'] ?? payment['createdAt'])}',
+                        ),
+                        isThreeLine: true,
+                        trailing: Chip(label: Text(_text(payment['status']))),
+                      ),
+                    );
+                  })),
+            _dashboardPager(input, input.data),
           ],
         ),
-        if (input.data['summary'] is Map)
-          Text('Summary: ${_text(input.data['summary'])}'),
-        ...(_list(input.data, 'payments').isEmpty
-            ? [_empty('No payments found.')]
-            : _list(input.data, 'payments').map((payment) {
-                final member = _map(payment['member']);
-                final user = _map(member['user']);
-                final fee = _map(payment['fee']);
-                return Card(
-                  child: ListTile(
-                    title: Text(
-                      '${_text(payment['memberName'] ?? user['fullName'])} • ${_text(fee['name'] ?? payment['fee'])}',
-                    ),
-                    subtitle: Text(
-                      'Type: ${_text(fee['type'])} • Amount: ${_text(payment['amount'])}\nReference: ${_text(payment['reference'])} • Method: ${payment['method'] ?? 'Unavailable'}\nDate: ${_text(payment['date'] ?? payment['createdAt'])}',
-                    ),
-                    isThreeLine: true,
-                    trailing: Chip(label: Text(_text(payment['status']))),
-                  ),
-                );
-              })),
-        _dashboardPager(input, input.data),
-      ],
-    ),
-  );
+      );
 }
 
 Future<Map<String, dynamic>?> _feeForm(
@@ -1689,9 +1732,8 @@ Future<Map<String, dynamic>?> _staffForm(
                   'userId': userId.text.trim(),
                   'role': role,
                   'branch': role == 'BRANCH_ADMIN' ? branch.text.trim() : null,
-                  'branchId': role == 'BRANCH_ADMIN'
-                      ? branch.text.trim()
-                      : null,
+                  'branchId':
+                      role == 'BRANCH_ADMIN' ? branch.text.trim() : null,
                   'permissions': permissions.text
                       .split(',')
                       .map((v) => v.trim())
@@ -1859,30 +1901,31 @@ Future<Map<String, dynamic>?> _settingsForm(
                             entry.value.text = v ?? entry.value.text,
                       )
                     : entry.key == 'membershipMode'
-                    ? DropdownButtonFormField<String>(
-                        value: entry.value.text,
-                        decoration: InputDecoration(labelText: entry.key),
-                        items: const [
-                          DropdownMenuItem(value: 'AUTO', child: Text('Auto')),
-                          DropdownMenuItem(
-                            value: 'MANUAL',
-                            child: Text('Manual'),
+                        ? DropdownButtonFormField<String>(
+                            value: entry.value.text,
+                            decoration: InputDecoration(labelText: entry.key),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'AUTO', child: Text('Auto')),
+                              DropdownMenuItem(
+                                value: 'MANUAL',
+                                child: Text('Manual'),
+                              ),
+                            ],
+                            onChanged: (v) =>
+                                entry.value.text = v ?? entry.value.text,
+                          )
+                        : TextFormField(
+                            controller: entry.value,
+                            keyboardType: entry.key.contains('Fee')
+                                ? TextInputType.number
+                                : TextInputType.text,
+                            decoration: InputDecoration(labelText: entry.key),
+                            validator: (v) =>
+                                entry.key == 'name' && v!.trim().isEmpty
+                                    ? 'Name is required'
+                                    : null,
                           ),
-                        ],
-                        onChanged: (v) =>
-                            entry.value.text = v ?? entry.value.text,
-                      )
-                    : TextFormField(
-                        controller: entry.value,
-                        keyboardType: entry.key.contains('Fee')
-                            ? TextInputType.number
-                            : TextInputType.text,
-                        decoration: InputDecoration(labelText: entry.key),
-                        validator: (v) =>
-                            entry.key == 'name' && v!.trim().isEmpty
-                            ? 'Name is required'
-                            : null,
-                      ),
             ],
           ),
         ),
@@ -1899,9 +1942,8 @@ Future<Map<String, dynamic>?> _settingsForm(
             for (final entry in fields.entries) {
               final text = entry.value.text.trim();
               if (entry.key.startsWith('contact.')) continue;
-              values[entry.key] = entry.key.contains('Fee')
-                  ? num.tryParse(text)
-                  : text;
+              values[entry.key] =
+                  entry.key.contains('Fee') ? num.tryParse(text) : text;
             }
             values['contact'] = {
               'address': fields['contact.address']!.text.trim(),
@@ -2044,16 +2086,61 @@ class OwnerFeesSection extends StatelessWidget {
   }
 }
 
-class OwnerWalletSection extends StatelessWidget {
-  const OwnerWalletSection({required this.input, super.key});
+class StaffWalletSection extends StatelessWidget {
+  const StaffWalletSection({required this.input, super.key});
   final DashboardInput input;
+
   @override
   Widget build(BuildContext context) {
     final wallet = {...input.data, ..._map(input.data['wallet'])};
-    final ledger = _list(input.data, 'ledger');
-    final accounts = _list(input.data, 'settlementAccounts');
+    final values = {
+      'Available balance': wallet['availableBalance'],
+      'Ledger balance': wallet['ledgerBalance'],
+      'Held withdrawals': wallet['heldBalance'],
+      'Total balance': wallet['totalBalance'],
+    };
+    return _dashboardShell(
+      'Wallet',
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Read-only wallet overview',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final entry in values.entries)
+                if (entry.value != null)
+                  Chip(
+                    label: Text('${entry.key}: ₦${entry.value}'),
+                  ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class OwnerWalletSection extends StatelessWidget {
+  const OwnerWalletSection({
+    required this.input,
+    required this.onBankSave,
+    super.key,
+  });
+  final DashboardInput input;
+  final Future<void> Function(Map<String, dynamic>) onBankSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final wallet = {...input.data, ..._map(input.data['wallet'])};
+    final account = _map(input.data['bankAccount']);
     final withdrawals = _list(input.data, 'withdrawals');
-    final summary = _map(input.data['summary']);
+    final available = num.tryParse('${wallet['availableBalance'] ?? 0}') ?? 0;
     return _dashboardShell(
       'Wallet',
       Column(
@@ -2064,141 +2151,311 @@ class OwnerWalletSection extends StatelessWidget {
             runSpacing: 8,
             children: [
               for (final entry in {
-                'Available':
-                    wallet['availableBalance'] ?? summary['availableBalance'],
-                'Ledger': wallet['ledgerBalance'] ?? summary['ledgerBalance'],
-                'Held': wallet['heldBalance'] ?? summary['heldBalance'],
-                'Pending':
-                    wallet['pendingWithdrawals'] ??
-                    summary['pendingWithdrawals'],
-                'Money in': wallet['totalMoneyIn'] ?? summary['totalMoneyIn'],
-                'Money out':
-                    wallet['totalWithdrawn'] ?? summary['totalWithdrawn'],
-                'Fees': wallet['totalFees'] ?? summary['totalFees'],
+                'Available balance': wallet['availableBalance'],
+                'Ledger balance': wallet['ledgerBalance'],
+                'Held withdrawals': wallet['heldBalance'],
+                'Pending withdrawals': wallet['pendingWithdrawals'],
+                'Total balance': wallet['totalBalance'],
               }.entries)
                 if (entry.value != null)
-                  Chip(label: Text('${entry.key}: ${entry.value}')),
+                  Chip(
+                    label: Text(
+                      '${entry.key}: ₦${entry.value}',
+                      key: ValueKey('manual-wallet-${entry.key}'),
+                    ),
+                  ),
             ],
           ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             children: [
-              FilledButton.icon(
-                onPressed: () async {
-                  final values = await _settlementAccountForm(context);
-                  if (values != null) await input.action('addAccount', values);
-                },
+              OutlinedButton.icon(
+                onPressed: input.loading
+                    ? null
+                    : () async {
+                        final values = await _manualBankAccountForm(
+                          context,
+                          account,
+                        );
+                        if (values != null) await onBankSave(values);
+                      },
                 icon: const Icon(Icons.account_balance_outlined),
-                label: const Text('Add bank account'),
+                label: Text(
+                  account.isEmpty ? 'Add bank account' : 'Edit bank account',
+                ),
               ),
               FilledButton.icon(
-                onPressed:
-                    accounts.any(
-                      (a) => '${a['status'] ?? ''}'.toUpperCase() == 'VERIFIED',
-                    )
-                    ? () async {
-                        final values = await _organizationWithdrawalForm(
-                          context,
-                          accounts,
-                        );
-                        if (values != null) {
-                          await input.action('withdraw', values);
+                onPressed: input.loading
+                    ? null
+                    : () async {
+                        if (account.isEmpty) {
+                          final values = await _manualBankAccountForm(context);
+                          if (values != null) await onBankSave(values);
+                          return;
                         }
-                      }
-                    : null,
+                        final amount = await _manualAmountForm(
+                          context,
+                          account,
+                          available,
+                        );
+                        if (amount != null) {
+                          await input.action('withdraw', {'amount': amount});
+                        }
+                      },
                 icon: const Icon(Icons.call_made),
-                label: const Text('Withdraw funds'),
+                label: const Text('Withdraw'),
               ),
             ],
           ),
+          if (input.loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: LinearProgressIndicator(),
+            ),
           const SizedBox(height: 12),
-          const Text(
-            'Settlement accounts',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          ...(accounts.isEmpty
-              ? [_empty('No settlement accounts submitted.')]
-              : accounts.map(
-                  (account) => Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.account_balance),
-                      title: Text(
-                        '${_text(account['bankName'])} • ${_text(account['accountName'])}',
-                      ),
-                      subtitle: Text(
-                        'Account ending ${_text(account['accountNumberLast4'] ?? account['last4'])} • ${_text(account['status'])}',
-                      ),
-                      trailing: account['primary'] == true
-                          ? const Chip(label: Text('Primary'))
-                          : null,
-                    ),
-                  ),
-                )),
+          const Text('Withdrawal bank account',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          if (account.isEmpty)
+            _empty('Add a bank account to enable manual withdrawals.')
+          else
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.account_balance_outlined),
+                title: Text(_text(account['accountName'])),
+                subtitle: Text(
+                  '${_text(account['bankName'])} • ${_text(account['accountNumber'])}',
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
-          const Text(
-            'Withdrawal history',
-            style: TextStyle(fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Withdrawal history',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              DropdownButton<String>(
+                value: input.status,
+                hint: const Text('All statuses'),
+                items: const [
+                  DropdownMenuItem(value: '', child: Text('All statuses')),
+                  DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                  DropdownMenuItem(
+                      value: 'COMPLETED', child: Text('Completed')),
+                  DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+                ],
+                onChanged: (value) => input.onStatus(value ?? ''),
+              ),
+            ],
           ),
           ...(withdrawals.isEmpty
-              ? [_empty('No organization withdrawals yet.')]
+              ? [_empty('No manual withdrawal requests yet.')]
               : withdrawals.map(
                   (withdrawal) => Card(
                     child: ListTile(
-                      onTap: () => input.detail(withdrawal),
-                      title: Text(
-                        '${_text(withdrawal['reference'])} • ${_text(withdrawal['amount'])}',
+                      leading: Icon(
+                        '${withdrawal['status']}'.toUpperCase() == 'COMPLETED'
+                            ? Icons.check_circle_outline
+                            : '${withdrawal['status']}'.toUpperCase() ==
+                                    'REJECTED'
+                                ? Icons.cancel_outlined
+                                : Icons.schedule_outlined,
                       ),
-                      subtitle: Text(
-                        '${_withdrawalStatusLabel(withdrawal['status'])} • ${_text(withdrawal['narration'])}\n${_text(withdrawal['createdAt'])}',
+                      title: Text(
+                          '₦${_text(withdrawal['amount'])} • ${_withdrawalStatusLabel(withdrawal['status'])}'),
+                      subtitle: Builder(
+                        builder: (_) {
+                          final destination = _map(
+                            withdrawal['destinationSnapshot'],
+                          );
+                          final masked = destination['maskedAccountNumber'] ??
+                              (destination['accountNumberLast4'] == null
+                                  ? 'Account number hidden'
+                                  : '•••• ${destination['accountNumberLast4']}');
+                          return Text(
+                            '${_text(destination['bankName'])} • $masked\n${_text(withdrawal['reference'])} • ${_text(withdrawal['createdAt'])}',
+                          );
+                        },
                       ),
                       isThreeLine: true,
-                      trailing:
-                          '${withdrawal['status']}'.toUpperCase() ==
-                              'PENDING_APPROVAL'
-                          ? PopupMenuButton<String>(
-                              onSelected: (action) async {
-                                if (action == 'approve') {
-                                  await input.action('approveWithdrawal', {
-                                    'withdrawalId':
-                                        withdrawal['_id'] ?? withdrawal['id'],
-                                  });
-                                } else {
-                                  await input.action('rejectWithdrawal', {
-                                    'withdrawalId':
-                                        withdrawal['_id'] ?? withdrawal['id'],
-                                    'reason':
-                                        'Rejected by organization approver',
-                                  });
-                                }
-                              },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                  value: 'approve',
-                                  child: Text('Approve'),
-                                ),
-                                PopupMenuItem(
-                                  value: 'reject',
-                                  child: Text('Reject'),
-                                ),
-                              ],
-                            )
-                          : null,
                     ),
                   ),
                 )),
-          ...ledger.map(
-            (entry) => ListTile(
-              title: Text(_text(entry['type'])),
-              subtitle: Text(
-                'Amount: ${_text(entry['amount'])} • Date: ${_text(entry['createdAt'])}',
-              ),
-            ),
-          ),
+          _dashboardPager(input, input.data),
         ],
       ),
     );
   }
+}
+
+Future<Map<String, dynamic>?> _manualBankAccountForm(
+  BuildContext context, [
+  Map<String, dynamic> existing = const {},
+]) async {
+  final name = TextEditingController(text: '${existing['accountName'] ?? ''}');
+  final number = TextEditingController(
+    text: '${existing['accountNumber'] ?? ''}',
+  );
+  final bank = TextEditingController(text: '${existing['bankName'] ?? ''}');
+  final form = GlobalKey<FormState>();
+  final route = DialogRoute<Map<String, dynamic>>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(existing.isEmpty
+          ? 'Add withdrawal bank account'
+          : 'Edit bank account'),
+      content: Form(
+        key: form,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Account Name'),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter account name'
+                    : null,
+              ),
+              TextFormField(
+                controller: number,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Account Number'),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter account number'
+                    : null,
+              ),
+              TextFormField(
+                controller: bank,
+                decoration: const InputDecoration(labelText: 'Bank Name'),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter bank name'
+                    : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!form.currentState!.validate()) return;
+            Navigator.pop(dialogContext, {
+              'accountName': name.text.trim(),
+              'accountNumber': number.text.trim(),
+              'bankName': bank.text.trim(),
+            });
+          },
+          child: const Text('Save account'),
+        ),
+      ],
+    ),
+  );
+  final result = await Navigator.of(context).push(route);
+  await route.completed;
+  name.dispose();
+  number.dispose();
+  bank.dispose();
+  return result;
+}
+
+Future<num?> _manualAmountForm(
+  BuildContext context,
+  Map<String, dynamic> account,
+  num available,
+) async {
+  final amount = TextEditingController();
+  final form = GlobalKey<FormState>();
+  final route = DialogRoute<num>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Withdraw manually'),
+      content: Form(
+        key: form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: amount,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Amount',
+                prefixText: '₦ ',
+                helperText: 'Available: ₦$available',
+              ),
+              validator: (value) {
+                final parsed = num.tryParse((value ?? '').trim());
+                if (parsed == null || parsed <= 0)
+                  return 'Enter an amount greater than ₦0';
+                if (parsed > available)
+                  return 'Amount exceeds your available balance';
+                if (parsed * 100 != (parsed * 100).round())
+                  return 'Amount can have at most two decimal places';
+                return null;
+              },
+            ),
+            const SizedBox(height: 18),
+            const Text('Saved destination',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text(
+                '${_text(account['accountName'])} — ${_text(account['bankName'])} — ${_text(account['accountNumber'])}'),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            if (!form.currentState!.validate()) return;
+            final confirmationRoute = DialogRoute<bool>(
+              context: dialogContext,
+              builder: (confirmationContext) => AlertDialog(
+                title: const Text('Confirm destination'),
+                content: Text(
+                  'Withdraw ₦${num.parse(amount.text.trim()).toStringAsFixed(2)} to ${_text(account['accountName'])} — ${_text(account['bankName'])} — ${_text(account['accountNumber'])}?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(confirmationContext, false),
+                    child: const Text('Back'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(confirmationContext, true),
+                    child: const Text('Confirm destination'),
+                  ),
+                ],
+              ),
+            );
+            final confirmed =
+                await Navigator.of(dialogContext).push(confirmationRoute);
+            await confirmationRoute.completed;
+            if (confirmed == true && dialogContext.mounted) {
+              Navigator.pop(dialogContext, num.parse(amount.text.trim()));
+            }
+          },
+          child: const Text('Continue'),
+        ),
+      ],
+    ),
+  );
+  final result = await Navigator.of(context).push(route);
+  await route.completed;
+  amount.dispose();
+  return result;
 }
 
 class OwnerBranchesSection extends StatelessWidget {
@@ -2206,69 +2463,69 @@ class OwnerBranchesSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) => _dashboardShell(
-    'Branches',
-    Column(
-      children: [
-        FilledButton(
-          onPressed: () async {
-            final values = await _branchForm(context);
-            if (values != null) await input.action('create', values);
-          },
-          child: const Text('Create branch'),
+        'Branches',
+        Column(
+          children: [
+            FilledButton(
+              onPressed: () async {
+                final values = await _branchForm(context);
+                if (values != null) await input.action('create', values);
+              },
+              child: const Text('Create branch'),
+            ),
+            ...(_list(input.data, 'branches').isEmpty
+                ? [_empty('No branches found.')]
+                : _list(input.data, 'branches').map(
+                    (branch) => Card(
+                      child: ListTile(
+                        title: Text(_text(branch['name'])),
+                        subtitle: Text(
+                          'Code: ${_text(branch['code'])} • Address: ${_text(branch['address'])}\nManager: ${_branchAdminsLabel(branch['branchAdmins'])} • Members: ${_text(branch['membersCount'])} • Collections: ${_text(branch['successfulCollections'])}\nStatus: ${branch['active'] == true ? 'ACTIVE' : 'INACTIVE'}',
+                        ),
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              tooltip: 'Edit / status',
+                              onPressed: () async {
+                                final values = await _branchForm(
+                                  context,
+                                  existing: branch,
+                                );
+                                if (values != null) {
+                                  await input.action('edit', values);
+                                }
+                              },
+                              icon: const Icon(Icons.edit),
+                            ),
+                            TextButton(
+                              onPressed: () => input.openFiltered(
+                                'Members',
+                                '${branch['_id'] ?? branch['id']}',
+                              ),
+                              child: const Text('View members'),
+                            ),
+                            TextButton(
+                              onPressed: () => input.openFiltered(
+                                'Payments',
+                                '${branch['_id'] ?? branch['id']}',
+                              ),
+                              child: const Text('View payments'),
+                            ),
+                            TextButton(
+                              onPressed: () => input.branchAdmin(
+                                '${branch['_id'] ?? branch['id']}',
+                              ),
+                              child: const Text('Assign admin'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )),
+            _dashboardPager(input, input.data),
+          ],
         ),
-        ...(_list(input.data, 'branches').isEmpty
-            ? [_empty('No branches found.')]
-            : _list(input.data, 'branches').map(
-                (branch) => Card(
-                  child: ListTile(
-                    title: Text(_text(branch['name'])),
-                    subtitle: Text(
-                      'Code: ${_text(branch['code'])} • Address: ${_text(branch['address'])}\nManager: ${_branchAdminsLabel(branch['branchAdmins'])} • Members: ${_text(branch['membersCount'])} • Collections: ${_text(branch['successfulCollections'])}\nStatus: ${branch['active'] == true ? 'ACTIVE' : 'INACTIVE'}',
-                    ),
-                    trailing: Wrap(
-                      children: [
-                        IconButton(
-                          tooltip: 'Edit / status',
-                          onPressed: () async {
-                            final values = await _branchForm(
-                              context,
-                              existing: branch,
-                            );
-                            if (values != null) {
-                              await input.action('edit', values);
-                            }
-                          },
-                          icon: const Icon(Icons.edit),
-                        ),
-                        TextButton(
-                          onPressed: () => input.openFiltered(
-                            'Members',
-                            '${branch['_id'] ?? branch['id']}',
-                          ),
-                          child: const Text('View members'),
-                        ),
-                        TextButton(
-                          onPressed: () => input.openFiltered(
-                            'Payments',
-                            '${branch['_id'] ?? branch['id']}',
-                          ),
-                          child: const Text('View payments'),
-                        ),
-                        TextButton(
-                          onPressed: () => input.branchAdmin(
-                            '${branch['_id'] ?? branch['id']}',
-                          ),
-                          child: const Text('Assign admin'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              )),
-        _dashboardPager(input, input.data),
-      ],
-    ),
-  );
+      );
 }
 
 class OwnerStaffSection extends StatelessWidget {
@@ -2276,47 +2533,47 @@ class OwnerStaffSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) => _dashboardShell(
-    'Staff & Roles',
-    Column(
-      children: [
-        FilledButton(
-          onPressed: () async {
-            final values = await _staffForm(context);
-            if (values != null) await input.action('create', values);
-          },
-          child: const Text('Add staff'),
+        'Staff & Roles',
+        Column(
+          children: [
+            FilledButton(
+              onPressed: () async {
+                final values = await _staffForm(context);
+                if (values != null) await input.action('create', values);
+              },
+              child: const Text('Add staff'),
+            ),
+            ...(_list(input.data, 'staff').isEmpty
+                ? [_empty('No staff found.')]
+                : _list(input.data, 'staff').map((staff) {
+                    final user = _map(staff['user']);
+                    return Card(
+                      child: ListTile(
+                        title: Text(_text(user['fullName'])),
+                        subtitle: Text(
+                          'Role: ${_text(staff['role'])}\nPermissions: ${_text(staff['permissions'])} • Branch: ${_text(staff['branch'])}',
+                        ),
+                        isThreeLine: true,
+                        trailing: IconButton(
+                          tooltip: 'Edit / status',
+                          onPressed: () async {
+                            final values = await _staffForm(
+                              context,
+                              existing: staff,
+                            );
+                            if (values != null) {
+                              await input.action('edit', values);
+                            }
+                          },
+                          icon: const Icon(Icons.edit),
+                        ),
+                      ),
+                    );
+                  })),
+            _dashboardPager(input, input.data),
+          ],
         ),
-        ...(_list(input.data, 'staff').isEmpty
-            ? [_empty('No staff found.')]
-            : _list(input.data, 'staff').map((staff) {
-                final user = _map(staff['user']);
-                return Card(
-                  child: ListTile(
-                    title: Text(_text(user['fullName'])),
-                    subtitle: Text(
-                      'Role: ${_text(staff['role'])}\nPermissions: ${_text(staff['permissions'])} • Branch: ${_text(staff['branch'])}',
-                    ),
-                    isThreeLine: true,
-                    trailing: IconButton(
-                      tooltip: 'Edit / status',
-                      onPressed: () async {
-                        final values = await _staffForm(
-                          context,
-                          existing: staff,
-                        );
-                        if (values != null) {
-                          await input.action('edit', values);
-                        }
-                      },
-                      icon: const Icon(Icons.edit),
-                    ),
-                  ),
-                );
-              })),
-        _dashboardPager(input, input.data),
-      ],
-    ),
-  );
+      );
 }
 
 class OwnerMessagesSection extends StatelessWidget {
@@ -2324,34 +2581,34 @@ class OwnerMessagesSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) => _dashboardShell(
-    'Messages',
-    Column(
-      children: [
-        FilledButton(
-          onPressed: () async {
-            final values = await _messageForm(context);
-            if (values != null) await input.action('publish', values);
-          },
-          child: const Text('Compose in-app message'),
-        ),
-        const Text('Supported audiences: ALL, MEMBERS, STAFF, BRANCH'),
-        ...(_list(input.data, 'announcements').isEmpty
-            ? [_empty('No announcements found.')]
-            : _list(input.data, 'announcements').map(
-                (message) => Card(
-                  child: ListTile(
-                    title: Text(_text(message['title'])),
-                    subtitle: Text(
-                      '${_text(message['body'])}\nAudience: ${_text(message['audience'])} • Published: ${_text(message['publishedAt'])}',
+        'Messages',
+        Column(
+          children: [
+            FilledButton(
+              onPressed: () async {
+                final values = await _messageForm(context);
+                if (values != null) await input.action('publish', values);
+              },
+              child: const Text('Compose in-app message'),
+            ),
+            const Text('Supported audiences: ALL, MEMBERS, STAFF, BRANCH'),
+            ...(_list(input.data, 'announcements').isEmpty
+                ? [_empty('No announcements found.')]
+                : _list(input.data, 'announcements').map(
+                    (message) => Card(
+                      child: ListTile(
+                        title: Text(_text(message['title'])),
+                        subtitle: Text(
+                          '${_text(message['body'])}\nAudience: ${_text(message['audience'])} • Published: ${_text(message['publishedAt'])}',
+                        ),
+                        isThreeLine: true,
+                      ),
                     ),
-                    isThreeLine: true,
-                  ),
-                ),
-              )),
-        _dashboardPager(input, input.data),
-      ],
-    ),
-  );
+                  )),
+            _dashboardPager(input, input.data),
+          ],
+        ),
+      );
 }
 
 class OwnerCardsSection extends StatelessWidget {
@@ -2359,36 +2616,36 @@ class OwnerCardsSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) => _dashboardShell(
-    'ID Cards',
-    Column(
-      children: [
-        ...(_list(input.data, 'cards').isEmpty
-            ? [_empty('No cards found.')]
-            : _list(input.data, 'cards').map((card) {
-                final member = _map(card['member']);
-                return Card(
-                  child: ListTile(
-                    title: Text(_text(card['cardNumber'])),
-                    subtitle: Text(
-                      'Member: ${_text(member['membershipNumber'])} • Status: ${_text(member['status'])}\nIssued: ${_text(card['issuedAt'])}',
-                    ),
-                    trailing: Wrap(
-                      children: [
-                        IconButton(
-                          tooltip: 'View card detail',
-                          onPressed: () => input.detail(card),
-                          icon: const Icon(Icons.visibility_outlined),
+        'ID Cards',
+        Column(
+          children: [
+            ...(_list(input.data, 'cards').isEmpty
+                ? [_empty('No cards found.')]
+                : _list(input.data, 'cards').map((card) {
+                    final member = _map(card['member']);
+                    return Card(
+                      child: ListTile(
+                        title: Text(_text(card['cardNumber'])),
+                        subtitle: Text(
+                          'Member: ${_text(member['membershipNumber'])} • Status: ${_text(member['status'])}\nIssued: ${_text(card['issuedAt'])}',
                         ),
-                        const Text('Regeneration/download unavailable'),
-                      ],
-                    ),
-                  ),
-                );
-              })),
-        _dashboardPager(input, input.data),
-      ],
-    ),
-  );
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              tooltip: 'View card detail',
+                              onPressed: () => input.detail(card),
+                              icon: const Icon(Icons.visibility_outlined),
+                            ),
+                            const Text('Regeneration/download unavailable'),
+                          ],
+                        ),
+                      ),
+                    );
+                  })),
+            _dashboardPager(input, input.data),
+          ],
+        ),
+      );
 }
 
 class OwnerReportsSection extends StatelessWidget {
@@ -2459,47 +2716,47 @@ class OwnerAuditSection extends StatelessWidget {
   final DashboardInput input;
   @override
   Widget build(BuildContext context) => _dashboardShell(
-    'Audit Logs',
-    Column(
-      children: [
-        const Text('Filters'),
-        TextField(
-          onSubmitted: (value) => input.filter('action', value),
-          decoration: const InputDecoration(labelText: 'Action'),
+        'Audit Logs',
+        Column(
+          children: [
+            const Text('Filters'),
+            TextField(
+              onSubmitted: (value) => input.filter('action', value),
+              decoration: const InputDecoration(labelText: 'Action'),
+            ),
+            TextField(
+              onSubmitted: (value) => input.filter('actor', value),
+              decoration: const InputDecoration(labelText: 'Actor ID'),
+            ),
+            TextField(
+              onSubmitted: (value) => input.filter('entityType', value),
+              decoration: const InputDecoration(labelText: 'Entity type'),
+            ),
+            TextField(
+              onSubmitted: (value) => input.filter('from', value),
+              decoration: const InputDecoration(labelText: 'From date'),
+            ),
+            TextField(
+              onSubmitted: (value) => input.filter('to', value),
+              decoration: const InputDecoration(labelText: 'To date'),
+            ),
+            ...(_list(input.data, 'audit').isEmpty
+                ? [_empty('No audit events found.')]
+                : _list(input.data, 'audit').map((event) {
+                    final actor = _map(event['actor']);
+                    return ListTile(
+                      title: Text(
+                        '${_text(actor['fullName'])} • ${_text(event['action'])}',
+                      ),
+                      subtitle: Text(
+                        'Entity: ${_text(event['entityType'])} • Time: ${_text(event['createdAt'])}',
+                      ),
+                    );
+                  })),
+            _dashboardPager(input, input.data),
+          ],
         ),
-        TextField(
-          onSubmitted: (value) => input.filter('actor', value),
-          decoration: const InputDecoration(labelText: 'Actor ID'),
-        ),
-        TextField(
-          onSubmitted: (value) => input.filter('entityType', value),
-          decoration: const InputDecoration(labelText: 'Entity type'),
-        ),
-        TextField(
-          onSubmitted: (value) => input.filter('from', value),
-          decoration: const InputDecoration(labelText: 'From date'),
-        ),
-        TextField(
-          onSubmitted: (value) => input.filter('to', value),
-          decoration: const InputDecoration(labelText: 'To date'),
-        ),
-        ...(_list(input.data, 'audit').isEmpty
-            ? [_empty('No audit events found.')]
-            : _list(input.data, 'audit').map((event) {
-                final actor = _map(event['actor']);
-                return ListTile(
-                  title: Text(
-                    '${_text(actor['fullName'])} • ${_text(event['action'])}',
-                  ),
-                  subtitle: Text(
-                    'Entity: ${_text(event['entityType'])} • Time: ${_text(event['createdAt'])}',
-                  ),
-                );
-              })),
-        _dashboardPager(input, input.data),
-      ],
-    ),
-  );
+      );
 }
 
 class OwnerSettingsSection extends StatelessWidget {
@@ -2541,30 +2798,30 @@ class _DashboardError extends StatelessWidget {
   final VoidCallback retry;
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        OutlinedButton(onPressed: retry, child: const Text('Retry')),
-      ],
-    ),
-  );
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            OutlinedButton(onPressed: retry, child: const Text('Retry')),
+          ],
+        ),
+      );
 }
 
 IconData _dashboardIcon(String name) => switch (name) {
-  'Overview' => Icons.space_dashboard_outlined,
-  'Members' => Icons.groups_outlined,
-  'Applications' => Icons.assignment_outlined,
-  'Payments' => Icons.receipt_long_outlined,
-  'Fees & Dues' => Icons.request_quote_outlined,
-  'Wallet' => Icons.account_balance_wallet_outlined,
-  'Branches' => Icons.account_tree_outlined,
-  'Staff & Roles' => Icons.badge_outlined,
-  'Messages' => Icons.mark_unread_chat_alt_outlined,
-  'ID Cards' => Icons.contact_mail_outlined,
-  'Reports' => Icons.query_stats_outlined,
-  'Audit Logs' => Icons.fact_check_outlined,
-  'Settings' => Icons.settings_outlined,
-  _ => Icons.circle_outlined,
-};
+      'Overview' => Icons.space_dashboard_outlined,
+      'Members' => Icons.groups_outlined,
+      'Applications' => Icons.assignment_outlined,
+      'Payments' => Icons.receipt_long_outlined,
+      'Fees & Dues' => Icons.request_quote_outlined,
+      'Wallet' => Icons.account_balance_wallet_outlined,
+      'Branches' => Icons.account_tree_outlined,
+      'Staff & Roles' => Icons.badge_outlined,
+      'Messages' => Icons.mark_unread_chat_alt_outlined,
+      'ID Cards' => Icons.contact_mail_outlined,
+      'Reports' => Icons.query_stats_outlined,
+      'Audit Logs' => Icons.fact_check_outlined,
+      'Settings' => Icons.settings_outlined,
+      _ => Icons.circle_outlined,
+    };
