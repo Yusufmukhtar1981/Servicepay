@@ -1009,6 +1009,7 @@ exports.buyData = async (req, res) => {
           : NaN;
     const keyCandidates = [
       req.headers?.["x-idempotency-key"],
+      req.headers?.["idempotency-key"],
       req.get?.("X-Idempotency-Key"),
       req.get?.("Idempotency-Key"),
       req.body.idempotencyKey,
@@ -1017,17 +1018,22 @@ exports.buyData = async (req, res) => {
       .filter(Boolean);
     const uniqueKeys = [...new Set(keyCandidates)];
     if (uniqueKeys.length > 1) {
+      console.warn("[DATA_ADMISSION] IDEMPOTENCY_KEY_CONFLICT");
       return res.status(400).json({
         success: false,
-        message: "Conflicting idempotency keys were supplied.",
+        code: "IDEMPOTENCY_KEY_CONFLICT",
+        message: "Unable to complete your data purchase. Please try again.",
       });
     }
     const idempotencyKey = uniqueKeys[0] || "";
 
     if (!idempotencyKey || idempotencyKey.length > 128) {
+      const code = idempotencyKey ? "INVALID_IDEMPOTENCY_KEY" : "IDEMPOTENCY_KEY_REQUIRED";
+      console.warn(`[DATA_ADMISSION] ${code}`);
       return res.status(400).json({
         success: false,
-        message: "A valid idempotencyKey is required for data purchases.",
+        code,
+        message: "Unable to complete your data purchase. Please try again.",
       });
     }
     if (!networkCode) {

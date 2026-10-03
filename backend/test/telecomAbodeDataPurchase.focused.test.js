@@ -46,6 +46,9 @@ let nextProviderOutcome = "SUCCESS";
 let dispatchedRequests = [];
 
 const invoke = async (handler, req) => {
+  if (handler === customerController.buyData) {
+    req.body = { transactionPin: "2468", ...req.body };
+  }
   const result = {};
   await handler(req, {
     status(code) {
@@ -60,7 +63,8 @@ const invoke = async (handler, req) => {
   return result;
 };
 
-const makeUser = () => User.create({
+const makeUser = async () => {
+  const user = await User.create({
   fullName: `Focused DATA Buyer ${++sequence}`,
   phone: `080${String(sequence).padStart(8, "0")}`,
   email: `focused-data-${sequence}@test.invalid`,
@@ -68,7 +72,11 @@ const makeUser = () => User.create({
   role: "CUSTOMER",
   status: "ACTIVE",
   walletBalance: 1000,
-});
+  });
+  user.setTransactionPin("2468");
+  await user.save();
+  return user;
+};
 
 const postJson = (server, path, { token, key, body }) => new Promise((resolve, reject) => {
   const address = server.address();

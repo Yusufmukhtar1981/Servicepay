@@ -27,9 +27,9 @@ const {
 const telecomAbode = require("../services/telecomAbode.service");
 const { createTelecomAbodeService } = telecomAbode;
 const { issueDataPlanQuote } = require("../services/dataPlanQuote.service");
-const { servicepayPlanCode } = require("../services/telecomAbodeDataCatalog.service");
+const { servicepayPlanCode, providerPlanCode } = require("../services/telecomAbodeDataCatalog.service");
 
-const TELECOM_PLAN_CODE = servicepayPlanCode("01", "1GB SME - 30 days");
+const TELECOM_PLAN_CODE = providerPlanCode("01", 1, 77);
 const TELECOM_API_KEY = "mock-telecom-abode-key";
 
 let replicaSet;
@@ -61,7 +61,7 @@ const invoke = async (user, body, { idempotencyKey, headers = {} } = {}) => {
   await controller.buyData(
     {
       user: { _id: user._id },
-      body,
+      body: { transactionPin: "2468", ...body },
       headers: requestHeaders,
       get(name) { return requestHeaders[String(name).toLowerCase()]; },
     },
@@ -94,7 +94,8 @@ const invokeHandler = async (handler, request) => {
   return result;
 };
 
-const makeUser = () => User.create({
+const makeUser = async () => {
+  const user = await User.create({
   fullName: `Data Buyer ${++sequence}`,
   phone: `080${String(sequence).padStart(8, "0")}`,
   email: `data-buyer-${sequence}@test.invalid`,
@@ -102,7 +103,11 @@ const makeUser = () => User.create({
   role: "CUSTOMER",
   status: "ACTIVE",
   walletBalance: 500,
-});
+  });
+  user.setTransactionPin("2468");
+  await user.save();
+  return user;
+};
 
 const seedPendingTransaction = async (user, dispatchStatus) => Transaction.create({
     reference: `DATA-QUEUE-${++sequence}`,
@@ -336,11 +341,29 @@ test.beforeEach(async () => {
   await configureTelecomAbode({ price: 100, sellingPrice: 100 });
 });
 
+test("missing, conflicting and overlong keys fail before wallet or provider admission with friendly diagnostics", async () => {
+  const user = await makeUser();
+  for (const [options, code] of [
+    [{}, "IDEMPOTENCY_KEY_REQUIRED"],
+    [{ headers: { "Idempotency-Key": "x".repeat(129) } }, "INVALID_IDEMPOTENCY_KEY"],
+    [{ headers: { "Idempotency-Key": "one", "X-Idempotency-Key": "two" } }, "IDEMPOTENCY_KEY_CONFLICT"],
+  ]) {
+    const result = await invoke(user, purchaseBody(user), options);
+    assert.equal(result.status, 400);
+    assert.equal(result.body.code, code);
+    assert.equal(result.body.message, "Unable to complete your data purchase. Please try again.");
+  }
+  assert.equal((await User.findById(user._id)).walletBalance, 500);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 0);
+  assert.equal(await LedgerEntry.countDocuments({ userId: user._id }), 0);
+  assert.equal(dataRequestCount + telecomPurchaseCount, 0);
+});
+
 test("DATA admission atomically debits wallet, writes ledger and transaction, then preserves success response", async () => {
   const user = await makeUser();
   const result = await invoke(user, purchaseBody(user), { idempotencyKey: "atomic-success-1" });
 
-  assert.equal(result.status, 200);
+  assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.equal(result.body.success, true);
   assert.equal(result.body.status, "SUCCESSFUL");
   assert.equal(result.body.walletBalance, 400);
