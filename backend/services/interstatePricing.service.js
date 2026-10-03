@@ -5,10 +5,12 @@ function calculateInterstateQuote(route, input) {
   const declaredValue = Number(input.declaredValue || 0);
   if (!Number.isFinite(weightKg) || weightKg <= 0) throw new Error("Weight must be greater than zero.");
   if (!Number.isFinite(declaredValue) || declaredValue < 0) throw new Error("Declared value must be valid.");
-  if (weightKg > Number(route.maximumWeightKg)) throw new Error("Parcel weight exceeds this route's maximum.");
+  const excessMode = route.weightPricingMode === "EXCESS_OVER_MAXIMUM";
+  if (!excessMode && weightKg > Number(route.maximumWeightKg)) throw new Error("Parcel weight exceeds this route's maximum.");
   if (input.serviceType === "EXPRESS" && !route.expressEnabled) throw new Error("Express is not available for this route.");
-  const extraWeight = Math.max(0, weightKg - Number(route.minimumWeightKg || 0));
-  const transportFee = money(Number(route.baseFare) + extraWeight * Number(route.pricePerAdditionalKg));
+  const extraWeight = Math.max(0, weightKg - Number(excessMode ? route.maximumWeightKg : route.minimumWeightKg || 0));
+  const excessWeightCharge = money(extraWeight * Number(route.pricePerAdditionalKg));
+  const transportFee = money(Number(route.baseFare) + excessWeightCharge);
   const dimensionInput = input.dimensions || {};
   if (typeof dimensionInput !== "object" || Array.isArray(dimensionInput)) throw new Error("Parcel dimensions must be valid.");
   if (Object.keys(dimensionInput).some((key) => !["length", "width", "height"].includes(key))) throw new Error("Parcel dimensions may include only length, width, and height.");
@@ -28,7 +30,8 @@ function calculateInterstateQuote(route, input) {
   const protectionFee = input.protection && route.protectionEnabled
     ? money(Number(route.protectionFlatFee || 0) + declaredValue * Number(route.protectionPercent || 0) / 100) : 0;
   const total = money(transportFee + sizeSurcharge + expressSurcharge + fragileItemSurcharge + pickupFee + deliveryFee + protectionFee);
-  return { breakdown: { transportFee, sizeSurcharge, expressSurcharge, fragileItemSurcharge, pickupFee, deliveryFee, protectionFee }, total,
+  return { breakdown: { transportFee, sizeSurcharge, expressSurcharge, fragileItemSurcharge, pickupFee, deliveryFee, protectionFee,
+    ...(excessMode ? { baseFare: money(route.baseFare), excessKg: extraWeight, excessWeightCharge } : {}) }, total,
     expectedDelivery: input.serviceType === "EXPRESS" ? route.expressDeliveryTime : route.standardDeliveryTime };
 }
 module.exports = { calculateInterstateQuote };

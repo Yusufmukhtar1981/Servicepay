@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
 const LogisticsRoute = require("../models/logisticsRoute.model");
 const Shipment = require("../models/interstateShipment.model");
+const Branch = require("../models/branch.model");
 const controller = require("../controllers/interstateLogistics.controller");
 
 const response = () => ({
@@ -14,6 +15,8 @@ const response = () => ({
 
 test("customer route listing requests only active non-archived routes", async () => {
   const originalFind = LogisticsRoute.find;
+  const originalDistinct = Branch.distinct;
+  Branch.distinct = async () => ["active-branch"];
   let filter;
   LogisticsRoute.find = (value) => {
     filter = value;
@@ -25,11 +28,17 @@ test("customer route listing requests only active non-archived routes", async ()
   try {
     const res = response();
     await controller.customerRoutes({}, res);
-    assert.deepEqual(filter, { status: "ACTIVE", isArchived: { $ne: true } });
+    assert.equal(filter.status, "ACTIVE");
+    assert.deepEqual(filter.isArchived, { $ne: true });
+    assert.deepEqual(filter.customerVisible, { $ne: false });
+    assert.deepEqual(filter.originBranchId, { $in: ["active-branch"] });
+    assert.deepEqual(filter.destinationBranchId, { $in: ["active-branch"] });
+    assert.deepEqual(filter.maximumWeightKg, { $gt: 0 });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.body.routes, []);
   } finally {
     LogisticsRoute.find = originalFind;
+    Branch.distinct = originalDistinct;
   }
 });
 

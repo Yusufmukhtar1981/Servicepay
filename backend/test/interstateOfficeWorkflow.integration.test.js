@@ -32,7 +32,7 @@ test.before(async () => {
   app.use("/api/logistics/interstate", require("../routes/interstateLogistics.routes"));
   server = await new Promise(resolve => { const listener = app.listen(0, "127.0.0.1", () => resolve(listener)); });
   base = `http://127.0.0.1:${server.address().port}`;
-  await Promise.all([Shipment, User, Branch, Route, History, Delivery, require("../models/adminAuditLog.model"), require("../models/branchAuditLog.model")].map(model => model.init()));
+  await Promise.all([Shipment, User, Branch, Route, History, Delivery, require("../models/notification.model"), require("../models/adminAuditLog.model"), require("../models/branchAuditLog.model")].map(model => model.init()));
 });
 test.after(async () => { await new Promise(resolve => server.close(resolve)); await mongoose.disconnect(); await mongo.stop(); });
 const fixture = async () => {
@@ -47,6 +47,118 @@ const fixture = async () => {
   return { admin, a, b, route, customer, riderA, riderB, body };
 };
 const adminPath = "/api/admin/logistics/interstate";
+test("Head Office lists and assigns legitimate branchless riders in both legs; status options, history, notification and tracking stay aligned", async () => {
+  const f = await fixture();
+  await User.updateMany({ _id: { $in: [f.riderA._id, f.riderB._id] } }, { $unset: { branchId: 1 } });
+  const created = await api(f.admin, `${adminPath}/shipments`, "POST", f.body);
+  assert.equal(created.status, 201);
+  const id = created.body.shipment._id;
+  const trackingNumber = created.body.shipment.trackingNumber;
+  const update = async status => {
+    const response = await api(f.admin, `${adminPath}/shipments/${id}/status`, "PATCH", { status });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.shipment.trackingNumber, trackingNumber);
+    const tracked = await api(null, `/api/logistics/interstate/track/${trackingNumber}`);
+    assert.equal(tracked.body.shipment.status, status);
+  };
+  for (const leg of ["ORIGIN", "DESTINATION"]) {
+    const list = await api(f.admin, `${adminPath}/shipments/${id}/riders?leg=${leg}`);
+    assert.equal(list.status, 200);
+    assert.ok(list.body.riders.some(r => r._id === String(f.riderA._id)));
+    assert.ok(list.body.riders.some(r => r._id === String(f.riderB._id)));
+    assert.equal(list.body.riders[0].availabilityStatus, "ONLINE");
+  }
+  const assigned = await api(f.admin, `${adminPath}/shipments/${id}/assign-rider`, "POST", { leg: "ORIGIN", riderId: String(f.riderB._id) });
+  assert.equal(assigned.status, 200);
+  let detail = await api(f.admin, `${adminPath}/shipments/${id}`);
+  assert.ok(detail.body.allowedStatusTransitions.some(s => s.status === "PICKED_UP"));
+  await update("PICKED_UP");
+  await update("RECEIVED_AT_ORIGIN_HUB");
+  await update("VERIFIED_AT_ORIGIN_HUB");
+  await update("READY_FOR_INTERSTATE_DISPATCH");
+  await update("IN_TRANSIT");
+  await update("ARRIVED_AT_DESTINATION_HUB");
+  await update("DESTINATION_HUB_VERIFIED");
+  const lastMile = await api(f.admin, `${adminPath}/shipments/${id}/assign-rider`, "POST", { leg: "DESTINATION", riderId: String(f.riderA._id) });
+  assert.equal(lastMile.status, 200);
+  assert.equal(lastMile.body.shipment.trackingNumber, trackingNumber);
+  const invalid = await api(f.admin, `${adminPath}/shipments/${id}/status`, "PATCH", { status: "DELIVERED" });
+  assert.equal(invalid.status, 409);
+  detail = await api(f.admin, `${adminPath}/shipments/${id}`);
+  assert.ok(detail.body.history.some(h => h.status === "IN_TRANSIT" && String(h.actorId) === String(f.admin._id)));
+  assert.ok(await require("../models/notification.model").exists({ userId: f.customer._id, relatedStatus: "IN_TRANSIT", reference: trackingNumber }));
+});
+test("directional route visibility, simplified pricing and archive preserve all existing shipment/payment/receipt data", async () => {
+  const f = await fixture();
+  const offices = {};
+  for (const state of ["KANO", "ABUJA", "KADUNA", "KOGI"]) {
+    offices[state] = await Branch.create({ name: state[0] + state.slice(1).toLowerCase(), code: `SIM-${state}-${++n}`, state, lga: "Test LGA", address: "Test office", phone: "08030000001", status: "ACTIVE", createdBy: f.admin._id });
+  }
+  const customerRouteIds = async () => {
+    const list = await api(f.customer, "/api/logistics/interstate/routes");
+    assert.equal(list.status, 200);
+    return list.body.routes.map(r => r._id);
+  };
+  let kano;
+  for (const [origin, destination] of [["KANO", "ABUJA"], ["KADUNA", "ABUJA"], ["ABUJA", "KOGI"]]) {
+    const response = await api(f.admin, `${adminPath}/routes`, "POST", {
+      name: `${offices[origin].name} to ${offices[destination].name}`,
+      originState: origin, destinationState: destination,
+      originBranchId: String(offices[origin]._id), destinationBranchId: String(offices[destination]._id),
+      baseFare: 2000, maximumWeightKg: 5, pricePerAdditionalKg: 100, weightPricingMode: "EXCESS_OVER_MAXIMUM",
+      expressEnabled: true, expressSurcharge: 500, expressDeliveryTime: "1 day",
+      standardDeliveryTime: "2 days", pickupFee: 300, doorDeliveryFee: 400,
+      customerVisible: false,
+    });
+    assert.equal(response.status, 201, JSON.stringify(response.body));
+    assert.ok(!(await customerRouteIds()).includes(response.body.route._id));
+    const enabled = await api(f.admin, `${adminPath}/routes/${response.body.route._id}`, "PATCH", { customerVisible: true });
+    assert.equal(enabled.status, 200);
+    assert.ok((await customerRouteIds()).includes(response.body.route._id));
+    if (origin === "KANO") kano = enabled.body.route;
+  }
+  const body = {
+    ...f.body, routeId: kano._id, sender: { ...f.body.sender, state: "KANO" },
+    parcel: { ...f.body.parcel, weightKg: 8 }, serviceType: "EXPRESS",
+  };
+  const created = await api(f.admin, `${adminPath}/shipments`, "POST", body);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const shipment = created.body.shipment;
+  assert.equal(shipment.quote.breakdown.excessKg, 3);
+  assert.equal(shipment.quote.breakdown.excessWeightCharge, 300);
+  assert.equal(shipment.quote.breakdown.expressSurcharge, 500);
+  assert.equal(shipment.quote.breakdown.deliveryFee, 400);
+  const quote = await api(f.customer, "/api/logistics/interstate/quote", "POST", {
+    ...body, originState: "KANO", destinationState: "ABUJA", weightKg: 8,
+    pickupMethod: "RIDER_PICKUP", deliveryMethod: "DOOR_DELIVERY", total: 1,
+  });
+  assert.equal(quote.status, 200, JSON.stringify(quote.body));
+  assert.equal(quote.body.quote.total, 3500);
+  assert.equal(quote.body.quote.breakdown.pickupFee, 300);
+  const beforeVisibility = await Shipment.findById(shipment._id).lean();
+  await api(f.admin, `${adminPath}/routes/${kano._id}`, "PATCH", { customerVisible: false });
+  assert.deepEqual(await Shipment.findById(shipment._id).lean(), beforeVisibility);
+  assert.ok(!(await customerRouteIds()).includes(kano._id));
+  const hiddenQuote = await api(f.customer, "/api/logistics/interstate/quote", "POST", { ...body, originState: "KANO", destinationState: "ABUJA" });
+  assert.equal(hiddenQuote.status, 409);
+  const stillActive = await api(f.admin, `${adminPath}/routes/${kano._id}/archive`, "POST", { reason: "Safe test route archive" });
+  assert.equal(stillActive.status, 409);
+  const cancelled = await api(f.admin, `${adminPath}/shipments/${shipment._id}/status`, "PATCH", { status: "CANCELLED" });
+  assert.equal(cancelled.status, 200);
+  const before = await Shipment.findById(shipment._id).lean();
+  const archived = await api(f.admin, `${adminPath}/routes/${kano._id}/archive`, "POST", { reason: "Safe test route archive" });
+  assert.equal(archived.status, 200);
+  const after = await Shipment.findById(shipment._id).lean();
+  assert.deepEqual(after, before);
+  const receipt = await api(f.admin, `${adminPath}/shipments/${shipment._id}/receipt`);
+  assert.equal(receipt.status, 200);
+  assert.ok((typeof receipt.body === "string" ? receipt.body : receipt.body.html).includes(shipment.trackingNumber));
+  assert.equal((await api(null, `/api/logistics/interstate/track/${shipment.trackingNumber}`)).status, 200);
+  const sameBranch = await api(f.admin, `${adminPath}/routes`, "POST", {
+    ...kano, originBranchId: String(offices.KANO._id), destinationBranchId: String(offices.KANO._id),
+  });
+  assert.equal(sameBranch.status, 400);
+});
 test("complete office workflow: no rider -> tracking receipt email customer history -> assignment/reassignment -> rider details and customer tracking", async () => {
   const f = await fixture();
   const created = await api(f.admin, `${adminPath}/shipments`, "POST", f.body);
@@ -76,7 +188,7 @@ test("complete office workflow: no rider -> tracking receipt email customer hist
   const ops = await api(f.admin, `${adminPath}/shipments`);
   assert.ok(ops.body.shipments.some(row => row._id === s._id));
   const choices = await api(f.admin, `${adminPath}/shipments/${s._id}/riders?leg=ORIGIN`);
-  assert.deepEqual(choices.body.riders.map(row => row.availabilityStatus), ["ONLINE", "OFFLINE"]);
+  assert.deepEqual(choices.body.riders.filter(row => [String(f.riderA._id), String(f.riderB._id)].includes(row._id)).map(row => row.availabilityStatus), ["ONLINE", "OFFLINE"]);
   const assigned = await api(f.admin, `${adminPath}/shipments/${s._id}/assign-rider`, "POST", { riderId: String(f.riderA._id), leg: "ORIGIN" });
   assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
   const riderList = await api(f.riderA, "/api/rider/logistics/interstate/shipments");

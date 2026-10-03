@@ -195,7 +195,7 @@ test("delivery assignment routes reject unauthenticated and unauthorized staff",
   assert.equal(forbidden.status, 403, JSON.stringify(forbidden.body));
 });
 
-test("available-riders only returns eligible riders from the delivery branch", async () => {
+test("Head Office can select verified active riders across branches without changing rider membership", async () => {
   const headOffice = await createUser("HEAD_OFFICE");
   const [branchA, branchB] = await Promise.all([
     Branch.create({ code: "RA", name: "Rider Branch A", status: "ACTIVE", createdBy: headOffice._id }),
@@ -222,8 +222,29 @@ test("available-riders only returns eligible riders from the delivery branch", a
   });
   assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.equal(result.body.data.assignable, true);
-  assert.equal(result.body.data.count, 1);
-  assert.equal(String(result.body.riders[0]._id), String(eligible._id));
+  assert.equal(result.body.data.count, 2);
+  assert.ok(result.body.riders.some(r => String(r._id) === String(eligible._id)));
+});
+test("Head Office can assign and reassign branchless legacy deliveries to branchless legitimate riders", async () => {
+  const headOffice = await createUser("HEAD_OFFICE");
+  const customer = await createUser("CUSTOMER");
+  const delivery = await createDelivery(customer);
+  const riders = [];
+  for (const availabilityStatus of ["ONLINE", "OFFLINE"]) {
+    riders.push(await createUser("DELIVERY_RIDER", { riderVerificationStatus: "VERIFIED", availabilityStatus }));
+  }
+  const choices = await api({ actor: headOffice, path: `/api/admin/deliveries/${delivery._id}/available-riders` });
+  assert.equal(choices.status, 200);
+  assert.equal(choices.body.data.assignable, true);
+  assert.ok(choices.body.riders.some(r => r._id === String(riders[1]._id)));
+  const assigned = await api({ actor: headOffice, path: `/api/admin/deliveries/${delivery._id}/assign-rider`, method: "PATCH", body: { riderId: String(riders[0]._id) } });
+  assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
+  const reassigned = await api({ actor: headOffice, path: `/api/admin/deliveries/${delivery._id}/reassign-rider`, method: "PATCH", body: { riderId: String(riders[1]._id) } });
+  assert.equal(reassigned.status, 200, JSON.stringify(reassigned.body));
+  const saved = await Delivery.findById(delivery._id).lean();
+  assert.equal(String(saved.assignedRiderId), String(riders[1]._id));
+  assert.equal(saved.trackingNumber, delivery.trackingNumber);
+  assert.ok(!saved.branchId);
 });
 
 test("legacy admin authorization can load available riders", async () => {

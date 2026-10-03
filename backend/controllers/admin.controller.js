@@ -115,6 +115,8 @@ const canonicalDeliveryStatus = (value = "") => {
   return normalized;
 };
 
+const headOfficeAssignment = (req) => req.staffAccess?.isHeadOffice ||
+  ["HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"].includes(req.user?.role);
 const deliveryBranchFilter = (req) => {
   if (
     req.staffAccess?.isHeadOffice ||
@@ -150,12 +152,12 @@ exports.getAvailableRiders = async (req, res) => {
     if (!delivery) {
       return res.status(404).json({ success: false, message: "Delivery was not found." });
     }
-    const assignable = Boolean(delivery.branchId) &&
+    const assignable = (Boolean(delivery.branchId) || headOfficeAssignment(req)) &&
       ((delivery.status === "PENDING" && !delivery.assignedRiderId) ||
        (delivery.status === "ASSIGNED" && delivery.assignedRiderId && !delivery.riderAcceptedAt));
     const riders = assignable
       ? await User.find({
-          ...eligibleRiderFilter({ branchId: delivery.branchId, manual: true }),
+          ...eligibleRiderFilter({ branchId: deliveryBranchFilter(req).branchId, manual: true }),
           ...(delivery.assignedRiderId ? { _id: { $ne: delivery.assignedRiderId } } : {}),
         })
           .select("_id riderId fullName vehicleType plateNumber availabilityStatus riderVerificationStatus riderRating totalAssignedDeliveries totalCompletedDeliveries")
@@ -188,7 +190,7 @@ exports.assignRiderToDelivery = async (req, res) => {
   if (!scopedDelivery) {
     return res.status(404).json({ success: false, message: "Delivery was not found." });
   }
-  if (!scopedDelivery.branchId) {
+  if (!scopedDelivery.branchId && !headOfficeAssignment(req)) {
     return res.status(409).json({
       success: false,
       message: "A branch assignment is required before assigning a rider.",
@@ -200,7 +202,7 @@ exports.assignRiderToDelivery = async (req, res) => {
   try {
     await session.withTransaction(async () => {
       rider = await User.findOne(eligibleRiderFilter({
-        riderId, branchId: scopedDelivery.branchId, manual: true,
+        riderId, branchId: deliveryBranchFilter(req).branchId, manual: true,
       })).session(session);
       if (!rider) {
         const error = new Error("The selected rider is not available.");
@@ -984,7 +986,7 @@ exports.reassignRiderToDelivery = async (req, res) => {
       const current = await Delivery.findOne({ _id: deliveryId, ...deliveryBranchFilter(req) })
         .select("branchId status assignedRiderId riderAcceptedAt").session(session).lean();
       if (!current) throw Object.assign(new Error("Delivery was not found."), { statusCode: 404 });
-      if (!current.branchId) {
+      if (!current.branchId && !headOfficeAssignment(req)) {
         throw Object.assign(
           new Error("A branch assignment is required before assigning a rider."),
           { statusCode: 409 }
@@ -997,7 +999,7 @@ exports.reassignRiderToDelivery = async (req, res) => {
         throw Object.assign(new Error("Select a different replacement rider."), { statusCode: 400 });
       }
       rider = await User.findOne(eligibleRiderFilter({
-        riderId, branchId: current.branchId, manual: true,
+        riderId, branchId: deliveryBranchFilter(req).branchId, manual: true,
       })).session(session);
       if (!rider) throw Object.assign(new Error("The selected rider is not eligible for this branch delivery."), { statusCode: 409 });
       delivery = await Delivery.findOneAndUpdate({

@@ -11,6 +11,9 @@ const logisticsRouteSchema = new mongoose.Schema({
   minimumWeightKg: { type: Number, required: true, min: 0, default: 0 },
   maximumWeightKg: { type: Number, required: true, min: 0 },
   pricePerAdditionalKg: { type: Number, required: true, min: 0 },
+  // Absence on existing records preserves their original included-weight/cap rule.
+  weightPricingMode: { type: String, enum: ["LEGACY", "EXCESS_OVER_MAXIMUM"], default: "LEGACY" },
+  customerVisible: { type: Boolean, default: true },
   maximumDimensionCm: { type: Number, min: 0, default: 0 },
   oversizeSurcharge: { type: Number, min: 0, default: 0 },
   expressEnabled: { type: Boolean, default: false },
@@ -35,4 +38,5 @@ const logisticsRouteSchema = new mongoose.Schema({
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { timestamps: true });
 logisticsRouteSchema.index({ originBranchId: 1, destinationBranchId: 1 }, { unique: true });
+logisticsRouteSchema.index({ status: 1, customerVisible: 1, isArchived: 1, originState: 1, destinationState: 1 });
 module.exports = mongoose.model("LogisticsRoute", logisticsRouteSchema);

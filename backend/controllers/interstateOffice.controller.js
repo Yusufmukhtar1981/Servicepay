@@ -9,6 +9,9 @@ const BranchAudit = require("../models/branchAuditLog.model");
 const { eligibleRiderFilter, riderSummary } = require("../services/riderEligibility.service");
 const { trackingNumber, receiptHtml, attemptEmail } = require("../services/interstateTracking.service");
 const { calculateInterstateQuote } = require("../services/interstatePricing.service");
+const { statusOptions, originStatuses } = require("../services/interstateWorkflow.service");
+const Notification = require("../models/notification.model");
+const { statusLabel } = require("../services/interstateTracking.service");
 const Route = require("../models/logisticsRoute.model");
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const isHead = (req) => req.staffAccess?.isHeadOffice || ["HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"].includes(req.user?.role);
@@ -142,7 +145,11 @@ exports.create = withErrors(async (req, res) => {
 exports.detail = withErrors(async (req, res) => {
   const s = await scopedShipment(req);
   const history = await History.find({ shipmentId: s._id }).sort({ createdAt: 1 }).lean();
-  res.json({ success: true, shipment: s, history, assignmentHistory: s.assignmentHistory || [] });
+  res.json({
+    success: true, shipment: s, history, assignmentHistory: s.assignmentHistory || [],
+    allowedStatusTransitions: statusOptions(s, id => permits(req, id)),
+    deliveryConfirmationRequired: ["READY_FOR_COLLECTION", "OUT_FOR_DELIVERY", "DELIVERY_ATTEMPTED"].includes(s.status),
+  });
 });
 exports.receipt = withErrors(async (req, res) => {
   const s = await scopedShipment(req);
@@ -158,7 +165,7 @@ exports.riders = withErrors(async (req, res) => {
   const leg = String(req.query.leg || "DESTINATION").toUpperCase();
   if (!["ORIGIN", "DESTINATION"].includes(leg)) throw fail("Select an origin-hub or destination assignment.");
   if (!permits(req, legBranch(s, leg))) throw fail("Only the responsible office can assign this leg.", 403);
-  const riders = await User.find(eligibleRiderFilter({ branchId: legBranch(s, leg), manual: true })).select("_id fullName riderId phone vehicleType availabilityStatus riderVerificationStatus").sort({ availabilityStatus: -1, _id: 1 }).limit(100).lean();
+  const riders = await User.find(eligibleRiderFilter({ branchId: isHead(req) ? undefined : legBranch(s, leg), manual: true })).select("_id fullName riderId phone vehicleType availabilityStatus riderVerificationStatus").sort({ availabilityStatus: -1, _id: 1 }).limit(100).lean();
   res.json({ success: true, riders: riders.map(riderSummary), count: riders.length });
 });
 const terminal = ["DELIVERED", "CANCELLED", "RETURNED"];
@@ -176,7 +183,7 @@ exports.assign = withErrors(async (req, res) => {
     await session.withTransaction(async () => {
       const current = await Shipment.findById(initial._id).session(session);
       if (!allowed.includes(current.status)) throw fail("Shipment is not ready for the selected rider leg.", 409);
-      const rider = await User.findOne(eligibleRiderFilter({ riderId: req.body.riderId, branchId: legBranch(current, leg), manual: true })).session(session);
+      const rider = await User.findOne(eligibleRiderFilter({ riderId: req.body.riderId, branchId: isHead(req) ? undefined : legBranch(current, leg), manual: true })).session(session);
       if (!rider) throw fail("Select a verified, active eligible rider belonging to this office.", 409);
       if (String(current.assignedRiderId) === String(rider._id) && (current.assignmentLeg || "DESTINATION") === leg) { s = current; return; }
       const status = leg === "DESTINATION" ? "OUT_FOR_DELIVERY" : ["AWAITING_PICKUP", "RECEIVED_AT_ORIGIN_HUB"].includes(current.status) ? "PICKUP_ASSIGNED" : current.status;
@@ -235,36 +242,28 @@ exports.status = withErrors(async (req, res) => {
   }
   const initial = await scopedShipment(req);
   const next = String(req.body.status || "").toUpperCase();
-  const transitions = {
-    AWAITING_PICKUP: ["RECEIVED_AT_ORIGIN_HUB"],
-    PICKED_UP: ["RECEIVED_AT_ORIGIN_HUB"],
-    RECEIVED_AT_ORIGIN_HUB: ["VERIFIED_AT_ORIGIN_HUB"],
-    VERIFIED_AT_ORIGIN_HUB: ["READY_FOR_INTERSTATE_DISPATCH"],
-    READY_FOR_INTERSTATE_DISPATCH: ["IN_TRANSIT"],
-    IN_TRANSIT: ["ARRIVED_AT_DESTINATION_HUB"],
-    ARRIVED_AT_DESTINATION_HUB: ["DESTINATION_HUB_VERIFIED"],
-    DESTINATION_HUB_VERIFIED: ["READY_FOR_COLLECTION"],
-    OUT_FOR_DELIVERY: ["DELIVERY_ATTEMPTED", "FAILED_DELIVERY"],
-    DELIVERY_ATTEMPTED: ["OUT_FOR_DELIVERY", "FAILED_DELIVERY"],
-    FAILED_DELIVERY: ["RETURN_INITIATED"],
-    RETURN_INITIATED: ["RETURN_IN_TRANSIT"],
-    RETURN_IN_TRANSIT: ["RETURNED"],
-  };
-  if (!(transitions[initial.status] || []).includes(next)) throw fail("Invalid shipment status transition. Delivered requires receiver OTP or the existing audited fallback.", 409);
-  const origin = ["RECEIVED_AT_ORIGIN_HUB", "VERIFIED_AT_ORIGIN_HUB", "READY_FOR_INTERSTATE_DISPATCH", "IN_TRANSIT"].includes(next);
+  if (!statusOptions(initial).some(option => option.status === next)) throw fail("Invalid shipment status transition. Delivered requires receiver OTP or the existing audited fallback; paid cancellation requires the refund workflow.", 409);
+  const origin = originStatuses.has(next);
   if (!permits(req, origin ? initial.originBranchId : initial.destinationBranchId)) throw fail("This status belongs to the other office.", 403);
   const session = await mongoose.startSession();
   let s;
   try {
     await session.withTransaction(async () => {
       s = await Shipment.findOneAndUpdate({ _id: initial._id, status: initial.status, assignedRiderId: initial.assignedRiderId }, {
-        $set: { status: next },
-        ...(["RECEIVED_AT_ORIGIN_HUB", "IN_TRANSIT", "READY_FOR_COLLECTION", "RETURNED"].includes(next) ? { $unset: { assignedRiderId: 1, assignmentLeg: 1 } } : {}),
+        $set: { status: next, ...(next === "CANCELLED" ? { cancelledAt: new Date() } : {}) },
+        ...(["RECEIVED_AT_ORIGIN_HUB", "IN_TRANSIT", "READY_FOR_COLLECTION", "RETURNED", "CANCELLED"].includes(next) ? { $unset: { assignedRiderId: 1, assignmentLeg: 1 } } : {}),
       }, { new: true, session, runValidators: true });
       if (!s) throw fail("Shipment changed. Reload and retry.", 409);
       await History.create([{ shipmentId: s._id, status: next, actorId: req.user._id, actorRole: req.user.role, branchId: origin ? s.originBranchId : s.destinationBranchId, note: "Authorized office status update", publicVisible: true }], { session });
       await auditEntry(req, s, "INTERSTATE_STATUS_UPDATED", session, `Status changed to ${next}`);
+      if (s.customerId) await Notification.create([{
+        userId: s.customerId, type: "DELIVERY", category: "OTHER",
+        title: "Interstate shipment update",
+        message: `Shipment ${s.trackingNumber}: ${statusLabel(next)}.`,
+        referenceId: s._id, referenceType: "INTERSTATE_SHIPMENT",
+        reference: s.trackingNumber, relatedStatus: next,
+      }], { session });
     });
   } finally { await session.endSession(); }
-  res.json({ success: true, shipment: s });
+  res.json({ success: true, shipment: s, allowedStatusTransitions: statusOptions(s, id => permits(req, id)) });
 });
