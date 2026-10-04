@@ -75,7 +75,8 @@ class _LoginScreenState extends State<LoginScreen> {
           context,
           MaterialPageRoute(
             builder: (_) => authenticatedHomeForLogin(role,
-                mustChangePassword: result.user['mustChangePassword'] == true),
+                mustChangePassword: result.user['mustChangePassword'] == true,
+                user: result.user),
           ),
           (_) => false,
         );
@@ -520,7 +521,8 @@ class _LoginScreenState extends State<LoginScreen> {
             BuildContext context,
           ) {
             return authenticatedHomeForLogin(role,
-                mustChangePassword: user['mustChangePassword'] == true);
+                mustChangePassword: user['mustChangePassword'] == true,
+                user: user);
           },
         ),
         (

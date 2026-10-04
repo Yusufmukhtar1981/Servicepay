@@ -178,6 +178,7 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
             authenticatedHomeForLogin(
               role,
               mustChangePassword: profile['mustChangePassword'] == true,
+              user: profile,
             );
         _state = StartupSessionState.authenticated;
       });

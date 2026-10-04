@@ -10,10 +10,12 @@ class ForcedPasswordChangeScreen extends StatefulWidget {
   const ForcedPasswordChangeScreen({
     super.key,
     required this.role,
+    this.staffUser = const <String, dynamic>{},
     this.client,
   });
 
   final String role;
+  final Map<String, dynamic> staffUser;
   final http.Client? client;
 
   @override
@@ -106,7 +108,10 @@ class _ForcedPasswordChangeScreenState
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(
-            builder: (_) => authenticatedHomeForRole(widget.role)),
+            builder: (_) => authenticatedHomeForRole(
+              widget.role,
+              user: widget.staffUser,
+            )),
         (_) => false,
       );
     } catch (error) {

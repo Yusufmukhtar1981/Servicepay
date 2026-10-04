@@ -10,12 +10,16 @@ import 'package:servicepay_app/solar_officer/solar_officer_dashboard_screen.dart
 import 'package:servicepay_app/phone_financing_officer/phone_financing_officer_dashboard_screen.dart';
 import 'package:servicepay_app/business_partner/business_partner_dashboard_screen.dart';
 import 'package:servicepay_app/admin/main_navigation.dart';
+import 'package:servicepay_app/branch_manager/branch_counter_screen.dart';
 import 'package:servicepay_app/branch_manager/branch_manager_dashboard_screen.dart';
 import 'package:servicepay_app/forced_password_change_screen.dart';
 
 void main() {
-  Future<Widget> loadedHome(String role) async {
-    final home = authenticatedHomeForRole(role) as DeferredScreen;
+  Future<Widget> loadedHome(
+    String role, {
+    Map<String, dynamic> user = const <String, dynamic>{},
+  }) async {
+    final home = authenticatedHomeForRole(role, user: user) as DeferredScreen;
     await home.load();
     return home.builder();
   }
@@ -97,6 +101,59 @@ void main() {
     expect(
       await loadedHome('STAFF'),
       isNot(isA<RoleDashboardScreen>()),
+    );
+  });
+
+  test('routes only scoped delivery STAFF to the branch counter', () async {
+    final Map<String, dynamic> user = <String, dynamic>{
+      'role': 'STAFF',
+      'staffRoleId': <String, dynamic>{
+        '_id': 'staff-role-branch-7',
+        'scopeType': 'BRANCH',
+      },
+      'permissions': <String>['branch.delivery.manage'],
+    };
+    expect(isBranchDeliveryStaffAccess('STAFF', user), isTrue);
+    expect(
+      await loadedHome('STAFF', user: user),
+      isA<BranchCounterScreen>(),
+    );
+    expect(
+      await loadedHome('STAFF', user: <String, dynamic>{
+        'staffRoleId': <String, dynamic>{
+          '_id': 'staff-role-branch-7',
+          'scopeType': 'BRANCH',
+        },
+        'permissions': <String>['branch.delivery.view'],
+      }),
+      isA<AdminMainNavigation>(),
+    );
+    expect(
+      await loadedHome('STAFF', user: <String, dynamic>{
+        'permissions': <String>['branch.delivery.manage'],
+      }),
+      isA<AdminMainNavigation>(),
+    );
+    expect(
+      await loadedHome('STAFF', user: <String, dynamic>{
+        'staffRoleId': <String, dynamic>{
+          '_id': 'staff-role-global',
+          'scopeType': 'GLOBAL',
+        },
+        'branchId': 'branch-17',
+        'permissions': <String>['branch.delivery.manage'],
+      }),
+      isA<AdminMainNavigation>(),
+    );
+    expect(
+      await loadedHome('STAFF', user: <String, dynamic>{
+        'staffRoleId': <String, dynamic>{
+          '_id': 'staff-role-global',
+          'scopeType': 'GLOBAL',
+        },
+        'permissions': <String>['branch.delivery.manage'],
+      }),
+      isA<AdminMainNavigation>(),
     );
   });
 

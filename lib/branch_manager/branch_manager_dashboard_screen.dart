@@ -11,6 +11,7 @@ import 'branch_manager_dashboard_api.dart';
 import 'branch_manager_staff_screen.dart';
 import '../logistics/logistics_operations_screens.dart';
 import '../login_screen.dart';
+import 'branch_counter_screen.dart';
 
 class BranchManagerDashboardScreen extends StatefulWidget {
   const BranchManagerDashboardScreen({
@@ -339,6 +340,15 @@ class _BranchManagerDashboardScreenState
           'Deliveries & riders',
           'delivery',
           Icons.local_shipping_outlined,
+        ),
+      if ((_has('branch.delivery.view') ||
+              _has('branch.delivery.create') ||
+              _has('branch.delivery.manage')) &&
+          (_moduleAssigned('DELIVERY') || _moduleAssigned('LOGISTICS')))
+        const _ActionData(
+          'Delivery & Logistics',
+          'counter-deliveries',
+          Icons.inventory_2_outlined,
         ),
       if (_has('branch.delivery.view') && _moduleAssigned('DELIVERY'))
         const _ActionData(
@@ -1221,6 +1231,15 @@ class _BranchManagerDashboardScreenState
           'delivery',
           Icons.local_shipping_outlined,
         ),
+      if ((_has('branch.delivery.view') ||
+              _has('branch.delivery.create') ||
+              _has('branch.delivery.manage')) &&
+          (_moduleAssigned('DELIVERY') || _moduleAssigned('LOGISTICS')))
+        const _ActionData(
+          'Register parcel',
+          'counter-deliveries',
+          Icons.add_box_outlined,
+        ),
       if (_has('branch.delivery.manage') && _moduleAssigned('DELIVERY'))
         const _ActionData(
           'Assign rider',
@@ -1606,6 +1625,23 @@ class _BranchManagerDashboardScreenState
   }
 
   void _openAction(String action) {
+    if (action == 'counter-deliveries') {
+      final bool allowed = _has('branch.delivery.view') ||
+          _has('branch.delivery.create') ||
+          _has('branch.delivery.manage');
+      final bool assigned =
+          _moduleAssigned('DELIVERY') || _moduleAssigned('LOGISTICS');
+      if (!allowed || !assigned) {
+        _showMessage('Your account does not have access to branch deliveries.');
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const BranchCounterScreen(),
+        ),
+      );
+      return;
+    }
     if (widget.onAction != null) {
       widget.onAction!(action);
       return;

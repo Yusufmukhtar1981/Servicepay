@@ -10,6 +10,7 @@ import 'business_partner/business_partner_dashboard_screen.dart'
     deferred as partner;
 import 'admin/main_navigation.dart' deferred as admin;
 import 'branch_manager/branch_manager_dashboard_screen.dart' deferred as branch;
+import 'branch_manager/branch_counter_screen.dart' deferred as branch_counter;
 import 'forced_password_change_screen.dart';
 import 'admin/svp_command_center_screen.dart' deferred as svp;
 import 'widgets/deferred_screen.dart';
@@ -50,7 +51,48 @@ String loginRoleFromResponse(
   return 'CUSTOMER';
 }
 
-Widget authenticatedHomeForRole(String role) {
+bool isBranchDeliveryStaffAccess(String role, Map<String, dynamic> user) {
+  if (normalizeLoginRole(role) != 'STAFF') return false;
+  final dynamic roleReference = user['staffRoleId'] ?? user['staffRole'];
+  final Map<String, dynamic> scopedRole = _mapFromDynamic(roleReference);
+  final String roleId = roleReference is String
+      ? roleReference.trim()
+      : '${scopedRole['_id'] ?? scopedRole['id'] ?? ''}'.trim();
+  if (roleId.isEmpty) return false;
+  final Map<String, dynamic> roleScope = _mapFromDynamic(scopedRole['scope']);
+  final Map<String, dynamic> userScope =
+      _mapFromDynamic(user['accessScope']);
+  final String scopeType = normalizeLoginRole(
+    scopedRole['scopeType'] ??
+        roleScope['type'] ??
+        userScope['type'] ??
+        user['scopeType'],
+  );
+  final dynamic branchAssignment =
+      user['branchId'] ?? user['branch_id'] ?? user['branch'];
+  final bool hasBranchAssignment = branchAssignment is Map
+      ? branchAssignment.isNotEmpty
+      : branchAssignment != null &&
+          branchAssignment.toString().trim().isNotEmpty;
+  final bool hasBranchScope =
+      scopeType == 'BRANCH' || (scopeType.isEmpty && hasBranchAssignment);
+  if (!hasBranchScope) return false;
+  final dynamic userPermissions = user['permissions'];
+  final dynamic rawPermissions = userPermissions is List &&
+          userPermissions.isNotEmpty
+      ? userPermissions
+      : scopedRole['permissions'] ??
+          _mapFromDynamic(user['staffRole'])['permissions'];
+  if (rawPermissions is! List) return false;
+  return rawPermissions
+      .map((dynamic permission) => permission.toString().trim().toLowerCase())
+      .contains('branch.delivery.manage');
+}
+
+Widget authenticatedHomeForRole(
+  String role, {
+  Map<String, dynamic> user = const <String, dynamic>{},
+}) {
   switch (normalizeLoginRole(role)) {
     case 'DELIVERY_RIDER':
       return DeferredScreen(
@@ -76,7 +118,15 @@ Widget authenticatedHomeForRole(String role) {
     case 'HEAD_OFFICE_ADMIN':
     case 'SUPER_ADMIN':
     case 'ADMIN':
+      return DeferredScreen(
+          load: admin.loadLibrary, builder: () => admin.AdminMainNavigation());
     case 'STAFF':
+      if (isBranchDeliveryStaffAccess(role, user)) {
+        return DeferredScreen(
+          load: branch_counter.loadLibrary,
+          builder: () => branch_counter.BranchCounterScreen(staffMode: true),
+        );
+      }
       return DeferredScreen(
           load: admin.loadLibrary, builder: () => admin.AdminMainNavigation());
     case 'SVP':
@@ -95,10 +145,14 @@ Widget authenticatedHomeForRole(String role) {
 }
 
 Widget authenticatedHomeForLogin(String role,
-        {required bool mustChangePassword}) =>
+        {required bool mustChangePassword,
+        Map<String, dynamic> user = const <String, dynamic>{}}) =>
     mustChangePassword
-        ? ForcedPasswordChangeScreen(role: normalizeLoginRole(role))
-        : authenticatedHomeForRole(role);
+        ? ForcedPasswordChangeScreen(
+            role: normalizeLoginRole(role),
+            staffUser: user,
+          )
+        : authenticatedHomeForRole(role, user: user);
 
 Map<String, dynamic> _mapFromDynamic(dynamic value) {
   return value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
