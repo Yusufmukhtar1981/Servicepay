@@ -908,7 +908,7 @@ exports.updateRiderDeliveryStatus =
         });
       }
 
-      const delivery =
+      let delivery =
         await Delivery.findOne({
           _id: deliveryId,
 
@@ -980,6 +980,11 @@ exports.updateRiderDeliveryStatus =
                 { new: true, runValidators: true, session: sourceSession }
               );
               if (completedDelivery) {
+                if (completedDelivery.counter) await require("../models/branchAuditLog.model").create([{
+                  branchId: completedDelivery.branchId, actorId: rider._id,
+                  action: "BRANCH_DELIVERY_DELIVERED", reason: "Assigned Rider completed the existing Delivery workflow.",
+                  metadata: { orderId: completedDelivery._id, status: "DELIVERED" },
+                }], { session: sourceSession });
                 await enqueueReferralRewardEvent({
                   referredCustomerId: delivery.customerId,
                   sourceType: "DELIVERY",
@@ -1022,6 +1027,11 @@ exports.updateRiderDeliveryStatus =
         try {
           await sourceSession.withTransaction(async () => {
             await delivery.save({ session: sourceSession });
+            if (delivery.counter) await require("../models/branchAuditLog.model").create([{
+              branchId: delivery.branchId, actorId: rider._id,
+              action: "BRANCH_DELIVERY_STATUS_CHANGED", reason: "Assigned Rider updated the existing Delivery workflow.",
+              metadata: { orderId: delivery._id, status: requestedStatus },
+            }], { session: sourceSession });
             await enqueueReferralRewardEvent({
               referredCustomerId: delivery.customerId,
               sourceType: "DELIVERY",

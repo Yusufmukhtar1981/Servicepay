@@ -7,9 +7,10 @@ const deliverySchema =
         type:
           mongoose.Schema.Types.ObjectId,
         ref: "User",
-        required: true,
+        required: function () { return !this.counter; },
       },
       branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", default: null, index: true },
+      counter: { type: mongoose.Schema.Types.Mixed, default: undefined },
       orderType: { type: String, enum: ["LOCAL_DELIVERY"], default: "LOCAL_DELIVERY", immutable: true, index: true },
       assignmentHistory: [{
         riderId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

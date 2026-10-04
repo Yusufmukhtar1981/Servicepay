@@ -134,7 +134,25 @@ const creditRiderCommissionIfEligible =
             "providerResponse.deliveryId": delivery._id,
           }).session(session).lean();
 
-          if (!paymentTransaction) {
+          let counterConfirmation = false;
+          if (!paymentTransaction && delivery.counter?.payment?.confirmation === "MANAGER_MANUAL_CONFIRMATION" &&
+              ["CASH", "POS", "BANK_TRANSFER"].includes(delivery.counter.payment.method) &&
+              Number(delivery.counter.payment.amount) === deliveryFee &&
+              String(delivery.counter.branch?._id) === String(delivery.branchId)) {
+            // A cash/POS/bank counter collection is NOT a fabricated customer
+            // wallet transaction. Only the committed, bound manager audit
+            // authorizes the established Rider commission pipeline.
+            counterConfirmation = !!await require("../models/branchAuditLog.model").exists({
+              branchId: delivery.branchId,
+              actorId: delivery.counter.payment.approvedBy,
+              action: "BRANCH_DELIVERY_PAYMENT_CONFIRMED",
+              "metadata.orderId": delivery._id,
+              "metadata.kind": "DELIVERY",
+              "metadata.amount": deliveryFee,
+              "metadata.method": delivery.counter.payment.method,
+            }).session(session);
+          }
+          if (!paymentTransaction && !counterConfirmation) {
             result.reason = "DELIVERY_PAYMENT_TRANSACTION_NOT_FOUND";
             return;
           }

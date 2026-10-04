@@ -10,6 +10,25 @@ const { protect } = require("../middleware/auth.middleware");
 const { loadStaffRole, requireAnyPermission, enforceActiveBranchScope, requireAssignedBranchModule, STAFF_PERMISSIONS: P } = require("../middleware/staffPermission.middleware");
 const router = express.Router();
 router.use(protect, loadStaffRole, enforceActiveBranchScope);
+const counter = require("../controllers/branchCounterDelivery.controller");
+const counterView = [requireAssignedBranchModule("DELIVERY"), requireAnyPermission(P.BRANCH_DELIVERY_VIEW, P.BRANCH_DELIVERY_MANAGE)];
+const counterManage = [requireAssignedBranchModule("DELIVERY"), requireAnyPermission(P.BRANCH_DELIVERY_MANAGE)];
+const { loadFintechControl, requireFeatureEnabled } = require("../middleware/fintechControl.middleware");
+const counterAdmission = async (req, res, next) => {
+  try { req.fintechControl ||= await loadFintechControl(); }
+  catch (_) { return res.status(503).json({ success: false, message: "Delivery availability could not be confirmed. Retry safely." }); }
+  return requireFeatureEnabled("delivery")(req, res, next);
+};
+router.get("/counter-deliveries/config", ...counterView, counter.config);
+router.get("/counter-deliveries", ...counterView, counter.list);
+router.post("/counter-deliveries/quote", ...counterManage, counterAdmission, counter.quote);
+router.post("/counter-deliveries", ...counterManage, counterAdmission, counter.create);
+router.get("/counter-deliveries/:kind/:id/receipt", ...counterView, counter.receipt);
+router.post("/counter-deliveries/:kind/:id/print-events", ...counterView, counter.print);
+router.post("/counter-deliveries/:kind/:id/payment-evidence", ...counterManage, counter.evidence);
+router.post("/counter-deliveries/:kind/:id/confirm-payment", ...counterManage, counter.confirm);
+router.post("/counter-deliveries/:kind/:id/cancel", ...counterManage, counter.cancel);
+router.get("/counter-deliveries/:kind/:id", ...counterView, counter.detail);
 router.route("/").get(requireAnyPermission(P.BRANCHES_VIEW, P.BRANCH_DASHBOARD_VIEW), c.list).post(requireAnyPermission(P.BRANCHES_MANAGE), c.create);
 router.get("/overview", requireAnyPermission(P.BRANCH_DASHBOARD_VIEW, P.BRANCHES_VIEW), c.overview);
 router.get("/dashboard", requireAnyPermission(P.BRANCH_DASHBOARD_VIEW), c.dashboard);

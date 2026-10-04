@@ -985,6 +985,18 @@ exports.payDeliveryFee = async (req, res) => {
         }
       );
 
+    if (delivery.counter) {
+      delivery.counter.payment = { method: "WALLET", amount: deliveryFee,
+        recordedBy: req.user._id, recordedByName: req.user.fullName || "",
+        recordedAt: delivery.paidAt, confirmation: "CUSTOMER_AUTHORIZED_WALLET" };
+      delivery.markModified("counter");
+      await delivery.save({ session });
+      await require("../models/branchAuditLog.model").create([{
+        branchId: delivery.branchId, actorId: req.user._id, action: "BRANCH_DELIVERY_WALLET_PAYMENT",
+        reason: "Customer authorized the existing Wallet payment.",
+        metadata: { orderId: delivery._id, amount: deliveryFee, method: "WALLET" },
+      }], { session });
+    }
     await enqueueReferralRewardEvent({
       referredCustomerId: delivery.customerId,
       sourceType: "DELIVERY",

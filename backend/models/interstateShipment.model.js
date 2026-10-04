@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const partySchema = new mongoose.Schema({ name: String, phone: String, email: String, state: String, lga: String, address: String, landmark: { type: String, default: "" } }, { _id: false });
 const shipmentSchema = new mongoose.Schema({
+  counter: { type: mongoose.Schema.Types.Mixed, default: undefined },
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: function () { return this.creationChannel !== "OFFICE"; }, index: true },
   orderType: { type: String, enum: ["INTERSTATE"], default: "INTERSTATE", immutable: true, index: true },
   orderReference: { type: String, immutable: true },

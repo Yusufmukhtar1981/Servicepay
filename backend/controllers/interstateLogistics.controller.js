@@ -219,11 +219,23 @@ exports.pay = async (req, res) => {
     if (existing) return res.json({ success: true, idempotent: true, data: existing, shipment: existing, transaction: existing.paymentTransactionId });
     await authorizeTransaction({ userId: req.user._id, body: req.body, operation: BIOMETRIC_OPERATIONS.INTERSTATE_PAYMENT, idempotencyKey: key });
     session.startTransaction();
-    const shipment = await Shipment.findOne({ _id: req.params.id, customerId: req.user._id, paymentStatus: "UNPAID", status: "AWAITING_PAYMENT" }).session(session);
+    const shipment = await Shipment.findOne({ _id: req.params.id, customerId: req.user._id,
+      paymentStatus: "UNPAID", $or: [{ status: "AWAITING_PAYMENT" },
+        { status: "RECEIVED_AT_ORIGIN_HUB", creationChannel: "OFFICE" }] }).session(session);
     if (!shipment) throw Object.assign(new Error("Shipment is not available for payment."), { status: 404 });
-    const route = await LogisticsRoute.findOne(customerRouteFilter({ _id: shipment.routeId })).session(session);
+    const receivedOfficeParcel = shipment.creationChannel === "OFFICE" && shipment.status === "RECEIVED_AT_ORIGIN_HUB";
+    const route = await LogisticsRoute.findOne(receivedOfficeParcel ?
+      { _id: shipment.routeId, status: "ACTIVE", isArchived: { $ne: true } } :
+      customerRouteFilter({ _id: shipment.routeId })).session(session);
     if (!route || shipment.quote.routeVersion !== String(route.updatedAt.getTime())) throw Object.assign(new Error("Route pricing changed. Request a new quote before payment."), { status: 409, code: "QUOTE_STALE" });
-    shipment.paymentIdempotencyKey = key; shipment.paymentStatus = "PAID"; shipment.paidAt = new Date(); shipment.status = "PAID";
+    shipment.paymentIdempotencyKey = key; shipment.paymentStatus = "PAID"; shipment.paidAt = new Date();
+    if (!receivedOfficeParcel) shipment.status = "PAID";
+    if (shipment.counter) {
+      shipment.counter.payment = { method: "WALLET", amount: shipment.quote.total,
+        recordedBy: req.user._id, recordedByName: req.user.fullName || "",
+        recordedAt: shipment.paidAt, confirmation: "CUSTOMER_AUTHORIZED_WALLET" };
+      shipment.markModified("counter");
+    }
     const user = await User.findOneAndUpdate({ _id: req.user._id, status: "ACTIVE", ...spendableWalletFilter(shipment.quote.total) }, { $inc: { walletBalance: -shipment.quote.total, totalTransactions: 1 } }, { new: true, session });
     if (!user) throw Object.assign(new Error("Insufficient wallet balance."), { status: 400 });
     const [transaction] = await Transaction.create([{ reference: ref(), customerId: user._id, branchId: shipment.originBranchId, agentId: user.agentId || null, stateManagerId: user.stateManagerId || null, zonalManagerId: user.zonalManagerId || null, serviceType: "INTERSTATE_LOGISTICS", provider: "SERVICEPAY_LOGISTICS", phone: shipment.receiver.phone, amount: shipment.quote.total, status: "SUCCESSFUL", providerResponse: { shipmentId: shipment._id, trackingNumber: shipment.trackingNumber, paymentMode: "WALLET" } }], { session });
