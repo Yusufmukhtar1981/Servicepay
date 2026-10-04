@@ -359,6 +359,47 @@ test("missing, conflicting and overlong keys fail before wallet or provider admi
   assert.equal(dataRequestCount + telecomPurchaseCount, 0);
 });
 
+test("retiring an unrecorded key permanently fences delayed admission without a debit or provider request", async () => {
+  const { retireUnrecordedDataRequest } = require("../controllers/dataPurchaseStatus.controller");
+  const user = await makeUser();
+  const key = "data-missing-retired-123";
+  const res = { statusCode: 200, status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; } };
+  await retireUnrecordedDataRequest({ user, params: { key } }, res);
+  assert.equal(res.body.requestRetired, true);
+  const result = await invoke(user, purchaseBody(user), { idempotencyKey: key });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.code, "DATA_REQUEST_RETIRED");
+  assert.equal((await User.findById(user._id)).walletBalance, 500);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 0);
+  assert.equal(await LedgerEntry.countDocuments({ userId: user._id }), 0);
+  assert.equal(dataRequestCount + telecomPurchaseCount, 0);
+});
+
+test("retirement racing admission allows at most one debit and never retires recorded custody", async () => {
+  const { retireUnrecordedDataRequest } = require("../controllers/dataPurchaseStatus.controller");
+  const user = await makeUser();
+  const key = "data-racing-retirement-123";
+  const res = { statusCode: 200, status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; } };
+  const [result] = await Promise.all([
+    invoke(user, purchaseBody(user), { idempotencyKey: key }),
+    retireUnrecordedDataRequest({ user, params: { key } }, res),
+  ]);
+  const count = await Transaction.countDocuments({ customerId: user._id, idempotencyKey: key });
+  assert.ok(count === 0 || count === 1);
+  assert.equal(dataRequestCount + telecomPurchaseCount, count);
+  assert.equal((await User.findById(user._id)).walletBalance, count ? 400 : 500);
+  if (count) {
+    assert.equal(res.statusCode, 409);
+    const account = await User.findById(user._id).select("+retiredDataRequestKeys");
+    assert.equal(account.retiredDataRequestKeys?.includes(key) || false, false);
+  } else {
+    assert.equal(res.body.requestRetired, true);
+    assert.equal(result.body.code, "DATA_REQUEST_RETIRED");
+  }
+});
+
 test("DATA admission atomically debits wallet, writes ledger and transaction, then preserves success response", async () => {
   const user = await makeUser();
   const result = await invoke(user, purchaseBody(user), { idempotencyKey: "atomic-success-1" });

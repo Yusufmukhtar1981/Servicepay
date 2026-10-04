@@ -1216,6 +1216,7 @@ exports.buyData = async (req, res) => {
             _id: req.user._id,
             status: "ACTIVE",
             walletBalance: { $gte: dataAmount },
+            retiredDataRequestKeys: { $ne: idempotencyKey },
           },
           {
             $inc: {
@@ -1228,7 +1229,8 @@ exports.buyData = async (req, res) => {
 
         if (!customer) {
           admissionRejected = true;
-          admissionFailure = await User.findById(req.user._id).session(session);
+          admissionFailure = await User.findById(req.user._id)
+            .select("+retiredDataRequestKeys").session(session);
           return;
         }
 
@@ -1319,6 +1321,13 @@ exports.buyData = async (req, res) => {
       });
     }
     if (admissionRejected) {
+      if (admissionFailure?.retiredDataRequestKeys?.includes(idempotencyKey)) {
+        return res.status(409).json({
+          success: false, status: "FAILED", requestRetired: true,
+          code: "DATA_REQUEST_RETIRED", walletDebitHeld: false,
+          message: "This unrecorded request was safely retired before admission. No purchase will be sent under this key.",
+        });
+      }
       if (!admissionFailure?._id) {
         return res.status(404).json({
           success: false,

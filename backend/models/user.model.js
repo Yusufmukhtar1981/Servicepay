@@ -12,6 +12,13 @@ const svpScopeSchema = new mongoose.Schema({
 
 const userSchema = new mongoose.Schema(
   {
+    // Permanent customer-bound fences for requests explicitly retired before
+    // wallet admission. No TTL: a delayed original POST must remain rejected.
+    retiredDataRequestKeys: {
+      type: [String],
+      default: undefined,
+      select: false,
+    },
     savedTelecomLegacyDeleted: {
       type: [mongoose.Schema.Types.ObjectId],
       default: undefined,

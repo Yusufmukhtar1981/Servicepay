@@ -34,8 +34,9 @@ const {
 } = require("../middleware/accountRestriction.middleware");
 
 const router = express.Router();
-const { getDataPurchaseStatus } = require("../controllers/dataPurchaseStatus.controller");
+const { getDataPurchaseStatus, retireUnrecordedDataRequest } = require("../controllers/dataPurchaseStatus.controller");
 router.get("/data/status/:key", protect, getDataPurchaseStatus);
+router.post("/data/recovery/:key/retire", protect, retireUnrecordedDataRequest);
 
 const headOfficeOnly = (
   req,
