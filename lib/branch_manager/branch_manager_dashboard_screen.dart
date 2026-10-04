@@ -589,7 +589,11 @@ class _BranchManagerDashboardScreenState
           children: <Widget>[
             if (_error != null) _RefreshWarning(message: _error!),
             _branchHeader(data, desktop),
-            if ((_has('branch.delivery.view') ||
+            // Legacy dashboard responses omit permission metadata. Keep the
+            // assigned module visible; the existing counter API authorizes
+            // every operation. An explicit permission manifest still applies.
+            if ((!data.hasExplicitPermissions ||
+                    _has('branch.delivery.view') ||
                     _has('branch.delivery.create') ||
                     _has('branch.delivery.manage')) &&
                 (_moduleAssigned('DELIVERY') ||

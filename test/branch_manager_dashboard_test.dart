@@ -1,7 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:servicepay_app/branch_manager/branch_manager_dashboard_api.dart';
 import 'package:servicepay_app/branch_manager/branch_manager_dashboard_screen.dart';
+import 'package:servicepay_app/services/session_store.dart';
 import 'package:servicepay_app/branch_manager/branch_counter_api.dart';
 import 'package:servicepay_app/branch_manager/branch_counter_screen.dart';
 import 'package:servicepay_app/login_screen.dart';
@@ -151,6 +156,39 @@ Future<void> _pumpAt(
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  test('legacy API distinguishes absent from explicit empty permissions',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await SessionStore.writeToken('branch-session-fixture');
+    try {
+      for (final bool explicit in <bool>[false, true]) {
+        final MockClient client = MockClient((http.Request request) async {
+          expect(request.headers['Authorization'],
+              'Bearer branch-session-fixture');
+          return http.Response(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'dashboard': <String, dynamic>{
+                  'branch': <String, dynamic>{
+                    'assignedModules': <String>['DELIVERY']
+                  },
+                  if (explicit) 'permissions': <String>[],
+                },
+              }),
+              200);
+        });
+        final BranchManagerDashboard result =
+            await BranchManagerDashboardHttpApi(client: client).loadDashboard();
+        expect(result.hasExplicitPermissions, explicit);
+        expect(result.permissions, isEmpty);
+        expect(result.modules.single['name'], 'DELIVERY');
+        client.close();
+      }
+    } finally {
+      await SessionStore.clear();
+    }
+  });
   testWidgets('shows branch identity, compact KPIs and reporting period',
       (WidgetTester tester) async {
     final _DashboardApi api = _DashboardApi();
@@ -452,6 +490,19 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+      'legacy dashboard exposes assigned counter without permission metadata',
+      (WidgetTester tester) async {
+    await _pumpAt(tester, const Size(1280, 1000), _LegacyDashboardApi(),
+        counterApi: _CounterDashboardApi());
+    expect(find.byKey(const Key('branch-delivery-dashboard-section')),
+        findsOneWidget);
+    await tester.tap(find.byKey(const Key('branch-delivery-create')));
+    await tester.pumpAndSettle();
+    expect(find.byType(BranchCounterCreateScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('delivery section follows existing module and permission guards',
       (WidgetTester tester) async {
     final _DashboardApi noPermission = _DashboardApi();
@@ -464,6 +515,7 @@ void main() {
         in <BranchManagerDashboardApi>[
       _DashboardApiWithoutDelivery(),
       _DashboardApiMissingPermission(),
+      _DashboardApiEmptyPermissions(),
       _DashboardApiMissingModule(),
     ]) {
       await tester.pumpWidget(const SizedBox.shrink());
@@ -481,6 +533,31 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+}
+
+class _LegacyDashboardApi extends _DashboardApi {
+  @override
+  Future<BranchManagerDashboard> loadDashboard({
+    String? startDate,
+    String? endDate,
+  }) async =>
+      _copyDashboard(
+        await super.loadDashboard(startDate: startDate, endDate: endDate),
+        permissions: const <String>[],
+        hasExplicitPermissions: false,
+      );
+}
+
+class _DashboardApiEmptyPermissions extends _DashboardApi {
+  @override
+  Future<BranchManagerDashboard> loadDashboard({
+    String? startDate,
+    String? endDate,
+  }) async =>
+      _copyDashboard(
+        await super.loadDashboard(startDate: startDate, endDate: endDate),
+        permissions: const <String>[],
+      );
 }
 
 class _DashboardApiWithoutDelivery extends _DashboardApi {
@@ -531,6 +608,7 @@ BranchManagerDashboard _copyDashboard(
   BranchManagerDashboard source, {
   List<Map<String, dynamic>>? modules,
   List<String>? permissions,
+  bool? hasExplicitPermissions,
 }) =>
     BranchManagerDashboard(
       branch: source.branch,
@@ -543,6 +621,8 @@ BranchManagerDashboard _copyDashboard(
       reports: source.reports,
       modules: modules ?? source.modules,
       permissions: permissions ?? source.permissions,
+      hasExplicitPermissions:
+          hasExplicitPermissions ?? source.hasExplicitPermissions,
       openRequests: source.openRequests,
       metrics: source.metrics,
     );

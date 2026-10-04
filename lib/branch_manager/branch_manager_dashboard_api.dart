@@ -28,6 +28,7 @@ class BranchManagerDashboard {
     this.period = const <String, dynamic>{},
     this.manager = const <String, dynamic>{},
     this.permissions = const <String>[],
+    this.hasExplicitPermissions = true,
     this.openRequests = 0,
   });
 
@@ -42,6 +43,9 @@ class BranchManagerDashboard {
   final Map<String, dynamic> period;
   final Map<String, dynamic> manager;
   final List<String> permissions;
+
+  /// Older dashboard responses omit permissions; absence is not an explicit denial.
+  final bool hasExplicitPermissions;
   final int openRequests;
 }
 
@@ -84,6 +88,7 @@ class BranchManagerDashboardHttpApi implements BranchManagerDashboardApi {
               (data['permissions'] as List).map((dynamic value) => '$value'),
             )
           : const <String>[],
+      hasExplicitPermissions: data['permissions'] is List,
       openRequests: _integer(data['openRequests']),
     );
   }
