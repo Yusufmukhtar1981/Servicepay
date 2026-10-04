@@ -703,6 +703,7 @@ const createTelecomAbodeService = ({
   transactionModel = Transaction,
   baseUrl = DEFAULT_BASE_URL,
   timeout = DEFAULT_TIMEOUT_MS,
+  audit = event => console.info("[DATA_PROVIDER_AUDIT]", JSON.stringify(event)),
 } = {}) => {
   const verifiedCustomers = new Set();
   const submittedRequestIds = new Set();
@@ -956,12 +957,31 @@ const createTelecomAbodeService = ({
       );
     }
     const normalizedRequestId = claimRequestId(request_id);
-    const response = await request({
-      method: "POST",
-      endpoint: "/data",
-      data: payload,
-      returnDataHttpResponse: true,
-    });
+    const correlation = require("node:crypto").createHmac("sha256", configuredApiKey())
+      .update(normalizedRequestId).digest("hex").slice(0, 24);
+    const recordAudit = event => {
+      try { audit({ ...event, correlation }); }
+      catch (_) { console.warn("[DATA_PROVIDER_AUDIT] logging unavailable"); }
+    };
+    recordAudit({ event: "DISPATCH", payload: {
+      network: payload.network, plan: payload.plan, bypass: payload.bypass,
+      bypassType: typeof payload.bypass, phoneDigits: String(payload.phone).length,
+      requestIdPersisted: true,
+    } });
+    let response;
+    try {
+      response = await request({
+        method: "POST",
+        endpoint: "/data",
+        data: payload,
+        returnDataHttpResponse: true,
+      });
+    } catch (error) {
+      recordAudit({ event: "HTTP_FAILURE", httpStatus: error.statusCode || null,
+        outcome: "UNCONFIRMED" });
+      throw error;
+    }
+    recordAudit({ event: "HTTP_RESPONSE", httpStatus: response.httpStatus });
     const normalized = normalizeDataPurchaseResponse(response.body, {
       requestId: normalizedRequestId,
       servicepayReference: normalizedRequestId,
