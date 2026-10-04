@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -132,6 +133,11 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   String userName = 'Customer';
   double walletBalance = 0;
+  bool walletBalanceAvailable = false;
+  bool walletBalanceRefreshFailed = false;
+  String fundingAccountNumber = '';
+  String fundingAccountName = '';
+  String fundingAccountBank = '';
 
   int unreadNotifications = 0;
 
@@ -146,8 +152,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<Map<String, dynamic>> recentTransactions = <Map<String, dynamic>>[];
   List<_DashboardServiceStatus> activeServiceStatuses =
       <_DashboardServiceStatus>[];
-  List<Map<String, dynamic>> schoolPortalMemberships =
-      <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> schoolPortalMemberships = <Map<String, dynamic>>[];
   bool isOpeningSchoolPortal = false;
   bool get _schoolPortalSupported => widget.schoolPortalSupported ?? kIsWeb;
   CustomerFeatureConfiguration featureConfiguration =
@@ -286,8 +291,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (mounted) {
         setState(() {
           userName = savedName.trim().isEmpty ? 'Customer' : savedName.trim();
-
           walletBalance = savedBalance;
+          walletBalanceAvailable = preferences.containsKey('wallet_balance');
         });
       }
 
@@ -311,8 +316,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       unawaited(_loadNotificationSummary(token));
       unawaited(_loadActiveServiceStatuses(token));
       unawaited(_loadSchoolPortalMemberships(token));
-      receivedFreshWalletBalance =
-          await _loadWalletBalance(token, preferences);
+      unawaited(_loadFundingAccount(token));
+      receivedFreshWalletBalance = await _loadWalletBalance(token, preferences);
       // Announcements are deliberately non-blocking: dashboard data remains
       // usable if the campaign service is slow or unavailable.
       unawaited(_loadAnnouncements(token));
@@ -323,6 +328,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         setState(() {
           isLoading = false;
           isRefreshing = false;
+          walletBalanceRefreshFailed = !receivedFreshWalletBalance;
         });
       }
     }
@@ -569,6 +575,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (mounted) {
         setState(() {
           walletBalance = freshBalance;
+          walletBalanceAvailable = true;
         });
       }
 
@@ -576,6 +583,61 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (_) {
       return false;
     }
+  }
+
+  Future<void> _loadFundingAccount(String token) async {
+    try {
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/securewave/virtual-account'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) return;
+      final dynamic decoded = _decodeDashboardResponse(response.body);
+      if (decoded is! Map) return;
+      final dynamic data = decoded['data'];
+      if (data is! Map) return;
+      final dynamic account =
+          data['virtualAccount'] ?? data['virtual_account'] ?? data;
+      if (account is! Map) return;
+      final String status =
+          (account['status'] ?? '').toString().trim().toUpperCase();
+      final String number =
+          (account['accountNumber'] ?? account['account_number'] ?? '')
+              .toString()
+              .trim();
+      if (!mounted) return;
+      setState(() {
+        if (status == 'ACTIVE' && number.isNotEmpty) {
+          fundingAccountNumber = number;
+          fundingAccountName =
+              (account['accountName'] ?? account['account_name'] ?? '')
+                  .toString()
+                  .trim();
+          fundingAccountBank = (account['bankName'] ??
+                  account['bank_name'] ??
+                  account['bank'] ??
+                  '')
+              .toString()
+              .trim();
+        }
+      });
+    } catch (_) {
+      // This is optional funding information; the wallet stays usable.
+    }
+  }
+
+  Future<void> _copyFundingAccount() async {
+    if (fundingAccountNumber.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: fundingAccountNumber));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text('Account number copied')),
+      );
   }
 
   Future<void> _loadRecentTransactions(String token) async {
@@ -1212,6 +1274,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       'ServicePay Amana': 'AMANA',
       'Airtime': 'AIRTIME',
       'Data': 'DATA',
+      'EduPay': 'EDUPAY',
       'Electricity': 'ELECTRICITY',
       'Cable TV': 'CABLE_TV',
       'Exam PIN': 'EXAM_PIN',
@@ -1238,6 +1301,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       'Request Money': 'REQUEST_MONEY',
       'AI Support': 'AI_SUPPORT',
       'Referral': 'REFERRAL',
+      'KYC': 'KYC',
+      'Biometrics': 'BIOMETRICS',
+      'Transaction PIN': 'TRANSACTION_PIN',
       'Notifications': 'NOTIFICATIONS',
       'Group Wallet / Ajo': 'GROUP_WALLET',
       'Program Sponsor': 'PROGRAM_SPONSOR',
@@ -1253,7 +1319,13 @@ class _DashboardScreenState extends State<DashboardScreen>
   VoidCallback _guardFeatureTap(String title, VoidCallback onTap) {
     return () {
       final CustomerFeatureConfig feature = _featureForTitle(title);
-      if (feature.isBlocked) {
+      if (feature.isBlocked || !feature.visible) {
+        if (!feature.visible && !feature.isBlocked) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('This service is unavailable.')),
+          );
+          return;
+        }
         _handleServiceTap(
           _DashboardService(
             title: title,
@@ -1272,7 +1344,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   void _handleServiceTap(_DashboardService service) {
     final CustomerFeatureConfig feature = _featureForTitle(service.title);
-    if (feature.isBlocked) {
+    if (feature.isBlocked || !feature.visible) {
       final String message =
           feature.maintenanceMode && feature.message.trim().isNotEmpty
               ? feature.message.trim()
@@ -1418,7 +1490,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         keywords: 'electricity power light bill',
         onTap: () {
           openScreen(
-            widget.electricityScreenBuilder?.call() ?? const ElectricityScreen(),
+            widget.electricityScreenBuilder?.call() ??
+                const ElectricityScreen(),
           );
         },
       ),
@@ -1794,7 +1867,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget buildHeader() {
-    return buildDashboardHeader();
+    return buildPremiumHeader();
   }
 
   Widget buildDashboardHeader() {
@@ -1970,11 +2043,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     required String tooltip,
     required IconData icon,
     required VoidCallback onTap,
+    Key? key,
     bool showDot = false,
   }) {
     return Tooltip(
       message: tooltip,
       child: InkWell(
+        key: key,
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Stack(
@@ -2132,191 +2207,127 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget buildPremiumBalanceCard() {
     return Container(
+      key: const Key('servicepay-wallet-card'),
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 17, 18, 16),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 15),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[primaryGreen, Color(0xFF055C30)],
+          colors: <Color>[Color(0xFF08783E), Color(0xFF075B37)],
         ),
-        borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: const Color(0xFF2A925B)),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x33065F32),
-            blurRadius: 22,
-            offset: Offset(0, 10),
+            color: Color(0x26075E36),
+            blurRadius: 20,
+            offset: Offset(0, 8),
           ),
         ],
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Positioned(
-            right: -10,
-            top: 24,
-            child: IgnorePointer(
-              child: _floating(
-                index: 1,
-                child: Container(
-                  width: 92,
-                  height: 92,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.10),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.13),
-                      width: 9,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.shield_rounded,
-                    color: Color(0xAFFFFFFF),
-                    size: 39,
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Available Balance',
+                  style: TextStyle(
+                    color: Color(0xFFE2F2E9),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
+              IconButton(
+                key: const Key('dashboard-balance-visibility'),
+                tooltip: hideBalance ? 'Show balance' : 'Hide balance',
+                onPressed: () => setState(() => hideBalance = !hideBalance),
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  hideBalance
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  color: Colors.white,
+                  size: 21,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            hideBalance
+                ? '₦ ••••••••'
+                : walletBalanceAvailable
+                    ? formatMoney(walletBalance)
+                    : 'Balance unavailable',
+            key: const Key('dashboard-balance-value'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: walletBalanceAvailable || hideBalance
+                  ? Colors.white
+                  : const Color(0xFFFFD8B1),
+              fontSize: walletBalanceAvailable || hideBalance ? 31 : 20,
+              height: 1.08,
+              letterSpacing: -1,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Row(
-                      children: <Widget>[
-                        const Flexible(
-                          child: Text(
-                            'Available Balance',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        Semantics(
-                          button: true,
-                          label: hideBalance ? 'Show balance' : 'Hide balance',
-                          child: Tooltip(
-                            message:
-                                hideBalance ? 'Show balance' : 'Hide balance',
-                            child: InkWell(
-                              onTap: () =>
-                                  setState(() => hideBalance = !hideBalance),
-                              borderRadius: BorderRadius.circular(18),
-                              child: Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: Icon(
-                                  hideBalance
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Tooltip(
-                    message: 'Open wallet',
-                    child: IconButton(
-                      onPressed: () => openScreen(const WalletScreen()),
-                      icon: const Icon(
-                        Icons.account_balance_wallet_outlined,
-                        size: 20,
-                      ),
-                      color: Colors.white,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                ],
+          if (walletBalanceRefreshFailed && !isLoading) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(
+              walletBalanceAvailable
+                  ? 'Showing your last saved balance'
+                  : 'Unable to load your balance right now',
+              style: const TextStyle(
+                color: Color(0xFFFFE5C7),
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 7),
-              Text(
-                hideBalance ? '₦ ••••••••' : formatMoney(walletBalance),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 29,
-                  height: 1.05,
-                  letterSpacing: -1.2,
-                  fontWeight: FontWeight.w900,
+            ),
+          ],
+          const SizedBox(height: 18),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _balanceActionButton(
+                  label: 'Add Money',
+                  icon: Icons.add_rounded,
+                  filled: true,
+                  key: const Key('dashboard-add-money-action'),
+                  onTap: _guardFeatureTap(
+                    'Wallet Funding',
+                    () => openScreen(const WalletScreen()),
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 7,
-                runSpacing: 9,
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: <Widget>[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.13),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(
-                          Icons.verified_user_outlined,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'Secured & Protected',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9.8,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _balanceActionButton(
+                  label: 'Transfer',
+                  icon: Icons.swap_horiz_rounded,
+                  filled: false,
+                  key: const Key('dashboard-transfer-action'),
+                  onTap: _guardFeatureTap(
+                    'ServicePay Transfer',
+                    () => openScreen(const TransferScreen()),
                   ),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: <Widget>[
-                      _balanceActionButton(
-                        label: 'Add Money',
-                        icon: Icons.add_rounded,
-                        filled: true,
-                        onTap: _guardFeatureTap(
-                          'Wallet',
-                          () => openScreen(const WalletScreen()),
-                        ),
-                      ),
-                      _balanceActionButton(
-                        label: 'Send Money',
-                        icon: Icons.send_rounded,
-                        filled: false,
-                        onTap: _guardFeatureTap(
-                          'ServicePay Transfer',
-                          () => openScreen(const TransferScreen()),
-                        ),
-                      ),
-                    ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _balanceActionButton(
+                  label: 'Withdrawal',
+                  icon: Icons.south_west_rounded,
+                  filled: false,
+                  key: const Key('dashboard-withdraw-action'),
+                  onTap: _guardFeatureTap(
+                    'Withdrawal',
+                    () => openScreen(const WithdrawalScreen()),
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -2329,10 +2340,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     required String label,
     required IconData icon,
     required bool filled,
+    Key? key,
     required VoidCallback onTap,
   }) {
     return Material(
-      color: filled ? Colors.white : Colors.white.withValues(alpha: 0.12),
+      key: key,
+      color: filled ? Colors.white : Colors.white.withValues(alpha: 0.13),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
@@ -2343,22 +2356,22 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 9),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(
-                icon,
-                size: 15,
-                color: filled ? primaryGreen : Colors.white,
-              ),
-              const SizedBox(width: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  color: filled ? primaryGreen : Colors.white,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
+              Icon(icon, size: 17, color: filled ? primaryGreen : Colors.white),
+              const SizedBox(height: 3),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: filled ? primaryGreen : Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],
@@ -2851,6 +2864,274 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget buildCustomerQuickServices() {
+    final List<_DashboardService> catalog = <_DashboardService>[
+      ...filtered(popularServices()),
+      ...filtered(moreServices()),
+      if (_isServiceVisible('EduPay'))
+        _DashboardService(
+          title: 'EduPay',
+          icon: Icons.school_rounded,
+          iconColor: const Color(0xFF0F766E),
+          backgroundColor: const Color(0xFFE6F5F2),
+          keywords: 'edupay school fees education',
+          onTap: _guardFeatureTap(
+            'EduPay',
+            () => openScreen(const EduPayScreen()),
+          ),
+          unavailable: _isFeatureBlocked('EduPay'),
+        ),
+    ];
+    final Map<String, _DashboardService> byTitle = <String, _DashboardService>{
+      for (final _DashboardService item in catalog)
+        item.title.toLowerCase(): item,
+    };
+
+    final List<_DashboardService> quick = <_DashboardService>[
+      for (final String wanted in <String>[
+        'data',
+        'airtime',
+        'delivery',
+        'edupay',
+        'marketplace',
+        'servicepay solar',
+      ])
+        if (byTitle[wanted] != null) byTitle[wanted]!,
+    ];
+    final CustomerFeatureConfig allServicesGate =
+        _featureForKey('ALL_SERVICES');
+
+    void openAllServices() {
+      if (allServicesGate.isBlocked) {
+        _showFeatureUnavailable(allServicesGate);
+        return;
+      }
+      final List<_DashboardService> all = <_DashboardService>[
+        ...byTitle.values,
+        if (_isServiceVisible('Referral'))
+          _customerServiceEntry(
+            'Referral',
+            Icons.card_giftcard_rounded,
+            () => openScreen(const ReferralScreen()),
+          ),
+        if (_isServiceVisible('KYC'))
+          _customerServiceEntry(
+            'KYC',
+            Icons.verified_user_rounded,
+            () => openScreen(const KycScreen()),
+          ),
+        if (_isServiceVisible('Organizations'))
+          _customerServiceEntry(
+            'Organizations',
+            Icons.groups_rounded,
+            () => openScreen(const OrganizationsScreen()),
+          ),
+        if (_isServiceVisible('QR Pay'))
+          _customerServiceEntry(
+            'QR Pay',
+            Icons.qr_code_scanner_rounded,
+            () => openScreen(const QrPayScreen()),
+          ),
+        if (_isServiceVisible('Biometrics'))
+          _customerServiceEntry(
+            'Biometrics',
+            Icons.fingerprint_rounded,
+            () => openScreen(const ProfileScreen()),
+            subtitle: 'Security settings',
+          ),
+        if (_isServiceVisible('Transaction PIN'))
+          _customerServiceEntry(
+            'Transaction PIN',
+            Icons.password_rounded,
+            () => openScreen(const ProfileScreen()),
+            subtitle: 'Security settings',
+          ),
+      ];
+      final Map<String, _DashboardService> unique = <String, _DashboardService>{
+        for (final _DashboardService item in all)
+          item.title.toLowerCase(): item,
+      };
+      openScreen(_ServicePayAllServicesScreen(
+        services: unique.values.toList(),
+      ));
+    }
+
+    return Container(
+      key: const Key('customer-quick-services'),
+      padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE3ECE6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Services',
+                  style: TextStyle(
+                    color: Color(0xFF173629),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              if (allServicesGate.visible)
+                TextButton(
+                  key: const Key('customer-all-services'),
+                  onPressed: allServicesGate.isBlocked ? null : openAllServices,
+                  child: Text(
+                    allServicesGate.isBlocked
+                        ? 'Services unavailable'
+                        : 'All Services',
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: quick.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisExtent: 108 +
+                  math.max(0, MediaQuery.textScalerOf(context).scale(14) - 14) * 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 5,
+            ),
+            itemBuilder: (BuildContext context, int index) {
+              final _DashboardService service = quick[index];
+              return _premiumServiceItem(service, index: index);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  _DashboardService _customerServiceEntry(
+    String title,
+    IconData icon,
+    VoidCallback onTap, {
+    String subtitle = '',
+  }) {
+    final CustomerFeatureConfig state = _featureForTitle(title);
+    return _DashboardService(
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      iconColor: primaryGreen,
+      backgroundColor: softGreen,
+      keywords: title.toLowerCase(),
+      onTap: () {
+        if (state.isBlocked) {
+          _showFeatureUnavailable(state);
+        } else {
+          onTap();
+        }
+      },
+      unavailable: state.isBlocked,
+    );
+  }
+
+  void _showFeatureUnavailable(CustomerFeatureConfig feature) {
+    final String message =
+        feature.maintenanceMode && feature.message.trim().isNotEmpty
+            ? feature.message.trim()
+            : 'Temporarily unavailable';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget buildFundingAccountCard() {
+    if (fundingAccountNumber.isEmpty) return const SizedBox.shrink();
+    return Container(
+      key: const Key('customer-funding-account'),
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF7F1),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFD8E9DE)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(
+              Icons.account_balance_rounded,
+              color: primaryGreen,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'SERVICEPAY • ACCOUNT NUMBER',
+                  style: TextStyle(
+                    color: Color(0xFF587064),
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .45,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  fundingAccountNumber,
+                  style: const TextStyle(
+                    color: Color(0xFF15352A),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .3,
+                  ),
+                ),
+                if (fundingAccountName.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 2),
+                  Text(
+                    fundingAccountName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF456052),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                if (fundingAccountBank.isNotEmpty)
+                  Text(
+                    fundingAccountBank,
+                    style: const TextStyle(
+                      color: Color(0xFF73877D),
+                      fontSize: 10,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            key: const Key('customer-copy-account'),
+            tooltip: 'Copy account number',
+            onPressed: _copyFundingAccount,
+            icon: const Icon(Icons.copy_rounded, color: primaryGreen, size: 19),
+          ),
+        ],
       ),
     );
   }
@@ -3812,14 +4093,6 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'S';
 
-    final hour = DateTime.now().hour;
-
-    final greeting = hour < 12
-        ? 'Good morning'
-        : hour < 17
-            ? 'Good afternoon'
-            : 'Good evening';
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
       child: Row(
@@ -3854,11 +4127,11 @@ class _DashboardScreenState extends State<DashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  greeting,
+                  'ServicePay',
                   style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF7A8981),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF315645),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -3876,29 +4149,28 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
           ),
-          InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () {
-              openScreen(
-                const NotificationsScreen(),
-              );
-            },
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(13),
-                border: Border.all(
-                  color: const Color(0xFFE7ECE9),
+          _headerIconButton(
+            tooltip: 'Refresh dashboard',
+            icon: Icons.refresh_rounded,
+            key: const Key('dashboard-header-refresh'),
+            onTap: _refreshDashboard,
+          ),
+          const SizedBox(width: 7),
+          _headerIconButton(
+            tooltip: 'Notifications',
+            icon: Icons.notifications_none_rounded,
+            key: const Key('dashboard-header-notifications'),
+            showDot: unreadNotifications > 0,
+            onTap: () async {
+              final int? unread = await Navigator.of(context).push<int>(
+                MaterialPageRoute<int>(
+                  builder: (_) => const NotificationsScreen(),
                 ),
-              ),
-              child: const Icon(
-                Icons.notifications_none_rounded,
-                color: Color(0xFF355B49),
-                size: 21,
-              ),
-            ),
+              );
+              if (mounted && unread != null) {
+                setState(() => unreadNotifications = unread < 0 ? 0 : unread);
+              }
+            },
           ),
           const SizedBox(width: 9),
           GestureDetector(
@@ -5425,10 +5697,23 @@ class _DashboardScreenState extends State<DashboardScreen>
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
                 children: <Widget>[
                   buildHeader(),
-                  const SizedBox(height: 18),
-                  buildTopQuickTools(),
-                  const SizedBox(height: 16),
-                  if (_announcementService != null && announcements.isNotEmpty)
+                  const SizedBox(height: 14),
+                  if (isLoading)
+                    const LinearProgressIndicator(
+                      color: primaryGreen,
+                      backgroundColor: softGreen,
+                      minHeight: 2,
+                    ),
+                  if (isLoading) const SizedBox(height: 10),
+                  buildPremiumBalanceCard(),
+                  const SizedBox(height: 11),
+                  buildFundingAccountCard(),
+                  if (fundingAccountNumber.isNotEmpty)
+                    const SizedBox(height: 15),
+                  buildCustomerQuickServices(),
+                  if (_announcementService != null &&
+                      announcements.isNotEmpty) ...[
+                    const SizedBox(height: 14),
                     AnnouncementSurface(
                       announcements: announcements,
                       service: _announcementService!,
@@ -5446,34 +5731,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                         });
                       },
                     ),
-                  if (isLoading)
-                    const LinearProgressIndicator(
-                      color: primaryGreen,
-                      backgroundColor: softGreen,
-                      minHeight: 2,
-                    ),
-                  if (isLoading) const SizedBox(height: 10),
-                  buildPremiumBalanceCard(),
-                  const SizedBox(height: 12),
-                  buildPremiumActionRow(),
+                  ],
                   if (schoolPortalMemberships.isNotEmpty) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     buildSchoolPortalCard(),
                   ],
-                  const SizedBox(height: 20),
-                  _buildEduPayEntry(),
-                  const SizedBox(height: 18),
-                  buildActiveServiceStatuses(),
+                  const SizedBox(height: 16),
+                  if (isLoadingServiceStatuses ||
+                      activeServiceStatuses.isNotEmpty) ...[
+                    buildActiveServiceStatuses(),
+                    const SizedBox(height: 15),
+                  ],
+                  buildRecentActivity(),
                   if (isLoadingServiceStatuses ||
                       activeServiceStatuses.isNotEmpty)
-                    const SizedBox(height: 18),
-                  buildPremiumServices(),
-                  const SizedBox(height: 18),
-                  buildRecentActivity(),
-                  const SizedBox(height: 18),
-                  buildPremiumInviteBanner(),
-                  const SizedBox(height: 14),
-                  const TrustDashboardEntry(),
+                    const SizedBox(height: 4),
                   if (isRefreshing)
                     const Padding(
                       padding: EdgeInsets.only(top: 18),
@@ -6196,9 +6468,10 @@ class _ServicePayAllServicesScreenState
           physics: const NeverScrollableScrollPhysics(),
           shrinkWrap: true,
           itemCount: services.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 4,
-            mainAxisExtent: 94,
+            mainAxisExtent: 104 +
+                math.max(0, MediaQuery.textScalerOf(context).scale(14) - 14) * 3,
             crossAxisSpacing: 8,
             mainAxisSpacing: 12,
           ),

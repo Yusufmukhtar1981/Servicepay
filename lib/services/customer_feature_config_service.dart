@@ -217,6 +217,7 @@ class CustomerFeatureConfigurationService {
   static const List<String> canonicalKeys = <String>[
     'AIRTIME',
     'DATA',
+    'EDUPAY',
     'ELECTRICITY',
     'CABLE_TV',
     'EXAM_PIN',
@@ -227,12 +228,14 @@ class CustomerFeatureConfigurationService {
     'MARKETPLACE',
     'AMANA',
     'ORGANIZATIONS',
+    'EMPOWERMENT',
     'ORGANIZATION_WITHDRAWALS',
     'PHONE_FINANCING',
     'SERVICEPAY_CALL',
     'CARDS',
     'MINI_APPS',
     'QR_PAY',
+    'ALL_SERVICES',
     'PAY_BY_LINK',
     'REQUEST_MONEY',
     'TRANSPORT',
@@ -243,6 +246,13 @@ class CustomerFeatureConfigurationService {
     'BANK_TRANSFER',
     'WITHDRAWAL',
     'REFERRAL',
+    'KYC',
+    'BIOMETRICS',
+    'TRANSACTION_PIN',
+    'AIRTIME_TO_CASH',
+    'PARTNER_API',
+    'AGENT_LOCATOR',
+    'TRUST',
     'NOTIFICATIONS',
     'GROUP_WALLET',
     'FLIGHT_BOOKING',
@@ -390,8 +400,7 @@ class CustomerFeatureConfigurationService {
     // copy, while retaining the canonical production registry.
     return CustomerFeatureConfiguration(
       features: <String, CustomerFeatureConfig>{
-        for (final String key in canonicalKeys)
-          key: productionDefaults[key]!,
+        for (final String key in canonicalKeys) key: productionDefaults[key]!,
       },
       version: cached.version,
       fromCache: true,

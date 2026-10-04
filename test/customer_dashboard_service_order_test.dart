@@ -29,7 +29,7 @@ void main() {
     });
   });
 
-  testWidgets('shows the nine main services in order and opens each tile',
+  testWidgets('shows the six essential services in order and opens each tile',
       (WidgetTester tester) async {
     final _DashboardRouteObserver observer = _DashboardRouteObserver();
 
@@ -47,15 +47,12 @@ void main() {
         tester.state<NavigatorState>(find.byType(Navigator).first);
 
     const List<String> mainServices = <String>[
-      'Delivery',
-      'ServicePay Solar',
-      'Empowerment',
-      'Marketplace',
-      'ServicePay Amana',
-      'NIN Verification',
       'Data',
       'Airtime',
-      'Electricity',
+      'Delivery',
+      'EduPay',
+      'Marketplace',
+      'ServicePay Solar',
     ];
 
     for (final String service in mainServices) {
@@ -71,7 +68,7 @@ void main() {
       for (final String service in mainServices)
         tester.getCenter(find.text(service)),
     ];
-    for (int row = 0; row < 3; row++) {
+    for (int row = 0; row < 2; row++) {
       final List<Offset> rowPositions = positions.sublist(row * 3, row * 3 + 3);
       expect(
         rowPositions.every(
@@ -86,7 +83,7 @@ void main() {
         isTrue,
         reason: 'Main service order changed in row ${row + 1}',
       );
-      if (row < 2) {
+      if (row < 1) {
         expect(
           rowPositions[0].dy < positions[(row + 1) * 3].dy,
           isTrue,

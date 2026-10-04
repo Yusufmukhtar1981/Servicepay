@@ -38,7 +38,7 @@ class _MainNavigationState extends State<MainNavigation>
     _qrPulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
+    );
 
     // Show customer dashboard immediately.
     // Role loading can continue in the background.
@@ -74,6 +74,9 @@ class _MainNavigationState extends State<MainNavigation>
 
       setState(() {
         userRole = role;
+        if (role != 'CUSTOMER' && role != 'DELIVERY_RIDER') {
+          _qrPulseController.repeat(reverse: true);
+        }
 
         pages = _buildPages(role);
 
@@ -116,6 +119,16 @@ class _MainNavigationState extends State<MainNavigation>
       ];
     }
 
+    if (role == 'CUSTOMER') {
+      return <Widget>[
+        DashboardScreen(
+            electricityScreenBuilder: widget.electricityScreenBuilder),
+        TransactionsScreen(isActive: currentIndex == 1),
+        const WalletScreen(),
+        const ProfileScreen(),
+      ];
+    }
+
     /*
      * =====================================================
      * NORMAL SERVICEPAY USERS
@@ -128,7 +141,8 @@ class _MainNavigationState extends State<MainNavigation>
      * etc.
      */
     return <Widget>[
-      DashboardScreen(electricityScreenBuilder: widget.electricityScreenBuilder),
+      DashboardScreen(
+          electricityScreenBuilder: widget.electricityScreenBuilder),
       const TransactionsScreen(),
       const WalletScreen(),
       const ProfileScreen(),
@@ -234,6 +248,35 @@ class _MainNavigationState extends State<MainNavigation>
   }
 
   List<Widget> _customerNavigationItems() {
+    if (userRole == 'CUSTOMER') {
+      return <Widget>[
+        buildNavigationItem(
+          index: 0,
+          icon: Icons.home_outlined,
+          activeIcon: Icons.home_rounded,
+          label: 'Home',
+        ),
+        buildNavigationItem(
+          index: 1,
+          icon: Icons.receipt_long_outlined,
+          activeIcon: Icons.receipt_long_rounded,
+          label: 'Transactions',
+        ),
+        buildNavigationItem(
+          index: 2,
+          icon: Icons.account_balance_wallet_outlined,
+          activeIcon: Icons.account_balance_wallet_rounded,
+          label: 'Wallet',
+        ),
+        buildNavigationItem(
+          index: 3,
+          icon: Icons.person_outline_rounded,
+          activeIcon: Icons.person_rounded,
+          label: 'Profile',
+        ),
+      ];
+    }
+
     return <Widget>[
       buildNavigationItem(
         index: 0,
@@ -350,6 +393,7 @@ class _MainNavigationState extends State<MainNavigation>
             onTap: () {
               setState(() {
                 currentIndex = index;
+                pages = _buildPages(userRole);
                 _visitedPages.add(index);
               });
             },

@@ -1,4 +1,5 @@
 import 'services/session_store.dart';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -14,7 +15,9 @@ import 'servicepay_theme.dart';
 import 'servicepay_ui.dart';
 
 class TransactionsScreen extends StatefulWidget {
-  const TransactionsScreen({super.key});
+  const TransactionsScreen({super.key, this.isActive = true});
+
+  final bool isActive;
 
   @override
   State<TransactionsScreen> createState() => _TransactionsScreenState();
@@ -46,6 +49,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   String? nextCursor;
 
   List<Map<String, dynamic>> transactions = [];
+  Timer? _pendingRefreshTimer;
 
   final List<String> filters = const [
     'ALL',
@@ -60,11 +64,36 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   void initState() {
     super.initState();
     loadTransactions();
+    _pendingRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted ||
+          !widget.isActive ||
+          isLoading ||
+          isRefreshing ||
+          isLoadingMore ||
+          (scrollController.hasClients && scrollController.offset > 100))
+        return;
+      if (transactions.any((row) => const <String>{
+            'PENDING',
+            'PROCESSING',
+            'UNKNOWN'
+          }.contains((row['status'] ?? '').toString().toUpperCase()))) {
+        unawaited(loadTransactions(showRefreshLoader: true));
+      }
+    });
     scrollController.addListener(_loadMoreWhenNeeded);
   }
 
   @override
+  void didUpdateWidget(covariant TransactionsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      unawaited(loadTransactions(showRefreshLoader: true));
+    }
+  }
+
+  @override
   void dispose() {
+    _pendingRefreshTimer?.cancel();
     searchController.dispose();
     scrollController.dispose();
     super.dispose();
