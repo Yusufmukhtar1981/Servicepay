@@ -201,4 +201,66 @@ class DataPurchaseIntent {
     if (decoded['submitted'] == false) return null;
     return Map<String, dynamic>.from(decoded);
   }
+
+  Future<List<Map<String, dynamic>>> retained() async {
+    final storageKey = '$_prefix${await _accountId()}.retained';
+    final raw = await _storage.read(storageKey);
+    if (raw == null) return [];
+    final decoded = jsonDecode(raw);
+    if (decoded is! List)
+      throw StateError('Earlier requests cannot be recovered.');
+    return decoded.map((item) {
+      if (item is! Map ||
+          item['key'] is! String ||
+          item['fingerprint'] is! String) {
+        throw StateError('Earlier requests cannot be recovered.');
+      }
+      return Map<String, dynamic>.from(item);
+    }).toList();
+  }
+
+  /// Only an explicit, server-authorized independent purchase frees the active
+  /// slot. Preserve the previous identity before deleting it; never resend it.
+  Future<void> retainForSeparatePurchase(String key) async {
+    final storageKey = '$_prefix${await _accountId()}';
+    final preceding = _submissions[storageKey];
+    final completed = Completer<void>();
+    _submissions[storageKey] = completed.future;
+    try {
+      if (preceding != null) await preceding;
+      final saved = await _storage.read(storageKey);
+      if (saved == null) throw StateError('The original request is missing.');
+      final active = jsonDecode(saved);
+      if (active is! Map ||
+          active['key'] != key ||
+          active['fingerprint'] is! String ||
+          active['submitted'] == false) {
+        throw StateError('The original request cannot be retained.');
+      }
+      final history = await retained();
+      if (!history.any((item) => item['key'] == key)) {
+        if (history.length >= 100)
+          throw StateError('Resolve an earlier request first.');
+        history.add(Map<String, dynamic>.from(active));
+      }
+      final encoded = jsonEncode(history);
+      await _storage.write('$storageKey.retained', encoded);
+      if (await _storage.read('$storageKey.retained') != encoded) {
+        throw StateError('The original request could not be durably retained.');
+      }
+      await _storage.delete(storageKey);
+    } finally {
+      if (identical(_submissions[storageKey], completed.future)) {
+        _submissions.remove(storageKey);
+      }
+      completed.complete();
+    }
+  }
+
+  Future<void> finishRetained(String key) async {
+    final storageKey = '$_prefix${await _accountId()}.retained';
+    final history = await retained();
+    history.removeWhere((item) => item['key'] == key);
+    await _storage.write(storageKey, jsonEncode(history));
+  }
 }

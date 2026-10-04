@@ -324,11 +324,16 @@ class ApiService {
     ).timeout(requestTimeout);
     final body = _handleResponse(response);
     if (response.statusCode == 200) return body;
+    if (response.statusCode == 404 && body['canRetireUnrecordedRequest'] == true) {
+      return {...body, 'pending': true, 'allowSeparatePurchase': false};
+    }
     // A 404 does not prove the original POST will not arrive later.
     return {
       'success': false,
       'pending': true,
-      'status': 'PENDING',
+      'status': response.statusCode == 404 ? 'UNKNOWN' : 'PENDING',
+      'manualReviewRequired': response.statusCode == 404,
+      'allowSeparatePurchase': false,
       'message': 'The original DATA request has not yet been confirmed. '
           'Check Transactions or check this request again; do not submit again.'
     };
@@ -345,6 +350,16 @@ class ApiService {
     }
 
     return token;
+  }
+
+  static Future<Map<String, dynamic>> retireUnrecordedDataRequest(String key) async {
+    final token = await _getAuthToken();
+    final response = await http.post(
+      Uri.parse('$baseUrl/clubkonnect/data/recovery/${Uri.encodeComponent(key)}/retire'),
+      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    ).timeout(requestTimeout);
+    final body = _handleResponse(response);
+    return {...body, 'httpStatus': response.statusCode};
   }
 
   static Map<String, dynamic> _handleResponse(

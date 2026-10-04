@@ -67,7 +67,9 @@ void main() {
       expect(confirmedKey, contains(submittedKey!));
       expect(find.text('Processing your data purchase...'), findsOneWidget);
       expect(find.text('Data Purchase Successful'), findsNothing);
-      expect(find.byType(ModalBarrier), findsWidgets);
+      final phoneField = tester.widget<TextField>(find.byType(TextField).first);
+      expect(phoneField.enabled, true,
+          reason: 'processing does not disable the next beneficiary input');
       expect(await tester.binding.handlePopRoute(), true);
       await tester.pump();
       expect(find.byType(DataScreen), findsOneWidget);

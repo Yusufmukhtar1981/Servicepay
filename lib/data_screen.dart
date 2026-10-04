@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'services/api_service.dart';
 import 'services/data_purchase_intent.dart';
+import 'services/data_phone.dart';
 import 'receipt_screen.dart';
 import 'widgets/saved_beneficiaries.dart';
 import 'widgets/purchase_processing.dart';
@@ -14,13 +15,17 @@ class DataScreen extends StatefulWidget {
       this.loadPlans,
       this.purchase,
       this.statusQuery,
-      this.loadBeneficiaries});
+      this.retireRequest,
+      this.loadBeneficiaries,
+      this.saveBeneficiary});
   final BeneficiaryLoader? loadBeneficiaries;
+  final BeneficiarySaver? saveBeneficiary;
   final DataPurchaseIntent? purchaseIntent;
   final Future<Map<String, dynamic>> Function(String network)? loadPlans;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> input)?
       purchase;
   final Future<Map<String, dynamic>> Function(String key)? statusQuery;
+  final Future<Map<String, dynamic>> Function(String key)? retireRequest;
 
   @override
   State<DataScreen> createState() => _DataScreenState();
@@ -32,6 +37,7 @@ class _DataScreenState extends State<DataScreen> {
   static const Color softGreen = Color(0xFFEAF7F0);
 
   final TextEditingController phoneController = TextEditingController();
+  final FocusNode _phoneFocus = FocusNode();
 
   final List<String> networks = const <String>[
     'MTN',
@@ -53,6 +59,9 @@ class _DataScreenState extends State<DataScreen> {
   String? _pendingKey;
   String _pendingMessage = '';
   bool _restoring = true;
+  bool _canStartSeparate = false;
+  bool _canRetireUnrecorded = false;
+  List<Map<String, dynamic>> _retainedRequests = [];
 
   String plansError = '';
 
@@ -67,6 +76,7 @@ class _DataScreenState extends State<DataScreen> {
   @override
   void dispose() {
     phoneController.dispose();
+    _phoneFocus.dispose();
     super.dispose();
   }
 
@@ -76,7 +86,9 @@ class _DataScreenState extends State<DataScreen> {
   Future<void> _restorePurchase() async {
     try {
       final pending = await _purchaseIntent.pending();
+      final retained = await _purchaseIntent.retained();
       if (!mounted) return;
+      setState(() => _retainedRequests = retained);
       if (pending != null) {
         setState(() {
           _pendingKey = pending['key'] as String;
@@ -85,6 +97,7 @@ class _DataScreenState extends State<DataScreen> {
               'An earlier DATA purchase is awaiting confirmation. '
               'Check its status; no new purchase will be sent.';
         });
+        await _checkPurchase();
       }
     } catch (_) {
       if (mounted)
@@ -102,18 +115,36 @@ class _DataScreenState extends State<DataScreen> {
     }
   }
 
-  Future<void> _checkPurchase() async {
-    if (isBuyingData || _pendingKey == null || _pendingKey!.isEmpty) return;
+  Future<void> _checkPurchase({Map<String, dynamic>? retained}) async {
+    final key = retained?['key'] as String? ?? _pendingKey;
+    if (isBuyingData || key == null || key.isEmpty) return;
     setState(() {
       isBuyingData = true;
-      _phase = PurchasePhase.processing;
     });
     try {
-      final pending = await _purchaseIntent.pending();
+      final pending = retained ?? await _purchaseIntent.pending();
       if (pending == null || !mounted) return;
       final parts = jsonDecode(pending['fingerprint'] as String) as List;
-      final result = await (widget.statusQuery ??
-          ApiService.dataPurchaseStatus)(_pendingKey!);
+      final result =
+          await (widget.statusQuery ?? ApiService.dataPurchaseStatus)(key);
+      if (!mounted) return;
+      if (retained != null) {
+        final outcome = purchaseOutcome(result);
+        if (outcome == PurchasePhase.success ||
+            outcome == PurchasePhase.failed) {
+          await _purchaseIntent.finishRetained(key);
+          final remaining = await _purchaseIntent.retained();
+          if (mounted) setState(() => _retainedRequests = remaining);
+        }
+        showMessage(result['message']?.toString() ??
+            'This earlier request is still awaiting confirmation.');
+        return;
+      }
+      setState(() => _canStartSeparate =
+          result['allowSeparatePurchase'] == true &&
+              result['status'] == 'UNKNOWN');
+      setState(() =>
+          _canRetireUnrecorded = result['canRetireUnrecordedRequest'] == true);
       await _presentDataResult(result,
           network: parts[0].toString(),
           phone: parts[1].toString(),
@@ -132,6 +163,107 @@ class _DataScreenState extends State<DataScreen> {
         setState(() {
           isBuyingData = false;
         });
+    }
+  }
+
+  Future<void> _startSeparatePurchase() async {
+    if (!_canStartSeparate || isBuyingData) return;
+    final acknowledged = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Start a separate purchase?'),
+        content: const Text(
+          'The earlier purchase is unresolved and its funds remain held. '
+          'It will be retained for status checks, not resent or automatically '
+          'refunded. A separate purchase uses a new request key and can charge '
+          'your wallet separately. Check your balance and Transactions first.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Start separate purchase')),
+        ],
+      ),
+    );
+    if (acknowledged != true || !mounted || isBuyingData) return;
+    setState(() => isBuyingData = true);
+    try {
+      // Recheck immediately: a formerly UNKNOWN operation can become active or
+      // terminal while the acknowledgement dialog is open.
+      final result = await (widget.statusQuery ??
+          ApiService.dataPurchaseStatus)(_pendingKey!);
+      if (result['allowSeparatePurchase'] != true ||
+          result['status'] != 'UNKNOWN') {
+        showMessage('Check the original request again before continuing.');
+        return;
+      }
+      await _purchaseIntent.retainForSeparatePurchase(_pendingKey!);
+      final retained = await _purchaseIntent.retained();
+      if (!mounted) return;
+      setState(() {
+        _retainedRequests = retained;
+        _pendingKey = null;
+        _pendingMessage = '';
+        _canStartSeparate = false;
+        _phase = PurchasePhase.idle;
+      });
+      _phoneFocus.requestFocus();
+    } catch (_) {
+      showMessage(
+          'The earlier request could not be safely retained. No new purchase was started.',
+          isError: true);
+    } finally {
+      if (mounted) setState(() => isBuyingData = false);
+    }
+  }
+
+  Future<void> _retireUnrecordedPurchase() async {
+    if (!_canRetireUnrecorded || isBuyingData || _pendingKey == null) return;
+    final acknowledged = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Resolve unrecorded request?'),
+        content: const Text(
+            'The server will check whether the original request '
+            'was admitted. Only if no purchase exists will it permanently block '
+            'that old key before letting you buy again. No provider request or '
+            'automatic refund will be made.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Resolve request')),
+        ],
+      ),
+    );
+    if (acknowledged != true || !mounted || isBuyingData) return;
+    setState(() => isBuyingData = true);
+    try {
+      final result = await (widget.retireRequest ??
+          ApiService.retireUnrecordedDataRequest)(_pendingKey!);
+      if (result['requestRetired'] == true && result['status'] == 'FAILED') {
+        await _purchaseIntent.finish(_pendingKey!);
+        if (!mounted) return;
+        setState(() {
+          _pendingKey = null;
+          _pendingMessage = '';
+          _canRetireUnrecorded = false;
+          _canStartSeparate = false;
+          _phase = PurchasePhase.idle;
+        });
+      }
+      showMessage(
+          result['message']?.toString() ?? 'Check the original request again.');
+    } catch (_) {
+      showMessage('Recovery is unavailable. The original key is retained.',
+          isError: true);
+    } finally {
+      if (mounted) setState(() => isBuyingData = false);
     }
   }
 
@@ -399,7 +531,7 @@ class _DataScreenState extends State<DataScreen> {
   ) async {
     if (isBusy) return;
 
-    final String phone = phoneController.text.trim();
+    final String phone = normalizeDataPhone(phoneController.text);
 
     if (!isValidPhone(phone)) {
       showMessage(
@@ -635,7 +767,10 @@ class _DataScreenState extends State<DataScreen> {
     required String name,
     required double price,
   }) async {
-    final outcome = purchaseOutcome(result);
+    final outcome =
+        result['requestRetired'] == true && result['status'] == 'FAILED'
+            ? PurchasePhase.failed
+            : purchaseOutcome(result);
     final bool success = outcome == PurchasePhase.success;
     if (!mounted) return;
     setState(() {
@@ -815,7 +950,7 @@ class _DataScreenState extends State<DataScreen> {
               color: selected ? Colors.white : Colors.black87,
               fontWeight: FontWeight.w700,
             ),
-            onSelected: isBuyingData || _pendingKey != null
+            onSelected: isBuyingData
                 ? null
                 : (_) async {
                     if (selected) return;
@@ -886,7 +1021,7 @@ class _DataScreenState extends State<DataScreen> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: isBuyingData ? null : () => buyPlan(plan),
+        onTap: isBusy ? null : () => buyPlan(plan),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -965,7 +1100,7 @@ class _DataScreenState extends State<DataScreen> {
                     height: 8,
                   ),
                   FilledButton(
-                    onPressed: isBuyingData ? null : () => buyPlan(plan),
+                    onPressed: isBusy ? null : () => buyPlan(plan),
                     style: FilledButton.styleFrom(
                       backgroundColor: primaryGreen,
                       padding: const EdgeInsets.symmetric(
@@ -1001,91 +1136,116 @@ class _DataScreenState extends State<DataScreen> {
         actions: <Widget>[
           IconButton(
             tooltip: 'Refresh',
-            onPressed: isBusy ? null : loadDataPlans,
+            onPressed: isBuyingData ? null : loadDataPlans,
             icon: const Icon(
               Icons.refresh_rounded,
             ),
           ),
         ],
       ),
-      body: PurchaseProcessing(
-        processing: _phase == PurchasePhase.processing,
-        service: 'data',
-        child: RefreshIndicator(
-          onRefresh: loadDataPlans,
-          child: CustomScrollView(
-            slivers: <Widget>[
-              SliverToBoxAdapter(
-                  child: Column(children: [
-                if (_pendingMessage.isNotEmpty)
-                  MaterialBanner(
-                    content: Text('Transaction Pending\n$_pendingMessage'),
-                    actions: [
-                      TextButton(
-                          onPressed: isBuyingData ? null : _checkPurchase,
-                          child: const Text('Check existing request')),
-                    ],
-                  ),
-                Container(
-                  width: double.infinity,
-                  color: Colors.white,
-                  padding: const EdgeInsets.fromLTRB(
-                    16,
-                    16,
-                    16,
-                    14,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      TextField(
-                        controller: phoneController,
-                        enabled: !isBuyingData && _pendingKey == null,
-                        maxLength: 11,
-                        keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(
-                          labelText: 'Beneficiary Phone Number',
-                          hintText: '08012345678',
-                          counterText: '',
-                          prefixIcon: const Icon(
-                            Icons.phone_android_rounded,
+      body: PopScope(
+        canPop: _phase != PurchasePhase.processing,
+        child: PurchaseProcessing(
+          processing: false,
+          service: 'data',
+          child: RefreshIndicator(
+            onRefresh: loadDataPlans,
+            child: CustomScrollView(
+              slivers: <Widget>[
+                SliverToBoxAdapter(
+                    child: Column(children: [
+                  if (_pendingMessage.isNotEmpty)
+                    MaterialBanner(
+                      content: Text('Transaction Pending\n$_pendingMessage'),
+                      actions: [
+                        TextButton(
+                            onPressed:
+                                isBuyingData ? null : () => _checkPurchase(),
+                            child: const Text('Check existing request')),
+                        if (_canStartSeparate)
+                          TextButton(
+                            onPressed:
+                                isBuyingData ? null : _startSeparatePurchase,
+                            child: const Text('Start a separate purchase'),
                           ),
-                          filled: true,
-                          fillColor: const Color(
-                            0xFFF8FAFC,
+                        if (_canRetireUnrecorded)
+                          TextButton(
+                            onPressed:
+                                isBuyingData ? null : _retireUnrecordedPurchase,
+                            child: const Text('Resolve unrecorded request'),
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                              14,
+                      ],
+                    ),
+                  for (final request in _retainedRequests)
+                    ListTile(
+                      title: const Text(
+                          'Earlier DATA request retained for review'),
+                      trailing: TextButton(
+                        onPressed: isBuyingData
+                            ? null
+                            : () => _checkPurchase(retained: request),
+                        child: const Text('Check status'),
+                      ),
+                    ),
+                  if (_phase == PurchasePhase.processing)
+                    const ListTile(
+                      leading: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                      title: Text('Processing your data purchase...'),
+                      subtitle: Text(
+                          'Do not submit again. You can still edit the next beneficiary.'),
+                    ),
+                  Container(
+                    width: double.infinity,
+                    color: Colors.white,
+                    padding: const EdgeInsets.fromLTRB(
+                      16,
+                      16,
+                      16,
+                      14,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        TextField(
+                          controller: phoneController,
+                          focusNode: _phoneFocus,
+                          onTap: () => _phoneFocus.requestFocus(),
+                          enabled: true,
+                          maxLength: 24,
+                          keyboardType: TextInputType.phone,
+                          decoration: InputDecoration(
+                            labelText: 'Beneficiary Phone Number',
+                            hintText: '08012345678',
+                            counterText: '',
+                            prefixIcon: const Icon(
+                              Icons.phone_android_rounded,
+                            ),
+                            filled: true,
+                            fillColor: const Color(
+                              0xFFF8FAFC,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(
+                                14,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      SavedBeneficiaries(
-                        loadBeneficiaries: widget.loadBeneficiaries,
-                        phoneController: phoneController,
-                        network: selectedNetwork,
-                        serviceType: 'DATA',
-                      ),
-                      const SizedBox(
-                        height: 14,
-                      ),
-                      const Text(
-                        'Network',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
+                        SavedBeneficiaries(
+                          loadBeneficiaries: widget.loadBeneficiaries,
+                          saveBeneficiary: widget.saveBeneficiary,
+                          phoneController: phoneController,
+                          network: selectedNetwork,
+                          serviceType: 'DATA',
                         ),
-                      ),
-                      const SizedBox(
-                        height: 8,
-                      ),
-                      buildNetworkSelector(),
-                      if (!isLoadingPlans && dataPlans.isNotEmpty) ...[
                         const SizedBox(
                           height: 14,
                         ),
                         const Text(
-                          'Data Type',
+                          'Network',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                           ),
@@ -1093,76 +1253,95 @@ class _DataScreenState extends State<DataScreen> {
                         const SizedBox(
                           height: 8,
                         ),
-                        buildCategorySelector(),
+                        buildNetworkSelector(),
+                        if (!isLoadingPlans && dataPlans.isNotEmpty) ...[
+                          const SizedBox(
+                            height: 14,
+                          ),
+                          const Text(
+                            'Data Type',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 8,
+                          ),
+                          buildCategorySelector(),
+                        ],
                       ],
-                    ],
-                  ),
-                ),
-              ])),
-              if (isLoadingPlans || plansError.isNotEmpty || displayed.isEmpty)
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                      height: 240,
-                      child: isLoadingPlans
-                          ? const Center(
-                              child: CircularProgressIndicator(),
-                            )
-                          : plansError.isNotEmpty
-                              ? Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(
-                                      24,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: <Widget>[
-                                        const Icon(
-                                          Icons.error_outline_rounded,
-                                          size: 46,
-                                          color: Colors.red,
-                                        ),
-                                        const SizedBox(
-                                          height: 12,
-                                        ),
-                                        Text(
-                                          plansError,
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        const SizedBox(
-                                          height: 14,
-                                        ),
-                                        FilledButton.icon(
-                                          onPressed: loadDataPlans,
-                                          icon: const Icon(
-                                            Icons.refresh_rounded,
-                                          ),
-                                          label: const Text(
-                                            'Try Again',
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                )
-                              : displayed.isEmpty
-                                  ? const Center(
-                                      child: Text(
-                                        'No plans found in this category.',
-                                      ),
-                                    )
-                                  : const SizedBox.shrink()),
-                ),
-              if (!isLoadingPlans && plansError.isEmpty && displayed.isNotEmpty)
-                SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => buildPlanCard(displayed[index]),
-                      childCount: displayed.length,
                     ),
                   ),
-                ),
-            ],
+                ])),
+                if (isLoadingPlans ||
+                    plansError.isNotEmpty ||
+                    displayed.isEmpty)
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                        height: 240,
+                        child: isLoadingPlans
+                            ? const Center(
+                                child: CircularProgressIndicator(),
+                              )
+                            : plansError.isNotEmpty
+                                ? Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(
+                                        24,
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: <Widget>[
+                                          const Icon(
+                                            Icons.error_outline_rounded,
+                                            size: 46,
+                                            color: Colors.red,
+                                          ),
+                                          const SizedBox(
+                                            height: 12,
+                                          ),
+                                          Text(
+                                            plansError,
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(
+                                            height: 14,
+                                          ),
+                                          FilledButton.icon(
+                                            onPressed: loadDataPlans,
+                                            icon: const Icon(
+                                              Icons.refresh_rounded,
+                                            ),
+                                            label: const Text(
+                                              'Try Again',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : displayed.isEmpty
+                                    ? const Center(
+                                        child: Text(
+                                          'No plans found in this category.',
+                                        ),
+                                      )
+                                    : const SizedBox.shrink()),
+                  ),
+                if (!isLoadingPlans &&
+                    plansError.isEmpty &&
+                    displayed.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => buildPlanCard(displayed[index]),
+                        childCount: displayed.length,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
