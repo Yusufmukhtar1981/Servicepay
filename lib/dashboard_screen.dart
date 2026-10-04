@@ -2868,6 +2868,63 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Widget _customerQuickServiceItem(
+    _DashboardService service, {
+    required int index,
+  }) {
+    return _floating(
+      index: index + 3,
+      child: Material(
+        color: const Color(0xFFFBFEFC),
+        borderRadius: BorderRadius.circular(15),
+        child: InkWell(
+          key: Key('customer-quick-service-${service.title.toLowerCase()}'),
+          onTap: service.onTap,
+          borderRadius: BorderRadius.circular(15),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: const Color(0xFFDDEBE2)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: service.backgroundColor.withValues(alpha: 0.82),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    service.icon,
+                    color: primaryGreen,
+                    size: 25,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  service.title,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF294638),
+                    fontSize: 12.5,
+                    height: 1.08,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget buildCustomerQuickServices() {
     final List<_DashboardService> catalog = <_DashboardService>[
       ...filtered(popularServices()),
@@ -2898,7 +2955,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         'delivery',
         'edupay',
         'marketplace',
-        'servicepay solar',
+        'electricity',
       ])
         if (byTitle[wanted] != null) byTitle[wanted]!,
     ];
@@ -2976,6 +3033,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               const Expanded(
                 child: Text(
                   'Services',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Color(0xFF173629),
                     fontSize: 17,
@@ -2987,10 +3046,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                 TextButton(
                   key: const Key('customer-all-services'),
                   onPressed: allServicesGate.isBlocked ? null : openAllServices,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                   child: Text(
                     allServicesGate.isBlocked
                         ? 'Services unavailable'
                         : 'All Services',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
             ],
@@ -3002,14 +3068,18 @@ class _DashboardScreenState extends State<DashboardScreen>
             itemCount: quick.length,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
-              mainAxisExtent: 108 +
-                  math.max(0, MediaQuery.textScalerOf(context).scale(14) - 14) * 3,
+              mainAxisExtent: 84 +
+                  math.max(
+                    0,
+                    MediaQuery.textScalerOf(context).scale(13) - 13,
+                  ) *
+                      2,
               crossAxisSpacing: 8,
               mainAxisSpacing: 5,
             ),
             itemBuilder: (BuildContext context, int index) {
               final _DashboardService service = quick[index];
-              return _premiumServiceItem(service, index: index);
+              return _customerQuickServiceItem(service, index: index);
             },
           ),
         ],
@@ -5454,43 +5524,54 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Text(
-                  'Recent Activity',
-                  style: TextStyle(
-                    color: Color(0xFF15281B),
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final bool compact = constraints.maxWidth < 360;
+              return Row(
+                children: <Widget>[
+                  const Expanded(
+                    child: Text(
+                      'Recent Activity',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xFF15281B),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              TextButton(
-                key: const Key('dashboard-see-all-transactions'),
-                onPressed: () => openScreen(const TransactionsScreen()),
-                style: TextButton.styleFrom(
-                  foregroundColor: primaryGreen,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 8,
+                  TextButton(
+                    key: const Key('dashboard-see-all-transactions'),
+                    onPressed: () => openScreen(const TransactionsScreen()),
+                    style: TextButton.styleFrom(
+                      foregroundColor: primaryGreen,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      minimumSize: const Size(48, 44),
+                      textStyle: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          compact ? 'See All' : 'See All Transactions',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(Icons.chevron_right_rounded, size: 17),
+                      ],
+                    ),
                   ),
-                  minimumSize: const Size(48, 44),
-                  textStyle: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text('See All Transactions'),
-                    SizedBox(width: 2),
-                    Icon(Icons.chevron_right_rounded, size: 17),
-                  ],
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
           const SizedBox(height: 13),
           content,

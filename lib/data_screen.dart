@@ -686,43 +686,47 @@ class _DataScreenState extends State<DataScreen> {
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text('Enter Transaction PIN'),
-            content: TextField(
-              controller: transactionPinController,
-              autofocus: true,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              decoration: const InputDecoration(
-                labelText: '4-digit PIN',
-                hintText: '••••',
-                counterText: '',
-                border: OutlineInputBorder(),
+          return StatefulBuilder(builder: (dialogContext, setPinState) {
+            return AlertDialog(
+              title: const Text('Enter Transaction PIN'),
+              content: TextField(
+                controller: transactionPinController,
+                autofocus: true,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                decoration: const InputDecoration(
+                  labelText: '4-digit PIN',
+                  hintText: '••••',
+                  counterText: '',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (pinSubmitted) return;
-                  final pin = transactionPinController.text.trim();
-                  if (!RegExp(r'^\d{4}$').hasMatch(pin)) return;
-                  pinSubmitted = true;
-                  setState(() {
-                    _phase = PurchasePhase.processing;
-                  });
-                  Navigator.of(dialogContext).pop(
-                    pin,
-                  );
-                },
-                child: const Text('Confirm'),
-              ),
-            ],
-          );
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: pinSubmitted
+                      ? null
+                      : () {
+                          if (pinSubmitted) return;
+                          final pin = transactionPinController.text.trim();
+                          if (!RegExp(r'^\d{4}$').hasMatch(pin)) return;
+                          setPinState(() => pinSubmitted = true);
+                          setState(() {
+                            _phase = PurchasePhase.processing;
+                          });
+                          Navigator.of(dialogContext).pop(
+                            pin,
+                          );
+                        },
+                  child: const Text('Confirm'),
+                ),
+              ],
+            );
+          });
         },
       );
 
@@ -1190,7 +1194,7 @@ class _DataScreenState extends State<DataScreen> {
       body: PopScope(
         canPop: _phase != PurchasePhase.processing,
         child: PurchaseProcessing(
-          processing: false,
+          processing: _phase == PurchasePhase.processing,
           service: 'data',
           child: RefreshIndicator(
             onRefresh: loadDataPlans,
@@ -1238,16 +1242,6 @@ class _DataScreenState extends State<DataScreen> {
                             : () => _checkPurchase(retained: request),
                         child: const Text('Check status'),
                       ),
-                    ),
-                  if (_phase == PurchasePhase.processing)
-                    const ListTile(
-                      leading: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                      title: Text('Processing your data purchase...'),
-                      subtitle: Text(
-                          'Do not submit again. You can still edit the next beneficiary.'),
                     ),
                   Container(
                     width: double.infinity,
