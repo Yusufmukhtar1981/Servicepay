@@ -7,12 +7,14 @@ class BranchCounterScreen extends StatefulWidget {
     this.pendingStore,
     this.receiptOpener,
     this.staffMode = false,
+    this.initialAction,
   });
 
   final BranchCounterApi? api;
   final CounterPendingIntentStore? pendingStore;
   final CounterReceiptOpener? receiptOpener;
   final bool staffMode;
+  final String? initialAction;
 
   @override
   State<BranchCounterScreen> createState() => _BranchCounterScreenState();
@@ -23,6 +25,7 @@ class _BranchCounterScreenState extends State<BranchCounterScreen> {
   late final CounterPendingIntentStore _pending =
       widget.pendingStore ?? CounterPendingIntentStore();
   final TextEditingController _search = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
   Map<String, dynamic> _config = <String, dynamic>{};
   Map<String, dynamic> _stats = <String, dynamic>{};
   List<Map<String, dynamic>> _orders = <Map<String, dynamic>>[];
@@ -32,6 +35,7 @@ class _BranchCounterScreenState extends State<BranchCounterScreen> {
   String? _error;
   int _page = 1;
   int _total = 0;
+  bool _initialActionHandled = false;
 
   @override
   void initState() {
@@ -42,6 +46,7 @@ class _BranchCounterScreenState extends State<BranchCounterScreen> {
   @override
   void dispose() {
     _search.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -53,8 +58,7 @@ class _BranchCounterScreenState extends State<BranchCounterScreen> {
     try {
       final List<dynamic> result = await Future.wait<dynamic>(<Future<dynamic>>[
         _api.loadConfig(),
-        _api.listOrders(
-            status: _status, search: _query, page: _page),
+        _api.listOrders(status: _status, search: _query, page: _page),
       ]);
       final Map<String, dynamic> list = _map(result[1]);
       if (!mounted) return;
@@ -65,6 +69,24 @@ class _BranchCounterScreenState extends State<BranchCounterScreen> {
         _page = _int(list['page'], _page);
         _total = _int(list['total'], _orders.length);
       });
+      if (!_initialActionHandled && widget.initialAction != null) {
+        _initialActionHandled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (widget.initialAction == 'create') {
+            _create();
+          } else {
+            _searchFocus.requestFocus();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(widget.initialAction == 'print'
+                    ? 'Search for an order, open it, then choose A4 or Thermal receipt to print or reprint.'
+                    : 'Search by tracking number, customer name or phone.'),
+              ),
+            );
+          }
+        });
+      }
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     } finally {
@@ -200,6 +222,7 @@ class _BranchCounterScreenState extends State<BranchCounterScreen> {
                           TextField(
                             controller: _search,
                             key: const Key('counter-search'),
+                            focusNode: _searchFocus,
                             onSubmitted: _searchOrders,
                             textInputAction: TextInputAction.search,
                             decoration: InputDecoration(
@@ -268,14 +291,14 @@ class _BranchCounterScreenState extends State<BranchCounterScreen> {
                           if (_orders.isEmpty && !_loading)
                             _CounterEmpty(onCreate: _create)
                           else
-                            ..._orders.map((Map<String, dynamic> order) =>
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 9),
-                                  child: _OrderTile(
-                                    order: order,
-                                    onTap: () => _openOrder(order),
-                                  ),
-                                )),
+                            ..._orders
+                                .map((Map<String, dynamic> order) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 9),
+                                      child: _OrderTile(
+                                        order: order,
+                                        onTap: () => _openOrder(order),
+                                      ),
+                                    )),
                           if (_total > _orders.length)
                             Align(
                               alignment: Alignment.center,

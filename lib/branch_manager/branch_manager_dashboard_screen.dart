@@ -12,15 +12,19 @@ import 'branch_manager_staff_screen.dart';
 import '../logistics/logistics_operations_screens.dart';
 import '../login_screen.dart';
 import 'branch_counter_screen.dart';
+import 'branch_counter_api.dart';
+import 'branch_delivery_dashboard_section.dart';
 
 class BranchManagerDashboardScreen extends StatefulWidget {
   const BranchManagerDashboardScreen({
     super.key,
     this.api,
+    this.counterApi,
     this.onAction,
   });
 
   final BranchManagerDashboardApi? api;
+  final BranchCounterApi? counterApi;
   final ValueChanged<String>? onAction;
 
   @override
@@ -585,6 +589,17 @@ class _BranchManagerDashboardScreenState
           children: <Widget>[
             if (_error != null) _RefreshWarning(message: _error!),
             _branchHeader(data, desktop),
+            if ((_has('branch.delivery.view') ||
+                    _has('branch.delivery.create') ||
+                    _has('branch.delivery.manage')) &&
+                (_moduleAssigned('DELIVERY') ||
+                    _moduleAssigned('LOGISTICS'))) ...<Widget>[
+              const SizedBox(height: 12),
+              BranchDeliveryDashboardSection(
+                key: ValueKey<DateTime?>(_lastUpdated),
+                api: widget.counterApi,
+              ),
+            ],
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,
@@ -1637,7 +1652,7 @@ class _BranchManagerDashboardScreenState
       }
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => const BranchCounterScreen(),
+          builder: (_) => BranchCounterScreen(api: widget.counterApi),
         ),
       );
       return;
