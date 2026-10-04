@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'services/electricity_request_store.dart';
 
 import 'package:flutter/material.dart';
+import 'services/electricity_payment_result.dart';
 import 'widgets/purchase_processing.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -101,12 +102,14 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
         return;
       }
       final payment = Map<String, dynamic>.from(data);
+      final status =
+          electricityPaymentStatus(payment, pending: body['pending'] == true);
+      payment['status'] = status;
+      final amount = electricityPaymentAmount(payment);
       if (!mounted) return;
       await showPaymentResult(
-          responseData: body,
-          paymentData: payment,
-          amount: (payment['amount'] as num).toDouble());
-      if (['SUCCESSFUL', 'FAILED'].contains(payment['status'])) {
+          responseData: body, paymentData: payment, amount: amount);
+      if (['SUCCESSFUL', 'FAILED'].contains(status)) {
         await ElectricityRequestStore.complete(token);
         if (mounted)
           setState(() {
