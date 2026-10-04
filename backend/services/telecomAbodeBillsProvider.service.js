@@ -63,6 +63,19 @@ const financialReadiness = Object.freeze({
     "Electricity validation returned the same verified identity for deliberately invalid test meters."]) }),
 });
 
+// The live provider appends "(Unit 11.5)" to the token. Parse that exact
+// fulfillment grammar, not all digits in the entire response or arbitrary text.
+const electricityFulfillment = data => {
+  const value = text(data.token);
+  const match = /^((?:\d{4}[ -]){4}\d{4}|\d{20})(?:\s*\(Units?\s+(\d+(?:\.\d+)?)\))?$/i.exec(value);
+  if (!match || /^(\d)\1+$/.test(match[1].replace(/[ -]/g, ""))) return null;
+  const explicitUnits = data.units === undefined ? undefined : String(data.units).trim();
+  if (explicitUnits !== undefined &&
+      (!/^\d+(?:\.\d+)?$/.test(explicitUnits) ||
+       match[2] !== undefined && Number(explicitUnits) !== Number(match[2]))) return null;
+  return { token: match[1], ...(explicitUnits !== undefined || match[2] !== undefined
+    ? { units: explicitUnits ?? match[2] } : {}) };
+};
 const classify = ({ httpStatus, data, service, reference, meterType, source = "STATUS_QUERY" }) => {
   const base = { httpStatus, outcome: "UNKNOWN", authoritative: false,
     reasonCode: "PROVIDER_RESULT_UNCONFIRMED", requestId: reference,
@@ -84,27 +97,29 @@ const classify = ({ httpStatus, data, service, reference, meterType, source = "S
   if (httpStatus !== 200 || !data || typeof data !== "object" || Array.isArray(data)) return base;
   const echoed = text(data["request-id"]);
   if (echoed !== reference) return { ...base, reasonCode: "PROVIDER_REFERENCE_MISMATCH" };
-  const primary = text(data.status).toLowerCase();
-  const secondary = text(data.Status).toLowerCase();
-  const success = ["success", "successful"];
-  if (!success.includes(primary) || !success.includes(secondary)) {
+  const values = [data.status, data.Status].filter(v => v !== undefined);
+  const statuses = values.map(v => text(v).toLowerCase());
+  const success = ["success", "successful", "completed", "delivered"];
+  if (!statuses.length || !statuses.every(v => success.includes(v))) {
     // A bare fail/failed/error is not enough to establish non-delivery,
     // especially on a query. Never infer a refund from it.
     return { ...base, providerOrderId: echoed,
-      outcome: ["pending", "processing"].includes(primary) &&
-        ["pending", "processing"].includes(secondary) ? "PENDING" : "UNKNOWN" };
+      outcome: statuses.length && statuses.every(v => ["pending", "processing"].includes(v))
+        ? "PENDING" : "UNKNOWN" };
   }
   if (data.service !== undefined && text(data.service).toUpperCase() !== service)
     return { ...base, reasonCode: "PROVIDER_SERVICE_MISMATCH" };
-  const token = text(data.token);
-  const tokenDigits = token.replace(/[ -]/g, "");
-  if (service === "ELECTRICITY" && meterType === "prepaid" &&
-      (!/^[\d -]+$/.test(token) || !/^\d{20}$/.test(tokenDigits) || /^(\d)\1+$/.test(tokenDigits)))
+  if (["message", "api_response", "response", "error"].some(k =>
+      typeof data[k] === "string" && /\b(failed|failure|error|rejected|declined)\b/i.test(data[k])))
+    return { ...base, reasonCode: "CONTRADICTORY_PROVIDER_STATUS" };
+  const fulfillment = service === "ELECTRICITY" && meterType === "prepaid"
+    ? electricityFulfillment(data) : null;
+  if (service === "ELECTRICITY" && meterType === "prepaid" && !fulfillment)
     return { ...base, providerOrderId: echoed, reasonCode: "PREPAID_TOKEN_UNCONFIRMED" };
   return { ...base, outcome: "SUCCESS", authoritative: true, providerOrderId: echoed,
     reasonCode: "CORRELATED_PROVIDER_SUCCESS",
     // Do NOT call amount or advertised discounts an actual invoice cost.
-     receipt: { reference: echoed, ...(token ? { token } : {}),
+     receipt: { reference: echoed, ...(fulfillment || {}),
        ...(service === "ELECTRICITY" && ["string", "number"].includes(typeof data.units)
          ? { units: String(data.units).slice(0, 64) } : {}),
       ...(data.amount !== undefined ? { reportedAmount: String(data.amount).slice(0, 32) } : {}) },

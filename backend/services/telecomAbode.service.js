@@ -140,7 +140,7 @@ const getStatusValue = (data) => {
   if (!statuses.length) return null;
   const normalized = statuses.map((value) => {
     const text = typeof value === "string" ? value.trim().toLowerCase() : "";
-    if (text === "success" || text === "successful") return "SUCCESSFUL";
+    if (["success", "successful", "completed", "delivered"].includes(text)) return "SUCCESSFUL";
     if (text === "pending" || text === "processing") return "PENDING";
     if (text === "fail" || text === "failed" || text === "failure") return "FAILED";
     if (text === "error") return "ERROR";
@@ -171,9 +171,9 @@ const documentedDataOutcome = (data) => {
   for (const field of statusFields) {
     if (typeof data[field] !== "string") return "PENDING";
     const status = data[field].trim().toLowerCase();
-    if (status === "success" || status === "successful") {
+    if (["success", "successful", "completed", "delivered"].includes(status)) {
       outcomes.push("SUCCESS");
-    } else if (status === "fail" || status === "failed") {
+    } else if (["fail", "failed", "failure"].includes(status)) {
       outcomes.push("FAILED");
     } else {
       return "PENDING";

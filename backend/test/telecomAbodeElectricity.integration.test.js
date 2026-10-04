@@ -39,7 +39,9 @@ async function fixture(mode = "success", type = "01") {
     if (mode === "lookup-failed" && options.method === "POST") throw Error("Unit timeout");
     return { status: 200, data: { status: "success", Status: "successful", service: "electricity",
       "request-id": options.data?.["request-id"] || options.url.split("/").pop(),
-      ...(type === "01" && mode !== "missing-token" ? { token: "1234 5678 9012 3456 7890", units: "12.34" } : {}) } };
+      ...(type === "01" && mode !== "missing-token"
+        ? mode === "combined" ? { token: "1234-5678-9012-3456-7890 (Unit 12.34)" }
+          : { token: "1234 5678 9012 3456 7890", units: "12.34" } : {}) } };
   };
   const bills = createTelecomAbodeBillsProvider({ transport, credentials: () => "unit-only-key" });
   const config = { primaryProvider: "TELECOM_ABODE", providerStates: [{ provider: "TELECOM_ABODE", enabled: true }] };
@@ -47,7 +49,7 @@ async function fixture(mode = "success", type = "01") {
     allowCustomer: () => true, readConfig: async () => config });
   const input = { electricCompany: 3, meterType: type, meterNumber: "62130123456", phoneNumber: "+2348012345678",
     amount: 1000, idempotencyKey: `electricity-unit-${n}`, customerConfirmed: true };
-  return { user, service, calls, config, input };
+  return { user, service, calls, config, input, setMode: value => { mode = value; } };
 }
 async function confirmed(f) {
   const v = await f.service.verify(f.user._id, f.input);
@@ -136,5 +138,24 @@ test("clearing client storage cannot debit an unresolved Electricity request und
   await assert.rejects(f.service.purchase(f.user._id, { ...input, idempotencyKey: input.idempotencyKey + "-fresh" }),
     { code: "ELECTRICITY_PENDING_RECOVERY" });
   assert.equal((await User.findById(f.user._id)).walletBalance, 4000);
+  assert.equal(f.calls.filter(c => c.url.endsWith("/bill")).length, 1);
+});
+test("timeout then provider success recovers combined token exactly once across concurrent queries", async () => {
+  const f = await fixture("timeout"), input = await confirmed(f);
+  const pending = await f.service.purchase(f.user._id, input);
+  assert.equal(pending.data.status, "PENDING");
+  f.setMode("combined");
+  const results = await Promise.all(Array.from({ length: 3 }, () =>
+    f.service.requery(f.user._id, pending.data.transactionId)));
+  for (const result of results) {
+    assert.equal(result.data.status, "SUCCESSFUL");
+    assert.equal(result.data.meterToken, "1234-5678-9012-3456-7890");
+    assert.equal(result.data.units, "12.34");
+    assert.equal(result.data.financialAccounting.providerCost, null);
+  }
+  assert.equal((await User.findById(f.user._id)).walletBalance, 4000);
+  assert.equal(await Tx.countDocuments({ customerId: f.user._id }), 1);
+  assert.equal(await Ledger.countDocuments({ transactionId: pending.data.transactionId, direction: "DEBIT" }), 1);
+  assert.equal(await Ledger.countDocuments({ transactionId: pending.data.transactionId, direction: "CREDIT" }), 0);
   assert.equal(f.calls.filter(c => c.url.endsWith("/bill")).length, 1);
 });

@@ -107,7 +107,17 @@ function createTelecomAbodeElectricity({ bills = createTelecomAbodeBillsProvider
         const tx = await Transaction.findOne({ _id: id, provider: "TELECOM_ABODE", serviceType: "ELECTRICITY" }).session(session);
         if (!tx || tx.status !== "PENDING") { settled = tx; return; }
         if (evidence.requestId !== tx.providerRequestId) throw fail("REFERENCE_MISMATCH", "Settlement reference mismatch.", 409);
+        if (!tx.debitLedgerEntryId || !tx.dispatchStartedAt)
+          throw fail("DEBIT_CUSTODY_REQUIRED", "Original debit and dispatch evidence are required.", 409);
         const meta = tx.providerResponse;
+        const reportedAmount = evidence.receipt?.reportedAmount;
+        if (evidence.authoritative && evidence.outcome === "SUCCESS" &&
+            reportedAmount !== undefined &&
+            Number(reportedAmount) !== Number(meta.electricity.faceValue))
+          throw fail("PROVIDER_AMOUNT_MISMATCH", "Provider amount does not match the original payment.", 409);
+        meta.providerFinalization = { source: evidence.source, httpStatus: evidence.httpStatus,
+          normalizedStatus: evidence.outcome, reasonCode: evidence.reasonCode,
+          checkedAt: new Date(), providerReference: evidence.providerOrderId || null };
         if (evidence.authoritative && evidence.outcome === "SUCCESS") {
           tx.status = "SUCCESSFUL"; tx.dispatchStatus = "SUCCEEDED"; tx.providerStatus = "SUCCESS";
           tx.providerReference = evidence.providerOrderId;

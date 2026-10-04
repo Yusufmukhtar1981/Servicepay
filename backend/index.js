@@ -500,6 +500,7 @@ async function startServer() {
     server.listen(PORT, "0.0.0.0", resolve);
   });
   console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
+  require("./services/telecomAbodeReconciliationWorker.service").startTelecomAbodeReconciliationWorker();
   logFirebaseConfigurationStatus();
 
   // Noncritical provider and campaign initialization must never hold API

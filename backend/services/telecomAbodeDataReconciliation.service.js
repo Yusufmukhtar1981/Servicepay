@@ -62,8 +62,7 @@ const createTelecomAbodeDataReconciliationService = ({
       (result.provider &&
         String(result.provider).trim().toUpperCase() !== "TELECOM_ABODE") ||
       String(result.providerReference || "").trim() !== transaction.providerRequestId ||
-      String(result.service || "").trim().toLowerCase() !== "data" ||
-      result.documentedDataStatus !== true ||
+      (result.service && String(result.service).trim().toLowerCase() !== "data") ||
       !["SUCCESS", "FAILED", "PENDING", "UNKNOWN"].includes(result.status)
     ) {
       return {
@@ -73,7 +72,7 @@ const createTelecomAbodeDataReconciliationService = ({
     }
 
     const rawStatus = String(result.rawProviderStatus || "").trim().toUpperCase();
-    const rawOutcome = ["SUCCESS", "SUCCESSFUL", "COMPLETED"].includes(rawStatus)
+    const rawOutcome = ["SUCCESS", "SUCCESSFUL", "COMPLETED", "DELIVERED"].includes(rawStatus)
       ? "SUCCESS"
       : ["FAILED", "FAIL", "FAILURE"].includes(rawStatus)
         ? "FAILED"
@@ -100,11 +99,24 @@ const createTelecomAbodeDataReconciliationService = ({
         body: { ...UNKNOWN_RESULT, providerLookup: "CONTRADICTORY" },
       };
     }
-    if (result.status === "PENDING" || result.status === "UNKNOWN") {
+    // The generic authenticated lookup omits service. Exact persisted request
+    // correlation binds it to DATA; an explicit different service still fails.
+    if (result.status === "PENDING" && rawOutcome === "PENDING" &&
+        !result.contradictory && !result.invalidProviderAmount) {
+      return { httpStatus: 202, body: { outcome: "PENDING", providerStatus: "PENDING" } };
+    }
+    if (result.status === "PENDING" || result.status === "UNKNOWN" ||
+        result.documentedDataStatus !== true) {
       return {
         httpStatus: 202,
         body: { ...UNKNOWN_RESULT, providerStatus: result.status },
       };
+    }
+    // The generic lookup may omit service on successful deliveries and genuine
+    // pending responses. Its legacy fail/failed responses are not sufficient
+    // non-delivery evidence without an explicit DATA service binding.
+    if (result.status === "FAILED" && !result.service) {
+      return { httpStatus: 202, body: { ...UNKNOWN_RESULT, providerLookup: "FAILURE_UNCONFIRMED" } };
     }
 
     const settled = await settleOutcome({
@@ -113,7 +125,7 @@ const createTelecomAbodeDataReconciliationService = ({
       source: "STATUS_QUERY",
       evidence: {
         requestId: result.requestId,
-        service: result.service,
+        service: result.service || "data",
         documentedDataStatus: true,
         providerStatus: result.rawProviderStatus || result.status,
         amount: result.amount,

@@ -29,10 +29,19 @@ test("not recorded and database failure remain pending, without dispatch", async
 test("pending or refunded requests are not reported as successful", async () => {
   for (const status of ["PENDING", "FAILED"]) {
     const res = response();
-    await createDataPurchaseStatus({ lookup: async () => ({ status, dispatchStatus: status === "FAILED" ? "REFUNDED" : "UNKNOWN" }) })(request, res);
+    await createDataPurchaseStatus({ lookup: async () => ({ status, dispatchStatus: status === "FAILED" ? "REFUNDED" : "SENDING" }) })(request, res);
     assert.equal(res.body.success, false);
     assert.equal(res.body.status, status);
   }
+});
+test("unconfirmed UNKNOWN custody is review, not a false actively-processing status", async () => {
+  const res = response();
+  await createDataPurchaseStatus({ lookup: async () =>
+    ({ status: "PENDING", dispatchStatus: "UNKNOWN", reference: "DATA-OLD" }) })(request, res);
+  assert.equal(res.body.status, "UNKNOWN");
+  assert.equal(res.body.manualReviewRequired, true);
+  assert.equal(res.body.allowSeparatePurchase, true);
+  assert.equal(res.body.reference, "DATA-OLD");
 });
 test("staff and malformed request keys cannot query DATA custody", async () => {
   const controller = createDataPurchaseStatus({ lookup: () => { throw Error("must not query"); } });
