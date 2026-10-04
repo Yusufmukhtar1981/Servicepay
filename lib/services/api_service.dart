@@ -323,8 +323,10 @@ class ApiService {
       headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
     ).timeout(requestTimeout);
     final body = _handleResponse(response);
+    if (response.statusCode == 401) return _purchaseAuthenticationRequired();
     if (response.statusCode == 200) return body;
-    if (response.statusCode == 404 && body['canRetireUnrecordedRequest'] == true) {
+    if (response.statusCode == 404 &&
+        body['canRetireUnrecordedRequest'] == true) {
       return {...body, 'pending': true, 'allowSeparatePurchase': false};
     }
     // A 404 does not prove the original POST will not arrive later.
@@ -343,7 +345,7 @@ class ApiService {
     final String? token = (await SessionStore.readToken())?.trim();
 
     if (token == null || token.isEmpty) {
-      throw Exception(
+      throw PurchaseAuthenticationRequired(
         'Your login session was not found. '
         'Please sign in again.',
       );
@@ -352,15 +354,29 @@ class ApiService {
     return token;
   }
 
-  static Future<Map<String, dynamic>> retireUnrecordedDataRequest(String key) async {
+  static Future<Map<String, dynamic>> retireUnrecordedDataRequest(
+      String key) async {
     final token = await _getAuthToken();
     final response = await http.post(
-      Uri.parse('$baseUrl/clubkonnect/data/recovery/${Uri.encodeComponent(key)}/retire'),
+      Uri.parse(
+          '$baseUrl/clubkonnect/data/recovery/${Uri.encodeComponent(key)}/retire'),
       headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
     ).timeout(requestTimeout);
     final body = _handleResponse(response);
+    if (response.statusCode == 401) return _purchaseAuthenticationRequired();
     return {...body, 'httpStatus': response.statusCode};
   }
+
+  static Map<String, dynamic> _purchaseAuthenticationRequired() => {
+        'success': false,
+        'httpStatus': 401,
+        'authenticationRequired': true,
+        'pending': true,
+        'allowSeparatePurchase': false,
+        'canRetireUnrecordedRequest': false,
+        'message': 'Your session has expired. Sign in again to check the original '
+            'request. Its key remains retained; no new purchase has been sent.',
+      };
 
   static Map<String, dynamic> _handleResponse(
     http.Response response,
@@ -442,4 +458,11 @@ class ApiService {
         return 'The transaction could not be completed.';
     }
   }
+}
+
+class PurchaseAuthenticationRequired implements Exception {
+  const PurchaseAuthenticationRequired(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }

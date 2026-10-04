@@ -7,6 +7,7 @@ import 'widgets/purchase_processing.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'services/api_service.dart';
+import 'services/purchase_session_recovery.dart';
 import 'widgets/saved_beneficiaries.dart';
 
 class AirtimeScreen extends StatefulWidget {
@@ -35,6 +36,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   final Map<String, int> providerNetworkIds = {};
   bool _catalogLoading = true;
   String? _catalogError;
+  bool _catalogAuthenticationRequired = false;
 
   String selectedNetwork = 'MTN';
   bool isLoading = false;
@@ -55,9 +57,20 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   }
 
   Future<void> _loadNetworks() async {
+    if (mounted) {
+      setState(() {
+        _catalogLoading = true;
+        _catalogError = null;
+        _catalogAuthenticationRequired = false;
+      });
+    }
     try {
-      final response = await (widget.loadNetworks ?? ApiService.getAirtimeNetworks)()
-          .timeout(const Duration(seconds: 4));
+      final response =
+          await (widget.loadNetworks ?? ApiService.getAirtimeNetworks)()
+              .timeout(const Duration(seconds: 35));
+      if (response['httpStatus'] == 401) {
+        throw const PurchaseAuthenticationRequired('Sign in again.');
+      }
       if (response['success'] != true || response['data'] is! List) {
         throw Exception('Airtime networks could not be verified.');
       }
@@ -86,13 +99,19 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         _catalogLoading = false;
         _catalogError = null;
       });
-    } catch (_) {
-      if (mounted)
+    } catch (error) {
+      if (mounted) {
         setState(() {
           _catalogLoading = false;
-          _catalogError =
-              'Airtime networks are unavailable. Retry loading; no purchase has been made.';
+          _catalogAuthenticationRequired =
+              error is PurchaseAuthenticationRequired;
+          _catalogError = _catalogAuthenticationRequired
+              ? 'Your session has expired. Sign in again to load Airtime networks. '
+                  'No purchase has been made.'
+              : 'Airtime networks could not be loaded. Retry loading; '
+                  'no purchase has been made.';
         });
+      }
     }
   }
 
@@ -653,14 +672,12 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                     Text(_catalogError!,
                         style: const TextStyle(color: Colors.red)),
                     TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _catalogLoading = true;
-                            _catalogError = null;
-                          });
-                          _loadNetworks();
-                        },
-                        child: const Text('Retry loading networks')),
+                        onPressed: _catalogAuthenticationRequired
+                            ? () => signInForPurchaseRecovery(context)
+                            : _loadNetworks,
+                        child: Text(_catalogAuthenticationRequired
+                            ? 'Sign in again'
+                            : 'Retry loading networks')),
                   ],
                   const Text(
                     'Phone Number',

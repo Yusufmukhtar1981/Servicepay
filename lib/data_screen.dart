@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'services/api_service.dart';
 import 'services/data_purchase_intent.dart';
 import 'services/data_phone.dart';
+import 'services/purchase_session_recovery.dart';
 import 'receipt_screen.dart';
 import 'widgets/saved_beneficiaries.dart';
 import 'widgets/purchase_processing.dart';
@@ -61,6 +62,7 @@ class _DataScreenState extends State<DataScreen> {
   bool _restoring = true;
   bool _canStartSeparate = false;
   bool _canRetireUnrecorded = false;
+  bool _authenticationRequired = false;
   List<Map<String, dynamic>> _retainedRequests = [];
 
   String plansError = '';
@@ -128,6 +130,18 @@ class _DataScreenState extends State<DataScreen> {
       final result =
           await (widget.statusQuery ?? ApiService.dataPurchaseStatus)(key);
       if (!mounted) return;
+      if (result['authenticationRequired'] == true ||
+          result['httpStatus'] == 401) {
+        setState(() {
+          _authenticationRequired = true;
+          _canStartSeparate = false;
+          _canRetireUnrecorded = false;
+          _pendingMessage = 'Your session has expired. Sign in again to check '
+              'the original request. No purchase has been resent.';
+        });
+        return;
+      }
+      setState(() => _authenticationRequired = false);
       if (retained != null) {
         final outcome = purchaseOutcome(result);
         if (outcome == PurchasePhase.success ||
@@ -151,13 +165,18 @@ class _DataScreenState extends State<DataScreen> {
           code: parts[2].toString(),
           name: pending['planName']?.toString() ?? parts[2].toString(),
           price: double.parse(parts[3].toString()));
-    } catch (_) {
-      if (mounted)
+    } catch (error) {
+      if (mounted) {
         setState(() {
           _phase = PurchasePhase.pending;
-          _pendingMessage =
-              'Status is unavailable. The original request is retained. Do not submit again.';
+          _authenticationRequired = error is PurchaseAuthenticationRequired;
+          _canStartSeparate = false;
+          _canRetireUnrecorded = false;
+          _pendingMessage = _authenticationRequired
+              ? 'Your session has expired. Sign in again to check the original request.'
+              : 'Status is unavailable. The original request is retained. Do not submit again.';
         });
+      }
     } finally {
       if (mounted)
         setState(() {
@@ -195,6 +214,20 @@ class _DataScreenState extends State<DataScreen> {
       // terminal while the acknowledgement dialog is open.
       final result = await (widget.statusQuery ??
           ApiService.dataPurchaseStatus)(_pendingKey!);
+      if (result['authenticationRequired'] == true ||
+          result['httpStatus'] == 401) {
+        if (mounted) {
+          setState(() {
+            _authenticationRequired = true;
+            _canStartSeparate = false;
+            _canRetireUnrecorded = false;
+            _pendingMessage =
+                'Your session has expired. Sign in again to check '
+                'the original request. No new purchase was started.';
+          });
+        }
+        return;
+      }
       if (result['allowSeparatePurchase'] != true ||
           result['status'] != 'UNKNOWN') {
         showMessage('Check the original request again before continuing.');
@@ -465,6 +498,13 @@ class _DataScreenState extends State<DataScreen> {
 
       if (result['success'] != true) {
         setState(() {
+          if (result['httpStatus'] == 401) {
+            _authenticationRequired = true;
+            _canStartSeparate = false;
+            _canRetireUnrecorded = false;
+            _pendingMessage = 'Your session has expired. Sign in again to load '
+                'DATA plans and check your earlier requests.';
+          }
           plansError =
               result['message']?.toString() ?? 'Unable to load data plans.';
         });
@@ -797,8 +837,12 @@ class _DataScreenState extends State<DataScreen> {
     if (!mounted) return;
 
     if (outcome == PurchasePhase.pending) {
-      message = 'Your transaction is being processed. Please do not retry '
-          'with a new request. Its final status must be confirmed.';
+      message = result['status'] == 'UNKNOWN' &&
+              result['manualReviewRequired'] == true
+          ? 'The earlier request remains unconfirmed and retained for review. '
+              'Use the available recovery action; do not resend the original request.'
+          : 'Your transaction is being processed. Please do not retry '
+              'with a new request. Its final status must be confirmed.';
       setState(() {
         _pendingMessage = message;
       });
@@ -1156,8 +1200,16 @@ class _DataScreenState extends State<DataScreen> {
                     child: Column(children: [
                   if (_pendingMessage.isNotEmpty)
                     MaterialBanner(
-                      content: Text('Transaction Pending\n$_pendingMessage'),
+                      content: Text(
+                          '${_authenticationRequired ? 'Sign in required' : _canStartSeparate || _canRetireUnrecorded ? 'Earlier request needs review' : 'Transaction Pending'}\n$_pendingMessage'),
                       actions: [
+                        if (_authenticationRequired)
+                          TextButton(
+                            onPressed: isBuyingData
+                                ? null
+                                : () => signInForPurchaseRecovery(context),
+                            child: const Text('Sign in again'),
+                          ),
                         TextButton(
                             onPressed:
                                 isBuyingData ? null : () => _checkPurchase(),

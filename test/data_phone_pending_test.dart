@@ -144,6 +144,7 @@ void main() {
         return {
           'status': 'UNKNOWN',
           'pending': true,
+          'manualReviewRequired': true,
           'allowSeparatePurchase': true
         };
       },
@@ -153,6 +154,9 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
+    expect(find.textContaining('Earlier request needs review'), findsOneWidget);
+    expect(find.textContaining('Your transaction is being processed'),
+        findsNothing);
     await tester.tap(find.text('Start a separate purchase'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Start separate purchase'));
