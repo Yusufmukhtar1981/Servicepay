@@ -18,6 +18,7 @@ const MAX_PROVIDER_EVIDENCE_LENGTH = 1200;
 const MAX_PROVIDER_MESSAGE_LENGTH = 320;
 const STATUS_WORDS = new Set([
   "success", "successful", "pending", "processing", "fail", "failed", "failure", "error",
+  "completed", "delivered", "rejected", "declined",
 ]);
 
 const sanitizeProviderText = (value, configuredKey) => {
@@ -173,7 +174,7 @@ const documentedDataOutcome = (data) => {
     const status = data[field].trim().toLowerCase();
     if (["success", "successful", "completed", "delivered"].includes(status)) {
       outcomes.push("SUCCESS");
-    } else if (["fail", "failed", "failure"].includes(status)) {
+    } else if (["fail", "failed", "failure", "rejected", "declined"].includes(status)) {
       outcomes.push("FAILED");
     } else {
       return "PENDING";
@@ -482,6 +483,9 @@ const buildDataPurchasePayload = ({
     fail("network must be a positive provider network integer.");
   }
   const recipientPhone = requiredText(phone, "phone");
+  if (!/^0[789]\d{9}$/.test(recipientPhone)) {
+    fail("phone must be a normalized Nigerian mobile number.");
+  }
   if (!Number.isSafeInteger(plan) || plan <= 0) {
     fail("plan must be a positive integer.");
   }
@@ -578,12 +582,16 @@ const normalizeDataPurchaseResponse = (
     /\b(FAILED|FAILURE|ERROR|INVALID|REJECTED|DECLINED|CANCELLED|CANCELED)\b/i.test(text),
   );
   const messageSignalsSuccess = providerMessages.some(({ text }) =>
-    /\b(SUCCESS|SUCCESSFUL|COMPLETED)\b/i.test(text),
+    /\b(SUCCESS|SUCCESSFUL|SUCCESSFULLY|COMPLETED|DELIVERED|GIFTED)\b/i.test(text),
+  );
+  const messageSignalsProcessing = providerMessages.some(({ text }) =>
+    /\b(PROCESSING|PENDING|IN PROGRESS)\b|\bCHECK\b.{0,48}\bLATER\b/i.test(text),
   );
   const contradictory =
     (messageSignalsFailure && messageSignalsSuccess) ||
     (documentedOutcome === "SUCCESS" && messageSignalsFailure) ||
-    (documentedOutcome === "FAILED" && messageSignalsSuccess);
+    (documentedOutcome === "FAILED" && messageSignalsSuccess) ||
+    (documentedOutcome !== "PENDING" && messageSignalsProcessing);
   const suppliedAmount = Object.prototype.hasOwnProperty.call(data, "amount");
   const amountText = typeof data?.amount === "number"
     ? String(data.amount)
@@ -680,16 +688,30 @@ const normalizeTransaction = (data, configuredKey) => {
     /\b(FAILED|FAILURE|ERROR|INVALID|REJECTED|DECLINED|CANCELLED|CANCELED)\b/i.test(text),
   );
   const messageSignalsSuccess = providerMessages.some(({ text }) =>
-    /\b(SUCCESS|SUCCESSFUL|COMPLETED)\b/i.test(text),
+    /\b(SUCCESS|SUCCESSFUL|SUCCESSFULLY|COMPLETED|DELIVERED|GIFTED)\b/i.test(text),
+  );
+  const messageSignalsProcessing = providerMessages.some(({ text }) =>
+    /\b(PROCESSING|PENDING|IN PROGRESS)\b|\bCHECK\b.{0,48}\bLATER\b/i.test(text),
   );
   const contradictory =
     (messageSignalsFailure && messageSignalsSuccess) ||
     (status === "SUCCESS" && messageSignalsFailure) ||
-    (status === "FAILED" && messageSignalsSuccess);
+    (status === "FAILED" && messageSignalsSuccess) ||
+    (status !== "PENDING" && messageSignalsProcessing);
   if (contradictory) {
     result.status = "PENDING";
     result.documentedDataStatus = false;
     result.contradictory = true;
+  }
+  // A live, reference-bound rejection also observed on a refunded purchase.
+  // Generic legacy fail/failed, blank bodies and "Invalid MSISDN" are NOT
+  // sufficient non-delivery evidence. Never broaden this to arbitrary errors.
+  if (result.status === "FAILED" && result.documentedDataStatus &&
+      result.requestId && result.amount && !contradictory &&
+      providerMessages.some(({ text }) =>
+        /^Invalid (?:mtn|airtel|glo|9mobile) phone number[.!]?$/i.test(text.trim()),
+      )) {
+    result.confirmedFailureReason = "INVALID_NETWORK_RECIPIENT";
   }
   if (providerMessages.length) {
     result.providerMessage = providerMessages[0].text;
@@ -948,7 +970,18 @@ const createTelecomAbodeService = ({
       dispatchStatus: "CLAIMED",
       dispatchClaimedAt: { $ne: null },
     }, {
-      $set: { dispatchStatus: "SENDING", dispatchStartedAt: new Date() },
+      $set: {
+        dispatchStatus: "SENDING", dispatchStartedAt: new Date(),
+        "providerResponse.dispatchPayloadEvidence": {
+          network: payload.network, plan: payload.plan,
+          requestIdMatches: true, phoneMatchesStored: true,
+          phoneFingerprint: require("node:crypto").createHmac("sha256", configuredApiKey())
+            .update(payload.phone).digest("hex"),
+          bypass: payload.bypass, bypassType: typeof payload.bypass,
+          portedNumberSent: Object.hasOwn(payload, "ported_number"),
+          amountRequired: false, fields: Object.keys(payload),
+        },
+      },
     }, { new: true });
     if (!durableClaim) {
       throw new TelecomAbodeError(
@@ -960,7 +993,13 @@ const createTelecomAbodeService = ({
     const correlation = require("node:crypto").createHmac("sha256", configuredApiKey())
       .update(normalizedRequestId).digest("hex").slice(0, 24);
     const recordAudit = event => {
-      try { audit({ ...event, correlation }); }
+      // Only backend-generated references may be printed. Arbitrary request
+      // strings stay HMAC-correlated rather than becoming a log injection path.
+      const safeReference = /^DATA-\d{13}-[A-F0-9]{8,32}$/i.test(normalizedRequestId)
+        ? normalizedRequestId : undefined;
+      try { audit({ ...event, correlation,
+        ...(safeReference ? { reference: safeReference, providerRequestId: safeReference } : {}),
+      }); }
       catch (_) { console.warn("[DATA_PROVIDER_AUDIT] logging unavailable"); }
     };
     recordAudit({ event: "DISPATCH", payload: {

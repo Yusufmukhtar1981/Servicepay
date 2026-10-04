@@ -74,14 +74,22 @@ const createTelecomAbodeDataReconciliationService = ({
     const rawStatus = String(result.rawProviderStatus || "").trim().toUpperCase();
     const rawOutcome = ["SUCCESS", "SUCCESSFUL", "COMPLETED", "DELIVERED"].includes(rawStatus)
       ? "SUCCESS"
-      : ["FAILED", "FAIL", "FAILURE"].includes(rawStatus)
+      : ["FAILED", "FAIL", "FAILURE", "REJECTED", "DECLINED"].includes(rawStatus)
         ? "FAILED"
         : ["PENDING", "PROCESSING"].includes(rawStatus)
           ? "PENDING"
           : null;
-    if (rawOutcome && rawOutcome !== result.status) {
+    const lookupEvidence = {
+      requestIdMatches: true, observedStatus: result.status,
+      ...(rawOutcome ? { rawOutcome } : {}),
+      httpStatus: result.httpStatus || 200,
+      amountProvided: result.amount !== undefined,
+      sanitizedProviderMessage: String(result.providerMessage || "").slice(0, 320),
+    };
+    if (result.contradictory || (rawOutcome && rawOutcome !== result.status)) {
       return {
         httpStatus: 202,
+        evidence: lookupEvidence,
         body: { ...UNKNOWN_RESULT, providerLookup: "CONTRADICTORY" },
       };
     }
@@ -89,13 +97,17 @@ const createTelecomAbodeDataReconciliationService = ({
     const messageSignalsFailure =
       /\b(FAILED|FAILURE|ERROR|INVALID|REJECTED|DECLINED)\b/.test(providerMessage);
     const messageSignalsSuccess =
-      /\b(SUCCESS|SUCCESSFUL|COMPLETED)\b/.test(providerMessage);
+      /\b(SUCCESS|SUCCESSFUL|SUCCESSFULLY|COMPLETED|DELIVERED|GIFTED)\b/.test(providerMessage);
+    const messageSignalsProcessing =
+      /\b(PROCESSING|PENDING|IN PROGRESS)\b|\bCHECK\b.{0,48}\bLATER\b/.test(providerMessage);
     if (
       (result.status === "SUCCESS" && messageSignalsFailure) ||
-      (result.status === "FAILED" && messageSignalsSuccess)
+      (result.status === "FAILED" && messageSignalsSuccess) ||
+      (["SUCCESS", "FAILED"].includes(result.status) && messageSignalsProcessing)
     ) {
       return {
         httpStatus: 202,
+        evidence: lookupEvidence,
         body: { ...UNKNOWN_RESULT, providerLookup: "CONTRADICTORY" },
       };
     }
@@ -115,8 +127,10 @@ const createTelecomAbodeDataReconciliationService = ({
     // The generic lookup may omit service on successful deliveries and genuine
     // pending responses. Its legacy fail/failed responses are not sufficient
     // non-delivery evidence without an explicit DATA service binding.
-    if (result.status === "FAILED" && !result.service) {
-      return { httpStatus: 202, body: { ...UNKNOWN_RESULT, providerLookup: "FAILURE_UNCONFIRMED" } };
+    if (result.status === "FAILED" && !result.service &&
+        !(result.confirmedFailureReason === "INVALID_NETWORK_RECIPIENT" && result.amount)) {
+      return { httpStatus: 202, evidence: lookupEvidence,
+        body: { ...UNKNOWN_RESULT, providerLookup: "FAILURE_UNCONFIRMED" } };
     }
 
     const settled = await settleOutcome({

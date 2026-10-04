@@ -793,11 +793,11 @@ test("provider 404, pending, mismatched and contradictory Telecom Abode status r
       requestId, providerReference: requestId,
     }),
   ];
-  for (const getStatus of untrustedReplies) {
+  for (const [index, getStatus] of untrustedReplies.entries()) {
     telecomAbode.getTransactionByRequestId = getStatus;
     const result = await invokeTelecomAbodeReconciliation(transaction.reference);
     assert.equal(result.status, 202);
-    assert.equal(result.body.outcome, "UNKNOWN");
+    assert.equal(result.body.outcome, index === 2 ? "PENDING" : "UNKNOWN");
     const current = await Transaction.findById(transaction._id);
     assert.equal(current.status, "PENDING");
     assert.equal(current.dispatchStatus, "UNKNOWN");

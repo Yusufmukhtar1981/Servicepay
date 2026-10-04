@@ -32,10 +32,14 @@ function createTelecomAbodeReconciliationWorker({
           new Date(date.getTime() + 300000) } }, { new: true, sort: { createdAt: 1 } }).lean();
         if (!tx) break;
         let outcome = "UNKNOWN";
+        let lookupEvidence = null;
+        let lookupReason = null;
         try {
           if (tx.serviceType === "DATA") {
             const result = await data.reconcileByReference(tx.reference);
-            outcome = result.body?.providerStatus || result.body?.outcome || "UNKNOWN";
+            outcome = result.body?.outcome || "UNKNOWN";
+            lookupEvidence = result.evidence || null;
+            lookupReason = result.body?.providerLookup || null;
           } else if (tx.serviceType === "AIRTIME") {
             const result = await airtime.reconcilePendingPurchase({ transactionId: tx._id });
             outcome = result?.transaction?.status || result?.status || "UNKNOWN";
@@ -49,6 +53,12 @@ function createTelecomAbodeReconciliationWorker({
         await model.updateOne({ _id: tx._id }, { $set: {
           "providerResponse.statusReconciliation.checkedAt": now(),
           "providerResponse.statusReconciliation.outcome": outcome,
+          ...(lookupEvidence ? {
+            "providerResponse.statusReconciliation.evidence": lookupEvidence,
+          } : {}),
+          ...(lookupReason ? {
+            "providerResponse.statusReconciliation.reason": lookupReason,
+          } : {}),
           "providerResponse.statusReconciliation.nextCheckAt":
             new Date(now().getTime() + (outcome === "PENDING" ? 60000 : 900000)),
         }, $unset: { "providerResponse.statusReconciliation.leaseUntil": "" } });
